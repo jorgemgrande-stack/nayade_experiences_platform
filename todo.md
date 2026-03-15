@@ -1,0 +1,56 @@
+# Nayade Experiences Platform - TODO
+
+## Fase 1: Base de Datos y Configuración
+- [x] Diseñar y aplicar esquema completo de base de datos (17 tablas)
+- [x] Configurar roles de usuario: admin, monitor, agente
+
+## Fase 2: Diseño Visual y Navegación
+- [x] Configurar tema visual elegante (colores, tipografía, variables CSS)
+- [x] Diseñar layout del sitio público con header y footer
+- [x] Diseñar layout del panel de administración con sidebar
+
+## Fase 3: Sitio Público
+- [x] Página Home con slideshow hero, productos destacados y CTAs
+- [x] Página de Ubicaciones con lista de destinos
+- [x] Página de Categorías de experiencias
+- [x] Ficha de Experiencia con galería, descripción, variables y botón de compra
+- [x] Página de Galería de imágenes
+- [x] Landing de Solicitud de Presupuesto (formulario de leads)
+- [x] Página de Contacto
+- [x] Navegación responsive (mobile-first)
+
+## Fase 4: Panel Admin - Auth y Módulo 1 CMS
+- [x] Sistema de autenticación con roles (admin/monitor/agente)
+- [x] Dashboard principal del panel de administración
+- [x] Módulo 1: Gestor de slideshow de la home
+- [x] Módulo 1: Editor de menús del header
+- [x] Módulo 1: Gestor de productos destacados en home
+- [x] Módulo 1: Gestor de medios (subida y gestión de imágenes)
+- [x] Módulo 1: Editor de páginas estáticas
+
+## Fase 5: Módulo 2 y Módulo 3
+- [x] Módulo 2: Gestión de categorías de experiencias
+- [x] Módulo 2: Creación/edición de productos con galería, descripción, variables de precio
+- [x] Módulo 2: Configuración de botones de compra/reserva
+- [x] Módulo 3: Bandeja de entrada de leads
+- [x] Módulo 3: Interfaz de agentes para responder leads
+- [x] Módulo 3: Creación de presupuestos personalizados con desglose
+- [x] Módulo 3: Generación de links de pago únicos
+- [x] Módulo 3: Integración GoHighLevel (webhook logs + API key configurable)
+- [x] Módulo 3: Seguimiento de estado de presupuestos (borrador/enviado/aceptado/rechazado)
+
+## Fase 6: Módulo 4 y Módulo 5
+- [x] Módulo 4: Vista de calendario de actividades contratadas
+- [x] Módulo 4: Generación de órdenes del día
+- [x] Módulo 4: Asignación de monitores a actividades
+- [x] Módulo 4: Notificaciones a monitores
+- [x] Módulo 5: Dashboard con métricas clave (ventas, ingresos, experiencias top)
+- [x] Módulo 5: Informes de ventas exportables
+- [x] Módulo 5: Registro de transacciones y estados de pago
+- [x] Módulo 5: Informe de comisiones por agente/monitor
+
+## Fase 7: Testing y Entrega
+- [x] Escribir tests Vitest (18 tests pasando: auth, public API, leads, admin, quotes, bookings, accounting)
+- [x] Datos de muestra insertados (8 experiencias, 5 ubicaciones, 5 categorías, 3 slides)
+- [ ] Guardar checkpoint final
+- [ ] Configurar integración GoHighLevel API Key
