@@ -57,9 +57,15 @@ export default function AdminDashboard() {
           </div>
           <h2 className="text-2xl font-display font-bold text-foreground mb-2">Acceso Restringido</h2>
           <p className="text-muted-foreground mb-6">Debes iniciar sesión para acceder al panel de administración.</p>
-          <Button asChild className="bg-gold-gradient text-white hover:opacity-90">
-            <a href={getLoginUrl()}>Iniciar Sesión</a>
+          <Button
+            className="bg-primary text-white hover:bg-primary/90 px-8 py-3 text-base font-semibold"
+            onClick={() => { window.location.href = getLoginUrl(); }}
+          >
+            Iniciar Sesión
           </Button>
+          <p className="mt-4 text-sm text-muted-foreground">
+            Accede con tu cuenta de Manus para gestionar la plataforma.
+          </p>
         </div>
       </div>
     );

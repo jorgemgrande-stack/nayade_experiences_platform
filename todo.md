@@ -73,3 +73,4 @@
 ## Correcciones UI
 - [x] Corregir contraste de colores del header (modo transparente y sólido)
 - [x] Aumentar altura del header y aplicar azul agua semitransparente en modo hero
+- [x] Corregir pantalla "Acceso Restringido" del admin para mostrar botón de login funcional
