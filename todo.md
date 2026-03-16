@@ -124,3 +124,7 @@
 - [x] Reescribir ExperiencesManager con 4 zonas de upload real (sin campo URL)
 - [x] Reescribir CategoriesManager con upload real de imagen de portada (sin campo URL)
 - [x] Conectar ExperienceDetail (carrusel público) para usar image1..4 de la BD
+
+## Corrección de enlaces de submenús (v2.4)
+- [x] Auditar hrefs en PublicNav vs rutas en App.tsx
+- [x] Corregir todos los submenús (Experiencias, Packs, Restaurantes) para que enlacen correctamente

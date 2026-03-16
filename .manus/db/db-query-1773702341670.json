@@ -1,0 +1,160 @@
+{
+  "query": "SELECT id, slug, title FROM experiences ORDER BY sortOrder LIMIT 30;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, slug, title FROM experiences ORDER BY sortOrder LIMIT 30;",
+  "rows": [
+    {
+      "id": "30011",
+      "slug": "hab-doble-estandar",
+      "title": "Habitación Doble Estándar"
+    },
+    {
+      "id": "30001",
+      "slug": "blob-jump",
+      "title": "Blob Jump"
+    },
+    {
+      "id": "30018",
+      "slug": "restaurante-galeon",
+      "title": "El Galeón - Reserva de Mesa"
+    },
+    {
+      "id": "30021",
+      "slug": "day-pass-nayade",
+      "title": "Day Pass Náyade"
+    },
+    {
+      "id": "30026",
+      "slug": "pack-romantico-pareja",
+      "title": "Pack Romántico Pareja"
+    },
+    {
+      "id": "30015",
+      "slug": "circuito-spa",
+      "title": "Circuito SPA Hidrotermal"
+    },
+    {
+      "id": "30028",
+      "slug": "pack-escolar-basico",
+      "title": "Pack Escolar Básico"
+    },
+    {
+      "id": "30030",
+      "slug": "team-building-acuatico",
+      "title": "Team Building Acuático"
+    },
+    {
+      "id": "30016",
+      "slug": "spa-pareja",
+      "title": "Pack SPA Pareja"
+    },
+    {
+      "id": "30019",
+      "slug": "restaurante-cabana",
+      "title": "La Cabaña del Lago - Reserva de Mesa"
+    },
+    {
+      "id": "30022",
+      "slug": "pack-discovery",
+      "title": "Pack Discovery"
+    },
+    {
+      "id": "30027",
+      "slug": "pack-familiar",
+      "title": "Pack Familiar Completo"
+    },
+    {
+      "id": "30031",
+      "slug": "evento-corporativo",
+      "title": "Evento Corporativo Premium"
+    },
+    {
+      "id": "30002",
+      "slug": "banana-ski-donuts",
+      "title": "Banana Ski & Donuts"
+    },
+    {
+      "id": "30012",
+      "slug": "hab-doble-superior",
+      "title": "Habitación Doble Superior / Vistas Lago"
+    },
+    {
+      "id": "30029",
+      "slug": "pack-escolar-aventura",
+      "title": "Pack Escolar Aventura"
+    },
+    {
+      "id": "30017",
+      "slug": "masaje-relajante",
+      "title": "Masaje Relajante"
+    },
+    {
+      "id": "30020",
+      "slug": "restaurante-nassau",
+      "title": "Nassau Bar & Music - Reserva"
+    },
+    {
+      "id": "30003",
+      "slug": "cableski-wakeboard",
+      "title": "Cableski & Wakeboard"
+    },
+    {
+      "id": "30023",
+      "slug": "pack-aventura",
+      "title": "Pack Aventura"
+    },
+    {
+      "id": "30013",
+      "slug": "hab-familiar",
+      "title": "Habitación Familiar (3-4 personas)"
+    },
+    {
+      "id": "30024",
+      "slug": "pack-adrenalina",
+      "title": "Pack Adrenalina"
+    },
+    {
+      "id": "30014",
+      "slug": "hab-junior-suite",
+      "title": "Junior Suite Premium"
+    },
+    {
+      "id": "30004",
+      "slug": "canoas-kayaks",
+      "title": "Canoas & Kayaks"
+    },
+    {
+      "id": "30005",
+      "slug": "paddle-surf",
+      "title": "Paddle Surf"
+    },
+    {
+      "id": "30025",
+      "slug": "pack-lago-gourmet",
+      "title": "Pack Lago Gourmet"
+    },
+    {
+      "id": "30006",
+      "slug": "hidropedales",
+      "title": "Hidropedales & Hidrobicis"
+    },
+    {
+      "id": "30007",
+      "slug": "minimotos",
+      "title": "Minimotos Eléctricas Acuáticas"
+    },
+    {
+      "id": "30008",
+      "slug": "paseos-barco",
+      "title": "Paseos en Barco"
+    },
+    {
+      "id": "30009",
+      "slug": "aventura-hinchable",
+      "title": "Aventura Hinchable Acuática"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tslug\ttitle\n30011\thab-doble-estandar\tHabitación Doble Estándar\n30001\tblob-jump\tBlob Jump\n30018\trestaurante-galeon\tEl Galeón - Reserva de Mesa\n30021\tday-pass-nayade\tDay Pass Náyade\n30026\tpack-romantico-pareja\tPack Romántico Pareja\n30015\tcircuito-spa\tCircuito SPA Hidrotermal\n30028\tpack-escolar-basico\tPack Escolar Básico\n30030\tteam-building-acuatico\tTeam Building Acuático\n30016\tspa-pareja\tPack SPA Pareja\n30019\trestaurante-cabana\tLa Cabaña del Lago - Reserva de Mesa\n30022\tpack-discovery\tPack Discovery\n30027\tpack-familiar\tPack Familiar Completo\n30031\tevento-corporativo\tEvento Corporativo Premium\n30002\tbanana-ski-donuts\tBanana Ski & Donuts\n30012\thab-doble-superior\tHabitación Doble Superior / Vistas Lago\n30029\tpack-escolar-aventura\tPack Escolar Aventura\n30017\tmasaje-relajante\tMasaje Relajante\n30020\trestaurante-nassau\tNassau Bar & Music - Reserva\n30003\tcableski-wakeboard\tCableski & Wakeboard\n30023\tpack-aventura\tPack Aventura\n30013\thab-familiar\tHabitación Familiar (3-4 personas)\n30024\tpack-adrenalina\tPack Adrenalina\n30014\thab-junior-suite\tJunior Suite Premium\n30004\tcanoas-kayaks\tCanoas & Kayaks\n30005\tpaddle-surf\tPaddle Surf\n30025\tpack-lago-gourmet\tPack Lago Gourmet\n30006\thidropedales\tHidropedales & Hidrobicis\n30007\tminimotos\tMinimotos Eléctricas Acuáticas\n30008\tpaseos-barco\tPaseos en Barco\n30009\taventura-hinchable\tAventura Hinchable Acuática\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

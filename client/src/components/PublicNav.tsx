@@ -56,7 +56,7 @@ interface NavDropdownProps {
 function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
 
   const cancelClose = useCallback(() => {
     if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
@@ -69,6 +69,11 @@ function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
 
   useEffect(() => { setOpen(false); }, [location]);
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
+  const navigate = (to: string) => {
+    setOpen(false);
+    setLocation(to);
+  };
 
   return (
     <div className="relative" onPointerEnter={() => { cancelClose(); setOpen(true); }} onPointerLeave={scheduleClose}>
@@ -95,11 +100,13 @@ function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
       >
         <div className="absolute -top-1.5 left-5 w-3 h-3 bg-white border-l border-t border-border/50 rotate-45" />
         {children.map((child) => (
-          <Link key={child.href} href={child.href}>
-            <div className="px-4 py-2.5 text-sm font-display text-foreground hover:bg-primary/8 hover:text-primary cursor-pointer transition-colors border-b border-border/20 last:border-0" onPointerDown={() => setOpen(false)}>
-              {child.label}
-            </div>
-          </Link>
+          <button
+            key={child.href}
+            onClick={() => navigate(child.href)}
+            className="w-full text-left px-4 py-2.5 text-sm font-display text-foreground hover:bg-primary/8 hover:text-primary cursor-pointer transition-colors border-b border-border/20 last:border-0 block"
+          >
+            {child.label}
+          </button>
         ))}
       </div>
     </div>
@@ -109,29 +116,25 @@ function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
 export default function PublicNav() {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
 
   useEffect(() => {
     setIsOpen(false);
     setExpandedMobile(null);
   }, [location]);
 
+  const mobileNavigate = (to: string) => {
+    setIsOpen(false);
+    setExpandedMobile(null);
+    setLocation(to);
+  };
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md border-b border-border/50">
       {/* ── Barra superior de información ─────────────────────────── */}
-      <div
-        className={cn(
-          "hidden lg:block border-b transition-all duration-300",
-          "border-border/40 bg-primary/5"
-        )}
-      >
+      <div className="hidden lg:block border-b border-border/40 bg-primary/5">
         <div className="container flex items-center justify-between py-1.5">
-          <div
-            className={cn(
-              "flex items-center gap-6 text-xs font-display",
-              "text-muted-foreground"
-            )}
-          >
+          <div className="flex items-center gap-6 text-xs font-display text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Phone className="w-3 h-3" />
               +34 919 041 947
@@ -139,12 +142,7 @@ export default function PublicNav() {
             <span>hola@nayadeexperiences.es</span>
             <span>Los Ángeles de San Rafael, Segovia · A 45 min de Madrid</span>
           </div>
-          <div
-            className={cn(
-              "text-xs font-display font-semibold",
-              "text-accent"
-            )}
-          >
+          <div className="text-xs font-display font-semibold text-accent">
             🌊 Temporada Abril — Octubre 2026 · Reserva online con 10% dto.
           </div>
         </div>
@@ -156,29 +154,14 @@ export default function PublicNav() {
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group cursor-pointer">
-            <div
-              className={cn(
-                "w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300",
-                "bg-primary"
-              )}
-            >
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-primary transition-all duration-300">
               <Anchor className="w-5 h-5 text-white" />
             </div>
             <div className="flex flex-col leading-none">
-              <span
-                className={cn(
-                  "font-heading font-bold text-lg leading-none transition-colors",
-                  "text-primary"
-                )}
-              >
+              <span className="font-heading font-bold text-lg leading-none text-primary transition-colors">
                 NÁYADE
               </span>
-              <span
-                className={cn(
-                  "font-display text-[10px] uppercase tracking-widest leading-none transition-colors",
-                  "text-muted-foreground"
-                )}
-              >
+              <span className="font-display text-[10px] uppercase tracking-widest leading-none text-muted-foreground transition-colors">
                 Experiences
               </span>
             </div>
@@ -212,22 +195,12 @@ export default function PublicNav() {
           {/* CTAs desktop */}
           <div className="hidden lg:flex items-center gap-2">
             <Link href="/contacto">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "font-display font-medium rounded-full",
-                "text-foreground hover:text-primary"
-                )}
-              >
+              <Button variant="ghost" size="sm" className="font-display font-medium rounded-full text-foreground hover:text-primary">
                 Contacto
               </Button>
             </Link>
             <Link href="/presupuesto">
-              <Button
-                size="sm"
-                className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-5 shadow-md"
-              >
+              <Button size="sm" className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-5 shadow-md">
                 Solicitar Presupuesto
               </Button>
             </Link>
@@ -236,10 +209,7 @@ export default function PublicNav() {
           {/* Botón hamburguesa mobile */}
           <button
             onClick={() => setIsOpen(!isOpen)}
-            className={cn(
-              "lg:hidden p-2 rounded-lg transition-colors",
-              "text-foreground hover:bg-muted"
-            )}
+            className="lg:hidden p-2 rounded-lg transition-colors text-foreground hover:bg-muted"
           >
             {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -255,14 +225,18 @@ export default function PublicNav() {
           {navLinks.map((link) => (
             <div key={link.href}>
               <div className="flex items-center justify-between">
-                <Link href={link.href}>
-                  <div
-                    className="flex-1 px-4 py-3 rounded-xl hover:bg-muted font-display font-medium text-foreground cursor-pointer"
-                    onClick={() => !link.children && setIsOpen(false)}
-                  >
-                    {link.label}
-                  </div>
-                </Link>
+                <button
+                  className="flex-1 text-left px-4 py-3 rounded-xl hover:bg-muted font-display font-medium text-foreground cursor-pointer"
+                  onClick={() => {
+                    if (!link.children) {
+                      mobileNavigate(link.href);
+                    } else {
+                      setExpandedMobile(expandedMobile === link.label ? null : link.label);
+                    }
+                  }}
+                >
+                  {link.label}
+                </button>
                 {link.children && (
                   <button
                     className="p-3 text-muted-foreground hover:text-primary"
@@ -275,30 +249,25 @@ export default function PublicNav() {
               {link.children && expandedMobile === link.label && (
                 <div className="ml-4 space-y-0.5 pb-2">
                   {link.children.map((child) => (
-                    <Link key={child.href} href={child.href}>
-                      <div
-                        className="px-4 py-2.5 text-sm font-display text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg cursor-pointer transition-colors"
-                        onClick={() => setIsOpen(false)}
-                      >
-                        {child.label}
-                      </div>
-                    </Link>
+                    <button
+                      key={child.href}
+                      onClick={() => mobileNavigate(child.href)}
+                      className="w-full text-left px-4 py-2.5 text-sm font-display text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg cursor-pointer transition-colors block"
+                    >
+                      {child.label}
+                    </button>
                   ))}
                 </div>
               )}
             </div>
           ))}
           <div className="pt-3 border-t border-border space-y-2">
-            <Link href="/contacto">
-              <Button variant="outline" className="w-full font-display font-medium rounded-full" onClick={() => setIsOpen(false)}>
-                Contacto
-              </Button>
-            </Link>
-            <Link href="/presupuesto">
-              <Button className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full" onClick={() => setIsOpen(false)}>
-                Solicitar Presupuesto
-              </Button>
-            </Link>
+            <Button variant="outline" className="w-full font-display font-medium rounded-full" onClick={() => mobileNavigate("/contacto")}>
+              Contacto
+            </Button>
+            <Button className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full" onClick={() => mobileNavigate("/presupuesto")}>
+              Solicitar Presupuesto
+            </Button>
           </div>
         </div>
       </div>
