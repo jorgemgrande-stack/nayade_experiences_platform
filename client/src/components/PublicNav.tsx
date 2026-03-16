@@ -71,7 +71,7 @@ export default function PublicNav() {
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
         transparent
-          ? "bg-gradient-to-b from-black/55 via-black/30 to-transparent"
+          ? "bg-[oklch(0.32_0.14_220/0.52)] backdrop-blur-[2px]"
           : "bg-white shadow-md border-b border-border/50"
       )}
     >
@@ -80,7 +80,7 @@ export default function PublicNav() {
         className={cn(
           "hidden lg:block border-b transition-all duration-300",
           transparent
-            ? "border-white/20 bg-black/25"
+            ? "border-white/15 bg-white/5"
             : "border-border/40 bg-primary/5"
         )}
       >
@@ -111,7 +111,7 @@ export default function PublicNav() {
 
       {/* ── Barra de navegación principal ─────────────────────────── */}
       <div className="container">
-        <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-20">
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group cursor-pointer">
