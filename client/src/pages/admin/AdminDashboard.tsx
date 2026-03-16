@@ -59,7 +59,7 @@ export default function AdminDashboard() {
           <p className="text-muted-foreground mb-6">Debes iniciar sesión para acceder al panel de administración.</p>
           <Button
             className="bg-primary text-white hover:bg-primary/90 px-8 py-3 text-base font-semibold"
-            onClick={() => { window.location.href = getLoginUrl(); }}
+            onClick={() => { window.location.href = getLoginUrl("/admin"); }}
           >
             Iniciar Sesión
           </Button>
