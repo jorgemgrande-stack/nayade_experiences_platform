@@ -69,3 +69,6 @@
 - [ ] Arquitectura de packs compuestos (producto main + productos simples con variables)
 - [x] Actualizar base de datos con 31 productos reales del dossier (10 actividades + 4 hotel + 3 SPA + 3 restaurantes + 7 packs + 2 escolares + 2 corporativos)
 - [x] Insertar imágenes náuticas y del lago en slideshow y productos (CDN)
+
+## Correcciones UI
+- [x] Corregir contraste de colores del header (modo transparente y sólido)
