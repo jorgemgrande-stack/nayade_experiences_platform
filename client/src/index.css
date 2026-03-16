@@ -44,40 +44,47 @@
 }
 
 :root {
-  /* Nayade Experiences - Elegant Navy & Gold Theme */
-  --radius: 0.5rem;
-  --background: oklch(0.99 0.002 240);
-  --foreground: oklch(0.15 0.03 240);
+  /* Nayade Experiences - Paleta Náutica Veraniega del Lago */
+  --radius: 0.75rem;
+  /* Blanco arena cálido */
+  --background: oklch(0.99 0.006 85);
+  --foreground: oklch(0.18 0.04 230);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.03 240);
+  --card-foreground: oklch(0.18 0.04 230);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.03 240);
-  --primary: oklch(0.22 0.04 240);
-  --primary-foreground: oklch(0.98 0.002 240);
-  --secondary: oklch(0.94 0.01 240);
-  --secondary-foreground: oklch(0.22 0.04 240);
-  --muted: oklch(0.95 0.008 240);
-  --muted-foreground: oklch(0.52 0.02 240);
-  --accent: oklch(0.65 0.18 45);
-  --accent-foreground: oklch(0.12 0.03 240);
+  --popover-foreground: oklch(0.18 0.04 230);
+  /* Azul lago profundo */
+  --primary: oklch(0.38 0.18 235);
+  --primary-foreground: oklch(0.99 0.005 220);
+  /* Turquesa agua clara */
+  --secondary: oklch(0.92 0.06 200);
+  --secondary-foreground: oklch(0.28 0.12 235);
+  /* Arena / beige suave */
+  --muted: oklch(0.96 0.015 80);
+  --muted-foreground: oklch(0.52 0.04 230);
+  /* Naranja sol / coral */
+  --accent: oklch(0.70 0.20 42);
+  --accent-foreground: oklch(0.99 0.005 80);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.88 0.01 240);
-  --input: oklch(0.88 0.01 240);
-  --ring: oklch(0.65 0.18 45);
-  --chart-1: oklch(0.65 0.18 45);
-  --chart-2: oklch(0.55 0.12 195);
-  --chart-3: oklch(0.22 0.04 240);
-  --chart-4: oklch(0.75 0.16 65);
-  --chart-5: oklch(0.45 0.10 240);
-  --sidebar: oklch(0.14 0.03 240);
-  --sidebar-foreground: oklch(0.92 0.005 240);
-  --sidebar-primary: oklch(0.65 0.18 45);
-  --sidebar-primary-foreground: oklch(0.12 0.03 240);
-  --sidebar-accent: oklch(0.22 0.04 240);
-  --sidebar-accent-foreground: oklch(0.92 0.005 240);
-  --sidebar-border: oklch(0.25 0.04 240);
-  --sidebar-ring: oklch(0.65 0.18 45);
+  --border: oklch(0.88 0.04 210);
+  --input: oklch(0.90 0.03 210);
+  --ring: oklch(0.38 0.18 235);
+  /* Charts - tonos lago y sol */
+  --chart-1: oklch(0.38 0.18 235);
+  --chart-2: oklch(0.62 0.16 195);
+  --chart-3: oklch(0.70 0.20 42);
+  --chart-4: oklch(0.58 0.14 160);
+  --chart-5: oklch(0.78 0.12 80);
+  /* Sidebar oscuro náutico */
+  --sidebar: oklch(0.16 0.06 235);
+  --sidebar-foreground: oklch(0.94 0.01 210);
+  --sidebar-primary: oklch(0.70 0.20 42);
+  --sidebar-primary-foreground: oklch(0.16 0.06 235);
+  --sidebar-accent: oklch(0.24 0.08 235);
+  --sidebar-accent-foreground: oklch(0.94 0.01 210);
+  --sidebar-border: oklch(0.28 0.08 235);
+  --sidebar-ring: oklch(0.70 0.20 42);
 }
 
 .dark {
@@ -146,39 +153,62 @@
 }
 
 @layer utilities {
+  /* Gradientes náuticos */
+  .text-gradient-lago {
+    background: linear-gradient(135deg, oklch(0.38 0.18 235), oklch(0.58 0.18 210));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .text-gradient-sol {
+    background: linear-gradient(135deg, oklch(0.70 0.20 42), oklch(0.78 0.18 55));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
   .text-gradient-gold {
     background: linear-gradient(135deg, oklch(0.65 0.18 45), oklch(0.75 0.16 65));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-  .text-gradient-navy {
-    background: linear-gradient(135deg, oklch(0.22 0.04 240), oklch(0.35 0.08 220));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+  /* Hero lago: overlay oscuro sobre foto del embalse */
   .bg-hero-gradient {
     background: linear-gradient(
       160deg,
-      oklch(0.12 0.03 240 / 0.95) 0%,
-      oklch(0.18 0.04 230 / 0.85) 40%,
-      oklch(0.22 0.05 220 / 0.70) 100%
+      oklch(0.14 0.06 235 / 0.88) 0%,
+      oklch(0.22 0.10 225 / 0.70) 50%,
+      oklch(0.30 0.12 215 / 0.45) 100%
     );
   }
-  .bg-gold-gradient {
-    background: linear-gradient(135deg, oklch(0.60 0.18 45), oklch(0.72 0.16 55));
+  /* Fondo secciones alternas */
+  .bg-lago-light {
+    background: linear-gradient(180deg, oklch(0.94 0.04 210) 0%, oklch(0.98 0.02 200) 100%);
   }
+  .bg-arena {
+    background: oklch(0.97 0.015 80);
+  }
+  /* Gradiente lago para secciones oscuras */
+  .bg-lago-dark {
+    background: linear-gradient(135deg, oklch(0.16 0.06 235) 0%, oklch(0.24 0.10 225) 100%);
+  }
+  /* Gradiente sol/coral */
+  .bg-sol-gradient {
+    background: linear-gradient(135deg, oklch(0.65 0.20 38), oklch(0.72 0.18 48));
+  }
+  /* Hover tarjetas */
   .card-hover {
     transition: box-shadow 0.3s ease, transform 0.3s ease;
   }
   .card-hover:hover {
-    box-shadow: 0 8px 32px -4px oklch(0.22 0.04 240 / 0.15);
-    transform: translateY(-3px);
+    box-shadow: 0 12px 40px -4px oklch(0.38 0.18 235 / 0.22);
+    transform: translateY(-4px);
   }
-  .overlay-dark {
-    background: linear-gradient(to top, oklch(0.08 0.02 240 / 0.92) 0%, oklch(0.08 0.02 240 / 0.4) 60%, transparent 100%);
+  /* Overlay foto */
+  .overlay-lago {
+    background: linear-gradient(to top, oklch(0.12 0.06 235 / 0.92) 0%, oklch(0.12 0.06 235 / 0.45) 55%, transparent 100%);
   }
+  /* Animaciones */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(24px); }
     to { opacity: 1; transform: translateY(0); }
@@ -186,10 +216,31 @@
   .animate-fade-up {
     animation: fadeUp 0.6s ease forwards;
   }
-  @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
+  @keyframes wave {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
   }
+  .animate-wave {
+    animation: wave 3s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  .animate-float {
+    animation: float 4s ease-in-out infinite;
+  }
+  /* Efecto cristal */
+  .glass-card {
+    background: oklch(1 0 0 / 0.82);
+    backdrop-filter: blur(16px);
+    border: 1px solid oklch(1 0 0 / 0.35);
+  }
+  /* Scrollbar náutico */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: oklch(0.95 0.02 210); }
+  ::-webkit-scrollbar-thumb { background: oklch(0.58 0.14 210); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.18 235); }
 }
 
 @layer components {

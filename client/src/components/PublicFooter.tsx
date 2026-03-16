@@ -1,149 +1,155 @@
 import { Link } from "wouter";
-import { Mountain, Mail, Phone, MapPin, Instagram, Facebook, Youtube } from "lucide-react";
+import { Anchor, Mail, Phone, MapPin, Instagram, Facebook, Youtube, Clock } from "lucide-react";
+
+const colExperiencias = [
+  { label: "Blob Jump", href: "/experiencias/blob-jump" },
+  { label: "Banana Ski & Donuts", href: "/experiencias/banana-ski-donuts" },
+  { label: "Cableski & Wakeboard", href: "/experiencias/cableski-wakeboard" },
+  { label: "Canoas & Kayaks", href: "/experiencias/canoas-kayaks" },
+  { label: "Paddle Surf", href: "/experiencias/paddle-surf" },
+  { label: "Paseos en Barco", href: "/experiencias/paseos-barco" },
+  { label: "Minimotos Eléctricas", href: "/experiencias/minimotos" },
+  { label: "Aventura Hinchable", href: "/experiencias/aventura-hinchable" },
+];
+
+const colPacks = [
+  { label: "Day Pass Náyade", href: "/packs/day-pass-nayade" },
+  { label: "Pack Discovery", href: "/packs/pack-discovery" },
+  { label: "Pack Aventura", href: "/packs/pack-aventura" },
+  { label: "Pack Adrenalina", href: "/packs/pack-adrenalina" },
+  { label: "Pack Lago Gourmet", href: "/packs/pack-lago-gourmet" },
+  { label: "Packs Escolares", href: "/packs/escolares" },
+  { label: "Team Building", href: "/packs/corporativo" },
+];
+
+const colServicios = [
+  { label: "Hotel Náyade ★★★", href: "/hotel" },
+  { label: "SPA & Wellness", href: "/spa" },
+  { label: "El Galeón", href: "/restaurantes/el-galeon" },
+  { label: "La Cabaña del Lago", href: "/restaurantes/la-cabana" },
+  { label: "Nassau Bar & Music", href: "/restaurantes/nassau-bar" },
+  { label: "Galería de Fotos", href: "/galeria" },
+  { label: "Ubicación", href: "/ubicacion" },
+  { label: "Solicitar Presupuesto", href: "/presupuesto" },
+];
 
 export default function PublicFooter() {
   return (
-    <footer className="bg-[oklch(0.12_0.03_240)] text-white">
-      {/* Main Footer */}
+    <footer className="bg-lago-dark text-white">
+      {/* Main footer */}
       <div className="container py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
-          {/* Brand */}
-          <div className="lg:col-span-1">
-            <Link href="/" className="flex items-center gap-3 mb-5">
-              <div className="w-10 h-10 rounded-xl bg-gold-gradient flex items-center justify-center">
-                <Mountain className="w-5 h-5 text-white" />
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="font-display font-bold text-lg tracking-tight text-white">NAYADE</span>
-                <span className="text-xs font-medium tracking-widest uppercase text-amber-400">Experiences</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
+          {/* Brand column */}
+          <div className="lg:col-span-2">
+            <Link href="/">
+              <div className="flex items-center gap-2.5 mb-5 cursor-pointer">
+                <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center">
+                  <Anchor className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <div className="font-heading font-bold text-xl text-white leading-none">NÁYADE</div>
+                  <div className="font-display text-[10px] uppercase tracking-widest text-white/55 leading-none">Experiences</div>
+                </div>
               </div>
             </Link>
-            <p className="text-sm text-white/60 leading-relaxed mb-6">
-              Experiencias de aventura únicas diseñadas para quienes buscan vivir momentos extraordinarios en los mejores destinos de España.
+            <p className="text-white/60 text-sm leading-relaxed mb-6 max-w-xs">
+              El destino de aventuras acuáticas y bienestar en el embalse de Los Ángeles de San Rafael, Segovia. A solo 45 minutos de Madrid.
             </p>
+
+            <div className="space-y-3 mb-6">
+              <div className="flex items-start gap-3 text-sm">
+                <MapPin className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
+                <span className="text-white/65">Complejo Los Ángeles de San Rafael<br />40420 Segovia, España</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <Phone className="w-4 h-4 text-accent flex-shrink-0" />
+                <a href="tel:+34919041947" className="text-white/65 hover:text-accent transition-colors">+34 919 041 947</a>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <Mail className="w-4 h-4 text-accent flex-shrink-0" />
+                <a href="mailto:hola@nayadeexperiences.es" className="text-white/65 hover:text-accent transition-colors">hola@nayadeexperiences.es</a>
+              </div>
+              <div className="flex items-start gap-3 text-sm">
+                <Clock className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
+                <span className="text-white/65">Lun–Dom · 10:00 – 20:00<br />Temporada Abril — Octubre</span>
+              </div>
+            </div>
+
             <div className="flex items-center gap-3">
-              <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-9 h-9 rounded-lg bg-white/10 hover:bg-amber-500/20 hover:text-amber-400 flex items-center justify-center transition-all"
-              >
-                <Instagram className="w-4 h-4" />
+              <a href="https://instagram.com/nayadeexperiences" target="_blank" rel="noopener noreferrer"
+                className="w-9 h-9 rounded-lg bg-white/10 hover:bg-accent flex items-center justify-center transition-colors">
+                <Instagram className="w-4 h-4 text-white" />
               </a>
-              <a
-                href="https://facebook.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-9 h-9 rounded-lg bg-white/10 hover:bg-amber-500/20 hover:text-amber-400 flex items-center justify-center transition-all"
-              >
-                <Facebook className="w-4 h-4" />
+              <a href="https://facebook.com/nayadeexperiences" target="_blank" rel="noopener noreferrer"
+                className="w-9 h-9 rounded-lg bg-white/10 hover:bg-accent flex items-center justify-center transition-colors">
+                <Facebook className="w-4 h-4 text-white" />
               </a>
-              <a
-                href="https://youtube.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-9 h-9 rounded-lg bg-white/10 hover:bg-amber-500/20 hover:text-amber-400 flex items-center justify-center transition-all"
-              >
-                <Youtube className="w-4 h-4" />
+              <a href="https://youtube.com/@nayadeexperiences" target="_blank" rel="noopener noreferrer"
+                className="w-9 h-9 rounded-lg bg-white/10 hover:bg-accent flex items-center justify-center transition-colors">
+                <Youtube className="w-4 h-4 text-white" />
               </a>
             </div>
           </div>
 
           {/* Experiencias */}
           <div>
-            <h4 className="font-display font-semibold text-sm uppercase tracking-widest text-amber-400 mb-5">
-              Experiencias
-            </h4>
-            <ul className="space-y-3">
-              {[
-                { label: "Nieve & Ski", href: "/experiencias/nieve-ski" },
-                { label: "Aventura Acuática", href: "/experiencias/aventura-acuatica" },
-                { label: "Multiaventura", href: "/experiencias/multiaventura" },
-                { label: "Experiencias Premium", href: "/experiencias/premium" },
-                { label: "Eventos Corporativos", href: "/experiencias/corporativos" },
-              ].map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="text-sm text-white/60 hover:text-amber-400 transition-colors"
-                  >
-                    {item.label}
+            <h4 className="font-display font-bold text-white text-xs uppercase tracking-widest mb-4 text-accent">Experiencias</h4>
+            <ul className="space-y-2">
+              {colExperiencias.map((link) => (
+                <li key={link.href}>
+                  <Link href={link.href}>
+                    <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
                   </Link>
                 </li>
               ))}
             </ul>
           </div>
 
-          {/* Empresa */}
+          {/* Packs */}
           <div>
-            <h4 className="font-display font-semibold text-sm uppercase tracking-widest text-amber-400 mb-5">
-              Empresa
-            </h4>
-            <ul className="space-y-3">
-              {[
-                { label: "Sobre Nosotros", href: "/sobre-nosotros" },
-                { label: "Ubicaciones", href: "/ubicaciones" },
-                { label: "Galería", href: "/galeria" },
-                { label: "Blog", href: "/blog" },
-                { label: "Trabaja con Nosotros", href: "/trabaja-con-nosotros" },
-              ].map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="text-sm text-white/60 hover:text-amber-400 transition-colors"
-                  >
-                    {item.label}
+            <h4 className="font-display font-bold text-white text-xs uppercase tracking-widest mb-4 text-accent">Packs</h4>
+            <ul className="space-y-2">
+              {colPacks.map((link) => (
+                <li key={link.href}>
+                  <Link href={link.href}>
+                    <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
                   </Link>
                 </li>
               ))}
             </ul>
           </div>
 
-          {/* Contacto */}
+          {/* Servicios */}
           <div>
-            <h4 className="font-display font-semibold text-sm uppercase tracking-widest text-amber-400 mb-5">
-              Contacto
-            </h4>
-            <ul className="space-y-4">
-              <li className="flex items-start gap-3">
-                <MapPin className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                <span className="text-sm text-white/60">
-                  Nayade Experiences<br />
-                  España
-                </span>
-              </li>
-              <li className="flex items-center gap-3">
-                <Phone className="w-4 h-4 text-amber-400 shrink-0" />
-                <a href="tel:+34000000000" className="text-sm text-white/60 hover:text-amber-400 transition-colors">
-                  +34 000 000 000
-                </a>
-              </li>
-              <li className="flex items-center gap-3">
-                <Mail className="w-4 h-4 text-amber-400 shrink-0" />
-                <a href="mailto:info@nayadeexperiences.es" className="text-sm text-white/60 hover:text-amber-400 transition-colors">
-                  info@nayadeexperiences.es
-                </a>
-              </li>
+            <h4 className="font-display font-bold text-white text-xs uppercase tracking-widest mb-4 text-accent">Servicios</h4>
+            <ul className="space-y-2">
+              {colServicios.map((link) => (
+                <li key={link.href}>
+                  <Link href={link.href}>
+                    <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
       </div>
 
-      {/* Bottom Bar */}
+      {/* Bottom bar */}
       <div className="border-t border-white/10">
-        <div className="container py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-white/40">
-            © {new Date().getFullYear()} Nayade Experiences. Todos los derechos reservados.
+        <div className="container py-5 flex flex-col md:flex-row items-center justify-between gap-3">
+          <p className="text-white/40 text-xs font-display text-center md:text-left">
+            © {new Date().getFullYear()} Náyade Experiences · Todos los derechos reservados · Los Ángeles de San Rafael, Segovia
           </p>
           <div className="flex items-center gap-5">
-            <Link href="/privacidad" className="text-xs text-white/40 hover:text-amber-400 transition-colors">
-              Política de Privacidad
+            <Link href="/privacidad">
+              <span className="text-white/40 hover:text-white/70 text-xs font-display transition-colors cursor-pointer">Privacidad</span>
             </Link>
-            <Link href="/terminos" className="text-xs text-white/40 hover:text-amber-400 transition-colors">
-              Términos y Condiciones
+            <Link href="/terminos">
+              <span className="text-white/40 hover:text-white/70 text-xs font-display transition-colors cursor-pointer">Términos</span>
             </Link>
-            <Link href="/cookies" className="text-xs text-white/40 hover:text-amber-400 transition-colors">
-              Cookies
+            <Link href="/cookies">
+              <span className="text-white/40 hover:text-white/70 text-xs font-display transition-colors cursor-pointer">Cookies</span>
             </Link>
           </div>
         </div>

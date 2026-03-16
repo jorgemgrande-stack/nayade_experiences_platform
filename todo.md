@@ -52,5 +52,20 @@
 ## Fase 7: Testing y Entrega
 - [x] Escribir tests Vitest (18 tests pasando: auth, public API, leads, admin, quotes, bookings, accounting)
 - [x] Datos de muestra insertados (8 experiencias, 5 ubicaciones, 5 categorías, 3 slides)
-- [ ] Guardar checkpoint final
+- [x] Guardar checkpoint final
 - [ ] Configurar integración GoHighLevel API Key
+
+## Rediseño Náutico y Veraniego (v2.0)
+- [x] Rediseñar paleta visual: azul lago, turquesa, arena, blanco náutico
+- [x] Actualizar tipografía y CSS global con identidad veraniega
+- [x] Reconstruir Home con hero lago/embalse, actividades acuáticas reales del dossier
+- [x] Actualizar catálogo: actividades simples (Blob Jump, Banana Ski, Canoa, Cableski, etc.)
+- [x] Añadir módulo de habitaciones del Hotel Náyade (4 tipos con precios reales)
+- [x] Restaurantes con reserva calendarizada (El Galeón, La Cabaña, Nassau Bar, Arrocería)
+- [x] SPA con reserva de circuitos y tratamientos
+- [x] Packs de día (Day Pass, Discovery, Aventura, Adrenalina, Lago Gourmet, Cableski Experience)
+- [x] Packs escolares (Básico, Aventura, Multiaventura + con estancia)
+- [x] Packs corporativos (Team Building)
+- [ ] Arquitectura de packs compuestos (producto main + productos simples con variables)
+- [x] Actualizar base de datos con 31 productos reales del dossier (10 actividades + 4 hotel + 3 SPA + 3 restaurantes + 7 packs + 2 escolares + 2 corporativos)
+- [x] Insertar imágenes náuticas y del lago en slideshow y productos (CDN)
