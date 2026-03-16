@@ -91,3 +91,6 @@
 - [x] Endpoint REST de subida de imágenes a S3 en el servidor
 - [x] Procedimiento tRPC para CRUD completo de slides con imagen
 - [x] SlideshowManager con upload real, previsualización y reordenación
+
+## Correcciones UI (v2.1)
+- [x] Corregir botón "Añadir Primer Slide" — solo visible en hover, debe ser siempre visible

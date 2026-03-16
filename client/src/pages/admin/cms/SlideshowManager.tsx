@@ -179,10 +179,26 @@ export default function SlideshowManager() {
           <p className="text-muted-foreground text-sm mb-4">
             Añade el primer slide para el slideshow de la home.
           </p>
-          <Button onClick={openCreate} className="bg-gold-gradient text-white hover:opacity-90 gap-2">
-            <Plus className="w-4 h-4" />
+          <button
+            onClick={openCreate}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              background: "linear-gradient(135deg, #f59e0b, #f97316)",
+              color: "#ffffff",
+              fontWeight: 600,
+              padding: "0.6rem 1.4rem",
+              borderRadius: "0.75rem",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "0.875rem",
+              boxShadow: "0 2px 8px rgba(249,115,22,0.4)",
+            }}
+          >
+            <Plus style={{ width: "1rem", height: "1rem" }} />
             Añadir Primer Slide
-          </Button>
+          </button>
         </div>
       ) : (
         <div className="space-y-3">
