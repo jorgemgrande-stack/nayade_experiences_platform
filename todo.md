@@ -96,3 +96,10 @@
 - [x] Corregir botón "Añadir Primer Slide" — solo visible en hover, debe ser siempre visible
 - [x] Botón "Añadir Primer Slide" sigue invisible (estado vacío)
 - [x] Botón "Crear Slide" no aparece en el modal del formulario
+
+## Unificación Slideshow Admin ↔ Público
+- [x] Migrar BD: añadir campos badge, description, reserveUrl a slideshow_items
+- [x] Actualizar tRPC getSlideshowItems/create/update con nuevos campos
+- [x] Actualizar SlideshowManager (admin) con todos los campos del slideshow público
+- [x] Conectar Home pública para leer slides de la BD (eliminar slides hardcodeados)
+- [x] Vaciar tabla slideshow_items (slides de prueba actuales)

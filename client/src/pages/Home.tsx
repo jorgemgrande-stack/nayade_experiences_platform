@@ -21,7 +21,7 @@ const CDN = {
   paddle: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/paddle-surf_78ab1b6f.jpg",
 };
 
-const heroSlides = [
+const heroSlides: Array<{ img: string; badge: string; title: string; subtitle: string; desc: string; cta: string; ctaLink: string; reserveUrl: string }> = [
   {
     img: CDN.hero1,
     badge: "Temporada Abril — Octubre 2026",
@@ -30,6 +30,7 @@ const heroSlides = [
     desc: "Deportes acuáticos, hotel premium y gastronomía en el embalse de Los Ángeles de San Rafael, Segovia.",
     cta: "Explorar Experiencias",
     ctaLink: "/experiencias",
+    reserveUrl: "",
   },
   {
     img: CDN.hero2,
@@ -39,6 +40,7 @@ const heroSlides = [
     desc: "Practica wakeboard y esquí acuático en nuestro sistema de cable aéreo. Material y chaleco incluidos.",
     cta: "Reservar Ahora",
     ctaLink: "/experiencias/cableski-wakeboard",
+    reserveUrl: "/experiencias/cableski-wakeboard",
   },
   {
     img: CDN.hero3,
@@ -48,6 +50,7 @@ const heroSlides = [
     desc: "Rutas guiadas por el embalse, actividades para todas las edades y packs personalizados para grupos.",
     cta: "Ver Packs",
     ctaLink: "/packs",
+    reserveUrl: "",
   },
 ];
 
@@ -151,23 +154,34 @@ const testimonios = [
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const { data: featuredExperiences } = trpc.public.getFeaturedExperiences.useQuery();
-  const { data: slideshowItems } = trpc.public.getSlideshowItems.useQuery();
-
+  const { data: slideshowItemsRaw } = trpc.public.getSlideshowItems.useQuery();
+  // Use DB slides if available, otherwise fall back to hardcoded
+  const activeSlides = slideshowItemsRaw && slideshowItemsRaw.length > 0
+    ? slideshowItemsRaw.map((s: any) => ({
+        img: s.imageUrl,
+        badge: s.badge ?? "",
+        title: s.title ?? "",
+        subtitle: s.subtitle ?? "",
+        desc: s.description ?? "",
+        cta: s.ctaText ?? "",
+        ctaLink: s.ctaUrl ?? "/experiencias",
+        reserveUrl: s.reserveUrl ?? "",
+      }))
+    : heroSlides;
   // Auto-advance slideshow
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
+      setCurrentSlide((prev) => (prev + 1) % activeSlides.length);
     }, 5500);
     return () => clearInterval(timer);
-  }, []);
-
-  const slide = heroSlides[currentSlide];
+  }, [activeSlides.length]);
+  const slide = activeSlides[Math.min(currentSlide, activeSlides.length - 1)];
 
   return (
     <PublicLayout>
       {/* ─── HERO SLIDESHOW ─────────────────────────────────────────── */}
       <section className="relative h-[92vh] min-h-[600px] overflow-hidden">
-        {heroSlides.map((s, i) => (
+        {activeSlides.map((s, i) => (
           <div
             key={i}
             className={`absolute inset-0 transition-opacity duration-1000 ${i === currentSlide ? "opacity-100" : "opacity-0"}`}
@@ -195,11 +209,20 @@ export default function Home() {
                 {slide.desc}
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link href={slide.ctaLink}>
-                  <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-8 text-base shadow-lg">
-                    {slide.cta} <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
+                {slide.reserveUrl && (
+                  <Link href={slide.reserveUrl}>
+                    <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-8 text-base shadow-lg">
+                      Reservar Ahora <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Link>
+                )}
+                {slide.cta && slide.ctaLink && (
+                  <Link href={slide.ctaLink}>
+                    <Button size="lg" className={slide.reserveUrl ? "border-white/50 text-white hover:bg-white/15 font-display font-semibold rounded-full px-8 text-base bg-transparent border" : "bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-8 text-base shadow-lg"}>
+                      {slide.cta} <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Link>
+                )}
                 <Link href="/presupuesto">
                   <Button size="lg" variant="outline" className="border-white/50 text-white hover:bg-white/15 font-display font-semibold rounded-full px-8 text-base bg-transparent">
                     Solicitar Presupuesto
@@ -212,15 +235,15 @@ export default function Home() {
 
         {/* Controles slideshow */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3">
-          <button onClick={() => setCurrentSlide((p) => (p - 1 + heroSlides.length) % heroSlides.length)}
+          <button onClick={() => setCurrentSlide((p) => (p - 1 + activeSlides.length) % activeSlides.length)}
             className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-all">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          {heroSlides.map((_, i) => (
+          {activeSlides.map((_, i) => (
             <button key={i} onClick={() => setCurrentSlide(i)}
               className={`rounded-full transition-all duration-300 ${i === currentSlide ? "w-8 h-2.5 bg-accent" : "w-2.5 h-2.5 bg-white/40 hover:bg-white/70"}`} />
           ))}
-          <button onClick={() => setCurrentSlide((p) => (p + 1) % heroSlides.length)}
+          <button onClick={() => setCurrentSlide((p) => (p + 1) % activeSlides.length)}
             className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-all">
             <ChevronRight className="w-4 h-4" />
           </button>

@@ -43,10 +43,13 @@ export const siteSettings = mysqlTable("site_settings", {
 export const slideshowItems = mysqlTable("slideshow_items", {
   id: int("id").autoincrement().primaryKey(),
   imageUrl: text("imageUrl").notNull(),
+  badge: varchar("badge", { length: 128 }),
   title: varchar("title", { length: 256 }),
   subtitle: text("subtitle"),
+  description: text("description"),
   ctaText: varchar("ctaText", { length: 128 }),
   ctaUrl: varchar("ctaUrl", { length: 512 }),
+  reserveUrl: varchar("reserveUrl", { length: 512 }),
   sortOrder: int("sortOrder").default(0).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

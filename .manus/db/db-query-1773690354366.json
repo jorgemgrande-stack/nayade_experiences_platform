@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE slideshow_items\n  ADD COLUMN badge VARCHAR(128) NULL AFTER imageUrl,\n  ADD COLUMN description TEXT NULL AFTER subtitle,\n  ADD COLUMN reserveUrl VARCHAR(512) NULL AFTER ctaUrl;\n\nDELETE FROM slideshow_items;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nALTER TABLE slideshow_items\n  ADD COLUMN badge VARCHAR(128) NULL AFTER imageUrl,\n  ADD COLUMN description TEXT NULL AFTER subtitle,\n  ADD COLUMN reserveUrl VARCHAR(512) NULL AFTER ctaUrl;\n\nDELETE FROM slideshow_items;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2879
+}

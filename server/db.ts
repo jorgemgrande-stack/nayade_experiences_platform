@@ -327,10 +327,13 @@ export async function getAllSlideshowItems() {
 
 export async function createSlideshowItem(data: {
   imageUrl: string;
+  badge?: string;
   title?: string;
   subtitle?: string;
+  description?: string;
   ctaText?: string;
   ctaUrl?: string;
+  reserveUrl?: string;
   sortOrder?: number;
   isActive?: boolean;
 }) {
@@ -338,22 +341,27 @@ export async function createSlideshowItem(data: {
   if (!db) throw new Error("Database not available");
   const result = await db.insert(slideshowItems).values({
     imageUrl: data.imageUrl,
+    badge: data.badge ?? null,
     title: data.title ?? null,
     subtitle: data.subtitle ?? null,
+    description: data.description ?? null,
     ctaText: data.ctaText ?? null,
     ctaUrl: data.ctaUrl ?? null,
+    reserveUrl: data.reserveUrl ?? null,
     sortOrder: data.sortOrder ?? 0,
     isActive: data.isActive ?? true,
   });
   return { id: Number(result[0].insertId), success: true };
 }
-
 export async function updateSlideshowItem(id: number, data: Partial<{
   imageUrl: string;
+  badge: string;
   title: string;
   subtitle: string;
+  description: string;
   ctaText: string;
   ctaUrl: string;
+  reserveUrl: string;
   sortOrder: number;
   isActive: boolean;
 }>) {

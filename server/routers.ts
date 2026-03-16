@@ -134,25 +134,30 @@ export const appRouter = router({
     createSlideshowItem: adminProcedure
       .input(z.object({
         imageUrl: z.string().url(),
+        badge: z.string().optional(),
         title: z.string().optional(),
         subtitle: z.string().optional(),
+        description: z.string().optional(),
         ctaText: z.string().optional(),
         ctaUrl: z.string().optional(),
+        reserveUrl: z.string().optional(),
         sortOrder: z.number().default(0),
         isActive: z.boolean().default(true),
       }))
       .mutation(async ({ input }) => {
         return createSlideshowItem(input);
       }),
-
     updateSlideshowItem: adminProcedure
       .input(z.object({
         id: z.number(),
         imageUrl: z.string().url().optional(),
+        badge: z.string().optional(),
         title: z.string().optional(),
         subtitle: z.string().optional(),
+        description: z.string().optional(),
         ctaText: z.string().optional(),
         ctaUrl: z.string().optional(),
+        reserveUrl: z.string().optional(),
         sortOrder: z.number().optional(),
         isActive: z.boolean().optional(),
       }))
