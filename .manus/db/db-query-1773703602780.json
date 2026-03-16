@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE IF NOT EXISTS home_module_items (id INT AUTO_INCREMENT PRIMARY KEY, module_key VARCHAR(64) NOT NULL, experience_id INT NOT NULL, sort_order INT NOT NULL DEFAULT 0, created_at BIGINT NOT NULL, UNIQUE KEY uq_module_experience (module_key, experience_id));",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute CREATE TABLE IF NOT EXISTS home_module_items (id INT AUTO_INCREMENT PRIMARY KEY, module_key VARCHAR(64) NOT NULL, experience_id INT NOT NULL, sort_order INT NOT NULL DEFAULT 0, created_at BIGINT NOT NULL, UNIQUE KEY uq_module_experience (module_key, experience_id));",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 317
+}

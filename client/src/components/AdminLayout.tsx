@@ -26,6 +26,7 @@ const navItems = [
     roles: ["admin"],
     children: [
       { label: "Slideshow", href: "/admin/cms/slideshow" },
+      { label: "Módulos Home", href: "/admin/cms/modulos-home" },
       { label: "Menús", href: "/admin/cms/menus" },
       { label: "Páginas", href: "/admin/cms/paginas" },
       { label: "Multimedia", href: "/admin/cms/multimedia" },

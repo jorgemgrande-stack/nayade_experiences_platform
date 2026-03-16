@@ -41,6 +41,8 @@ import {
   deleteSlideshowItem,
   getAllMediaFiles,
   getAllUsers,
+  getHomeModuleItems,
+  setHomeModuleItems,
 } from "./db";
 
 // Admin middleware
@@ -439,12 +441,27 @@ export const appRouter = router({
     }),
   }),
 
-  // ─── ADMIN: USERS ─────────────────────────────────────────────────────────
+  //   // ─── ADMIN: USERS ─────────────────────────────────────────────────────
   admin: router({
     getUsers: adminProcedure.query(async () => {
       return getAllUsers();
     }),
   }),
+  // ─── HOME MODULES ─────────────────────────────────────────────────────
+  homeModules: router({
+    getModule: publicProcedure
+      .input(z.object({ moduleKey: z.string() }))
+      .query(async ({ input }) => {
+        return getHomeModuleItems(input.moduleKey);
+      }),
+    setModule: adminProcedure
+      .input(z.object({
+        moduleKey: z.string(),
+        experienceIds: z.array(z.number()),
+      }))
+      .mutation(async ({ input }) => {
+        return setHomeModuleItems(input.moduleKey, input.experienceIds);
+      }),
+  }),
 });
-
 export type AppRouter = typeof appRouter;

@@ -128,3 +128,12 @@
 ## Corrección de enlaces de submenús (v2.4)
 - [x] Auditar hrefs en PublicNav vs rutas en App.tsx
 - [x] Corregir todos los submenús (Experiencias, Packs, Restaurantes) para que enlacen correctamente
+
+## Gestión de Módulos de la Home (v2.5)
+- [x] Crear tabla home_module_items en BD (moduleKey, experienceId, sortOrder)
+- [x] Crear procedimientos tRPC getHomeModule / setHomeModule
+- [x] Crear HomeModulesManager en Admin > CMS con selector de productos por módulo
+- [x] Conectar módulo "Nuestras Experiencias" en Home para leer selección de BD
+- [x] Conectar módulo "Packs de Día Completo" en Home para leer selección de BD
+- [x] Usar image1 del producto como imagen en los módulos de la home
+- [x] Registrar ruta /admin/cms/modulos en App.tsx y sidebar del admin

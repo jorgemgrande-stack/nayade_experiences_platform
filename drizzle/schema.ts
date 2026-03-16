@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   decimal,
   int,
@@ -302,7 +303,17 @@ export const ghlWebhookLogs = mysqlTable("ghl_webhook_logs", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+// ─── HOME MODULES ────────────────────────────────────────────────────────────
+export const homeModuleItems = mysqlTable("home_module_items", {
+  id: int("id").autoincrement().primaryKey(),
+  moduleKey: varchar("module_key", { length: 64 }).notNull(),
+  experienceId: int("experience_id").notNull(),
+  sortOrder: int("sort_order").default(0).notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
 // ─── TYPE EXPORTS ─────────────────────────────────────────────────────────────
+export type HomeModuleItem = typeof homeModuleItems.$inferSelect;
 
 export type SlideshowItem = typeof slideshowItems.$inferSelect;
 export type MenuItem = typeof menuItems.$inferSelect;

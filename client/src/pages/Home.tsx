@@ -155,6 +155,8 @@ export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const { data: featuredExperiences } = trpc.public.getFeaturedExperiences.useQuery();
   const { data: slideshowItemsRaw } = trpc.public.getSlideshowItems.useQuery();
+  const { data: homeExperiences } = trpc.homeModules.getModule.useQuery({ moduleKey: "experiences_featured" });
+  const { data: homePacks } = trpc.homeModules.getModule.useQuery({ moduleKey: "packs_day" });
   // Use DB slides if available, otherwise fall back to hardcoded
   const activeSlides = slideshowItemsRaw && slideshowItemsRaw.length > 0
     ? slideshowItemsRaw.map((s: any) => ({
@@ -284,25 +286,41 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {actividades.map((act) => (
+            {(homeExperiences && homeExperiences.length > 0 ? homeExperiences : actividades.map((a) => ({
+              experienceId: 0,
+              slug: a.slug,
+              title: a.name,
+              shortDescription: a.desc,
+              basePrice: a.price,
+              currency: "",
+              image1: a.img,
+              difficulty: null,
+              isFeatured: false,
+              isActive: true,
+            }))).map((act: any) => (
               <Link key={act.slug} href={`/experiencias/${act.slug}`}>
                 <div className="group relative bg-card rounded-2xl overflow-hidden shadow-sm border border-border card-hover cursor-pointer">
                   <div className="relative h-52 overflow-hidden">
-                    <img src={act.img} alt={act.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    <img
+                      src={act.image1 || CDN.hero1}
+                      alt={act.title}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
                     <div className="absolute inset-0 overlay-lago" />
-                    {act.badge && (
+                    {act.isFeatured && (
                       <Badge className="absolute top-3 left-3 bg-accent text-accent-foreground border-0 text-xs font-display">
-                        {act.badge}
+                        Destacado
                       </Badge>
                     )}
-                    <div className="absolute bottom-3 left-3 text-3xl">{act.icon}</div>
                   </div>
                   <div className="p-5">
                     <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-display font-bold text-lg text-foreground">{act.name}</h3>
-                      <span className="text-accent font-display font-bold text-sm whitespace-nowrap ml-2">{act.price}</span>
+                      <h3 className="font-display font-bold text-lg text-foreground">{act.title}</h3>
+                      <span className="text-accent font-display font-bold text-sm whitespace-nowrap ml-2">
+                        {act.currency ? `${act.basePrice}€` : act.basePrice}
+                      </span>
                     </div>
-                    <p className="text-muted-foreground text-sm mb-3">{act.desc}</p>
+                    <p className="text-muted-foreground text-sm mb-3">{act.shortDescription}</p>
                     <div className="flex items-center text-primary text-sm font-display font-medium group-hover:gap-2 transition-all">
                       Ver detalles <ArrowRight className="w-3.5 h-3.5 ml-1" />
                     </div>

@@ -28,6 +28,7 @@ import SlideshowManager from "./pages/admin/cms/SlideshowManager";
 import MenusManager from "./pages/admin/cms/MenusManager";
 import PagesManager from "./pages/admin/cms/PagesManager";
 import MultimediaManager from "./pages/admin/cms/MultimediaManager";
+import HomeModulesManager from "./pages/admin/cms/HomeModulesManager";
 
 // Products
 import ExperiencesManager from "./pages/admin/products/ExperiencesManager";
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/admin/cms/menus" component={MenusManager} />
       <Route path="/admin/cms/paginas" component={PagesManager} />
       <Route path="/admin/cms/multimedia" component={MultimediaManager} />
+      <Route path="/admin/cms/modulos-home" component={HomeModulesManager} />
 
       {/* Products */}
       <Route path="/admin/productos" component={ExperiencesManager} />

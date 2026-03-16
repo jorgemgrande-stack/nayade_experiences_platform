@@ -1,0 +1,10 @@
+{
+  "query": "\nCREATE TABLE IF NOT EXISTS home_module_items (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  module_key VARCHAR(64) NOT NULL,\n  experience_id INT NOT NULL,\n  sort_order INT NOT NULL DEFAULT 0,\n  created_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP() * 1000),\n  UNIQUE KEY uq_module_experience (module_key, experience_id)\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nCREATE TABLE IF NOT EXISTS home_module_items (\n  id INT AUTO_INCREMENT PRIMARY KEY,\n  module_key VARCHAR(64) NOT NULL,\n  experience_id INT NOT NULL,\n  sort_order INT NOT NULL DEFAULT 0,\n  created_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP() * 1000),\n  UNIQUE KEY uq_module_experience (module_key, experience_id)\n);\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1064 (42000) at line 2: You have an error in your SQL syntax; check the manual that corresponds to your TiDB version for the right syntax to use line 6 column 57 near \"* 1000),",
+    "  UNIQUE KEY uq_module_experience (module_key, experience_id)",
+    ")\""
+  ]
+}

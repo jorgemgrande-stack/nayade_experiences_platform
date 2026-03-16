@@ -7,6 +7,7 @@ import {
   leads, quotes, bookings, bookingMonitors, dailyOrders,
   transactions, slideshowItems, menuItems, mediaFiles, staticPages, siteSettings,
   ghlWebhookLogs,
+  homeModuleItems,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -549,5 +550,53 @@ export async function deleteLocation(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(locations).set({ isActive: false }).where(eq(locations.id, id));
+  return { success: true };
+}
+
+// ─── HOME MODULES ─────────────────────────────────────────────────────────────
+export async function getHomeModuleItems(moduleKey: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const items = await db
+    .select({
+      id: homeModuleItems.id,
+      moduleKey: homeModuleItems.moduleKey,
+      experienceId: homeModuleItems.experienceId,
+      sortOrder: homeModuleItems.sortOrder,
+      // Join experience data
+      title: experiences.title,
+      slug: experiences.slug,
+      shortDescription: experiences.shortDescription,
+      basePrice: experiences.basePrice,
+      currency: experiences.currency,
+      image1: experiences.image1,
+      difficulty: experiences.difficulty,
+      isFeatured: experiences.isFeatured,
+      isActive: experiences.isActive,
+    })
+    .from(homeModuleItems)
+    .innerJoin(experiences, eq(homeModuleItems.experienceId, experiences.id))
+    .where(eq(homeModuleItems.moduleKey, moduleKey))
+    .orderBy(homeModuleItems.sortOrder);
+  return items;
+}
+
+export async function setHomeModuleItems(moduleKey: string, experienceIds: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Delete existing items for this module
+  await db.delete(homeModuleItems).where(eq(homeModuleItems.moduleKey, moduleKey));
+  // Insert new items
+  if (experienceIds.length > 0) {
+    const now = Date.now();
+    await db.insert(homeModuleItems).values(
+      experienceIds.map((experienceId, index) => ({
+        moduleKey,
+        experienceId,
+        sortOrder: index,
+        createdAt: now,
+      }))
+    );
+  }
   return { success: true };
 }
