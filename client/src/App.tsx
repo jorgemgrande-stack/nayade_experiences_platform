@@ -13,6 +13,12 @@ import Gallery from "./pages/Gallery";
 import BudgetRequest from "./pages/BudgetRequest";
 import Contact from "./pages/Contact";
 import Locations from "./pages/Locations";
+import Packs from "./pages/Packs";
+import PackDetail from "./pages/PackDetail";
+import Hotel from "./pages/Hotel";
+import Spa from "./pages/Spa";
+import Restaurantes from "./pages/Restaurantes";
+import RestauranteDetail from "./pages/RestauranteDetail";
 
 // Admin pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -59,6 +65,12 @@ function Router() {
       <Route path="/contacto" component={Contact} />
       <Route path="/ubicaciones" component={Locations} />
       <Route path="/ubicaciones/:slug" component={Locations} />
+      <Route path="/packs" component={Packs} />
+      <Route path="/packs/:slug" component={PackDetail} />
+      <Route path="/hotel" component={Hotel} />
+      <Route path="/spa" component={Spa} />
+      <Route path="/restaurantes" component={Restaurantes} />
+      <Route path="/restaurantes/:slug" component={RestauranteDetail} />
 
       {/* ── ADMIN ROUTES ── */}
       <Route path="/admin" component={AdminDashboard} />

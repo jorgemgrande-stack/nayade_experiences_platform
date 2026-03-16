@@ -103,3 +103,17 @@
 - [x] Actualizar SlideshowManager (admin) con todos los campos del slideshow público
 - [x] Conectar Home pública para leer slides de la BD (eliminar slides hardcodeados)
 - [x] Vaciar tabla slideshow_items (slides de prueba actuales)
+
+## Corrección Global Web (v2.2)
+- [x] Crear página /packs con listado de packs
+- [x] Crear página /packs/packs-dia (ruta /packs/dia)
+- [x] Crear página /packs/packs-escolares (ruta /packs/escolares)
+- [x] Crear página /packs/team-building (ruta /packs/corporativo)
+- [x] Crear página /hotel
+- [x] Crear página /spa
+- [x] Crear página /restaurantes con listado
+- [x] Crear página /restaurantes/el-galeon
+- [x] Crear página /restaurantes/la-cabana
+- [x] Crear página /restaurantes/nassau-bar
+- [x] Corregir menú desplegable: zona de tolerancia hover + delay 420ms + bridge invisible
+- [x] Mejorar accesibilidad táctil del menú en móvil (acordeones expandibles)

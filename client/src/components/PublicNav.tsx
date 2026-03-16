@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, X, ChevronDown, Anchor, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,23 +44,80 @@ const navLinks = [
   { label: "Ubicación", href: "/ubicaciones" },
 ];
 
+// ── Dropdown con zona de tolerancia hover ─────────────────────────────────
+interface DropdownItem { label: string; href: string }
+interface NavDropdownProps {
+  label: string;
+  href: string;
+  children: DropdownItem[];
+  isActive: boolean;
+}
+
+function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [location] = useLocation();
+
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 420);
+  }, [cancelClose]);
+
+  useEffect(() => { setOpen(false); }, [location]);
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
+  return (
+    <div className="relative" onPointerEnter={() => { cancelClose(); setOpen(true); }} onPointerLeave={scheduleClose}>
+      <Link href={href}>
+        <button className={cn(
+          "flex items-center gap-1 px-3 py-2 rounded-lg font-display text-sm font-medium transition-all duration-200",
+          "text-foreground hover:text-primary hover:bg-primary/8",
+          isActive && "text-primary font-semibold"
+        )}>
+          {label}
+          <ChevronDown className={cn("w-3.5 h-3.5 opacity-70 transition-transform duration-200", open && "rotate-180")} />
+        </button>
+      </Link>
+      {/* Bridge invisible para evitar el gap entre botón y dropdown */}
+      {open && <div className="absolute top-full left-0 w-full h-3 z-40" onPointerEnter={cancelClose} />}
+      <div
+        className={cn(
+          "absolute top-[calc(100%+0.5rem)] left-0 w-56 bg-white rounded-xl shadow-2xl border border-border/50 py-2 z-50",
+          "transition-all duration-200 origin-top",
+          open ? "opacity-100 scale-y-100 translate-y-0 pointer-events-auto" : "opacity-0 scale-y-95 -translate-y-1 pointer-events-none"
+        )}
+        onPointerEnter={cancelClose}
+        onPointerLeave={scheduleClose}
+      >
+        <div className="absolute -top-1.5 left-5 w-3 h-3 bg-white border-l border-t border-border/50 rotate-45" />
+        {children.map((child) => (
+          <Link key={child.href} href={child.href}>
+            <div className="px-4 py-2.5 text-sm font-display text-foreground hover:bg-primary/8 hover:text-primary cursor-pointer transition-colors border-b border-border/20 last:border-0" onPointerDown={() => setOpen(false)}>
+              {child.label}
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function PublicNav() {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
   const [location] = useLocation();
 
   useEffect(() => {
     setIsOpen(false);
-    setActiveDropdown(null);
+    setExpandedMobile(null);
   }, [location]);
 
   return (
-    <header
-      className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-        "bg-white shadow-md border-b border-border/50"
-      )}
-    >
+    <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md border-b border-border/50">
       {/* ── Barra superior de información ─────────────────────────── */}
       <div
         className={cn(
@@ -129,47 +186,27 @@ export default function PublicNav() {
 
           {/* Navegación desktop */}
           <nav className="hidden lg:flex items-center gap-0.5">
-            {navLinks.map((link) => (
-              <div
-                key={link.href}
-                className="relative"
-                onMouseEnter={() => link.children && setActiveDropdown(link.label)}
-                onMouseLeave={() => setActiveDropdown(null)}
-              >
-                <Link href={link.href}>
-                  <button
-                    className={cn(
-                      "flex items-center gap-1 px-3 py-2 rounded-lg font-display text-sm font-medium transition-all duration-200",
+            {navLinks.map((link) =>
+              link.children ? (
+                <NavDropdown
+                  key={link.href}
+                  label={link.label}
+                  href={link.href}
+                  children={link.children}
+                  isActive={location.startsWith(link.href)}
+                />
+              ) : (
+                <Link key={link.href} href={link.href}>
+                  <button className={cn(
+                    "flex items-center gap-1 px-3 py-2 rounded-lg font-display text-sm font-medium transition-all duration-200",
                     "text-foreground hover:text-primary hover:bg-primary/8",
-                      location === link.href && "text-primary font-semibold"
-                    )}
-                  >
+                    location === link.href && "text-primary font-semibold"
+                  )}>
                     {link.label}
-                    {link.children && (
-                      <ChevronDown
-                        className={cn(
-                          "w-3.5 h-3.5 opacity-70 transition-transform",
-                          activeDropdown === link.label && "rotate-180"
-                        )}
-                      />
-                    )}
                   </button>
                 </Link>
-
-                {/* Dropdown */}
-                {link.children && activeDropdown === link.label && (
-                  <div className="absolute top-full left-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-border/50 py-2 z-50 animate-fade-up">
-                    {link.children.map((child) => (
-                      <Link key={child.href} href={child.href}>
-                        <div className="px-4 py-2.5 text-sm font-display text-foreground hover:bg-primary/8 hover:text-primary cursor-pointer transition-colors border-b border-border/20 last:border-0">
-                          {child.label}
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            )}
           </nav>
 
           {/* CTAs desktop */}
@@ -210,50 +247,61 @@ export default function PublicNav() {
       </div>
 
       {/* ── Menú mobile ───────────────────────────────────────────── */}
-      {isOpen && (
-        <div className="lg:hidden bg-white border-t border-border shadow-xl max-h-[80vh] overflow-y-auto">
-          <div className="container py-4 space-y-1">
-            {navLinks.map((link) => (
-              <div key={link.href}>
+      <div className={cn(
+        "lg:hidden bg-white border-t border-border shadow-xl overflow-hidden transition-all duration-300",
+        isOpen ? "max-h-[80vh] overflow-y-auto" : "max-h-0"
+      )}>
+        <div className="container py-4 space-y-1">
+          {navLinks.map((link) => (
+            <div key={link.href}>
+              <div className="flex items-center justify-between">
                 <Link href={link.href}>
-                  <div className="flex items-center justify-between px-4 py-3 rounded-xl hover:bg-muted font-display font-medium text-foreground cursor-pointer">
+                  <div
+                    className="flex-1 px-4 py-3 rounded-xl hover:bg-muted font-display font-medium text-foreground cursor-pointer"
+                    onClick={() => !link.children && setIsOpen(false)}
+                  >
                     {link.label}
-                    {link.children && (
-                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                    )}
                   </div>
                 </Link>
                 {link.children && (
-                  <div className="ml-4 space-y-0.5">
-                    {link.children.map((child) => (
-                      <Link key={child.href} href={child.href}>
-                        <div className="px-4 py-2 text-sm font-display text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg cursor-pointer transition-colors">
-                          {child.label}
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
+                  <button
+                    className="p-3 text-muted-foreground hover:text-primary"
+                    onClick={() => setExpandedMobile(expandedMobile === link.label ? null : link.label)}
+                  >
+                    <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", expandedMobile === link.label && "rotate-180")} />
+                  </button>
                 )}
               </div>
-            ))}
-            <div className="pt-3 border-t border-border space-y-2">
-              <Link href="/contacto">
-                <Button
-                  variant="outline"
-                  className="w-full font-display font-medium rounded-full"
-                >
-                  Contacto
-                </Button>
-              </Link>
-              <Link href="/presupuesto">
-                <Button className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full">
-                  Solicitar Presupuesto
-                </Button>
-              </Link>
+              {link.children && expandedMobile === link.label && (
+                <div className="ml-4 space-y-0.5 pb-2">
+                  {link.children.map((child) => (
+                    <Link key={child.href} href={child.href}>
+                      <div
+                        className="px-4 py-2.5 text-sm font-display text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg cursor-pointer transition-colors"
+                        onClick={() => setIsOpen(false)}
+                      >
+                        {child.label}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
+          ))}
+          <div className="pt-3 border-t border-border space-y-2">
+            <Link href="/contacto">
+              <Button variant="outline" className="w-full font-display font-medium rounded-full" onClick={() => setIsOpen(false)}>
+                Contacto
+              </Button>
+            </Link>
+            <Link href="/presupuesto">
+              <Button className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full" onClick={() => setIsOpen(false)}>
+                Solicitar Presupuesto
+              </Button>
+            </Link>
           </div>
         </div>
-      )}
+      </div>
     </header>
   );
 }
