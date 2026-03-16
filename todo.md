@@ -86,3 +86,8 @@
 - [x] Reparar módulo Operaciones: Calendario, Órdenes del día, Monitores
 - [x] Reparar módulo Contabilidad: Dashboard métricas, Transacciones, Informes
 - [x] Reparar módulo Usuarios y Configuración
+
+## Subida de fotos al Slideshow
+- [x] Endpoint REST de subida de imágenes a S3 en el servidor
+- [x] Procedimiento tRPC para CRUD completo de slides con imagen
+- [x] SlideshowManager con upload real, previsualización y reordenación

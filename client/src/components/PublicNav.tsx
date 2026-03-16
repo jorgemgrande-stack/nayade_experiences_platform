@@ -95,7 +95,7 @@ export default function PublicNav() {
 
       {/* ── Barra de navegación principal ─────────────────────────── */}
       <div className="container">
-          <div className="flex items-center justify-between h-20">
+        <div className="flex items-center justify-between h-20">
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 group cursor-pointer">
