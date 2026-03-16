@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -8,17 +8,63 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Tag } from "lucide-react";
+import { Plus, Pencil, Trash2, Tag, ImageIcon, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CategoryForm {
   name: string;
   slug: string;
   description: string;
   iconName: string;
-  imageUrl: string;
+  image1: string;
 }
 
-const emptyForm: CategoryForm = { name: "", slug: "", description: "", iconName: "anchor", imageUrl: "" };
+const emptyForm: CategoryForm = { name: "", slug: "", description: "", iconName: "anchor", image1: "" };
+
+// ── Zona de upload de imagen para categorías ────────────────────────────────
+function CatImageUpload({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const handleFile = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) { toast.error("La imagen no puede superar 10 MB"); return; }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch("/api/upload/image", { method: "POST", body: fd, credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al subir");
+      onChange(data.url);
+      toast.success("Imagen subida correctamente");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Error al subir imagen");
+    } finally { setUploading(false); }
+  };
+  return (
+    <div
+      className={cn("relative border-2 border-dashed rounded-xl overflow-hidden cursor-pointer transition-all hover:border-primary/60 h-28",
+        value ? "border-primary/40" : "border-border bg-muted/30")}
+      onClick={() => !uploading && inputRef.current?.click()}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+    >
+      {value ? (
+        <>
+          <img src={value} alt="Imagen categoría" className="w-full h-full object-cover" />
+          <button type="button" className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-red-600"
+            onClick={(e) => { e.stopPropagation(); onChange(""); }}><X className="w-3.5 h-3.5" /></button>
+        </>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-full gap-1 text-muted-foreground">
+          {uploading ? <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /> : <><ImageIcon className="w-6 h-6 opacity-40" /><span className="text-xs">Haz clic o arrastra</span></>}
+        </div>
+      )}
+      {uploading && <div className="absolute inset-0 bg-white/70 flex items-center justify-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>}
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+    </div>
+  );
+}
 
 export default function CategoriesManager() {
   const [open, setOpen] = useState(false);
@@ -44,14 +90,14 @@ export default function CategoriesManager() {
   const openCreate = () => { setEditId(null); setForm(emptyForm); setOpen(true); };
   const openEdit = (cat: NonNullable<typeof categories>[0]) => {
     setEditId(cat.id);
-    setForm({ name: cat.name, slug: cat.slug, description: cat.description ?? "", iconName: cat.iconName ?? "anchor", imageUrl: cat.imageUrl ?? "" });
+    setForm({ name: cat.name, slug: cat.slug, description: cat.description ?? "", iconName: cat.iconName ?? "anchor", image1: (cat as Record<string,unknown>).image1 as string ?? cat.imageUrl ?? "" });
     setOpen(true);
   };
 
   const handleSubmit = () => {
     if (!form.name || !form.slug) { toast.error("Nombre y slug son obligatorios"); return; }
-    if (editId) updateMut.mutate({ id: editId, name: form.name, description: form.description, imageUrl: form.imageUrl || undefined });
-    else createMut.mutate({ name: form.name, slug: form.slug, description: form.description, iconName: form.iconName, imageUrl: form.imageUrl || undefined });
+    if (editId) updateMut.mutate({ id: editId, name: form.name, description: form.description, image1: form.image1 || undefined });
+    else createMut.mutate({ name: form.name, slug: form.slug, description: form.description, iconName: form.iconName, image1: form.image1 || undefined });
   };
 
   const toSlug = (name: string) => name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
@@ -121,15 +167,13 @@ export default function CategoriesManager() {
               <Label>Descripción</Label>
               <Textarea value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} rows={3} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Icono (nombre)</Label>
-                <Input value={form.iconName} onChange={(e) => setForm(f => ({ ...f, iconName: e.target.value }))} placeholder="anchor" />
-              </div>
-              <div>
-                <Label>URL Imagen</Label>
-                <Input value={form.imageUrl} onChange={(e) => setForm(f => ({ ...f, imageUrl: e.target.value }))} placeholder="https://..." />
-              </div>
+            <div>
+              <Label>Icono (nombre)</Label>
+              <Input value={form.iconName} onChange={(e) => setForm(f => ({ ...f, iconName: e.target.value }))} placeholder="anchor" />
+            </div>
+            <div>
+              <Label className="block mb-1">Imagen de la categoría</Label>
+              <CatImageUpload value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} />
             </div>
           </div>
           <DialogFooter>

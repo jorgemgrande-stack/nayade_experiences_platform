@@ -419,6 +419,10 @@ export async function createExperience(data: {
   categoryId: number;
   locationId: number;
   coverImageUrl?: string;
+  image1?: string;
+  image2?: string;
+  image3?: string;
+  image4?: string;
   basePrice: string;
   duration?: string;
   minPersons?: number;
@@ -433,7 +437,11 @@ export async function createExperience(data: {
     ...data,
     shortDescription: data.shortDescription ?? null,
     description: data.description ?? null,
-    coverImageUrl: data.coverImageUrl ?? null,
+    coverImageUrl: data.image1 ?? data.coverImageUrl ?? null,
+    image1: data.image1 ?? null,
+    image2: data.image2 ?? null,
+    image3: data.image3 ?? null,
+    image4: data.image4 ?? null,
     duration: data.duration ?? null,
     minPersons: data.minPersons ?? 1,
     maxPersons: data.maxPersons ?? null,
@@ -471,6 +479,7 @@ export async function createCategory(data: {
   name: string;
   description?: string;
   imageUrl?: string;
+  image1?: string;
   iconName?: string;
   sortOrder?: number;
 }) {
@@ -479,7 +488,8 @@ export async function createCategory(data: {
   const result = await db.insert(categories).values({
     ...data,
     description: data.description ?? null,
-    imageUrl: data.imageUrl ?? null,
+    imageUrl: data.image1 ?? data.imageUrl ?? null,
+    image1: data.image1 ?? null,
     iconName: data.iconName ?? null,
     sortOrder: data.sortOrder ?? 0,
     isActive: true,

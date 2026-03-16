@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Experiences: añadir image1, image2, image3, image4 (image1 = coverImageUrl existente)\nALTER TABLE experiences ADD COLUMN image1 TEXT NULL AFTER coverImageUrl;\nALTER TABLE experiences ADD COLUMN image2 TEXT NULL AFTER image1;\nALTER TABLE experiences ADD COLUMN image3 TEXT NULL AFTER image2;\nALTER TABLE experiences ADD COLUMN image4 TEXT NULL AFTER image3;\n\n-- Copiar coverImageUrl a image1 para no perder datos existentes\nUPDATE experiences SET image1 = coverImageUrl WHERE coverImageUrl IS NOT NULL AND coverImageUrl != '';\n\n-- Categories: añadir image1 (= imageUrl existente)\nALTER TABLE categories ADD COLUMN image1 TEXT NULL AFTER imageUrl;\n\n-- Copiar imageUrl a image1\nUPDATE categories SET image1 = imageUrl WHERE imageUrl IS NOT NULL AND imageUrl != '';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Experiences: añadir image1, image2, image3, image4 (image1 = coverImageUrl existente)\nALTER TABLE experiences ADD COLUMN image1 TEXT NULL AFTER coverImageUrl;\nALTER TABLE experiences ADD COLUMN image2 TEXT NULL AFTER image1;\nALTER TABLE experiences ADD COLUMN image3 TEXT NULL AFTER image2;\nALTER TABLE experiences ADD COLUMN image4 TEXT NULL AFTER image3;\n\n-- Copiar coverImageUrl a image1 para no perder datos existentes\nUPDATE experiences SET image1 = coverImageUrl WHERE coverImageUrl IS NOT NULL AND coverImageUrl != '';\n\n-- Categories: añadir image1 (= imageUrl existente)\nALTER TABLE categories ADD COLUMN image1 TEXT NULL AFTER imageUrl;\n\n-- Copiar imageUrl a image1\nUPDATE categories SET image1 = imageUrl WHERE imageUrl IS NOT NULL AND imageUrl != '';\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 5290
+}

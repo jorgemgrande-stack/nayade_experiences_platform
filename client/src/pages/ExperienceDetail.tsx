@@ -83,7 +83,16 @@ export default function ExperienceDetail() {
   });
 
   const exp = dbExp ?? staticExperience;
-  const gallery = (exp.gallery as string[]) ?? staticExperience.gallery;
+  // Construir galería desde image1..4 (BD) o gallery (legacy) o fallback estático
+  const dbGallery = [
+    (exp as Record<string, unknown>).image1,
+    (exp as Record<string, unknown>).image2,
+    (exp as Record<string, unknown>).image3,
+    (exp as Record<string, unknown>).image4,
+  ].filter((img): img is string => typeof img === "string" && img.length > 0);
+  const gallery = dbGallery.length > 0
+    ? dbGallery
+    : ((exp as Record<string, unknown>).gallery as string[] | undefined) ?? staticExperience.gallery;
   const includes = (exp.includes as string[]) ?? staticExperience.includes;
   const excludes = (exp.excludes as string[]) ?? staticExperience.excludes;
   const totalPrice = parseFloat(exp.basePrice) * persons;

@@ -191,7 +191,10 @@ export const appRouter = router({
         description: z.string().optional(),
         categoryId: z.number(),
         locationId: z.number(),
-        coverImageUrl: z.string().optional(),
+        image1: z.string().optional(),
+        image2: z.string().optional(),
+        image3: z.string().optional(),
+        image4: z.string().optional(),
         basePrice: z.string(),
         duration: z.string().optional(),
         minPersons: z.number().optional(),
@@ -213,12 +216,19 @@ export const appRouter = router({
         basePrice: z.string().optional(),
         isFeatured: z.boolean().optional(),
         isActive: z.boolean().optional(),
-        coverImageUrl: z.string().optional(),
+        image1: z.string().optional(),
+        image2: z.string().optional(),
+        image3: z.string().optional(),
+        image4: z.string().optional(),
         duration: z.string().optional(),
         difficulty: z.enum(["facil", "moderado", "dificil", "experto"]).optional(),
+        categoryId: z.number().optional(),
+        locationId: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
+        // Sync coverImageUrl with image1
+        if (data.image1 !== undefined) (data as Record<string, unknown>).coverImageUrl = data.image1;
         return updateExperience(id, data);
       }),
 
@@ -237,7 +247,7 @@ export const appRouter = router({
         slug: z.string(),
         name: z.string(),
         description: z.string().optional(),
-        imageUrl: z.string().optional(),
+        image1: z.string().optional(),
         iconName: z.string().optional(),
         sortOrder: z.number().default(0),
       }))
@@ -250,11 +260,13 @@ export const appRouter = router({
         id: z.number(),
         name: z.string().optional(),
         description: z.string().optional(),
-        imageUrl: z.string().optional(),
+        image1: z.string().optional(),
         isActive: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
+        // Sync imageUrl with image1
+        if (data.image1 !== undefined) (data as Record<string, unknown>).imageUrl = data.image1;
         return updateCategory(id, data);
       }),
 

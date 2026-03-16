@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, Package } from "lucide-react";
+import { useState, useRef } from "react";
+import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,28 +28,95 @@ const difficultyLabels: Record<string, string> = {
 };
 
 type ExpForm = {
-  slug: string;
-  title: string;
-  shortDescription: string;
-  description: string;
-  categoryId: string;
-  locationId: string;
-  coverImageUrl: string;
-  basePrice: string;
-  duration: string;
-  minPersons: string;
-  maxPersons: string;
-  difficulty: string;
-  isFeatured: boolean;
-  isActive: boolean;
+  slug: string; title: string; shortDescription: string; description: string;
+  categoryId: string; locationId: string;
+  image1: string; image2: string; image3: string; image4: string;
+  basePrice: string; duration: string; minPersons: string; maxPersons: string;
+  difficulty: string; isFeatured: boolean; isActive: boolean;
 };
 
 const emptyForm: ExpForm = {
   slug: "", title: "", shortDescription: "", description: "",
-  categoryId: "", locationId: "", coverImageUrl: "",
+  categoryId: "", locationId: "",
+  image1: "", image2: "", image3: "", image4: "",
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
   difficulty: "facil", isFeatured: false, isActive: true,
 };
+
+// ── Componente de zona de upload de imagen ──────────────────────────────────
+function ImageUploadZone({
+  label, value, onChange, index,
+}: { label: string; value: string; onChange: (url: string) => void; index: number }) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast.error("La imagen no puede superar 10 MB"); return; }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch("/api/upload/image", { method: "POST", body: fd, credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al subir");
+      onChange(data.url);
+      toast.success(`Imagen ${index} subida correctamente`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Error al subir imagen");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <div
+        className={cn(
+          "relative border-2 border-dashed rounded-xl overflow-hidden cursor-pointer transition-all",
+          "hover:border-primary/60 hover:bg-primary/5",
+          value ? "border-primary/40 bg-primary/5" : "border-border bg-muted/30",
+          "h-28"
+        )}
+        onClick={() => !uploading && inputRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+      >
+        {value ? (
+          <>
+            <img src={value} alt={label} className="w-full h-full object-cover" />
+            <button
+              type="button"
+              className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-red-600 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onChange(""); }}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-1 text-muted-foreground">
+            {uploading ? (
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <ImageIcon className="w-6 h-6 opacity-40" />
+                <span className="text-xs">Haz clic o arrastra</span>
+              </>
+            )}
+          </div>
+        )}
+        {uploading && (
+          <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+    </div>
+  );
+}
 
 export default function ExperiencesManager() {
   const [showModal, setShowModal] = useState(false);
@@ -63,11 +130,11 @@ export default function ExperiencesManager() {
 
   const createMutation = trpc.products.create.useMutation({
     onSuccess: () => { toast.success("Experiencia creada"); refetch(); setShowModal(false); setForm(emptyForm); },
-    onError: () => toast.error("Error al crear la experiencia"),
+    onError: (e) => toast.error(e.message || "Error al crear la experiencia"),
   });
   const updateMutation = trpc.products.update.useMutation({
     onSuccess: () => { toast.success("Experiencia actualizada"); refetch(); setShowModal(false); setEditingId(null); },
-    onError: () => toast.error("Error al actualizar"),
+    onError: (e) => toast.error(e.message || "Error al actualizar"),
   });
   const deleteMutation = trpc.products.delete.useMutation({
     onSuccess: () => { toast.success("Experiencia desactivada"); refetch(); },
@@ -75,16 +142,25 @@ export default function ExperiencesManager() {
   });
 
   const openCreate = () => { setEditingId(null); setForm(emptyForm); setShowModal(true); };
-  const openEdit = (exp: any) => {
-    setEditingId(exp.id);
+  const openEdit = (exp: Record<string, unknown>) => {
+    setEditingId(Number(exp.id));
     setForm({
-      slug: exp.slug, title: exp.title, shortDescription: exp.shortDescription ?? "",
-      description: exp.description ?? "", categoryId: String(exp.categoryId),
-      locationId: String(exp.locationId), coverImageUrl: exp.coverImageUrl ?? "",
-      basePrice: exp.basePrice, duration: exp.duration ?? "",
-      minPersons: String(exp.minPersons ?? 1), maxPersons: String(exp.maxPersons ?? ""),
-      difficulty: exp.difficulty ?? "facil", isFeatured: exp.isFeatured ?? false,
-      isActive: exp.isActive ?? true,
+      slug: String(exp.slug ?? ""), title: String(exp.title ?? ""),
+      shortDescription: String(exp.shortDescription ?? ""),
+      description: String(exp.description ?? ""),
+      categoryId: String(exp.categoryId ?? ""),
+      locationId: String(exp.locationId ?? ""),
+      image1: String(exp.image1 ?? exp.coverImageUrl ?? ""),
+      image2: String(exp.image2 ?? ""),
+      image3: String(exp.image3 ?? ""),
+      image4: String(exp.image4 ?? ""),
+      basePrice: String(exp.basePrice ?? ""),
+      duration: String(exp.duration ?? ""),
+      minPersons: String(exp.minPersons ?? "1"),
+      maxPersons: String(exp.maxPersons ?? ""),
+      difficulty: String(exp.difficulty ?? "facil"),
+      isFeatured: Boolean(exp.isFeatured),
+      isActive: Boolean(exp.isActive),
     });
     setShowModal(true);
   };
@@ -101,12 +177,15 @@ export default function ExperiencesManager() {
       description: form.description || undefined,
       categoryId: parseInt(form.categoryId),
       locationId: parseInt(form.locationId),
-      coverImageUrl: form.coverImageUrl || undefined,
+      image1: form.image1 || undefined,
+      image2: form.image2 || undefined,
+      image3: form.image3 || undefined,
+      image4: form.image4 || undefined,
       basePrice: form.basePrice,
       duration: form.duration || undefined,
       minPersons: form.minPersons ? parseInt(form.minPersons) : undefined,
       maxPersons: form.maxPersons ? parseInt(form.maxPersons) : undefined,
-      difficulty: form.difficulty as any,
+      difficulty: form.difficulty as "facil" | "moderado" | "dificil" | "experto",
       isFeatured: form.isFeatured,
       isActive: form.isActive,
     };
@@ -135,7 +214,7 @@ export default function ExperiencesManager() {
             />
           </div>
         </div>
-        <Button onClick={openCreate} className="bg-gold-gradient text-white hover:opacity-90">
+        <Button onClick={openCreate} style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", borderRadius: "10px", fontWeight: 600 }}>
           <Plus className="w-4 h-4 mr-2" />
           Nueva Experiencia
         </Button>
@@ -158,7 +237,7 @@ export default function ExperiencesManager() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-12">
-                    <Package className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                    <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                     <p className="text-muted-foreground">No hay experiencias. Crea la primera.</p>
                   </td>
                 </tr>
@@ -168,11 +247,11 @@ export default function ExperiencesManager() {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-9 rounded-lg overflow-hidden bg-muted shrink-0">
-                          {exp.coverImageUrl ? (
-                            <img src={exp.coverImageUrl} alt={exp.title} className="w-full h-full object-cover" />
+                          {((exp as Record<string,unknown>).image1 || exp.coverImageUrl) ? (
+                            <img src={String((exp as Record<string,unknown>).image1 ?? exp.coverImageUrl)} alt={exp.title} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
-                              <Package className="w-4 h-4 text-muted-foreground" />
+                              <ImageIcon className="w-4 h-4 text-muted-foreground" />
                             </div>
                           )}
                         </div>
@@ -229,7 +308,17 @@ export default function ExperiencesManager() {
           <DialogHeader>
             <DialogTitle className="font-display">{editingId ? "Editar Experiencia" : "Nueva Experiencia"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          <form onSubmit={handleSubmit} className="space-y-5 mt-2">
+            {/* 4 zonas de upload de imágenes */}
+            <div>
+              <Label className="text-sm font-semibold mb-2 block">Imágenes del carrusel (hasta 4)</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <ImageUploadZone label="Imagen 1 (principal)" value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} index={1} />
+                <ImageUploadZone label="Imagen 2" value={form.image2} onChange={(url) => setForm(f => ({ ...f, image2: url }))} index={2} />
+                <ImageUploadZone label="Imagen 3" value={form.image3} onChange={(url) => setForm(f => ({ ...f, image3: url }))} index={3} />
+                <ImageUploadZone label="Imagen 4" value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <Label htmlFor="title">Título *</Label>
@@ -286,10 +375,6 @@ export default function ExperiencesManager() {
                 <Input id="maxPersons" type="number" value={form.maxPersons} onChange={(e) => setForm({ ...form, maxPersons: e.target.value })} className="mt-1" />
               </div>
               <div className="col-span-2">
-                <Label htmlFor="coverImageUrl">URL Imagen Principal</Label>
-                <Input id="coverImageUrl" value={form.coverImageUrl} onChange={(e) => setForm({ ...form, coverImageUrl: e.target.value })} className="mt-1" placeholder="https://..." />
-              </div>
-              <div className="col-span-2">
                 <Label htmlFor="shortDescription">Descripción Corta</Label>
                 <Input id="shortDescription" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} className="mt-1" />
               </div>
@@ -308,7 +393,7 @@ export default function ExperiencesManager() {
             </div>
             <div className="flex gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setShowModal(false)} className="flex-1">Cancelar</Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="flex-1 bg-gold-gradient text-white hover:opacity-90">
+              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="flex-1" style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", fontWeight: 600 }}>
                 {editingId ? "Guardar Cambios" : "Crear Experiencia"}
               </Button>
             </div>

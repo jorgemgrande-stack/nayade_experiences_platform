@@ -117,3 +117,10 @@
 - [x] Crear página /restaurantes/nassau-bar
 - [x] Corregir menú desplegable: zona de tolerancia hover + delay 420ms + bridge invisible
 - [x] Mejorar accesibilidad táctil del menú en móvil (acordeones expandibles)
+
+## Upload de imágenes en Productos y Categorías (v2.3)
+- [x] Migrar BD: añadir image2, image3, image4 a experiences y categories
+- [x] Actualizar tRPC create/update de experiences y categories con 4 imágenes
+- [x] Reescribir ExperiencesManager con 4 zonas de upload real (sin campo URL)
+- [x] Reescribir CategoriesManager con upload real de imagen de portada (sin campo URL)
+- [x] Conectar ExperienceDetail (carrusel público) para usar image1..4 de la BD
