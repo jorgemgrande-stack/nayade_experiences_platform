@@ -1,11 +1,9 @@
 import { useState, useRef } from "react";
 import { Plus, Pencil, Trash2, GripVertical, Upload, ImageIcon, Loader2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -31,6 +29,37 @@ const emptyForm: SlideForm = {
   isActive: true,
 };
 
+// Estilos de botón siempre visibles (sin depender de Tailwind/CSS variables)
+const btnPrimary: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  background: "linear-gradient(135deg, #f59e0b, #f97316)",
+  color: "#ffffff",
+  fontWeight: 600,
+  padding: "0.55rem 1.2rem",
+  borderRadius: "0.6rem",
+  border: "none",
+  cursor: "pointer",
+  fontSize: "0.875rem",
+  boxShadow: "0 2px 6px rgba(249,115,22,0.35)",
+  whiteSpace: "nowrap" as const,
+};
+
+const btnSecondary: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  background: "transparent",
+  color: "#6b7280",
+  fontWeight: 500,
+  padding: "0.55rem 1.2rem",
+  borderRadius: "0.6rem",
+  border: "1.5px solid #d1d5db",
+  cursor: "pointer",
+  fontSize: "0.875rem",
+};
+
 export default function SlideshowManager() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showModal, setShowModal] = useState(false);
@@ -38,7 +67,7 @@ export default function SlideshowManager() {
   const [form, setForm] = useState<SlideForm>(emptyForm);
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [uploading, setUploading] = useState(false);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
   const { data: slides, isLoading } = trpc.cms.getSlideshowItems.useQuery();
@@ -65,7 +94,7 @@ export default function SlideshowManager() {
     onSuccess: () => {
       toast.success("Slide eliminado");
       utils.cms.getSlideshowItems.invalidate();
-      setDeleteId(null);
+      setConfirmDeleteId(null);
     },
     onError: () => toast.error("Error al eliminar"),
   });
@@ -99,38 +128,30 @@ export default function SlideshowManager() {
     setPreviewUrl("");
   };
 
-  // Upload real de imagen a S3
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Previsualización local inmediata
     const localUrl = URL.createObjectURL(file);
     setPreviewUrl(localUrl);
     setUploading(true);
-
     try {
       const formData = new FormData();
       formData.append("image", file);
-
       const response = await fetch("/api/upload/image", {
         method: "POST",
         body: formData,
         credentials: "include",
       });
-
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.error || "Error al subir la imagen");
       }
-
       const { url } = await response.json();
       setForm((prev) => ({ ...prev, imageUrl: url }));
       setPreviewUrl(url);
       toast.success("Imagen subida correctamente");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error al subir";
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : "Error al subir");
       setPreviewUrl("");
       setForm((prev) => ({ ...prev, imageUrl: "" }));
     } finally {
@@ -157,300 +178,224 @@ export default function SlideshowManager() {
   return (
     <AdminLayout title="Gestión del Slideshow">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <p className="text-muted-foreground text-sm">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
+        <p style={{ color: "#6b7280", fontSize: "0.875rem" }}>
           Gestiona las imágenes y contenido del slideshow de la página principal.
         </p>
-        <Button onClick={openCreate} className="bg-gold-gradient text-white hover:opacity-90 gap-2">
-          <Plus className="w-4 h-4" />
+        <button style={btnPrimary} onClick={openCreate}>
+          <Plus style={{ width: "1rem", height: "1rem" }} />
           Nuevo Slide
-        </Button>
+        </button>
       </div>
 
       {/* Lista de slides */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-48">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "12rem" }}>
+          <Loader2 style={{ width: "2rem", height: "2rem", color: "#9ca3af", animation: "spin 1s linear infinite" }} />
         </div>
       ) : !slides || slides.length === 0 ? (
-        <div className="bg-card rounded-2xl border border-border/50 p-12 text-center">
-          <ImageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="font-semibold text-foreground mb-2">No hay slides configurados</h3>
-          <p className="text-muted-foreground text-sm mb-4">
+        <div style={{
+          border: "2px dashed #d1d5db",
+          borderRadius: "1rem",
+          padding: "3rem",
+          textAlign: "center",
+          background: "#f9fafb",
+        }}>
+          <ImageIcon style={{ width: "3rem", height: "3rem", color: "#9ca3af", margin: "0 auto 1rem" }} />
+          <p style={{ fontWeight: 600, fontSize: "1rem", color: "#111827", marginBottom: "0.5rem" }}>
+            No hay slides configurados
+          </p>
+          <p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
             Añade el primer slide para el slideshow de la home.
           </p>
-          <button
-            onClick={openCreate}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              background: "linear-gradient(135deg, #f59e0b, #f97316)",
-              color: "#ffffff",
-              fontWeight: 600,
-              padding: "0.6rem 1.4rem",
-              borderRadius: "0.75rem",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "0.875rem",
-              boxShadow: "0 2px 8px rgba(249,115,22,0.4)",
-            }}
-          >
+          <button style={btnPrimary} onClick={openCreate}>
             <Plus style={{ width: "1rem", height: "1rem" }} />
             Añadir Primer Slide
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {[...slides]
             .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
             .map((slide) => (
               <div
                 key={slide.id}
-                className="bg-card rounded-2xl border border-border/50 flex items-stretch overflow-hidden"
+                style={{
+                  display: "flex",
+                  alignItems: "stretch",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "1rem",
+                  overflow: "hidden",
+                  background: "#ffffff",
+                }}
               >
-                {/* Drag handle */}
-                <div className="flex items-center px-3 text-muted-foreground/40 hover:text-muted-foreground cursor-grab border-r border-border/30">
-                  <GripVertical className="w-5 h-5" />
+                <div style={{ display: "flex", alignItems: "center", padding: "0 0.75rem", color: "#d1d5db", cursor: "grab", borderRight: "1px solid #f3f4f6" }}>
+                  <GripVertical style={{ width: "1.25rem", height: "1.25rem" }} />
                 </div>
-
-                {/* Miniatura */}
-                <div className="w-36 h-24 flex-shrink-0 bg-muted">
+                <div style={{ width: "9rem", height: "6rem", flexShrink: 0, background: "#f3f4f6" }}>
                   {slide.imageUrl ? (
-                    <img
-                      src={slide.imageUrl}
-                      alt={slide.title ?? "Slide"}
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={slide.imageUrl} alt={slide.title ?? "Slide"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <ImageIcon style={{ width: "2rem", height: "2rem", color: "#9ca3af" }} />
                     </div>
                   )}
                 </div>
-
-                {/* Contenido */}
-                <div className="flex-1 px-4 py-3 flex flex-col justify-center min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs text-muted-foreground font-mono">
-                      #{slide.sortOrder ?? 0}
-                    </span>
-                    <Badge
-                      className={
-                        slide.isActive
-                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                          : "bg-gray-100 text-gray-600 border-gray-200"
-                      }
-                    >
+                <div style={{ flex: 1, padding: "0.75rem 1rem", display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                    <span style={{ fontSize: "0.75rem", color: "#9ca3af", fontFamily: "monospace" }}>#{slide.sortOrder ?? 0}</span>
+                    <Badge className={slide.isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-600"}>
                       {slide.isActive ? "Activo" : "Inactivo"}
                     </Badge>
                   </div>
-                  <p className="font-semibold text-foreground truncate">
-                    {slide.title || <span className="text-muted-foreground italic">Sin título</span>}
+                  <p style={{ fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {slide.title || <span style={{ color: "#9ca3af", fontStyle: "italic" }}>Sin título</span>}
                   </p>
                   {slide.subtitle && (
-                    <p className="text-sm text-muted-foreground truncate mt-0.5">
+                    <p style={{ fontSize: "0.875rem", color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {slide.subtitle}
                     </p>
                   )}
-                  {slide.ctaText && (
-                    <p className="text-xs text-primary mt-1">
-                      CTA: <strong>{slide.ctaText}</strong> → {slide.ctaUrl}
-                    </p>
-                  )}
                 </div>
-
-                {/* Acciones */}
-                <div className="flex items-center gap-1 px-4 border-l border-border/30">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-8 h-8"
+                <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0 1rem", borderLeft: "1px solid #f3f4f6" }}>
+                  <button
                     onClick={() => openEdit(slide)}
+                    style={{ padding: "0.4rem", borderRadius: "0.4rem", border: "none", background: "transparent", cursor: "pointer", color: "#6b7280" }}
                     title="Editar"
                   >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-8 h-8 hover:text-destructive"
-                    onClick={() => setDeleteId(slide.id)}
+                    <Pencil style={{ width: "0.875rem", height: "0.875rem" }} />
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(slide.id)}
+                    style={{ padding: "0.4rem", borderRadius: "0.4rem", border: "none", background: "transparent", cursor: "pointer", color: "#ef4444" }}
                     title="Eliminar"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                    <Trash2 style={{ width: "0.875rem", height: "0.875rem" }} />
+                  </button>
                 </div>
               </div>
             ))}
         </div>
       )}
 
-      {/* ── Dialog Crear / Editar ──────────────────────────────────── */}
+      {/* ── Modal Crear / Editar ──────────────────────────────────── */}
       <Dialog open={showModal} onOpenChange={(open) => !open && closeModal()}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-xl" style={{ maxHeight: "90vh", overflowY: "auto" }}>
           <DialogHeader>
-            <DialogTitle className="font-display">
-              {editingId !== null ? "Editar Slide" : "Nuevo Slide"}
-            </DialogTitle>
+            <DialogTitle>{editingId !== null ? "Editar Slide" : "Nuevo Slide"}</DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-5 py-2">
-            {/* Upload de imagen */}
-            <div className="space-y-2">
-              <Label>Imagen del slide *</Label>
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.25rem", paddingTop: "0.5rem" }}>
+            {/* Upload imagen */}
+            <div>
+              <Label style={{ display: "block", marginBottom: "0.5rem" }}>Imagen del slide *</Label>
               <div
-                className="relative border-2 border-dashed border-border rounded-xl overflow-hidden cursor-pointer hover:border-primary/50 transition-colors"
-                style={{ minHeight: "180px" }}
                 onClick={() => !uploading && fileInputRef.current?.click()}
+                style={{
+                  border: "2px dashed #d1d5db",
+                  borderRadius: "0.75rem",
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  minHeight: "160px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "#f9fafb",
+                  position: "relative",
+                }}
               >
                 {previewUrl ? (
-                  <div className="relative">
-                    <img
-                      src={previewUrl}
-                      alt="Preview"
-                      className="w-full h-44 object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-white text-sm font-medium flex items-center gap-2">
-                        <Upload className="w-4 h-4" />
-                        Cambiar imagen
-                      </span>
-                    </div>
-                    {uploading && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2">
-                        <Loader2 className="w-6 h-6 text-white animate-spin" />
-                        <span className="text-white text-sm">Subiendo...</span>
-                      </div>
-                    )}
+                  <>
+                    <img src={previewUrl} alt="Preview" style={{ width: "100%", height: "160px", objectFit: "cover", display: "block" }} />
                     {!uploading && (
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPreviewUrl("");
-                          setForm((prev) => ({ ...prev, imageUrl: "" }));
-                        }}
-                        className="absolute top-2 right-2 bg-black/60 text-white rounded-full p-1 hover:bg-black/80 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); setPreviewUrl(""); setForm((p) => ({ ...p, imageUrl: "" })); }}
+                        style={{ position: "absolute", top: "0.5rem", right: "0.5rem", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", width: "1.5rem", height: "1.5rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X style={{ width: "0.75rem", height: "0.75rem" }} />
                       </button>
                     )}
-                  </div>
+                    {uploading && (
+                      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                        <Loader2 style={{ width: "1.5rem", height: "1.5rem", color: "#fff", animation: "spin 1s linear infinite" }} />
+                        <span style={{ color: "#fff", fontSize: "0.875rem" }}>Subiendo...</span>
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-44 text-muted-foreground">
+                  <div style={{ textAlign: "center", padding: "2rem", color: "#9ca3af" }}>
                     {uploading ? (
                       <>
-                        <Loader2 className="w-10 h-10 animate-spin mb-2" />
-                        <span className="text-sm">Subiendo imagen...</span>
+                        <Loader2 style={{ width: "2.5rem", height: "2.5rem", margin: "0 auto 0.5rem", animation: "spin 1s linear infinite" }} />
+                        <span style={{ fontSize: "0.875rem" }}>Subiendo imagen...</span>
                       </>
                     ) : (
                       <>
-                        <Upload className="w-10 h-10 mb-2" />
-                        <span className="text-sm font-medium">
-                          Haz clic para subir una imagen
-                        </span>
-                        <span className="text-xs mt-1 text-muted-foreground/70">
-                          JPEG, PNG, WebP — Máx. 10 MB
-                        </span>
+                        <Upload style={{ width: "2.5rem", height: "2.5rem", margin: "0 auto 0.5rem" }} />
+                        <p style={{ fontWeight: 500, fontSize: "0.875rem", color: "#374151" }}>Haz clic para subir una imagen</p>
+                        <p style={{ fontSize: "0.75rem", marginTop: "0.25rem" }}>JPEG, PNG, WebP — Máx. 10 MB</p>
                       </>
                     )}
                   </div>
                 )}
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                className="hidden"
-                onChange={handleFileChange}
-              />
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: "none" }} onChange={handleFileChange} />
             </div>
 
             {/* Título */}
-            <div className="space-y-1.5">
-              <Label htmlFor="title">Título</Label>
-              <Input
-                id="title"
-                placeholder="Ej: Aventura en el Lago"
-                value={form.title}
-                onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-              />
+            <div>
+              <Label htmlFor="title" style={{ display: "block", marginBottom: "0.4rem" }}>Título</Label>
+              <Input id="title" placeholder="Ej: Aventura en el Lago" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} />
             </div>
 
             {/* Subtítulo */}
-            <div className="space-y-1.5">
-              <Label htmlFor="subtitle">Subtítulo</Label>
-              <Input
-                id="subtitle"
-                placeholder="Ej: Descubre el embalse de Los Ángeles"
-                value={form.subtitle}
-                onChange={(e) => setForm((p) => ({ ...p, subtitle: e.target.value }))}
-              />
+            <div>
+              <Label htmlFor="subtitle" style={{ display: "block", marginBottom: "0.4rem" }}>Subtítulo</Label>
+              <Input id="subtitle" placeholder="Ej: Descubre el embalse de Los Ángeles" value={form.subtitle} onChange={(e) => setForm((p) => ({ ...p, subtitle: e.target.value }))} />
             </div>
 
             {/* CTA */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="ctaText">Texto del botón (CTA)</Label>
-                <Input
-                  id="ctaText"
-                  placeholder="Ej: Ver Experiencias"
-                  value={form.ctaText}
-                  onChange={(e) => setForm((p) => ({ ...p, ctaText: e.target.value }))}
-                />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <div>
+                <Label htmlFor="ctaText" style={{ display: "block", marginBottom: "0.4rem" }}>Texto del botón (CTA)</Label>
+                <Input id="ctaText" placeholder="Ej: Ver Experiencias" value={form.ctaText} onChange={(e) => setForm((p) => ({ ...p, ctaText: e.target.value }))} />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="ctaUrl">URL del botón</Label>
-                <Input
-                  id="ctaUrl"
-                  placeholder="Ej: /experiencias"
-                  value={form.ctaUrl}
-                  onChange={(e) => setForm((p) => ({ ...p, ctaUrl: e.target.value }))}
-                />
+              <div>
+                <Label htmlFor="ctaUrl" style={{ display: "block", marginBottom: "0.4rem" }}>URL del botón</Label>
+                <Input id="ctaUrl" placeholder="Ej: /experiencias" value={form.ctaUrl} onChange={(e) => setForm((p) => ({ ...p, ctaUrl: e.target.value }))} />
               </div>
             </div>
 
             {/* Orden y estado */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="sortOrder">Orden de aparición</Label>
-                <Input
-                  id="sortOrder"
-                  type="number"
-                  min={0}
-                  value={form.sortOrder}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, sortOrder: parseInt(e.target.value) || 0 }))
-                  }
-                />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <div>
+                <Label htmlFor="sortOrder" style={{ display: "block", marginBottom: "0.4rem" }}>Orden de aparición</Label>
+                <Input id="sortOrder" type="number" min={0} value={form.sortOrder} onChange={(e) => setForm((p) => ({ ...p, sortOrder: parseInt(e.target.value) || 0 }))} />
               </div>
-              <div className="flex items-center gap-3 pt-6">
-                <Switch
-                  id="isActive"
-                  checked={form.isActive}
-                  onCheckedChange={(checked) =>
-                    setForm((p) => ({ ...p, isActive: checked }))
-                  }
-                />
-                <Label htmlFor="isActive" className="cursor-pointer">
-                  {form.isActive ? "Slide activo" : "Slide inactivo"}
-                </Label>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", paddingTop: "1.6rem" }}>
+                <Switch id="isActive" checked={form.isActive} onCheckedChange={(v) => setForm((p) => ({ ...p, isActive: v }))} />
+                <Label htmlFor="isActive" style={{ cursor: "pointer" }}>{form.isActive ? "Slide activo" : "Slide inactivo"}</Label>
               </div>
             </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeModal} disabled={isSaving}>
+            {/* Botones del formulario */}
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", paddingTop: "0.5rem", borderTop: "1px solid #e5e7eb" }}>
+              <button type="button" style={btnSecondary} onClick={closeModal} disabled={isSaving}>
                 Cancelar
-              </Button>
-              <Button
+              </button>
+              <button
                 type="submit"
                 disabled={isSaving || uploading}
-                className="bg-gold-gradient text-white hover:opacity-90"
+                style={{
+                  ...btnPrimary,
+                  opacity: isSaving || uploading ? 0.7 : 1,
+                  cursor: isSaving || uploading ? "not-allowed" : "pointer",
+                }}
               >
                 {isSaving ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 style={{ width: "1rem", height: "1rem", animation: "spin 1s linear infinite" }} />
                     Guardando...
                   </>
                 ) : editingId !== null ? (
@@ -458,33 +403,38 @@ export default function SlideshowManager() {
                 ) : (
                   "Crear slide"
                 )}
-              </Button>
-            </DialogFooter>
+              </button>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
 
       {/* ── Confirmar eliminación ──────────────────────────────────── */}
-      <AlertDialog open={deleteId !== null} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Eliminar este slide?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción no se puede deshacer. El slide será eliminado permanentemente
-              del slideshow de la home.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId !== null && deleteMutation.mutate({ id: deleteId })}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {confirmDeleteId !== null && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
+          onClick={() => setConfirmDeleteId(null)}
+        >
+          <div
+            style={{ background: "#fff", borderRadius: "1rem", padding: "2rem", maxWidth: "24rem", width: "90%", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontWeight: 700, fontSize: "1.1rem", color: "#111827", marginBottom: "0.75rem" }}>¿Eliminar este slide?</h3>
+            <p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
+              Esta acción no se puede deshacer. El slide será eliminado permanentemente.
+            </p>
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+              <button style={btnSecondary} onClick={() => setConfirmDeleteId(null)}>Cancelar</button>
+              <button
+                style={{ ...btnPrimary, background: "#ef4444", boxShadow: "0 2px 6px rgba(239,68,68,0.35)" }}
+                onClick={() => deleteMutation.mutate({ id: confirmDeleteId })}
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   );
 }

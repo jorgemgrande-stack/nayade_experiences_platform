@@ -94,3 +94,5 @@
 
 ## Correcciones UI (v2.1)
 - [x] Corregir botón "Añadir Primer Slide" — solo visible en hover, debe ser siempre visible
+- [x] Botón "Añadir Primer Slide" sigue invisible (estado vacío)
+- [x] Botón "Crear Slide" no aparece en el modal del formulario
