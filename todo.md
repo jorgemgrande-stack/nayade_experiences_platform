@@ -76,3 +76,13 @@
 - [x] Corregir pantalla "Acceso Restringido" del admin para mostrar botón de login funcional
 - [x] Corregir dashboard de admin: OAuth callback ahora redirige a /admin tras login
 - [x] Añadir enlace "Acceso Gestores" discreto en el footer
+
+## Reparación completa del panel de administración
+- [x] Auditar rutas App.tsx y procedimientos tRPC del servidor
+- [x] Reparar AdminLayout: sidebar con navegación funcional y rutas correctas
+- [x] Reparar módulo CMS: Slideshow, Menús, Medios con CRUD real
+- [x] Reparar módulo Productos: Experiencias, Categorías, Ubicaciones, Variantes
+- [x] Reparar módulo Presupuestos: Leads, listado Presupuestos, Nuevo Presupuesto
+- [x] Reparar módulo Operaciones: Calendario, Órdenes del día, Monitores
+- [x] Reparar módulo Contabilidad: Dashboard métricas, Transacciones, Informes
+- [x] Reparar módulo Usuarios y Configuración
