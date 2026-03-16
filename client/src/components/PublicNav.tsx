@@ -46,49 +46,33 @@ const navLinks = [
 
 export default function PublicNav() {
   const [isOpen, setIsOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [location] = useLocation();
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 60);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   useEffect(() => {
     setIsOpen(false);
     setActiveDropdown(null);
   }, [location]);
 
-  const isHome = location === "/";
-  // En home sin scroll: overlay oscuro náutico semitransparente para máximo contraste
-  // En cualquier otra página o con scroll: fondo blanco sólido
-  const transparent = !scrolled && isHome;
-
   return (
     <header
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-        transparent
-          ? "bg-[oklch(0.32_0.14_220/0.52)] backdrop-blur-[2px]"
-          : "bg-white shadow-md border-b border-border/50"
+        "bg-white shadow-md border-b border-border/50"
       )}
     >
       {/* ── Barra superior de información ─────────────────────────── */}
       <div
         className={cn(
           "hidden lg:block border-b transition-all duration-300",
-          transparent
-            ? "border-white/15 bg-white/5"
-            : "border-border/40 bg-primary/5"
+          "border-border/40 bg-primary/5"
         )}
       >
         <div className="container flex items-center justify-between py-1.5">
           <div
             className={cn(
               "flex items-center gap-6 text-xs font-display",
-              transparent ? "text-white/85" : "text-muted-foreground"
+              "text-muted-foreground"
             )}
           >
             <span className="flex items-center gap-1.5">
@@ -101,7 +85,7 @@ export default function PublicNav() {
           <div
             className={cn(
               "text-xs font-display font-semibold",
-              transparent ? "text-amber-300" : "text-accent"
+              "text-accent"
             )}
           >
             🌊 Temporada Abril — Octubre 2026 · Reserva online con 10% dto.
@@ -118,7 +102,7 @@ export default function PublicNav() {
             <div
               className={cn(
                 "w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300",
-                transparent ? "bg-white/25 backdrop-blur-sm" : "bg-primary"
+                "bg-primary"
               )}
             >
               <Anchor className="w-5 h-5 text-white" />
@@ -127,7 +111,7 @@ export default function PublicNav() {
               <span
                 className={cn(
                   "font-heading font-bold text-lg leading-none transition-colors",
-                  transparent ? "text-white" : "text-primary"
+                  "text-primary"
                 )}
               >
                 NÁYADE
@@ -135,7 +119,7 @@ export default function PublicNav() {
               <span
                 className={cn(
                   "font-display text-[10px] uppercase tracking-widest leading-none transition-colors",
-                  transparent ? "text-white/70" : "text-muted-foreground"
+                  "text-muted-foreground"
                 )}
               >
                 Experiences
@@ -156,10 +140,8 @@ export default function PublicNav() {
                   <button
                     className={cn(
                       "flex items-center gap-1 px-3 py-2 rounded-lg font-display text-sm font-medium transition-all duration-200",
-                      transparent
-                        ? "text-white hover:text-white hover:bg-white/15 drop-shadow-sm"
-                        : "text-foreground hover:text-primary hover:bg-primary/8",
-                      location === link.href && !transparent && "text-primary font-semibold"
+                    "text-foreground hover:text-primary hover:bg-primary/8",
+                      location === link.href && "text-primary font-semibold"
                     )}
                   >
                     {link.label}
@@ -198,9 +180,7 @@ export default function PublicNav() {
                 size="sm"
                 className={cn(
                   "font-display font-medium rounded-full",
-                  transparent
-                    ? "text-white hover:text-white hover:bg-white/15"
-                    : "text-foreground hover:text-primary"
+                "text-foreground hover:text-primary"
                 )}
               >
                 Contacto
@@ -221,9 +201,7 @@ export default function PublicNav() {
             onClick={() => setIsOpen(!isOpen)}
             className={cn(
               "lg:hidden p-2 rounded-lg transition-colors",
-              transparent
-                ? "text-white hover:bg-white/20"
-                : "text-foreground hover:bg-muted"
+              "text-foreground hover:bg-muted"
             )}
           >
             {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
