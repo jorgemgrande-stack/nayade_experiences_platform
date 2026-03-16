@@ -151,6 +151,13 @@ export default function PublicFooter() {
             <Link href="/cookies">
               <span className="text-white/40 hover:text-white/70 text-xs font-display transition-colors cursor-pointer">Cookies</span>
             </Link>
+            <span className="text-white/20">·</span>
+            <Link href="/admin">
+              <span className="text-white/25 hover:text-white/60 text-xs font-display transition-colors cursor-pointer flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Acceso Gestores
+              </span>
+            </Link>
           </div>
         </div>
       </div>

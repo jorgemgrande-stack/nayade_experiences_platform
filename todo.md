@@ -75,3 +75,4 @@
 - [x] Aumentar altura del header y aplicar azul agua semitransparente en modo hero
 - [x] Corregir pantalla "Acceso Restringido" del admin para mostrar botón de login funcional
 - [x] Corregir dashboard de admin: OAuth callback ahora redirige a /admin tras login
+- [x] Añadir enlace "Acceso Gestores" discreto en el footer
