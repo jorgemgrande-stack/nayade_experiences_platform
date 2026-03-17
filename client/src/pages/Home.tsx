@@ -8,6 +8,7 @@ import {
   ArrowRight, Phone, Mail, Anchor, Wind, Zap, Heart, Shield, Calendar
 } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
+import BookingModal from "@/components/BookingModal";
 
 // CDN images
 const CDN = {
@@ -153,6 +154,7 @@ const testimonios = [
 
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [bookingProduct, setBookingProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string } | null>(null);
   const { data: featuredExperiences } = trpc.public.getFeaturedExperiences.useQuery();
   const { data: slideshowItemsRaw } = trpc.public.getSlideshowItems.useQuery();
   const { data: homeExperiences } = trpc.homeModules.getModule.useQuery({ moduleKey: "experiences_featured" });
@@ -298,9 +300,9 @@ export default function Home() {
               isFeatured: false,
               isActive: true,
             }))).map((act: any) => (
-              <Link key={act.slug} href={`/experiencias/${act.slug}`}>
-                <div className="group relative bg-card rounded-2xl overflow-hidden shadow-sm border border-border card-hover cursor-pointer">
-                  <div className="relative h-52 overflow-hidden">
+              <div key={act.slug} className="group relative bg-card rounded-2xl overflow-hidden shadow-sm border border-border card-hover">
+                <Link href={`/experiencias/${act.slug}`}>
+                  <div className="relative h-52 overflow-hidden cursor-pointer">
                     <img
                       src={act.image1 || CDN.hero1}
                       alt={act.title}
@@ -313,20 +315,32 @@ export default function Home() {
                       </Badge>
                     )}
                   </div>
-                  <div className="p-5">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="font-display font-bold text-lg text-foreground">{act.title}</h3>
-                      <span className="text-accent font-display font-bold text-sm whitespace-nowrap ml-2">
-                        {act.currency ? `${act.basePrice}€` : act.basePrice}
+                </Link>
+                <div className="p-5">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-display font-bold text-lg text-foreground">{act.title}</h3>
+                    <span className="text-accent font-display font-bold text-sm whitespace-nowrap ml-2">
+                      {act.currency ? `${act.basePrice}€` : act.basePrice}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground text-sm mb-4">{act.shortDescription}</p>
+                  <div className="flex items-center gap-3">
+                    <Link href={`/experiencias/${act.slug}`}>
+                      <span className="flex items-center text-primary text-sm font-display font-medium hover:gap-2 transition-all cursor-pointer">
+                        Ver detalles <ArrowRight className="w-3.5 h-3.5 ml-1" />
                       </span>
-                    </div>
-                    <p className="text-muted-foreground text-sm mb-3">{act.shortDescription}</p>
-                    <div className="flex items-center text-primary text-sm font-display font-medium group-hover:gap-2 transition-all">
-                      Ver detalles <ArrowRight className="w-3.5 h-3.5 ml-1" />
-                    </div>
+                    </Link>
+                    {act.basePrice && (
+                      <button
+                        onClick={() => setBookingProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1 })}
+                        className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-display font-bold bg-accent text-accent-foreground hover:bg-accent/90 transition-colors"
+                      >
+                        <Calendar className="w-3.5 h-3.5" /> Reservar
+                      </button>
+                    )}
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
 
@@ -611,6 +625,15 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* BookingModal — se activa desde las tarjetas de experiencias */}
+      {bookingProduct && (
+        <BookingModal
+          isOpen={!!bookingProduct}
+          onClose={() => setBookingProduct(null)}
+          product={bookingProduct}
+        />
+      )}
     </PublicLayout>
   );
 }
