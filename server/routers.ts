@@ -47,6 +47,11 @@ import {
   getReservationByMerchantOrder,
   getAllReservations,
   getReservationById,
+  getVariantsByExperience,
+  getAllVariantsGrouped,
+  createVariant,
+  updateVariant,
+  deleteVariant,
 } from "./db";
 import {
   buildRedsysForm,
@@ -104,6 +109,12 @@ export const appRouter = router({
         const exp = await getExperienceBySlug(input.slug);
         if (!exp) throw new TRPCError({ code: "NOT_FOUND" });
         return exp;
+      }),
+
+    getVariantsByExperience: publicProcedure
+      .input(z.object({ experienceId: z.number() }))
+      .query(async ({ input }) => {
+        return getVariantsByExperience(input.experienceId);
       }),
 
     getCategories: publicProcedure.query(async () => {
@@ -321,6 +332,51 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         return deleteLocation(input.id);
       }),
+
+    // ── VARIANTS ──────────────────────────────────────────────────────────────
+    getVariants: adminProcedure
+      .input(z.object({ experienceId: z.number().optional() }))
+      .query(async ({ input }) => {
+        if (input.experienceId) {
+          return getVariantsByExperience(input.experienceId);
+        }
+        return getAllVariantsGrouped();
+      }),
+
+    createVariant: adminProcedure
+      .input(z.object({
+        experienceId: z.number(),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        priceModifier: z.string(),
+        priceType: z.enum(["fixed", "percentage", "per_person"]),
+        isRequired: z.boolean().default(false),
+        sortOrder: z.number().default(0),
+      }))
+      .mutation(async ({ input }) => {
+        return createVariant(input);
+      }),
+
+    updateVariant: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        description: z.string().nullable().optional(),
+        priceModifier: z.string().optional(),
+        priceType: z.enum(["fixed", "percentage", "per_person"]).optional(),
+        isRequired: z.boolean().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return updateVariant(id, data as any);
+      }),
+
+    deleteVariant: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return deleteVariant(input.id);
+      }),
   }),
 
   // ─── ADMIN: LEADS & QUOTES ────────────────────────────────────────────────
@@ -485,6 +541,7 @@ export const appRouter = router({
         productId: z.number(),
         bookingDate: z.string(),
         people: z.number().min(1).max(100),
+        variantId: z.number().optional(),
         extras: z.array(z.object({
           name: z.string(),
           price: z.number(),
@@ -499,14 +556,31 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         // 1. Obtener el producto y validar que existe y tiene precio
-        const { getExperienceById } = await import("./db");
+        const { getExperienceById, getVariantsByExperience } = await import("./db");
         const product = await getExperienceById(input.productId);
         if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
         if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto no tiene precio fijo" });
 
         // 2. Calcular el importe total en backend (nunca confiar en el frontend)
         const basePrice = parseFloat(String(product.basePrice));
-        let totalEuros = basePrice * input.people;
+        let pricePerPerson = basePrice;
+
+        // Si se seleccionó una variante, usar su precio
+        if (input.variantId) {
+          const variants = await getVariantsByExperience(input.productId);
+          const variant = variants.find(v => v.id === input.variantId);
+          if (variant) {
+            const mod = parseFloat(String(variant.priceModifier ?? 0));
+            if (variant.priceType === "percentage") {
+              pricePerPerson = basePrice + (basePrice * mod / 100);
+            } else {
+              // fixed o per_person: el valor es el precio directo
+              pricePerPerson = mod;
+            }
+          }
+        }
+
+        let totalEuros = pricePerPerson * input.people;
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
         totalEuros += extrasTotal;
         const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos

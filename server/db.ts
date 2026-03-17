@@ -697,3 +697,68 @@ export async function getExperienceById(id: number) {
   const result = await db.select().from(experiences).where(eq(experiences.id, id)).limit(1);
   return result[0] ?? null;
 }
+
+// ─── EXPERIENCE VARIANTS ──────────────────────────────────────────────────────
+
+export async function getVariantsByExperience(experienceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(experienceVariants)
+    .where(eq(experienceVariants.experienceId, experienceId))
+    .orderBy(experienceVariants.sortOrder, experienceVariants.id);
+}
+
+export async function getAllVariantsGrouped() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(experienceVariants)
+    .orderBy(experienceVariants.experienceId, experienceVariants.sortOrder);
+}
+
+export async function createVariant(data: {
+  experienceId: number;
+  name: string;
+  description?: string;
+  priceModifier: string;
+  priceType: "fixed" | "percentage" | "per_person";
+  isRequired?: boolean;
+  sortOrder?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(experienceVariants).values({
+    experienceId: data.experienceId,
+    name: data.name,
+    description: data.description ?? null,
+    priceModifier: data.priceModifier,
+    priceType: data.priceType,
+    isRequired: data.isRequired ?? false,
+    sortOrder: data.sortOrder ?? 0,
+    options: [],
+  });
+  return { id: Number(result[0].insertId) };
+}
+
+export async function updateVariant(
+  id: number,
+  data: Partial<{
+    name: string;
+    description: string | null;
+    priceModifier: string;
+    priceType: "fixed" | "percentage" | "per_person";
+    isRequired: boolean;
+    sortOrder: number;
+  }>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(experienceVariants).set(data).where(eq(experienceVariants.id, id));
+  return { success: true };
+}
+
+export async function deleteVariant(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(experienceVariants).where(eq(experienceVariants.id, id));
+  return { success: true };
+}

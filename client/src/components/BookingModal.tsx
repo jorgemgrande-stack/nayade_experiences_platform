@@ -1,6 +1,6 @@
 /**
  * BookingModal — Flujo de reserva con pago Redsys
- * Pasos: 1) Fecha + Personas  2) Extras  3) Datos cliente  4) Resumen + Pagar
+ * Pasos: 1) Fecha + Personas + Variante  2) Extras  3) Datos cliente  4) Resumen + Pagar
  * El importe se calcula en backend. El frontend solo muestra el total estimado.
  */
 import { useState, useMemo } from "react";
@@ -41,6 +41,7 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
   const [step, setStep] = useState<Step>("datetime");
   const [bookingDate, setBookingDate] = useState("");
   const [people, setPeople] = useState(product.minPersons ?? 1);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [selectedExtras, setSelectedExtras] = useState<Record<string, number>>({});
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -49,12 +50,32 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cargar variantes del producto
+  const { data: variants } = trpc.public.getVariantsByExperience.useQuery(
+    { experienceId: product.id },
+    { enabled: isOpen }
+  );
+
+  const hasVariants = (variants?.length ?? 0) > 0;
+  const selectedVariant = variants?.find(v => v.id === selectedVariantId) ?? null;
+
+  // Calcular precio efectivo por persona
   const basePrice = parseFloat(String(product.basePrice ?? 0));
+  const effectivePricePerPerson = useMemo(() => {
+    if (!selectedVariant) return basePrice;
+    const mod = parseFloat(String(selectedVariant.priceModifier ?? 0));
+    if (selectedVariant.priceType === "percentage") {
+      return basePrice + (basePrice * mod / 100);
+    }
+    // fixed o per_person: el valor es el precio directo
+    return mod;
+  }, [selectedVariant, basePrice]);
+
   const extrasTotal = useMemo(() =>
     extras.reduce((sum, e) => sum + (selectedExtras[e.name] ?? 0) * e.price, 0),
     [extras, selectedExtras]
   );
-  const estimatedTotal = basePrice * people + extrasTotal;
+  const estimatedTotal = effectivePricePerPerson * people + extrasTotal;
 
   const createAndPay = trpc.reservations.createAndPay.useMutation();
 
@@ -76,6 +97,7 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
         productId: product.id,
         bookingDate,
         people,
+        variantId: selectedVariantId ?? undefined,
         extras: extrasPayload,
         customerName,
         customerEmail,
@@ -114,7 +136,13 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
   };
 
   const canGoNext = () => {
-    if (step === "datetime") return bookingDate !== "" && people >= (product.minPersons ?? 1);
+    if (step === "datetime") {
+      if (!bookingDate || people < (product.minPersons ?? 1)) return false;
+      // Si hay variantes obligatorias, debe seleccionarse una
+      const hasRequired = variants?.some(v => v.isRequired);
+      if (hasRequired && !selectedVariantId) return false;
+      return true;
+    }
     if (step === "extras") return true;
     if (step === "customer") return customerName.length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail);
     return true;
@@ -159,7 +187,7 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                 Reservar: {product.title}
               </h2>
               <p style={{ margin: "0.25rem 0 0", fontSize: "0.875rem", color: "#666" }}>
-                Desde {basePrice}€/persona
+                Desde {effectivePricePerPerson.toFixed(2)}€/persona
                 {product.duration && ` · ${product.duration}`}
               </p>
             </div>
@@ -196,7 +224,7 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
-          {/* Step 1: Fecha y personas */}
+          {/* Step 1: Fecha, personas y variante */}
           {step === "datetime" && (
             <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <div>
@@ -215,6 +243,7 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                   }}
                 />
               </div>
+
               <div>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: "0.5rem", color: "#374151" }}>
                   Número de personas *
@@ -248,13 +277,104 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                   </span>
                 </div>
               </div>
+
+              {/* Selector de variante (si hay variantes) */}
+              {hasVariants && (
+                <div>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: "0.5rem", color: "#374151" }}>
+                    Tipo de tarifa {variants?.some(v => v.isRequired) ? "*" : "(opcional)"}
+                  </label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    {!variants?.some(v => v.isRequired) && (
+                      <label
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "0.75rem 1rem", border: `1.5px solid ${selectedVariantId === null ? "#f97316" : "#d1d5db"}`,
+                          borderRadius: "0.5rem", cursor: "pointer",
+                          background: selectedVariantId === null ? "#fff7ed" : "#fff",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                          <input
+                            type="radio"
+                            name="variant"
+                            checked={selectedVariantId === null}
+                            onChange={() => setSelectedVariantId(null)}
+                            style={{ accentColor: "#f97316" }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 600, color: "#1a1a1a", fontSize: "0.9rem" }}>Precio base</div>
+                            <div style={{ color: "#6b7280", fontSize: "0.8rem" }}>Tarifa estándar</div>
+                          </div>
+                        </div>
+                        <span style={{ fontWeight: 700, color: "#f97316", fontSize: "1rem" }}>
+                          {basePrice.toFixed(2)}€
+                        </span>
+                      </label>
+                    )}
+                    {variants?.map(v => {
+                      const mod = parseFloat(String(v.priceModifier ?? 0));
+                      const displayPrice = v.priceType === "percentage"
+                        ? basePrice + (basePrice * mod / 100)
+                        : mod;
+                      const isSelected = selectedVariantId === v.id;
+                      return (
+                        <label
+                          key={v.id}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "0.75rem 1rem", border: `1.5px solid ${isSelected ? "#f97316" : "#d1d5db"}`,
+                            borderRadius: "0.5rem", cursor: "pointer",
+                            background: isSelected ? "#fff7ed" : "#fff",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                            <input
+                              type="radio"
+                              name="variant"
+                              checked={isSelected}
+                              onChange={() => setSelectedVariantId(v.id)}
+                              style={{ accentColor: "#f97316" }}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 600, color: "#1a1a1a", fontSize: "0.9rem" }}>
+                                {v.name}
+                                {v.isRequired && (
+                                  <span style={{ marginLeft: "0.4rem", fontSize: "0.7rem", color: "#f97316", fontWeight: 400 }}>
+                                    (obligatorio)
+                                  </span>
+                                )}
+                              </div>
+                              {v.description && (
+                                <div style={{ color: "#6b7280", fontSize: "0.8rem" }}>{v.description}</div>
+                              )}
+                            </div>
+                          </div>
+                          <span style={{ fontWeight: 700, color: "#f97316", fontSize: "1rem" }}>
+                            {displayPrice.toFixed(2)}€
+                            {v.priceType === "percentage" && (
+                              <span style={{ fontWeight: 400, fontSize: "0.75rem", color: "#9ca3af", marginLeft: "0.25rem" }}>
+                                ({mod > 0 ? "+" : ""}{mod}%)
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div style={{
                 background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: "0.5rem",
                 padding: "0.75rem 1rem",
               }}>
                 <span style={{ color: "#9a3412", fontSize: "0.875rem" }}>
-                  💡 Subtotal estimado: <strong>{(basePrice * people).toFixed(2)}€</strong>
-                  {" "}({basePrice}€ × {people} persona{people !== 1 ? "s" : ""})
+                  💡 Subtotal estimado: <strong>{(effectivePricePerPerson * people).toFixed(2)}€</strong>
+                  {" "}({effectivePricePerPerson.toFixed(2)}€ × {people} persona{people !== 1 ? "s" : ""})
+                  {selectedVariant && (
+                    <span style={{ color: "#6b7280" }}> — tarifa: {selectedVariant.name}</span>
+                  )}
                 </span>
               </div>
             </div>
@@ -265,27 +385,24 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {extras.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "2rem", color: "#6b7280" }}>
-                  <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>✓</div>
-                  <p>No hay extras disponibles para esta actividad.</p>
-                  <p style={{ fontSize: "0.875rem" }}>Pulsa "Siguiente" para continuar.</p>
+                  <div style={{ fontSize: "2.5rem", marginBottom: "0.75rem" }}>✨</div>
+                  <p style={{ fontWeight: 600, color: "#374151" }}>No hay extras disponibles</p>
+                  <p style={{ fontSize: "0.875rem", marginTop: "0.25rem" }}>Puedes continuar al siguiente paso.</p>
                 </div>
               ) : (
                 extras.map(extra => (
                   <div key={extra.name} style={{
-                    border: "1.5px solid #e5e7eb", borderRadius: "0.75rem",
-                    padding: "1rem", display: "flex", justifyContent: "space-between",
-                    alignItems: "center",
+                    padding: "1rem", border: "1.5px solid #e5e7eb", borderRadius: "0.75rem",
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem",
                   }}>
-                    <div>
-                      <div style={{ fontWeight: 600, color: "#1a1a1a" }}>{extra.name}</div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontWeight: 600, color: "#1a1a1a", fontSize: "0.95rem" }}>{extra.name}</p>
                       {extra.description && (
-                        <div style={{ fontSize: "0.8rem", color: "#6b7280", marginTop: "0.2rem" }}>
-                          {extra.description}
-                        </div>
+                        <p style={{ margin: "0.2rem 0 0", color: "#6b7280", fontSize: "0.8rem" }}>{extra.description}</p>
                       )}
-                      <div style={{ color: "#f97316", fontWeight: 700, marginTop: "0.25rem" }}>
+                      <p style={{ margin: "0.2rem 0 0", color: "#f97316", fontWeight: 700, fontSize: "0.9rem" }}>
                         +{extra.price}€/ud
-                      </div>
+                      </p>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                       <button
@@ -293,10 +410,11 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                         style={{
                           width: "32px", height: "32px", borderRadius: "50%",
                           border: "1.5px solid #d1d5db", background: "#f9fafb",
-                          cursor: "pointer", fontSize: "1rem",
+                          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "1.1rem",
                         }}
                       >−</button>
-                      <span style={{ fontWeight: 600, minWidth: "1.5rem", textAlign: "center" }}>
+                      <span style={{ minWidth: "1.5rem", textAlign: "center", fontWeight: 700 }}>
                         {selectedExtras[extra.name] ?? 0}
                       </span>
                       <button
@@ -304,7 +422,8 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                         style={{
                           width: "32px", height: "32px", borderRadius: "50%",
                           border: "1.5px solid #d1d5db", background: "#f9fafb",
-                          cursor: "pointer", fontSize: "1rem",
+                          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: "1.1rem",
                         }}
                       >+</button>
                     </div>
@@ -314,9 +433,9 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
             </div>
           )}
 
-          {/* Step 3: Datos del cliente */}
+          {/* Step 3: Datos cliente */}
           {step === "customer" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               <div>
                 <label style={{ display: "block", fontWeight: 600, marginBottom: "0.4rem", color: "#374151" }}>
                   Nombre completo *
@@ -398,7 +517,13 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                   <Row label="Actividad" value={product.title} />
                   <Row label="Fecha" value={bookingDate} />
                   <Row label="Personas" value={`${people} persona${people !== 1 ? "s" : ""}`} />
-                  <Row label="Precio base" value={`${basePrice}€ × ${people} = ${(basePrice * people).toFixed(2)}€`} />
+                  {selectedVariant && (
+                    <Row label="Tarifa" value={selectedVariant.name} />
+                  )}
+                  <Row
+                    label="Precio por persona"
+                    value={`${effectivePricePerPerson.toFixed(2)}€ × ${people} = ${(effectivePricePerPerson * people).toFixed(2)}€`}
+                  />
                   {extras.filter(e => (selectedExtras[e.name] ?? 0) > 0).map(e => (
                     <Row
                       key={e.name}

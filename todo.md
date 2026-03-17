@@ -184,3 +184,13 @@
 - [x] Actualizar header con logo azul real
 - [x] Actualizar footer con logo blanco real
 - [x] Actualizar sidebar del admin con logo azul (circular)
+
+## Reparación módulo Variantes de Precio (v3.4)
+- [x] Auditar esquema BD tabla experience_variants (ya existía, estructura correcta)
+- [x] Auditar procedimientos tRPC de variantes (no existían, implementados)
+- [x] Auditar componente VariantsManager frontend (era placeholder, reescrito)
+- [x] Reparar backend: create/update/delete/list variantes por producto (db.ts + routers.ts)
+- [x] Reparar frontend: formulario de variante con guardado real (VariantsManager.tsx)
+- [x] Conectar BookingModal para usar precio de variante seleccionada
+- [x] Backend createAndPay calcula precio correcto según variante (fixed/per_person/percentage)
+- [x] Redsys recibe el importe calculado en backend con la variante seleccionada
