@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Tag, Euro, Info } from "lucide-react";
+import { Plus, Pencil, Trash2, Tag, Euro, Info, MoreVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const PRICE_TYPE_LABELS: Record<string, string> = {
   fixed: "Precio fijo (€)",
@@ -215,18 +216,25 @@ export default function VariantsManager() {
                           <Badge variant="secondary" className="text-xs">Obligatoria</Badge>
                         )}
                         <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => openEdit(v)} title="Editar">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setDeleteConfirm(v.id)}
-                            title="Eliminar"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" title="Acciones">
+                                <MoreVertical className="w-3.5 h-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem onClick={() => openEdit(v)}>
+                                <Pencil className="w-3.5 h-3.5 mr-2" /> Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="text-red-600 focus:text-red-600"
+                                onClick={() => setDeleteConfirm(v.id)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                     ))}

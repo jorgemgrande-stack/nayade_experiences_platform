@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
-import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -139,6 +140,18 @@ export default function ExperiencesManager() {
   const deleteMutation = trpc.products.delete.useMutation({
     onSuccess: () => { toast.success("Experiencia desactivada"); refetch(); },
     onError: () => toast.error("Error al eliminar"),
+  });
+  const hardDeleteMutation = trpc.products.hardDelete.useMutation({
+    onSuccess: () => { toast.success("Experiencia eliminada permanentemente"); refetch(); },
+    onError: () => toast.error("Error al eliminar"),
+  });
+  const toggleActiveMutation = trpc.products.toggleActive.useMutation({
+    onSuccess: (_, vars) => { toast.success(vars.isActive ? "Experiencia activada" : "Experiencia desactivada"); refetch(); },
+    onError: () => toast.error("Error al cambiar estado"),
+  });
+  const cloneMutation = trpc.products.clone.useMutation({
+    onSuccess: () => { toast.success("Experiencia clonada (inactiva)"); refetch(); },
+    onError: () => toast.error("Error al clonar"),
   });
 
   const openCreate = () => { setEditingId(null); setForm(emptyForm); setShowModal(true); };
@@ -281,17 +294,33 @@ export default function ExperiencesManager() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1 justify-end">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(exp)} className="w-8 h-8">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => { if (confirm("¿Desactivar esta experiencia?")) deleteMutation.mutate({ id: exp.id }); }}
-                          className="w-8 h-8 hover:text-red-500"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="w-8 h-8">
+                              <MoreVertical className="w-3.5 h-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem onClick={() => openEdit(exp)}>
+                              <Pencil className="w-3.5 h-3.5 mr-2" /> Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => toggleActiveMutation.mutate({ id: exp.id, isActive: !exp.isActive })}>
+                              {exp.isActive
+                                ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> Desactivar</>
+                                : <><Power className="w-3.5 h-3.5 mr-2" /> Activar</>}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => cloneMutation.mutate({ id: exp.id })}>
+                              <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600"
+                              onClick={() => { if (confirm("¿Eliminar permanentemente esta experiencia? Esta acción no se puede deshacer.")) hardDeleteMutation.mutate({ id: exp.id }); }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </td>
                   </tr>

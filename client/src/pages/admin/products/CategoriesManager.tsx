@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Tag, ImageIcon, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Tag, ImageIcon, X, MoreVertical, Copy, PowerOff, Power } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 interface CategoryForm {
@@ -83,7 +84,19 @@ export default function CategoriesManager() {
     onError: (e) => toast.error(e.message),
   });
   const deleteMut = trpc.products.deleteCategory.useMutation({
-    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría eliminada"); },
+    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría desactivada"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const hardDeleteMut = trpc.products.hardDeleteCategory.useMutation({
+    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría eliminada permanentemente"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const toggleActiveMut = trpc.products.toggleCategoryActive.useMutation({
+    onSuccess: (_, vars) => { utils.products.getCategories.invalidate(); toast.success(vars.isActive ? "Categoría activada" : "Categoría desactivada"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const cloneMut = trpc.products.cloneCategory.useMutation({
+    onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría clonada (inactiva)"); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -139,10 +152,30 @@ export default function CategoriesManager() {
                 <Button size="sm" variant="outline" className="flex-1" onClick={() => openEdit(cat)}>
                   <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
                 </Button>
-                <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10"
-                  onClick={() => { if (confirm("¿Eliminar esta categoría?")) deleteMut.mutate({ id: cat.id }); }}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline" className="px-2">
+                      <MoreVertical className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={() => toggleActiveMut.mutate({ id: cat.id, isActive: !cat.isActive })}>
+                      {cat.isActive
+                        ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> Desactivar</>
+                        : <><Power className="w-3.5 h-3.5 mr-2" /> Activar</>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => cloneMut.mutate({ id: cat.id })}>
+                      <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-red-600 focus:text-red-600"
+                      onClick={() => { if (confirm("¿Eliminar permanentemente esta categoría?")) hardDeleteMut.mutate({ id: cat.id }); }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           ))}

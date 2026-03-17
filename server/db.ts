@@ -762,3 +762,124 @@ export async function deleteVariant(id: number) {
   await db.delete(experienceVariants).where(eq(experienceVariants.id, id));
   return { success: true };
 }
+
+// ─── ADMIN: ACCIONES EXTENDIDAS (toggle, hard delete, clone) ─────────────────
+
+export async function hardDeleteExperience(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(experiences).where(eq(experiences.id, id));
+  return { success: true };
+}
+
+export async function toggleExperienceActive(id: number, isActive: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(experiences).set({ isActive }).where(eq(experiences.id, id));
+  return { success: true };
+}
+
+export async function cloneExperience(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [orig] = await db.select().from(experiences).where(eq(experiences.id, id));
+  if (!orig) throw new Error("Experience not found");
+  const newSlug = orig.slug + "-copia-" + nanoid(4);
+  const newTitle = orig.title + " (Copia)";
+  await db.insert(experiences).values({
+    slug: newSlug,
+    title: newTitle,
+    shortDescription: orig.shortDescription,
+    description: orig.description,
+    categoryId: orig.categoryId,
+    locationId: orig.locationId,
+    coverImageUrl: orig.coverImageUrl,
+    image1: orig.image1,
+    image2: orig.image2,
+    image3: orig.image3,
+    image4: orig.image4,
+    gallery: orig.gallery,
+    basePrice: orig.basePrice,
+    currency: orig.currency,
+    duration: orig.duration,
+    minPersons: orig.minPersons,
+    maxPersons: orig.maxPersons,
+    difficulty: orig.difficulty,
+    includes: orig.includes,
+    excludes: orig.excludes,
+    requirements: orig.requirements,
+    isFeatured: false,
+    isActive: false,
+    sortOrder: orig.sortOrder,
+    metaTitle: orig.metaTitle,
+    metaDescription: orig.metaDescription,
+  });
+  return { success: true, slug: newSlug };
+}
+
+export async function hardDeleteCategory(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(categories).where(eq(categories.id, id));
+  return { success: true };
+}
+
+export async function toggleCategoryActive(id: number, isActive: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(categories).set({ isActive }).where(eq(categories.id, id));
+  return { success: true };
+}
+
+export async function cloneCategory(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [orig] = await db.select().from(categories).where(eq(categories.id, id));
+  if (!orig) throw new Error("Category not found");
+  const newSlug = orig.slug + "-copia-" + nanoid(4);
+  await db.insert(categories).values({
+    slug: newSlug,
+    name: orig.name + " (Copia)",
+    description: orig.description,
+    imageUrl: orig.imageUrl,
+    image1: orig.image1,
+    iconName: orig.iconName,
+    sortOrder: orig.sortOrder,
+    isActive: false,
+  });
+  return { success: true, slug: newSlug };
+}
+
+export async function hardDeleteLocation(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(locations).where(eq(locations.id, id));
+  return { success: true };
+}
+
+export async function toggleLocationActive(id: number, isActive: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(locations).set({ isActive }).where(eq(locations.id, id));
+  return { success: true };
+}
+
+export async function cloneLocation(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [orig] = await db.select().from(locations).where(eq(locations.id, id));
+  if (!orig) throw new Error("Location not found");
+  const newSlug = orig.slug + "-copia-" + nanoid(4);
+  await db.insert(locations).values({
+    slug: newSlug,
+    name: orig.name + " (Copia)",
+    description: orig.description,
+    imageUrl: orig.imageUrl,
+    address: orig.address,
+    latitude: orig.latitude,
+    longitude: orig.longitude,
+    isActive: false,
+    sortOrder: orig.sortOrder,
+  });
+  return { success: true, slug: newSlug };
+}

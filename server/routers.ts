@@ -52,6 +52,15 @@ import {
   createVariant,
   updateVariant,
   deleteVariant,
+  hardDeleteExperience,
+  toggleExperienceActive,
+  cloneExperience,
+  hardDeleteCategory,
+  toggleCategoryActive,
+  cloneCategory,
+  hardDeleteLocation,
+  toggleLocationActive,
+  cloneLocation,
 } from "./db";
 import {
   buildRedsysForm,
@@ -260,6 +269,24 @@ export const appRouter = router({
         return deleteExperience(input.id);
       }),
 
+    hardDelete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return hardDeleteExperience(input.id);
+      }),
+
+    toggleActive: adminProcedure
+      .input(z.object({ id: z.number(), isActive: z.boolean() }))
+      .mutation(async ({ input }) => {
+        return toggleExperienceActive(input.id, input.isActive);
+      }),
+
+    clone: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return cloneExperience(input.id);
+      }),
+
     getCategories: adminProcedure.query(async () => {
       return getAllCategories();
     }),
@@ -298,6 +325,24 @@ export const appRouter = router({
         return deleteCategory(input.id);
       }),
 
+    hardDeleteCategory: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return hardDeleteCategory(input.id);
+      }),
+
+    toggleCategoryActive: adminProcedure
+      .input(z.object({ id: z.number(), isActive: z.boolean() }))
+      .mutation(async ({ input }) => {
+        return toggleCategoryActive(input.id, input.isActive);
+      }),
+
+    cloneCategory: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return cloneCategory(input.id);
+      }),
+
     getLocations: adminProcedure.query(async () => {
       return getAllLocations();
     }),
@@ -331,6 +376,24 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         return deleteLocation(input.id);
+      }),
+
+    hardDeleteLocation: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return hardDeleteLocation(input.id);
+      }),
+
+    toggleLocationActive: adminProcedure
+      .input(z.object({ id: z.number(), isActive: z.boolean() }))
+      .mutation(async ({ input }) => {
+        return toggleLocationActive(input.id, input.isActive);
+      }),
+
+    cloneLocation: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return cloneLocation(input.id);
       }),
 
     // ── VARIANTS ──────────────────────────────────────────────────────────────

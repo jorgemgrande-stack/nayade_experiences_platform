@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, MapPin, MoreVertical, Copy, PowerOff, Power } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface LocationForm {
   name: string;
@@ -38,7 +39,19 @@ export default function LocationsManager() {
     onError: (e) => toast.error(e.message),
   });
   const deleteMut = trpc.products.deleteLocation.useMutation({
-    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Ubicación eliminada"); },
+    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Ubicación desactivada"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const hardDeleteMut = trpc.products.hardDeleteLocation.useMutation({
+    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Ubicación eliminada permanentemente"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const toggleActiveMut = trpc.products.toggleLocationActive.useMutation({
+    onSuccess: (_, vars) => { utils.products.getLocations.invalidate(); toast.success(vars.isActive ? "Ubicación activada" : "Ubicación desactivada"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const cloneMut = trpc.products.cloneLocation.useMutation({
+    onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Ubicación clonada (inactiva)"); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -90,10 +103,30 @@ export default function LocationsManager() {
                 <Button size="sm" variant="outline" onClick={() => openEdit(loc)}>
                   <Pencil className="w-3.5 h-3.5 mr-1" /> Editar
                 </Button>
-                <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10"
-                  onClick={() => { if (confirm("¿Eliminar esta ubicación?")) deleteMut.mutate({ id: loc.id }); }}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline" className="px-2">
+                      <MoreVertical className="w-3.5 h-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={() => toggleActiveMut.mutate({ id: loc.id, isActive: !loc.isActive })}>
+                      {loc.isActive
+                        ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> Desactivar</>
+                        : <><Power className="w-3.5 h-3.5 mr-2" /> Activar</>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => cloneMut.mutate({ id: loc.id })}>
+                      <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-red-600 focus:text-red-600"
+                      onClick={() => { if (confirm("¿Eliminar permanentemente esta ubicación?")) hardDeleteMut.mutate({ id: loc.id }); }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-2" /> Borrar
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           ))}

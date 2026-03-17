@@ -194,3 +194,14 @@
 - [x] Conectar BookingModal para usar precio de variante seleccionada
 - [x] Backend createAndPay calcula precio correcto según variante (fixed/per_person/percentage)
 - [x] Redsys recibe el importe calculado en backend con la variante seleccionada
+
+## Menú de acciones en módulos admin (v3.7)
+- [x] Identificar todos los módulos con icono de papelera
+- [x] Backend: cloneExperience, hardDeleteExperience, toggleExperienceActive
+- [x] Backend: cloneCategory, hardDeleteCategory, toggleCategoryActive
+- [x] Backend: cloneLocation, hardDeleteLocation, toggleLocationActive
+- [x] Frontend: ExperiencesManager — DropdownMenu (Editar, Activar/Desactivar, Clonar, Borrar)
+- [x] Frontend: CategoriesManager — DropdownMenu (Activar/Desactivar, Clonar, Borrar)
+- [x] Frontend: LocationsManager — DropdownMenu (Activar/Desactivar, Clonar, Borrar)
+- [x] Frontend: VariantsManager — DropdownMenu (Editar, Borrar con confirmación)
+- [x] TypeScript 0 errores tras todos los cambios
