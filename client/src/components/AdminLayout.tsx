@@ -127,15 +127,14 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       >
         {/* Logo */}
         <div className="h-16 flex items-center px-4 border-b border-sidebar-border shrink-0">
-          <Link href="/admin" className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gold-gradient flex items-center justify-center shrink-0">
-              <Mountain className="w-4 h-4 text-white" />
-            </div>
+          <Link href="/admin" className="flex items-center gap-2 min-w-0">
+            <img
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade-azul_ea3fd894.jpg"
+              alt="Náyade Admin"
+              className={cn("object-contain rounded-full shrink-0", sidebarOpen ? "h-10 w-10" : "h-8 w-8")}
+            />
             {sidebarOpen && (
-              <div className="flex flex-col leading-none min-w-0">
-                <span className="font-display font-bold text-sm text-sidebar-foreground truncate">NAYADE</span>
-                <span className="text-xs text-amber-400 tracking-widest uppercase">Admin</span>
-              </div>
+              <span className="text-xs text-amber-400 tracking-widest uppercase font-display font-bold shrink-0">Admin</span>
             )}
           </Link>
           <button

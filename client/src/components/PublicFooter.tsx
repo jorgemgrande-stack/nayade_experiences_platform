@@ -41,16 +41,12 @@ export default function PublicFooter() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
           {/* Brand column */}
           <div className="lg:col-span-2">
-            <Link href="/">
-              <div className="flex items-center gap-2.5 mb-5 cursor-pointer">
-                <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center">
-                  <Anchor className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div className="font-heading font-bold text-xl text-white leading-none">NÁYADE</div>
-                  <div className="font-display text-[10px] uppercase tracking-widest text-white/55 leading-none">Experiences</div>
-                </div>
-              </div>
+            <Link href="/" className="inline-block mb-5 cursor-pointer">
+              <img
+                src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade-blanco_3dc99989.png"
+                alt="Náyade Experiences"
+                className="h-20 w-auto object-contain"
+              />
             </Link>
             <p className="text-white/60 text-sm leading-relaxed mb-6 max-w-xs">
               El destino de aventuras acuáticas y bienestar en el embalse de Los Ángeles de San Rafael, Segovia. A solo 45 minutos de Madrid.

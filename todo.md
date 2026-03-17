@@ -177,3 +177,10 @@
 - [x] Enlace "Reservas Redsys" en sidebar del admin (Admin > Operaciones)
 - [x] TypeScript compila sin errores (0 errors)
 - [x] 23 tests Vitest pasando (auth + public API + leads + admin + quotes + bookings + accounting + emails)
+
+## Logos reales (v3.3)
+- [x] Subir logo azul (header) al CDN
+- [x] Subir logo blanco (footer) al CDN
+- [x] Actualizar header con logo azul real
+- [x] Actualizar footer con logo blanco real
+- [x] Actualizar sidebar del admin con logo azul (circular)
