@@ -10,7 +10,7 @@ export default function PublicLayout({ children, fullWidthHero = false }: Public
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <PublicNav />
-      <main className={`flex-1 ${fullWidthHero ? "" : "pt-20"}`}>
+      <main className={`flex-1 ${fullWidthHero ? "" : "pt-20 lg:pt-[112px]"}`}>
         {children}
       </main>
       <PublicFooter />
