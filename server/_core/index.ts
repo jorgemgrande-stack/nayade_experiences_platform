@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import uploadRouter from "../uploadRoutes";
+import redsysRouter from "../redsysRoutes";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -38,6 +39,8 @@ async function startServer() {
   registerOAuthRoutes(app);
   // File upload endpoint
   app.use(uploadRouter);
+  // Redsys IPN notification endpoint
+  app.use(redsysRouter);
   // tRPC API
   app.use(
     "/api/trpc",

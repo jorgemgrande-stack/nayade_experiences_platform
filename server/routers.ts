@@ -43,7 +43,16 @@ import {
   getAllUsers,
   getHomeModuleItems,
   setHomeModuleItems,
+  createReservation,
+  getReservationByMerchantOrder,
+  getAllReservations,
+  getReservationById,
 } from "./db";
+import {
+  buildRedsysForm,
+  validateRedsysNotification,
+  generateMerchantOrder,
+} from "./redsys";
 
 // Admin middleware
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -461,6 +470,121 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         return setHomeModuleItems(input.moduleKey, input.experienceIds);
+      }),
+  }),
+
+  // ─── RESERVATIONS (Redsys) ─────────────────────────────────────────────────────
+  reservations: router({
+    /**
+     * Crea una pre-reserva con estado pending_payment y devuelve los datos
+     * necesarios para redirigir al TPV Redsys.
+     * El importe se calcula SIEMPRE en backend desde el precio del producto.
+     */
+    createAndPay: publicProcedure
+      .input(z.object({
+        productId: z.number(),
+        bookingDate: z.string(),
+        people: z.number().min(1).max(100),
+        extras: z.array(z.object({
+          name: z.string(),
+          price: z.number(),
+          quantity: z.number(),
+        })).default([]),
+        customerName: z.string().min(2),
+        customerEmail: z.string().email(),
+        customerPhone: z.string().optional(),
+        notes: z.string().optional(),
+        /** URL base del frontend para construir las URLs de retorno */
+        origin: z.string().url(),
+      }))
+      .mutation(async ({ input }) => {
+        // 1. Obtener el producto y validar que existe y tiene precio
+        const { getExperienceById } = await import("./db");
+        const product = await getExperienceById(input.productId);
+        if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
+        if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto no tiene precio fijo" });
+
+        // 2. Calcular el importe total en backend (nunca confiar en el frontend)
+        const basePrice = parseFloat(String(product.basePrice));
+        let totalEuros = basePrice * input.people;
+        const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
+        totalEuros += extrasTotal;
+        const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos
+
+        // 3. Generar merchantOrder único
+        const merchantOrder = generateMerchantOrder();
+
+        // 4. Crear la pre-reserva en BD con estado pending_payment
+        const extrasJson = JSON.stringify(input.extras);
+        await createReservation({
+          productId: input.productId,
+          productName: product.title,
+          bookingDate: input.bookingDate,
+          people: input.people,
+          extrasJson,
+          amountTotal: amountCents,
+          customerName: input.customerName,
+          customerEmail: input.customerEmail,
+          customerPhone: input.customerPhone,
+          merchantOrder,
+          notes: input.notes,
+        });
+
+        // 5. Construir el formulario Redsys
+        const redsysForm = buildRedsysForm({
+          amount: amountCents,
+          merchantOrder,
+          productDescription: `${product.title} x${input.people} personas`,
+          notifyUrl: `${input.origin}/api/redsys/notification`,
+          okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+          holderName: input.customerName,
+        });
+
+        return {
+          merchantOrder,
+          amountCents,
+          amountEuros: totalEuros,
+          productName: product.title,
+          redsysForm,
+        };
+      }),
+
+    /** Consulta el estado de una reserva por merchantOrder (para la página OK/KO) */
+    getStatus: publicProcedure
+      .input(z.object({ merchantOrder: z.string() }))
+      .query(async ({ input }) => {
+        const reservation = await getReservationByMerchantOrder(input.merchantOrder);
+        if (!reservation) throw new TRPCError({ code: "NOT_FOUND" });
+        return {
+          status: reservation.status,
+          productName: reservation.productName,
+          bookingDate: reservation.bookingDate,
+          people: reservation.people,
+          amountTotal: reservation.amountTotal,
+          customerName: reservation.customerName,
+          customerEmail: reservation.customerEmail,
+        };
+      }),
+
+    /** Listado de reservas para el panel de admin */
+    getAll: adminProcedure
+      .input(z.object({
+        status: z.string().optional(),
+        limit: z.number().default(50),
+        offset: z.number().default(0),
+      }))
+      .query(async ({ input }) => {
+        return getAllReservations(input);
+      }),
+
+    /** Detalle de una reserva para el panel de admin */
+    getById: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        const r = await getReservationById(input.id);
+        if (!r) throw new TRPCError({ code: "NOT_FOUND" });
+        return r;
       }),
   }),
 });

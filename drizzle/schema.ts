@@ -312,9 +312,32 @@ export const homeModuleItems = mysqlTable("home_module_items", {
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
 });
 
-// ─── TYPE EXPORTS ─────────────────────────────────────────────────────────────
-export type HomeModuleItem = typeof homeModuleItems.$inferSelect;
+// ─── RESERVATIONS (Redsys) ─────────────────────────────────────────────────────────────────────────────────
+export const reservations = mysqlTable("reservations", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("product_id").notNull(),
+  productName: varchar("product_name", { length: 255 }).notNull(),
+  bookingDate: varchar("booking_date", { length: 20 }).notNull(),
+  people: int("people").default(1).notNull(),
+  extrasJson: text("extras_json"),
+  amountTotal: int("amount_total").notNull(),
+  amountPaid: int("amount_paid").default(0),
+  status: mysqlEnum("status", ["draft", "pending_payment", "paid", "failed", "cancelled"]).default("draft").notNull(),
+  customerName: varchar("customer_name", { length: 255 }).notNull(),
+  customerEmail: varchar("customer_email", { length: 255 }).notNull(),
+  customerPhone: varchar("customer_phone", { length: 50 }),
+  merchantOrder: varchar("merchant_order", { length: 12 }).notNull().unique(),
+  redsysResponse: text("redsys_response"),
+  redsysDsResponse: varchar("redsys_ds_response", { length: 10 }),
+  notes: text("notes"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+  paidAt: bigint("paid_at", { mode: "number" }),
+});
 
+// ─── TYPE EXPORTS ─────────────────────────────────────────────────────────────────────────────────
+export type Reservation = typeof reservations.$inferSelect;
+export type HomeModuleItem = typeof homeModuleItems.$inferSelect;
 export type SlideshowItem = typeof slideshowItems.$inferSelect;
 export type MenuItem = typeof menuItems.$inferSelect;
 export type MediaFile = typeof mediaFiles.$inferSelect;

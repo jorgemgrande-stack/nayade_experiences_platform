@@ -600,3 +600,100 @@ export async function setHomeModuleItems(moduleKey: string, experienceIds: numbe
   }
   return { success: true };
 }
+
+// ─── RESERVATIONS (Redsys) ────────────────────────────────────────────────────
+
+import { reservations } from "../drizzle/schema";
+
+export async function createReservation(data: {
+  productId: number;
+  productName: string;
+  bookingDate: string;
+  people: number;
+  extrasJson?: string;
+  amountTotal: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string;
+  merchantOrder: string;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = Date.now();
+  const result = await db.insert(reservations).values({
+    productId: data.productId,
+    productName: data.productName,
+    bookingDate: data.bookingDate,
+    people: data.people,
+    extrasJson: data.extrasJson ?? null,
+    amountTotal: data.amountTotal,
+    amountPaid: 0,
+    status: "pending_payment",
+    customerName: data.customerName,
+    customerEmail: data.customerEmail,
+    customerPhone: data.customerPhone ?? null,
+    merchantOrder: data.merchantOrder,
+    notes: data.notes ?? null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return { id: Number(result[0].insertId), merchantOrder: data.merchantOrder };
+}
+
+export async function getReservationByMerchantOrder(merchantOrder: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(reservations)
+    .where(eq(reservations.merchantOrder, merchantOrder))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function updateReservationPayment(
+  merchantOrder: string,
+  status: "paid" | "failed",
+  redsysResponse: string,
+  redsysDsResponse: string,
+  amountPaid?: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = Date.now();
+  await db.update(reservations).set({
+    status,
+    redsysResponse,
+    redsysDsResponse,
+    amountPaid: amountPaid ?? 0,
+    updatedAt: now,
+    ...(status === "paid" ? { paidAt: now } : {}),
+  }).where(eq(reservations.merchantOrder, merchantOrder));
+  return { success: true };
+}
+
+export async function getAllReservations(params: { status?: string; limit?: number; offset?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = params.status
+    ? [eq(reservations.status, params.status as any)]
+    : [];
+  return db.select().from(reservations)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(reservations.createdAt))
+    .limit(params.limit ?? 50)
+    .offset(params.offset ?? 0);
+}
+
+export async function getReservationById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(reservations).where(eq(reservations.id, id)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function getExperienceById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(experiences).where(eq(experiences.id, id)).limit(1);
+  return result[0] ?? null;
+}

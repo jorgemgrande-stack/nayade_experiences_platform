@@ -137,3 +137,18 @@
 - [x] Conectar módulo "Packs de Día Completo" en Home para leer selección de BD
 - [x] Usar image1 del producto como imagen en los módulos de la home
 - [x] Registrar ruta /admin/cms/modulos en App.tsx y sidebar del admin
+
+## Flujo de Reserva con Pago Redsys (v3.0)
+- [x] Solicitar credenciales Redsys (MERCHANT_CODE, MERCHANT_KEY, MERCHANT_TERMINAL)
+- [x] Crear tabla reservations en BD con todos los campos requeridos
+- [x] Crear helper redsys.ts con generación de firma SHA-256 3DES y validación IPN
+- [x] Crear endpoint REST POST /api/redsys/notify para notificación IPN
+- [x] Crear procedimiento tRPC reservations.create (pre-reserva, estado draft)
+- [x] Crear procedimiento tRPC reservations.initiatePayment (genera parámetros Redsys)
+- [x] Crear procedimiento tRPC reservations.getStatus (consulta estado)
+- [x] Crear modal BookingModal con selector de fecha, personas, extras y resumen
+- [x] Añadir doble CTA (Solicitar presupuesto + Reservar ahora) a tarjetas de producto
+- [x] Crear página /reserva/ok (confirmación de pago exitoso)
+- [x] Crear página /reserva/error (pago fallido o cancelado)
+- [x] Registrar rutas /reserva/ok y /reserva/error en App.tsx
+- [x] Añadir logs de transacciones y errores Redsys

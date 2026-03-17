@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import BookingModal from "@/components/BookingModal";
 
 const difficultyColors: Record<string, string> = {
   facil: "bg-emerald-100 text-emerald-700",
@@ -44,6 +45,7 @@ export default function Experiences() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
+  const [bookingProduct, setBookingProduct] = useState<(typeof staticExperiences)[0] | null>(null);
 
   const { data: dbExperiences } = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0 });
   const { data: dbCategories } = trpc.public.getCategories.useQuery();
@@ -160,11 +162,11 @@ export default function Experiences() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filtered.map((exp) => (
-                <Link key={exp.id} href={`/experiencia/${exp.slug}`}>
-                  <div className="group bg-card rounded-2xl overflow-hidden border border-border/50 card-hover cursor-pointer h-full flex flex-col">
-                    <div className="relative aspect-[16/10] overflow-hidden">
+                <div key={exp.id} className="group bg-card rounded-2xl overflow-hidden border border-border/50 card-hover h-full flex flex-col">
+                  <Link href={`/experiencia/${exp.slug}`}>
+                    <div className="relative aspect-[16/10] overflow-hidden cursor-pointer">
                       <img
-                        src={exp.coverImageUrl ?? "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=600&q=80"}
+                        src={(exp as any).image1 ?? exp.coverImageUrl ?? "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=600&q=80"}
                         alt={exp.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
@@ -179,48 +181,98 @@ export default function Experiences() {
                         )}
                       </div>
                     </div>
+                  </Link>
 
-                    <div className="p-5 flex flex-col flex-1">
-                      <h3 className="font-display font-semibold text-lg text-foreground mb-2 group-hover:text-accent transition-colors">
+                  <div className="p-5 flex flex-col flex-1">
+                    <Link href={`/experiencia/${exp.slug}`}>
+                      <h3 className="font-display font-semibold text-lg text-foreground mb-2 hover:text-accent transition-colors cursor-pointer">
                         {exp.title}
                       </h3>
-                      {exp.shortDescription && (
-                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{exp.shortDescription}</p>
+                    </Link>
+                    {exp.shortDescription && (
+                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{exp.shortDescription}</p>
+                    )}
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4">
+                      {exp.duration && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          {exp.duration}
+                        </span>
                       )}
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4">
-                        {exp.duration && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" />
-                            {exp.duration}
-                          </span>
-                        )}
-                        {exp.minPersons && (
-                          <span className="flex items-center gap-1">
-                            <Users className="w-3.5 h-3.5" />
-                            {exp.minPersons}{exp.maxPersons ? `-${exp.maxPersons}` : "+"} pers.
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-auto flex items-center justify-between">
+                      {exp.minPersons && (
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5" />
+                          {exp.minPersons}{exp.maxPersons ? `-${exp.maxPersons}` : "+"} pers.
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-auto">
+                      <div className="flex items-center justify-between mb-3">
                         <div>
                           <span className="text-xs text-muted-foreground">Desde</span>
                           <div className="text-2xl font-display font-bold text-foreground">
                             {parseFloat(exp.basePrice).toFixed(0)}€
                           </div>
                         </div>
-                        <Button size="sm" className="bg-gold-gradient text-white hover:opacity-90">
-                          Ver más
-                          <ChevronRight className="ml-1 w-3.5 h-3.5" />
-                        </Button>
+                        <Link href={`/experiencia/${exp.slug}`}>
+                          <Button size="sm" variant="outline" className="text-xs">
+                            Ver detalles
+                            <ChevronRight className="ml-1 w-3 h-3" />
+                          </Button>
+                        </Link>
+                      </div>
+                      {/* Doble CTA */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setBookingProduct(exp as any)}
+                          style={{
+                            flex: 1, padding: "0.6rem 0.75rem",
+                            background: "linear-gradient(135deg, #f97316, #ea580c)",
+                            border: "none", borderRadius: "0.5rem",
+                            color: "#fff", fontWeight: 700, fontSize: "0.8rem",
+                            cursor: "pointer", boxShadow: "0 3px 8px rgba(249,115,22,0.35)",
+                          }}
+                        >
+                          🎟️ Reservar ahora
+                        </button>
+                        <Link href="/contacto">
+                          <button
+                            style={{
+                              flex: 1, padding: "0.6rem 0.75rem",
+                              background: "transparent",
+                              border: "1.5px solid #d1d5db", borderRadius: "0.5rem",
+                              color: "#374151", fontWeight: 600, fontSize: "0.8rem",
+                              cursor: "pointer",
+                            }}
+                          >
+                            📋 Presupuesto
+                          </button>
+                        </Link>
                       </div>
                     </div>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           )}
         </div>
       </section>
+      {/* BookingModal */}
+      {bookingProduct && (
+        <BookingModal
+          isOpen={!!bookingProduct}
+          onClose={() => setBookingProduct(null)}
+          product={{
+            id: bookingProduct.id,
+            title: bookingProduct.title,
+            basePrice: bookingProduct.basePrice,
+            duration: bookingProduct.duration,
+            minPersons: bookingProduct.minPersons ?? 1,
+            maxPersons: bookingProduct.maxPersons ?? 100,
+            image1: (bookingProduct as any).image1 ?? bookingProduct.coverImageUrl,
+          }}
+        />
+      )}
     </PublicLayout>
   );
 }
