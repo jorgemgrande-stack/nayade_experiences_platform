@@ -152,3 +152,28 @@
 - [x] Crear página /reserva/error (pago fallido o cancelado)
 - [x] Registrar rutas /reserva/ok y /reserva/error en App.tsx
 - [x] Añadir logs de transacciones y errores Redsys
+
+## Cierre Integración Redsys Producción (v3.1)
+- [x] Doble CTA (Solicitar presupuesto + Reservar ahora) en ExperienceDetail.tsx
+- [x] /reserva/ok: consultar estado real en backend (paid/pending/failed)
+- [x] /reserva/error: mostrar datos reserva y opción de reintentar
+- [x] Panel admin reservas Redsys: listado paginado, filtros, detalle, export CSV
+- [x] merchant_order único garantizado en backend
+- [x] Logs de notificación IPN Redsys con timestamp
+- [x] Guardar respuesta Redsys completa en campo técnico
+- [x] Email al cliente al pasar a paid (nodemailer + SMTP real)
+- [x] Email interno al equipo de operaciones al pasar a paid (notifyOwner + BCC)
+- [x] URLs Redsys construidas dinámicamente desde window.location.origin (no hardcodeadas)
+- [x] Preparado para cambio de dominio: no hay cambios de código necesarios
+
+## Producción y Emails (v3.2)
+- [x] Integrar nodemailer para envío real de emails via SMTP
+- [x] Plantilla HTML de confirmación al cliente (diseño náutico)
+- [x] Plantilla HTML de pago fallido al cliente
+- [x] Variables SMTP configuradas en Settings > Secrets
+- [x] Conexión SMTP verificada (nayadeexperiences-es.correoseguro.dinaserver.com:465)
+- [x] Tests Vitest para módulo de emails (5 tests pasando)
+- [x] Documento REDSYS_PRODUCCION.md con guía de configuración
+- [x] Enlace "Reservas Redsys" en sidebar del admin (Admin > Operaciones)
+- [x] TypeScript compila sin errores (0 errors)
+- [x] 23 tests Vitest pasando (auth + public API + leads + admin + quotes + bookings + accounting + emails)

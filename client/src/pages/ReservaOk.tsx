@@ -1,127 +1,303 @@
 /**
- * Página /reserva/ok
- * Redsys redirige aquí tras un pago exitoso.
- * IMPORTANTE: Esta página NO marca la reserva como pagada.
- * El estado se actualiza únicamente en el endpoint IPN (/api/redsys/notification).
+ * /reserva/ok — Página de retorno tras el pago en Redsys.
+ * IMPORTANTE: Esta página NO confirma el pago. Solo consulta el estado real
+ * de la reserva en backend. El pago se confirma ÚNICAMENTE por el endpoint
+ * IPN /api/redsys/notification que valida la firma Redsys.
  */
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { CheckCircle, Clock, XCircle, ArrowRight, Phone, Mail, RefreshCw } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 
 export default function ReservaOk() {
   const [merchantOrder, setMerchantOrder] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
 
   useEffect(() => {
-    // Redsys puede enviar Ds_Order como query param en la URL de retorno
     const params = new URLSearchParams(window.location.search);
     const order = params.get("Ds_Order") ?? params.get("order");
     if (order) setMerchantOrder(order);
   }, []);
 
-  const { data: reservation } = trpc.reservations.getStatus.useQuery(
+  const { data, isLoading, error, refetch } = trpc.reservations.getStatus.useQuery(
     { merchantOrder: merchantOrder! },
-    { enabled: !!merchantOrder, refetchInterval: 3000, retry: false }
+    {
+      enabled: !!merchantOrder,
+      retry: 3,
+      retryDelay: 2000,
+      refetchInterval: false,
+    }
   );
 
-  return (
-    <PublicLayout>
-      <section style={{
-        minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "3rem 1rem",
-      }}>
-        <div style={{
-          maxWidth: "520px", width: "100%", textAlign: "center",
-          background: "#fff", borderRadius: "1.5rem", padding: "3rem 2rem",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
-          border: "1px solid #e5e7eb",
-        }}>
-          {/* Icono animado */}
-          <div style={{
-            width: "80px", height: "80px", borderRadius: "50%",
-            background: "linear-gradient(135deg, #16a34a, #15803d)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 1.5rem",
-            boxShadow: "0 8px 24px rgba(22,163,74,0.3)",
-          }}>
-            <span style={{ fontSize: "2.5rem" }}>✓</span>
+  // Polling automático si el estado es pending_payment
+  useEffect(() => {
+    if (!merchantOrder) return;
+    if (data?.status === "paid" || data?.status === "failed") return;
+    if (pollCount >= 8) return;
+
+    const timer = setTimeout(() => {
+      refetch();
+      setPollCount((c) => c + 1);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [data?.status, pollCount, merchantOrder, refetch]);
+
+  if (!merchantOrder) {
+    return (
+      <PublicLayout>
+        <div className="container py-20 text-center">
+          <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-foreground mb-2">Enlace inválido</h1>
+          <p className="text-muted-foreground mb-6">No se encontró el número de pedido en la URL.</p>
+          <Link href="/experiencias" className="inline-flex items-center gap-2 text-accent hover:underline">
+            Ver experiencias <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  // Cargando o pendiente con polling activo
+  if (isLoading || (data?.status === "pending_payment" && pollCount < 8)) {
+    return (
+      <PublicLayout>
+        <div className="container py-20 text-center max-w-lg mx-auto">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-amber-100 flex items-center justify-center">
+            <Clock className="w-10 h-10 text-amber-600 animate-pulse" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Validando tu pago…</h1>
+          <p className="text-muted-foreground mb-2">
+            Estamos confirmando la transacción con el banco. Esto puede tardar unos segundos.
+          </p>
+          <p className="text-sm text-muted-foreground mb-8">
+            Referencia: <span className="font-mono font-semibold text-foreground">{merchantOrder}</span>
+          </p>
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            Comprobando estado… ({pollCount + 1}/8)
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  // Error de red o reserva no encontrada
+  if (error || !data) {
+    return (
+      <PublicLayout>
+        <div className="container py-20 text-center max-w-lg mx-auto">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-amber-100 flex items-center justify-center">
+            <Clock className="w-8 h-8 text-amber-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Pago en proceso</h1>
+          <p className="text-muted-foreground mb-4">
+            No hemos podido confirmar el estado de tu reserva en este momento.
+            Si el pago se realizó correctamente, recibirás un email de confirmación en breve.
+          </p>
+          <p className="text-sm text-muted-foreground mb-8">
+            Referencia: <span className="font-mono font-semibold text-foreground">{merchantOrder}</span>
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => { setPollCount(0); refetch(); }}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm"
+            >
+              <RefreshCw className="w-4 h-4" /> Comprobar de nuevo
+            </button>
+            <Link href="/experiencias" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm" style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}>
+              Ver experiencias <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+          <div className="mt-8 pt-8 border-t border-border text-sm text-muted-foreground">
+            <p className="mb-3">¿Tienes dudas? Contacta con nosotros:</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <a href="tel:+34919041947" className="flex items-center gap-2 hover:text-accent transition-colors">
+                <Phone className="w-4 h-4" /> +34 919 041 947
+              </a>
+              <a href="mailto:hola@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
+                <Mail className="w-4 h-4" /> hola@nayadeexperiences.es
+              </a>
+            </div>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  // Estado: FAILED / CANCELLED
+  if (data.status === "failed" || data.status === "cancelled") {
+    return (
+      <PublicLayout>
+        <div className="container py-20 text-center max-w-lg mx-auto">
+          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-red-100 flex items-center justify-center">
+            <XCircle className="w-8 h-8 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Pago no completado</h1>
+          <p className="text-muted-foreground mb-6">
+            El banco ha rechazado o cancelado la transacción. No se ha realizado ningún cargo.
+          </p>
+          <div className="bg-muted/50 rounded-xl p-5 mb-8 text-left space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Producto</span>
+              <span className="font-medium text-foreground">{data.productName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Referencia</span>
+              <span className="font-mono font-medium text-foreground">{merchantOrder}</span>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/experiencias" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm" style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}>
+              Intentar de nuevo <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link href="/" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm">
+              Volver al inicio
+            </Link>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  // Estado: PAID ✅
+  if (data.status === "paid") {
+    const amountEuros = data.amountTotal ? (data.amountTotal / 100).toFixed(2) : null;
+    return (
+      <PublicLayout>
+        <div className="container py-20 max-w-lg mx-auto">
+          <div className="text-center mb-10">
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-100 flex items-center justify-center">
+              <CheckCircle className="w-10 h-10 text-emerald-600" />
+            </div>
+            <h1 className="text-3xl font-display font-bold text-foreground mb-2">
+              ¡Reserva confirmada!
+            </h1>
+            <p className="text-muted-foreground">
+              Tu pago ha sido procesado correctamente. Recibirás un email de confirmación en breve.
+            </p>
           </div>
 
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "#1a1a1a", marginBottom: "0.75rem" }}>
-            ¡Pago completado!
-          </h1>
-
-          <p style={{ color: "#6b7280", marginBottom: "1.5rem", lineHeight: 1.6 }}>
-            Tu pago ha sido procesado correctamente. Recibirás un email de confirmación
-            con todos los detalles de tu reserva en breve.
-          </p>
-
-          {/* Estado de la reserva */}
-          {merchantOrder && (
-            <div style={{
-              background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "0.75rem",
-              padding: "1rem", marginBottom: "1.5rem",
-            }}>
-              {reservation ? (
-                <div>
-                  <div style={{ fontWeight: 700, color: "#15803d", marginBottom: "0.5rem" }}>
-                    {reservation.productName}
-                  </div>
-                  <div style={{ fontSize: "0.875rem", color: "#374151" }}>
-                    📅 {reservation.bookingDate} · 👥 {reservation.people} persona{reservation.people !== 1 ? "s" : ""}
-                  </div>
-                  <div style={{ fontSize: "0.875rem", color: "#374151", marginTop: "0.25rem" }}>
-                    💶 Total: <strong>{parseFloat(String(reservation.amountTotal)).toFixed(2)}€</strong>
-                  </div>
-                  <div style={{
-                    display: "inline-block", marginTop: "0.5rem",
-                    padding: "0.25rem 0.75rem", borderRadius: "9999px",
-                    background: reservation.status === "paid" ? "#dcfce7" : "#fef3c7",
-                    color: reservation.status === "paid" ? "#15803d" : "#92400e",
-                    fontSize: "0.75rem", fontWeight: 700,
-                  }}>
-                    {reservation.status === "paid" ? "✓ Confirmada" : "⏳ Procesando..."}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>
-                  <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⏳</span>
-                  {" "}Verificando estado de la reserva...
+          <div className="bg-card border border-border rounded-2xl p-6 mb-8 space-y-4">
+            <h2 className="font-display font-semibold text-foreground text-lg border-b border-border pb-3">
+              Resumen de tu reserva
+            </h2>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Actividad</span>
+                <span className="font-medium text-foreground">{data.productName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Fecha</span>
+                <span className="font-medium text-foreground">{data.bookingDate}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Personas</span>
+                <span className="font-medium text-foreground">{data.people}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Cliente</span>
+                <span className="font-medium text-foreground">{data.customerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Email</span>
+                <span className="font-medium text-foreground">{data.customerEmail}</span>
+              </div>
+              {amountEuros && (
+                <div className="flex justify-between pt-3 border-t border-border">
+                  <span className="font-semibold text-foreground">Total pagado</span>
+                  <span className="font-bold text-emerald-600 text-lg">{amountEuros}€</span>
                 </div>
               )}
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Referencia</span>
+                <span className="font-mono">{merchantOrder}</span>
+              </div>
             </div>
-          )}
-
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
-            <Link href="/">
-              <button style={{
-                padding: "0.75rem 1.5rem", borderRadius: "0.5rem",
-                background: "linear-gradient(135deg, #f97316, #ea580c)",
-                border: "none", color: "#fff", fontWeight: 700, cursor: "pointer",
-                boxShadow: "0 4px 12px rgba(249,115,22,0.4)",
-              }}>
-                Volver al inicio
-              </button>
-            </Link>
-            <Link href="/experiencias">
-              <button style={{
-                padding: "0.75rem 1.5rem", borderRadius: "0.5rem",
-                background: "transparent", border: "1.5px solid #d1d5db",
-                color: "#374151", fontWeight: 600, cursor: "pointer",
-              }}>
-                Ver más experiencias
-              </button>
-            </Link>
           </div>
 
-          <p style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "1.5rem" }}>
-            ¿Tienes alguna duda? Escríbenos a{" "}
-            <a href="mailto:hola@nayadeexperiences.es" style={{ color: "#f97316" }}>
-              hola@nayadeexperiences.es
-            </a>
-          </p>
+          <div className="bg-accent/5 border border-accent/20 rounded-xl p-5 mb-8">
+            <h3 className="font-semibold text-foreground mb-3">¿Qué pasa ahora?</h3>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                Recibirás un email de confirmación con todos los detalles.
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                Nuestro equipo se pondrá en contacto contigo para coordinar los detalles.
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                Cancelación gratuita hasta 48h antes de la actividad.
+              </li>
+            </ul>
+          </div>
+
+          <div className="text-center text-sm text-muted-foreground mb-8">
+            <p className="mb-3">¿Tienes alguna pregunta?</p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <a href="tel:+34919041947" className="flex items-center gap-2 hover:text-accent transition-colors">
+                <Phone className="w-4 h-4" /> +34 919 041 947
+              </a>
+              <a href="mailto:hola@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
+                <Mail className="w-4 h-4" /> hola@nayadeexperiences.es
+              </a>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/experiencias" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm" style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}>
+              Ver más experiencias <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link href="/" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm">
+              Volver al inicio
+            </Link>
+          </div>
         </div>
-      </section>
+      </PublicLayout>
+    );
+  }
+
+  // Estado: pending_payment tras agotar el polling
+  return (
+    <PublicLayout>
+      <div className="container py-20 text-center max-w-lg mx-auto">
+        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-amber-100 flex items-center justify-center">
+          <Clock className="w-8 h-8 text-amber-600" />
+        </div>
+        <h1 className="text-2xl font-bold text-foreground mb-2">Estamos validando tu pago</h1>
+        <p className="text-muted-foreground mb-4">
+          Tu transacción está siendo procesada por el banco. Si el pago es correcto,
+          recibirás un email de confirmación en los próximos minutos.
+        </p>
+        <p className="text-sm text-muted-foreground mb-8">
+          Referencia: <span className="font-mono font-semibold text-foreground">{merchantOrder}</span>
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <button
+            onClick={() => { setPollCount(0); refetch(); }}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm"
+          >
+            <RefreshCw className="w-4 h-4" /> Comprobar estado
+          </button>
+          <Link href="/experiencias" className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-white text-sm" style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}>
+            Ver experiencias <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+        <div className="mt-8 pt-8 border-t border-border text-sm text-muted-foreground">
+          <p className="mb-3">¿Tienes dudas? Contacta con nosotros:</p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="tel:+34919041947" className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Phone className="w-4 h-4" /> +34 919 041 947
+            </a>
+            <a href="mailto:hola@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Mail className="w-4 h-4" /> hola@nayadeexperiences.es
+            </a>
+          </div>
+        </div>
+      </div>
     </PublicLayout>
   );
 }

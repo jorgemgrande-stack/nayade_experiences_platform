@@ -7,6 +7,7 @@
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
 import { updateReservationPayment, getReservationByMerchantOrder } from "./db";
+import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
 
 const redsysRouter = express.Router();
 
@@ -74,6 +75,42 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     );
 
     console.log(`[Redsys IPN] Reserva ${result.merchantOrder} actualizada a: ${newStatus}`);
+
+    // Enviar notificaciones según el resultado del pago
+    const updatedReservation = await getReservationByMerchantOrder(result.merchantOrder);
+    if (updatedReservation) {
+      if (result.isAuthorized) {
+        sendReservationPaidNotifications({
+          id: updatedReservation.id,
+          merchantOrder: updatedReservation.merchantOrder,
+          productName: updatedReservation.productName,
+          bookingDate: updatedReservation.bookingDate,
+          people: updatedReservation.people,
+          amountTotal: updatedReservation.amountTotal,
+          amountPaid: updatedReservation.amountPaid ?? 0,
+          customerName: updatedReservation.customerName,
+          customerEmail: updatedReservation.customerEmail,
+          customerPhone: updatedReservation.customerPhone,
+          extrasJson: updatedReservation.extrasJson,
+          status: newStatus,
+        }).catch(err => console.error("[Redsys IPN] Error en notificaciones:", err));
+      } else {
+        sendReservationFailedNotifications({
+          id: updatedReservation.id,
+          merchantOrder: updatedReservation.merchantOrder,
+          productName: updatedReservation.productName,
+          bookingDate: updatedReservation.bookingDate,
+          people: updatedReservation.people,
+          amountTotal: updatedReservation.amountTotal,
+          amountPaid: 0,
+          customerName: updatedReservation.customerName,
+          customerEmail: updatedReservation.customerEmail,
+          customerPhone: updatedReservation.customerPhone,
+          extrasJson: updatedReservation.extrasJson,
+          status: newStatus,
+        }, result.responseCode).catch(err => console.error("[Redsys IPN] Error en notificaciones de fallo:", err));
+      }
+    }
 
     // Redsys espera "OK" en texto plano para confirmar recepción
     return res.send("OK");

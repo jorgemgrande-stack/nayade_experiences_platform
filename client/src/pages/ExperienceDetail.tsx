@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
+import BookingModal from "@/components/BookingModal";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -61,7 +62,8 @@ const difficultyLabels: Record<string, string> = {
 export default function ExperienceDetail() {
   const { slug } = useParams<{ slug: string }>();
   const [galleryIndex, setGalleryIndex] = useState(0);
-  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [showBookingModal, setShowBookingModal] = useState(false); // lead modal
+  const [showRedsysModal, setShowRedsysModal] = useState(false);   // Redsys payment modal
   const [persons, setPersons] = useState(2);
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", date: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -306,22 +308,24 @@ export default function ExperienceDetail() {
                   </div>
                 </div>
 
+                 {/* CTA principal: Reservar Ahora con pago Redsys (solo si tiene precio fijo) */}
+                {exp.basePrice && parseFloat(String(exp.basePrice)) > 0 ? (
+                  <Button
+                    onClick={() => setShowRedsysModal(true)}
+                    className="w-full bg-gold-gradient text-white hover:opacity-90 font-semibold h-12 text-base mb-3"
+                    style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)', color: '#fff' }}
+                  >
+                    Reservar Ahora
+                    <ArrowRight className="ml-2 w-4 h-4" />
+                  </Button>
+                ) : null}
+                {/* CTA secundario: Solicitar Presupuesto (lead) */}
                 <Button
                   onClick={() => setShowBookingModal(true)}
-                  className="w-full bg-gold-gradient text-white hover:opacity-90 font-semibold h-12 text-base mb-3"
-                >
-                  Reservar Ahora
-                  <ArrowRight className="ml-2 w-4 h-4" />
-                </Button>
-
-                <Button
-                  asChild
                   variant="outline"
-                  className="w-full h-12"
+                  className="w-full h-12 mb-0"
                 >
-                  <Link href="/presupuesto">
-                    Solicitar Presupuesto
-                  </Link>
+                  Solicitar Presupuesto
                 </Button>
 
                 <div className="mt-5 pt-5 border-t border-border space-y-3">
@@ -423,6 +427,21 @@ export default function ExperienceDetail() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* BookingModal Redsys — Reservar Ahora con pago */}
+      <BookingModal
+        isOpen={showRedsysModal}
+        onClose={() => setShowRedsysModal(false)}
+        product={{
+          id: exp.id,
+          title: exp.title,
+          basePrice: exp.basePrice,
+          duration: exp.duration ?? undefined,
+          minPersons: exp.minPersons ?? undefined,
+          maxPersons: exp.maxPersons ?? undefined,
+          image1: (exp as Record<string, unknown>).image1 as string | undefined,
+        }}
+      />
     </PublicLayout>
   );
 }

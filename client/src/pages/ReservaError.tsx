@@ -1,104 +1,168 @@
 /**
- * Página /reserva/error
- * Redsys redirige aquí cuando el pago es cancelado o falla.
- * IMPORTANTE: La reserva permanece en estado "failed" según lo que
- * haya notificado Redsys al endpoint IPN. Esta página solo informa al usuario.
+ * /reserva/error — Página de retorno cuando Redsys indica error o cancelación.
+ * Muestra mensaje claro, datos básicos de la reserva y opción de reintentar.
+ * El estado de la reserva se actualiza ÚNICAMENTE por el endpoint IPN.
  */
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { XCircle, ArrowRight, Phone, Mail, RefreshCw, AlertTriangle } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
+import { trpc } from "@/lib/trpc";
+
+const REDSYS_ERROR_MESSAGES: Record<string, string> = {
+  "0180": "Tarjeta ajena al servicio.",
+  "0184": "Error en la autenticación del titular.",
+  "0190": "Denegación sin especificar motivo.",
+  "0191": "Fecha de caducidad errónea.",
+  "0202": "Tarjeta en excepción transitoria o bajo sospecha de fraude.",
+  "0904": "Comercio no registrado en FUC.",
+  "0909": "Error de sistema.",
+  "0912": "Emisor no disponible.",
+  "0913": "Pedido repetido.",
+  "9064": "Número de posiciones de la tarjeta incorrecto.",
+  "9078": "No existe método de pago válido para esa tarjeta.",
+  "9093": "Tarjeta no existente.",
+  "9094": "Rechazo servidores internacionales.",
+  "9218": "El comercio no permite operaciones seguras.",
+  "9253": "Tarjeta no cumple el check-digit.",
+  "9912": "Emisor no disponible.",
+  "9915": "Has cancelado el proceso de pago.",
+  "9997": "Se está procesando otra transacción con la misma tarjeta.",
+  "9999": "Operación redirigida al emisor para autenticar.",
+};
 
 export default function ReservaError() {
-  const params = new URLSearchParams(window.location.search);
-  const errorCode = params.get("Ds_Response") ?? params.get("code");
+  const [merchantOrder, setMerchantOrder] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
-  const getErrorMessage = (code: string | null) => {
-    if (!code) return "El pago no pudo completarse.";
-    const n = parseInt(code);
-    if (n === 9915) return "El usuario canceló el pago.";
-    if (n >= 101 && n <= 199) return "Tarjeta caducada o datos incorrectos.";
-    if (n >= 200 && n <= 299) return "Fondos insuficientes.";
-    if (n >= 900 && n <= 999) return "Error en el proceso de pago. Inténtalo de nuevo.";
-    return "El pago fue rechazado por el banco.";
-  };
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const order = params.get("Ds_Order") ?? params.get("order");
+    const code = params.get("Ds_ErrorCode") ?? params.get("Ds_Response") ?? params.get("code");
+    if (order) setMerchantOrder(order);
+    if (code) setErrorCode(code);
+  }, []);
+
+  const { data: reservation } = trpc.reservations.getStatus.useQuery(
+    { merchantOrder: merchantOrder! },
+    { enabled: !!merchantOrder, retry: 2 }
+  );
+
+  const errorMessage = errorCode ? REDSYS_ERROR_MESSAGES[errorCode] : null;
+  const isCancelled = errorCode === "9915";
+  const canRetry = !reservation || reservation.status === "pending_payment" || reservation.status === "failed";
 
   return (
     <PublicLayout>
-      <section style={{
-        minHeight: "70vh", display: "flex", alignItems: "center", justifyContent: "center",
-        padding: "3rem 1rem",
-      }}>
-        <div style={{
-          maxWidth: "520px", width: "100%", textAlign: "center",
-          background: "#fff", borderRadius: "1.5rem", padding: "3rem 2rem",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
-          border: "1px solid #e5e7eb",
-        }}>
-          {/* Icono */}
-          <div style={{
-            width: "80px", height: "80px", borderRadius: "50%",
-            background: "linear-gradient(135deg, #dc2626, #b91c1c)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 1.5rem",
-            boxShadow: "0 8px 24px rgba(220,38,38,0.3)",
-          }}>
-            <span style={{ fontSize: "2.5rem" }}>✕</span>
+      <div className="container py-20 max-w-lg mx-auto">
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-100 flex items-center justify-center">
+            <XCircle className="w-10 h-10 text-red-500" />
           </div>
-
-          <h1 style={{ fontSize: "1.75rem", fontWeight: 800, color: "#1a1a1a", marginBottom: "0.75rem" }}>
-            Pago no completado
+          <h1 className="text-3xl font-bold text-foreground mb-2">
+            {isCancelled ? "Pago cancelado" : "Pago no completado"}
           </h1>
-
-          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: 1.6 }}>
-            {getErrorMessage(errorCode)}
-          </p>
-
-          {errorCode && (
-            <div style={{
-              background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "0.5rem",
-              padding: "0.75rem", marginBottom: "1.5rem",
-              fontSize: "0.8rem", color: "#dc2626",
-            }}>
-              Código de respuesta: <strong>{errorCode}</strong>
-            </div>
-          )}
-
-          <p style={{ color: "#6b7280", marginBottom: "2rem", fontSize: "0.9rem" }}>
-            Tu reserva ha quedado guardada pero <strong>no se ha realizado ningún cargo</strong>.
-            Puedes intentarlo de nuevo o contactarnos para ayudarte.
-          </p>
-
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
-            <Link href="/experiencias">
-              <button style={{
-                padding: "0.75rem 1.5rem", borderRadius: "0.5rem",
-                background: "linear-gradient(135deg, #f97316, #ea580c)",
-                border: "none", color: "#fff", fontWeight: 700, cursor: "pointer",
-                boxShadow: "0 4px 12px rgba(249,115,22,0.4)",
-              }}>
-                Intentar de nuevo
-              </button>
-            </Link>
-            <Link href="/contacto">
-              <button style={{
-                padding: "0.75rem 1.5rem", borderRadius: "0.5rem",
-                background: "transparent", border: "1.5px solid #d1d5db",
-                color: "#374151", fontWeight: 600, cursor: "pointer",
-              }}>
-                Contactar con nosotros
-              </button>
-            </Link>
-          </div>
-
-          <p style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "1.5rem" }}>
-            ¿Necesitas ayuda? Llámanos al{" "}
-            <a href="tel:+34919041947" style={{ color: "#f97316" }}>+34 919 041 947</a>
-            {" "}o escríbenos a{" "}
-            <a href="mailto:hola@nayadeexperiences.es" style={{ color: "#f97316" }}>
-              hola@nayadeexperiences.es
-            </a>
+          <p className="text-muted-foreground">
+            {isCancelled
+              ? "Has cancelado el proceso de pago. No se ha realizado ningún cargo en tu tarjeta."
+              : "El banco no ha podido procesar el pago. No se ha realizado ningún cargo en tu tarjeta."}
           </p>
         </div>
-      </section>
+
+        {(errorCode || errorMessage) && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                {errorCode && (
+                  <p className="text-sm font-semibold text-red-700 mb-1">
+                    Código de error: {errorCode}
+                  </p>
+                )}
+                <p className="text-sm text-red-600">
+                  {errorMessage ?? "El banco ha rechazado la operación. Prueba con otra tarjeta o contacta con tu banco."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {reservation && (
+          <div className="bg-muted/50 rounded-xl p-5 mb-6 space-y-2 text-sm">
+            <h3 className="font-semibold text-foreground mb-3">Datos de tu reserva</h3>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Producto</span>
+              <span className="font-medium text-foreground">{reservation.productName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Fecha</span>
+              <span className="font-medium text-foreground">{reservation.bookingDate}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Personas</span>
+              <span className="font-medium text-foreground">{reservation.people}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Importe</span>
+              <span className="font-medium text-foreground">
+                {reservation.amountTotal ? (reservation.amountTotal / 100).toFixed(2) + "€" : "—"}
+              </span>
+            </div>
+            {merchantOrder && (
+              <div className="flex justify-between text-xs text-muted-foreground pt-2 border-t border-border">
+                <span>Referencia</span>
+                <span className="font-mono">{merchantOrder}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-8">
+          <h3 className="font-semibold text-amber-800 mb-2 text-sm">¿Qué puedo hacer?</h3>
+          <ul className="space-y-1 text-sm text-amber-700">
+            <li>• Comprueba que los datos de la tarjeta son correctos.</li>
+            <li>• Verifica que tienes saldo o límite disponible.</li>
+            <li>• Prueba con otra tarjeta de crédito o débito.</li>
+            <li>• Si el problema persiste, contacta con tu banco.</li>
+          </ul>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
+          {canRetry && (
+            <Link
+              href="/experiencias"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-white text-sm font-semibold"
+              style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)' }}
+            >
+              <RefreshCw className="w-4 h-4" /> Intentar de nuevo
+            </Link>
+          )}
+          <Link
+            href="/experiencias"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm"
+          >
+            Ver experiencias <ArrowRight className="w-4 h-4" />
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-border hover:bg-muted transition-colors text-sm"
+          >
+            Volver al inicio
+          </Link>
+        </div>
+
+        <div className="text-center text-sm text-muted-foreground pt-6 border-t border-border">
+          <p className="mb-3">¿Necesitas ayuda? Estamos aquí para ti:</p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="tel:+34919041947" className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Phone className="w-4 h-4" /> +34 919 041 947
+            </a>
+            <a href="mailto:hola@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Mail className="w-4 h-4" /> hola@nayadeexperiences.es
+            </a>
+          </div>
+        </div>
+      </div>
     </PublicLayout>
   );
 }

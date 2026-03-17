@@ -47,6 +47,7 @@ import QuoteBuilder from "./pages/admin/quotes/QuoteBuilder";
 import CalendarView from "./pages/admin/operations/CalendarView";
 import BookingsList from "./pages/admin/operations/BookingsList";
 import DailyOrders from "./pages/admin/operations/DailyOrders";
+import ReservationsManager from "./pages/admin/operations/ReservationsManager";
 
 // Accounting
 import AccountingDashboard from "./pages/admin/accounting/AccountingDashboard";
@@ -107,6 +108,7 @@ function Router() {
       <Route path="/admin/operaciones/calendario" component={CalendarView} />
       <Route path="/admin/operaciones/reservas" component={BookingsList} />
       <Route path="/admin/operaciones/ordenes" component={DailyOrders} />
+      <Route path="/admin/operaciones/reservas-redsys" component={ReservationsManager} />
 
       {/* Accounting */}
       <Route path="/admin/contabilidad" component={AccountingDashboard} />

@@ -63,6 +63,7 @@ const navItems = [
     children: [
       { label: "Calendario", href: "/admin/operaciones/calendario" },
       { label: "Reservas", href: "/admin/operaciones/reservas" },
+      { label: "Reservas Redsys", href: "/admin/operaciones/reservas-redsys" },
       { label: "Órdenes del Día", href: "/admin/operaciones/ordenes" },
       { label: "Monitores", href: "/admin/operaciones/monitores" },
     ],
