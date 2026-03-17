@@ -153,12 +153,20 @@ export default function PublicNav() {
         <div className="flex items-center justify-between h-20">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center cursor-pointer">
+          <Link href="/" className="flex items-center gap-2.5 cursor-pointer">
             <img
               src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade-azul_ea3fd894.jpg"
               alt="Náyade Experiences"
               className="h-14 w-auto object-contain"
             />
+            <div className="flex flex-col leading-none">
+              <span className="font-heading font-bold text-lg leading-none text-primary">
+                NÁYADE
+              </span>
+              <span className="font-display text-[10px] uppercase tracking-widest leading-none text-muted-foreground">
+                Experiences
+              </span>
+            </div>
           </Link>
 
           {/* Navegación desktop */}
