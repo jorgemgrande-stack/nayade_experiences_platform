@@ -1144,3 +1144,60 @@ export async function reorderMenuItems(items: { id: number; sortOrder: number }[
   );
   return { success: true };
 }
+
+// ─── REORDENACIÓN GENÉRICA ────────────────────────────────────────────────────
+
+export async function reorderExperiences(items: { id: number; sortOrder: number }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await Promise.all(
+    items.map(({ id, sortOrder }) =>
+      db.update(experiences).set({ sortOrder, updatedAt: new Date() }).where(eq(experiences.id, id))
+    )
+  );
+  return { success: true };
+}
+
+export async function reorderPacks(items: { id: number; sortOrder: number }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await Promise.all(
+    items.map(({ id, sortOrder }) =>
+      db.update(packs).set({ sortOrder, updatedAt: new Date() }).where(eq(packs.id, id))
+    )
+  );
+  return { success: true };
+}
+
+export async function reorderCategories(items: { id: number; sortOrder: number }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await Promise.all(
+    items.map(({ id, sortOrder }) =>
+      db.update(categories).set({ sortOrder, updatedAt: new Date() }).where(eq(categories.id, id))
+    )
+  );
+  return { success: true };
+}
+
+export async function reorderLocations(items: { id: number; sortOrder: number }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await Promise.all(
+    items.map(({ id, sortOrder }) =>
+      db.update(locations).set({ sortOrder, updatedAt: new Date() }).where(eq(locations.id, id))
+    )
+  );
+  return { success: true };
+}
+
+export async function reorderSlideshowItems(items: { id: number; sortOrder: number }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await Promise.all(
+    items.map(({ id, sortOrder }) =>
+      db.update(slideshowItems).set({ sortOrder, updatedAt: new Date() }).where(eq(slideshowItems.id, id))
+    )
+  );
+  return { success: true };
+}

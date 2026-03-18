@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, MapPin, MoreVertical, Copy, PowerOff, Power } from "lucide-react";
+import { Plus, Pencil, Trash2, MapPin, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface LocationForm {
@@ -26,6 +26,7 @@ export default function LocationsManager() {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<LocationForm>(emptyForm);
+  const [localOrder, setLocalOrder] = useState<number[]>([]);
 
   const utils = trpc.useUtils();
   const { data: locations, isLoading } = trpc.products.getLocations.useQuery();
@@ -54,6 +55,10 @@ export default function LocationsManager() {
     onSuccess: () => { utils.products.getLocations.invalidate(); toast.success("Ubicación clonada (inactiva)"); },
     onError: (e) => toast.error(e.message),
   });
+  const reorderMut = trpc.products.reorderLocations.useMutation({
+    onSuccess: () => { utils.products.getLocations.invalidate(); },
+    onError: () => toast.error("Error al guardar el orden"),
+  });
 
   const openCreate = () => { setEditId(null); setForm(emptyForm); setOpen(true); };
   const openEdit = (loc: NonNullable<typeof locations>[0]) => {
@@ -69,6 +74,25 @@ export default function LocationsManager() {
   };
 
   const toSlug = (name: string) => name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+
+  const sortedLocations = (() => {
+    const list = locations ?? [];
+    if (localOrder.length === list.length && localOrder.length > 0) {
+      const map = new Map(list.map(l => [l.id, l]));
+      return localOrder.map(id => map.get(id)).filter(Boolean) as typeof list;
+    }
+    return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  })();
+
+  const moveLoc = (index: number, direction: "up" | "down") => {
+    const current = localOrder.length > 0 ? localOrder : sortedLocations.map(l => l.id);
+    const newOrder = [...current];
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= newOrder.length) return;
+    [newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]];
+    setLocalOrder(newOrder);
+    reorderMut.mutate({ items: newOrder.map((id, i) => ({ id, sortOrder: i })) });
+  };
 
   return (
     <AdminLayout title="Ubicaciones">
@@ -86,8 +110,17 @@ export default function LocationsManager() {
         <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />)}</div>
       ) : (
         <div className="space-y-3">
-          {locations?.map((loc) => (
+          {sortedLocations.map((loc, idx) => (
             <div key={loc.id} className="bg-card border border-border rounded-xl p-5 flex items-center gap-4">
+              <div className="flex flex-col items-center gap-0.5 shrink-0">
+                <button onClick={() => moveLoc(idx, "up")} disabled={idx === 0 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Subir">
+                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                </button>
+                <span className="text-xs font-mono text-muted-foreground">{idx + 1}</span>
+                <button onClick={() => moveLoc(idx, "down")} disabled={idx === sortedLocations.length - 1 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Bajar">
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </div>
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
                 <MapPin className="w-6 h-6 text-primary" />
               </div>

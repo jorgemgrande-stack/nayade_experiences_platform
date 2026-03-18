@@ -82,6 +82,11 @@ import {
   updateMenuItem,
   deleteMenuItem,
   reorderMenuItems,
+  reorderExperiences,
+  reorderPacks,
+  reorderCategories,
+  reorderLocations,
+  reorderSlideshowItems,
 } from "./db";
 import {
   buildRedsysForm,
@@ -239,6 +244,12 @@ export const appRouter = router({
         return deleteSlideshowItem(input.id);
       }),
 
+    reorderSlideshowItems: adminProcedure
+      .input(z.object({ items: z.array(z.object({ id: z.number(), sortOrder: z.number() })) }))
+      .mutation(async ({ input }) => {
+        return reorderSlideshowItems(input.items);
+      }),
+
     getMediaFiles: adminProcedure.query(async () => {
       return getAllMediaFiles();
     }),
@@ -373,6 +384,12 @@ export const appRouter = router({
         return cloneExperience(input.id, input.newName);
       }),
 
+    reorder: adminProcedure
+      .input(z.object({ items: z.array(z.object({ id: z.number(), sortOrder: z.number() })) }))
+      .mutation(async ({ input }) => {
+        return reorderExperiences(input.items);
+      }),
+
     getCategories: adminProcedure.query(async () => {
       return getAllCategories();
     }),
@@ -429,6 +446,12 @@ export const appRouter = router({
         return cloneCategory(input.id);
       }),
 
+    reorderCategories: adminProcedure
+      .input(z.object({ items: z.array(z.object({ id: z.number(), sortOrder: z.number() })) }))
+      .mutation(async ({ input }) => {
+        return reorderCategories(input.items);
+      }),
+
     getLocations: adminProcedure.query(async () => {
       return getAllLocations();
     }),
@@ -480,6 +503,12 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         return cloneLocation(input.id);
+      }),
+
+    reorderLocations: adminProcedure
+      .input(z.object({ items: z.array(z.object({ id: z.number(), sortOrder: z.number() })) }))
+      .mutation(async ({ input }) => {
+        return reorderLocations(input.items);
       }),
 
     // ── VARIANTS ──────────────────────────────────────────────────────────────
@@ -964,6 +993,10 @@ export const appRouter = router({
     clone: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => clonePack(input.id)),
+    /** Reordenar */
+    reorder: adminProcedure
+      .input(z.object({ items: z.array(z.object({ id: z.number(), sortOrder: z.number() })) }))
+      .mutation(async ({ input }) => reorderPacks(input.items)),
   }),
 });
 export type AppRouter = typeof appRouter;

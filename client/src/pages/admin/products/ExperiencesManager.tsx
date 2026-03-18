@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power } from "lucide-react";
+import { Plus, Pencil, Trash2, Star, Eye, EyeOff, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -126,8 +126,12 @@ export default function ExperiencesManager() {
   const [search, setSearch] = useState("");
   const [cloneModal, setCloneModal] = useState<{ id: number; originalName: string } | null>(null);
   const [cloneName, setCloneName] = useState("");
+  const [localOrder, setLocalOrder] = useState<number[]>([]);
 
   const { data: experiences, refetch } = trpc.products.getAll.useQuery();
+
+  // Sincronizar orden local cuando llegan datos
+  const utils = trpc.useUtils();
   const { data: categories } = trpc.products.getCategories.useQuery();
   const { data: locations } = trpc.products.getLocations.useQuery();
 
@@ -154,6 +158,10 @@ export default function ExperiencesManager() {
   const cloneMutation = trpc.products.clone.useMutation({
     onSuccess: () => { toast.success("Experiencia clonada correctamente (inactiva, lista para editar)"); refetch(); setCloneModal(null); setCloneName(""); },
     onError: () => toast.error("Error al clonar"),
+  });
+  const reorderMutation = trpc.products.reorder.useMutation({
+    onSuccess: () => { utils.products.getAll.invalidate(); },
+    onError: () => toast.error("Error al guardar el orden"),
   });
 
   const openCreate = () => { setEditingId(null); setForm(emptyForm); setShowModal(true); };
@@ -211,9 +219,30 @@ export default function ExperiencesManager() {
     }
   };
 
-  const filtered = (experiences ?? []).filter((e) =>
+  // Mantener orden local: inicializar cuando llegan datos
+  const sortedExperiences = (() => {
+    const list = experiences ?? [];
+    if (localOrder.length === list.length && localOrder.length > 0) {
+      const map = new Map(list.map(e => [e.id, e]));
+      return localOrder.map(id => map.get(id)).filter(Boolean) as typeof list;
+    }
+    return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  })();
+
+  const filtered = sortedExperiences.filter((e) =>
     !search || e.title.toLowerCase().includes(search.toLowerCase())
   );
+
+  const moveItem = (index: number, direction: "up" | "down") => {
+    const current = localOrder.length > 0 ? localOrder : sortedExperiences.map(e => e.id);
+    const newOrder = [...current];
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= newOrder.length) return;
+    [newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]];
+    setLocalOrder(newOrder);
+    const items = newOrder.map((id, i) => ({ id, sortOrder: i }));
+    reorderMutation.mutate({ items });
+  };
 
   return (
     <AdminLayout title="Gestión de Experiencias">
@@ -241,6 +270,7 @@ export default function ExperiencesManager() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-muted/30">
+                <th className="text-center px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-16">Orden</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Experiencia</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Dificultad</th>
@@ -251,14 +281,35 @@ export default function ExperiencesManager() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-12">
+                  <td colSpan={6} className="text-center py-12">
                     <ImageIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                     <p className="text-muted-foreground">No hay experiencias. Crea la primera.</p>
                   </td>
                 </tr>
               ) : (
-                filtered.map((exp) => (
+                filtered.map((exp, idx) => (
                   <tr key={exp.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                    <td className="px-3 py-4">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <button
+                          onClick={() => moveItem(idx, "up")}
+                          disabled={idx === 0 || reorderMutation.isPending}
+                          className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="Subir"
+                        >
+                          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                        <span className="text-xs font-mono text-muted-foreground w-5 text-center">{idx + 1}</span>
+                        <button
+                          onClick={() => moveItem(idx, "down")}
+                          disabled={idx === filtered.length - 1 || reorderMutation.isPending}
+                          className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="Bajar"
+                        >
+                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-9 rounded-lg overflow-hidden bg-muted shrink-0">

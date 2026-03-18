@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Plus, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, Trash2, Pencil, ShoppingCart, GraduationCap, Building2 } from "lucide-react";
+import { Plus, Search, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, Trash2, Pencil, ShoppingCart, GraduationCap, Building2, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,7 +148,9 @@ export default function PacksManager() {
   const [form, setForm] = useState<PackForm>(emptyForm);
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [localOrder, setLocalOrder] = useState<number[]>([]);
 
+  const utils = trpc.useUtils();
   const { data: packsData, refetch } = trpc.packs.getAll.useQuery({});
 
   const createMutation = trpc.packs.create.useMutation({
@@ -170,6 +172,10 @@ export default function PacksManager() {
   const cloneMutation = trpc.packs.clone.useMutation({
     onSuccess: () => { toast.success("Pack clonado (inactivo)"); refetch(); },
     onError: () => toast.error("Error al clonar"),
+  });
+  const reorderMutation = trpc.packs.reorder.useMutation({
+    onSuccess: () => { utils.packs.getAll.invalidate(); },
+    onError: () => toast.error("Error al guardar el orden"),
   });
 
   const openCreate = () => { setEditingId(null); setForm(emptyForm); setShowModal(true); };
@@ -242,11 +248,31 @@ export default function PacksManager() {
     }
   };
 
-  const filtered = (packsData ?? []).filter((p) => {
+  const sortedPacks = (() => {
+    const list = packsData ?? [];
+    if (localOrder.length === list.length && localOrder.length > 0) {
+      const map = new Map(list.map(p => [p.id, p]));
+      return localOrder.map(id => map.get(id)).filter(Boolean) as typeof list;
+    }
+    return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  })();
+
+  const filtered = sortedPacks.filter((p) => {
     const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase());
     const matchCat = filterCategory === "all" || p.category === filterCategory;
     return matchSearch && matchCat;
   });
+
+  const moveItem = (index: number, direction: "up" | "down") => {
+    const current = localOrder.length > 0 ? localOrder : sortedPacks.map(p => p.id);
+    const newOrder = [...current];
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= newOrder.length) return;
+    [newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]];
+    setLocalOrder(newOrder);
+    const items = newOrder.map((id, i) => ({ id, sortOrder: i }));
+    reorderMutation.mutate({ items });
+  };
 
   return (
     <AdminLayout title="Gestión de Packs">
@@ -285,6 +311,7 @@ export default function PacksManager() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-muted/30">
+                <th className="text-center px-3 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-16">Orden</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pack</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Categoría</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Precio</th>
@@ -295,14 +322,35 @@ export default function PacksManager() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-16 text-muted-foreground">
+                  <td colSpan={6} className="text-center py-16 text-muted-foreground">
                     {search || filterCategory !== "all" ? "No se encontraron packs con ese filtro" : "No hay packs. Crea el primero."}
                   </td>
                 </tr>
-              ) : filtered.map((pack) => {
+              ) : filtered.map((pack, idx) => {
                 const CatIcon = categoryIcons[pack.category] ?? ShoppingCart;
                 return (
                   <tr key={pack.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                    <td className="px-3 py-3">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <button
+                          onClick={() => moveItem(idx, "up")}
+                          disabled={idx === 0 || reorderMutation.isPending}
+                          className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="Subir"
+                        >
+                          <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                        <span className="text-xs font-mono text-muted-foreground w-5 text-center">{idx + 1}</span>
+                        <button
+                          onClick={() => moveItem(idx, "down")}
+                          disabled={idx === filtered.length - 1 || reorderMutation.isPending}
+                          className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="Bajar"
+                        >
+                          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl overflow-hidden bg-muted flex-shrink-0 border border-border/40">

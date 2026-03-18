@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Tag, ImageIcon, X, MoreVertical, Copy, PowerOff, Power } from "lucide-react";
+import { Plus, Pencil, Trash2, Tag, ImageIcon, X, MoreVertical, Copy, PowerOff, Power, ChevronUp, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +71,7 @@ export default function CategoriesManager() {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<CategoryForm>(emptyForm);
+  const [localOrder, setLocalOrder] = useState<number[]>([]);
 
   const utils = trpc.useUtils();
   const { data: categories, isLoading } = trpc.products.getCategories.useQuery();
@@ -99,6 +100,10 @@ export default function CategoriesManager() {
     onSuccess: () => { utils.products.getCategories.invalidate(); toast.success("Categoría clonada (inactiva)"); },
     onError: (e) => toast.error(e.message),
   });
+  const reorderMut = trpc.products.reorderCategories.useMutation({
+    onSuccess: () => { utils.products.getCategories.invalidate(); },
+    onError: () => toast.error("Error al guardar el orden"),
+  });
 
   const openCreate = () => { setEditId(null); setForm(emptyForm); setOpen(true); };
   const openEdit = (cat: NonNullable<typeof categories>[0]) => {
@@ -114,6 +119,25 @@ export default function CategoriesManager() {
   };
 
   const toSlug = (name: string) => name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+
+  const sortedCategories = (() => {
+    const list = categories ?? [];
+    if (localOrder.length === list.length && localOrder.length > 0) {
+      const map = new Map(list.map(c => [c.id, c]));
+      return localOrder.map(id => map.get(id)).filter(Boolean) as typeof list;
+    }
+    return [...list].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  })();
+
+  const moveCat = (index: number, direction: "up" | "down") => {
+    const current = localOrder.length > 0 ? localOrder : sortedCategories.map(c => c.id);
+    const newOrder = [...current];
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= newOrder.length) return;
+    [newOrder[index], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[index]];
+    setLocalOrder(newOrder);
+    reorderMut.mutate({ items: newOrder.map((id, i) => ({ id, sortOrder: i })) });
+  };
 
   return (
     <AdminLayout title="Categorías">
@@ -133,7 +157,7 @@ export default function CategoriesManager() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {categories?.map((cat) => (
+          {sortedCategories.map((cat, idx) => (
             <div key={cat.id} className="bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -145,7 +169,17 @@ export default function CategoriesManager() {
                     <p className="text-xs text-muted-foreground">/{cat.slug}</p>
                   </div>
                 </div>
-                <Badge variant="outline" className="text-xs">{cat.isActive ? "Activa" : "Inactiva"}</Badge>
+                <div className="flex items-center gap-1">
+                  <div className="flex flex-col">
+                    <button onClick={() => moveCat(idx, "up")} disabled={idx === 0 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Subir">
+                      <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                    <button onClick={() => moveCat(idx, "down")} disabled={idx === sortedCategories.length - 1 || reorderMut.isPending} className="p-0.5 rounded hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed" title="Bajar">
+                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
+                  <Badge variant="outline" className="text-xs">{cat.isActive ? "Activa" : "Inactiva"}</Badge>
+                </div>
               </div>
               {cat.description && <p className="text-sm text-muted-foreground line-clamp-2">{cat.description}</p>}
               <div className="flex gap-2 mt-auto pt-2 border-t border-border">

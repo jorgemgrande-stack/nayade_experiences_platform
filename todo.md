@@ -264,3 +264,23 @@
 - [x] Corregir procedimiento tRPC cloneExperience en routers.ts para aceptar newName
 - [x] Actualizar modal de clonación en frontend para pasar el nombre nuevo al backend
 - [x] Corregir la experiencia "Donuts Ski" ya creada: slug corregido a 'donuts-ski' en BD
+
+## Reordenación de ítems en gestores admin v4.6
+- [ ] Backend: añadir reorderExperiences en db.ts + routers.ts
+- [ ] Backend: añadir reorderPacks en db.ts + routers.ts
+- [ ] Backend: añadir reorderCategories en db.ts + routers.ts
+- [ ] Backend: añadir reorderLocations en db.ts + routers.ts
+- [ ] Frontend: flechas arriba/abajo en ExperiencesManager con persistencia en sortOrder
+- [ ] Frontend: flechas arriba/abajo en PacksManager con persistencia en sortOrder
+- [ ] Frontend: flechas arriba/abajo en CategoriesManager con persistencia en sortOrder
+- [ ] Frontend: flechas arriba/abajo en LocationsManager con persistencia en sortOrder
+- [ ] Frontend: flechas arriba/abajo en SlideshowManager (si no las tiene)
+
+## Reordenación de ítems en gestores admin (v4.6)
+- [x] Backend: helpers reorderExperiences, reorderPacks, reorderCategories, reorderLocations, reorderSlideshowItems en db.ts
+- [x] Backend: procedimientos tRPC reorder en products, packs y cms routers
+- [x] Frontend: flechas arriba/abajo con número de posición en ExperiencesManager
+- [x] Frontend: flechas arriba/abajo en PacksManager
+- [x] Frontend: flechas en CategoriesManager (tarjetas grid)
+- [x] Frontend: flechas en LocationsManager (lista)
+- [x] Frontend: flechas en SlideshowManager (lista de slides)

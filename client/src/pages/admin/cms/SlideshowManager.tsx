@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Plus, Pencil, Trash2, GripVertical, Upload, ImageIcon, Loader2, X } from "lucide-react";
+import { Plus, Pencil, Trash2, GripVertical, Upload, ImageIcon, Loader2, X, ChevronUp, ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +73,7 @@ export default function SlideshowManager() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [localOrder, setLocalOrder] = useState<number[]>([]);
 
   const utils = trpc.useUtils();
   const { data: slides, isLoading } = trpc.cms.getSlideshowItems.useQuery();
@@ -93,6 +94,11 @@ export default function SlideshowManager() {
       closeModal();
     },
     onError: (e) => toast.error(`Error: ${e.message}`),
+  });
+
+  const reorderMutation = trpc.cms.reorderSlideshowItems.useMutation({
+    onSuccess: () => { utils.cms.getSlideshowItems.invalidate(); },
+    onError: () => toast.error("Error al guardar el orden"),
   });
 
   const deleteMutation = trpc.cms.deleteSlideshowItem.useMutation({
@@ -234,7 +240,20 @@ export default function SlideshowManager() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          {[...slides].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)).map((slide) => (
+          {(() => {
+            const sorted = localOrder.length === slides.length && localOrder.length > 0
+              ? (() => { const m = new Map(slides.map(s => [s.id, s])); return localOrder.map(id => m.get(id)).filter(Boolean) as typeof slides; })()
+              : [...slides].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+            const moveSlide = (index: number, dir: "up" | "down") => {
+              const cur = localOrder.length > 0 ? localOrder : sorted.map(s => s.id);
+              const newOrd = [...cur];
+              const swap = dir === "up" ? index - 1 : index + 1;
+              if (swap < 0 || swap >= newOrd.length) return;
+              [newOrd[index], newOrd[swap]] = [newOrd[swap], newOrd[index]];
+              setLocalOrder(newOrd);
+              reorderMutation.mutate({ items: newOrd.map((id, i) => ({ id, sortOrder: i })) });
+            };
+            return sorted.map((slide, idx) => (
             <div key={slide.id} style={{ display: "flex", alignItems: "stretch", border: "1px solid #e5e7eb", borderRadius: "1rem", overflow: "hidden", background: "#ffffff" }}>
               <div style={{ display: "flex", alignItems: "center", padding: "0 0.75rem", color: "#d1d5db", cursor: "grab", borderRight: "1px solid #f3f4f6" }}>
                 <GripVertical style={{ width: "1.25rem", height: "1.25rem" }} />
@@ -259,6 +278,14 @@ export default function SlideshowManager() {
                 {slide.subtitle && <p style={{ fontSize: "0.875rem", color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slide.subtitle}</p>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0 1rem", borderLeft: "1px solid #f3f4f6" }}>
+                <div style={{ display: "flex", flexDirection: "column", marginRight: "0.25rem" }}>
+                  <button onClick={() => moveSlide(idx, "up")} disabled={idx === 0 || reorderMutation.isPending} style={{ padding: "0.2rem", borderRadius: "0.3rem", border: "none", background: "transparent", cursor: "pointer", opacity: idx === 0 ? 0.3 : 1 }} title="Subir">
+                    <ChevronUp style={{ width: "0.875rem", height: "0.875rem", color: "#6b7280" }} />
+                  </button>
+                  <button onClick={() => moveSlide(idx, "down")} disabled={idx === sorted.length - 1 || reorderMutation.isPending} style={{ padding: "0.2rem", borderRadius: "0.3rem", border: "none", background: "transparent", cursor: "pointer", opacity: idx === sorted.length - 1 ? 0.3 : 1 }} title="Bajar">
+                    <ChevronDown style={{ width: "0.875rem", height: "0.875rem", color: "#6b7280" }} />
+                  </button>
+                </div>
                 <button onClick={() => openEdit(slide)} style={{ padding: "0.4rem", borderRadius: "0.4rem", border: "none", background: "transparent", cursor: "pointer", color: "#6b7280" }} title="Editar">
                   <Pencil style={{ width: "0.875rem", height: "0.875rem" }} />
                 </button>
@@ -267,7 +294,8 @@ export default function SlideshowManager() {
                 </button>
               </div>
             </div>
-          ))}
+            ));
+          })()}
         </div>
       )}
 
