@@ -335,6 +335,52 @@ export const reservations = mysqlTable("reservations", {
   paidAt: bigint("paid_at", { mode: "number" }),
 });
 
+// ─── PACKS ──────────────────────────────────────────────────────────────────
+
+export const packs = mysqlTable("packs", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 256 }).notNull().unique(),
+  category: mysqlEnum("category", ["dia", "escolar", "empresa"]).notNull(),
+  title: varchar("title", { length: 256 }).notNull(),
+  subtitle: varchar("subtitle", { length: 512 }),
+  shortDescription: text("shortDescription"),
+  description: text("description"),
+  includes: json("includes").$type<string[]>().default([]),
+  excludes: json("excludes").$type<string[]>().default([]),
+  schedule: text("schedule"),
+  note: text("note"),
+  image1: text("image1"),
+  image2: text("image2"),
+  image3: text("image3"),
+  image4: text("image4"),
+  basePrice: decimal("basePrice", { precision: 10, scale: 2 }).notNull().default("0"),
+  priceLabel: varchar("priceLabel", { length: 128 }),
+  duration: varchar("duration", { length: 128 }),
+  minPersons: int("minPersons").default(1),
+  maxPersons: int("maxPersons"),
+  targetAudience: varchar("targetAudience", { length: 256 }),
+  badge: varchar("badge", { length: 64 }),
+  hasStay: boolean("hasStay").default(false).notNull(),
+  isOnlinePurchase: boolean("isOnlinePurchase").default(false).notNull(),
+  isFeatured: boolean("isFeatured").default(false).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  metaTitle: varchar("metaTitle", { length: 256 }),
+  metaDescription: text("metaDescription"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const packCrossSells = mysqlTable("pack_cross_sells", {
+  id: int("id").autoincrement().primaryKey(),
+  packId: int("packId").notNull(),
+  relatedPackId: int("relatedPackId").notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+});
+
+export type Pack = typeof packs.$inferSelect;
+export type InsertPack = typeof packs.$inferInsert;
+
 // ─── TYPE EXPORTS ─────────────────────────────────────────────────────────────────────────────────
 export type Reservation = typeof reservations.$inferSelect;
 export type HomeModuleItem = typeof homeModuleItems.$inferSelect;

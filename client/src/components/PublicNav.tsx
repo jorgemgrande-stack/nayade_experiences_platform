@@ -25,8 +25,8 @@ const navLinks = [
     href: "/packs",
     children: [
       { label: "Packs de Día", href: "/packs/dia" },
-      { label: "Packs Escolares", href: "/packs/escolares" },
-      { label: "Team Building Empresas", href: "/packs/corporativo" },
+      { label: "Packs Escolares", href: "/packs/escolar" },
+      { label: "Team Building Empresas", href: "/packs/empresa" },
     ],
   },
   { label: "Hotel", href: "/hotel" },

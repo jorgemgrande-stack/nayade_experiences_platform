@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE IF NOT EXISTS `pack_cross_sells` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `packId` int NOT NULL,\n  `relatedPackId` int NOT NULL,\n  `sortOrder` int NOT NULL DEFAULT 0,\n  CONSTRAINT `pack_cross_sells_id` PRIMARY KEY(`id`)\n)",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute CREATE TABLE IF NOT EXISTS `pack_cross_sells` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `packId` int NOT NULL,\n  `relatedPackId` int NOT NULL,\n  `sortOrder` int NOT NULL DEFAULT 0,\n  CONSTRAINT `pack_cross_sells_id` PRIMARY KEY(`id`)\n)",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 182
+}

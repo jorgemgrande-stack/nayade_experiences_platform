@@ -61,6 +61,15 @@ import {
   hardDeleteLocation,
   toggleLocationActive,
   cloneLocation,
+  getPublicPacks,
+  getPackBySlug,
+  getPackCrossSells,
+  getAllPacksAdmin,
+  createPack,
+  updatePack,
+  togglePackActive,
+  hardDeletePack,
+  clonePack,
 } from "./db";
 import {
   buildRedsysForm,
@@ -723,6 +732,109 @@ export const appRouter = router({
         if (!r) throw new TRPCError({ code: "NOT_FOUND" });
         return r;
       }),
+  }),
+
+  // ─── PACKS ───────────────────────────────────────────────────────────────────
+  packs: router({
+    /** Listado público por categoría */
+    getByCategory: publicProcedure
+      .input(z.object({ category: z.enum(["dia", "escolar", "empresa"]).optional() }))
+      .query(async ({ input }) => getPublicPacks(input.category)),
+
+    /** Detalle público por slug */
+    getBySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input }) => {
+        const pack = await getPackBySlug(input.slug);
+        if (!pack) throw new TRPCError({ code: "NOT_FOUND" });
+        const crossSells = await getPackCrossSells(pack.id);
+        return { ...pack, crossSells };
+      }),
+
+    /** Listado admin */
+    getAll: adminProcedure
+      .input(z.object({ category: z.string().optional(), search: z.string().optional(), limit: z.number().default(50), offset: z.number().default(0) }))
+      .query(async ({ input }) => getAllPacksAdmin(input)),
+
+    /** Crear pack */
+    create: adminProcedure
+      .input(z.object({
+        slug: z.string(),
+        category: z.enum(["dia", "escolar", "empresa"]),
+        title: z.string(),
+        subtitle: z.string().optional(),
+        shortDescription: z.string().optional(),
+        description: z.string().optional(),
+        includes: z.array(z.string()).default([]),
+        excludes: z.array(z.string()).default([]),
+        schedule: z.string().optional(),
+        note: z.string().optional(),
+        image1: z.string().optional(),
+        image2: z.string().optional(),
+        image3: z.string().optional(),
+        image4: z.string().optional(),
+        basePrice: z.string().default("0"),
+        priceLabel: z.string().optional(),
+        duration: z.string().optional(),
+        minPersons: z.number().default(1),
+        maxPersons: z.number().optional(),
+        targetAudience: z.string().optional(),
+        badge: z.string().optional(),
+        hasStay: z.boolean().default(false),
+        isOnlinePurchase: z.boolean().default(false),
+        isFeatured: z.boolean().default(false),
+        isActive: z.boolean().default(true),
+        sortOrder: z.number().default(0),
+      }))
+      .mutation(async ({ input }) => createPack(input as any)),
+
+    /** Actualizar pack */
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        slug: z.string().optional(),
+        category: z.enum(["dia", "escolar", "empresa"]).optional(),
+        title: z.string().optional(),
+        subtitle: z.string().optional(),
+        shortDescription: z.string().optional(),
+        description: z.string().optional(),
+        includes: z.array(z.string()).optional(),
+        excludes: z.array(z.string()).optional(),
+        schedule: z.string().optional(),
+        note: z.string().optional(),
+        image1: z.string().optional(),
+        image2: z.string().optional(),
+        image3: z.string().optional(),
+        image4: z.string().optional(),
+        basePrice: z.string().optional(),
+        priceLabel: z.string().optional(),
+        duration: z.string().optional(),
+        minPersons: z.number().optional(),
+        maxPersons: z.number().optional(),
+        targetAudience: z.string().optional(),
+        badge: z.string().optional(),
+        hasStay: z.boolean().optional(),
+        isOnlinePurchase: z.boolean().optional(),
+        isFeatured: z.boolean().optional(),
+        isActive: z.boolean().optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => { const { id, ...data } = input; return updatePack(id, data as any); }),
+
+    /** Toggle activo/inactivo */
+    toggle: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => togglePackActive(input.id)),
+
+    /** Borrar definitivamente */
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => hardDeletePack(input.id)),
+
+    /** Clonar */
+    clone: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => clonePack(input.id)),
   }),
 });
 export type AppRouter = typeof appRouter;

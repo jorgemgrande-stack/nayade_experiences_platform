@@ -15,6 +15,13 @@
       "when": 1773609142094,
       "tag": "0001_steady_mojo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1773792095250,
+      "tag": "0002_odd_vindicator",
+      "breakpoints": true
     }
   ]
 }

@@ -1,157 +1,86 @@
-import { Link, useParams } from "wouter";
+import { useParams, Link } from "wouter";
+import { useState } from "react";
 import PublicLayout from "@/components/PublicLayout";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, ArrowLeft, Users, Clock, CheckCircle, Phone, Mail } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import BookingModal from "@/components/BookingModal";
+import {
+  Check, X, Clock, Users, Star, Bed, ShoppingCart,
+  MessageCircle, Phone, Calendar, Info, ArrowRight,
+  Sun, GraduationCap, Building2,
+} from "lucide-react";
 
-const CDN = {
-  hero: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/kayak-grupo_b3eca02d.jpg",
-  cableski: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/cableski_53f05d4a.jpg",
-  blob: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/blob-jump2_94e0b06d.jpg",
-  canoa: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/canoa-lago_b18c5886.jpg",
-  banana: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/banana-ski_43cb68d6.jpg",
-};
-
-const PACKS: Record<string, {
-  badge: string; title: string; subtitle: string; heroImg: string;
-  price: string; duration: string; group: string; desc: string;
-  includes: string[]; schedule: string; note: string;
+const CATEGORY_META: Record<string, {
+  label: string; href: string; gradient: string;
+  text: string; bg: string; border: string;
+  icon: React.ComponentType<{ className?: string }>;
 }> = {
   dia: {
-    badge: "Más Popular",
-    title: "Pack de Día Completo",
-    subtitle: "La experiencia completa en el lago",
-    heroImg: CDN.hero,
-    price: "Desde 45€/persona",
-    duration: "Día completo (10:00–20:00)",
-    group: "Mínimo 2 personas",
-    desc: "Vive un día completo en el embalse de Los Ángeles de San Rafael. Combina las mejores actividades acuáticas con acceso al club, almuerzo y todo lo que necesitas para una jornada inolvidable a solo 45 minutos de Madrid.",
-    includes: [
-      "Acceso al club y zona de playa del lago",
-      "2 actividades acuáticas a elegir (Blob Jump, Banana Ski, Canoa, Paddle Surf…)",
-      "Almuerzo en El Galeón o La Cabaña del Lago",
-      "Material completo y chaleco de seguridad",
-      "Monitor especializado durante las actividades",
-      "Aparcamiento gratuito",
-    ],
-    schedule: "Disponible de lunes a domingo de abril a octubre. Reserva con 48h de antelación.",
-    note: "Precio variable según actividades seleccionadas y número de personas. Consulta disponibilidad.",
+    label: "Packs de Día", href: "/packs/dia",
+    gradient: "from-sky-600 to-blue-800",
+    text: "text-sky-700", bg: "bg-sky-50", border: "border-sky-200",
+    icon: Sun,
   },
-  "packs-dia": {
-    badge: "Más Popular",
-    title: "Pack de Día Completo",
-    subtitle: "La experiencia completa en el lago",
-    heroImg: CDN.hero,
-    price: "Desde 45€/persona",
-    duration: "Día completo (10:00–20:00)",
-    group: "Mínimo 2 personas",
-    desc: "Vive un día completo en el embalse de Los Ángeles de San Rafael. Combina las mejores actividades acuáticas con acceso al club, almuerzo y todo lo que necesitas para una jornada inolvidable a solo 45 minutos de Madrid.",
-    includes: [
-      "Acceso al club y zona de playa del lago",
-      "2 actividades acuáticas a elegir (Blob Jump, Banana Ski, Canoa, Paddle Surf…)",
-      "Almuerzo en El Galeón o La Cabaña del Lago",
-      "Material completo y chaleco de seguridad",
-      "Monitor especializado durante las actividades",
-      "Aparcamiento gratuito",
-    ],
-    schedule: "Disponible de lunes a domingo de abril a octubre. Reserva con 48h de antelación.",
-    note: "Precio variable según actividades seleccionadas y número de personas. Consulta disponibilidad.",
+  escolar: {
+    label: "Packs Escolares", href: "/packs/escolar",
+    gradient: "from-emerald-600 to-teal-800",
+    text: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200",
+    icon: GraduationCap,
   },
-  escolares: {
-    badge: "Educativo",
-    title: "Packs Escolares",
-    subtitle: "Aventura y aprendizaje para grupos escolares",
-    heroImg: CDN.canoa,
-    price: "Desde 18€/alumno",
-    duration: "Media jornada o jornada completa",
-    group: "Grupos de 15 a 60 alumnos",
-    desc: "Programas diseñados específicamente para colegios e institutos con actividades adaptadas por edades, monitores especializados y protocolos de seguridad certificados. Una experiencia educativa y divertida en plena naturaleza.",
-    includes: [
-      "Actividades acuáticas adaptadas por edad y nivel",
-      "Monitores titulados con experiencia en grupos escolares",
-      "Protocolo de seguridad certificado y seguros incluidos",
-      "Almuerzo escolar opcional (menú adaptado)",
-      "Transporte coordinable desde el centro escolar",
-      "Informe de actividad para el centro",
-    ],
-    schedule: "Disponible de lunes a viernes en temporada escolar (septiembre–junio). Reserva con 2 semanas de antelación.",
-    note: "Precios especiales para grupos de más de 40 alumnos. Solicita presupuesto personalizado.",
-  },
-  "packs-escolares": {
-    badge: "Educativo",
-    title: "Packs Escolares",
-    subtitle: "Aventura y aprendizaje para grupos escolares",
-    heroImg: CDN.canoa,
-    price: "Desde 18€/alumno",
-    duration: "Media jornada o jornada completa",
-    group: "Grupos de 15 a 60 alumnos",
-    desc: "Programas diseñados específicamente para colegios e institutos con actividades adaptadas por edades, monitores especializados y protocolos de seguridad certificados. Una experiencia educativa y divertida en plena naturaleza.",
-    includes: [
-      "Actividades acuáticas adaptadas por edad y nivel",
-      "Monitores titulados con experiencia en grupos escolares",
-      "Protocolo de seguridad certificado y seguros incluidos",
-      "Almuerzo escolar opcional (menú adaptado)",
-      "Transporte coordinable desde el centro escolar",
-      "Informe de actividad para el centro",
-    ],
-    schedule: "Disponible de lunes a viernes en temporada escolar (septiembre–junio). Reserva con 2 semanas de antelación.",
-    note: "Precios especiales para grupos de más de 40 alumnos. Solicita presupuesto personalizado.",
-  },
-  corporativo: {
-    badge: "Team Building",
-    title: "Team Building Empresas",
-    subtitle: "Fortalece tu equipo en el lago",
-    heroImg: CDN.blob,
-    price: "Desde 55€/persona",
-    duration: "Medio día o día completo",
-    group: "Grupos de 10 a 200 personas",
-    desc: "Programas de team building diseñados para empresas que quieren fortalecer la cohesión de sus equipos en un entorno natural único. Gymkhanas acuáticas, retos en equipo, actividades de cohesión y espacios para reuniones o eventos corporativos.",
-    includes: [
-      "Gymkhana acuática personalizada para tu empresa",
-      "Actividades de cohesión y retos en equipo",
-      "Catering y coffee break incluidos",
-      "Espacio para reuniones o presentaciones",
-      "Coordinador de evento exclusivo",
-      "Fotografía y vídeo del evento (opcional)",
-    ],
-    schedule: "Disponible todo el año. Temporada alta: abril–octubre. Reserva con 1 semana de antelación.",
-    note: "Programa 100% personalizable. Incluimos actividades indoor para días de lluvia.",
-  },
-  "team-building": {
-    badge: "Team Building",
-    title: "Team Building Empresas",
-    subtitle: "Fortalece tu equipo en el lago",
-    heroImg: CDN.blob,
-    price: "Desde 55€/persona",
-    duration: "Medio día o día completo",
-    group: "Grupos de 10 a 200 personas",
-    desc: "Programas de team building diseñados para empresas que quieren fortalecer la cohesión de sus equipos en un entorno natural único. Gymkhanas acuáticas, retos en equipo, actividades de cohesión y espacios para reuniones o eventos corporativos.",
-    includes: [
-      "Gymkhana acuática personalizada para tu empresa",
-      "Actividades de cohesión y retos en equipo",
-      "Catering y coffee break incluidos",
-      "Espacio para reuniones o presentaciones",
-      "Coordinador de evento exclusivo",
-      "Fotografía y vídeo del evento (opcional)",
-    ],
-    schedule: "Disponible todo el año. Temporada alta: abril–octubre. Reserva con 1 semana de antelación.",
-    note: "Programa 100% personalizable. Incluimos actividades indoor para días de lluvia.",
+  empresa: {
+    label: "Packs Empresas", href: "/packs/empresa",
+    gradient: "from-violet-600 to-purple-800",
+    text: "text-violet-700", bg: "bg-violet-50", border: "border-violet-200",
+    icon: Building2,
   },
 };
 
 export default function PackDetail() {
-  const { slug } = useParams<{ slug: string }>();
-  const pack = PACKS[slug ?? ""];
+  const { category, slug } = useParams<{ category: string; slug: string }>();
+  const [people, setPeople] = useState(1);
+  const [bookingOpen, setBookingOpen] = useState(false);
+
+  const { data: pack, isLoading } = trpc.packs.getBySlug.useQuery(
+    { slug: slug ?? "" },
+    { enabled: !!slug }
+  );
+
+  const catKey = category ?? pack?.category ?? "dia";
+  const meta = CATEGORY_META[catKey] ?? CATEGORY_META["dia"];
+  const Icon = meta.icon;
+
+  const includes = Array.isArray(pack?.includes) ? (pack!.includes as string[]) : [];
+  const excludes = Array.isArray(pack?.excludes) ? (pack!.excludes as string[]) : [];
+  const crossSells: any[] = (pack as any)?.crossSells ?? [];
+
+  const basePrice = pack ? parseFloat(pack.basePrice) : 0;
+  const totalEstimado = basePrice * people;
+
+  if (isLoading) {
+    return (
+      <PublicLayout>
+        <div className="container max-w-6xl py-12 grid lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-4">
+            <Skeleton className="h-72 w-full rounded-2xl" />
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+          <div><Skeleton className="h-80 w-full rounded-2xl" /></div>
+        </div>
+      </PublicLayout>
+    );
+  }
 
   if (!pack) {
     return (
       <PublicLayout>
-        <div className="min-h-[60vh] flex flex-col items-center justify-center text-center px-4">
-          <h1 className="text-3xl font-heading font-bold text-foreground mb-4">Pack no encontrado</h1>
-          <p className="text-muted-foreground font-display mb-8">El pack que buscas no existe o ha sido retirado.</p>
+        <div className="container py-20 text-center text-slate-500">
+          <p className="text-lg">Pack no encontrado.</p>
           <Link href="/packs">
-            <Button className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-8">
-              <ArrowLeft className="w-4 h-4 mr-2" /> Ver todos los packs
-            </Button>
+            <Button className="mt-4">Volver a Packs</Button>
           </Link>
         </div>
       </PublicLayout>
@@ -161,83 +90,245 @@ export default function PackDetail() {
   return (
     <PublicLayout>
       {/* Hero */}
-      <section className="relative h-[55vh] min-h-[400px] overflow-hidden">
-        <img src={pack.heroImg} alt={pack.title} className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/40 to-black/75" />
-        <div className="absolute inset-0 flex items-center">
-          <div className="container">
-            <Link href="/packs">
-              <button className="flex items-center gap-1.5 text-white/80 hover:text-white font-display text-sm mb-6 transition-colors">
-                <ArrowLeft className="w-4 h-4" /> Todos los packs
-              </button>
-            </Link>
-            <span className="inline-block bg-accent/90 text-white text-xs font-display font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
-              {pack.badge}
-            </span>
-            <h1 className="text-5xl md:text-6xl font-heading font-bold text-white leading-tight mb-3">
-              {pack.title}
-            </h1>
-            <p className="text-xl text-white/85 font-display">{pack.subtitle}</p>
+      <section className="relative text-white overflow-hidden">
+        <div className="absolute inset-0 h-72">
+          {pack.image1 ? (
+            <img src={pack.image1} alt={pack.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className={`w-full h-full bg-gradient-to-br ${meta.gradient}`} />
+          )}
+          <div className={`absolute inset-0 bg-gradient-to-r ${meta.gradient} opacity-75`} />
+        </div>
+        <div className="relative container max-w-6xl pt-8 pb-36">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-2 text-sm text-white/70 mb-6 flex-wrap">
+            <Link href="/" className="hover:text-white transition-colors">Inicio</Link>
+            <span>/</span>
+            <Link href="/packs" className="hover:text-white transition-colors">Packs</Link>
+            <span>/</span>
+            <Link href={meta.href} className="hover:text-white transition-colors">{meta.label}</Link>
+            <span>/</span>
+            <span className="text-white font-medium">{pack.title}</span>
+          </nav>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {pack.badge && <Badge className="bg-orange-500 text-white border-0">{pack.badge}</Badge>}
+            {pack.hasStay && (
+              <Badge className="bg-blue-600 text-white border-0 flex items-center gap-1">
+                <Bed className="w-3 h-3" /> Con estancia
+              </Badge>
+            )}
+            {pack.isFeatured && (
+              <Badge className="bg-yellow-400 text-yellow-900 border-0 flex items-center gap-1">
+                <Star className="w-3 h-3" /> Destacado
+              </Badge>
+            )}
           </div>
+          <h1 className="text-4xl lg:text-5xl font-black mb-2">{pack.title}</h1>
+          {pack.subtitle && <p className="text-xl text-white/90">{pack.subtitle}</p>}
         </div>
       </section>
 
-      {/* Content */}
-      <section className="py-20 bg-background">
-        <div className="container">
-          <div className="grid lg:grid-cols-3 gap-12">
-            {/* Main content */}
-            <div className="lg:col-span-2 space-y-8">
-              <div>
-                <h2 className="text-2xl font-heading font-bold text-foreground mb-4">Descripción</h2>
-                <p className="text-muted-foreground font-display text-lg leading-relaxed">{pack.desc}</p>
-              </div>
-              <div>
-                <h2 className="text-2xl font-heading font-bold text-foreground mb-4">¿Qué incluye?</h2>
-                <ul className="space-y-3">
-                  {pack.includes.map((item, i) => (
-                    <li key={i} className="flex items-start gap-3 text-foreground/85 font-display">
-                      <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="bg-muted/50 rounded-2xl p-6 border border-border/40">
-                <h3 className="font-heading font-bold text-foreground mb-2">Horarios y disponibilidad</h3>
-                <p className="text-muted-foreground font-display text-sm">{pack.schedule}</p>
-                <p className="text-muted-foreground font-display text-sm mt-2 italic">{pack.note}</p>
+      {/* Contenido principal */}
+      <section className="relative -mt-20 pb-16">
+        <div className="container max-w-6xl grid lg:grid-cols-3 gap-8 items-start">
+          {/* Columna izquierda */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Descripción */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <h2 className="text-xl font-black text-slate-900 mb-3">Descripción</h2>
+              <p className="text-slate-600 leading-relaxed">{pack.description || pack.shortDescription}</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 pt-5 border-t border-slate-100">
+                {pack.duration && (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Clock className={`w-4 h-4 ${meta.text}`} />
+                    <span>{pack.duration}</span>
+                  </div>
+                )}
+                {pack.minPersons && (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Users className={`w-4 h-4 ${meta.text}`} />
+                    <span>
+                      {pack.maxPersons
+                        ? `${pack.minPersons}–${pack.maxPersons} personas`
+                        : `Mín. ${pack.minPersons} personas`}
+                    </span>
+                  </div>
+                )}
+                {pack.targetAudience && (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Star className={`w-4 h-4 ${meta.text}`} />
+                    <span>{pack.targetAudience}</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Sidebar */}
-            <div className="space-y-4">
-              <div className="bg-card rounded-2xl shadow-lg border border-border/40 p-6 sticky top-24">
-                <div className="text-3xl font-heading font-bold text-foreground mb-1">{pack.price}</div>
-                <div className="flex flex-col gap-2 text-sm text-muted-foreground font-display mb-6">
-                  <span className="flex items-center gap-2"><Clock className="w-4 h-4 text-accent" />{pack.duration}</span>
-                  <span className="flex items-center gap-2"><Users className="w-4 h-4 text-accent" />{pack.group}</span>
+            {/* Incluye / No incluye */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              {includes.length > 0 && (
+                <div className={`${meta.bg} border ${meta.border} rounded-2xl p-5`}>
+                  <h3 className="font-black text-slate-900 mb-3 flex items-center gap-2">
+                    <Check className={`w-5 h-5 ${meta.text}`} /> Qué incluye
+                  </h3>
+                  <ul className="space-y-2">
+                    {includes.map((item: string) => (
+                      <li key={item} className="flex items-start gap-2 text-sm text-slate-700">
+                        <Check className={`w-4 h-4 flex-shrink-0 mt-0.5 ${meta.text}`} />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <Link href="/presupuesto">
-                  <Button className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full py-3 text-base shadow-md mb-3">
-                    Solicitar Presupuesto <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-                <a href="tel:+34919041947">
-                  <Button variant="outline" className="w-full font-display font-semibold rounded-full py-3 text-base border-primary/30 text-primary hover:bg-primary/5">
-                    <Phone className="w-4 h-4 mr-2" /> +34 919 041 947
-                  </Button>
+              )}
+              {excludes.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                  <h3 className="font-black text-slate-900 mb-3 flex items-center gap-2">
+                    <X className="w-5 h-5 text-slate-400" /> No incluye
+                  </h3>
+                  <ul className="space-y-2">
+                    {excludes.map((item: string) => (
+                      <li key={item} className="flex items-start gap-2 text-sm text-slate-500">
+                        <X className="w-4 h-4 flex-shrink-0 mt-0.5 text-slate-400" />{item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Horarios */}
+            {pack.schedule && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                <h3 className="font-black text-slate-900 mb-2 flex items-center gap-2">
+                  <Calendar className={`w-5 h-5 ${meta.text}`} /> Disponibilidad y horarios
+                </h3>
+                <p className="text-slate-600 text-sm leading-relaxed">{pack.schedule}</p>
+              </div>
+            )}
+
+            {/* Nota */}
+            {pack.note && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
+                <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-amber-800 text-sm">{pack.note}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Widget de precio */}
+          <div className="sticky top-28">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
+              <div className="mb-5">
+                <p className="text-sm text-slate-500 mb-1">
+                  {pack.priceLabel || "Precio por persona desde"}
+                </p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-black text-slate-900">{basePrice.toFixed(0)}€</span>
+                  <span className="text-slate-500 text-sm">
+                    {pack.priceLabel?.includes("alumno") ? "/alumno" : "/persona"}
+                  </span>
+                </div>
+              </div>
+
+              {pack.isOnlinePurchase && (
+                <div className="mb-4">
+                  <label className="text-sm font-semibold text-slate-700 block mb-2">
+                    Número de personas
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setPeople(Math.max(pack.minPersons ?? 1, people - 1))}
+                      className="w-9 h-9 rounded-full border border-slate-300 flex items-center justify-center text-lg font-bold hover:bg-slate-100 transition-colors"
+                    >−</button>
+                    <span className="text-xl font-black w-8 text-center">{people}</span>
+                    <button
+                      onClick={() => setPeople(pack.maxPersons ? Math.min(pack.maxPersons, people + 1) : people + 1)}
+                      className="w-9 h-9 rounded-full border border-slate-300 flex items-center justify-center text-lg font-bold hover:bg-slate-100 transition-colors"
+                    >+</button>
+                  </div>
+                </div>
+              )}
+
+              {pack.isOnlinePurchase && (
+                <div className="bg-slate-50 rounded-xl p-3 mb-5 text-sm">
+                  <div className="flex justify-between text-slate-600 mb-1">
+                    <span>{basePrice.toFixed(0)}€ × {people} personas</span>
+                    <span>{totalEstimado.toFixed(0)}€</span>
+                  </div>
+                  <div className="flex justify-between font-black text-slate-900 text-base border-t border-slate-200 pt-2 mt-2">
+                    <span>Total estimado</span>
+                    <span className="text-orange-600">{totalEstimado.toFixed(0)}€</span>
+                  </div>
+                </div>
+              )}
+
+              {pack.isOnlinePurchase ? (
+                <Button
+                  size="lg"
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base mb-3"
+                  onClick={() => setBookingOpen(true)}
+                >
+                  <ShoppingCart className="w-5 h-5 mr-2" /> Reservar Ahora →
+                </Button>
+              ) : null}
+
+              <Link href="/contacto">
+                <Button variant="outline" size="lg" className="w-full font-semibold mb-4">
+                  <MessageCircle className="w-4 h-4 mr-2" /> Solicitar Presupuesto
+                </Button>
+              </Link>
+
+              <div className="border-t border-slate-100 pt-4 space-y-2">
+                <a href="tel:+34919041947" className="flex items-center gap-2 text-sm text-slate-600 hover:text-orange-600 transition-colors">
+                  <Phone className="w-4 h-4" /> +34 919 041 947
                 </a>
-                <div className="mt-4 pt-4 border-t border-border/40 text-center">
-                  <a href="mailto:hola@nayadeexperiences.es" className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-accent font-display transition-colors">
-                    <Mail className="w-4 h-4" /> hola@nayadeexperiences.es
-                  </a>
-                </div>
+                <p className="text-xs text-slate-400">Cancelación gratuita hasta 48h antes</p>
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      {/* Cross-selling */}
+      {crossSells.length > 0 && (
+        <section className="py-12 bg-slate-50 border-t border-slate-100">
+          <div className="container max-w-6xl">
+            <h2 className="text-2xl font-black text-slate-900 mb-6">También te puede interesar</h2>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {crossSells.map((related: any) => (
+                <Link key={related.id} href={`/packs/${related.category}/${related.slug}`}>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 hover:shadow-md transition-all group flex items-center gap-4">
+                    {related.image1 ? (
+                      <img src={related.image1} alt={related.title} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className={`w-16 h-16 rounded-lg bg-gradient-to-br ${meta.gradient} flex-shrink-0`} />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-slate-900 text-sm truncate">{related.title}</p>
+                      <p className="text-orange-600 font-black text-sm">{parseFloat(related.basePrice).toFixed(0)}€</p>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-orange-500 transition-colors flex-shrink-0" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {bookingOpen && (
+        <BookingModal
+          product={{
+            id: pack.id,
+            title: pack.title,
+            basePrice: pack.basePrice,
+            minPersons: pack.minPersons ?? 1,
+            maxPersons: pack.maxPersons ?? undefined,
+          }}
+          isOpen={bookingOpen}
+          onClose={() => setBookingOpen(false)}
+        />
+      )}
     </PublicLayout>
   );
 }

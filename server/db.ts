@@ -8,6 +8,8 @@ import {
   transactions, slideshowItems, menuItems, mediaFiles, staticPages, siteSettings,
   ghlWebhookLogs,
   homeModuleItems,
+  packs, InsertPack,
+  packCrossSells,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -882,4 +884,108 @@ export async function cloneLocation(id: number) {
     sortOrder: orig.sortOrder,
   });
   return { success: true, slug: newSlug };
+}
+
+// ─── PACKS ────────────────────────────────────────────────────────────────────
+
+export async function getPublicPacks(category?: "dia" | "escolar" | "empresa") {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = category
+    ? and(eq(packs.isActive, true), eq(packs.category, category))
+    : eq(packs.isActive, true);
+  return db.select().from(packs).where(conditions).orderBy(packs.sortOrder);
+}
+
+export async function getPackBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(packs).where(eq(packs.slug, slug)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function getPackCrossSells(packId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const crosses = await db.select().from(packCrossSells)
+    .where(eq(packCrossSells.packId, packId))
+    .orderBy(packCrossSells.sortOrder);
+  if (crosses.length === 0) return [];
+  const ids = crosses.map(c => c.relatedPackId);
+  return db.select().from(packs).where(and(inArray(packs.id, ids), eq(packs.isActive, true)));
+}
+
+export async function getAllPacksAdmin(params: { category?: string; search?: string; limit?: number; offset?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(packs).orderBy(packs.category, packs.sortOrder)
+    .limit(params.limit ?? 50).offset(params.offset ?? 0);
+}
+
+export async function createPack(data: Omit<InsertPack, "id" | "createdAt" | "updatedAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(packs).values(data);
+  return { id: Number(result[0].insertId), success: true };
+}
+
+export async function updatePack(id: number, data: Partial<Omit<InsertPack, "id" | "createdAt">>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(packs).set(data).where(eq(packs.id, id));
+  return { success: true };
+}
+
+export async function togglePackActive(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [pack] = await db.select({ isActive: packs.isActive }).from(packs).where(eq(packs.id, id));
+  if (!pack) throw new Error("Pack not found");
+  await db.update(packs).set({ isActive: !pack.isActive }).where(eq(packs.id, id));
+  return { success: true, isActive: !pack.isActive };
+}
+
+export async function hardDeletePack(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(packCrossSells).where(eq(packCrossSells.packId, id));
+  await db.delete(packs).where(eq(packs.id, id));
+  return { success: true };
+}
+
+export async function clonePack(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [orig] = await db.select().from(packs).where(eq(packs.id, id));
+  if (!orig) throw new Error("Pack not found");
+  const newSlug = orig.slug + "-copia-" + nanoid(4);
+  const result = await db.insert(packs).values({
+    slug: newSlug,
+    category: orig.category,
+    title: orig.title + " (Copia)",
+    subtitle: orig.subtitle,
+    shortDescription: orig.shortDescription,
+    description: orig.description,
+    includes: orig.includes,
+    excludes: orig.excludes,
+    schedule: orig.schedule,
+    note: orig.note,
+    image1: orig.image1,
+    image2: orig.image2,
+    image3: orig.image3,
+    image4: orig.image4,
+    basePrice: orig.basePrice,
+    priceLabel: orig.priceLabel,
+    duration: orig.duration,
+    minPersons: orig.minPersons,
+    maxPersons: orig.maxPersons,
+    targetAudience: orig.targetAudience,
+    badge: orig.badge,
+    hasStay: orig.hasStay,
+    isOnlinePurchase: orig.isOnlinePurchase,
+    isFeatured: false,
+    isActive: false,
+    sortOrder: orig.sortOrder,
+  });
+  return { success: true, id: Number(result[0].insertId), slug: newSlug };
 }

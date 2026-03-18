@@ -205,3 +205,17 @@
 - [x] Frontend: LocationsManager — DropdownMenu (Activar/Desactivar, Clonar, Borrar)
 - [x] Frontend: VariantsManager — DropdownMenu (Editar, Borrar con confirmación)
 - [x] TypeScript 0 errores tras todos los cambios
+
+## Reestructuración PACKS — Arquitectura ecommerce (v3.8)
+- [x] Auditar estructura actual de PACKS (estática, hardcodeada, sin BD)
+- [x] Esquema BD: tabla packs con categoría (dia/escolar/empresa) + pack_cross_sells
+- [x] Datos iniciales: 13 packs insertados (7 de día, 6 escolares)
+- [x] Backend: funciones CRUD packs en db.ts + router tRPC packs
+- [x] Nivel 1: PacksHome.tsx — 3 categorías visuales con hero y descripción
+- [x] Nivel 2: PacksList.tsx — listado tarjetas ecommerce con foto, precio, bullets, CTA
+- [x] Nivel 3: PackDetail.tsx — ficha completa con precio dinámico, incluye/excluye, cross-selling
+- [x] Rutas App.tsx: /packs, /packs/:category, /packs/:category/:slug
+- [x] Header: menú Packs → 3 categorías (slugs correctos: dia, escolar, empresa)
+- [x] BookingModal compatible con packs (isOnlinePurchase)
+- [x] Cross-selling en ficha de pack
+- [x] TypeScript 0 errores

@@ -1,0 +1,23 @@
+{
+  "query": "\nCREATE TABLE IF NOT EXISTS `packs` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `slug` varchar(256) NOT NULL,\n  `category` enum('dia','escolar','empresa') NOT NULL,\n  `title` varchar(256) NOT NULL,\n  `subtitle` varchar(512),\n  `shortDescription` text,\n  `description` text,\n  `includes` json DEFAULT ('[]'),\n  `excludes` json DEFAULT ('[]'),\n  `schedule` text,\n  `note` text,\n  `image1` text,\n  `image2` text,\n  `image3` text,\n  `image4` text,\n  `basePrice` decimal(10,2) NOT NULL DEFAULT '0',\n  `priceLabel` varchar(128),\n  `duration` varchar(128),\n  `minPersons` int DEFAULT 1,\n  `maxPersons` int,\n  `targetAudience` varchar(256),\n  `badge` varchar(64),\n  `hasStay` boolean NOT NULL DEFAULT false,\n  `isOnlinePurchase` boolean NOT NULL DEFAULT false,\n  `isFeatured` boolean NOT NULL DEFAULT false,\n  `isActive` boolean NOT NULL DEFAULT true,\n  `sortOrder` int NOT NULL DEFAULT 0,\n  `metaTitle` varchar(256),\n  `metaDescription` text,\n  `createdAt` timestamp NOT NULL DEFAULT (now()),\n  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n  CONSTRAINT `packs_id` PRIMARY KEY(`id`),\n  CONSTRAINT `packs_slug_unique` UNIQUE(`slug`)\n);\n\nCREATE TABLE IF NOT EXISTS `pack_cross_sells` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `packId` int NOT NULL,\n  `relatedPackId` int NOT NULL,\n  `sortOrder` int NOT NULL DEFAULT 0,\n  CONSTRAINT `pack_cross_sells_id` PRIMARY KEY(`id`)\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nCREATE TABLE IF NOT EXISTS `packs` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `slug` varchar(256) NOT NULL,\n  `category` enum('dia','escolar','empresa') NOT NULL,\n  `title` varchar(256) NOT NULL,\n  `subtitle` varchar(512),\n  `shortDescription` text,\n  `description` text,\n  `includes` json DEFAULT ('[]'),\n  `excludes` json DEFAULT ('[]'),\n  `schedule` text,\n  `note` text,\n  `image1` text,\n  `image2` text,\n  `image3` text,\n  `image4` text,\n  `basePrice` decimal(10,2) NOT NULL DEFAULT '0',\n  `priceLabel` varchar(128),\n  `duration` varchar(128),\n  `minPersons` int DEFAULT 1,\n  `maxPersons` int,\n  `targetAudience` varchar(256),\n  `badge` varchar(64),\n  `hasStay` boolean NOT NULL DEFAULT false,\n  `isOnlinePurchase` boolean NOT NULL DEFAULT false,\n  `isFeatured` boolean NOT NULL DEFAULT false,\n  `isActive` boolean NOT NULL DEFAULT true,\n  `sortOrder` int NOT NULL DEFAULT 0,\n  `metaTitle` varchar(256),\n  `metaDescription` text,\n  `createdAt` timestamp NOT NULL DEFAULT (now()),\n  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n  CONSTRAINT `packs_id` PRIMARY KEY(`id`),\n  CONSTRAINT `packs_slug_unique` UNIQUE(`slug`)\n);\n\nCREATE TABLE IF NOT EXISTS `pack_cross_sells` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `packId` int NOT NULL,\n  `relatedPackId` int NOT NULL,\n  `sortOrder` int NOT NULL DEFAULT 0,\n  CONSTRAINT `pack_cross_sells_id` PRIMARY KEY(`id`)\n);\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1064 (42000) at line 2: You have an error in your SQL syntax; check the manual that corresponds to your TiDB version for the right syntax to use line 9 column 32 near \"'[]'),",
+    "  `excludes` json DEFAULT ('[]'),",
+    "  `schedule` text,",
+    "  `note` text,",
+    "  `image1` text,",
+    "  `image2` text,",
+    "  `image3` text,",
+    "  `image4` text,",
+    "  `basePrice` decimal(10,2) NOT NULL DEFAULT '0',",
+    "  `priceLabel` varchar(128),",
+    "  `duration` varchar(128),",
+    "  `minPersons` int DEFAULT 1,",
+    "  `maxPersons` int,",
+    "  `targetAudience` varchar(256),",
+    "  `badge` varchar(64),",
+    "  `hasStay`"
+  ]
+}
