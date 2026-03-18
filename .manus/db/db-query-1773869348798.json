@@ -1,0 +1,9 @@
+{
+  "query": "INSERT IGNORE INTO static_pages (slug, title, content, isPublished, createdAt, updatedAt) VALUES\n  ('inicio', 'Inicio', NULL, true, NOW(), NOW()),\n  ('experiencias', 'Experiencias', NULL, true, NOW(), NOW()),\n  ('packs', 'Packs', NULL, true, NOW(), NOW()),\n  ('hotel', 'Hotel Náyade', NULL, false, NOW(), NOW()),\n  ('spa', 'SPA & Bienestar', NULL, false, NOW(), NOW()),\n  ('restaurantes', 'Restaurantes', NULL, false, NOW(), NOW()),\n  ('galeria', 'Galería', NULL, true, NOW(), NOW()),\n  ('ubicaciones', 'Ubicación', NULL, true, NOW(), NOW()),\n  ('presupuesto', 'Solicitar Presupuesto', NULL, true, NOW(), NOW()),\n  ('contacto', 'Contacto', NULL, true, NOW(), NOW());",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute INSERT IGNORE INTO static_pages (slug, title, content, isPublished, createdAt, updatedAt) VALUES\n  ('inicio', 'Inicio', NULL, true, NOW(), NOW()),\n  ('experiencias', 'Experiencias', NULL, true, NOW(), NOW()),\n  ('packs', 'Packs', NULL, true, NOW(), NOW()),\n  ('hotel', 'Hotel Náyade', NULL, false, NOW(), NOW()),\n  ('spa', 'SPA & Bienestar', NULL, false, NOW(), NOW()),\n  ('restaurantes', 'Restaurantes', NULL, false, NOW(), NOW()),\n  ('galeria', 'Galería', NULL, true, NOW(), NOW()),\n  ('ubicaciones', 'Ubicación', NULL, true, NOW(), NOW()),\n  ('presupuesto', 'Solicitar Presupuesto', NULL, true, NOW(), NOW()),\n  ('contacto', 'Contacto', NULL, true, NOW(), NOW());",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 82
+}

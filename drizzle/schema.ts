@@ -401,3 +401,18 @@ export type Booking = typeof bookings.$inferSelect;
 export type BookingMonitor = typeof bookingMonitors.$inferSelect;
 export type DailyOrder = typeof dailyOrders.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
+
+// ─── PAGE BLOCKS ─────────────────────────────────────────────────────────────
+export const pageBlocks = mysqlTable("page_blocks", {
+  id: int("id").autoincrement().primaryKey(),
+  pageSlug: varchar("pageSlug", { length: 256 }).notNull(),
+  blockType: varchar("blockType", { length: 64 }).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  data: json("data").notNull(),
+  isVisible: boolean("isVisible").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PageBlock = typeof pageBlocks.$inferSelect;
+export type InsertPageBlock = typeof pageBlocks.$inferInsert;

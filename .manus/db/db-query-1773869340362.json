@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `page_blocks` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`pageSlug` varchar(256) NOT NULL,\n\t`blockType` varchar(64) NOT NULL,\n\t`sortOrder` int NOT NULL DEFAULT 0,\n\t`data` json NOT NULL,\n\t`isVisible` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `page_blocks_id` PRIMARY KEY(`id`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute CREATE TABLE `page_blocks` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`pageSlug` varchar(256) NOT NULL,\n\t`blockType` varchar(64) NOT NULL,\n\t`sortOrder` int NOT NULL DEFAULT 0,\n\t`data` json NOT NULL,\n\t`isVisible` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `page_blocks_id` PRIMARY KEY(`id`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 411
+}

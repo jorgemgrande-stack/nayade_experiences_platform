@@ -298,3 +298,24 @@
 - [x] Añadir procedimiento public.getMenuItems en routers.ts (publicProcedure)
 - [x] Reescribir PublicNav.tsx para leer menú de la BD via tRPC (con fallback estático)
 - [x] Verificar que Circuito SPA Hidrotermal y Donuts Ski aparecen en el menú público
+
+## Editor Visual de Páginas (v5.0)
+- [ ] Auditar PagesManager actual y esquema BD
+- [ ] BD: tabla page_blocks (pageId, type, sortOrder, data JSON)
+- [ ] Backend: procedimientos CRUD de bloques (getBlocks, saveBlocks)
+- [ ] Frontend: editor de bloques con tipos: hero, rich_text, image_text, cta, gallery, accordion, divider
+- [ ] Frontend: reordenación de bloques con flechas arriba/abajo
+- [ ] Frontend: formulario de propiedades por tipo de bloque
+- [ ] Frontend: preview en tiempo real del bloque editado
+- [ ] Frontend: renderizador público /pagina/:slug que lee bloques de BD
+- [ ] Conectar el botón lápiz del PagesManager al nuevo editor
+
+## Editor Visual de Páginas (v5.0)
+- [x] BD: tabla page_blocks (id, pageSlug, blockType, sortOrder, data JSON, isActive)
+- [x] BD: seed inicial de 10 páginas en static_pages
+- [x] Backend: helpers getAllPages, getPageBySlug, upsertPage, getPageBlocks, savePageBlocks en db.ts
+- [x] Backend: procedimientos cms.getPages, cms.getPageBlocks, cms.savePageBlocks, cms.upsertPage en routers.ts
+- [x] Backend: procedimientos públicos public.getPublicPage, public.getPublicPageBlocks en routers.ts
+- [x] Frontend: PagesManager con editor visual de bloques (hero, texto, imagen+texto, CTA, galería, acordeón, features)
+- [x] Frontend: DynamicPage.tsx renderizador público de páginas en /pagina/:slug
+- [x] Frontend: ruta /pagina/:slug registrada en App.tsx

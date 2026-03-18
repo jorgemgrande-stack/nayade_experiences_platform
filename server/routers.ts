@@ -87,6 +87,11 @@ import {
   reorderCategories,
   reorderLocations,
   reorderSlideshowItems,
+  getAllPages,
+  getPageBySlug,
+  upsertPage,
+  getPageBlocks,
+  savePageBlocks,
 } from "./db";
 import {
   buildRedsysForm,
@@ -201,6 +206,19 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         return createLead(input);
       }),
+
+    getPublicPage: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input }) => {
+        const page = await getPageBySlug(input.slug);
+        return page || null;
+      }),
+
+    getPublicPageBlocks: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input }) => {
+        return getPageBlocks(input.slug);
+      }),
   }),
 
   // ─── ADMIN: CMS ───────────────────────────────────────────────────────────
@@ -309,7 +327,47 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         return reorderMenuItems(input.items);
       }),
+
+    // ── Pages ──────────────────────────────────────────────────────────────────────────────
+    getPages: adminProcedure.query(async () => {
+      return getAllPages();
+    }),
+
+    getPageBlocks: adminProcedure
+      .input(z.object({ pageSlug: z.string() }))
+      .query(async ({ input }) => {
+        return getPageBlocks(input.pageSlug);
+      }),
+
+    savePageBlocks: adminProcedure
+      .input(z.object({
+        pageSlug: z.string(),
+        blocks: z.array(z.object({
+          id: z.number().optional(),
+          blockType: z.string(),
+          sortOrder: z.number(),
+          data: z.record(z.string(), z.unknown()),
+          isVisible: z.boolean().default(true),
+        })),
+      }))
+      .mutation(async ({ input }) => {
+        return savePageBlocks(input.pageSlug, input.blocks as any[]);
+      }),
+
+    upsertPage: adminProcedure
+      .input(z.object({
+        slug: z.string(),
+        title: z.string(),
+        isPublished: z.boolean(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return upsertPage(input);
+      }),
   }),
+
+  // ─── PUBLIC: Page Blocks ──────────────────────────────────────────────────────────────────────────────
 
   // ─── ADMIN: PRODUCTS ──────────────────────────────────────────────────────
   products: router({

@@ -5,11 +5,13 @@ import {
   users, InsertUser,
   experiences, categories, locations, experienceVariants,
   leads, quotes, bookings, bookingMonitors, dailyOrders,
-  transactions, slideshowItems, menuItems, mediaFiles, staticPages, siteSettings,
+  transactions, slideshowItems, menuItems, mediaFiles, siteSettings,
   ghlWebhookLogs,
   homeModuleItems,
   packs, InsertPack,
   packCrossSells,
+  pageBlocks,
+  staticPages,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1199,5 +1201,75 @@ export async function reorderSlideshowItems(items: { id: number; sortOrder: numb
       db.update(slideshowItems).set({ sortOrder, updatedAt: new Date() }).where(eq(slideshowItems.id, id))
     )
   );
+  return { success: true };
+}
+
+// ─── PAGES & PAGE BLOCKS ──────────────────────────────────────────────────────
+
+export async function getAllPages() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(staticPages).orderBy(staticPages.id);
+}
+
+export async function getPageBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(staticPages).where(eq(staticPages.slug, slug)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function upsertPage(data: { slug: string; title: string; isPublished: boolean; metaTitle?: string; metaDescription?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(staticPages).values({
+    slug: data.slug,
+    title: data.title,
+    isPublished: data.isPublished,
+    metaTitle: data.metaTitle ?? null,
+    metaDescription: data.metaDescription ?? null,
+  }).onDuplicateKeyUpdate({
+    set: {
+      title: data.title,
+      isPublished: data.isPublished,
+      metaTitle: data.metaTitle ?? null,
+      metaDescription: data.metaDescription ?? null,
+      updatedAt: new Date(),
+    },
+  });
+  return { success: true };
+}
+
+export async function getPageBlocks(pageSlug: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(pageBlocks)
+    .where(eq(pageBlocks.pageSlug, pageSlug))
+    .orderBy(pageBlocks.sortOrder);
+}
+
+export async function savePageBlocks(pageSlug: string, blocks: { id?: number; blockType: string; sortOrder: number; data: unknown; isVisible: boolean }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Delete all existing blocks for this page and re-insert
+  await db.delete(pageBlocks).where(eq(pageBlocks.pageSlug, pageSlug));
+  if (blocks.length > 0) {
+    await db.insert(pageBlocks).values(
+      blocks.map((b, i) => ({
+        pageSlug,
+        blockType: b.blockType,
+        sortOrder: i,
+        data: b.data as any,
+        isVisible: b.isVisible,
+      }))
+    );
+  }
+  return { success: true };
+}
+
+export async function deletePageBlock(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(pageBlocks).where(eq(pageBlocks.id, id));
   return { success: true };
 }
