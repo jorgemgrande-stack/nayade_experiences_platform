@@ -1,0 +1,24 @@
+{
+  "query": "SELECT id, slug, title, isActive, createdAt FROM experiences WHERE slug LIKE '%copia%' OR slug LIKE '%copy%' OR title LIKE '%Copia%' OR title LIKE '%copy%' OR title LIKE '%donuts%' OR title LIKE '%Donuts%' ORDER BY createdAt DESC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, slug, title, isActive, createdAt FROM experiences WHERE slug LIKE '%copia%' OR slug LIKE '%copy%' OR title LIKE '%Copia%' OR title LIKE '%copy%' OR title LIKE '%donuts%' OR title LIKE '%Donuts%' ORDER BY createdAt DESC LIMIT 10;",
+  "rows": [
+    {
+      "id": "60001",
+      "slug": "banana-ski-donuts-copia-GAYB",
+      "title": "Donuts Ski",
+      "isActive": "1",
+      "createdAt": "2026-03-18 19:10:45"
+    },
+    {
+      "id": "30002",
+      "slug": "banana-ski-donuts",
+      "title": "Banana Ski & Donuts",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:33:51"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tslug\ttitle\tisActive\tcreatedAt\n60001\tbanana-ski-donuts-copia-GAYB\tDonuts Ski\t1\t2026-03-18 19:10:45\n30002\tbanana-ski-donuts\tBanana Ski & Donuts\t1\t2026-03-16 12:33:51\n",
+  "stderr": "",
+  "execution_time_ms": 68
+}

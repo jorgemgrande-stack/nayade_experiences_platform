@@ -368,9 +368,9 @@ export const appRouter = router({
       }),
 
     clone: adminProcedure
-      .input(z.object({ id: z.number() }))
+      .input(z.object({ id: z.number(), newName: z.string().optional() }))
       .mutation(async ({ input }) => {
-        return cloneExperience(input.id);
+        return cloneExperience(input.id, input.newName);
       }),
 
     getCategories: adminProcedure.query(async () => {

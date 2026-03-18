@@ -1,0 +1,16 @@
+{
+  "query": "SELECT id, slug, title, isActive FROM experiences WHERE id = 60001;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, slug, title, isActive FROM experiences WHERE id = 60001;",
+  "rows": [
+    {
+      "id": "60001",
+      "slug": "donuts-ski",
+      "title": "Donuts Ski",
+      "isActive": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tslug\ttitle\tisActive\n60001\tdonuts-ski\tDonuts Ski\t1\n",
+  "stderr": "",
+  "execution_time_ms": 61
+}

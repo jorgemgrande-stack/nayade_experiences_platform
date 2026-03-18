@@ -124,6 +124,8 @@ export default function ExperiencesManager() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<ExpForm>(emptyForm);
   const [search, setSearch] = useState("");
+  const [cloneModal, setCloneModal] = useState<{ id: number; originalName: string } | null>(null);
+  const [cloneName, setCloneName] = useState("");
 
   const { data: experiences, refetch } = trpc.products.getAll.useQuery();
   const { data: categories } = trpc.products.getCategories.useQuery();
@@ -150,7 +152,7 @@ export default function ExperiencesManager() {
     onError: () => toast.error("Error al cambiar estado"),
   });
   const cloneMutation = trpc.products.clone.useMutation({
-    onSuccess: () => { toast.success("Experiencia clonada (inactiva)"); refetch(); },
+    onSuccess: () => { toast.success("Experiencia clonada correctamente (inactiva, lista para editar)"); refetch(); setCloneModal(null); setCloneName(""); },
     onError: () => toast.error("Error al clonar"),
   });
 
@@ -309,7 +311,7 @@ export default function ExperiencesManager() {
                                 ? <><PowerOff className="w-3.5 h-3.5 mr-2" /> Desactivar</>
                                 : <><Power className="w-3.5 h-3.5 mr-2" /> Activar</>}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => cloneMutation.mutate({ id: exp.id })}>
+                            <DropdownMenuItem onClick={() => { setCloneModal({ id: exp.id, originalName: exp.title }); setCloneName(""); }}>
                               <Copy className="w-3.5 h-3.5 mr-2" /> Clonar
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -427,6 +429,53 @@ export default function ExperiencesManager() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de clonación con nombre */}
+      <Dialog open={!!cloneModal} onOpenChange={(open) => { if (!open) { setCloneModal(null); setCloneName(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="w-5 h-5 text-primary" /> Clonar experiencia
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Clonando: <strong>{cloneModal?.originalName}</strong>
+            </p>
+            <div>
+              <Label htmlFor="cloneName">Nombre de la nueva experiencia</Label>
+              <Input
+                id="cloneName"
+                autoFocus
+                value={cloneName}
+                onChange={(e) => setCloneName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && cloneName.trim() && cloneModal)
+                    cloneMutation.mutate({ id: cloneModal.id, newName: cloneName.trim() });
+                }}
+                placeholder="Ej: Donuts Ski"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                El slug y la URL se generan automáticamente desde este nombre.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={() => { setCloneModal(null); setCloneName(""); }} className="flex-1">
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => { if (cloneModal && cloneName.trim()) cloneMutation.mutate({ id: cloneModal.id, newName: cloneName.trim() }); }}
+              disabled={!cloneName.trim() || cloneMutation.isPending}
+              className="flex-1"
+              style={{ background: "linear-gradient(135deg,#f97316,#f59e0b)", color: "#fff", border: "none", fontWeight: 600 }}
+            >
+              {cloneMutation.isPending ? "Clonando..." : "Clonar"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </AdminLayout>

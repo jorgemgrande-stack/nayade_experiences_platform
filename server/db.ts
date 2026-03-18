@@ -781,13 +781,21 @@ export async function toggleExperienceActive(id: number, isActive: boolean) {
   return { success: true };
 }
 
-export async function cloneExperience(id: number) {
+export async function cloneExperience(id: number, newName?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const [orig] = await db.select().from(experiences).where(eq(experiences.id, id));
   if (!orig) throw new Error("Experience not found");
-  const newSlug = orig.slug + "-copia-" + nanoid(4);
-  const newTitle = orig.title + " (Copia)";
+  // Si se proporciona un nombre nuevo, generar slug desde ese nombre; si no, añadir sufijo
+  const resolvedTitle = newName?.trim() || orig.title + " (Copia)";
+  const baseSlug = resolvedTitle
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")  // quitar tildes
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+  const newSlug = baseSlug + "-" + nanoid(4);
+  const newTitle = resolvedTitle;
   await db.insert(experiences).values({
     slug: newSlug,
     title: newTitle,

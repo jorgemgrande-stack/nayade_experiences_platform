@@ -258,3 +258,9 @@
 - [x] Backend: procedimientos cms.getMenuItems, cms.createMenuItem, cms.updateMenuItem, cms.deleteMenuItem, cms.reorderMenuItems en routers.ts
 - [x] BD: seed inicial con la estructura actual del menú (7 ítems raíz + submenús)
 - [x] Frontend: MenusManager con edición inline, añadir/eliminar ítems, reordenación con flechas, toggle visibilidad
+
+## Corrección cloneExperience v4.5
+- [x] Corregir cloneExperience en db.ts para usar nombre nuevo y generar slug correcto (no añadir -copy)
+- [x] Corregir procedimiento tRPC cloneExperience en routers.ts para aceptar newName
+- [x] Actualizar modal de clonación en frontend para pasar el nombre nuevo al backend
+- [x] Corregir la experiencia "Donuts Ski" ya creada: slug corregido a 'donuts-ski' en BD
