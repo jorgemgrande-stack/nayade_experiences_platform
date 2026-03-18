@@ -84,13 +84,14 @@ export default function Experiences() {
         <div className="container py-4">
           <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
             {/* Search */}
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <div className="relative w-full md:w-64 shrink-0" style={{minWidth: '200px'}}>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               <Input
                 placeholder="Buscar experiencias..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
+                className="pl-9 w-full"
+                style={{pointerEvents: 'auto', position: 'relative', zIndex: 1}}
               />
             </div>
 

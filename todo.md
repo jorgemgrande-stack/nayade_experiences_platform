@@ -244,3 +244,7 @@
 - [x] Reescribir PacksList.tsx con mismas tarjetas que Experiences (imagen cuadrada, precio, badges, duración, personas, bullets, CTA)
 - [x] Añadir filtros a PacksList (búsqueda por texto + filtro por etiqueta/badge)
 - [x] Verificar que la estructura gráfica (grid, padding, hero) es idéntica en ambas secciones
+
+## Correcciones layout v4.2
+- [x] PacksList: quitar max-w-6xl para que las tarjetas ocupen el ancho completo como en Experiencias
+- [x] Experiences: reparar buscador que quedó pequeño y no permite escribir (Input bloqueado)
