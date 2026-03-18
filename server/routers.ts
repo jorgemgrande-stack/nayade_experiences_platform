@@ -179,6 +179,12 @@ export const appRouter = router({
       return getSlideshowItems();
     }),
 
+    getMenuItems: publicProcedure
+      .input(z.object({ zone: z.enum(["header", "footer"]).default("header") }))
+      .query(async ({ input }) => {
+        return getAllMenuItems(input.zone);
+      }),
+
     submitLead: publicProcedure
       .input(z.object({
         name: z.string().min(2),

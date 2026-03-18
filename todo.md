@@ -287,3 +287,14 @@
 
 ## Corrección enlaces rotos experiencias (v4.7)
 - [x] Corregir 3 enlaces /experiencia/:slug → /experiencias/:slug en Experiences.tsx (botones "Ver detalle")
+
+## Menú público conectado a BD (v4.9)
+- [ ] Auditar PublicNav.tsx para identificar la lista hardcodeada de menús
+- [ ] Verificar que existe procedimiento public.getMenuItems en routers.ts
+- [ ] Conectar PublicNav al endpoint tRPC para leer menús de la BD dinámicamente
+- [ ] Verificar que Circuito SPA Hidrotermal aparece en el submenú de Experiencias
+
+## Menú público conectado a BD (v4.9)
+- [x] Añadir procedimiento public.getMenuItems en routers.ts (publicProcedure)
+- [x] Reescribir PublicNav.tsx para leer menú de la BD via tRPC (con fallback estático)
+- [x] Verificar que Circuito SPA Hidrotermal y Donuts Ski aparecen en el menú público

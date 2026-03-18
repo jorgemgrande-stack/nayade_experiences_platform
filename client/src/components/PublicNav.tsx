@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, ChevronDown, Anchor, Phone } from "lucide-react";
+import { Menu, X, ChevronDown, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { trpc } from "@/lib/trpc";
 
-const navLinks = [
+// Fallback estático por si la BD no responde aún
+const FALLBACK_NAV = [
   {
-    label: "Experiencias",
-    href: "/experiencias",
+    label: "Experiencias", href: "/experiencias",
     children: [
       { label: "Blob Jump", href: "/experiencias/blob-jump" },
       { label: "Banana Ski & Donuts", href: "/experiencias/banana-ski-donuts" },
@@ -21,8 +22,7 @@ const navLinks = [
     ],
   },
   {
-    label: "Packs",
-    href: "/packs",
+    label: "Packs", href: "/packs",
     children: [
       { label: "Packs de Día", href: "/packs/dia" },
       { label: "Packs Escolares", href: "/packs/escolar" },
@@ -32,8 +32,7 @@ const navLinks = [
   { label: "Hotel", href: "/hotel" },
   { label: "SPA", href: "/spa" },
   {
-    label: "Restaurantes",
-    href: "/restaurantes",
+    label: "Restaurantes", href: "/restaurantes",
     children: [
       { label: "El Galeón", href: "/restaurantes/el-galeon" },
       { label: "La Cabaña del Lago", href: "/restaurantes/la-cabana" },
@@ -43,6 +42,12 @@ const navLinks = [
   { label: "Galería", href: "/galeria" },
   { label: "Ubicación", href: "/ubicaciones" },
 ];
+
+interface NavItem {
+  label: string;
+  href: string;
+  children?: { label: string; href: string }[];
+}
 
 // ── Dropdown con zona de tolerancia hover ─────────────────────────────────
 interface DropdownItem { label: string; href: string }
@@ -117,6 +122,35 @@ export default function PublicNav() {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
   const [location, setLocation] = useLocation();
+
+  // Cargar menú desde la BD
+  const { data: menuData } = trpc.public.getMenuItems.useQuery(
+    { zone: "header" },
+    { staleTime: 5 * 60 * 1000 } // 5 min cache
+  );
+
+  // Construir estructura de navegación a partir de los datos de BD
+  const navLinks: NavItem[] = (() => {
+    if (!menuData || menuData.length === 0) return FALLBACK_NAV;
+
+    // Ítems raíz (sin parentId), activos, ordenados
+    const roots = menuData
+      .filter((item: any) => !item.parentId && item.isActive)
+      .sort((a: any, b: any) => a.sortOrder - b.sortOrder);
+
+    return roots.map((root: any) => {
+      const children = menuData
+        .filter((item: any) => item.parentId === root.id && item.isActive)
+        .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+        .map((child: any) => ({ label: child.label, href: child.url ?? "/" }));
+
+      return {
+        label: root.label,
+        href: root.url ?? "/",
+        ...(children.length > 0 ? { children } : {}),
+      };
+    });
+  })();
 
   useEffect(() => {
     setIsOpen(false);
