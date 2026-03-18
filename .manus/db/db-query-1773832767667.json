@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `users` ADD `passwordHash` text;\nALTER TABLE `users` ADD `inviteToken` varchar(128);\nALTER TABLE `users` ADD `inviteTokenExpiry` timestamp;\nALTER TABLE `users` ADD `inviteAccepted` boolean DEFAULT false NOT NULL;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute ALTER TABLE `users` ADD `passwordHash` text;\nALTER TABLE `users` ADD `inviteToken` varchar(128);\nALTER TABLE `users` ADD `inviteTokenExpiry` timestamp;\nALTER TABLE `users` ADD `inviteAccepted` boolean DEFAULT false NOT NULL;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2491
+}

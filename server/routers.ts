@@ -41,6 +41,13 @@ import {
   deleteSlideshowItem,
   getAllMediaFiles,
   getAllUsers,
+  createInvitedUser,
+  changeUserRole,
+  toggleUserActive,
+  getUserByInviteToken,
+  setUserPassword,
+  resendUserInvite,
+  deleteUser,
   getHomeModuleItems,
   setHomeModuleItems,
   createReservation,
@@ -76,8 +83,8 @@ import {
   validateRedsysNotification,
   generateMerchantOrder,
 } from "./redsys";
-
-// Admin middleware
+import { sendInviteEmail } from "./inviteEmail";
+// Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
@@ -134,6 +141,21 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return getVariantsByExperience(input.experienceId);
       }),
+
+    setPassword: publicProcedure.input(z.object({
+      token: z.string(),
+      password: z.string().min(6),
+    })).mutation(async ({ input }) => {
+      const bcrypt = await import("bcryptjs");
+      const user = await getUserByInviteToken(input.token);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Token inválido o expirado" });
+      if (user.inviteTokenExpiry && new Date() > user.inviteTokenExpiry) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace ha expirado. Solicita un nuevo enlace al administrador." });
+      }
+      const passwordHash = await bcrypt.hash(input.password, 12);
+      await setUserPassword(user.id, passwordHash);
+      return { success: true, name: user.name };
+    }),
 
     getCategories: publicProcedure.query(async () => {
       return getPublicCategories();
@@ -582,6 +604,58 @@ export const appRouter = router({
   admin: router({
     getUsers: adminProcedure.query(async () => {
       return getAllUsers();
+    }),
+    createUser: adminProcedure.input(z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      role: z.enum(["user", "admin", "monitor", "agente"]),
+      origin: z.string(),
+    })).mutation(async ({ input }) => {
+      const { nanoid } = await import("nanoid");
+      const token = nanoid(48);
+      const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72h
+      const result = await createInvitedUser({
+        name: input.name,
+        email: input.email,
+        role: input.role,
+        inviteToken: token,
+        inviteTokenExpiry: expiry,
+      });
+      // Send invite email
+      const setPasswordUrl = `${input.origin}/establecer-contrasena?token=${token}`;
+      await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: input.role });
+      return { ...result, token };
+    }),
+    changeUserRole: adminProcedure.input(z.object({
+      userId: z.number(),
+      role: z.enum(["user", "admin", "monitor", "agente"]),
+    })).mutation(async ({ input }) => {
+      return changeUserRole(input.userId, input.role);
+    }),
+    toggleUserActive: adminProcedure.input(z.object({
+      userId: z.number(),
+    })).mutation(async ({ input }) => {
+      return toggleUserActive(input.userId);
+    }),
+    resendInvite: adminProcedure.input(z.object({
+      userId: z.number(),
+      email: z.string().email(),
+      name: z.string(),
+      origin: z.string(),
+    })).mutation(async ({ input }) => {
+      const { nanoid } = await import("nanoid");
+      const token = nanoid(48);
+      const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      await resendUserInvite(input.userId, token, expiry);
+      const setPasswordUrl = `${input.origin}/establecer-contrasena?token=${token}`;
+      await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: "user" });
+      return { success: true };
+    }),
+    deleteUser: adminProcedure.input(z.object({
+      userId: z.number(),
+    })).mutation(async ({ input, ctx }) => {
+      if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes eliminarte a ti mismo" });
+      return deleteUser(input.userId);
     }),
   }),
   // ─── HOME MODULES ─────────────────────────────────────────────────────

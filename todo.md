@@ -228,3 +228,13 @@
 - [x] PacksList ya renderiza image1 correctamente (problema era falta de gestor)
 - [x] Rediseñar hero PackDetail: foto de fondo + overlay oscuro + banda de color de categoría
 - [x] TypeScript 0 errores
+
+## Gestión de usuarios admin (v4.0)
+- [x] Auditar esquema tabla users y panel UsersManager actual
+- [x] Backend: crear usuario con nombre, email, rol y token set-password
+- [x] Backend: cambiar rol de usuario desde UI (sin ir a BD)
+- [x] Backend: endpoint público /public.setPassword para establecer contraseña
+- [x] Backend: plantilla email de bienvenida con enlace set-password (inviteEmail.ts)
+- [x] Frontend: UsersManager con formulario de creación y cambio de rol
+- [x] Frontend: menú de acciones en fila de usuario (Cambiar rol, Reenviar invitación, Desactivar, Eliminar)
+- [x] Frontend: página pública /establecer-contrasena con formulario de contraseña

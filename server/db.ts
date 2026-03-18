@@ -989,3 +989,81 @@ export async function clonePack(id: number) {
   });
   return { success: true, id: Number(result[0].insertId), slug: newSlug };
 }
+
+// ─── USER MANAGEMENT (ADMIN) ─────────────────────────────────────────────────
+
+export async function createInvitedUser(data: {
+  name: string;
+  email: string;
+  role: "user" | "admin" | "monitor" | "agente";
+  inviteToken: string;
+  inviteTokenExpiry: Date;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, data.email));
+  if (existing) throw new Error("Ya existe un usuario con ese email");
+  const openId = "local-" + nanoid(16);
+  const result = await db.insert(users).values({
+    openId,
+    name: data.name,
+    email: data.email,
+    role: data.role,
+    loginMethod: "local",
+    isActive: true,
+    inviteToken: data.inviteToken,
+    inviteTokenExpiry: data.inviteTokenExpiry,
+    inviteAccepted: false,
+  });
+  return { success: true, id: Number(result[0].insertId) };
+}
+
+export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
+  return { success: true };
+}
+
+export async function toggleUserActive(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [user] = await db.select({ isActive: users.isActive }).from(users).where(eq(users.id, userId));
+  if (!user) throw new Error("User not found");
+  await db.update(users).set({ isActive: !user.isActive, updatedAt: new Date() }).where(eq(users.id, userId));
+  return { success: true, isActive: !user.isActive };
+}
+
+export async function getUserByInviteToken(token: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [user] = await db.select().from(users).where(eq(users.inviteToken, token));
+  return user ?? null;
+}
+
+export async function setUserPassword(userId: number, passwordHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({
+    passwordHash,
+    inviteToken: null,
+    inviteTokenExpiry: null,
+    inviteAccepted: true,
+    updatedAt: new Date(),
+  }).where(eq(users.id, userId));
+  return { success: true };
+}
+
+export async function resendUserInvite(userId: number, inviteToken: string, inviteTokenExpiry: Date) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ inviteToken, inviteTokenExpiry, updatedAt: new Date() }).where(eq(users.id, userId));
+  return { success: true };
+}
+
+export async function deleteUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(users).where(eq(users.id, userId));
+  return { success: true };
+}
