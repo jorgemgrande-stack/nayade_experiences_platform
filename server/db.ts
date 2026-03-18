@@ -408,6 +408,13 @@ export async function createMediaFile(data: {
   return { id: Number(result[0].insertId), url: data.url, success: true };
 }
 
+export async function deleteMediaFile(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(mediaFiles).where(eq(mediaFiles.id, id));
+  return { success: true };
+}
+
 // ─── ADMIN: EXPERIENCES ───────────────────────────────────────────────────────
 
 export async function getAllExperiences() {

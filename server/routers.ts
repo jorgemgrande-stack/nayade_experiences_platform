@@ -40,6 +40,8 @@ import {
   updateSlideshowItem,
   deleteSlideshowItem,
   getAllMediaFiles,
+  createMediaFile,
+  deleteMediaFile,
   getAllUsers,
   createInvitedUser,
   changeUserRole,
@@ -277,6 +279,12 @@ export const appRouter = router({
     getMediaFiles: adminProcedure.query(async () => {
       return getAllMediaFiles();
     }),
+
+    deleteMediaFile: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return deleteMediaFile(input.id);
+      }),
 
     // ── Menu Items ────────────────────────────────────────────────────────────
     getMenuItems: adminProcedure

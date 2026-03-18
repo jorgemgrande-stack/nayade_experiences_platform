@@ -325,3 +325,10 @@
 - [x] Modificar Hotel.tsx para leer bloques del editor visual y renderizarlos
 - [x] Verificar que los cambios en admin/cms/paginas se reflejan en /hotel
 - [x] Aplicar el mismo patrón a /spa si es necesario
+
+## Multimedia y subida de imágenes en editor de páginas (v5.2)
+- [x] Auditar MultimediaManager y endpoint de subida de imágenes
+- [x] Reparar backend de subida de imágenes (endpoint REST + tRPC)
+- [x] Reparar MultimediaManager para que la subida funcione correctamente
+- [x] Crear componente ImageUploader reutilizable (sube a S3, guarda en Multimedia)
+- [x] Reemplazar campos URL de imagen en PagesManager por ImageUploader

@@ -13,6 +13,7 @@ import {
   Type, Image, Layout, AlignLeft, Link2, Grid, ChevronRight,
   EyeOff, GripVertical, FileText, Globe, Settings
 } from "lucide-react";
+import ImageUploader from "@/components/ImageUploader";
 
 // ─── Block Types ──────────────────────────────────────────────────────────────
 type BlockType = "hero" | "text" | "image_text" | "cta" | "gallery" | "accordion" | "features" | "spacer";
@@ -58,7 +59,7 @@ function HeroEditor({ data, onChange }: { data: Record<string, unknown>; onChang
         <div><Label className="text-xs mb-1 block">Título</Label><Input value={data.title as string || ""} onChange={e => onChange({ ...data, title: e.target.value })} placeholder="Título principal" /></div>
         <div><Label className="text-xs mb-1 block">Subtítulo</Label><Input value={data.subtitle as string || ""} onChange={e => onChange({ ...data, subtitle: e.target.value })} placeholder="Subtítulo" /></div>
       </div>
-      <div><Label className="text-xs mb-1 block">URL de imagen de fondo</Label><Input value={data.imageUrl as string || ""} onChange={e => onChange({ ...data, imageUrl: e.target.value })} placeholder="https://..." /></div>
+      <ImageUploader label="Imagen de fondo" value={data.imageUrl as string || ""} onChange={url => onChange({ ...data, imageUrl: url })} />
       <div className="grid grid-cols-3 gap-3">
         <div><Label className="text-xs mb-1 block">Texto del botón</Label><Input value={data.ctaText as string || ""} onChange={e => onChange({ ...data, ctaText: e.target.value })} placeholder="Reservar" /></div>
         <div><Label className="text-xs mb-1 block">URL del botón</Label><Input value={data.ctaUrl as string || ""} onChange={e => onChange({ ...data, ctaUrl: e.target.value })} placeholder="/reservar" /></div>
@@ -87,10 +88,8 @@ function TextEditor({ data, onChange }: { data: Record<string, unknown>; onChang
 function ImageTextEditor({ data, onChange }: { data: Record<string, unknown>; onChange: (d: Record<string, unknown>) => void }) {
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div><Label className="text-xs mb-1 block">Título</Label><Input value={data.title as string || ""} onChange={e => onChange({ ...data, title: e.target.value })} /></div>
-        <div><Label className="text-xs mb-1 block">URL de imagen</Label><Input value={data.imageUrl as string || ""} onChange={e => onChange({ ...data, imageUrl: e.target.value })} placeholder="https://..." /></div>
-      </div>
+      <div><Label className="text-xs mb-1 block">Título</Label><Input value={data.title as string || ""} onChange={e => onChange({ ...data, title: e.target.value })} /></div>
+      <ImageUploader label="Imagen" value={data.imageUrl as string || ""} onChange={url => onChange({ ...data, imageUrl: url })} />
       <div><Label className="text-xs mb-1 block">Texto</Label><Textarea rows={4} value={data.body as string || ""} onChange={e => onChange({ ...data, body: e.target.value })} /></div>
       <div className="grid grid-cols-3 gap-3">
         <div><Label className="text-xs mb-1 block">Posición imagen</Label>
@@ -193,11 +192,13 @@ function GalleryEditor({ data, onChange }: { data: Record<string, unknown>; onCh
   return (
     <div className="space-y-3">
       <div><Label className="text-xs mb-1 block">Título (opcional)</Label><Input value={data.title as string || ""} onChange={e => onChange({ ...data, title: e.target.value })} /></div>
-      <div className="space-y-2">
+      <div className="space-y-3">
         {images.map((img, i) => (
-          <div key={i} className="flex gap-2">
-            <Input className="flex-1" value={img} onChange={e => updateImage(i, e.target.value)} placeholder="https://..." />
-            <Button variant="ghost" size="icon" onClick={() => removeImage(i)}><Trash2 size={14} className="text-destructive" /></Button>
+          <div key={i} className="flex gap-2 items-start">
+            <div className="flex-1">
+              <ImageUploader value={img} onChange={url => updateImage(i, url)} />
+            </div>
+            <Button variant="ghost" size="icon" className="mt-1" onClick={() => removeImage(i)}><Trash2 size={14} className="text-destructive" /></Button>
           </div>
         ))}
         <Button variant="outline" size="sm" onClick={addImage}><Plus size={14} className="mr-1" />Añadir imagen</Button>
