@@ -1,0 +1,18 @@
+{
+  "query": "CREATE TABLE IF NOT EXISTS `room_types` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `slug` varchar(256) NOT NULL,\n  `name` varchar(256) NOT NULL,\n  `shortDescription` text,\n  `description` text,\n  `coverImageUrl` text,\n  `image1` text,\n  `image2` text,\n  `image3` text,\n  `image4` text,\n  `gallery` json DEFAULT ('[]'),\n  `maxAdults` int NOT NULL DEFAULT 2,\n  `maxChildren` int NOT NULL DEFAULT 0,\n  `maxOccupancy` int NOT NULL DEFAULT 2,\n  `surfaceM2` int,\n  `amenities` json DEFAULT ('[]'),\n  `basePrice` decimal(10,2) NOT NULL DEFAULT '0',\n  `currency` varchar(8) NOT NULL DEFAULT 'EUR',\n  `totalUnits` int NOT NULL DEFAULT 1,\n  `isFeatured` tinyint(1) NOT NULL DEFAULT 0,\n  `isActive` tinyint(1) NOT NULL DEFAULT 1,\n  `sortOrder` int NOT NULL DEFAULT 0,\n  `metaTitle` varchar(256),\n  `metaDescription` text,\n  `createdAt` timestamp NOT NULL DEFAULT (now()),\n  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n  PRIMARY KEY(`id`),\n  UNIQUE KEY `room_types_slug_unique` (`slug`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute CREATE TABLE IF NOT EXISTS `room_types` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `slug` varchar(256) NOT NULL,\n  `name` varchar(256) NOT NULL,\n  `shortDescription` text,\n  `description` text,\n  `coverImageUrl` text,\n  `image1` text,\n  `image2` text,\n  `image3` text,\n  `image4` text,\n  `gallery` json DEFAULT ('[]'),\n  `maxAdults` int NOT NULL DEFAULT 2,\n  `maxChildren` int NOT NULL DEFAULT 0,\n  `maxOccupancy` int NOT NULL DEFAULT 2,\n  `surfaceM2` int,\n  `amenities` json DEFAULT ('[]'),\n  `basePrice` decimal(10,2) NOT NULL DEFAULT '0',\n  `currency` varchar(8) NOT NULL DEFAULT 'EUR',\n  `totalUnits` int NOT NULL DEFAULT 1,\n  `isFeatured` tinyint(1) NOT NULL DEFAULT 0,\n  `isActive` tinyint(1) NOT NULL DEFAULT 1,\n  `sortOrder` int NOT NULL DEFAULT 0,\n  `metaTitle` varchar(256),\n  `metaDescription` text,\n  `createdAt` timestamp NOT NULL DEFAULT (now()),\n  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n  PRIMARY KEY(`id`),\n  UNIQUE KEY `room_types_slug_unique` (`slug`)\n);",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1064 (42000) at line 1: You have an error in your SQL syntax; check the manual that corresponds to your TiDB version for the right syntax to use line 12 column 31 near \"'[]'),",
+    "  `maxAdults` int NOT NULL DEFAULT 2,",
+    "  `maxChildren` int NOT NULL DEFAULT 0,",
+    "  `maxOccupancy` int NOT NULL DEFAULT 2,",
+    "  `surfaceM2` int,",
+    "  `amenities` json DEFAULT ('[]'),",
+    "  `basePrice` decimal(10,2) NOT NULL DEFAULT '0',",
+    "  `currency` varchar(8) NOT NULL DEFAULT 'EUR',",
+    "  `totalUnits` int NOT NULL DEFAULT 1,",
+    "  `isFeatured` tinyint(1) NOT NULL DEFAULT 0,",
+    "  `"
+  ]
+}

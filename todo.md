@@ -368,3 +368,9 @@
 - [x] Envolver Spa.tsx en PublicLayout (header + footer)
 - [x] Envolver HotelManager.tsx en AdminLayout (sidebar + cabecera admin)
 - [x] Envolver SpaManager.tsx en AdminLayout (sidebar + cabecera admin)
+
+## Seed Hotel — Temporada 2026 (v5.5)
+- [x] Insertar 4 tipologías: Doble Estándar, Doble Superior Vistas Lago, Familiar, Junior Suite Premium
+- [x] Insertar temporada de precio: Temporada Alta 2026 (01/03/2026 - 30/09/2026)
+- [x] Insertar tarifas por tipología (precios reales del dossier)
+- [x] Insertar inventario de habitaciones disponibles (room_blocks abiertos)
