@@ -1067,3 +1067,72 @@ export async function deleteUser(userId: number) {
   await db.delete(users).where(eq(users.id, userId));
   return { success: true };
 }
+
+// ─── MENU ITEMS ──────────────────────────────────────────────────────────────
+
+export async function getAllMenuItems(zone: "header" | "footer" = "header") {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(menuItems)
+    .where(eq(menuItems.menuZone, zone))
+    .orderBy(menuItems.sortOrder);
+}
+
+export async function createMenuItem(data: {
+  label: string;
+  url?: string | null;
+  parentId?: number | null;
+  target?: "_self" | "_blank";
+  sortOrder?: number;
+  isActive?: boolean;
+  menuZone?: "header" | "footer";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(menuItems).values({
+    label: data.label,
+    url: data.url ?? null,
+    parentId: data.parentId ?? null,
+    target: data.target ?? "_self",
+    sortOrder: data.sortOrder ?? 0,
+    isActive: data.isActive ?? true,
+    menuZone: data.menuZone ?? "header",
+  });
+  return { success: true, id: Number(result[0].insertId) };
+}
+
+export async function updateMenuItem(id: number, data: {
+  label?: string;
+  url?: string | null;
+  parentId?: number | null;
+  target?: "_self" | "_blank";
+  sortOrder?: number;
+  isActive?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(menuItems).set({ ...data, updatedAt: new Date() }).where(eq(menuItems.id, id));
+  return { success: true };
+}
+
+export async function deleteMenuItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Delete children first
+  await db.delete(menuItems).where(eq(menuItems.parentId, id));
+  await db.delete(menuItems).where(eq(menuItems.id, id));
+  return { success: true };
+}
+
+export async function reorderMenuItems(items: { id: number; sortOrder: number }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await Promise.all(
+    items.map(({ id, sortOrder }) =>
+      db.update(menuItems).set({ sortOrder, updatedAt: new Date() }).where(eq(menuItems.id, id))
+    )
+  );
+  return { success: true };
+}

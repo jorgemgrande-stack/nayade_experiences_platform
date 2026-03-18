@@ -77,6 +77,11 @@ import {
   togglePackActive,
   hardDeletePack,
   clonePack,
+  getAllMenuItems,
+  createMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
+  reorderMenuItems,
 } from "./db";
 import {
   buildRedsysForm,
@@ -237,6 +242,56 @@ export const appRouter = router({
     getMediaFiles: adminProcedure.query(async () => {
       return getAllMediaFiles();
     }),
+
+    // ── Menu Items ────────────────────────────────────────────────────────────
+    getMenuItems: adminProcedure
+      .input(z.object({ zone: z.enum(["header", "footer"]).default("header") }))
+      .query(async ({ input }) => {
+        return getAllMenuItems(input.zone);
+      }),
+
+    createMenuItem: adminProcedure
+      .input(z.object({
+        label: z.string().min(1),
+        url: z.string().nullable().optional(),
+        parentId: z.number().nullable().optional(),
+        target: z.enum(["_self", "_blank"]).default("_self"),
+        sortOrder: z.number().default(0),
+        isActive: z.boolean().default(true),
+        menuZone: z.enum(["header", "footer"]).default("header"),
+      }))
+      .mutation(async ({ input }) => {
+        return createMenuItem(input);
+      }),
+
+    updateMenuItem: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        label: z.string().min(1).optional(),
+        url: z.string().nullable().optional(),
+        parentId: z.number().nullable().optional(),
+        target: z.enum(["_self", "_blank"]).optional(),
+        sortOrder: z.number().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return updateMenuItem(id, data);
+      }),
+
+    deleteMenuItem: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        return deleteMenuItem(input.id);
+      }),
+
+    reorderMenuItems: adminProcedure
+      .input(z.object({
+        items: z.array(z.object({ id: z.number(), sortOrder: z.number() })),
+      }))
+      .mutation(async ({ input }) => {
+        return reorderMenuItems(input.items);
+      }),
   }),
 
   // ─── ADMIN: PRODUCTS ──────────────────────────────────────────────────────

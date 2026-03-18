@@ -252,3 +252,9 @@
 ## Correcciones layout v4.3
 - [x] PacksHome (/packs): quitar max-w-6xl del container de tarjetas de categorías para que ocupen el ancho completo
 - [x] PacksHome: imagen de tarjetas cambiada de h-48 fijo a aspect-[16/10] proporcional
+
+## Gestor de Menús optimizado v4.4
+- [x] Backend: helpers CRUD de menuItems en db.ts
+- [x] Backend: procedimientos cms.getMenuItems, cms.createMenuItem, cms.updateMenuItem, cms.deleteMenuItem, cms.reorderMenuItems en routers.ts
+- [x] BD: seed inicial con la estructura actual del menú (7 ítems raíz + submenús)
+- [x] Frontend: MenusManager con edición inline, añadir/eliminar ítems, reordenación con flechas, toggle visibilidad
