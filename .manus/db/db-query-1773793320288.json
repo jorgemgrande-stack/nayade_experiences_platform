@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, slug, title, image1, image2 FROM packs WHERE slug = 'day-pass-nayade' LIMIT 1;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, slug, title, image1, image2 FROM packs WHERE slug = 'day-pass-nayade' LIMIT 1;",
+  "rows": [
+    {
+      "id": "1",
+      "slug": "day-pass-nayade",
+      "title": "Day Pass Náyade",
+      "image1": "NULL",
+      "image2": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tslug\ttitle\timage1\timage2\n1\tday-pass-nayade\tDay Pass Náyade\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 67
+}

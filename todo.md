@@ -219,3 +219,12 @@
 - [x] BookingModal compatible con packs (isOnlinePurchase)
 - [x] Cross-selling en ficha de pack
 - [x] TypeScript 0 errores
+
+## Imagen en packs + PacksManager admin (v3.9)
+- [x] Diagnosticar: imagen no se guardaba porque no existía gestor de packs en admin
+- [x] Crear PacksManager en admin (CRUD completo + upload imagen + menú de acciones)
+- [x] Registrar ruta /admin/productos/packs en App.tsx
+- [x] Añadir enlace Packs en sidebar del admin
+- [x] PacksList ya renderiza image1 correctamente (problema era falta de gestor)
+- [x] Rediseñar hero PackDetail: foto de fondo + overlay oscuro + banda de color de categoría
+- [x] TypeScript 0 errores

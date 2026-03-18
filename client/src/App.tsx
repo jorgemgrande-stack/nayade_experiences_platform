@@ -35,6 +35,7 @@ import HomeModulesManager from "./pages/admin/cms/HomeModulesManager";
 
 // Products
 import ExperiencesManager from "./pages/admin/products/ExperiencesManager";
+import PacksManager from "./pages/admin/products/PacksManager";
 import CategoriesManager from "./pages/admin/products/CategoriesManager";
 import LocationsManager from "./pages/admin/products/LocationsManager";
 import VariantsManager from "./pages/admin/products/VariantsManager";
@@ -95,6 +96,7 @@ function Router() {
       {/* Products */}
       <Route path="/admin/productos" component={ExperiencesManager} />
       <Route path="/admin/productos/experiencias" component={ExperiencesManager} />
+      <Route path="/admin/productos/packs" component={PacksManager} />
       <Route path="/admin/productos/categorias" component={CategoriesManager} />
       <Route path="/admin/productos/ubicaciones" component={LocationsManager} />
       <Route path="/admin/productos/variantes" component={VariantsManager} />

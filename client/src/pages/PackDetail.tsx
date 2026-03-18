@@ -89,19 +89,23 @@ export default function PackDetail() {
 
   return (
     <PublicLayout>
-      {/* Hero */}
-      <section className="relative text-white overflow-hidden">
-        <div className="absolute inset-0 h-72">
+      {/* Hero — foto de fondo como en ExperienceDetail */}
+      <section className="relative text-white overflow-hidden" style={{ minHeight: '420px' }}>
+        {/* Foto de fondo */}
+        <div className="absolute inset-0">
           {pack.image1 ? (
             <img src={pack.image1} alt={pack.title} className="w-full h-full object-cover" />
           ) : (
             <div className={`w-full h-full bg-gradient-to-br ${meta.gradient}`} />
           )}
-          <div className={`absolute inset-0 bg-gradient-to-r ${meta.gradient} opacity-75`} />
+          {/* Overlay oscuro para legibilidad */}
+          <div className="absolute inset-0 bg-black/50" />
+          {/* Banda de color de categoría en la parte inferior */}
+          <div className={`absolute bottom-0 left-0 right-0 h-1.5 bg-gradient-to-r ${meta.gradient}`} />
         </div>
         <div className="relative container max-w-6xl pt-8 pb-36">
           {/* Breadcrumb */}
-          <nav className="flex items-center gap-2 text-sm text-white/70 mb-6 flex-wrap">
+          <nav className="flex items-center gap-2 text-sm text-white/70 mb-8 flex-wrap">
             <Link href="/" className="hover:text-white transition-colors">Inicio</Link>
             <span>/</span>
             <Link href="/packs" className="hover:text-white transition-colors">Packs</Link>
@@ -110,8 +114,8 @@ export default function PackDetail() {
             <span>/</span>
             <span className="text-white font-medium">{pack.title}</span>
           </nav>
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            {pack.badge && <Badge className="bg-orange-500 text-white border-0">{pack.badge}</Badge>}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {pack.badge && <Badge className="bg-orange-500 text-white border-0 text-sm px-3 py-1">{pack.badge}</Badge>}
             {pack.hasStay && (
               <Badge className="bg-blue-600 text-white border-0 flex items-center gap-1">
                 <Bed className="w-3 h-3" /> Con estancia
@@ -123,8 +127,8 @@ export default function PackDetail() {
               </Badge>
             )}
           </div>
-          <h1 className="text-4xl lg:text-5xl font-black mb-2">{pack.title}</h1>
-          {pack.subtitle && <p className="text-xl text-white/90">{pack.subtitle}</p>}
+          <h1 className="text-4xl lg:text-5xl font-black mb-3 drop-shadow-lg">{pack.title}</h1>
+          {pack.subtitle && <p className="text-xl text-white/90 drop-shadow">{pack.subtitle}</p>}
         </div>
       </section>
 

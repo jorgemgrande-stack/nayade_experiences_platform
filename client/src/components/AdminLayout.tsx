@@ -39,6 +39,7 @@ const navItems = [
     roles: ["admin"],
     children: [
       { label: "Experiencias", href: "/admin/productos/experiencias" },
+      { label: "Packs", href: "/admin/productos/packs" },
       { label: "Categorías", href: "/admin/productos/categorias" },
       { label: "Ubicaciones", href: "/admin/productos/ubicaciones" },
       { label: "Variantes", href: "/admin/productos/variantes" },
