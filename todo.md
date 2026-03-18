@@ -284,3 +284,6 @@
 - [x] Frontend: flechas en CategoriesManager (tarjetas grid)
 - [x] Frontend: flechas en LocationsManager (lista)
 - [x] Frontend: flechas en SlideshowManager (lista de slides)
+
+## Corrección enlaces rotos experiencias (v4.7)
+- [x] Corregir 3 enlaces /experiencia/:slug → /experiencias/:slug en Experiences.tsx (botones "Ver detalle")

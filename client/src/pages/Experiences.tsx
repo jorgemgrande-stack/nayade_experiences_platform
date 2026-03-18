@@ -164,7 +164,7 @@ export default function Experiences() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filtered.map((exp) => (
                 <div key={exp.id} className="group bg-card rounded-2xl overflow-hidden border border-border/50 card-hover h-full flex flex-col">
-                  <Link href={`/experiencia/${exp.slug}`}>
+                  <Link href={`/experiencias/${exp.slug}`}>
                     <div className="relative aspect-[16/10] overflow-hidden cursor-pointer">
                       <img
                         src={(exp as any).image1 ?? exp.coverImageUrl ?? "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=600&q=80"}
@@ -185,7 +185,7 @@ export default function Experiences() {
                   </Link>
 
                   <div className="p-5 flex flex-col flex-1">
-                    <Link href={`/experiencia/${exp.slug}`}>
+                    <Link href={`/experiencias/${exp.slug}`}>
                       <h3 className="font-display font-semibold text-lg text-foreground mb-2 hover:text-accent transition-colors cursor-pointer">
                         {exp.title}
                       </h3>
@@ -215,7 +215,7 @@ export default function Experiences() {
                             {parseFloat(exp.basePrice).toFixed(0)}€
                           </div>
                         </div>
-                        <Link href={`/experiencia/${exp.slug}`}>
+                        <Link href={`/experiencias/${exp.slug}`}>
                           <Button size="sm" variant="outline" className="text-xs">
                             Ver detalles
                             <ChevronRight className="ml-1 w-3 h-3" />
