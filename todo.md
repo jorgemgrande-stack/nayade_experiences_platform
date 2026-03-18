@@ -319,3 +319,9 @@
 - [x] Frontend: PagesManager con editor visual de bloques (hero, texto, imagen+texto, CTA, galería, acordeón, features)
 - [x] Frontend: DynamicPage.tsx renderizador público de páginas en /pagina/:slug
 - [x] Frontend: ruta /pagina/:slug registrada en App.tsx
+
+## Conectar páginas estáticas al editor visual (v5.1)
+- [x] Analizar Hotel.tsx y DynamicPage.tsx para entender la arquitectura
+- [x] Modificar Hotel.tsx para leer bloques del editor visual y renderizarlos
+- [x] Verificar que los cambios en admin/cms/paginas se reflejan en /hotel
+- [x] Aplicar el mismo patrón a /spa si es necesario
