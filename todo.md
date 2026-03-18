@@ -238,3 +238,9 @@
 - [x] Frontend: UsersManager con formulario de creación y cambio de rol
 - [x] Frontend: menú de acciones en fila de usuario (Cambiar rol, Reenviar invitación, Desactivar, Eliminar)
 - [x] Frontend: página pública /establecer-contrasena con formulario de contraseña
+
+## Unificación diseño Packs = Experiencias (v4.1)
+- [x] Auditar Experiences.tsx (tarjetas, filtros, estructura)
+- [x] Reescribir PacksList.tsx con mismas tarjetas que Experiences (imagen cuadrada, precio, badges, duración, personas, bullets, CTA)
+- [x] Añadir filtros a PacksList (búsqueda por texto + filtro por etiqueta/badge)
+- [x] Verificar que la estructura gráfica (grid, padding, hero) es idéntica en ambas secciones
