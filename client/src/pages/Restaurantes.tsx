@@ -128,7 +128,7 @@ export default function Restaurantes() {
             <div className="flex flex-col items-center gap-2">
               <Phone className="w-6 h-6 text-accent" />
               <h3 className="font-heading font-bold text-foreground">Reservas</h3>
-              <a href="tel:+34919041947" className="text-accent font-display font-semibold hover:underline">+34 919 041 947</a>
+              <a href="tel:+34930347791" className="text-accent font-display font-semibold hover:underline">+34 930 34 77 91</a>
             </div>
             <div className="flex flex-col items-center gap-2">
               <Clock className="w-6 h-6 text-accent" />

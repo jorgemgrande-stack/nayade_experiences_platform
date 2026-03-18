@@ -223,13 +223,13 @@ export default function RestauranteDetail() {
                     </Button>
                   </Link>
                 )}
-                <a href="tel:+34919041947">
+                <a href="tel:+34930347791">
                   <Button variant="outline" className="w-full font-display font-semibold rounded-full py-3 text-base border-primary/30 text-primary hover:bg-primary/5">
-                    <Phone className="w-4 h-4 mr-2" /> +34 919 041 947
+                    <Phone className="w-4 h-4 mr-2" /> +34 930 34 77 91
                   </Button>
                 </a>
-                <a href="mailto:hola@nayadeexperiences.es" className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-accent font-display transition-colors pt-2">
-                  <Mail className="w-4 h-4" /> hola@nayadeexperiences.es
+                <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-accent font-display transition-colors pt-2">
+                  <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
                 </a>
               </div>
             </div>

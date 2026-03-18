@@ -283,8 +283,8 @@ export default function PackDetail() {
               </Link>
 
               <div className="border-t border-slate-100 pt-4 space-y-2">
-                <a href="tel:+34919041947" className="flex items-center gap-2 text-sm text-slate-600 hover:text-orange-600 transition-colors">
-                  <Phone className="w-4 h-4" /> +34 919 041 947
+                <a href="tel:+34930347791" className="flex items-center gap-2 text-sm text-slate-600 hover:text-orange-600 transition-colors">
+                  <Phone className="w-4 h-4" /> +34 930 34 77 91
                 </a>
                 <p className="text-xs text-slate-400">Cancelación gratuita hasta 48h antes</p>
               </div>

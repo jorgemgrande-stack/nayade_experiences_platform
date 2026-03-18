@@ -260,7 +260,7 @@ export default function Home() {
               {[
                 { icon: <MapPin className="w-4 h-4" />, label: "Los Ángeles de San Rafael, Segovia" },
                 { icon: <Clock className="w-4 h-4" />, label: "Abierto Lun–Dom · 10:00–20:00" },
-                { icon: <Phone className="w-4 h-4" />, label: "+34 919 041 947" },
+                { icon: <Phone className="w-4 h-4" />, label: "+34 930 34 77 91" },
               ].map((item, i) => (
                 <div key={i} className="flex items-center gap-2 px-4 py-3 bg-white/10 text-white/90 text-sm">
                   <span className="text-accent">{item.icon}</span>
@@ -619,8 +619,8 @@ export default function Home() {
             </Link>
           </div>
           <div className="mt-10 flex flex-wrap justify-center gap-8 text-white/60 text-sm font-display">
-            <span className="flex items-center gap-2"><Phone className="w-4 h-4 text-accent" /> +34 919 041 947</span>
-            <span className="flex items-center gap-2"><Mail className="w-4 h-4 text-accent" /> hola@nayadeexperiences.es</span>
+            <span className="flex items-center gap-2"><Phone className="w-4 h-4 text-accent" /> +34 930 34 77 91</span>
+            <span className="flex items-center gap-2"><Mail className="w-4 h-4 text-accent" /> reservas@nayadeexperiences.es</span>
             <span className="flex items-center gap-2"><MapPin className="w-4 h-4 text-accent" /> Los Ángeles de San Rafael, Segovia</span>
           </div>
         </div>

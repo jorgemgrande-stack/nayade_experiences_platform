@@ -59,11 +59,11 @@ export default function PublicFooter() {
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Phone className="w-4 h-4 text-accent flex-shrink-0" />
-                <a href="tel:+34919041947" className="text-white/65 hover:text-accent transition-colors">+34 919 041 947</a>
+                <a href="tel:+34930347791" className="text-white/65 hover:text-accent transition-colors">+34 930 34 77 91</a>
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Mail className="w-4 h-4 text-accent flex-shrink-0" />
-                <a href="mailto:hola@nayadeexperiences.es" className="text-white/65 hover:text-accent transition-colors">hola@nayadeexperiences.es</a>
+                <a href="mailto:reservas@nayadeexperiences.es" className="text-white/65 hover:text-accent transition-colors">reservas@nayadeexperiences.es</a>
               </div>
               <div className="flex items-start gap-3 text-sm">
                 <Clock className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />

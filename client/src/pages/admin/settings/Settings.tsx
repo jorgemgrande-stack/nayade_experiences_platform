@@ -28,11 +28,11 @@ export default function Settings() {
             </div>
             <div>
               <Label className="text-sm font-medium">Teléfono</Label>
-              <Input defaultValue="+34 919 041 947" className="mt-1.5" />
+              <Input defaultValue="+34 930 34 77 91" className="mt-1.5" />
             </div>
             <div>
               <Label className="text-sm font-medium">Email de contacto</Label>
-              <Input defaultValue="hola@nayadeexperiences.es" className="mt-1.5" />
+              <Input defaultValue="reservas@nayadeexperiences.es" className="mt-1.5" />
             </div>
             <div className="col-span-2">
               <Label className="text-sm font-medium">Dirección</Label>

@@ -90,7 +90,7 @@ export async function sendInviteEmail(params: {
             <p style="color:#9ca3af;font-size:12px;margin:0;">
               Hotel Náyade · Los Ángeles de San Rafael, El Espinar, Segovia<br/>
               <a href="https://hotelnayade.es" style="color:#2563eb;text-decoration:none;">HotelNayade.es</a> · 
-              <a href="tel:+34919041947" style="color:#2563eb;text-decoration:none;">+34 919 041 947</a>
+              <a href="tel:+34930347791" style="color:#2563eb;text-decoration:none;">+34 930 34 77 91</a>
             </p>
           </td>
         </tr>

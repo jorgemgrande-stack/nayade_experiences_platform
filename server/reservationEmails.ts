@@ -79,7 +79,7 @@ function buildConfirmationHtml(r: ReservationEmailData, date: string, amount: st
   </td></tr>
   <tr><td style="padding:0 40px 32px;">
     <p style="color:#475569;font-size:14px;margin:0 0 8px;">Si necesitas modificar tu reserva, contactanos:</p>
-    <p style="color:#0369a1;font-size:14px;margin:0;">Tel: +34 919 041 947 | Email: hola@nayadeexperiences.es</p>
+    <p style="color:#0369a1;font-size:14px;margin:0;">Tel: +34 930 34 77 91 | Email: reservas@nayadeexperiences.es</p>
   </td></tr>
   <tr><td style="background:#f1f5f9;padding:20px 40px;text-align:center;">
     <p style="color:#94a3b8;font-size:12px;margin:0;">2025 Nayade Experiences - Ref: ${r.merchantOrder}</p>
@@ -104,7 +104,7 @@ function buildFailedHtml(r: ReservationEmailData, responseCode: string): string 
   <tr><td style="padding:32px 40px;">
     <p style="color:#1e293b;font-size:16px;margin:0 0 16px;">Hola <strong>${r.customerName}</strong>,</p>
     <p style="color:#475569;font-size:15px;margin:0 0 24px;line-height:1.6;">No hemos podido procesar el pago de tu reserva para <strong>${r.productName}</strong>. Puedes intentarlo de nuevo o contactarnos.</p>
-    <p style="color:#0369a1;font-size:14px;margin:0;">Tel: +34 919 041 947 | Email: hola@nayadeexperiences.es</p>
+    <p style="color:#0369a1;font-size:14px;margin:0;">Tel: +34 930 34 77 91 | Email: reservas@nayadeexperiences.es</p>
   </td></tr>
   <tr><td style="background:#f1f5f9;padding:20px 40px;text-align:center;">
     <p style="color:#94a3b8;font-size:12px;margin:0;">2025 Nayade Experiences - Codigo: ${responseCode}</p>
@@ -217,7 +217,7 @@ export async function sendReservationPaidNotifications(
         ...(adminEmail ? { bcc: adminEmail } : {}),
         subject: `Reserva confirmada - ${reservation.productName} - Nayade Experiences`,
         html: buildConfirmationHtml(reservation, date, amount, extras),
-        text: `Reserva confirmada. Ref: ${reservation.merchantOrder}. Producto: ${reservation.productName}. Fecha: ${date}. Personas: ${reservation.people}. Total: ${amount}. Contacto: hola@nayadeexperiences.es`,
+        text: `Reserva confirmada. Ref: ${reservation.merchantOrder}. Producto: ${reservation.productName}. Fecha: ${date}. Personas: ${reservation.people}. Total: ${amount}. Contacto: reservas@nayadeexperiences.es`,
       });
       console.log(`[ReservationEmails] Email de confirmacion enviado a ${reservation.customerEmail} para ${reservation.merchantOrder}`);
     } catch (error) {
@@ -269,7 +269,7 @@ export async function sendReservationFailedNotifications(
         to: reservation.customerEmail,
         subject: `Pago no completado - ${reservation.productName} - Nayade Experiences`,
         html: buildFailedHtml(reservation, redsysResponseCode),
-        text: `Tu pago para ${reservation.productName} no pudo procesarse. Ref: ${reservation.merchantOrder}. Contacta: hola@nayadeexperiences.es o +34 919 041 947.`,
+        text: `Tu pago para ${reservation.productName} no pudo procesarse. Ref: ${reservation.merchantOrder}. Contacta: reservas@nayadeexperiences.es o +34 930 34 77 91.`,
       });
       console.log(`[ReservationEmails] Email de fallo enviado a ${reservation.customerEmail} para ${reservation.merchantOrder}`);
     } catch (error) {

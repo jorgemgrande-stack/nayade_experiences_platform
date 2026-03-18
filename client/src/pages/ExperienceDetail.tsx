@@ -335,7 +335,7 @@ export default function ExperienceDetail() {
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Mail className="w-4 h-4 text-accent shrink-0" />
-                    <span>info@nayadeexperiences.es</span>
+                    <span>reservas@nayadeexperiences.es</span>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Shield className="w-4 h-4 text-accent shrink-0" />

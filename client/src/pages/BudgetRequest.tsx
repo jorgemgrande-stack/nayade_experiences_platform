@@ -313,9 +313,9 @@ export default function BudgetRequest() {
                     <Phone className="w-4 h-4 text-amber-400" />
                     +34 000 000 000
                   </a>
-                  <a href="mailto:info@nayadeexperiences.es" className="flex items-center gap-3 text-sm text-white/70 hover:text-amber-400 transition-colors">
+                  <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-3 text-sm text-white/70 hover:text-amber-400 transition-colors">
                     <Mail className="w-4 h-4 text-amber-400" />
-                    info@nayadeexperiences.es
+                    reservas@nayadeexperiences.es
                   </a>
                   <div className="flex items-center gap-3 text-sm text-white/70">
                     <Clock className="w-4 h-4 text-amber-400" />

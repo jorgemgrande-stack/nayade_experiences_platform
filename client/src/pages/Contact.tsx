@@ -95,7 +95,7 @@ export default function Contact() {
             <div className="space-y-5">
               {[
                 { icon: Phone, title: "Teléfono", lines: ["+34 000 000 000", "Lun-Vie: 9:00 - 19:00"] },
-                { icon: Mail, title: "Email", lines: ["info@nayadeexperiences.es", "reservas@nayadeexperiences.es"] },
+                { icon: Mail, title: "Email", lines: ["reservas@nayadeexperiences.es", "reservas@nayadeexperiences.es"] },
                 { icon: MapPin, title: "Ubicación", lines: ["Nayade Experiences", "España"] },
                 { icon: Clock, title: "Horario", lines: ["Lunes a Viernes: 9:00 - 19:00", "Sábados: 10:00 - 14:00"] },
               ].map((item) => (

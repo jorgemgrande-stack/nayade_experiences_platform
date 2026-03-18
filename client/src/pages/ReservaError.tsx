@@ -154,11 +154,11 @@ export default function ReservaError() {
         <div className="text-center text-sm text-muted-foreground pt-6 border-t border-border">
           <p className="mb-3">¿Necesitas ayuda? Estamos aquí para ti:</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="tel:+34919041947" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Phone className="w-4 h-4" /> +34 919 041 947
+            <a href="tel:+34930347791" className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Phone className="w-4 h-4" /> +34 930 34 77 91
             </a>
-            <a href="mailto:hola@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Mail className="w-4 h-4" /> hola@nayadeexperiences.es
+            <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
             </a>
           </div>
         </div>

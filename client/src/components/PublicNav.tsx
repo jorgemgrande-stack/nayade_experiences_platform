@@ -137,9 +137,9 @@ export default function PublicNav() {
           <div className="flex items-center gap-6 text-xs font-display text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <Phone className="w-3 h-3" />
-              +34 919 041 947
+              +34 930 34 77 91
             </span>
-            <span>hola@nayadeexperiences.es</span>
+            <span>reservas@nayadeexperiences.es</span>
             <span>Los Ángeles de San Rafael, Segovia · A 45 min de Madrid</span>
           </div>
           <div className="text-xs font-display font-semibold text-accent">

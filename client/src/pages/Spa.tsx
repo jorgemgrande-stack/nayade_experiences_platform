@@ -171,9 +171,9 @@ export default function Spa() {
                 Reservar Tratamiento <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
-            <a href="tel:+34919041947">
+            <a href="tel:+34930347791">
               <Button size="lg" variant="outline" className="border-white/40 text-white hover:bg-white/10 font-display font-semibold rounded-full px-10 bg-transparent">
-                +34 919 041 947
+                +34 930 34 77 91
               </Button>
             </a>
           </div>

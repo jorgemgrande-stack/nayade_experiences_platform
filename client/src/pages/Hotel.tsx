@@ -89,9 +89,9 @@ export default function Hotel() {
                     Consultar disponibilidad
                   </Button>
                 </Link>
-                <a href="tel:+34919041947">
+                <a href="tel:+34930347791">
                   <Button variant="outline" className="font-display font-semibold rounded-full px-7 border-primary/30 text-primary hover:bg-primary/5">
-                    +34 919 041 947
+                    +34 930 34 77 91
                   </Button>
                 </a>
               </div>
