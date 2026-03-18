@@ -125,7 +125,7 @@ export default function PacksHome() {
 
       {/* 3 categorías */}
       <section className="py-16 bg-slate-50">
-        <div className="container max-w-6xl">
+        <div className="container">
           <div className="grid gap-8 lg:grid-cols-3">
             {CATEGORIES.map((cat) => {
               const Icon = cat.icon;
@@ -135,7 +135,7 @@ export default function PacksHome() {
                   className={`rounded-2xl border-2 ${cat.borderAccent} bg-white overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 group flex flex-col`}
                 >
                   {/* Imagen */}
-                  <div className="relative h-48 overflow-hidden">
+                  <div className="relative aspect-[16/10] overflow-hidden">
                     <img
                       src={cat.image}
                       alt={cat.title}

@@ -248,3 +248,7 @@
 ## Correcciones layout v4.2
 - [x] PacksList: quitar max-w-6xl para que las tarjetas ocupen el ancho completo como en Experiencias
 - [x] Experiences: reparar buscador que quedó pequeño y no permite escribir (Input bloqueado)
+
+## Correcciones layout v4.3
+- [x] PacksHome (/packs): quitar max-w-6xl del container de tarjetas de categorías para que ocupen el ancho completo
+- [x] PacksHome: imagen de tarjetas cambiada de h-48 fijo a aspect-[16/10] proporcional
