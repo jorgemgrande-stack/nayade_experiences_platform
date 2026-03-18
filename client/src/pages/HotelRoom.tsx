@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -117,16 +118,19 @@ export default function HotelRoom() {
 
   if (isLoading) {
     return (
+      <PublicLayout fullWidthHero>
       <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 p-8">
         <Skeleton className="h-96 w-full rounded-2xl bg-white/10 mb-6" />
         <Skeleton className="h-8 w-1/3 bg-white/10 mb-3" />
         <Skeleton className="h-4 w-2/3 bg-white/10" />
       </div>
+      </PublicLayout>
     );
   }
 
   if (error || !room) {
     return (
+      <PublicLayout fullWidthHero>
       <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 flex items-center justify-center">
         <div className="text-center text-white/60">
           <BedDouble className="h-16 w-16 mx-auto mb-4 opacity-30" />
@@ -134,6 +138,7 @@ export default function HotelRoom() {
           <Link href="/hotel"><Button variant="outline" className="border-white/20 text-white">Volver al hotel</Button></Link>
         </div>
       </div>
+      </PublicLayout>
     );
   }
 
@@ -149,6 +154,7 @@ export default function HotelRoom() {
   const amenities = Array.isArray(room.amenities) ? room.amenities : [];
 
   return (
+    <PublicLayout fullWidthHero>
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
       {/* Back */}
       <div className="max-w-6xl mx-auto px-4 pt-8">
@@ -278,5 +284,6 @@ export default function HotelRoom() {
         </div>
       </div>
     </div>
+    </PublicLayout>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
+import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -226,6 +227,7 @@ export default function Spa() {
   }, [treatmentsQuery.data, searchParams.query]);
 
   return (
+    <PublicLayout fullWidthHero>
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-teal-950/30 to-slate-900">
       {/* Hero */}
       <div className="relative py-28 px-4 text-center overflow-hidden">
@@ -324,5 +326,6 @@ export default function Spa() {
         )}
       </div>
     </div>
+    </PublicLayout>
   );
 }

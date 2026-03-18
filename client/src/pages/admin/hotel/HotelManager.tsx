@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -414,6 +415,7 @@ export default function HotelManager() {
   });
 
   return (
+    <AdminLayout title="Hotel Náyade">
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -518,5 +520,6 @@ export default function HotelManager() {
         />
       )}
     </div>
+    </AdminLayout>
   );
 }

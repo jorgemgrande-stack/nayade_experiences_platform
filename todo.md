@@ -361,3 +361,10 @@
 - [x] Rutas /hotel/:slug y /admin/hotel y /admin/spa registradas en App.tsx
 - [x] Hotel y SPA añadidos al menú lateral del admin (BedDouble y Sparkles icons)
 - [x] 0 errores TypeScript en todo el proyecto
+
+## Integración de layout Hotel y SPA (v5.4)
+- [x] Envolver Hotel.tsx en PublicLayout (header + footer)
+- [x] Envolver HotelRoom.tsx en PublicLayout (header + footer)
+- [x] Envolver Spa.tsx en PublicLayout (header + footer)
+- [x] Envolver HotelManager.tsx en AdminLayout (sidebar + cabecera admin)
+- [x] Envolver SpaManager.tsx en AdminLayout (sidebar + cabecera admin)
