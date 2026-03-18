@@ -101,6 +101,8 @@ import {
   generateMerchantOrder,
 } from "./redsys";
 import { sendInviteEmail } from "./inviteEmail";
+import { hotelRouter } from "./routers/hotel";
+import { spaRouter } from "./routers/spa";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -1070,5 +1072,7 @@ export const appRouter = router({
       .input(z.object({ items: z.array(z.object({ id: z.number(), sortOrder: z.number() })) }))
       .mutation(async ({ input }) => reorderPacks(input.items)),
   }),
+  hotel: hotelRouter,
+  spa: spaRouter,
 });
 export type AppRouter = typeof appRouter;

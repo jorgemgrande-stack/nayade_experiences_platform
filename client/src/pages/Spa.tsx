@@ -1,294 +1,328 @@
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
-import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Clock, Leaf, Droplets, Sparkles, ChevronRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Calendar, Users, ChevronRight, Star, Clock, Search,
+  Sparkles, Leaf, Waves,
+} from "lucide-react";
 
-// ─── Block Renderers (mismo patrón que Hotel.tsx) ────────────────────────────
+function todayStr() {
+  return new Date().toISOString().split("T")[0];
+}
 
-function HeroBlock({ data }: { data: Record<string, unknown> }) {
-  const opacity = (data.overlayOpacity as number ?? 50) / 100;
-  const title = String(data.title || "");
-  const subtitle = String(data.subtitle || "");
-  const ctaText = String(data.ctaText || "");
-  const ctaUrl = String(data.ctaUrl || "");
-  const imageUrl = String(data.imageUrl || "");
+interface SpaSearch {
+  date: string;
+  persons: number;
+  query: string;
+}
+
+function SpaSearchBar({ params, onChange, onSearch }: {
+  params: SpaSearch;
+  onChange: (p: SpaSearch) => void;
+  onSearch: () => void;
+}) {
   return (
-    <section className="relative min-h-[420px] flex items-center justify-center overflow-hidden">
-      {imageUrl && <img src={imageUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />}
-      <div className="absolute inset-0 bg-black" style={{ opacity }} />
-      <div className="relative z-10 text-center text-white px-6 max-w-3xl mx-auto">
-        {title && <h1 className="text-4xl md:text-5xl font-bold mb-4">{title}</h1>}
-        {subtitle && <p className="text-lg md:text-xl opacity-90 mb-8">{subtitle}</p>}
-        {ctaText && ctaUrl && (
-          <Link href={ctaUrl}><Button size="lg" className="bg-accent hover:bg-accent/90 text-white px-8">{ctaText}</Button></Link>
+    <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-white/20 shadow-xl">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="flex flex-col gap-1 lg:col-span-2">
+          <label className="text-xs text-white/70 font-medium uppercase tracking-wide">Tratamiento</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 pointer-events-none" />
+            <Input
+              placeholder="Masaje, circuito, facial..."
+              value={params.query}
+              onChange={e => onChange({ ...params, query: e.target.value })}
+              className="pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:border-teal-400"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-white/70 font-medium uppercase tracking-wide">Fecha</label>
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 pointer-events-none" />
+            <Input
+              type="date"
+              value={params.date}
+              min={todayStr()}
+              onChange={e => onChange({ ...params, date: e.target.value })}
+              className="pl-9 bg-white/10 border-white/20 text-white [color-scheme:dark] focus:border-teal-400"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-white/70 font-medium uppercase tracking-wide">Personas</label>
+          <div className="relative">
+            <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 pointer-events-none" />
+            <Input
+              type="number"
+              min={1}
+              max={6}
+              value={params.persons}
+              onChange={e => onChange({ ...params, persons: Math.max(1, parseInt(e.target.value) || 1) })}
+              className="pl-9 bg-white/10 border-white/20 text-white focus:border-teal-400"
+            />
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button
+          onClick={onSearch}
+          className="bg-teal-500 hover:bg-teal-400 text-slate-900 font-bold px-8"
+        >
+          Ver horarios disponibles
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function TreatmentCard({ treatment, date, persons }: { treatment: any; date: string; persons: number }) {
+  const slotsQuery = trpc.spa.getAvailableSlots.useQuery(
+    { treatmentId: treatment.id, date },
+    { enabled: !!date }
+  );
+
+  const availableSlots = slotsQuery.data ?? [];
+  const hasSlots = availableSlots.length > 0;
+  const isLastSlot = hasSlots && availableSlots.length === 1;
+
+  const detailUrl = `/spa/${treatment.slug}?date=${date}&persons=${persons}`;
+
+  return (
+    <Card className="overflow-hidden bg-white/5 border-white/10 hover:border-teal-400/40 transition-all group">
+      <div className="relative h-52 overflow-hidden">
+        {treatment.coverImageUrl ? (
+          <img
+            src={treatment.coverImageUrl}
+            alt={treatment.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-teal-900/50 to-slate-800 flex items-center justify-center">
+            <Sparkles className="h-16 w-16 text-teal-500/40" />
+          </div>
+        )}
+        {treatment.isFeatured && (
+          <Badge className="absolute top-3 left-3 bg-teal-500 text-slate-900 font-bold text-xs">
+            <Star className="h-3 w-3 mr-1" /> Destacado
+          </Badge>
+        )}
+        {date && (
+          <Badge className={`absolute top-3 right-3 text-xs border ${
+            !hasSlots
+              ? "bg-red-500/20 text-red-300 border-red-500/30"
+              : isLastSlot
+                ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                : "bg-teal-500/20 text-teal-300 border-teal-500/30"
+          }`}>
+            {slotsQuery.isLoading
+              ? "..."
+              : !hasSlots
+                ? "Sin horarios"
+                : isLastSlot
+                  ? "Última plaza"
+                  : `${availableSlots.length} horarios`}
+          </Badge>
         )}
       </div>
-    </section>
-  );
-}
-
-function TextBlock({ data }: { data: Record<string, unknown> }) {
-  const align = String(data.align || "left");
-  const alignClass = align === "center" ? "text-center mx-auto" : align === "right" ? "text-right ml-auto" : "";
-  const title = String(data.title ?? "");
-  const body = String(data.body ?? "");
-  return (
-    <section className="py-12 px-6">
-      <div className={`max-w-3xl ${alignClass}`}>
-        {title && <h2 className="text-2xl md:text-3xl font-bold mb-4 text-foreground">{title}</h2>}
-        {body && <div className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{body}</div>}
-      </div>
-    </section>
-  );
-}
-
-function ImageTextBlock({ data }: { data: Record<string, unknown> }) {
-  const isRight = data.imagePosition === "right";
-  const imageUrl = String(data.imageUrl || "");
-  const title = String(data.title ?? "");
-  const body = String(data.body ?? "");
-  const ctaText = String(data.ctaText ?? "");
-  const ctaUrl = String(data.ctaUrl ?? "");
-  return (
-    <section className="py-12 px-6">
-      <div className={`max-w-5xl mx-auto flex flex-col md:flex-row gap-10 items-center ${isRight ? "md:flex-row-reverse" : ""}`}>
-        {imageUrl && <div className="flex-1"><img src={imageUrl} alt="" className="w-full rounded-2xl object-cover aspect-[4/3]" /></div>}
-        <div className="flex-1 space-y-4">
-          {title && <h2 className="text-2xl md:text-3xl font-bold text-foreground">{title}</h2>}
-          {body && <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{body}</p>}
-          {ctaText && ctaUrl && (
-            <Link href={ctaUrl}><Button className="bg-accent hover:bg-accent/90 text-white mt-2">{ctaText} <ChevronRight size={16} className="ml-1" /></Button></Link>
-          )}
+      <CardContent className="p-5">
+        <h3 className="text-lg font-bold text-white mb-1">{treatment.name}</h3>
+        {treatment.shortDescription && (
+          <p className="text-white/60 text-sm mb-3 line-clamp-2">{treatment.shortDescription}</p>
+        )}
+        <div className="flex flex-wrap gap-3 text-sm text-white/70 mb-4">
+          <span className="flex items-center gap-1">
+            <Clock className="h-4 w-4 text-teal-400" />
+            {treatment.durationMinutes} min
+          </span>
+          <span className="flex items-center gap-1">
+            <Users className="h-4 w-4 text-teal-400" />
+            Hasta {treatment.maxPersons} persona{treatment.maxPersons !== 1 ? "s" : ""}
+          </span>
         </div>
-      </div>
-    </section>
-  );
-}
-
-function CtaBlock({ data }: { data: Record<string, unknown> }) {
-  const bgMap: Record<string, string> = { orange: "bg-accent", blue: "bg-primary", dark: "bg-slate-900" };
-  const bg = bgMap[String(data.bgColor || "orange")] || bgMap.orange;
-  const title = String(data.title ?? "");
-  const subtitle = String(data.subtitle ?? "");
-  const ctaText = String(data.ctaText ?? "");
-  const ctaUrl = String(data.ctaUrl ?? "");
-  return (
-    <section className={`py-16 px-6 ${bg} text-white text-center`}>
-      {title && <h2 className="text-2xl md:text-3xl font-bold mb-2">{title}</h2>}
-      {subtitle && <p className="opacity-80 mb-6">{subtitle}</p>}
-      {ctaText && ctaUrl && (
-        <Link href={ctaUrl}><Button size="lg" variant="outline" className="border-white text-white hover:bg-white hover:text-slate-900 px-8">{ctaText}</Button></Link>
-      )}
-    </section>
-  );
-}
-
-function GalleryBlock({ data }: { data: Record<string, unknown> }) {
-  const images = Array.isArray(data.images) ? (data.images as string[]) : [];
-  const title = String(data.title ?? "");
-  if (images.length === 0) return null;
-  return (
-    <section className="py-12 px-6">
-      {title && <h2 className="text-2xl font-bold mb-6 text-center">{title}</h2>}
-      <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-3 gap-4">
-        {images.filter(Boolean).map((img, i) => <img key={i} src={String(img)} alt="" className="w-full rounded-xl object-cover aspect-square" />)}
-      </div>
-    </section>
-  );
-}
-
-function AccordionBlock({ data }: { data: Record<string, unknown> }) {
-  const items = Array.isArray(data.items) ? (data.items as { question: string; answer: string }[]) : [];
-  const title = String(data.title ?? "");
-  return (
-    <section className="py-12 px-6">
-      <div className="max-w-3xl mx-auto">
-        {title && <h2 className="text-2xl font-bold mb-6 text-center">{title}</h2>}
-        <div className="space-y-3">
-          {items.map((item, i) => (
-            <details key={i} className="group border border-border rounded-xl overflow-hidden">
-              <summary className="flex items-center justify-between px-5 py-4 cursor-pointer font-medium text-foreground hover:bg-slate-50 list-none">
-                {String(item.question || "")}
-                <ChevronRight size={16} className="text-muted-foreground transition-transform group-open:rotate-90" />
-              </summary>
-              <div className="px-5 pb-4 text-muted-foreground leading-relaxed">{String(item.answer || "")}</div>
-            </details>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FeaturesBlock({ data }: { data: Record<string, unknown> }) {
-  const items = Array.isArray(data.items) ? (data.items as { icon: string; title: string; description: string }[]) : [];
-  const title = String(data.title ?? "");
-  return (
-    <section className="py-12 px-6 bg-slate-50">
-      <div className="max-w-5xl mx-auto">
-        {title && <h2 className="text-2xl font-bold mb-8 text-center">{title}</h2>}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {items.map((item, i) => (
-            <div key={i} className="bg-background rounded-xl p-6 text-center shadow-sm border border-border">
-              <div className="text-4xl mb-3">{String(item.icon || "")}</div>
-              <h3 className="font-semibold text-foreground mb-2">{String(item.title || "")}</h3>
-              <p className="text-sm text-muted-foreground">{String(item.description || "")}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function SpacerBlock({ data }: { data: Record<string, unknown> }) {
-  return <div style={{ height: `${(data.height as number) || 40}px` }} />;
-}
-
-function renderBlock(block: { id: number; blockType: string; data: unknown; isVisible: boolean }) {
-  if (!block.isVisible) return null;
-  const data = (block.data as Record<string, unknown>) || {};
-  switch (block.blockType) {
-    case "hero": return <HeroBlock key={block.id} data={data} />;
-    case "text": return <TextBlock key={block.id} data={data} />;
-    case "image_text": return <ImageTextBlock key={block.id} data={data} />;
-    case "cta": return <CtaBlock key={block.id} data={data} />;
-    case "gallery": return <GalleryBlock key={block.id} data={data} />;
-    case "accordion": return <AccordionBlock key={block.id} data={data} />;
-    case "features": return <FeaturesBlock key={block.id} data={data} />;
-    case "spacer": return <SpacerBlock key={block.id} data={data} />;
-    default: return null;
-  }
-}
-
-// ─── Contenido estático de fallback ─────────────────────────────────────────
-
-const CDN = {
-  hero: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg",
-  lago: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/hotel-lago_f2ec080b.jpg",
-};
-
-const tratamientos = [
-  { icon: <Droplets className="w-6 h-6" />, nombre: "Circuito de Aguas", desc: "Jacuzzi, piscina de contrastes, sauna finlandesa y baño turco. Relax total en 90 minutos.", precio: "35€/persona", duracion: "90 min" },
-  { icon: <Leaf className="w-6 h-6" />, nombre: "Masaje Relajante", desc: "Masaje de cuerpo completo con aceites esenciales naturales. Libera tensiones y recarga energía.", precio: "55€", duracion: "60 min" },
-  { icon: <Sparkles className="w-6 h-6" />, nombre: "Ritual Náyade", desc: "Exfoliación corporal + envoltura de barro + masaje relajante. La experiencia SPA completa.", precio: "95€", duracion: "120 min" },
-  { icon: <Droplets className="w-6 h-6" />, nombre: "Masaje de Piedras Calientes", desc: "Técnica de termoterapia con piedras volcánicas. Profunda relajación muscular y mental.", precio: "70€", duracion: "75 min" },
-  { icon: <Leaf className="w-6 h-6" />, nombre: "Facial Revitalizante", desc: "Tratamiento facial personalizado con productos naturales. Piel luminosa y revitalizada.", precio: "50€", duracion: "50 min" },
-  { icon: <Sparkles className="w-6 h-6" />, nombre: "Pack Pareja", desc: "Circuito de aguas + masaje en pareja + copa de cava. La escapada romántica perfecta.", precio: "150€/pareja", duracion: "150 min" },
-];
-
-function StaticSpaContent() {
-  return (
-    <>
-      {/* Hero */}
-      <section className="relative h-[60vh] min-h-[420px] overflow-hidden">
-        <img src={CDN.hero} alt="SPA Náyade" className="w-full h-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/30 to-black/70" />
-        <div className="absolute inset-0 flex items-center">
-          <div className="container">
-            <div className="max-w-2xl text-white">
-              <span className="inline-block bg-accent/90 text-white text-xs font-display font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">Bienestar & Relax</span>
-              <h1 className="text-5xl md:text-6xl font-heading font-bold leading-tight mb-4">SPA Náyade</h1>
-              <p className="text-xl text-white/85 font-display mb-6">Un oasis de bienestar frente al lago. Circuito de aguas, masajes y tratamientos para reconectar contigo mismo.</p>
-              <Link href="/presupuesto">
-                <Button size="lg" className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-8 shadow-lg">
-                  Reservar Tratamiento <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Intro */}
-      <section className="py-20 bg-background">
-        <div className="container">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            <div className="rounded-2xl overflow-hidden shadow-2xl">
-              <img src={CDN.lago} alt="SPA con vistas al lago" className="w-full h-[420px] object-cover" />
-            </div>
-            <div>
-              <span className="text-accent font-display font-semibold text-sm uppercase tracking-widest">Tu momento de paz</span>
-              <h2 className="text-4xl font-heading font-bold text-foreground mt-2 mb-5">Bienestar en plena naturaleza</h2>
-              <p className="text-muted-foreground font-display text-lg leading-relaxed mb-5">
-                El SPA Náyade es un espacio de bienestar diseñado para ofrecerte la máxima relajación en un entorno natural único. Situado a orillas del embalse de Los Ángeles de San Rafael, combina las propiedades terapéuticas del agua con tratamientos de belleza y bienestar de primer nivel.
-              </p>
-              <p className="text-muted-foreground font-display leading-relaxed mb-8">
-                Nuestro equipo de terapeutas especializados te guiará en una experiencia personalizada, adaptada a tus necesidades.
-              </p>
-              <div className="grid grid-cols-3 gap-4 mb-8">
-                {[{ label: "Jacuzzi", icon: "🌊" }, { label: "Sauna", icon: "🔥" }, { label: "Baño turco", icon: "💨" }, { label: "Piscina fría", icon: "❄️" }, { label: "Sala relax", icon: "🧘" }, { label: "Vestuarios", icon: "✨" }].map((item, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1 bg-muted/50 rounded-xl p-3 text-center">
-                    <span className="text-2xl">{item.icon}</span>
-                    <span className="text-xs font-display text-foreground/70">{item.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Tratamientos */}
-      <section className="py-20 bg-muted/30">
-        <div className="container">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-heading font-bold text-foreground mb-3">Nuestros <span className="text-accent">Tratamientos</span></h2>
-            <p className="text-muted-foreground font-display text-lg max-w-xl mx-auto">Desde el circuito de aguas hasta rituales completos. Todos nuestros tratamientos utilizan productos naturales de primera calidad.</p>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {tratamientos.map((t, i) => (
-              <div key={i} className="bg-card rounded-2xl p-6 shadow-md border border-border/40 hover:shadow-lg transition-all hover:-translate-y-0.5 duration-300">
-                <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center text-accent mb-4">{t.icon}</div>
-                <h3 className="font-heading font-bold text-foreground text-lg mb-2">{t.nombre}</h3>
-                <p className="text-muted-foreground font-display text-sm leading-relaxed mb-4">{t.desc}</p>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xl font-heading font-bold text-accent">{t.precio}</div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground font-display mt-0.5"><Clock className="w-3.5 h-3.5" />{t.duracion}</div>
-                  </div>
-                  <Link href="/presupuesto"><Button size="sm" className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-4">Reservar</Button></Link>
-                </div>
-              </div>
+        {date && hasSlots && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {availableSlots.slice(0, 3).map((slot: any) => (
+              <Badge key={slot.id} className="bg-teal-500/20 text-teal-300 border border-teal-500/30 text-xs">
+                {slot.startTime}
+              </Badge>
             ))}
+            {availableSlots.length > 3 && (
+              <Badge className="bg-white/10 text-white/50 text-xs">+{availableSlots.length - 3} más</Badge>
+            )}
           </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-16 bg-primary text-white">
-        <div className="container text-center">
-          <h2 className="text-3xl font-heading font-bold mb-3">Regala bienestar</h2>
-          <p className="text-white/80 font-display text-lg mb-8 max-w-xl mx-auto">Los bonos regalo del SPA Náyade son el detalle perfecto para cualquier ocasión.</p>
-          <div className="flex flex-wrap gap-4 justify-center">
-            <Link href="/presupuesto"><Button size="lg" className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-10 shadow-lg">Reservar Tratamiento <ArrowRight className="w-4 h-4 ml-2" /></Button></Link>
-            <a href="tel:+34930347791"><Button size="lg" variant="outline" className="border-white/40 text-white hover:bg-white/10 font-display font-semibold rounded-full px-10 bg-transparent">+34 930 34 77 91</Button></a>
+        )}
+        <div className="flex items-end justify-between">
+          <div className="text-2xl font-bold text-teal-400">
+            {parseFloat(treatment.price || "0").toFixed(2)} €
+            <span className="text-sm font-normal text-white/50"> / persona</span>
           </div>
+          <Link href={detailUrl}>
+            <Button size="sm" className="bg-teal-500 hover:bg-teal-400 text-slate-900 font-bold">
+              Reservar <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </Link>
         </div>
-      </section>
-    </>
+      </CardContent>
+    </Card>
   );
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+function CategoryChips({ categories, selected, onSelect }: {
+  categories: any[];
+  selected: number | null;
+  onSelect: (id: number | null) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        onClick={() => onSelect(null)}
+        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          selected === null ? "bg-teal-500 text-slate-900" : "bg-white/10 text-white/70 hover:bg-white/20"
+        }`}
+      >
+        Todos
+      </button>
+      {categories.map(cat => (
+        <button
+          key={cat.id}
+          onClick={() => onSelect(cat.id)}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            selected === cat.id ? "bg-teal-500 text-slate-900" : "bg-white/10 text-white/70 hover:bg-white/20"
+          }`}
+        >
+          {cat.name}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function Spa() {
-  const { data: blocks, isLoading } = trpc.public.getPublicPageBlocks.useQuery({ slug: "spa" });
+  const [searchParams, setSearchParams] = useState<SpaSearch>({
+    date: todayStr(),
+    persons: 1,
+    query: "",
+  });
+  const [hasSearched, setHasSearched] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
 
-  const hasBlocks = !isLoading && blocks && blocks.length > 0;
+  const categoriesQuery = trpc.spa.getCategories.useQuery();
+  const treatmentsQuery = trpc.spa.getTreatments.useQuery({ categoryId: selectedCategory ?? undefined });
+
+  const filteredTreatments = useMemo(() => {
+    const list = treatmentsQuery.data ?? [];
+    if (!searchParams.query) return list;
+    const q = searchParams.query.toLowerCase();
+    return list.filter((t: any) =>
+      t.name.toLowerCase().includes(q) ||
+      (t.shortDescription ?? "").toLowerCase().includes(q)
+    );
+  }, [treatmentsQuery.data, searchParams.query]);
 
   return (
-    <PublicLayout>
-      {isLoading ? (
-        <StaticSpaContent />
-      ) : hasBlocks ? (
-        <div>
-          {(blocks as any[]).map(block => renderBlock(block))}
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-teal-950/30 to-slate-900">
+      {/* Hero */}
+      <div className="relative py-28 px-4 text-center overflow-hidden">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-15"
+          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=1600')" }}
+        />
+        <div className="relative z-10 max-w-4xl mx-auto">
+          <Badge className="bg-teal-500/20 text-teal-300 border-teal-500/30 mb-4">Spa & Wellness</Badge>
+          <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">Bienestar en plena naturaleza</h1>
+          <p className="text-xl text-white/70 mb-10 max-w-2xl mx-auto">
+            Circuitos, masajes y tratamientos exclusivos. Elige tu experiencia y reserva tu horario en tiempo real.
+          </p>
+          <SpaSearchBar params={searchParams} onChange={setSearchParams} onSearch={() => setHasSearched(true)} />
         </div>
-      ) : (
-        <StaticSpaContent />
-      )}
-    </PublicLayout>
+      </div>
+
+      {/* Highlights strip */}
+      <div className="bg-slate-800/60 border-y border-white/10 py-6 px-4">
+        <div className="max-w-4xl mx-auto grid grid-cols-3 gap-4">
+          {[
+            { icon: <Sparkles className="w-5 h-5" />, label: "Tratamientos exclusivos" },
+            { icon: <Leaf className="w-5 h-5" />, label: "Productos naturales" },
+            { icon: <Waves className="w-5 h-5" />, label: "Circuito de aguas" },
+          ].map((s, i) => (
+            <div key={i} className="flex flex-col items-center gap-2 text-center">
+              <div className="text-teal-400">{s.icon}</div>
+              <span className="text-xs text-white/70">{s.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Treatments grid */}
+      <div className="max-w-6xl mx-auto px-4 py-14">
+        {categoriesQuery.data && categoriesQuery.data.length > 0 && (
+          <div className="mb-8">
+            <CategoryChips
+              categories={categoriesQuery.data}
+              selected={selectedCategory}
+              onSelect={setSelectedCategory}
+            />
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-white text-2xl font-bold">
+            {hasSearched
+              ? `Horarios disponibles para ${searchParams.date}`
+              : "Nuestros tratamientos y circuitos"}
+          </h2>
+          {hasSearched && (
+            <Button
+              variant="ghost"
+              className="text-white/60 hover:text-white text-sm"
+              onClick={() => setHasSearched(false)}
+            >
+              Ver todos
+            </Button>
+          )}
+        </div>
+
+        {treatmentsQuery.isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map(i => (
+              <Card key={i} className="overflow-hidden bg-white/5 border-white/10">
+                <Skeleton className="h-52 w-full bg-white/10" />
+                <CardContent className="p-5 space-y-3">
+                  <Skeleton className="h-5 w-2/3 bg-white/10" />
+                  <Skeleton className="h-4 w-full bg-white/10" />
+                  <Skeleton className="h-8 w-1/3 bg-white/10" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : filteredTreatments.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredTreatments.map((treatment: any) => (
+              <TreatmentCard
+                key={treatment.id}
+                treatment={treatment}
+                date={hasSearched ? searchParams.date : ""}
+                persons={searchParams.persons}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-20 text-white/50">
+            <Sparkles className="h-16 w-16 mx-auto mb-4 opacity-30" />
+            <p className="text-xl">
+              {hasSearched
+                ? "No hay tratamientos disponibles para los criterios seleccionados."
+                : "Los tratamientos estarán disponibles próximamente."}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

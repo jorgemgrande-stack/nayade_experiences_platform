@@ -332,3 +332,32 @@
 - [x] Reparar MultimediaManager para que la subida funcione correctamente
 - [x] Crear componente ImageUploader reutilizable (sube a S3, guarda en Multimedia)
 - [x] Reemplazar campos URL de imagen en PagesManager por ImageUploader
+
+## Hotel & SPA — Arquitectura dinámica completa
+- [ ] Esquema BD Hotel: room_types, room_rates, room_inventory, room_blocks, room_rate_seasons
+- [ ] Esquema BD SPA: spa_treatments, spa_categories, spa_resources, spa_slots, spa_slot_blocks
+- [ ] Helpers DB Hotel (CRUD + disponibilidad + calendario)
+- [ ] Helpers DB SPA (CRUD + agenda + slots)
+- [ ] tRPC Hotel: getPublicRoomTypes, searchAvailability, getRoomCalendar, admin CRUD
+- [ ] tRPC SPA: getPublicTreatments, getSpaSlots, admin CRUD
+- [ ] Frontend /hotel: buscador + tarjetas dinámicas + detalle con calendario de precios
+- [ ] Frontend /spa: buscador + tarjetas dinámicas + selector de horarios
+- [ ] Admin CMS Hotel: CRUD tipologías, tarifas, inventario, calendario channel manager
+- [ ] Admin CMS SPA: CRUD tratamientos, recursos, agenda semanal, slots
+- [ ] Integrar rutas y navegación admin Hotel/SPA
+
+## Hotel y SPA — Arquitectura dinámica completa (v5.3)
+- [x] Esquema BD Hotel: room_types, rate_seasons, room_rates, room_blocks (9 tablas nuevas)
+- [x] Esquema BD SPA: spa_categories, spa_treatments, spa_resources, spa_slots, spa_schedule_templates
+- [x] Migración SQL aplicada correctamente
+- [x] Helpers de BD: hotelDb.ts y spaDb.ts con CRUD completo
+- [x] Procedimientos tRPC hotel.* (getRoomTypes, searchAvailability, adminGetRoomTypes, adminCreateRoomType, adminUpdateRoomType, adminDeleteRoomType, adminToggleRoomTypeActive, adminGetRateSeasons, adminCreateRateSeason, adminDeleteRateSeason, adminGetRates, adminCreateRate, adminUpdateRate, adminDeleteRate, adminGetBlocks, adminUpsertBlock, adminDeleteBlock, adminGetCalendar)
+- [x] Procedimientos tRPC spa.* (getCategories, getTreatments, getTreatmentBySlug, getAvailableSlots, adminGetCategories, adminCreateCategory, adminDeleteCategory, adminGetTreatments, adminCreateTreatment, adminUpdateTreatment, adminDeleteTreatment, adminToggleTreatmentActive, adminGetResources, adminCreateResource, adminUpdateResource, adminDeleteResource, adminGetSlots, adminCreateSlot, adminUpdateSlot, adminDeleteSlot, adminGetTemplates, adminCreateTemplate, adminUpdateTemplate, adminDeleteTemplate, adminGenerateSlots)
+- [x] Frontend público Hotel.tsx dinámico: buscador de disponibilidad, tarjetas por tipología, fallback a contenido estático
+- [x] Frontend público HotelRoom.tsx: detalle de habitación con galería, amenities, calendario de precios y formulario de reserva
+- [x] Frontend público Spa.tsx dinámico: buscador, filtro por categorías, tarjetas de tratamientos, selector de horarios
+- [x] Admin HotelManager.tsx: CRUD tipologías con ImageUploader, calendario de inventario tipo channel manager, temporadas de precio
+- [x] Admin SpaManager.tsx: CRUD tratamientos con categorías, plantillas de horario semanal, calendario de slots, generación automática de slots
+- [x] Rutas /hotel/:slug y /admin/hotel y /admin/spa registradas en App.tsx
+- [x] Hotel y SPA añadidos al menú lateral del admin (BedDouble y Sparkles icons)
+- [x] 0 errores TypeScript en todo el proyecto

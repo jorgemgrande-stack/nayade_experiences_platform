@@ -36,6 +36,13 @@
       "when": 1773869326046,
       "tag": "0004_next_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1773875755120,
+      "tag": "0005_adorable_leopardon",
+      "breakpoints": true
     }
   ]
 }

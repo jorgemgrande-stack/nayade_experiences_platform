@@ -57,6 +57,11 @@ import ReservationsManager from "./pages/admin/operations/ReservationsManager";
 import AccountingDashboard from "./pages/admin/accounting/AccountingDashboard";
 import TransactionsList from "./pages/admin/accounting/TransactionsList";
 
+// Hotel & SPA
+import HotelManager from "./pages/admin/hotel/HotelManager";
+import SpaManager from "./pages/admin/spa/SpaManager";
+import HotelRoom from "./pages/HotelRoom";
+
 // Users & Settings
 import UsersManager from "./pages/admin/users/UsersManager";
 import Settings from "./pages/admin/settings/Settings";
@@ -77,6 +82,7 @@ function Router() {
       <Route path="/packs/:category" component={PacksList} />
       <Route path="/packs/:category/:slug" component={PackDetail} />
       <Route path="/hotel" component={Hotel} />
+      <Route path="/hotel/:slug" component={HotelRoom} />
       <Route path="/spa" component={Spa} />
       <Route path="/restaurantes" component={Restaurantes} />
       <Route path="/restaurantes/:slug" component={RestauranteDetail} />
@@ -124,6 +130,10 @@ function Router() {
       <Route path="/admin/contabilidad" component={AccountingDashboard} />
       <Route path="/admin/contabilidad/dashboard" component={AccountingDashboard} />
       <Route path="/admin/contabilidad/transacciones" component={TransactionsList} />
+
+      {/* Hotel & SPA */}
+      <Route path="/admin/hotel" component={HotelManager} />
+      <Route path="/admin/spa" component={SpaManager} />
 
       {/* Users & Settings */}
       <Route path="/admin/usuarios" component={UsersManager} />

@@ -416,3 +416,168 @@ export const pageBlocks = mysqlTable("page_blocks", {
 
 export type PageBlock = typeof pageBlocks.$inferSelect;
 export type InsertPageBlock = typeof pageBlocks.$inferInsert;
+
+// ─── HOTEL ───────────────────────────────────────────────────────────────────
+
+/** Tipologías de habitación (equivalente a experiences) */
+export const roomTypes = mysqlTable("room_types", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 256 }).notNull().unique(),
+  name: varchar("name", { length: 256 }).notNull(),
+  shortDescription: text("shortDescription"),
+  description: text("description"),
+  coverImageUrl: text("coverImageUrl"),
+  image1: text("image1"),
+  image2: text("image2"),
+  image3: text("image3"),
+  image4: text("image4"),
+  gallery: json("gallery").$type<string[]>().default([]),
+  maxAdults: int("maxAdults").default(2).notNull(),
+  maxChildren: int("maxChildren").default(0).notNull(),
+  maxOccupancy: int("maxOccupancy").default(2).notNull(),
+  surfaceM2: int("surfaceM2"),
+  amenities: json("amenities").$type<string[]>().default([]),
+  basePrice: decimal("basePrice", { precision: 10, scale: 2 }).notNull().default("0"),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  totalUnits: int("totalUnits").default(1).notNull(),
+  isFeatured: boolean("isFeatured").default(false).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  metaTitle: varchar("metaTitle", { length: 256 }),
+  metaDescription: text("metaDescription"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Temporadas de precio (ej: alta, media, baja) */
+export const roomRateSeasons = mysqlTable("room_rate_seasons", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  startDate: varchar("startDate", { length: 10 }).notNull(), // YYYY-MM-DD
+  endDate: varchar("endDate", { length: 10 }).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/** Tarifas por tipología + temporada + día semana */
+export const roomRates = mysqlTable("room_rates", {
+  id: int("id").autoincrement().primaryKey(),
+  roomTypeId: int("roomTypeId").notNull(),
+  seasonId: int("seasonId"),
+  dayOfWeek: int("dayOfWeek"), // 0=Dom … 6=Sáb, null=todos
+  specificDate: varchar("specificDate", { length: 10 }), // YYYY-MM-DD override
+  pricePerNight: decimal("pricePerNight", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  supplement: decimal("supplement", { precision: 10, scale: 2 }).default("0"),
+  supplementLabel: varchar("supplementLabel", { length: 128 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Bloqueos y ajustes de inventario por fecha */
+export const roomBlocks = mysqlTable("room_blocks", {
+  id: int("id").autoincrement().primaryKey(),
+  roomTypeId: int("roomTypeId").notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+  availableUnits: int("availableUnits").default(0).notNull(), // 0 = cerrado
+  reason: varchar("reason", { length: 256 }),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type RoomType = typeof roomTypes.$inferSelect;
+export type InsertRoomType = typeof roomTypes.$inferInsert;
+export type RoomRateSeason = typeof roomRateSeasons.$inferSelect;
+export type RoomRate = typeof roomRates.$inferSelect;
+export type RoomBlock = typeof roomBlocks.$inferSelect;
+
+// ─── SPA ─────────────────────────────────────────────────────────────────────
+
+/** Categorías de tratamiento SPA */
+export const spaCategories = mysqlTable("spa_categories", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 128 }).notNull().unique(),
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description"),
+  iconName: varchar("iconName", { length: 64 }),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/** Tratamientos y circuitos SPA (equivalente a experiences) */
+export const spaTreatments = mysqlTable("spa_treatments", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 256 }).notNull().unique(),
+  name: varchar("name", { length: 256 }).notNull(),
+  categoryId: int("categoryId"),
+  shortDescription: text("shortDescription"),
+  description: text("description"),
+  benefits: json("benefits").$type<string[]>().default([]),
+  coverImageUrl: text("coverImageUrl"),
+  image1: text("image1"),
+  image2: text("image2"),
+  gallery: json("gallery").$type<string[]>().default([]),
+  durationMinutes: int("durationMinutes").default(60).notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull().default("0"),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  maxPersons: int("maxPersons").default(1).notNull(),
+  cabinRequired: boolean("cabinRequired").default(true).notNull(),
+  isFeatured: boolean("isFeatured").default(false).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  metaTitle: varchar("metaTitle", { length: 256 }),
+  metaDescription: text("metaDescription"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Recursos SPA: cabinas y terapeutas */
+export const spaResources = mysqlTable("spa_resources", {
+  id: int("id").autoincrement().primaryKey(),
+  type: mysqlEnum("type", ["cabina", "terapeuta"]).notNull(),
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description"),
+  isActive: boolean("isActive").default(true).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/** Slots de agenda SPA (franjas horarias disponibles) */
+export const spaSlots = mysqlTable("spa_slots", {
+  id: int("id").autoincrement().primaryKey(),
+  treatmentId: int("treatmentId").notNull(),
+  resourceId: int("resourceId"),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+  startTime: varchar("startTime", { length: 5 }).notNull(), // HH:MM
+  endTime: varchar("endTime", { length: 5 }).notNull(),
+  capacity: int("capacity").default(1).notNull(),
+  bookedCount: int("bookedCount").default(0).notNull(),
+  status: mysqlEnum("status", ["disponible", "reservado", "bloqueado"]).default("disponible").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+/** Plantillas de horario semanal para auto-generar slots */
+export const spaScheduleTemplates = mysqlTable("spa_schedule_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  treatmentId: int("treatmentId").notNull(),
+  resourceId: int("resourceId"),
+  dayOfWeek: int("dayOfWeek").notNull(), // 0=Dom … 6=Sáb
+  startTime: varchar("startTime", { length: 5 }).notNull(),
+  endTime: varchar("endTime", { length: 5 }).notNull(),
+  capacity: int("capacity").default(1).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type SpaCategory = typeof spaCategories.$inferSelect;
+export type SpaTreatment = typeof spaTreatments.$inferSelect;
+export type InsertSpaTreatment = typeof spaTreatments.$inferInsert;
+export type SpaResource = typeof spaResources.$inferSelect;
+export type SpaSlot = typeof spaSlots.$inferSelect;
+export type SpaScheduleTemplate = typeof spaScheduleTemplates.$inferSelect;
