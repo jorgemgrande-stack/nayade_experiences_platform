@@ -390,3 +390,19 @@
 - [x] Crear SpaDetail.tsx con galería, descripción, beneficios y calendario de reservas
 - [x] Registrar ruta /spa/:slug en App.tsx
 - [x] Actualizar botones Reservar en Spa.tsx para apuntar a /spa/:slug
+
+## HotelRoom — Mejoras (v5.9)
+- [ ] Corregir espacio bajo el header en la ficha de habitación
+- [ ] Añadir selector de fechas check-in/check-out con cálculo de noches
+- [ ] Añadir selector de número de adultos y niños
+- [ ] Calcular precio total automáticamente (precio/noche × noches × personas)
+- [ ] Conectar botón Reservar al flujo de pago Redsys
+- [ ] Crear procedimiento tRPC createHotelBooking en hotel.ts
+
+## HotelRoom — Reserva con Redsys (v5.9)
+- [x] HotelRoom.tsx: añadir padding-top correcto bajo el header fijo (h-28/h-32)
+- [x] HotelRoom.tsx: añadir botón Reservar con selector de fechas y personas
+- [x] HotelRoom.tsx: cálculo de precio total por noches en backend (precio_noche × noches)
+- [x] HotelRoom.tsx: pago vía Redsys con modal de confirmación (nombre, email, teléfono, notas)
+- [x] hotel.ts: procedimiento createHotelBooking con lógica de precio por temporada
+- [x] hotel.ts: buscar precio correcto según temporada (rate_seasons + room_rates)

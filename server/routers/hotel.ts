@@ -9,6 +9,8 @@ import {
   getRoomBlocksForRange, getAllBlocksForRange, upsertRoomBlock, deleteRoomBlock,
   searchAvailability, getRoomCalendar,
 } from "../hotelDb";
+import { createReservation } from "../db";
+import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -225,4 +227,121 @@ export const hotelRouter = router({
       month: z.number().int().min(1).max(12),
     }))
     .query(({ input }) => getRoomCalendar(input.roomTypeId, input.year, input.month)),
+
+  // ── BOOKING ───────────────────────────────────────────────────────────────
+
+  /**
+   * Crea una pre-reserva de hotel y devuelve el formulario Redsys para el pago.
+   * El importe se calcula SIEMPRE en backend: precio_noche × noches × personas.
+   */
+  createHotelBooking: publicProcedure
+    .input(z.object({
+      roomTypeId: z.number().int(),
+      checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      adults: z.number().int().min(1).max(10),
+      children: z.number().int().min(0).max(10).default(0),
+      customerName: z.string().min(2),
+      customerEmail: z.string().email(),
+      customerPhone: z.string().optional(),
+      notes: z.string().optional(),
+      origin: z.string().url(),
+    }))
+    .mutation(async ({ input }) => {
+      // 1. Obtener la tipología y validar
+      const room = await getRoomTypeById(input.roomTypeId);
+      if (!room || !room.isActive) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Habitación no encontrada" });
+      }
+
+      // 2. Calcular número de noches
+      const checkInDate = new Date(input.checkIn);
+      const checkOutDate = new Date(input.checkOut);
+      const nights = Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (nights < 1) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "La fecha de salida debe ser posterior a la de entrada" });
+      }
+
+      // 3. Calcular precio: obtener precio real de la temporada para el check-in
+      //    Si no hay tarifa específica, usar basePrice de la tipología
+      const rates = await getRatesByRoomType(input.roomTypeId);
+      const seasons = await getAllRateSeasons();
+      const checkInMs = checkInDate.getTime();
+      let pricePerNight = parseFloat(String(room.basePrice ?? 0));
+      for (const rate of rates) {
+        // Si la tarifa tiene fecha específica, comparar directamente
+        if (rate.specificDate && rate.specificDate === input.checkIn) {
+          pricePerNight = parseFloat(String(rate.pricePerNight));
+          break;
+        }
+        // Si la tarifa tiene temporada, buscar las fechas de la temporada
+        if (rate.seasonId) {
+          const season = seasons.find(s => s.id === rate.seasonId);
+          if (season) {
+            const from = new Date(season.startDate).getTime();
+            const to = new Date(season.endDate).getTime();
+            if (checkInMs >= from && checkInMs <= to) {
+              pricePerNight = parseFloat(String(rate.pricePerNight));
+              break;
+            }
+          }
+        }
+      }
+
+      // 4. Total = precio/noche × noches (el precio ya incluye la habitación completa)
+      const totalEuros = pricePerNight * nights;
+      const amountCents = Math.round(totalEuros * 100);
+
+      // 5. Generar merchantOrder único
+      const merchantOrder = generateMerchantOrder();
+
+      // 6. Crear la pre-reserva en BD con estado pending_payment
+      //    Usamos productId=0 para reservas de hotel y guardamos los detalles en notes
+      const bookingDetails = JSON.stringify({
+        type: "hotel",
+        roomTypeId: input.roomTypeId,
+        roomName: room.name,
+        checkIn: input.checkIn,
+        checkOut: input.checkOut,
+        nights,
+        adults: input.adults,
+        children: input.children,
+        pricePerNight,
+      });
+
+      await createReservation({
+        productId: input.roomTypeId,
+        productName: `Hotel: ${room.name} (${nights} noche${nights > 1 ? 's' : ''})`,
+        bookingDate: input.checkIn,
+        people: input.adults + input.children,
+        extrasJson: bookingDetails,
+        amountTotal: amountCents,
+        customerName: input.customerName,
+        customerEmail: input.customerEmail,
+        customerPhone: input.customerPhone,
+        merchantOrder,
+        notes: input.notes,
+      });
+
+      // 7. Construir el formulario Redsys
+      const redsysForm = buildRedsysForm({
+        amount: amountCents,
+        merchantOrder,
+        productDescription: `Hotel Náyade: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
+        notifyUrl: `${input.origin}/api/redsys/notification`,
+        okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
+        koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+        holderName: input.customerName,
+      });
+
+      return {
+        merchantOrder,
+        amountCents,
+        amountEuros: totalEuros,
+        nights,
+        pricePerNight,
+        roomName: room.name,
+        redsysForm,
+      };
+    }),
 });
