@@ -380,3 +380,7 @@
 - [x] Insertar tratamientos con precios reales del dossier
 - [x] Insertar plantillas de horario (Viernes 15-22h, Sábados 10-22h, Domingos 10-17:30h)
 - [x] Generar slots de disponibilidad Mar-Sep 2026
+
+## Bugs (v5.7)
+- [x] Hotel.tsx: falta margen/padding-top bajo el header (contenido queda pegado al nav)
+- [x] Spa.tsx: botones Reservar generan URLs rotas — redirigen a /contacto con parámetros del tratamiento

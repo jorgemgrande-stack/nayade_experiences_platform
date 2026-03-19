@@ -92,7 +92,7 @@ function TreatmentCard({ treatment, date, persons }: { treatment: any; date: str
   const hasSlots = availableSlots.length > 0;
   const isLastSlot = hasSlots && availableSlots.length === 1;
 
-  const detailUrl = `/spa/${treatment.slug}?date=${date}&persons=${persons}`;
+  const detailUrl = `/contacto?servicio=spa&tratamiento=${encodeURIComponent(treatment.name)}&fecha=${date}&personas=${persons}`;
 
   return (
     <Card className="overflow-hidden bg-white/5 border-white/10 hover:border-teal-400/40 transition-all group">
@@ -230,7 +230,7 @@ export default function Spa() {
     <PublicLayout fullWidthHero>
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-teal-950/30 to-slate-900">
       {/* Hero */}
-      <div className="relative py-28 px-4 text-center overflow-hidden">
+      <div className="relative pt-40 pb-20 px-4 text-center overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center opacity-15"
           style={{ backgroundImage: "url('https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=1600')" }}

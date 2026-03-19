@@ -253,7 +253,7 @@ export default function Hotel() {
     <PublicLayout fullWidthHero>
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
       {/* Hero */}
-      <div className="relative py-28 px-4 text-center overflow-hidden">
+      <div className="relative pt-40 pb-20 px-4 text-center overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center opacity-20"
           style={{ backgroundImage: "url('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1600')" }}
