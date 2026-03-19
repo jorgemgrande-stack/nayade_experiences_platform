@@ -6,9 +6,14 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { createLocalContext } from "./context.local";
+import { createLocalAuthRouter } from "../localAuth";
 import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
 import { serveStatic, setupVite } from "./vite";
+
+// Modo de autenticación: LOCAL_AUTH=true usa email+password local en lugar de Manus OAuth
+const USE_LOCAL_AUTH = process.env.LOCAL_AUTH === "true";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -35,8 +40,14 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  // OAuth callback under /api/oauth/callback
-  registerOAuthRoutes(app);
+  if (USE_LOCAL_AUTH) {
+    // Modo local: rutas de auth propias (login/logout/me) en lugar de Manus OAuth
+    app.use(createLocalAuthRouter());
+    console.log("[Auth] Modo LOCAL_AUTH activado — usando email+password local");
+  } else {
+    // Modo Manus: OAuth callback
+    registerOAuthRoutes(app);
+  }
   // File upload endpoint
   app.use(uploadRouter);
   // Redsys IPN notification endpoint
@@ -46,7 +57,7 @@ async function startServer() {
     "/api/trpc",
     createExpressMiddleware({
       router: appRouter,
-      createContext,
+      createContext: USE_LOCAL_AUTH ? createLocalContext : createContext,
     })
   );
   // development mode uses Vite, production mode uses static files

@@ -444,3 +444,18 @@
 ## Fix Selector Edades Niños (v6.4)
 - [x] HotelRoom.tsx: reemplazar select nativo por selector custom con botones +/- (texto siempre visible, sin dropdown nativo)
 - [x] Hotel.tsx: aplicar el mismo selector custom en el buscador principal
+
+## Exportación Local Independiente de Manus (v7.0)
+- [x] Auditoría completa de dependencias Manus en código fuente
+- [x] Auth local: login/registro con email+password + JWT (reemplaza Manus OAuth)
+- [x] Stub LLM: wrapper configurable (OpenAI-compatible o mock)
+- [x] Stub Storage: S3 estándar (AWS/MinIO) o almacenamiento local
+- [x] Stub Notificaciones: email SMTP o log en consola
+- [x] Stub Mapas: Google Maps API key propia
+- [x] Stub Generación de imágenes: OpenAI DALL-E o mock
+- [x] env.example.txt completo y documentado para entorno local
+- [x] docker-compose.yml con MySQL + MinIO + servidor Node
+- [x] Dockerfile multi-stage para producción
+- [x] README-LOCAL.md con instrucciones de arranque paso a paso
+- [x] Script scripts/create-admin.mjs para crear el primer usuario admin
+- [x] Verificar 0 errores TypeScript tras todos los cambios
