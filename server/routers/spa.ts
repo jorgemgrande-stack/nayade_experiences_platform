@@ -10,6 +10,11 @@ import {
   getSpaScheduleTemplates, createSpaScheduleTemplate, updateSpaScheduleTemplate, deleteSpaScheduleTemplate,
   generateSlotsFromTemplates,
 } from "../spaDb";
+import { createReservation } from "../db";
+import {
+  buildRedsysForm,
+  generateMerchantOrder,
+} from "../redsys";
 
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -270,4 +275,86 @@ export const spaRouter = router({
       endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     }))
     .mutation(({ input }) => generateSlotsFromTemplates(input.treatmentId, input.startDate, input.endDate)),
+
+  // ── PUBLIC: BOOKING ───────────────────────────────────────────────────────
+
+  /**
+   * Crea una reserva de tratamiento SPA y genera el formulario Redsys para el pago.
+   * El precio se calcula en backend (precio_tratamiento × personas) para evitar manipulación.
+   */
+  createSpaBooking: publicProcedure
+    .input(z.object({
+      treatmentId: z.number().int(),
+      slotId: z.number().int(),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      time: z.string().regex(/^\d{2}:\d{2}$/),
+      persons: z.number().int().min(1).max(20),
+      customerName: z.string().min(2).max(100),
+      customerEmail: z.string().email(),
+      customerPhone: z.string().optional(),
+      notes: z.string().optional(),
+      origin: z.string().url(),
+    }))
+    .mutation(async ({ input }) => {
+      // 1. Obtener el tratamiento y verificar que existe y está activo
+      const treatment = await getSpaTreatmentById(input.treatmentId);
+      if (!treatment || !treatment.isActive) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Tratamiento no encontrado" });
+      }
+
+      // 2. Verificar que el slot existe y tiene plazas disponibles
+      const slots = await getSpaSlotsByDate(input.treatmentId, input.date);
+      const slot = slots.find(s => s.id === input.slotId);
+      if (!slot) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Horario no encontrado" });
+      }
+      if (slot.status === "bloqueado") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Este horario no está disponible" });
+      }
+      const available = slot.capacity - slot.bookedCount;
+      if (available < input.persons) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Solo quedan ${available} plaza${available !== 1 ? "s" : ""} disponibles en este horario`,
+        });
+      }
+
+      // 3. Calcular precio en backend: precio_tratamiento × personas
+      const pricePerPerson = parseFloat(String(treatment.price ?? 0));
+      if (pricePerPerson <= 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El precio del tratamiento no está configurado" });
+      }
+      const totalEuros = pricePerPerson * input.persons;
+      const amountCents = Math.round(totalEuros * 100);
+
+      // 4. Generar orden única de comercio
+      const merchantOrder = generateMerchantOrder();
+
+      // 5. Crear reserva en BD con estado "pending"
+      const reservation = await createReservation({
+        productId: input.treatmentId,
+        productName: `SPA: ${treatment.name} · ${input.time}`,
+        bookingDate: input.date,
+        people: input.persons,
+        amountTotal: amountCents,
+        customerName: input.customerName,
+        customerEmail: input.customerEmail,
+        customerPhone: input.customerPhone,
+        notes: input.notes,
+        merchantOrder,
+      });
+
+      // 6. Construir formulario Redsys
+      const redsysForm = buildRedsysForm({
+        amount: amountCents,
+        merchantOrder,
+        productDescription: `SPA ${treatment.name} · ${input.date} ${input.time} · ${input.persons}p`,
+        holderName: input.customerName,
+        notifyUrl: `${input.origin}/api/redsys/notify`,
+        okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
+        koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+      });
+
+      return { reservationId: reservation.id, merchantOrder, redsysForm };
+    }),
 });

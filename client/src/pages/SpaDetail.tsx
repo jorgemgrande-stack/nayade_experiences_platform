@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import PublicLayout from "@/components/PublicLayout";
@@ -329,100 +329,262 @@ function BookingPanel({ treatment }: { treatment: any }) {
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [selectedSlot, setSelectedSlot] = useState<{ id: number; time: string } | null>(null);
   const [persons, setPersons] = useState(1);
-  const [, navigate] = useLocation();
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const redsysFormRef = useRef<HTMLFormElement | null>(null);
 
   const price = parseFloat(treatment.price || "0");
   const total = price * persons;
 
-  function handleBook() {
-    const params = new URLSearchParams({
-      servicio: "spa",
-      tratamiento: treatment.name,
-      fecha: selectedDate,
-      hora: selectedSlot?.time ?? "",
-      personas: String(persons),
-      precio: total.toFixed(2),
+  const bookMutation = trpc.spa.createSpaBooking.useMutation({
+    onSuccess: (data) => {
+      // Auto-submit the Redsys form
+      const { redsysForm } = data;
+      const f = document.createElement("form");
+      f.method = "POST";
+      f.action = redsysForm.url;
+      f.style.display = "none";
+      const fields: Record<string, string> = {
+        Ds_MerchantParameters: redsysForm.Ds_MerchantParameters,
+        Ds_Signature: redsysForm.Ds_Signature,
+        Ds_SignatureVersion: redsysForm.Ds_SignatureVersion,
+      };
+      Object.entries(fields).forEach(([k, v]) => {
+        const inp = document.createElement("input");
+        inp.type = "hidden";
+        inp.name = k;
+        inp.value = v;
+        f.appendChild(inp);
+      });
+      document.body.appendChild(f);
+      f.submit();
+    },
+    onError: (err) => {
+      alert("Error al procesar la reserva: " + err.message);
+    },
+  });
+
+  function validateForm() {
+    const errors: Record<string, string> = {};
+    if (!form.name.trim() || form.name.trim().length < 2) errors.name = "Nombre requerido (mín. 2 caracteres)";
+    if (!form.email.trim() || !/^[^@]+@[^@]+\.[^@]+$/.test(form.email)) errors.email = "Email válido requerido";
+    return errors;
+  }
+
+  function handleOpenModal() {
+    if (!selectedSlot) return;
+    setFormErrors({});
+    setShowModal(true);
+  }
+
+  function handleConfirmBooking() {
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
+    bookMutation.mutate({
+      treatmentId: treatment.id,
+      slotId: selectedSlot!.id,
+      date: selectedDate,
+      time: selectedSlot!.time,
+      persons,
+      customerName: form.name.trim(),
+      customerEmail: form.email.trim(),
+      customerPhone: form.phone.trim() || undefined,
+      notes: form.notes.trim() || undefined,
+      origin: window.location.origin,
     });
-    navigate(`/contacto?${params.toString()}`);
   }
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 sticky top-24">
-      {/* Price */}
-      <div className="mb-5">
-        <div className="text-3xl font-bold text-teal-400">
-          {price.toFixed(2)} €
-          <span className="text-base font-normal text-white/50"> / persona</span>
-        </div>
-        <p className="text-white/50 text-sm mt-1">Duración: {treatment.durationMinutes} min</p>
-      </div>
-
-      {/* Persons */}
-      <div className="mb-5">
-        <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-2">Personas</label>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setPersons(p => Math.max(1, p - 1))}
-            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold transition-colors"
-          >−</button>
-          <span className="text-white font-bold text-lg w-8 text-center">{persons}</span>
-          <button
-            onClick={() => setPersons(p => Math.min(treatment.maxPersons, p + 1))}
-            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold transition-colors"
-          >+</button>
-          <span className="text-white/40 text-sm">máx. {treatment.maxPersons}</span>
-        </div>
-      </div>
-
-      {/* Date */}
-      <div className="mb-4">
-        <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-2">
-          <Calendar className="h-3.5 w-3.5 inline mr-1" />Fecha
-        </label>
-        <input
-          type="date"
-          value={selectedDate}
-          min={todayStr()}
-          onChange={e => { setSelectedDate(e.target.value); setSelectedSlot(null); }}
-          className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm [color-scheme:dark] focus:outline-none focus:border-teal-400"
-        />
-      </div>
-
-      {/* Time slots */}
-      <div className="mb-5">
-        <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-1">
-          <Clock className="h-3.5 w-3.5 inline mr-1" />Horario
-        </label>
-        <TimeSlotPicker
-          treatmentId={treatment.id}
-          date={selectedDate}
-          selected={selectedSlot?.id ?? null}
-          onSelect={(id, time) => setSelectedSlot({ id, time })}
-        />
-      </div>
-
-      {/* Total */}
-      {selectedSlot && (
-        <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 mb-4 text-sm">
-          <div className="flex justify-between text-white/70 mb-1">
-            <span>{price.toFixed(2)} € × {persons} persona{persons !== 1 ? "s" : ""}</span>
-            <span className="text-white font-bold">{total.toFixed(2)} €</span>
+    <>
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-6 sticky top-24">
+        {/* Price */}
+        <div className="mb-5">
+          <div className="text-3xl font-bold text-teal-400">
+            {price.toFixed(2)} €
+            <span className="text-base font-normal text-white/50"> / persona</span>
           </div>
-          <div className="text-white/50 text-xs">
-            {formatDate(selectedDate)} · {selectedSlot.time}
+          <p className="text-white/50 text-sm mt-1">Duración: {treatment.durationMinutes} min</p>
+        </div>
+
+        {/* Persons */}
+        <div className="mb-5">
+          <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-2">Personas</label>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPersons(p => Math.max(1, p - 1))}
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold transition-colors"
+            >−</button>
+            <span className="text-white font-bold text-lg w-8 text-center">{persons}</span>
+            <button
+              onClick={() => setPersons(p => Math.min(treatment.maxPersons, p + 1))}
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold transition-colors"
+            >+</button>
+            <span className="text-white/40 text-sm">máx. {treatment.maxPersons}</span>
+          </div>
+        </div>
+
+        {/* Date */}
+        <div className="mb-4">
+          <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-2">
+            <Calendar className="h-3.5 w-3.5 inline mr-1" />Fecha
+          </label>
+          <input
+            type="date"
+            value={selectedDate}
+            min={todayStr()}
+            onChange={e => { setSelectedDate(e.target.value); setSelectedSlot(null); }}
+            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white text-sm [color-scheme:dark] focus:outline-none focus:border-teal-400"
+          />
+        </div>
+
+        {/* Time slots */}
+        <div className="mb-5">
+          <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-1">
+            <Clock className="h-3.5 w-3.5 inline mr-1" />Horario
+          </label>
+          <TimeSlotPicker
+            treatmentId={treatment.id}
+            date={selectedDate}
+            selected={selectedSlot?.id ?? null}
+            onSelect={(id, time) => setSelectedSlot({ id, time })}
+          />
+        </div>
+
+        {/* Total */}
+        {selectedSlot && (
+          <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-3 mb-4 text-sm">
+            <div className="flex justify-between text-white/70 mb-1">
+              <span>{price.toFixed(2)} € × {persons} persona{persons !== 1 ? "s" : ""}</span>
+              <span className="text-white font-bold">{total.toFixed(2)} €</span>
+            </div>
+            <div className="text-white/50 text-xs">
+              {formatDate(selectedDate)} · {selectedSlot.time}
+            </div>
+          </div>
+        )}
+
+        <Button
+          onClick={handleOpenModal}
+          disabled={!selectedSlot}
+          className="w-full bg-teal-500 hover:bg-teal-400 text-slate-900 font-bold py-3 text-base disabled:opacity-40"
+        >
+          {selectedSlot ? "Reservar ahora" : "Selecciona fecha y hora"}
+        </Button>
+        <p className="text-white/40 text-xs text-center mt-3">Cancelación gratuita hasta 24h antes</p>
+      </div>
+
+      {/* ── Booking Modal ─────────────────────────────────────────────────── */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-white/10">
+              <div>
+                <h2 className="text-lg font-bold text-white">Confirmar reserva</h2>
+                <p className="text-white/50 text-sm mt-0.5">{treatment.name}</p>
+              </div>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-white/40 hover:text-white transition-colors p-1"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Summary */}
+            <div className="px-6 pt-5 pb-2">
+              <div className="bg-teal-500/10 border border-teal-500/20 rounded-xl p-4 text-sm space-y-1.5">
+                <div className="flex justify-between text-white/70">
+                  <span>Tratamiento</span>
+                  <span className="text-white font-medium">{treatment.name}</span>
+                </div>
+                <div className="flex justify-between text-white/70">
+                  <span>Fecha y hora</span>
+                  <span className="text-white font-medium">{formatDate(selectedDate)} · {selectedSlot?.time}</span>
+                </div>
+                <div className="flex justify-between text-white/70">
+                  <span>Personas</span>
+                  <span className="text-white font-medium">{persons}</span>
+                </div>
+                <div className="flex justify-between text-white/80 font-bold border-t border-white/10 pt-2 mt-2">
+                  <span>Total</span>
+                  <span className="text-teal-400 text-base">{total.toFixed(2)} €</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Form */}
+            <div className="px-6 pb-6 space-y-4 mt-4">
+              <div>
+                <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-1.5">Nombre completo *</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Tu nombre"
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400"
+                />
+                {formErrors.name && <p className="text-red-400 text-xs mt-1">{formErrors.name}</p>}
+              </div>
+              <div>
+                <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-1.5">Email *</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="tu@email.com"
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400"
+                />
+                {formErrors.email && <p className="text-red-400 text-xs mt-1">{formErrors.email}</p>}
+              </div>
+              <div>
+                <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-1.5">Teléfono (opcional)</label>
+                <input
+                  type="tel"
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="+34 600 000 000"
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-white/60 font-medium uppercase tracking-wide block mb-1.5">Notas (opcional)</label>
+                <textarea
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Alergias, preferencias, peticiones especiales..."
+                  rows={2}
+                  className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 border-white/20 text-white/70 hover:text-white hover:bg-white/10"
+                  disabled={bookMutation.isPending}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleConfirmBooking}
+                  disabled={bookMutation.isPending}
+                  className="flex-1 bg-teal-500 hover:bg-teal-400 text-slate-900 font-bold"
+                >
+                  {bookMutation.isPending ? "Procesando..." : `Pagar ${total.toFixed(2)} €`}
+                </Button>
+              </div>
+              <p className="text-white/30 text-xs text-center">Pago seguro vía Redsys · Cancela gratis hasta 24h antes</p>
+            </div>
           </div>
         </div>
       )}
 
-      <Button
-        onClick={handleBook}
-        disabled={!selectedSlot}
-        className="w-full bg-teal-500 hover:bg-teal-400 text-slate-900 font-bold py-3 text-base disabled:opacity-40"
-      >
-        {selectedSlot ? "Solicitar reserva" : "Selecciona fecha y hora"}
-      </Button>
-      <p className="text-white/40 text-xs text-center mt-3">Cancelación gratuita hasta 24h antes</p>
-    </div>
+      {/* Hidden Redsys form ref */}
+      <form ref={redsysFormRef} method="POST" style={{ display: "none" }} />
+    </>
   );
 }
 

@@ -406,3 +406,15 @@
 - [x] HotelRoom.tsx: pago vía Redsys con modal de confirmación (nombre, email, teléfono, notas)
 - [x] hotel.ts: procedimiento createHotelBooking con lógica de precio por temporada
 - [x] hotel.ts: buscar precio correcto según temporada (rate_seasons + room_rates)
+
+## SpaDetail — Reserva con Redsys (v6.0)
+- [ ] spa.ts: procedimiento createSpaBooking con lógica de precio y pago Redsys
+- [ ] SpaDetail.tsx: selector de fecha/hora desde slots disponibles
+- [ ] SpaDetail.tsx: contador de personas con validación de capacidad
+- [ ] SpaDetail.tsx: cálculo de precio total en backend
+- [ ] SpaDetail.tsx: modal de confirmación con formulario de datos del cliente
+- [ ] SpaDetail.tsx: pago vía Redsys (mismo patrón que HotelRoom)
+
+## SpaDetail — Reserva con Redsys (v6.0)
+- [x] Crear procedimiento createSpaBooking en spa.ts con lógica de precio y Redsys
+- [x] Reemplazar BookingPanel en SpaDetail.tsx con modal de confirmación y pago Redsys
