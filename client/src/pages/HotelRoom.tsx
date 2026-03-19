@@ -693,23 +693,37 @@ export default function HotelRoom() {
                     {children > 0 && (
                       <div className="bg-white/5 rounded-xl p-3 border border-white/10">
                         <p className="text-white/50 text-xs uppercase tracking-wide font-medium mb-2.5">Edad de los niños</p>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-2">
                           {childrenAges.map((age, idx) => (
-                            <div key={idx} className="flex flex-col gap-1">
-                              <label className="text-white/40 text-xs">Niño {idx + 1}</label>
-                              <select
-                                value={age}
-                                onChange={e => {
-                                  const updated = [...childrenAges];
-                                  updated[idx] = parseInt(e.target.value);
-                                  setChildrenAges(updated);
-                                }}
-                                className="bg-white/10 border border-white/20 text-white text-sm rounded-lg px-2 py-1.5 focus:border-amber-400 focus:outline-none [color-scheme:dark] w-full"
-                              >
-                                {Array.from({ length: 18 }, (_, i) => i).map(a => (
-                                  <option key={a} value={a}>{a === 0 ? "< 1 año" : `${a} año${a !== 1 ? "s" : ""}`}</option>
-                                ))}
-                              </select>
+                            <div key={idx} className="flex items-center justify-between">
+                              <span className="text-white/60 text-sm">Niño {idx + 1}</span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...childrenAges];
+                                    updated[idx] = Math.max(0, age - 1);
+                                    setChildrenAges(updated);
+                                  }}
+                                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </button>
+                                <span className="text-white font-semibold text-sm w-16 text-center">
+                                  {age === 0 ? "< 1 año" : `${age} año${age !== 1 ? "s" : ""}`}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...childrenAges];
+                                    updated[idx] = Math.min(17, age + 1);
+                                    setChildrenAges(updated);
+                                  }}
+                                  className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>

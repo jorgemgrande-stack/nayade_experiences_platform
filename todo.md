@@ -440,3 +440,7 @@
 - [x] Hotel.tsx: añadir selector de nº de niños en el buscador principal con edades individuales
 - [x] HotelRoom.tsx: añadir selector de nº de niños con edades individuales en el panel lateral de reserva
 - [x] Pasar childrenAges al backend para que lo incluya en la reserva
+
+## Fix Selector Edades Niños (v6.4)
+- [x] HotelRoom.tsx: reemplazar select nativo por selector custom con botones +/- (texto siempre visible, sin dropdown nativo)
+- [x] Hotel.tsx: aplicar el mismo selector custom en el buscador principal

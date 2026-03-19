@@ -132,21 +132,31 @@ function SearchBar({ params, onChange, onSearch }: {
         <div className="mt-4 pt-4 border-t border-white/10">
           <p className="text-white/60 text-xs uppercase tracking-wide font-medium mb-3 flex items-center gap-1.5">
             <Baby className="h-3.5 w-3.5 text-amber-400" />
-            Edad de los niños (años)
+            Edad de los niños
           </p>
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {params.childrenAges.map((age, idx) => (
-              <div key={idx} className="flex flex-col items-center gap-1">
-                <label className="text-white/50 text-xs">Niño {idx + 1}</label>
-                <select
-                  value={age}
-                  onChange={e => handleChildAge(idx, parseInt(e.target.value))}
-                  className="bg-white/10 border border-white/20 text-white text-sm rounded-lg px-2 py-1.5 focus:border-amber-400 focus:outline-none [color-scheme:dark] min-w-[72px]"
-                >
-                  {Array.from({ length: 18 }, (_, i) => i).map(a => (
-                    <option key={a} value={a}>{a === 0 ? "< 1 año" : `${a} año${a !== 1 ? "s" : ""}`}</option>
-                  ))}
-                </select>
+              <div key={idx} className="flex flex-col gap-1.5">
+                <span className="text-white/50 text-xs">Niño {idx + 1}</span>
+                <div className="flex items-center gap-1.5 bg-white/10 border border-white/20 rounded-lg px-2 py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleChildAge(idx, Math.max(0, age - 1))}
+                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white flex-shrink-0"
+                  >
+                    <span className="text-xs font-bold leading-none">-</span>
+                  </button>
+                  <span className="text-white text-sm font-semibold flex-1 text-center whitespace-nowrap">
+                    {age === 0 ? "< 1 año" : `${age} año${age !== 1 ? "s" : ""}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleChildAge(idx, Math.min(17, age + 1))}
+                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white flex-shrink-0"
+                  >
+                    <span className="text-xs font-bold leading-none">+</span>
+                  </button>
+                </div>
               </div>
             ))}
           </div>
