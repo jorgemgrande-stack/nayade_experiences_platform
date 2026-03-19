@@ -36,14 +36,19 @@ pnpm install
 # 5. Aplicar migraciones de base de datos
 pnpm drizzle-kit push
 
-# 6. Crear el primer usuario administrador
+# 6. Inicializar MinIO (crea bucket + política pública automáticamente)
+node scripts/setup-minio.mjs
+
+# 7. Crear el primer usuario administrador
 node scripts/create-admin.mjs
 
-# 7. Arrancar el servidor de desarrollo
+# 8. Arrancar el servidor de desarrollo
 pnpm dev
 ```
 
 La aplicación estará disponible en **http://localhost:3000**.
+
+El panel de administración está en **http://localhost:3000/admin** — si no estás autenticado, te redirigirá automáticamente a **http://localhost:3000/login**.
 
 La consola de MinIO (gestión de archivos) estará en **http://localhost:9001** (usuario: `minioadmin`, contraseña: `minioadmin`).
 
@@ -153,13 +158,17 @@ Tras levantar MinIO con Docker, crea el bucket `nayade-media` desde la consola w
 
 ## Autenticación local
 
-Con `LOCAL_AUTH=true`, el sistema usa login propio en lugar de Manus OAuth. El flujo es:
+Con `LOCAL_AUTH=true`, el sistema usa login propio en lugar de Manus OAuth. El flujo completo es:
 
-- `POST /api/auth/login` — recibe `{ email, password }`, devuelve cookie JWT.
-- `POST /api/auth/logout` — borra la cookie.
-- `GET /api/auth/me` — devuelve el usuario de la sesión.
+| Paso | Descripción |
+|---|---|
+| Acceder a `/admin` sin sesión | Redirige automáticamente a `/login` |
+| Formulario `/login` | Email + contraseña, validación en cliente |
+| `POST /api/auth/login` | Valida credenciales, emite cookie JWT (30 días) |
+| Redirección post-login | Vuelve a `/admin` o al `returnTo` original |
+| Botón "Cerrar sesión" | Llama a `POST /api/auth/logout`, borra cookie, redirige a `/login` |
 
-El frontend detecta automáticamente el modo local y muestra un formulario de login en lugar del botón de OAuth de Manus.
+El frontend detecta automáticamente el modo local (variable `VITE_LOCAL_AUTH` inyectada por Vite desde `LOCAL_AUTH` del `.env`) y muestra el formulario propio en lugar del botón de OAuth de Manus.
 
 ### Crear el primer administrador
 
@@ -202,6 +211,7 @@ Para usar los adaptadores en lugar de los helpers de Manus, importa desde `serve
 | `pnpm drizzle-kit push` | Aplicar el schema a la BD sin generar migraciones |
 | `pnpm drizzle-kit generate` | Generar archivos de migración SQL |
 | `node scripts/create-admin.mjs` | Crear/actualizar el usuario administrador |
+| `node scripts/setup-minio.mjs` | Inicializar MinIO: bucket + política pública + carpetas base |
 
 ---
 

@@ -1,4 +1,4 @@
-import { getLoginUrl } from "@/const";
+import { getLoginUrl, isLocalAuth } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
 import { useCallback, useEffect, useMemo } from "react";
@@ -25,6 +25,17 @@ export function useAuth(options?: UseAuthOptions) {
   });
 
   const logout = useCallback(async () => {
+    if (isLocalAuth()) {
+      // Modo local: llamar directamente al endpoint REST de logout
+      try {
+        await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      } catch { /* ignorar errores de red */ }
+      utils.auth.me.setData(undefined, null);
+      await utils.auth.me.invalidate();
+      window.location.href = "/login";
+      return;
+    }
+    // Modo Manus OAuth
     try {
       await logoutMutation.mutateAsync();
     } catch (error: unknown) {

@@ -459,3 +459,14 @@
 - [x] README-LOCAL.md con instrucciones de arranque paso a paso
 - [x] Script scripts/create-admin.mjs para crear el primer usuario admin
 - [x] Verificar 0 errores TypeScript tras todos los cambios
+
+## Login Local + Setup MinIO (v7.1)
+- [x] Página /login con formulario email+contraseña (diseño coherente con la plataforma)
+- [x] Lógica de sesión local: POST /api/auth/login, cookie JWT, redirección post-login
+- [x] App.tsx: ruta /login registrada, redirección desde rutas protegidas
+- [x] useAuth / contexto: detectar modo LOCAL_AUTH, ocultar botón Manus OAuth
+- [x] Botón "Cerrar sesión" funcional en modo local (llama a /api/auth/logout)
+- [x] Script scripts/setup-minio.mjs: crea bucket + política pública + carpetas base
+- [x] vite.config.ts: inyecta VITE_LOCAL_AUTH desde LOCAL_AUTH del .env
+- [x] README-LOCAL.md actualizado con los nuevos pasos
+- [x] 0 errores TypeScript

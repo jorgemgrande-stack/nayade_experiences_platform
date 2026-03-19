@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+import { getLoginUrl, isLocalAuth } from "@/const";
 import { cn } from "@/lib/utils";
 
 const quickActions = [
@@ -64,7 +64,9 @@ export default function AdminDashboard() {
             Iniciar Sesión
           </Button>
           <p className="mt-4 text-sm text-muted-foreground">
-            Accede con tu cuenta de Manus para gestionar la plataforma.
+            {isLocalAuth()
+              ? "Accede con tu email y contraseña de administrador."
+              : "Accede con tu cuenta de Manus para gestionar la plataforma."}
           </p>
         </div>
       </div>

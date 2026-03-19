@@ -154,6 +154,11 @@ const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(
 
 export default defineConfig({
   plugins,
+  define: {
+    // Inyecta LOCAL_AUTH del servidor al cliente como VITE_LOCAL_AUTH
+    // Esto permite que isLocalAuth() en const.ts detecte el modo sin exponer secretos
+    "import.meta.env.VITE_LOCAL_AUTH": JSON.stringify(process.env.LOCAL_AUTH ?? ""),
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),

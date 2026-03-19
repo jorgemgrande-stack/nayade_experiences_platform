@@ -23,6 +23,7 @@ import RestauranteDetail from "./pages/RestauranteDetail";
 import ReservaOk from "./pages/ReservaOk";
 import ReservaError from "./pages/ReservaError";
 import SetPassword from "./pages/SetPassword";
+import Login from "./pages/Login";
 import DynamicPage from "./pages/DynamicPage";
 
 // Admin pages
@@ -93,6 +94,7 @@ function Router() {
       <Route path="/reserva/ok" component={ReservaOk} />
       <Route path="/reserva/error" component={ReservaError} />
       {/* ── AUTH ROUTES ── */}
+      <Route path="/login" component={Login} />
       <Route path="/establecer-contrasena" component={SetPassword} />
       {/* ── DYNAMIC PAGES (CMS) ── */}
       <Route path="/pagina/:slug" component={DynamicPage} />
