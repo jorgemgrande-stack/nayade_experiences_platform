@@ -399,7 +399,7 @@ export default function HotelRoom() {
 
   if (isLoading) {
     return (
-      <PublicLayout fullWidthHero>
+      <PublicLayout fullWidthHero darkContent>
         <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 pt-32 px-4">
           <div className="max-w-6xl mx-auto">
             <Skeleton className="h-96 w-full rounded-2xl bg-white/10 mb-6" />
@@ -413,7 +413,7 @@ export default function HotelRoom() {
 
   if (error || !room) {
     return (
-      <PublicLayout fullWidthHero>
+      <PublicLayout fullWidthHero darkContent>
         <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 flex items-center justify-center pt-20">
           <div className="text-center text-white/60">
             <BedDouble className="h-16 w-16 mx-auto mb-4 opacity-30" />
@@ -437,7 +437,7 @@ export default function HotelRoom() {
   const amenities = Array.isArray(room.amenities) ? room.amenities : [];
 
   return (
-    <PublicLayout fullWidthHero>
+    <PublicLayout fullWidthHero darkContent>
       <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
         {/* Spacer for fixed header */}
         <div className="h-28 md:h-32" />

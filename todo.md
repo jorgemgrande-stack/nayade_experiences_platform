@@ -418,3 +418,6 @@
 ## SpaDetail — Reserva con Redsys (v6.0)
 - [x] Crear procedimiento createSpaBooking en spa.ts con lógica de precio y Redsys
 - [x] Reemplazar BookingPanel en SpaDetail.tsx con modal de confirmación y pago Redsys
+
+## SpaDetail — Rediseño visual (v6.1)
+- [x] Cambiar fondo blanco/gris a fondo oscuro premium con gradientes teal para mejor legibilidad

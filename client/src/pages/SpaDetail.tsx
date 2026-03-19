@@ -624,7 +624,7 @@ export default function SpaDetail() {
 
   if (treatmentQuery.isLoading) {
     return (
-      <PublicLayout>
+      <PublicLayout darkContent>
         <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 pt-28 pb-20">
           <div className="max-w-6xl mx-auto px-4">
             <Skeleton className="h-8 w-48 bg-white/10 mb-8 rounded-lg" />
@@ -645,7 +645,7 @@ export default function SpaDetail() {
 
   if (treatmentQuery.error || !treatment) {
     return (
-      <PublicLayout>
+      <PublicLayout darkContent>
         <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 pt-28 pb-20 flex items-center justify-center">
           <div className="text-center">
             <Sparkles className="h-16 w-16 text-teal-500/30 mx-auto mb-4" />
@@ -663,7 +663,7 @@ export default function SpaDetail() {
   }
 
   return (
-    <PublicLayout>
+    <PublicLayout darkContent>
       <div className="min-h-screen bg-gradient-to-b from-slate-900 via-teal-950/20 to-slate-900 pt-28 pb-20">
         <div className="max-w-6xl mx-auto px-4">
 
