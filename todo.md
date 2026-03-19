@@ -483,3 +483,9 @@
 - [x] Middleware devuelve 401 con formato tRPC si no hay sesión válida
 - [x] README-LOCAL.md actualizado con flujo de recuperación y sección de middleware
 - [x] 0 errores TypeScript
+
+## Documentación del Proyecto (v7.3)
+- [x] CLAUDE.md — guía de contexto para Claude en VS Code
+- [x] PROGRESS.md — historial de versiones y estado de funcionalidades
+- [x] ARCHITECTURE.md — arquitectura técnica completa
+- [x] Sincronizar en GitHub via checkpoint
