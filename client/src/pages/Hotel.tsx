@@ -32,6 +32,7 @@ interface SearchParams {
   checkOut: string;
   adults: number;
   children: number;
+  childrenAges: number[];
 }
 
 // ─── SearchBar ────────────────────────────────────────────────────────────────
@@ -41,6 +42,24 @@ function SearchBar({ params, onChange, onSearch }: {
   onSearch: () => void;
 }) {
   const n = nightCount(params.checkIn, params.checkOut);
+
+  function handleChildrenCount(newCount: number) {
+    const clamped = Math.max(0, Math.min(10, newCount));
+    const ages = [...params.childrenAges];
+    if (clamped > ages.length) {
+      while (ages.length < clamped) ages.push(5);
+    } else {
+      ages.splice(clamped);
+    }
+    onChange({ ...params, children: clamped, childrenAges: ages });
+  }
+
+  function handleChildAge(idx: number, age: number) {
+    const ages = [...params.childrenAges];
+    ages[idx] = age;
+    onChange({ ...params, childrenAges: ages });
+  }
+
   return (
     <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-white/20 shadow-xl">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -93,7 +112,7 @@ function SearchBar({ params, onChange, onSearch }: {
               min={0}
               max={10}
               value={params.children}
-              onChange={e => onChange({ ...params, children: Math.max(0, parseInt(e.target.value) || 0) })}
+              onChange={e => handleChildrenCount(parseInt(e.target.value) || 0)}
               className="pl-9 bg-white/10 border-white/20 text-white focus:border-amber-400"
             />
           </div>
@@ -107,10 +126,37 @@ function SearchBar({ params, onChange, onSearch }: {
           </Button>
         </div>
       </div>
+
+      {/* Edades de los niños */}
+      {params.children > 0 && (
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <p className="text-white/60 text-xs uppercase tracking-wide font-medium mb-3 flex items-center gap-1.5">
+            <Baby className="h-3.5 w-3.5 text-amber-400" />
+            Edad de los niños (años)
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {params.childrenAges.map((age, idx) => (
+              <div key={idx} className="flex flex-col items-center gap-1">
+                <label className="text-white/50 text-xs">Niño {idx + 1}</label>
+                <select
+                  value={age}
+                  onChange={e => handleChildAge(idx, parseInt(e.target.value))}
+                  className="bg-white/10 border border-white/20 text-white text-sm rounded-lg px-2 py-1.5 focus:border-amber-400 focus:outline-none [color-scheme:dark] min-w-[72px]"
+                >
+                  {Array.from({ length: 18 }, (_, i) => i).map(a => (
+                    <option key={a} value={a}>{a === 0 ? "< 1 año" : `${a} año${a !== 1 ? "s" : ""}`}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {params.checkIn && params.checkOut && (
         <p className="text-white/60 text-sm mt-3 text-center">
           {n} noche{n !== 1 ? "s" : ""} · {params.adults} adulto{params.adults !== 1 ? "s" : ""}
-          {params.children > 0 ? ` · ${params.children} niño${params.children !== 1 ? "s" : ""}` : ""}
+          {params.children > 0 ? ` · ${params.children} niño${params.children !== 1 ? "s" : ""} (${params.childrenAges.join(", ")} años)` : ""}
         </p>
       )}
     </div>
@@ -136,7 +182,7 @@ function RoomCard({ room, searchParams, searched }: { room: any; searchParams: S
         ? <Badge className="absolute top-3 right-3 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs">Disponible</Badge>
         : null;
 
-  const detailUrl = `/hotel/${room.slug}?checkIn=${searchParams.checkIn}&checkOut=${searchParams.checkOut}&adults=${searchParams.adults}&children=${searchParams.children}`;
+  const detailUrl = `/hotel/${room.slug}?checkIn=${searchParams.checkIn}&checkOut=${searchParams.checkOut}&adults=${searchParams.adults}&children=${searchParams.children}&childrenAges=${searchParams.childrenAges.join(",")}`;
 
   return (
     <Card className="overflow-hidden bg-white/5 border-white/10 hover:border-amber-400/40 transition-all group">
@@ -224,6 +270,7 @@ export default function Hotel() {
     checkOut: tomorrowStr(),
     adults: 2,
     children: 0,
+    childrenAges: [],
   });
   const [activeSearch, setActiveSearch] = useState<SearchParams>(searchParams);
   const [hasSearched, setHasSearched] = useState(false);

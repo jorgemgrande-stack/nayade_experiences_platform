@@ -148,6 +148,7 @@ function BookingModal({
   checkOut,
   adults,
   children,
+  childrenAges,
   nights,
   pricePerNight,
   onClose,
@@ -157,6 +158,7 @@ function BookingModal({
   checkOut: string;
   adults: number;
   children: number;
+  childrenAges: number[];
   nights: number;
   pricePerNight: number;
   onClose: () => void;
@@ -206,6 +208,7 @@ function BookingModal({
       checkOut,
       adults,
       children,
+      childrenAges: childrenAges.length > 0 ? childrenAges : undefined,
       customerName: name.trim(),
       customerEmail: email.trim(),
       customerPhone: phone.trim() || undefined,
@@ -358,8 +361,14 @@ export default function HotelRoom() {
   const [activeImg, setActiveImg] = useState(0);
   const [checkIn, setCheckIn] = useState(qCheckIn);
   const [checkOut, setCheckOut] = useState(qCheckOut);
+  const qChildrenAgesRaw = searchParams.get("childrenAges") || "";
+  const qChildrenAges = qChildrenAgesRaw
+    ? qChildrenAgesRaw.split(",").map(a => parseInt(a) || 5).slice(0, Math.max(0, qChildren))
+    : Array.from({ length: Math.max(0, qChildren) }, () => 5);
+
   const [adults, setAdults] = useState(Math.max(1, qAdults));
   const [children, setChildren] = useState(Math.max(0, qChildren));
+  const [childrenAges, setChildrenAges] = useState<number[]>(qChildrenAges);
   const [showModal, setShowModal] = useState(false);
   const [calendarSelectMode, setCalendarSelectMode] = useState<"checkin" | "checkout">("checkin");
 
@@ -649,26 +658,63 @@ export default function HotelRoom() {
                 </div>
 
                 {room.maxChildren > 0 && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-white/70 text-sm">
-                      <Baby className="h-4 w-4 text-amber-400" />
-                      Niños
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-white/70 text-sm">
+                        <Baby className="h-4 w-4 text-amber-400" />
+                        Niños
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            const newCount = Math.max(0, children - 1);
+                            setChildren(newCount);
+                            setChildrenAges(prev => prev.slice(0, newCount));
+                          }}
+                          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="text-white font-semibold w-6 text-center">{children}</span>
+                        <button
+                          onClick={() => {
+                            const newCount = Math.min(room.maxChildren, children + 1);
+                            setChildren(newCount);
+                            setChildrenAges(prev => [...prev, 5].slice(0, newCount));
+                          }}
+                          className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setChildren(c => Math.max(0, c - 1))}
-                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
-                      >
-                        <Minus className="h-3 w-3" />
-                      </button>
-                      <span className="text-white font-semibold w-6 text-center">{children}</span>
-                      <button
-                        onClick={() => setChildren(c => Math.min(room.maxChildren, c + 1))}
-                        className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </button>
-                    </div>
+
+                    {/* Edades de los niños */}
+                    {children > 0 && (
+                      <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                        <p className="text-white/50 text-xs uppercase tracking-wide font-medium mb-2.5">Edad de los niños</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {childrenAges.map((age, idx) => (
+                            <div key={idx} className="flex flex-col gap-1">
+                              <label className="text-white/40 text-xs">Niño {idx + 1}</label>
+                              <select
+                                value={age}
+                                onChange={e => {
+                                  const updated = [...childrenAges];
+                                  updated[idx] = parseInt(e.target.value);
+                                  setChildrenAges(updated);
+                                }}
+                                className="bg-white/10 border border-white/20 text-white text-sm rounded-lg px-2 py-1.5 focus:border-amber-400 focus:outline-none [color-scheme:dark] w-full"
+                              >
+                                {Array.from({ length: 18 }, (_, i) => i).map(a => (
+                                  <option key={a} value={a}>{a === 0 ? "< 1 año" : `${a} año${a !== 1 ? "s" : ""}`}</option>
+                                ))}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -723,6 +769,7 @@ export default function HotelRoom() {
           checkOut={checkOut}
           adults={adults}
           children={children}
+          childrenAges={childrenAges}
           nights={nights}
           pricePerNight={pricePerNight}
           onClose={() => setShowModal(false)}

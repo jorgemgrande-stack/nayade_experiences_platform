@@ -1,0 +1,70 @@
+{
+  "query": "SELECT id, name FROM room_types ORDER BY id;\nSELECT id, name FROM spa_treatments ORDER BY id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, name FROM room_types ORDER BY id;\nSELECT id, name FROM spa_treatments ORDER BY id;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Doble Estándar"
+    },
+    {
+      "id": "2",
+      "name": "Doble Superior Vistas Lago"
+    },
+    {
+      "id": "3",
+      "name": "Familiar (3-4 personas)"
+    },
+    {
+      "id": "4",
+      "name": "Junior Suite Premium"
+    },
+    {
+      "id": "id",
+      "name": "name"
+    },
+    {
+      "id": "11",
+      "name": "Circuito Hidrotermal 90 min"
+    },
+    {
+      "id": "12",
+      "name": "Circuito Spa Parejas"
+    },
+    {
+      "id": "13",
+      "name": "Circuito Spa Huespedes Hotel"
+    },
+    {
+      "id": "14",
+      "name": "Circuito Spa Ninos hasta 12 anos"
+    },
+    {
+      "id": "15",
+      "name": "Zona Wellness Sauna y Bano Turco"
+    },
+    {
+      "id": "16",
+      "name": "Masaje Relajante 50 min"
+    },
+    {
+      "id": "17",
+      "name": "Masaje Deportivo 50 min"
+    },
+    {
+      "id": "18",
+      "name": "Masaje con Piedras Calientes 75 min"
+    },
+    {
+      "id": "19",
+      "name": "Facial Hidratacion Profunda 60 min"
+    },
+    {
+      "id": "20",
+      "name": "Ritual Sensorial Aromaterapia 90 min"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\n1\tDoble Estándar\n2\tDoble Superior Vistas Lago\n3\tFamiliar (3-4 personas)\n4\tJunior Suite Premium\nid\tname\n11\tCircuito Hidrotermal 90 min\n12\tCircuito Spa Parejas\n13\tCircuito Spa Huespedes Hotel\n14\tCircuito Spa Ninos hasta 12 anos\n15\tZona Wellness Sauna y Bano Turco\n16\tMasaje Relajante 50 min\n17\tMasaje Deportivo 50 min\n18\tMasaje con Piedras Calientes 75 min\n19\tFacial Hidratacion Profunda 60 min\n20\tRitual Sensorial Aromaterapia 90 min\n",
+  "stderr": "",
+  "execution_time_ms": 71
+}

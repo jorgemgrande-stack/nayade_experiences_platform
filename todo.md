@@ -435,3 +435,8 @@
 - [x] Admin: ruta /admin/operaciones/resenas + enlace en sidebar
 - [x] Tests Vitest para reviews (14 tests pasando: validación inputs, cálculo estadísticas, moderación)
 - [x] 0 errores TypeScript
+
+## Selector de Niños con Edades en Hotel (v6.3)
+- [x] Hotel.tsx: añadir selector de nº de niños en el buscador principal con edades individuales
+- [x] HotelRoom.tsx: añadir selector de nº de niños con edades individuales en el panel lateral de reserva
+- [x] Pasar childrenAges al backend para que lo incluya en la reserva

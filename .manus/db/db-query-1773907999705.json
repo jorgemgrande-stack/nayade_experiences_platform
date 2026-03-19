@@ -1,0 +1,85 @@
+{
+  "query": "SELECT entityType, entityId, COUNT(*) as total, ROUND(AVG(rating),1) as media,\n  SUM(CASE WHEN rating >= 4 THEN 1 ELSE 0 END) as positivas,\n  SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as normales\nFROM reviews\nGROUP BY entityType, entityId\nORDER BY entityType, entityId;\n\nSELECT COUNT(*) as total_resenas FROM reviews;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT entityType, entityId, COUNT(*) as total, ROUND(AVG(rating),1) as media,\n  SUM(CASE WHEN rating >= 4 THEN 1 ELSE 0 END) as positivas,\n  SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as normales\nFROM reviews\nGROUP BY entityType, entityId\nORDER BY entityType, entityId;\n\nSELECT COUNT(*) as total_resenas FROM reviews;",
+  "rows": [
+    {
+      "entityType": "hotel",
+      "entityId": "1",
+      "total": "12",
+      "media": "4.3",
+      "positivas": "10",
+      "normales": "2"
+    },
+    {
+      "entityType": "hotel",
+      "entityId": "2",
+      "total": "12",
+      "media": "4.4",
+      "positivas": "10",
+      "normales": "2"
+    },
+    {
+      "entityType": "hotel",
+      "entityId": "3",
+      "total": "12",
+      "media": "4.4",
+      "positivas": "10",
+      "normales": "2"
+    },
+    {
+      "entityType": "hotel",
+      "entityId": "4",
+      "total": "12",
+      "media": "4.5",
+      "positivas": "10",
+      "normales": "2"
+    },
+    {
+      "entityType": "spa",
+      "entityId": "11",
+      "total": "12",
+      "media": "4.4",
+      "positivas": "10",
+      "normales": "2"
+    },
+    {
+      "entityType": "spa",
+      "entityId": "12",
+      "total": "10",
+      "media": "4.4",
+      "positivas": "8",
+      "normales": "2"
+    },
+    {
+      "entityType": "spa",
+      "entityId": "13",
+      "total": "10",
+      "media": "4.4",
+      "positivas": "8",
+      "normales": "2"
+    },
+    {
+      "entityType": "spa",
+      "entityId": "16",
+      "total": "12",
+      "media": "4.4",
+      "positivas": "10",
+      "normales": "2"
+    },
+    {
+      "entityType": "spa",
+      "entityId": "20",
+      "total": "10",
+      "media": "4.4",
+      "positivas": "8",
+      "normales": "2"
+    }
+  ],
+  "messages": [
+    "total_resenas",
+    "102"
+  ],
+  "stdout": "entityType\tentityId\ttotal\tmedia\tpositivas\tnormales\nhotel\t1\t12\t4.3\t10\t2\nhotel\t2\t12\t4.4\t10\t2\nhotel\t3\t12\t4.4\t10\t2\nhotel\t4\t12\t4.5\t10\t2\nspa\t11\t12\t4.4\t10\t2\nspa\t12\t10\t4.4\t8\t2\nspa\t13\t10\t4.4\t8\t2\nspa\t16\t12\t4.4\t10\t2\nspa\t20\t10\t4.4\t8\t2\ntotal_resenas\n102\n",
+  "stderr": "",
+  "execution_time_ms": 64
+}

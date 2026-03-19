@@ -1,0 +1,46 @@
+{
+  "query": "SHOW TABLES LIKE '%room%';\nSHOW TABLES LIKE '%spa%';\nSHOW TABLES LIKE '%treat%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SHOW TABLES LIKE '%room%';\nSHOW TABLES LIKE '%spa%';\nSHOW TABLES LIKE '%treat%';",
+  "rows": [
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "room_blocks"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "room_rate_seasons"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "room_rates"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "room_types"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "Tables_in_AV298FS8t5SaTurBBRqhgQ (%spa%)"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "spa_categories"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "spa_resources"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "spa_schedule_templates"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "spa_slots"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "spa_treatments"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "Tables_in_AV298FS8t5SaTurBBRqhgQ (%treat%)"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)": "spa_treatments"
+    }
+  ],
+  "messages": [],
+  "stdout": "Tables_in_AV298FS8t5SaTurBBRqhgQ (%room%)\nroom_blocks\nroom_rate_seasons\nroom_rates\nroom_types\nTables_in_AV298FS8t5SaTurBBRqhgQ (%spa%)\nspa_categories\nspa_resources\nspa_schedule_templates\nspa_slots\nspa_treatments\nTables_in_AV298FS8t5SaTurBBRqhgQ (%treat%)\nspa_treatments\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

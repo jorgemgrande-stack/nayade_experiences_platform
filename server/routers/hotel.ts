@@ -241,6 +241,7 @@ export const hotelRouter = router({
       checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       adults: z.number().int().min(1).max(10),
       children: z.number().int().min(0).max(10).default(0),
+      childrenAges: z.array(z.number().int().min(0).max(17)).optional(),
       customerName: z.string().min(2),
       customerEmail: z.string().email(),
       customerPhone: z.string().optional(),
@@ -306,6 +307,7 @@ export const hotelRouter = router({
         nights,
         adults: input.adults,
         children: input.children,
+        childrenAges: input.childrenAges ?? [],
         pricePerNight,
       });
 
