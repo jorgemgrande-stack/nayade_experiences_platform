@@ -92,7 +92,7 @@ function TreatmentCard({ treatment, date, persons }: { treatment: any; date: str
   const hasSlots = availableSlots.length > 0;
   const isLastSlot = hasSlots && availableSlots.length === 1;
 
-  const detailUrl = `/contacto?servicio=spa&tratamiento=${encodeURIComponent(treatment.name)}&fecha=${date}&personas=${persons}`;
+  const detailUrl = `/spa/${treatment.slug}?date=${date}&persons=${persons}`;
 
   return (
     <Card className="overflow-hidden bg-white/5 border-white/10 hover:border-teal-400/40 transition-all group">

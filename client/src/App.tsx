@@ -61,6 +61,7 @@ import TransactionsList from "./pages/admin/accounting/TransactionsList";
 import HotelManager from "./pages/admin/hotel/HotelManager";
 import SpaManager from "./pages/admin/spa/SpaManager";
 import HotelRoom from "./pages/HotelRoom";
+import SpaDetail from "./pages/SpaDetail";
 
 // Users & Settings
 import UsersManager from "./pages/admin/users/UsersManager";
@@ -84,6 +85,7 @@ function Router() {
       <Route path="/hotel" component={Hotel} />
       <Route path="/hotel/:slug" component={HotelRoom} />
       <Route path="/spa" component={Spa} />
+      <Route path="/spa/:slug" component={SpaDetail} />
       <Route path="/restaurantes" component={Restaurantes} />
       <Route path="/restaurantes/:slug" component={RestauranteDetail} />
       {/* ── RESERVA ROUTES ── */}

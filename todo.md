@@ -384,3 +384,9 @@
 ## Bugs (v5.7)
 - [x] Hotel.tsx: falta margen/padding-top bajo el header (contenido queda pegado al nav)
 - [x] Spa.tsx: botones Reservar generan URLs rotas — redirigen a /contacto con parámetros del tratamiento
+
+## SpaDetail — Página de detalle de tratamiento (v5.8)
+- [x] Añadir procedimiento getTreatmentBySlug en spa.ts
+- [x] Crear SpaDetail.tsx con galería, descripción, beneficios y calendario de reservas
+- [x] Registrar ruta /spa/:slug en App.tsx
+- [x] Actualizar botones Reservar en Spa.tsx para apuntar a /spa/:slug

@@ -36,6 +36,20 @@ export const spaRouter = router({
       return t;
     }),
 
+  /** Slots disponibles para un mes completo (para el calendario de disponibilidad) */
+  getSlotsByMonth: publicProcedure
+    .input(z.object({
+      treatmentId: z.number().int(),
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .query(async ({ input }) => {
+      const slots = await getSpaSlotsByDateRange(input.startDate, input.endDate, input.treatmentId);
+      return slots
+        .filter(s => s.status !== "bloqueado")
+        .map(s => ({ date: s.date, capacity: s.capacity, bookedCount: s.bookedCount }));
+    }),
+
   /** Slots disponibles para un tratamiento en una fecha */
   getAvailableSlots: publicProcedure
     .input(z.object({
