@@ -147,12 +147,42 @@ REDSYS_MERCHANT_TERMINAL=1
 
 ## Crear el bucket en MinIO
 
-Tras levantar MinIO con Docker, crea el bucket `nayade-media` desde la consola web:
+El script `setup-minio.mjs` crea el bucket, configura la política pública y las carpetas base de forma completamente automática:
+
+```bash
+node scripts/setup-minio.mjs
+```
+
+Si prefieres hacerlo manualmente desde la consola web:
 
 1. Abre **http://localhost:9001** en el navegador.
 2. Inicia sesión con `minioadmin` / `minioadmin`.
 3. Ve a **Buckets → Create Bucket** y crea `nayade-media`.
 4. En la configuración del bucket, establece **Access Policy → Public** para que las URLs sean accesibles directamente.
+
+---
+
+## Recuperación de contraseña
+
+El sistema incluye un flujo completo de recuperación de contraseña por email:
+
+| Paso | URL | Descripción |
+|---|---|---|
+| 1 | `/login` | Enlace "¿Olvidaste tu contraseña?" visible bajo el formulario |
+| 2 | `/recuperar-contrasena` | El usuario introduce su email |
+| 3 | *(servidor)* | Genera token seguro (válido 60 min) y envía email |
+| 4 | `/nueva-contrasena?token=xxx` | El usuario introduce y confirma su nueva contraseña |
+| 5 | `/login` | Redirección automática tras cambio exitoso |
+
+**Sin SMTP configurado** (desarrollo): el enlace de recuperación se imprime en la consola del servidor en lugar de enviarse por email. Busca la línea `[PasswordReset] 📧 Enlace de recuperación para...` en los logs.
+
+---
+
+## Protección de rutas admin (middleware)
+
+El archivo `server/authGuard.ts` implementa un middleware Express que intercepta las peticiones a `/api/trpc` antes de que lleguen al handler de tRPC. Si el procedimiento solicitado no está en la lista blanca pública y no hay sesión válida, devuelve HTTP 401 con el formato de error de tRPC.
+
+Esto complementa el `protectedProcedure` de tRPC (que ya valida la sesión en el contexto) añadiendo una capa de seguridad a nivel de red. Para añadir nuevos procedimientos públicos, edita la constante `PUBLIC_TRPC_ROUTES` en `server/authGuard.ts`.
 
 ---
 

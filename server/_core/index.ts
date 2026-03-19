@@ -8,6 +8,8 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { createLocalContext } from "./context.local";
 import { createLocalAuthRouter } from "../localAuth";
+import { createPasswordResetRouter } from "../passwordReset";
+import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
 import { serveStatic, setupVite } from "./vite";
@@ -43,11 +45,16 @@ async function startServer() {
   if (USE_LOCAL_AUTH) {
     // Modo local: rutas de auth propias (login/logout/me) en lugar de Manus OAuth
     app.use(createLocalAuthRouter());
+    app.use(createPasswordResetRouter());
     console.log("[Auth] Modo LOCAL_AUTH activado — usando email+password local");
   } else {
     // Modo Manus: OAuth callback
     registerOAuthRoutes(app);
   }
+
+  // Middleware de protección: bloquea rutas /api/trpc de procedimientos protegidos
+  // si no hay sesión válida. Funciona en ambos modos (local y Manus OAuth).
+  app.use("/api/trpc", createAuthGuardMiddleware(USE_LOCAL_AUTH));
   // File upload endpoint
   app.use(uploadRouter);
   // Redsys IPN notification endpoint

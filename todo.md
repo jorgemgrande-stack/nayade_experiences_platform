@@ -470,3 +470,16 @@
 - [x] vite.config.ts: inyecta VITE_LOCAL_AUTH desde LOCAL_AUTH del .env
 - [x] README-LOCAL.md actualizado con los nuevos pasos
 - [x] 0 errores TypeScript
+
+## Recuperación de Contraseña + Middleware Auth + GitHub (v7.2)
+- [x] BD: tabla password_reset_tokens (userId, token, expiresAt, usedAt)
+- [x] Backend: POST /api/auth/forgot-password — genera token, envía email con enlace
+- [x] Backend: POST /api/auth/reset-password — valida token, actualiza contraseña
+- [x] Backend: GET /api/auth/validate-reset-token — verifica validez sin consumir
+- [x] Frontend: página /recuperar-contrasena con formulario de email y estado de confirmación
+- [x] Frontend: página /nueva-contrasena?token=xxx con indicador de fortaleza y coincidencia
+- [x] Frontend: enlace "¿Olvidaste tu contraseña?" en /login
+- [x] Middleware Express: server/authGuard.ts verifica sesión en rutas /api/trpc protegidas
+- [x] Middleware devuelve 401 con formato tRPC si no hay sesión válida
+- [x] README-LOCAL.md actualizado con flujo de recuperación y sección de middleware
+- [x] 0 errores TypeScript

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Lock, Mail, AlertCircle, Loader2 } from "lucide-react";
+import { Link } from "wouter";
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -192,6 +193,15 @@ export default function Login() {
                 <span>{error}</span>
               </div>
             )}
+
+            {/* Enlace de recuperación */}
+            <div className="flex justify-end">
+              <Link href="/recuperar-contrasena">
+                <span className="text-[#f5a623] hover:text-[#e09520] text-sm transition-colors cursor-pointer">
+                  ¿Olvidaste tu contraseña?
+                </span>
+              </Link>
+            </div>
 
             {/* Botón */}
             <Button
