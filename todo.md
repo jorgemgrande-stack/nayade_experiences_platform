@@ -374,3 +374,9 @@
 - [x] Insertar temporada de precio: Temporada Alta 2026 (01/03/2026 - 30/09/2026)
 - [x] Insertar tarifas por tipología (precios reales del dossier)
 - [x] Insertar inventario de habitaciones disponibles (room_blocks abiertos)
+
+## Seed SPA Náyade — Temporada 2026 (v5.6)
+- [x] Insertar 4 categorías: Circuito Hidrotermal, Zona Wellness, Masajes, Clinic Spa
+- [x] Insertar tratamientos con precios reales del dossier
+- [x] Insertar plantillas de horario (Viernes 15-22h, Sábados 10-22h, Domingos 10-17:30h)
+- [x] Generar slots de disponibilidad Mar-Sep 2026
