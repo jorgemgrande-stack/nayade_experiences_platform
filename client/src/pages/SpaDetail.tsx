@@ -9,6 +9,7 @@ import {
   Clock, Users, ChevronLeft, ChevronRight, ChevronLeft as ArrowLeft,
   Star, Sparkles, CheckCircle2, Calendar, AlertCircle, X,
 } from "lucide-react";
+import { ReviewSection } from "@/components/ReviewSection";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function todayStr() {
@@ -767,6 +768,9 @@ export default function SpaDetail() {
             </div>
 
           </div>
+
+          {/* Reseñas */}
+          <ReviewSection entityType="spa" entityId={treatment.id} theme="dark" />
 
           {/* Back link */}
           <div className="mt-16 text-center">

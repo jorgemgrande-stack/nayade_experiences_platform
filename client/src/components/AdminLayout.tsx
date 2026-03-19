@@ -67,6 +67,7 @@ const navItems = [
       { label: "Reservas Redsys", href: "/admin/operaciones/reservas-redsys" },
       { label: "Órdenes del Día", href: "/admin/operaciones/ordenes" },
       { label: "Monitores", href: "/admin/operaciones/monitores" },
+      { label: "Reseñas", href: "/admin/operaciones/resenas" },
     ],
   },
   {

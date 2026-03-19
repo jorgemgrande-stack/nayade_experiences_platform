@@ -62,6 +62,7 @@ import HotelManager from "./pages/admin/hotel/HotelManager";
 import SpaManager from "./pages/admin/spa/SpaManager";
 import HotelRoom from "./pages/HotelRoom";
 import SpaDetail from "./pages/SpaDetail";
+import ReviewsManager from "./pages/admin/ReviewsManager";
 
 // Users & Settings
 import UsersManager from "./pages/admin/users/UsersManager";
@@ -136,6 +137,9 @@ function Router() {
       {/* Hotel & SPA */}
       <Route path="/admin/hotel" component={HotelManager} />
       <Route path="/admin/spa" component={SpaManager} />
+
+      {/* Reviews */}
+      <Route path="/admin/operaciones/resenas" component={ReviewsManager} />
 
       {/* Users & Settings */}
       <Route path="/admin/usuarios" component={UsersManager} />

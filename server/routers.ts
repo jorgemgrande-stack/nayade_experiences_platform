@@ -103,6 +103,7 @@ import {
 import { sendInviteEmail } from "./inviteEmail";
 import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
+import { reviewsRouter } from "./routers/reviews";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -1074,5 +1075,6 @@ export const appRouter = router({
   }),
   hotel: hotelRouter,
   spa: spaRouter,
+  reviews: reviewsRouter,
 });
 export type AppRouter = typeof appRouter;

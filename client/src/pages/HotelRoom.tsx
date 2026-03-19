@@ -14,6 +14,7 @@ import {
   BedDouble, Star, CheckCircle2, Calendar, CreditCard,
   Moon, Minus, Plus, Phone, Mail, User, X,
 } from "lucide-react";
+import { ReviewSection } from "@/components/ReviewSection";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function todayStr() {
@@ -707,6 +708,11 @@ export default function HotelRoom() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Sección de reseñas */}
+      <div className="max-w-6xl mx-auto px-4 pb-16">
+        <ReviewSection entityType="hotel" entityId={room.id} theme="dark" />
       </div>
 
       {/* Booking Modal */}

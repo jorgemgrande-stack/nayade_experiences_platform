@@ -581,3 +581,31 @@ export type InsertSpaTreatment = typeof spaTreatments.$inferInsert;
 export type SpaResource = typeof spaResources.$inferSelect;
 export type SpaSlot = typeof spaSlots.$inferSelect;
 export type SpaScheduleTemplate = typeof spaScheduleTemplates.$inferSelect;
+
+// ─── REVIEWS ─────────────────────────────────────────────────────────────────
+
+/**
+ * Reseñas y valoraciones de usuarios para habitaciones del hotel y tratamientos del SPA.
+ * entityType: 'hotel' | 'spa'
+ * entityId: id de la room_type o spa_treatment correspondiente
+ */
+export const reviews = mysqlTable("reviews", {
+  id: int("id").autoincrement().primaryKey(),
+  entityType: mysqlEnum("entityType", ["hotel", "spa"]).notNull(),
+  entityId: int("entityId").notNull(),
+  authorName: varchar("authorName", { length: 256 }).notNull(),
+  authorEmail: varchar("authorEmail", { length: 320 }),
+  rating: int("rating").notNull(), // 1-5
+  title: varchar("title", { length: 256 }),
+  body: text("body").notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  adminReply: text("adminReply"),
+  adminRepliedAt: timestamp("adminRepliedAt"),
+  stayDate: varchar("stayDate", { length: 10 }), // YYYY-MM-DD (fecha de la estancia/tratamiento)
+  verifiedBooking: boolean("verifiedBooking").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Review = typeof reviews.$inferSelect;
+export type InsertReview = typeof reviews.$inferInsert;

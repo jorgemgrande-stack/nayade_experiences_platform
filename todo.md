@@ -421,3 +421,17 @@
 
 ## SpaDetail — Rediseño visual (v6.1)
 - [x] Cambiar fondo blanco/gris a fondo oscuro premium con gradientes teal para mejor legibilidad
+
+## Sistema de Opiniones y Valoraciones (v6.2)
+- [x] BD: tabla reviews (entityType hotel/spa, entityId, authorName, authorEmail, rating 1-5, title, body, status pending/approved/rejected, adminReply, createdAt)
+- [x] Schema Drizzle: añadir tabla reviews + tipos TypeScript
+- [x] Migración SQL aplicada en BD
+- [x] Backend: helpers reviewsDb.ts (getReviews, createReview, approveReview, rejectReview, deleteReview, getStats)
+- [x] Backend: procedimientos tRPC reviews.* (getPublicReviews, submitReview, adminGetReviews, adminApprove, adminReject, adminDelete, adminReply)
+- [x] Frontend: componente ReviewSection.tsx (sección completa: estrellas interactivas, stats, listado paginado, formulario)
+- [x] Frontend: integrar ReviewSection en HotelRoom.tsx
+- [x] Frontend: integrar ReviewSection en SpaDetail.tsx
+- [x] Admin: ReviewsManager.tsx con listado, filtros, moderación y respuesta
+- [x] Admin: ruta /admin/operaciones/resenas + enlace en sidebar
+- [x] Tests Vitest para reviews (14 tests pasando: validación inputs, cálculo estadísticas, moderación)
+- [x] 0 errores TypeScript
