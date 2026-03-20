@@ -1,6 +1,6 @@
 /**
  * seed-data.mjs — Datos de producción de Nayade Experiences
- * Generado automáticamente el 2026-03-20T22:45:32.360Z
+ * Generado automáticamente el 2026-03-20T23:10:31.701Z
  * Uso: node scripts/seed-data.mjs
  */
 import mysql from 'mysql2/promise';
@@ -31,24 +31,11 @@ function parseDbUrl(url) {
   };
 }
 
-function fixDates(obj) {
-  const result = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) {
-      result[k] = v.replace('T', ' ').replace('Z', '').substring(0, 19);
-    } else {
-      result[k] = v;
-    }
-  }
-  return result;
-}
-
 async function insertBatch(conn, table, rows, label) {
   if (!rows.length) { console.log(`  ⏭  ${label}: 0 registros (vacío)`); return; }
-  const fixedRows = rows.map(fixDates);
-  const cols = Object.keys(fixedRows[0]);
-  const placeholders = fixedRows.map(() => `(${cols.map(() => '?').join(', ')})`).join(', ');
-  const values = fixedRows.flatMap(r => cols.map(c => r[c]));
+  const cols = Object.keys(rows[0]);
+  const placeholders = rows.map(() => `(${cols.map(() => '?').join(', ')})`).join(', ');
+  const values = rows.flatMap(r => cols.map(c => r[c]));
   await conn.query(`INSERT INTO \`${table}\` (${cols.map(c => `\`${c}\``).join(', ')}) VALUES ${placeholders}`, values);
   console.log(`  ✅ ${label}: ${rows.length} registros insertados`);
 }
@@ -75,8 +62,8 @@ async function main() {
     iconName: null,
     sortOrder: 1,
     isActive: 1,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   {
     id: 30002,
@@ -88,8 +75,8 @@ async function main() {
     iconName: null,
     sortOrder: 2,
     isActive: 1,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   {
     id: 30003,
@@ -101,8 +88,8 @@ async function main() {
     iconName: null,
     sortOrder: 3,
     isActive: 1,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   {
     id: 30004,
@@ -114,8 +101,8 @@ async function main() {
     iconName: null,
     sortOrder: 4,
     isActive: 1,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   {
     id: 30005,
@@ -127,8 +114,8 @@ async function main() {
     iconName: null,
     sortOrder: 5,
     isActive: 1,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   {
     id: 30006,
@@ -140,8 +127,8 @@ async function main() {
     iconName: null,
     sortOrder: 6,
     isActive: 1,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   {
     id: 30007,
@@ -153,8 +140,8 @@ async function main() {
     iconName: null,
     sortOrder: 7,
     isActive: 1,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   {
     id: 30008,
@@ -166,8 +153,8 @@ async function main() {
     iconName: null,
     sortOrder: 8,
     isActive: 1,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   ];
   await insertBatch(conn, 'categories', categoriesData, 'Categorías');
@@ -186,8 +173,8 @@ async function main() {
     longitude: null,
     isActive: 1,
     sortOrder: 0,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-19T08:47:09.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-19T07:47:09.000Z"
   },
   {
     id: 30002,
@@ -200,8 +187,8 @@ async function main() {
     longitude: null,
     isActive: 1,
     sortOrder: 0,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-19T08:50:43.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-19T07:50:43.000Z"
   },
   {
     id: 30003,
@@ -214,8 +201,8 @@ async function main() {
     longitude: null,
     isActive: 1,
     sortOrder: 0,
-    createdAt: "2026-03-17T00:32:53.000Z",
-    updatedAt: "2026-03-17T00:32:53.000Z"
+    createdAt: "2026-03-16T23:32:53.000Z",
+    updatedAt: "2026-03-16T23:32:53.000Z"
   },
   ];
   await insertBatch(conn, 'locations', locationsData, 'Ubicaciones');
@@ -236,8 +223,8 @@ async function main() {
     sortOrder: 10,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 2,
@@ -248,8 +235,8 @@ async function main() {
     sortOrder: 20,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 3,
@@ -260,8 +247,8 @@ async function main() {
     sortOrder: 30,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 4,
@@ -272,8 +259,8 @@ async function main() {
     sortOrder: 40,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 5,
@@ -284,8 +271,8 @@ async function main() {
     sortOrder: 50,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 6,
@@ -296,8 +283,8 @@ async function main() {
     sortOrder: 60,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 7,
@@ -308,8 +295,8 @@ async function main() {
     sortOrder: 70,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 8,
@@ -320,8 +307,8 @@ async function main() {
     sortOrder: 20,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 9,
@@ -332,8 +319,8 @@ async function main() {
     sortOrder: 40,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 10,
@@ -344,8 +331,8 @@ async function main() {
     sortOrder: 10,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 11,
@@ -356,8 +343,8 @@ async function main() {
     sortOrder: 30,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 12,
@@ -368,8 +355,8 @@ async function main() {
     sortOrder: 50,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 13,
@@ -380,8 +367,8 @@ async function main() {
     sortOrder: 60,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 14,
@@ -392,8 +379,8 @@ async function main() {
     sortOrder: 70,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 15,
@@ -404,8 +391,8 @@ async function main() {
     sortOrder: 80,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 16,
@@ -416,8 +403,8 @@ async function main() {
     sortOrder: 90,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 17,
@@ -428,8 +415,8 @@ async function main() {
     sortOrder: 10,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 18,
@@ -440,8 +427,8 @@ async function main() {
     sortOrder: 20,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 19,
@@ -452,8 +439,8 @@ async function main() {
     sortOrder: 30,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 20,
@@ -464,8 +451,8 @@ async function main() {
     sortOrder: 10,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 21,
@@ -476,8 +463,8 @@ async function main() {
     sortOrder: 20,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 22,
@@ -488,8 +475,8 @@ async function main() {
     sortOrder: 30,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T07:17:22.000Z",
-    updatedAt: "2026-03-19T07:17:22.000Z"
+    createdAt: "2026-03-19T06:17:22.000Z",
+    updatedAt: "2026-03-19T06:17:22.000Z"
   },
   {
     id: 30001,
@@ -500,8 +487,8 @@ async function main() {
     sortOrder: 100,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T08:52:13.000Z",
-    updatedAt: "2026-03-19T08:52:25.000Z"
+    createdAt: "2026-03-19T07:52:13.000Z",
+    updatedAt: "2026-03-19T07:52:25.000Z"
   },
   {
     id: 30002,
@@ -512,8 +499,8 @@ async function main() {
     sortOrder: 110,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T08:53:05.000Z",
-    updatedAt: "2026-03-19T09:12:27.000Z"
+    createdAt: "2026-03-19T07:53:05.000Z",
+    updatedAt: "2026-03-19T08:12:27.000Z"
   },
   ];
   await insertBatch(conn, 'menu_items', menuItemsData, 'Ítems de menú');
@@ -533,8 +520,8 @@ async function main() {
     reserveUrl: null,
     sortOrder: 1,
     isActive: 1,
-    createdAt: "2026-03-17T08:37:31.000Z",
-    updatedAt: "2026-03-17T08:37:31.000Z"
+    createdAt: "2026-03-17T07:37:31.000Z",
+    updatedAt: "2026-03-17T07:37:31.000Z"
   },
   {
     id: 30002,
@@ -548,8 +535,8 @@ async function main() {
     reserveUrl: null,
     sortOrder: 2,
     isActive: 1,
-    createdAt: "2026-03-17T08:43:34.000Z",
-    updatedAt: "2026-03-17T08:43:34.000Z"
+    createdAt: "2026-03-17T07:43:34.000Z",
+    updatedAt: "2026-03-17T07:43:34.000Z"
   },
   {
     id: 60001,
@@ -563,8 +550,8 @@ async function main() {
     reserveUrl: null,
     sortOrder: 3,
     isActive: 1,
-    createdAt: "2026-03-18T06:52:20.000Z",
-    updatedAt: "2026-03-18T06:52:20.000Z"
+    createdAt: "2026-03-18T05:52:20.000Z",
+    updatedAt: "2026-03-18T05:52:20.000Z"
   },
   {
     id: 60002,
@@ -578,8 +565,8 @@ async function main() {
     reserveUrl: null,
     sortOrder: 4,
     isActive: 1,
-    createdAt: "2026-03-18T06:58:29.000Z",
-    updatedAt: "2026-03-18T06:58:29.000Z"
+    createdAt: "2026-03-18T05:58:29.000Z",
+    updatedAt: "2026-03-18T05:58:29.000Z"
   },
   ];
   await insertBatch(conn, 'slideshow_items', slideshowItemsData, 'Slideshow');
@@ -595,8 +582,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   {
     id: 2,
@@ -606,8 +593,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   {
     id: 3,
@@ -617,8 +604,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   {
     id: 4,
@@ -628,8 +615,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T10:29:02.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T09:29:02.000Z"
   },
   {
     id: 5,
@@ -639,8 +626,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 0,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   {
     id: 6,
@@ -650,8 +637,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 0,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   {
     id: 7,
@@ -661,8 +648,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   {
     id: 8,
@@ -672,8 +659,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   {
     id: 9,
@@ -683,8 +670,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   {
     id: 10,
@@ -694,8 +681,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T09:29:08.000Z",
-    updatedAt: "2026-03-19T09:29:08.000Z"
+    createdAt: "2026-03-19T08:29:08.000Z",
+    updatedAt: "2026-03-19T08:29:08.000Z"
   },
   ];
   await insertBatch(conn, 'static_pages', staticPagesData, 'Páginas estáticas');
@@ -708,30 +695,30 @@ async function main() {
     pageSlug: "hotel",
     blockType: "hero",
     sortOrder: 0,
-    data: "{\"ctaText\":\"Reservar ahora\",\"ctaUrl\":\"/reservar\",\"imageUrl\":\"https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773930631-fd1fch.png\",\"overlayOpacity\":50,\"subtitle\":\"Subtítulo dAlójate frente al embalse de Los Ángeles de San Rafael. Naturaleza, confort y aventura a la puerta de tu habitación.escriptivo\",\"title\":\"Hotel Nayade\"}",
+    data: "{\"title\":\"Hotel Nayade\",\"ctaUrl\":\"/reservar\",\"ctaText\":\"Reservar ahora\",\"imageUrl\":\"https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773930631-fd1fch.png\",\"subtitle\":\"Subtítulo dAlójate frente al embalse de Los Ángeles de San Rafael. Naturaleza, confort y aventura a la puerta de tu habitación.escriptivo\",\"overlayOpacity\":50}",
     isVisible: 1,
-    createdAt: "2026-03-19T10:49:45.000Z",
-    updatedAt: "2026-03-19T10:49:45.000Z"
+    createdAt: "2026-03-19T09:49:45.000Z",
+    updatedAt: "2026-03-19T09:49:45.000Z"
   },
   {
     id: 6,
     pageSlug: "hotel",
     blockType: "image_text",
     sortOrder: 1,
-    data: "{\"body\":\"Descripción lore ipsum del contenido...\",\"ctaText\":\"Ver Habitaciones\",\"ctaUrl\":\"\",\"imagePosition\":\"left\",\"imageUrl\":\"\",\"title\":\"Bienestar en plena naturalezao de sección\"}",
+    data: "{\"body\":\"Descripción lore ipsum del contenido...\",\"title\":\"Bienestar en plena naturalezao de sección\",\"ctaUrl\":\"\",\"ctaText\":\"Ver Habitaciones\",\"imageUrl\":\"\",\"imagePosition\":\"left\"}",
     isVisible: 1,
-    createdAt: "2026-03-19T10:49:45.000Z",
-    updatedAt: "2026-03-19T10:49:45.000Z"
+    createdAt: "2026-03-19T09:49:45.000Z",
+    updatedAt: "2026-03-19T09:49:45.000Z"
   },
   {
     id: 7,
     pageSlug: "hotel",
     blockType: "features",
     sortOrder: 2,
-    data: "{\"items\":[{\"description\":\"Descripcilllón\",\"icon\":\"⭐\",\"title\":\"Lore ipsum\"},{\"description\":\"Descripción33\",\"icon\":\"⭐\",\"title\":\"2\"}],\"title\":\"¿Por qué elegirnos?\"}",
+    data: "{\"items\":[{\"icon\":\"⭐\",\"title\":\"Lore ipsum\",\"description\":\"Descripcilllón\"},{\"icon\":\"⭐\",\"title\":\"2\",\"description\":\"Descripción33\"}],\"title\":\"¿Por qué elegirnos?\"}",
     isVisible: 1,
-    createdAt: "2026-03-19T10:49:45.000Z",
-    updatedAt: "2026-03-19T10:49:45.000Z"
+    createdAt: "2026-03-19T09:49:45.000Z",
+    updatedAt: "2026-03-19T09:49:45.000Z"
   },
   ];
   await insertBatch(conn, 'page_blocks', pageBlocksData, 'Bloques de página');
@@ -871,8 +858,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30002,
@@ -902,8 +889,8 @@ async function main() {
     sortOrder: 6,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30003,
@@ -933,8 +920,8 @@ async function main() {
     sortOrder: 0,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30004,
@@ -964,8 +951,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30005,
@@ -995,8 +982,8 @@ async function main() {
     sortOrder: 7,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30006,
@@ -1026,8 +1013,8 @@ async function main() {
     sortOrder: 8,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30007,
@@ -1057,8 +1044,8 @@ async function main() {
     sortOrder: 9,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30008,
@@ -1088,8 +1075,8 @@ async function main() {
     sortOrder: 10,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30009,
@@ -1119,8 +1106,8 @@ async function main() {
     sortOrder: 11,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   {
     id: 30015,
@@ -1150,8 +1137,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-17T00:33:51.000Z",
-    updatedAt: "2026-03-19T09:06:10.000Z"
+    createdAt: "2026-03-16T23:33:51.000Z",
+    updatedAt: "2026-03-19T08:06:10.000Z"
   },
   {
     id: 90001,
@@ -1181,8 +1168,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T07:51:29.000Z",
-    updatedAt: "2026-03-19T08:28:56.000Z"
+    createdAt: "2026-03-19T06:51:29.000Z",
+    updatedAt: "2026-03-19T07:28:56.000Z"
   },
   ];
   await insertBatch(conn, 'experiences', experiencesData, 'Experiencias');
@@ -1200,7 +1187,7 @@ async function main() {
     options: "[]",
     isRequired: 1,
     sortOrder: 0,
-    createdAt: "2026-03-18T04:17:58.000Z"
+    createdAt: "2026-03-18T03:17:58.000Z"
   },
   {
     id: 2,
@@ -1212,7 +1199,7 @@ async function main() {
     options: "[]",
     isRequired: 0,
     sortOrder: 2,
-    createdAt: "2026-03-18T04:27:58.000Z"
+    createdAt: "2026-03-18T03:27:58.000Z"
   },
   {
     id: 30001,
@@ -1224,7 +1211,7 @@ async function main() {
     options: "[]",
     isRequired: 0,
     sortOrder: 1,
-    createdAt: "2026-03-18T05:05:39.000Z"
+    createdAt: "2026-03-18T04:05:39.000Z"
   },
   {
     id: 30002,
@@ -1236,7 +1223,7 @@ async function main() {
     options: "[]",
     isRequired: 0,
     sortOrder: 1,
-    createdAt: "2026-03-18T05:08:23.000Z"
+    createdAt: "2026-03-18T04:08:23.000Z"
   },
   ];
   await insertBatch(conn, 'experience_variants', experienceVariantsData, 'Variantes de experiencias');
@@ -1274,8 +1261,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-18T12:48:38.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-18T11:48:38.000Z"
   },
   {
     id: 2,
@@ -1307,8 +1294,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-19T04:11:54.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-19T03:11:54.000Z"
   },
   {
     id: 3,
@@ -1340,8 +1327,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-19T04:13:05.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-19T03:13:05.000Z"
   },
   {
     id: 4,
@@ -1373,8 +1360,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-19T04:15:06.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-19T03:15:06.000Z"
   },
   {
     id: 5,
@@ -1406,8 +1393,8 @@ async function main() {
     sortOrder: 5,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-19T04:15:39.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-19T03:15:39.000Z"
   },
   {
     id: 6,
@@ -1439,8 +1426,8 @@ async function main() {
     sortOrder: 6,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-19T09:57:24.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-19T08:57:24.000Z"
   },
   {
     id: 7,
@@ -1472,8 +1459,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-18T12:04:24.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-18T11:04:24.000Z"
   },
   {
     id: 8,
@@ -1505,8 +1492,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-18T12:04:24.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-18T11:04:24.000Z"
   },
   {
     id: 9,
@@ -1538,8 +1525,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-18T12:04:24.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-18T11:04:24.000Z"
   },
   {
     id: 10,
@@ -1571,8 +1558,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-18T12:04:24.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-18T11:04:24.000Z"
   },
   {
     id: 11,
@@ -1604,8 +1591,8 @@ async function main() {
     sortOrder: 5,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-18T12:04:24.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-18T11:04:24.000Z"
   },
   {
     id: 12,
@@ -1637,8 +1624,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-18T12:04:24.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-18T11:04:24.000Z"
   },
   {
     id: 13,
@@ -1670,8 +1657,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T12:04:24.000Z",
-    updatedAt: "2026-03-18T12:04:24.000Z"
+    createdAt: "2026-03-18T11:04:24.000Z",
+    updatedAt: "2026-03-18T11:04:24.000Z"
   },
   ];
   await insertBatch(conn, 'packs', packsData, 'Packs');
@@ -1703,14 +1690,14 @@ async function main() {
     basePrice: "110.00",
     currency: "EUR",
     totalUnits: 22,
-    internalTags: "[\"doble\",\"estandar\",\"bloque-principal\",\"bloque-f\"]",
     isFeatured: 1,
     isActive: 1,
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T11:57:10.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-19T10:57:10.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"doble\",\"estandar\",\"bloque-principal\",\"bloque-f\"]"
   },
   {
     id: 2,
@@ -1732,14 +1719,14 @@ async function main() {
     basePrice: "140.00",
     currency: "EUR",
     totalUnits: 14,
-    internalTags: "[\"doble\",\"superior\",\"vistas-lago\",\"bloque-principal\",\"terraza\"]",
     isFeatured: 1,
     isActive: 1,
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T11:57:10.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-19T10:57:10.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"doble\",\"superior\",\"vistas-lago\",\"bloque-principal\",\"terraza\"]"
   },
   {
     id: 3,
@@ -1761,14 +1748,14 @@ async function main() {
     basePrice: "170.00",
     currency: "EUR",
     totalUnits: 8,
-    internalTags: "[\"familiar\",\"ninos\",\"4pax\",\"bloque-principal\"]",
     isFeatured: 0,
     isActive: 1,
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T11:57:10.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-19T10:57:10.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"familiar\",\"ninos\",\"4pax\",\"bloque-principal\"]"
   },
   {
     id: 4,
@@ -1790,14 +1777,14 @@ async function main() {
     basePrice: "210.00",
     currency: "EUR",
     totalUnits: 2,
-    internalTags: "[\"junior\",\"suite\",\"bloque-f\",\"hab-138\",\"hab-218\"]",
     isFeatured: 1,
     isActive: 1,
     sortOrder: 7,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T11:57:10.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-19T10:57:10.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"junior\",\"suite\",\"bloque-f\",\"hab-138\",\"hab-218\"]"
   },
   {
     id: 60006,
@@ -1819,14 +1806,14 @@ async function main() {
     basePrice: "130.00",
     currency: "EUR",
     totalUnits: 12,
-    internalTags: "[\"triple\",\"3pax\",\"bloque-principal\",\"bloque-f\"]",
     isFeatured: 0,
     isActive: 1,
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-21T02:45:11.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-21T01:45:11.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"triple\",\"3pax\",\"bloque-principal\",\"bloque-f\"]"
   },
   {
     id: 60007,
@@ -1848,14 +1835,14 @@ async function main() {
     basePrice: "155.00",
     currency: "EUR",
     totalUnits: 8,
-    internalTags: "[\"cuadruple\",\"4pax\",\"literas\",\"bloque-principal\"]",
     isFeatured: 0,
     isActive: 1,
     sortOrder: 5,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-21T02:45:11.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-21T01:45:11.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"cuadruple\",\"4pax\",\"literas\",\"bloque-principal\"]"
   },
   {
     id: 60008,
@@ -1877,14 +1864,14 @@ async function main() {
     basePrice: "145.00",
     currency: "EUR",
     totalUnits: 70,
-    internalTags: "[\"grande\",\"amplia\",\"bloque-f\",\"marca-G\",\"marca-P\",\"flexible\"]",
     isFeatured: 0,
     isActive: 1,
     sortOrder: 6,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-21T02:45:11.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-21T01:45:11.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"grande\",\"amplia\",\"bloque-f\",\"marca-G\",\"marca-P\",\"flexible\"]"
   },
   {
     id: 60009,
@@ -1906,14 +1893,14 @@ async function main() {
     basePrice: "260.00",
     currency: "EUR",
     totalUnits: 2,
-    internalTags: "[\"suite\",\"comodoro\",\"segovia\",\"bloque-principal\",\"jacuzzi\",\"vistas-lago\"]",
     isFeatured: 1,
     isActive: 1,
     sortOrder: 8,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-21T02:45:11.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-21T01:45:11.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"suite\",\"comodoro\",\"segovia\",\"bloque-principal\",\"jacuzzi\",\"vistas-lago\"]"
   },
   {
     id: 60010,
@@ -1935,14 +1922,14 @@ async function main() {
     basePrice: "0.00",
     currency: "EUR",
     totalUnits: 6,
-    internalTags: "[\"personal\",\"interno\",\"no-publico\",\"hab-23\",\"hab-19\",\"hab-10\",\"hab-119\",\"hab-401\",\"hab-501\"]",
     isFeatured: 0,
     isActive: 0,
     sortOrder: 9,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-21T02:45:11.000Z",
-    updatedAt: "2026-03-21T02:45:11.000Z"
+    createdAt: "2026-03-21T01:45:11.000Z",
+    updatedAt: "2026-03-21T01:45:11.000Z",
+    internalTags: "[\"personal\",\"interno\",\"no-publico\",\"hab-23\",\"hab-19\",\"hab-10\",\"hab-119\",\"hab-401\",\"hab-501\"]"
   },
   ];
   await insertBatch(conn, 'room_types', roomTypesData, 'Tipos de habitación');
@@ -1957,7 +1944,7 @@ async function main() {
     endDate: "2026-03-31",
     isActive: 1,
     sortOrder: 1,
-    createdAt: "2026-03-19T11:57:10.000Z"
+    createdAt: "2026-03-19T10:57:10.000Z"
   },
   {
     id: 2,
@@ -1966,7 +1953,7 @@ async function main() {
     endDate: "2026-05-31",
     isActive: 1,
     sortOrder: 2,
-    createdAt: "2026-03-19T11:57:10.000Z"
+    createdAt: "2026-03-19T10:57:10.000Z"
   },
   {
     id: 3,
@@ -1975,12 +1962,12 @@ async function main() {
     endDate: "2026-09-30",
     isActive: 1,
     sortOrder: 3,
-    createdAt: "2026-03-19T11:57:10.000Z"
+    createdAt: "2026-03-19T10:57:10.000Z"
   },
   ];
   await insertBatch(conn, 'room_rate_seasons', roomRateSeasonsData, 'Temporadas de tarifas');
 
-  // ─── Tarifas de habitación (12 registros) ───
+  // ─── Tarifas de habitación (27 registros) ───
   await conn.query('DELETE FROM `room_rates`');
   const roomRatesData = [
   {
@@ -1994,8 +1981,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:10.000Z",
-    updatedAt: "2026-03-19T11:57:10.000Z"
+    createdAt: "2026-03-19T10:57:10.000Z",
+    updatedAt: "2026-03-19T10:57:10.000Z"
   },
   {
     id: 2,
@@ -2008,8 +1995,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 3,
@@ -2022,8 +2009,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 4,
@@ -2036,8 +2023,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 5,
@@ -2050,8 +2037,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 6,
@@ -2064,8 +2051,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 7,
@@ -2078,8 +2065,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 8,
@@ -2092,8 +2079,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 9,
@@ -2106,8 +2093,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 10,
@@ -2120,8 +2107,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 11,
@@ -2134,8 +2121,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
   },
   {
     id: 12,
@@ -2148,8 +2135,218 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T11:57:11.000Z",
-    updatedAt: "2026-03-19T11:57:11.000Z"
+    createdAt: "2026-03-19T10:57:11.000Z",
+    updatedAt: "2026-03-19T10:57:11.000Z"
+  },
+  {
+    id: 13,
+    roomTypeId: 60006,
+    seasonId: 1,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "145.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 14,
+    roomTypeId: 60006,
+    seasonId: 2,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "170.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 15,
+    roomTypeId: 60006,
+    seasonId: 3,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "195.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 16,
+    roomTypeId: 60007,
+    seasonId: 1,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "160.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 17,
+    roomTypeId: 60007,
+    seasonId: 2,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "185.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 18,
+    roomTypeId: 60007,
+    seasonId: 3,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "210.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 19,
+    roomTypeId: 60008,
+    seasonId: 1,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "125.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 20,
+    roomTypeId: 60008,
+    seasonId: 2,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "148.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 21,
+    roomTypeId: 60008,
+    seasonId: 3,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "170.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 22,
+    roomTypeId: 60009,
+    seasonId: 1,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "250.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 23,
+    roomTypeId: 60009,
+    seasonId: 2,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "285.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 24,
+    roomTypeId: 60009,
+    seasonId: 3,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "320.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 25,
+    roomTypeId: 60010,
+    seasonId: 1,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "0.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 26,
+    roomTypeId: 60010,
+    seasonId: 2,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "0.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
+  },
+  {
+    id: 27,
+    roomTypeId: 60010,
+    seasonId: 3,
+    dayOfWeek: null,
+    specificDate: null,
+    pricePerNight: "0.00",
+    currency: "EUR",
+    supplement: "0.00",
+    supplementLabel: null,
+    isActive: 1,
+    createdAt: "2026-03-20T22:09:04.000Z",
+    updatedAt: "2026-03-20T22:09:04.000Z"
   },
   ];
   await insertBatch(conn, 'room_rates', roomRatesData, 'Tarifas de habitación');
@@ -2165,7 +2362,7 @@ async function main() {
     iconName: "Waves",
     sortOrder: 1,
     isActive: 1,
-    createdAt: "2026-03-19T12:57:32.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z"
   },
   {
     id: 6,
@@ -2175,7 +2372,7 @@ async function main() {
     iconName: "Flame",
     sortOrder: 2,
     isActive: 1,
-    createdAt: "2026-03-19T12:57:32.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z"
   },
   {
     id: 7,
@@ -2185,7 +2382,7 @@ async function main() {
     iconName: "Hand",
     sortOrder: 3,
     isActive: 1,
-    createdAt: "2026-03-19T12:57:32.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z"
   },
   {
     id: 8,
@@ -2195,7 +2392,7 @@ async function main() {
     iconName: "Sparkles",
     sortOrder: 4,
     isActive: 1,
-    createdAt: "2026-03-19T12:57:32.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z"
   },
   ];
   await insertBatch(conn, 'spa_categories', spaCategoriesData, 'Categorías SPA');
@@ -2225,8 +2422,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:02:37.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:02:37.000Z"
   },
   {
     id: 12,
@@ -2250,8 +2447,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:03:13.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:03:13.000Z"
   },
   {
     id: 13,
@@ -2275,8 +2472,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:03:45.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:03:45.000Z"
   },
   {
     id: 14,
@@ -2300,8 +2497,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:04:16.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:04:16.000Z"
   },
   {
     id: 15,
@@ -2325,8 +2522,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:03:02.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:03:02.000Z"
   },
   {
     id: 16,
@@ -2350,8 +2547,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:02:55.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:02:55.000Z"
   },
   {
     id: 17,
@@ -2375,8 +2572,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:03:28.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:03:28.000Z"
   },
   {
     id: 18,
@@ -2400,8 +2597,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:04:01.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:04:01.000Z"
   },
   {
     id: 19,
@@ -2425,8 +2622,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:02:44.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:02:44.000Z"
   },
   {
     id: 20,
@@ -2450,8 +2647,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T12:57:32.000Z",
-    updatedAt: "2026-03-19T13:03:38.000Z"
+    createdAt: "2026-03-19T11:57:32.000Z",
+    updatedAt: "2026-03-19T12:03:38.000Z"
   },
   ];
   await insertBatch(conn, 'spa_treatments', spaTreatmentsData, 'Tratamientos SPA');
@@ -2473,8 +2670,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-10",
     verifiedBooking: 1,
-    createdAt: "2026-03-11T18:23:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-03-11T17:23:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 2,
@@ -2490,8 +2687,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-05",
     verifiedBooking: 1,
-    createdAt: "2026-03-06T19:15:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-03-06T18:15:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 3,
@@ -2507,8 +2704,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-28",
     verifiedBooking: 0,
-    createdAt: "2026-03-01T21:40:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-03-01T20:40:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 4,
@@ -2524,8 +2721,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-20",
     verifiedBooking: 1,
-    createdAt: "2026-02-22T02:00:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-02-22T01:00:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 5,
@@ -2541,8 +2738,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-14",
     verifiedBooking: 1,
-    createdAt: "2026-02-15T22:30:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-02-15T21:30:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 6,
@@ -2558,8 +2755,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-30",
     verifiedBooking: 0,
-    createdAt: "2026-01-31T18:45:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-01-31T17:45:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 7,
@@ -2575,8 +2772,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-22",
     verifiedBooking: 1,
-    createdAt: "2026-01-24T00:20:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-01-23T23:20:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 8,
@@ -2592,8 +2789,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-15",
     verifiedBooking: 1,
-    createdAt: "2026-01-17T03:10:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-01-17T02:10:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 9,
@@ -2609,8 +2806,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-08",
     verifiedBooking: 0,
-    createdAt: "2026-01-09T20:05:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-01-09T19:05:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 10,
@@ -2626,8 +2823,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-28",
     verifiedBooking: 1,
-    createdAt: "2025-12-29T19:30:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2025-12-29T18:30:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 11,
@@ -2643,8 +2840,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-15",
     verifiedBooking: 0,
-    createdAt: "2025-12-16T21:00:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2025-12-16T20:00:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 12,
@@ -2660,8 +2857,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-05",
     verifiedBooking: 0,
-    createdAt: "2025-12-07T01:45:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2025-12-07T00:45:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 13,
@@ -2677,8 +2874,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-12",
     verifiedBooking: 1,
-    createdAt: "2026-03-13T16:30:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-03-13T15:30:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 14,
@@ -2694,8 +2891,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-08",
     verifiedBooking: 1,
-    createdAt: "2026-03-09T18:00:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-03-09T17:00:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 15,
@@ -2711,8 +2908,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-25",
     verifiedBooking: 1,
-    createdAt: "2026-02-26T19:45:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-02-26T18:45:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 16,
@@ -2728,8 +2925,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-18",
     verifiedBooking: 0,
-    createdAt: "2026-02-19T21:20:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-02-19T20:20:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 17,
@@ -2745,8 +2942,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-10",
     verifiedBooking: 1,
-    createdAt: "2026-02-12T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-02-11T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 18,
@@ -2762,8 +2959,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-28",
     verifiedBooking: 0,
-    createdAt: "2026-01-30T02:30:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-01-30T01:30:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 19,
@@ -2779,8 +2976,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-20",
     verifiedBooking: 1,
-    createdAt: "2026-01-21T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-01-21T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 20,
@@ -2796,8 +2993,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-10",
     verifiedBooking: 1,
-    createdAt: "2026-01-11T22:15:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2026-01-11T21:15:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 21,
@@ -2813,8 +3010,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-30",
     verifiedBooking: 0,
-    createdAt: "2025-12-31T20:45:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2025-12-31T19:45:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 22,
@@ -2830,8 +3027,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-20",
     verifiedBooking: 1,
-    createdAt: "2025-12-21T18:00:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2025-12-21T17:00:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 23,
@@ -2847,8 +3044,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-10",
     verifiedBooking: 0,
-    createdAt: "2025-12-11T23:30:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2025-12-11T22:30:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 24,
@@ -2864,8 +3061,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-11-28",
     verifiedBooking: 0,
-    createdAt: "2025-11-30T02:00:00.000Z",
-    updatedAt: "2026-03-19T16:10:11.000Z"
+    createdAt: "2025-11-30T01:00:00.000Z",
+    updatedAt: "2026-03-19T15:10:11.000Z"
   },
   {
     id: 25,
@@ -2881,8 +3078,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-08",
     verifiedBooking: 1,
-    createdAt: "2026-03-09T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-03-09T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 26,
@@ -2898,8 +3095,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-01",
     verifiedBooking: 1,
-    createdAt: "2026-03-02T19:30:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-03-02T18:30:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 27,
@@ -2915,8 +3112,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-22",
     verifiedBooking: 0,
-    createdAt: "2026-02-24T00:15:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-02-23T23:15:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 28,
@@ -2932,8 +3129,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-15",
     verifiedBooking: 1,
-    createdAt: "2026-02-16T20:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-02-16T19:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 29,
@@ -2949,8 +3146,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-08",
     verifiedBooking: 1,
-    createdAt: "2026-02-09T22:45:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-02-09T21:45:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 30,
@@ -2966,8 +3163,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-25",
     verifiedBooking: 1,
-    createdAt: "2026-01-26T18:30:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-01-26T17:30:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 31,
@@ -2983,8 +3180,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-18",
     verifiedBooking: 1,
-    createdAt: "2026-01-20T01:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-01-20T00:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 32,
@@ -3000,8 +3197,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-12",
     verifiedBooking: 0,
-    createdAt: "2026-01-13T21:30:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-01-13T20:30:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 33,
@@ -3017,8 +3214,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-26",
     verifiedBooking: 1,
-    createdAt: "2025-12-27T20:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2025-12-27T19:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 34,
@@ -3034,8 +3231,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-18",
     verifiedBooking: 1,
-    createdAt: "2025-12-19T19:15:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2025-12-19T18:15:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 35,
@@ -3051,8 +3248,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-08",
     verifiedBooking: 0,
-    createdAt: "2025-12-10T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2025-12-09T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 36,
@@ -3068,8 +3265,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-11-30",
     verifiedBooking: 0,
-    createdAt: "2025-12-02T02:30:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2025-12-02T01:30:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 37,
@@ -3085,8 +3282,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-14",
     verifiedBooking: 1,
-    createdAt: "2026-03-15T17:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-03-15T16:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 38,
@@ -3102,8 +3299,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-10",
     verifiedBooking: 1,
-    createdAt: "2026-03-11T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-03-11T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 39,
@@ -3119,8 +3316,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-05",
     verifiedBooking: 1,
-    createdAt: "2026-03-06T20:30:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-03-06T19:30:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 40,
@@ -3136,8 +3333,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-28",
     verifiedBooking: 1,
-    createdAt: "2026-03-01T18:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-03-01T17:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 41,
@@ -3153,8 +3350,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-22",
     verifiedBooking: 0,
-    createdAt: "2026-02-23T22:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-02-23T21:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 42,
@@ -3170,8 +3367,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-16",
     verifiedBooking: 1,
-    createdAt: "2026-02-17T19:45:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-02-17T18:45:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 43,
@@ -3187,8 +3384,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-10",
     verifiedBooking: 1,
-    createdAt: "2026-02-11T20:15:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-02-11T19:15:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 44,
@@ -3204,8 +3401,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-30",
     verifiedBooking: 1,
-    createdAt: "2026-02-01T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-01-31T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 45,
@@ -3221,8 +3418,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-22",
     verifiedBooking: 0,
-    createdAt: "2026-01-23T21:30:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-01-23T20:30:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 46,
@@ -3238,8 +3435,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-15",
     verifiedBooking: 1,
-    createdAt: "2026-01-16T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2026-01-16T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 47,
@@ -3255,8 +3452,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-28",
     verifiedBooking: 0,
-    createdAt: "2025-12-30T01:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2025-12-30T00:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 48,
@@ -3272,8 +3469,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-18",
     verifiedBooking: 0,
-    createdAt: "2025-12-19T22:00:00.000Z",
-    updatedAt: "2026-03-19T16:11:03.000Z"
+    createdAt: "2025-12-19T21:00:00.000Z",
+    updatedAt: "2026-03-19T15:11:03.000Z"
   },
   {
     id: 49,
@@ -3289,8 +3486,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-13",
     verifiedBooking: 1,
-    createdAt: "2026-03-14T18:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-03-14T17:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 50,
@@ -3306,8 +3503,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-09",
     verifiedBooking: 1,
-    createdAt: "2026-03-10T17:30:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-03-10T16:30:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 51,
@@ -3323,8 +3520,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-02",
     verifiedBooking: 0,
-    createdAt: "2026-03-03T21:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-03-03T20:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 52,
@@ -3340,8 +3537,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-24",
     verifiedBooking: 1,
-    createdAt: "2026-02-26T00:30:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-02-25T23:30:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 53,
@@ -3357,8 +3554,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-18",
     verifiedBooking: 0,
-    createdAt: "2026-02-19T22:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-02-19T21:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 54,
@@ -3374,8 +3571,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-12",
     verifiedBooking: 1,
-    createdAt: "2026-02-14T02:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-02-14T01:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 55,
@@ -3391,8 +3588,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-05",
     verifiedBooking: 1,
-    createdAt: "2026-02-06T20:45:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-02-06T19:45:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 56,
@@ -3408,8 +3605,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-28",
     verifiedBooking: 1,
-    createdAt: "2026-01-29T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-01-29T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 57,
@@ -3425,8 +3622,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-20",
     verifiedBooking: 0,
-    createdAt: "2026-01-21T23:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-01-21T22:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 58,
@@ -3442,8 +3639,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-12",
     verifiedBooking: 1,
-    createdAt: "2026-01-13T21:30:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-01-13T20:30:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 59,
@@ -3459,8 +3656,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-22",
     verifiedBooking: 0,
-    createdAt: "2025-12-24T01:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2025-12-24T00:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 60,
@@ -3476,8 +3673,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-12",
     verifiedBooking: 0,
-    createdAt: "2025-12-14T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2025-12-13T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 61,
@@ -3493,8 +3690,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-11",
     verifiedBooking: 1,
-    createdAt: "2026-03-12T18:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-03-12T17:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 62,
@@ -3510,8 +3707,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-07",
     verifiedBooking: 1,
-    createdAt: "2026-03-08T17:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-03-08T16:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 63,
@@ -3527,8 +3724,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-27",
     verifiedBooking: 1,
-    createdAt: "2026-02-28T21:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-02-28T20:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 64,
@@ -3544,8 +3741,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-20",
     verifiedBooking: 0,
-    createdAt: "2026-02-22T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-02-21T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 65,
@@ -3561,8 +3758,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-14",
     verifiedBooking: 1,
-    createdAt: "2026-02-15T20:30:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-02-15T19:30:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 66,
@@ -3578,8 +3775,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-08",
     verifiedBooking: 1,
-    createdAt: "2026-02-09T22:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-02-09T21:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 67,
@@ -3595,8 +3792,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-25",
     verifiedBooking: 0,
-    createdAt: "2026-01-27T01:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-01-27T00:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 68,
@@ -3612,8 +3809,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-18",
     verifiedBooking: 1,
-    createdAt: "2026-01-19T20:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2026-01-19T19:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 69,
@@ -3629,8 +3826,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-20",
     verifiedBooking: 0,
-    createdAt: "2025-12-22T00:30:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2025-12-21T23:30:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 70,
@@ -3646,8 +3843,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-08",
     verifiedBooking: 0,
-    createdAt: "2025-12-10T02:00:00.000Z",
-    updatedAt: "2026-03-19T16:12:20.000Z"
+    createdAt: "2025-12-10T01:00:00.000Z",
+    updatedAt: "2026-03-19T15:12:20.000Z"
   },
   {
     id: 71,
@@ -3663,8 +3860,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-10",
     verifiedBooking: 1,
-    createdAt: "2026-03-11T17:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-03-11T16:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 72,
@@ -3680,8 +3877,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-04",
     verifiedBooking: 1,
-    createdAt: "2026-03-05T20:30:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-03-05T19:30:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 73,
@@ -3697,8 +3894,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-26",
     verifiedBooking: 0,
-    createdAt: "2026-02-27T21:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-27T20:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 74,
@@ -3714,8 +3911,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-18",
     verifiedBooking: 1,
-    createdAt: "2026-02-20T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-19T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 75,
@@ -3731,8 +3928,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-10",
     verifiedBooking: 1,
-    createdAt: "2026-02-11T19:45:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-11T18:45:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 76,
@@ -3748,8 +3945,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-28",
     verifiedBooking: 0,
-    createdAt: "2026-01-29T22:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-01-29T21:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 77,
@@ -3765,8 +3962,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-20",
     verifiedBooking: 1,
-    createdAt: "2026-01-22T02:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-01-22T01:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 78,
@@ -3782,8 +3979,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-12",
     verifiedBooking: 1,
-    createdAt: "2026-01-13T20:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-01-13T19:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 79,
@@ -3799,8 +3996,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-28",
     verifiedBooking: 0,
-    createdAt: "2025-12-30T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2025-12-29T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 80,
@@ -3816,8 +4013,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-15",
     verifiedBooking: 0,
-    createdAt: "2025-12-16T21:30:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2025-12-16T20:30:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 81,
@@ -3833,8 +4030,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-12",
     verifiedBooking: 1,
-    createdAt: "2026-03-13T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-03-13T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 82,
@@ -3850,8 +4047,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-08",
     verifiedBooking: 1,
-    createdAt: "2026-03-09T17:30:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-03-09T16:30:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 83,
@@ -3867,8 +4064,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-01",
     verifiedBooking: 0,
-    createdAt: "2026-03-02T22:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-03-02T21:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 84,
@@ -3884,8 +4081,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-24",
     verifiedBooking: 1,
-    createdAt: "2026-02-26T01:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-26T00:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 85,
@@ -3901,8 +4098,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-16",
     verifiedBooking: 1,
-    createdAt: "2026-02-17T20:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-17T19:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 86,
@@ -3918,8 +4115,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-09",
     verifiedBooking: 1,
-    createdAt: "2026-02-10T21:30:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-10T20:30:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 87,
@@ -3935,8 +4132,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-02",
     verifiedBooking: 0,
-    createdAt: "2026-02-04T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-03T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 88,
@@ -3952,8 +4149,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-26",
     verifiedBooking: 1,
-    createdAt: "2026-01-27T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-01-27T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 89,
@@ -3969,8 +4166,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-18",
     verifiedBooking: 0,
-    createdAt: "2026-01-19T23:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-01-19T22:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 90,
@@ -3986,8 +4183,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-10",
     verifiedBooking: 1,
-    createdAt: "2026-01-11T20:30:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-01-11T19:30:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 91,
@@ -4003,8 +4200,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-25",
     verifiedBooking: 0,
-    createdAt: "2025-12-27T01:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2025-12-27T00:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 92,
@@ -4020,8 +4217,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-14",
     verifiedBooking: 0,
-    createdAt: "2025-12-15T22:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2025-12-15T21:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 93,
@@ -4037,8 +4234,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-13",
     verifiedBooking: 1,
-    createdAt: "2026-03-14T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-03-14T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 94,
@@ -4054,8 +4251,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-09",
     verifiedBooking: 1,
-    createdAt: "2026-03-10T18:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-03-10T17:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 95,
@@ -4071,8 +4268,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-03-02",
     verifiedBooking: 1,
-    createdAt: "2026-03-03T19:30:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-03-03T18:30:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 96,
@@ -4088,8 +4285,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-24",
     verifiedBooking: 0,
-    createdAt: "2026-02-25T23:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-25T22:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 97,
@@ -4105,8 +4302,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-17",
     verifiedBooking: 1,
-    createdAt: "2026-02-18T20:30:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-18T19:30:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 98,
@@ -4122,8 +4319,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-10",
     verifiedBooking: 1,
-    createdAt: "2026-02-11T21:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-11T20:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 99,
@@ -4139,8 +4336,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-02-03",
     verifiedBooking: 0,
-    createdAt: "2026-02-05T00:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-02-04T23:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 100,
@@ -4156,8 +4353,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2026-01-27",
     verifiedBooking: 1,
-    createdAt: "2026-01-28T19:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2026-01-28T18:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 101,
@@ -4173,8 +4370,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-22",
     verifiedBooking: 0,
-    createdAt: "2025-12-24T01:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2025-12-24T00:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   {
     id: 102,
@@ -4190,8 +4387,8 @@ async function main() {
     adminRepliedAt: null,
     stayDate: "2025-12-10",
     verifiedBooking: 0,
-    createdAt: "2025-12-11T22:00:00.000Z",
-    updatedAt: "2026-03-19T16:13:13.000Z"
+    createdAt: "2025-12-11T21:00:00.000Z",
+    updatedAt: "2026-03-19T15:13:13.000Z"
   },
   ];
   await insertBatch(conn, 'reviews', reviewsData, 'Reseñas de clientes');
