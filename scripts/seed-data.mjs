@@ -31,11 +31,24 @@ function parseDbUrl(url) {
   };
 }
 
+function fixDates(obj) {
+  const result = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) {
+      result[k] = v.replace('T', ' ').replace('Z', '').substring(0, 19);
+    } else {
+      result[k] = v;
+    }
+  }
+  return result;
+}
+
 async function insertBatch(conn, table, rows, label) {
   if (!rows.length) { console.log(`  ⏭  ${label}: 0 registros (vacío)`); return; }
-  const cols = Object.keys(rows[0]);
-  const placeholders = rows.map(() => `(${cols.map(() => '?').join(', ')})`).join(', ');
-  const values = rows.flatMap(r => cols.map(c => r[c]));
+  const fixedRows = rows.map(fixDates);
+  const cols = Object.keys(fixedRows[0]);
+  const placeholders = fixedRows.map(() => `(${cols.map(() => '?').join(', ')})`).join(', ');
+  const values = fixedRows.flatMap(r => cols.map(c => r[c]));
   await conn.query(`INSERT INTO \`${table}\` (${cols.map(c => `\`${c}\``).join(', ')}) VALUES ${placeholders}`, values);
   console.log(`  ✅ ${label}: ${rows.length} registros insertados`);
 }

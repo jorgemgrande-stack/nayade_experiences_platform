@@ -9,6 +9,7 @@ import {
   getRoomBlocksForRange, getAllBlocksForRange, upsertRoomBlock, deleteRoomBlock,
   searchAvailability, getRoomCalendar,
 } from "../hotelDb";
+import { getRatingsByEntityType } from "../db/reviewsDb";
 import { createReservation } from "../db";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 
@@ -23,8 +24,18 @@ export const hotelRouter = router({
 
   // ── PUBLIC ────────────────────────────────────────────────────────────────
 
-  /** Lista pública de tipologías activas */
-  getRoomTypes: publicProcedure.query(() => getActiveRoomTypes()),
+  /** Lista pública de tipologías activas con puntuación media */
+  getRoomTypes: publicProcedure.query(async () => {
+    const [rooms, ratings] = await Promise.all([
+      getActiveRoomTypes(),
+      getRatingsByEntityType("hotel"),
+    ]);
+    return rooms.map(room => ({
+      ...room,
+      avgRating: ratings.get(room.id)?.avgRating ?? 0,
+      reviewCount: ratings.get(room.id)?.reviewCount ?? 0,
+    }));
+  }),
 
   /** Detalle de una habitación por slug */
   getRoomTypeBySlug: publicProcedure

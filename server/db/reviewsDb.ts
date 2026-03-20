@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { reviews, type Review } from "../../drizzle/schema";
-import { eq, and, desc, count, avg } from "drizzle-orm";
+import { reviews, reservations, bookings, type Review } from "../../drizzle/schema";
+import { eq, and, desc, count, avg, or } from "drizzle-orm";
 
 async function getDb() {
   const conn = await mysql.createConnection(process.env.DATABASE_URL!);
@@ -103,6 +103,55 @@ export async function getReviewStats(
   return { totalReviews, averageRating, distribution };
 }
 
+/** Devuelve un mapa entityId → { avgRating, reviewCount } para todos los items de un tipo */
+export async function getRatingsByEntityType(
+  entityType: EntityType
+): Promise<Map<number, { avgRating: number; reviewCount: number }>> {
+  const db = await getDb();
+  const rows = await db
+    .select({ entityId: reviews.entityId, cnt: count(), rating: reviews.rating })
+    .from(reviews)
+    .where(and(eq(reviews.entityType, entityType), eq(reviews.status, "approved")))
+    .groupBy(reviews.entityId, reviews.rating);
+
+  const map = new Map<number, { sum: number; count: number }>();
+  for (const row of rows) {
+    const prev = map.get(row.entityId) ?? { sum: 0, count: 0 };
+    map.set(row.entityId, {
+      sum: prev.sum + row.rating * Number(row.cnt),
+      count: prev.count + Number(row.cnt),
+    });
+  }
+
+  const result = new Map<number, { avgRating: number; reviewCount: number }>();
+  map.forEach(({ sum, count: cnt }, id) => {
+    result.set(id, {
+      avgRating: cnt > 0 ? Math.round((sum / cnt) * 10) / 10 : 0,
+      reviewCount: cnt,
+    });
+  });
+  return result;
+}
+
+/** Comprueba si un email tiene alguna reserva pagada o completada */
+async function hasVerifiedBooking(db: Awaited<ReturnType<typeof getDb>>, email: string): Promise<boolean> {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const [paid, completed] = await Promise.all([
+    db.select({ id: reservations.id }).from(reservations)
+      .where(and(eq(reservations.customerEmail, normalizedEmail), eq(reservations.status, "paid")))
+      .limit(1),
+    db.select({ id: bookings.id }).from(bookings)
+      .where(and(
+        eq(bookings.clientEmail, normalizedEmail),
+        or(eq(bookings.status, "confirmado"), eq(bookings.status, "completado"))
+      ))
+      .limit(1),
+  ]);
+
+  return paid.length > 0 || completed.length > 0;
+}
+
 /** Crea una nueva reseña (estado pending hasta que el admin la apruebe) */
 export async function createReview(data: {
   entityType: EntityType;
@@ -115,6 +164,11 @@ export async function createReview(data: {
   stayDate?: string;
 }): Promise<Review> {
   const db = await getDb();
+
+  const verified = data.authorEmail
+    ? await hasVerifiedBooking(db, data.authorEmail)
+    : false;
+
   const [result] = await db.insert(reviews).values({
     entityType: data.entityType,
     entityId: data.entityId,
@@ -125,7 +179,7 @@ export async function createReview(data: {
     body: data.body,
     stayDate: data.stayDate ?? null,
     status: "pending",
-    verifiedBooking: false,
+    verifiedBooking: verified,
   });
 
   const insertId = (result as { insertId: number }).insertId;

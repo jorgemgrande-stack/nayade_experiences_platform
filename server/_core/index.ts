@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import rateLimit from "express-rate-limit";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -13,6 +14,14 @@ import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
 import { serveStatic, setupVite } from "./vite";
+
+const authRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Demasiados intentos. Espera 1 minuto antes de volver a intentarlo." },
+});
 
 // Modo de autenticación: LOCAL_AUTH=true usa email+password local en lugar de Manus OAuth
 const USE_LOCAL_AUTH = process.env.LOCAL_AUTH === "true";
@@ -43,6 +52,9 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   if (USE_LOCAL_AUTH) {
+    // Rate limiting en endpoints de autenticación (5 req/min por IP)
+    app.use("/api/auth/login", authRateLimit);
+    app.use("/api/auth/forgot-password", authRateLimit);
     // Modo local: rutas de auth propias (login/logout/me) en lugar de Manus OAuth
     app.use(createLocalAuthRouter());
     app.use(createPasswordResetRouter());

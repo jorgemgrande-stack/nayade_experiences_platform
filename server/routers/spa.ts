@@ -11,6 +11,7 @@ import {
   generateSlotsFromTemplates,
 } from "../spaDb";
 import { createReservation } from "../db";
+import { getRatingsByEntityType } from "../db/reviewsDb";
 import {
   buildRedsysForm,
   generateMerchantOrder,
@@ -31,7 +32,17 @@ export const spaRouter = router({
 
   getTreatments: publicProcedure
     .input(z.object({ categoryId: z.number().int().optional() }))
-    .query(({ input }) => getActiveSpaTreatments(input.categoryId)),
+    .query(async ({ input }) => {
+      const [treatments, ratings] = await Promise.all([
+        getActiveSpaTreatments(input.categoryId),
+        getRatingsByEntityType("spa"),
+      ]);
+      return treatments.map(t => ({
+        ...t,
+        avgRating: ratings.get(t.id)?.avgRating ?? 0,
+        reviewCount: ratings.get(t.id)?.reviewCount ?? 0,
+      }));
+    }),
 
   getTreatmentBySlug: publicProcedure
     .input(z.object({ slug: z.string() }))

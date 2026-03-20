@@ -133,6 +133,15 @@ function TreatmentCard({ treatment, date, persons }: { treatment: any; date: str
       </div>
       <CardContent className="p-5">
         <h3 className="text-lg font-bold text-white mb-1">{treatment.name}</h3>
+        {treatment.reviewCount > 0 && (
+          <div className="flex items-center gap-1 mb-2">
+            {[1,2,3,4,5].map(s => (
+              <Star key={s} className={`h-3.5 w-3.5 ${s <= Math.round(treatment.avgRating) ? "text-amber-400 fill-amber-400" : "text-white/20"}`} />
+            ))}
+            <span className="text-sm text-amber-400 font-medium ml-1">{treatment.avgRating.toFixed(1)}</span>
+            <span className="text-xs text-white/40 ml-1">({treatment.reviewCount})</span>
+          </div>
+        )}
         {treatment.shortDescription && (
           <p className="text-white/60 text-sm mb-3 line-clamp-2">{treatment.shortDescription}</p>
         )}

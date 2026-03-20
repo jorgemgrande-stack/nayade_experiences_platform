@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import BookingModal from "@/components/BookingModal";
+import HotelSearchBar, { type HotelSearchParams } from "@/components/HotelSearchBar";
 
 // CDN images
 const CDN = {
@@ -153,8 +154,25 @@ const testimonios = [
 ];
 
 export default function Home() {
+  const [, navigate] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [bookingProduct, setBookingProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string } | null>(null);
+
+  function todayStr() { return new Date().toISOString().split("T")[0]; }
+  function tomorrowStr() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; }
+
+  const [hotelSearch, setHotelSearch] = useState<HotelSearchParams>({
+    checkIn: todayStr(),
+    checkOut: tomorrowStr(),
+    adults: 2,
+    children: 0,
+    childrenAges: [],
+  });
+
+  function handleHotelSearch() {
+    const { checkIn, checkOut, adults, children, childrenAges } = hotelSearch;
+    navigate(`/hotel?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}&children=${children}&childrenAges=${childrenAges.join(",")}`);
+  }
   const { data: featuredExperiences } = trpc.public.getFeaturedExperiences.useQuery();
   const { data: slideshowItemsRaw } = trpc.public.getSlideshowItems.useQuery();
   const { data: homeExperiences } = trpc.homeModules.getModule.useQuery({ moduleKey: "experiences_featured" });
@@ -439,7 +457,7 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-3 mb-6">
                 <Link href="/hotel">
                   <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground font-display font-semibold rounded-full px-8">
                     Ver Habitaciones <ArrowRight className="w-4 h-4 ml-2" />
@@ -451,6 +469,12 @@ export default function Home() {
                   </Button>
                 </Link>
               </div>
+              <HotelSearchBar
+                params={hotelSearch}
+                onChange={setHotelSearch}
+                onSearch={handleHotelSearch}
+                buttonLabel="Ver disponibilidad"
+              />
             </div>
           </div>
         </div>

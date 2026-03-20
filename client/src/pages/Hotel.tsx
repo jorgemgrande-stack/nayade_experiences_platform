@@ -3,19 +3,16 @@ import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import HotelSearchBar, { type HotelSearchParams } from "@/components/HotelSearchBar";
 import {
-  Calendar, Users, ChevronRight, Star, BedDouble,
-  Maximize2, Baby, Wifi, Coffee, Car, Waves, Utensils, Dumbbell,
+  ChevronRight, Star, BedDouble,
+  Maximize2, Baby, Wifi, Coffee, Car, Waves, Utensils, Dumbbell, Users,
 } from "lucide-react";
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
-function todayStr() {
-  return new Date().toISOString().split("T")[0];
-}
 function tomorrowStr() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -26,155 +23,8 @@ function nightCount(ci: string, co: string) {
   return Math.max(1, Math.round(diff / 86400000));
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface SearchParams {
-  checkIn: string;
-  checkOut: string;
-  adults: number;
-  children: number;
-  childrenAges: number[];
-}
-
-// ─── SearchBar ────────────────────────────────────────────────────────────────
-function SearchBar({ params, onChange, onSearch }: {
-  params: SearchParams;
-  onChange: (p: SearchParams) => void;
-  onSearch: () => void;
-}) {
-  const n = nightCount(params.checkIn, params.checkOut);
-
-  function handleChildrenCount(newCount: number) {
-    const clamped = Math.max(0, Math.min(10, newCount));
-    const ages = [...params.childrenAges];
-    if (clamped > ages.length) {
-      while (ages.length < clamped) ages.push(5);
-    } else {
-      ages.splice(clamped);
-    }
-    onChange({ ...params, children: clamped, childrenAges: ages });
-  }
-
-  function handleChildAge(idx: number, age: number) {
-    const ages = [...params.childrenAges];
-    ages[idx] = age;
-    onChange({ ...params, childrenAges: ages });
-  }
-
-  return (
-    <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-white/20 shadow-xl">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-white/70 font-medium uppercase tracking-wide">Entrada</label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 pointer-events-none" />
-            <Input
-              type="date"
-              value={params.checkIn}
-              min={todayStr()}
-              onChange={e => onChange({ ...params, checkIn: e.target.value })}
-              className="pl-9 bg-white/10 border-white/20 text-white [color-scheme:dark] focus:border-amber-400"
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-white/70 font-medium uppercase tracking-wide">Salida</label>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 pointer-events-none" />
-            <Input
-              type="date"
-              value={params.checkOut}
-              min={params.checkIn}
-              onChange={e => onChange({ ...params, checkOut: e.target.value })}
-              className="pl-9 bg-white/10 border-white/20 text-white [color-scheme:dark] focus:border-amber-400"
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-white/70 font-medium uppercase tracking-wide">Adultos</label>
-          <div className="relative">
-            <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 pointer-events-none" />
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={params.adults}
-              onChange={e => onChange({ ...params, adults: Math.max(1, parseInt(e.target.value) || 1) })}
-              className="pl-9 bg-white/10 border-white/20 text-white focus:border-amber-400"
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-white/70 font-medium uppercase tracking-wide">Niños</label>
-          <div className="relative">
-            <Baby className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60 pointer-events-none" />
-            <Input
-              type="number"
-              min={0}
-              max={10}
-              value={params.children}
-              onChange={e => handleChildrenCount(parseInt(e.target.value) || 0)}
-              className="pl-9 bg-white/10 border-white/20 text-white focus:border-amber-400"
-            />
-          </div>
-        </div>
-        <div className="flex flex-col justify-end">
-          <Button
-            onClick={onSearch}
-            className="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold h-10 w-full"
-          >
-            Buscar disponibilidad
-          </Button>
-        </div>
-      </div>
-
-      {/* Edades de los niños */}
-      {params.children > 0 && (
-        <div className="mt-4 pt-4 border-t border-white/10">
-          <p className="text-white/60 text-xs uppercase tracking-wide font-medium mb-3 flex items-center gap-1.5">
-            <Baby className="h-3.5 w-3.5 text-amber-400" />
-            Edad de los niños
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {params.childrenAges.map((age, idx) => (
-              <div key={idx} className="flex flex-col gap-1.5">
-                <span className="text-white/50 text-xs">Niño {idx + 1}</span>
-                <div className="flex items-center gap-1.5 bg-white/10 border border-white/20 rounded-lg px-2 py-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleChildAge(idx, Math.max(0, age - 1))}
-                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white flex-shrink-0"
-                  >
-                    <span className="text-xs font-bold leading-none">-</span>
-                  </button>
-                  <span className="text-white text-sm font-semibold flex-1 text-center whitespace-nowrap">
-                    {age === 0 ? "< 1 año" : `${age} año${age !== 1 ? "s" : ""}`}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleChildAge(idx, Math.min(17, age + 1))}
-                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-white flex-shrink-0"
-                  >
-                    <span className="text-xs font-bold leading-none">+</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {params.checkIn && params.checkOut && (
-        <p className="text-white/60 text-sm mt-3 text-center">
-          {n} noche{n !== 1 ? "s" : ""} · {params.adults} adulto{params.adults !== 1 ? "s" : ""}
-          {params.children > 0 ? ` · ${params.children} niño${params.children !== 1 ? "s" : ""} (${params.childrenAges.join(", ")} años)` : ""}
-        </p>
-      )}
-    </div>
-  );
-}
-
 // ─── RoomCard ─────────────────────────────────────────────────────────────────
-function RoomCard({ room, searchParams, searched }: { room: any; searchParams: SearchParams; searched: boolean }) {
+function RoomCard({ room, searchParams, searched }: { room: any; searchParams: HotelSearchParams; searched: boolean }) {
   const n = nightCount(searchParams.checkIn, searchParams.checkOut);
   const pricePerNight = searched && room.pricePerNight != null
     ? room.pricePerNight
@@ -217,6 +67,15 @@ function RoomCard({ room, searchParams, searched }: { room: any; searchParams: S
       </div>
       <CardContent className="p-5">
         <h3 className="text-lg font-bold text-white mb-1">{room.name}</h3>
+        {room.reviewCount > 0 && (
+          <div className="flex items-center gap-1 mb-2">
+            {[1,2,3,4,5].map(s => (
+              <Star key={s} className={`h-3.5 w-3.5 ${s <= Math.round(room.avgRating) ? "text-amber-400 fill-amber-400" : "text-white/20"}`} />
+            ))}
+            <span className="text-sm text-amber-400 font-medium ml-1">{room.avgRating.toFixed(1)}</span>
+            <span className="text-xs text-white/40 ml-1">({room.reviewCount})</span>
+          </div>
+        )}
         {room.shortDescription && (
           <p className="text-white/60 text-sm mb-3 line-clamp-2">{room.shortDescription}</p>
         )}
@@ -275,14 +134,22 @@ const SERVICIOS = [
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Hotel() {
-  const [searchParams, setSearchParams] = useState<SearchParams>({
+  function todayStr() { return new Date().toISOString().split("T")[0]; }
+
+  const [searchParams, setSearchParams] = useState<HotelSearchParams>({
     checkIn: todayStr(),
     checkOut: tomorrowStr(),
     adults: 2,
     children: 0,
     childrenAges: [],
   });
-  const [activeSearch, setActiveSearch] = useState<SearchParams>(searchParams);
+  const [activeSearch, setActiveSearch] = useState<HotelSearchParams>({
+    checkIn: todayStr(),
+    checkOut: tomorrowStr(),
+    adults: 2,
+    children: 0,
+    childrenAges: [],
+  });
   const [hasSearched, setHasSearched] = useState(false);
 
   // Always load all rooms for the catalog view
@@ -324,7 +191,7 @@ export default function Hotel() {
           <p className="text-xl text-white/70 mb-10 max-w-2xl mx-auto">
             Alójate frente al embalse de Los Ángeles de San Rafael. Elige tu tipología y comprueba disponibilidad en tiempo real.
           </p>
-          <SearchBar params={searchParams} onChange={setSearchParams} onSearch={handleSearch} />
+          <HotelSearchBar params={searchParams} onChange={setSearchParams} onSearch={handleSearch} />
         </div>
       </div>
 
