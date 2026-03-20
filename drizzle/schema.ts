@@ -440,6 +440,7 @@ export const roomTypes = mysqlTable("room_types", {
   basePrice: decimal("basePrice", { precision: 10, scale: 2 }).notNull().default("0"),
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
   totalUnits: int("totalUnits").default(1).notNull(),
+  internalTags: json("internalTags").$type<string[]>().default([]),
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),

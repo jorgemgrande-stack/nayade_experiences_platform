@@ -503,3 +503,12 @@
 - [x] Añadir tabla reviews a export-to-seed.mjs
 - [x] Regenerar seed-data.mjs con las 102 reseñas incluidas (140 KB, 228 registros totales)
 - [x] Verificado: seed ejecuta limpio con 18 tablas y 228 registros insertados
+
+## Catálogo Tipologías Hotel + Inventario Real (v7.6)
+- [x] Inspeccionar room_types actuales en BD (4 tipologías existentes)
+- [x] Comparar con planos y detectar tipologías faltantes (5 detectadas)
+- [x] Crear tipologías faltantes: Triple, Cuádruple, Suite, Personal, Habitación Grande
+- [x] Actualizar totalUnits de las 4 tipologías existentes con inventario real
+- [x] Añadir campo internalTags JSON en BD y schema Drizzle para marcas G, P, *
+- [x] Regenerar seed-data.mjs con las 9 tipologías (146 KB, 237 registros)
+- [x] Preparar prompt para Claude en VS Code
