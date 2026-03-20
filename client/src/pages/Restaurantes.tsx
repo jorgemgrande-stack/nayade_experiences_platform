@@ -1,69 +1,27 @@
 import { Link } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Clock, MapPin, Phone, Utensils } from "lucide-react";
+import { ArrowRight, Clock, MapPin, Phone, Utensils, Loader2 } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
-const CDN = {
-  hero: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg",
-  lago: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/hotel-lago_f2ec080b.jpg",
-  canoa: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/canoa-lago_b18c5886.jpg",
-  kayak: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/kayak-grupo_b3eca02d.jpg",
-  embalse: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg",
+const CDN_HERO = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg";
+
+// Fallback images por slug
+const FALLBACK_IMAGES: Record<string, string> = {
+  "el-galeon": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/hotel-lago_f2ec080b.jpg",
+  "nassau-bar": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/kayak-grupo_b3eca02d.jpg",
+  "la-cabana-del-lago": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg",
+  "arroceria-la-cabana": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/canoa-lago_b18c5886.jpg",
 };
 
-const restaurantes = [
-  {
-    slug: "el-galeon",
-    nombre: "El Galeón",
-    tipo: "Cocina Tradicional & Parrilla",
-    desc: "Nuestro restaurante principal con vistas panorámicas al embalse. Especializado en carnes a la parrilla, pescados frescos y cocina tradicional castellana. El lugar perfecto para celebrar ocasiones especiales.",
-    img: CDN.lago,
-    horario: "13:00–16:00 · 20:00–23:00",
-    reserva: true,
-    badge: "Vistas al lago",
-    especialidad: "Carnes a la parrilla · Pescados frescos · Cocina castellana",
-  },
-  {
-    slug: "la-cabana-del-lago",
-    nombre: "La Cabaña del Lago",
-    tipo: "Cocina de Temporada & Entorno Natural",
-    desc: "Un espacio único integrado en la naturaleza, a orillas del lago. Cocina de proximidad, producto local y una atmósfera tranquila e íntima que convierte cada visita en una experiencia sensorial completa.",
-    img: CDN.embalse,
-    horario: "13:00–16:00 · 20:00–22:30",
-    reserva: true,
-    badge: "Junto al lago",
-    especialidad: "Cocina de proximidad · Producto local · Ambiente natural",
-  },
-  {
-    slug: "la-cabana",
-    nombre: "Arrocería La Cabaña",
-    tipo: "Arroces & Cocina Mediterránea",
-    desc: "Espacio especializado en arroces y cocina mediterránea de autor. Un ambiente íntimo y acogedor junto al lago, perfecto para disfrutar de una gastronomía cuidada con los mejores ingredientes de temporada.",
-    img: CDN.canoa,
-    horario: "13:00–16:30",
-    reserva: true,
-    badge: "Especialidad arroces",
-    especialidad: "Arroces · Cocina mediterránea · Producto de temporada",
-  },
-  {
-    slug: "nassau-bar",
-    nombre: "Nassau Bar & Music",
-    tipo: "Cócteles, Tapas & Música en Vivo",
-    desc: "El punto de encuentro del resort. Cócteles artesanales, tapas creativas y música en vivo los fines de semana. El lugar ideal para el aperitivo, el after-beach o simplemente disfrutar del atardecer sobre el lago.",
-    img: CDN.kayak,
-    horario: "11:00–02:00 · Fin de semana hasta 03:00",
-    reserva: false,
-    badge: "Música en vivo",
-    especialidad: "Cócteles artesanales · Tapas creativas · Música en vivo",
-  },
-];
-
 export default function Restaurantes() {
+  const { data: restaurantes, isLoading } = trpc.restaurants.getAll.useQuery();
+
   return (
     <PublicLayout>
       {/* Hero */}
       <section className="relative h-[55vh] min-h-[420px] overflow-hidden">
-        <img src={CDN.hero} alt="Restaurantes Náyade" className="w-full h-full object-cover" />
+        <img src={CDN_HERO} alt="Restaurantes Náyade" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/35 to-black/70" />
         <div className="absolute inset-0 flex items-center">
           <div className="container">
@@ -93,50 +51,64 @@ export default function Restaurantes() {
 
       {/* Restaurantes */}
       <section className="py-20 bg-white">
-        <div className="container space-y-20">
-          {restaurantes.map((r, i) => (
-            <div key={r.slug} className={`grid lg:grid-cols-2 gap-14 items-center ${i % 2 === 1 ? "lg:grid-flow-dense" : ""}`}>
-              {/* Imagen */}
-              <div className={`rounded-2xl overflow-hidden shadow-2xl ${i % 2 === 1 ? "lg:col-start-2" : ""}`}>
-                <img
-                  src={r.img}
-                  alt={r.nombre}
-                  className="w-full h-[400px] object-cover hover:scale-105 transition-transform duration-700"
-                />
-              </div>
-
-              {/* Contenido */}
-              <div className={i % 2 === 1 ? "lg:col-start-1 lg:row-start-1" : ""}>
-                <span className="inline-block bg-accent/10 text-accent text-xs font-display font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
-                  {r.badge}
-                </span>
-                <h2 className="text-3xl md:text-4xl font-heading font-bold text-foreground mb-2">{r.nombre}</h2>
-                <p className="text-accent font-display font-semibold text-lg mb-5">{r.tipo}</p>
-                <p className="text-muted-foreground font-display text-lg leading-relaxed mb-4">{r.desc}</p>
-                <p className="text-sm text-muted-foreground font-display italic mb-6 pl-3 border-l-2 border-accent/30">
-                  {r.especialidad}
-                </p>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground font-display mb-8">
-                  <Clock className="w-4 h-4 text-accent shrink-0" />
-                  <span>{r.horario}</span>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  {r.reserva && (
-                    <Link href={`/restaurantes/${r.slug}`}>
-                      <Button className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-7 shadow-md shadow-accent/20">
-                        Reservar Mesa <ArrowRight className="w-4 h-4 ml-2" />
-                      </Button>
-                    </Link>
-                  )}
-                  <Link href={`/restaurantes/${r.slug}`}>
-                    <Button variant="outline" className="font-display font-semibold rounded-full px-7 border-primary/30 text-primary hover:bg-primary/5">
-                      <Utensils className="w-4 h-4 mr-2" /> Ver Carta
-                    </Button>
-                  </Link>
-                </div>
-              </div>
+        <div className="container">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-accent" />
             </div>
-          ))}
+          ) : !restaurantes || restaurantes.length === 0 ? (
+            <div className="text-center py-20">
+              <p className="text-muted-foreground font-display">No hay restaurantes disponibles en este momento.</p>
+            </div>
+          ) : (
+            <div className="space-y-20">
+              {restaurantes.map((r, i) => {
+                const heroImg = r.heroImage || FALLBACK_IMAGES[r.slug] || CDN_HERO;
+                return (
+                  <div key={r.slug} className={`grid lg:grid-cols-2 gap-14 items-center ${i % 2 === 1 ? "lg:grid-flow-dense" : ""}`}>
+                    {/* Imagen */}
+                    <div className={`rounded-2xl overflow-hidden shadow-2xl ${i % 2 === 1 ? "lg:col-start-2" : ""}`}>
+                      <img
+                        src={heroImg}
+                        alt={r.name}
+                        className="w-full h-[400px] object-cover hover:scale-105 transition-transform duration-700"
+                      />
+                    </div>
+
+                    {/* Contenido */}
+                    <div className={i % 2 === 1 ? "lg:col-start-1 lg:row-start-1" : ""}>
+                      {r.badge && (
+                        <span className="inline-block bg-accent/10 text-accent text-xs font-display font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
+                          {r.badge}
+                        </span>
+                      )}
+                      <h2 className="text-3xl md:text-4xl font-heading font-bold text-foreground mb-2">{r.name}</h2>
+                      {r.cuisine && (
+                        <p className="text-accent font-display font-semibold text-lg mb-5">{r.cuisine}</p>
+                      )}
+                      {r.shortDesc && (
+                        <p className="text-muted-foreground font-display text-lg leading-relaxed mb-6">{r.shortDesc}</p>
+                      )}
+                      <div className="flex flex-wrap gap-3">
+                        {r.acceptsOnlineBooking && (
+                          <Link href={`/restaurantes/${r.slug}`}>
+                            <Button className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-7 shadow-md shadow-accent/20">
+                              Reservar Mesa <ArrowRight className="w-4 h-4 ml-2" />
+                            </Button>
+                          </Link>
+                        )}
+                        <Link href={`/restaurantes/${r.slug}`}>
+                          <Button variant="outline" className="font-display font-semibold rounded-full px-7 border-primary/30 text-primary hover:bg-primary/5">
+                            <Utensils className="w-4 h-4 mr-2" /> Ver Carta
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 

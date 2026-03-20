@@ -66,6 +66,10 @@ import SpaManager from "./pages/admin/spa/SpaManager";
 import HotelRoom from "./pages/HotelRoom";
 import SpaDetail from "./pages/SpaDetail";
 import ReviewsManager from "./pages/admin/ReviewsManager";
+import RestaurantBooking from "./pages/RestaurantBooking";
+
+// Restaurants Admin
+import RestaurantsManager from "./pages/admin/restaurants/RestaurantsManager";
 
 // Users & Settings
 import UsersManager from "./pages/admin/users/UsersManager";
@@ -92,6 +96,7 @@ function Router() {
       <Route path="/spa/:slug" component={SpaDetail} />
       <Route path="/restaurantes" component={Restaurantes} />
       <Route path="/restaurantes/:slug" component={RestauranteDetail} />
+      <Route path="/restaurantes/:slug/reservar" component={RestaurantBooking} />
       {/* ── RESERVA ROUTES ── */}
       <Route path="/reserva/ok" component={ReservaOk} />
       <Route path="/reserva/error" component={ReservaError} />
@@ -146,6 +151,11 @@ function Router() {
 
       {/* Reviews */}
       <Route path="/admin/operaciones/resenas" component={ReviewsManager} />
+
+      {/* Restaurants Admin */}
+      <Route path="/admin/restaurantes" component={RestaurantsManager} />
+      <Route path="/admin/restaurantes/reservas" component={RestaurantsManager} />
+      <Route path="/admin/restaurantes/configuracion" component={RestaurantsManager} />
 
       {/* Users & Settings */}
       <Route path="/admin/usuarios" component={UsersManager} />

@@ -522,3 +522,41 @@
 - [x] internalTags con desglose por bloque, marcas G/P/* guardadas como metadata interna
 - [x] Regenerado seed-data.mjs con 9 tipologías y 237 registros totales
 - [x] 0 errores TypeScript
+
+## Módulo Completo de Restaurantes (v8.0)
+
+### BD y Backend
+- [x] Tablas: restaurants, restaurant_shifts, restaurant_closures, restaurant_bookings, restaurant_booking_logs, restaurant_staff
+- [x] Columna `role` extendida con valor `adminrest` en tabla users
+- [x] Helpers BD: restaurantsDb.ts con CRUD completo
+- [x] Router tRPC: restaurants.ts con procedimientos públicos y de admin
+- [x] Disponibilidad en tiempo real por turno y franja
+- [x] Generación de localizador único por reserva (NR-XXXXXX)
+- [x] Corregir authGuard: rutas públicas de restaurantes (bug barra inicial en req.url)
+
+### Frontend Público
+- [x] Página /restaurantes — listado dinámico desde BD con cards premium
+- [x] Ficha /restaurantes/:slug — hero, descripción, horarios, galería, CTA reservar (datos reales BD)
+- [x] Flujo de reserva wizard 3 pasos (fecha/turno → datos → confirmación)
+- [ ] Integración pago Redsys para depósito de restaurante
+- [ ] Página /restaurantes/reserva-ok — confirmación tras pago
+- [ ] Página /restaurantes/reserva-ko — error de pago
+
+### Backoffice Admin
+- [x] Sección Restaurantes en sidebar del admin (icono UtensilsCrossed)
+- [x] Ruta /admin/restaurantes en App.tsx
+- [x] RestaurantsManager: listado de reservas con filtros, búsqueda y paginación
+- [x] Procedimientos admin: adminGetBookings, adminGetCalendar, adminAddNote, adminUpdateConfig, adminDeleteBooking
+- [ ] Calendario operativo visual (vistas día/semana)
+- [ ] Configuración de turnos y horarios desde el admin
+- [ ] Rol adminrest con acceso restringido a su/s restaurante/s
+
+### Seed y Datos Iniciales
+- [x] Seed de los 4 restaurantes: El Galeón, Nassau Bar & Music, La Cabaña del Lago, Arrocería La Cabaña
+- [x] Configuración inicial de turnos y horarios por restaurante (9 turnos)
+- [x] Script scripts/seed-restaurants.mjs idempotente (no duplica si ya existe)
+
+### Calidad
+- [x] 0 errores TypeScript
+- [x] 28 tests Vitest para restaurantes (localizador, depósito, disponibilidad, validación, datos)
+- [x] 72 tests totales pasando (todos los módulos)

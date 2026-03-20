@@ -51,9 +51,13 @@ const PUBLIC_TRPC_ROUTES = new Set([
   // Reseñas
   "reviews.getPublicReviews",
   "reviews.submitReview",
-  // Restaurantes
-  "restaurantes.getAll",
-  "restaurantes.getBySlug",
+  // Restaurantes (público)
+  "restaurants.getAll",
+  "restaurants.getBySlug",
+  "restaurants.getAvailability",
+  "restaurants.getShifts",
+  "restaurants.createBooking",
+  "restaurants.getBookingByLocator",
   // Leads y presupuestos (formularios públicos)
   "leads.create",
   "quotes.getByPaymentToken",
@@ -68,8 +72,12 @@ const PUBLIC_TRPC_ROUTES = new Set([
 function extractProcedureNames(url: string): string[] {
   // Eliminar query string
   const path = url.split("?")[0];
-  // Eliminar el prefijo /api/trpc/
-  const procedurePart = path.replace(/^\/api\/trpc\//, "");
+  // Cuando el middleware está montado en /api/trpc, req.url llega como
+  // "/restaurants.getAll" (ya sin el prefijo /api/trpc)
+  // También soportamos la URL completa por si acaso
+  const procedurePart = path
+    .replace(/^\/api\/trpc\//, "")  // URL completa
+    .replace(/^\//, "");             // URL relativa (ya sin prefijo)
   if (!procedurePart) return [];
   // Puede ser un batch: "auth.me,hotel.getRoomTypes"
   return procedurePart.split(",").map(p => p.trim()).filter(Boolean);

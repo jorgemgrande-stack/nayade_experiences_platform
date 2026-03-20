@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Package, FileText, Calendar, BarChart3,
   Settings, Menu, X, Mountain, LogOut, Users, Image, ChevronDown,
-  Bell, Search, User, BedDouble, Sparkles,
+  Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -92,6 +92,16 @@ const navItems = [
     href: "/admin/spa",
     icon: Sparkles,
     roles: ["admin"],
+  },
+  {
+    label: "Restaurantes",
+    href: "/admin/restaurantes",
+    icon: UtensilsCrossed,
+    roles: ["admin", "adminrest"],
+    children: [
+      { label: "Reservas", href: "/admin/restaurantes/reservas" },
+      { label: "Configuración", href: "/admin/restaurantes/configuracion" },
+    ],
   },
   {
     label: "Usuarios",

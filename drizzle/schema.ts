@@ -19,7 +19,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "monitor", "agente"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest"]).default("user").notNull(),
   phone: varchar("phone", { length: 32 }),
   avatarUrl: text("avatarUrl"),
   isActive: boolean("isActive").default(true).notNull(),
@@ -622,3 +622,123 @@ export const passwordResetTokens = mysqlTable("password_reset_tokens", {
 });
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+
+// ─── RESTAURANTS ─────────────────────────────────────────────────────────────
+
+export const restaurants = mysqlTable("restaurants", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 128 }).notNull().unique(),
+  name: varchar("name", { length: 256 }).notNull(),
+  shortDesc: text("shortDesc"),
+  longDesc: text("longDesc"),
+  cuisine: varchar("cuisine", { length: 256 }),
+  heroImage: text("heroImage"),
+  galleryImages: json("galleryImages").$type<string[]>().default([]),
+  menuUrl: text("menuUrl"),
+  phone: varchar("phone", { length: 32 }),
+  email: varchar("email", { length: 320 }),
+  location: varchar("location", { length: 512 }),
+  badge: varchar("badge", { length: 128 }),
+  // Configuración operativa
+  depositPerGuest: decimal("depositPerGuest", { precision: 8, scale: 2 }).default("5.00").notNull(),
+  maxGroupSize: int("maxGroupSize").default(20).notNull(),
+  minAdvanceHours: int("minAdvanceHours").default(2).notNull(),
+  maxAdvanceDays: int("maxAdvanceDays").default(60).notNull(),
+  cancellationHours: int("cancellationHours").default(24).notNull(),
+  cancellationPolicy: text("cancellationPolicy"),
+  legalText: text("legalText"),
+  operativeEmail: varchar("operativeEmail", { length: 320 }),
+  acceptsOnlineBooking: boolean("acceptsOnlineBooking").default(true).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Restaurant = typeof restaurants.$inferSelect;
+export type InsertRestaurant = typeof restaurants.$inferInsert;
+
+// Turnos / franjas horarias por restaurante
+export const restaurantShifts = mysqlTable("restaurant_shifts", {
+  id: int("id").autoincrement().primaryKey(),
+  restaurantId: int("restaurantId").notNull(),
+  name: varchar("name", { length: 128 }).notNull(), // ej: "Comida", "Cena", "Brunch"
+  startTime: varchar("startTime", { length: 5 }).notNull(), // HH:MM
+  endTime: varchar("endTime", { length: 5 }).notNull(),
+  maxCapacity: int("maxCapacity").notNull(),
+  daysOfWeek: json("daysOfWeek").$type<number[]>().default([0,1,2,3,4,5,6]), // 0=Dom..6=Sáb
+  isActive: boolean("isActive").default(true).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+});
+export type RestaurantShift = typeof restaurantShifts.$inferSelect;
+export type InsertRestaurantShift = typeof restaurantShifts.$inferInsert;
+
+// Cierres puntuales
+export const restaurantClosures = mysqlTable("restaurant_closures", {
+  id: int("id").autoincrement().primaryKey(),
+  restaurantId: int("restaurantId").notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+  shiftId: int("shiftId"), // null = cierre total del día
+  reason: varchar("reason", { length: 512 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type RestaurantClosure = typeof restaurantClosures.$inferSelect;
+
+// Reservas de restaurante
+export const restaurantBookings = mysqlTable("restaurant_bookings", {
+  id: int("id").autoincrement().primaryKey(),
+  locator: varchar("locator", { length: 16 }).notNull().unique(), // ej: NR-A3F9K2
+  restaurantId: int("restaurantId").notNull(),
+  shiftId: int("shiftId").notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+  time: varchar("time", { length: 5 }).notNull(), // HH:MM
+  guests: int("guests").notNull(),
+  depositAmount: decimal("depositAmount", { precision: 8, scale: 2 }).notNull(),
+  // Datos del titular
+  guestName: varchar("guestName", { length: 256 }).notNull(),
+  guestLastName: varchar("guestLastName", { length: 256 }),
+  guestEmail: varchar("guestEmail", { length: 320 }).notNull(),
+  guestPhone: varchar("guestPhone", { length: 32 }),
+  // Observaciones
+  highchair: boolean("highchair").default(false),
+  allergies: text("allergies"),
+  birthday: boolean("birthday").default(false),
+  specialRequests: text("specialRequests"),
+  accessibility: boolean("accessibility").default(false),
+  isVip: boolean("isVip").default(false),
+  // Estado
+  status: mysqlEnum("status", ["pending_payment", "confirmed", "payment_failed", "cancelled", "modified", "no_show", "completed"]).default("pending_payment").notNull(),
+  cancellationReason: text("cancellationReason"),
+  adminNotes: text("adminNotes"),
+  // Canal y admin
+  channel: mysqlEnum("channel", ["web", "manual", "admin"]).default("web").notNull(),
+  createdByUserId: int("createdByUserId"),
+  // Pago
+  paymentStatus: mysqlEnum("paymentStatus", ["pending", "paid", "failed", "refunded"]).default("pending").notNull(),
+  paymentTransactionId: varchar("paymentTransactionId", { length: 256 }),
+  paymentMethod: varchar("paymentMethod", { length: 64 }),
+  paidAt: timestamp("paidAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type RestaurantBooking = typeof restaurantBookings.$inferSelect;
+export type InsertRestaurantBooking = typeof restaurantBookings.$inferInsert;
+
+// Log de actividad de reservas
+export const restaurantBookingLogs = mysqlTable("restaurant_booking_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  bookingId: int("bookingId").notNull(),
+  action: varchar("action", { length: 128 }).notNull(),
+  details: text("details"),
+  userId: int("userId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type RestaurantBookingLog = typeof restaurantBookingLogs.$inferSelect;
+
+// Asignación de staff a restaurantes (para rol adminrest)
+export const restaurantStaff = mysqlTable("restaurant_staff", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  restaurantId: int("restaurantId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type RestaurantStaff = typeof restaurantStaff.$inferSelect;
