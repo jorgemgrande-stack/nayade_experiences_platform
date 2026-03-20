@@ -1,0 +1,307 @@
+{
+  "query": "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'experiences' ORDER BY ORDINAL_POSITION;\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'experience_variants' ORDER BY ORDINAL_POSITION;\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'packs' ORDER BY ORDINAL_POSITION;\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'room_types' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'experiences' ORDER BY ORDINAL_POSITION;\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'experience_variants' ORDER BY ORDINAL_POSITION;\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'packs' ORDER BY ORDINAL_POSITION;\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'room_types' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "slug"
+    },
+    {
+      "COLUMN_NAME": "title"
+    },
+    {
+      "COLUMN_NAME": "shortDescription"
+    },
+    {
+      "COLUMN_NAME": "description"
+    },
+    {
+      "COLUMN_NAME": "categoryId"
+    },
+    {
+      "COLUMN_NAME": "locationId"
+    },
+    {
+      "COLUMN_NAME": "coverImageUrl"
+    },
+    {
+      "COLUMN_NAME": "image1"
+    },
+    {
+      "COLUMN_NAME": "image2"
+    },
+    {
+      "COLUMN_NAME": "image3"
+    },
+    {
+      "COLUMN_NAME": "image4"
+    },
+    {
+      "COLUMN_NAME": "gallery"
+    },
+    {
+      "COLUMN_NAME": "basePrice"
+    },
+    {
+      "COLUMN_NAME": "currency"
+    },
+    {
+      "COLUMN_NAME": "duration"
+    },
+    {
+      "COLUMN_NAME": "minPersons"
+    },
+    {
+      "COLUMN_NAME": "maxPersons"
+    },
+    {
+      "COLUMN_NAME": "difficulty"
+    },
+    {
+      "COLUMN_NAME": "includes"
+    },
+    {
+      "COLUMN_NAME": "excludes"
+    },
+    {
+      "COLUMN_NAME": "requirements"
+    },
+    {
+      "COLUMN_NAME": "isFeatured"
+    },
+    {
+      "COLUMN_NAME": "isActive"
+    },
+    {
+      "COLUMN_NAME": "sortOrder"
+    },
+    {
+      "COLUMN_NAME": "metaTitle"
+    },
+    {
+      "COLUMN_NAME": "metaDescription"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "updatedAt"
+    },
+    {
+      "COLUMN_NAME": "COLUMN_NAME"
+    },
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "experienceId"
+    },
+    {
+      "COLUMN_NAME": "name"
+    },
+    {
+      "COLUMN_NAME": "description"
+    },
+    {
+      "COLUMN_NAME": "priceModifier"
+    },
+    {
+      "COLUMN_NAME": "priceType"
+    },
+    {
+      "COLUMN_NAME": "options"
+    },
+    {
+      "COLUMN_NAME": "isRequired"
+    },
+    {
+      "COLUMN_NAME": "sortOrder"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "COLUMN_NAME"
+    },
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "slug"
+    },
+    {
+      "COLUMN_NAME": "category"
+    },
+    {
+      "COLUMN_NAME": "title"
+    },
+    {
+      "COLUMN_NAME": "subtitle"
+    },
+    {
+      "COLUMN_NAME": "shortDescription"
+    },
+    {
+      "COLUMN_NAME": "description"
+    },
+    {
+      "COLUMN_NAME": "includes"
+    },
+    {
+      "COLUMN_NAME": "excludes"
+    },
+    {
+      "COLUMN_NAME": "schedule"
+    },
+    {
+      "COLUMN_NAME": "note"
+    },
+    {
+      "COLUMN_NAME": "image1"
+    },
+    {
+      "COLUMN_NAME": "image2"
+    },
+    {
+      "COLUMN_NAME": "image3"
+    },
+    {
+      "COLUMN_NAME": "image4"
+    },
+    {
+      "COLUMN_NAME": "basePrice"
+    },
+    {
+      "COLUMN_NAME": "priceLabel"
+    },
+    {
+      "COLUMN_NAME": "duration"
+    },
+    {
+      "COLUMN_NAME": "minPersons"
+    },
+    {
+      "COLUMN_NAME": "maxPersons"
+    },
+    {
+      "COLUMN_NAME": "targetAudience"
+    },
+    {
+      "COLUMN_NAME": "badge"
+    },
+    {
+      "COLUMN_NAME": "hasStay"
+    },
+    {
+      "COLUMN_NAME": "isOnlinePurchase"
+    },
+    {
+      "COLUMN_NAME": "isFeatured"
+    },
+    {
+      "COLUMN_NAME": "isActive"
+    },
+    {
+      "COLUMN_NAME": "sortOrder"
+    },
+    {
+      "COLUMN_NAME": "metaTitle"
+    },
+    {
+      "COLUMN_NAME": "metaDescription"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "updatedAt"
+    },
+    {
+      "COLUMN_NAME": "COLUMN_NAME"
+    },
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "slug"
+    },
+    {
+      "COLUMN_NAME": "name"
+    },
+    {
+      "COLUMN_NAME": "shortDescription"
+    },
+    {
+      "COLUMN_NAME": "description"
+    },
+    {
+      "COLUMN_NAME": "coverImageUrl"
+    },
+    {
+      "COLUMN_NAME": "image1"
+    },
+    {
+      "COLUMN_NAME": "image2"
+    },
+    {
+      "COLUMN_NAME": "image3"
+    },
+    {
+      "COLUMN_NAME": "image4"
+    },
+    {
+      "COLUMN_NAME": "gallery"
+    },
+    {
+      "COLUMN_NAME": "maxAdults"
+    },
+    {
+      "COLUMN_NAME": "maxChildren"
+    },
+    {
+      "COLUMN_NAME": "maxOccupancy"
+    },
+    {
+      "COLUMN_NAME": "surfaceM2"
+    },
+    {
+      "COLUMN_NAME": "amenities"
+    },
+    {
+      "COLUMN_NAME": "basePrice"
+    },
+    {
+      "COLUMN_NAME": "currency"
+    },
+    {
+      "COLUMN_NAME": "totalUnits"
+    },
+    {
+      "COLUMN_NAME": "isFeatured"
+    },
+    {
+      "COLUMN_NAME": "isActive"
+    },
+    {
+      "COLUMN_NAME": "sortOrder"
+    },
+    {
+      "COLUMN_NAME": "metaTitle"
+    },
+    {
+      "COLUMN_NAME": "metaDescription"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "updatedAt"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\nslug\ntitle\nshortDescription\ndescription\ncategoryId\nlocationId\ncoverImageUrl\nimage1\nimage2\nimage3\nimage4\ngallery\nbasePrice\ncurrency\nduration\nminPersons\nmaxPersons\ndifficulty\nincludes\nexcludes\nrequirements\nisFeatured\nisActive\nsortOrder\nmetaTitle\nmetaDescription\ncreatedAt\nupdatedAt\nCOLUMN_NAME\nid\nexperienceId\nname\ndescription\npriceModifier\npriceType\noptions\nisRequired\nsortOrder\ncreatedAt\nCOLUMN_NAME\nid\nslug\ncategory\ntitle\nsubtitle\nshortDescription\ndescription\nincludes\nexcludes\nschedule\nnote\nimage1\nimage2\nimage3\nimage4\nbasePrice\npriceLabel\nduration\nminPersons\nmaxPersons\ntargetAudience\nbadge\nhasStay\nisOnlinePurchase\nisFeatured\nisActive\nsortOrder\nmetaTitle\nmetaDescription\ncreatedAt\nupdatedAt\nCOLUMN_NAME\nid\nslug\nname\nshortDescription\ndescription\ncoverImageUrl\nimage1\nimage2\nimage3\nimage4\ngallery\nmaxAdults\nmaxChildren\nmaxOccupancy\nsurfaceM2\namenities\nbasePrice\ncurrency\ntotalUnits\nisFeatured\nisActive\nsortOrder\nmetaTitle\nmetaDescription\ncreatedAt\nupdatedAt\n",
+  "stderr": "",
+  "execution_time_ms": 87
+}

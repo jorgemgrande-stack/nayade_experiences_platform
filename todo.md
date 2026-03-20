@@ -489,3 +489,12 @@
 - [x] PROGRESS.md — historial de versiones y estado de funcionalidades
 - [x] ARCHITECTURE.md — arquitectura técnica completa
 - [x] Sincronizar en GitHub via checkpoint
+
+## Script de Seed de Datos (v7.4)
+- [x] Exportar datos actuales de BD a scripts/seed-data.mjs (80 KB, 126 registros en 17 tablas)
+- [x] Tablas: categories, locations, site_settings, menu_items, slideshow_items, static_pages, page_blocks, home_module_items, experiences, experience_variants, packs, pack_cross_sells, room_types, room_rate_seasons, room_rates, spa_categories, spa_treatments
+- [x] Respetar orden de inserción por foreign keys (SET FOREIGN_KEY_CHECKS=0)
+- [x] DELETE FROM antes de insertar para evitar duplicados
+- [x] Resumen final de registros insertados por tabla
+- [x] Verificado: ejecuta limpio con node scripts/seed-data.mjs (126 registros insertados)
+- [x] Script auxiliar scripts/export-to-seed.mjs para regenerar el seed desde la BD actual

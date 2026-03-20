@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, slug, categoryId, locationId, title, subtitle, description, shortDescription, imageUrl, gallery, duration, minParticipants, maxParticipants, minAge, difficulty, includes, excludes, requirements, highlights, isActive, isFeatured, sortOrder FROM experiences ORDER BY id LIMIT 50;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, slug, categoryId, locationId, title, subtitle, description, shortDescription, imageUrl, gallery, duration, minParticipants, maxParticipants, minAge, difficulty, includes, excludes, requirements, highlights, isActive, isFeatured, sortOrder FROM experiences ORDER BY id LIMIT 50;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'subtitle' in 'field list'"
+  ]
+}

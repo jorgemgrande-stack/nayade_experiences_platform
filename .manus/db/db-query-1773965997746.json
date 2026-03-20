@@ -1,0 +1,119 @@
+{
+  "query": "SELECT * FROM categories ORDER BY id; SELECT * FROM locations ORDER BY id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT * FROM categories ORDER BY id; SELECT * FROM locations ORDER BY id;",
+  "rows": [
+    {
+      "id": "30001",
+      "slug": "actividades-acuaticas",
+      "name": "Actividades Acuáticas",
+      "description": "Deportes y aventuras sobre el agua del embalse",
+      "imageUrl": "NULL",
+      "image1": "NULL",
+      "iconName": "NULL",
+      "sortOrder": "1",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:32:53",
+      "updatedAt": "2026-03-16 12:32:53"
+    },
+    {
+      "id": "30002",
+      "slug": "packs-dia",
+      "name": "Packs de Día",
+      "description": "Combinaciones de actividades para una jornada completa",
+      "imageUrl": "NULL",
+      "image1": "NULL",
+      "iconName": "NULL",
+      "sortOrder": "2",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:32:53",
+      "updatedAt": "2026-03-16 12:32:53"
+    },
+    {
+      "id": "30003",
+      "slug": "packs-escolares",
+      "name": "Packs Escolares",
+      "description": "Programas de aventura para colegios y grupos educativos",
+      "imageUrl": "NULL",
+      "image1": "NULL",
+      "iconName": "NULL",
+      "sortOrder": "3",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:32:53",
+      "updatedAt": "2026-03-16 12:32:53"
+    },
+    {
+      "id": "30004",
+      "slug": "team-building",
+      "name": "Team Building",
+      "description": "Actividades de cohesión y motivación para empresas",
+      "imageUrl": "NULL",
+      "image1": "NULL",
+      "iconName": "NULL",
+      "sortOrder": "4",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:32:53",
+      "updatedAt": "2026-03-16 12:32:53"
+    },
+    {
+      "id": "30005",
+      "slug": "hotel-alojamiento",
+      "name": "Hotel & Alojamiento",
+      "description": "Habitaciones y suites del Hotel Náyade 3 estrellas",
+      "imageUrl": "NULL",
+      "image1": "NULL",
+      "iconName": "NULL",
+      "sortOrder": "5",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:32:53",
+      "updatedAt": "2026-03-16 12:32:53"
+    },
+    {
+      "id": "30006",
+      "slug": "spa-bienestar",
+      "name": "SPA & Bienestar",
+      "description": "Circuito hidrotermal, masajes y tratamientos",
+      "imageUrl": "NULL",
+      "image1": "NULL",
+      "iconName": "NULL",
+      "sortOrder": "6",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:32:53",
+      "updatedAt": "2026-03-16 12:32:53"
+    },
+    {
+      "id": "30007",
+      "slug": "restaurantes",
+      "name": "Restaurantes",
+      "description": "Reservas de mesa en los restaurantes del complejo",
+      "imageUrl": "NULL",
+      "image1": "NULL",
+      "iconName": "NULL",
+      "sortOrder": "7",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:32:53",
+      "updatedAt": "2026-03-16 12:32:53"
+    },
+    {
+      "id": "30008",
+      "slug": "packs-especiales",
+      "name": "Packs Especiales",
+      "description": "Packs premium y experiencias únicas",
+      "imageUrl": "NULL",
+      "image1": "NULL",
+      "iconName": "NULL",
+      "sortOrder": "8",
+      "isActive": "1",
+      "createdAt": "2026-03-16 12:32:53",
+      "updatedAt": "2026-03-16 12:32:53"
+    }
+  ],
+  "messages": [
+    "id\tslug\tname\tdescription\timageUrl\taddress\tlatitude\tlongitude\tisActive\tsortOrder\tcreatedAt\tupdatedAt",
+    "30001\tembalse-san-rafael\tEmbalse Los Ángeles de San Rafael\tComplejo náutico en la Sierra de Guadarrama a 45 min de Madrid. Altitud 1.200m.\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773850536125-yq4mf1.png\tComplejo Los Ángeles de San Rafael, 40420 Segovia, España\tNULL\tNULL\t1\t0\t2026-03-16 12:32:53\t2026-03-18 20:47:09",
+    "30002\thotel-nayade\tHotel Náyade\tHotel 3 estrellas con 117 habitaciones, spa, piscinas y restaurantes.\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773946700-qq3ivu.png\tComplejo Los Ángeles de San Rafael, 40420 Segovia, España\tNULL\tNULL\t1\t0\t2026-03-16 12:32:53\t2026-03-18 20:50:43",
+    "30003\tspa-nayade\tSPA Náyade\tCircuito hidrotermal, sauna finlandesa, baño turco y zona de tratamientos.\tNULL\tComplejo Los Ángeles de San Rafael, 40420 Segovia, España\tNULL\tNULL\t1\t0\t2026-03-16 12:32:53\t2026-03-16 12:32:53"
+  ],
+  "stdout": "id\tslug\tname\tdescription\timageUrl\timage1\ticonName\tsortOrder\tisActive\tcreatedAt\tupdatedAt\n30001\tactividades-acuaticas\tActividades Acuáticas\tDeportes y aventuras sobre el agua del embalse\tNULL\tNULL\tNULL\t1\t1\t2026-03-16 12:32:53\t2026-03-16 12:32:53\n30002\tpacks-dia\tPacks de Día\tCombinaciones de actividades para una jornada completa\tNULL\tNULL\tNULL\t2\t1\t2026-03-16 12:32:53\t2026-03-16 12:32:53\n30003\tpacks-escolares\tPacks Escolares\tProgramas de aventura para colegios y grupos educativos\tNULL\tNULL\tNULL\t3\t1\t2026-03-16 12:32:53\t2026-03-16 12:32:53\n30004\tteam-building\tTeam Building\tActividades de cohesión y motivación para empresas\tNULL\tNULL\tNULL\t4\t1\t2026-03-16 12:32:53\t2026-03-16 12:32:53\n30005\thotel-alojamiento\tHotel & Alojamiento\tHabitaciones y suites del Hotel Náyade 3 estrellas\tNULL\tNULL\tNULL\t5\t1\t2026-03-16 12:32:53\t2026-03-16 12:32:53\n30006\tspa-bienestar\tSPA & Bienestar\tCircuito hidrotermal, masajes y tratamientos\tNULL\tNULL\tNULL\t6\t1\t2026-03-16 12:32:53\t2026-03-16 12:32:53\n30007\trestaurantes\tRestaurantes\tReservas de mesa en los restaurantes del complejo\tNULL\tNULL\tNULL\t7\t1\t2026-03-16 12:32:53\t2026-03-16 12:32:53\n30008\tpacks-especiales\tPacks Especiales\tPacks premium y experiencias únicas\tNULL\tNULL\tNULL\t8\t1\t2026-03-16 12:32:53\t2026-03-16 12:32:53\nid\tslug\tname\tdescription\timageUrl\taddress\tlatitude\tlongitude\tisActive\tsortOrder\tcreatedAt\tupdatedAt\n30001\tembalse-san-rafael\tEmbalse Los Ángeles de San Rafael\tComplejo náutico en la Sierra de Guadarrama a 45 min de Madrid. Altitud 1.200m.\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773850536125-yq4mf1.png\tComplejo Los Ángeles de San Rafael, 40420 Segovia, España\tNULL\tNULL\t1\t0\t2026-03-16 12:32:53\t2026-03-18 20:47:09\n30002\thotel-nayade\tHotel Náyade\tHotel 3 estrellas con 117 habitaciones, spa, piscinas y restaurantes.\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773946700-qq3ivu.png\tComplejo Los Ángeles de San Rafael, 40420 Segovia, España\tNULL\tNULL\t1\t0\t2026-03-16 12:32:53\t2026-03-18 20:50:43\n30003\tspa-nayade\tSPA Náyade\tCircuito hidrotermal, sauna finlandesa, baño turco y zona de tratamientos.\tNULL\tComplejo Los Ángeles de San Rafael, 40420 Segovia, España\tNULL\tNULL\t1\t0\t2026-03-16 12:32:53\t2026-03-16 12:32:53\n",
+  "stderr": "",
+  "execution_time_ms": 174
+}
