@@ -512,3 +512,13 @@
 - [x] Añadir campo internalTags JSON en BD y schema Drizzle para marcas G, P, *
 - [x] Regenerar seed-data.mjs con las 9 tipologías (146 KB, 237 registros)
 - [x] Preparar prompt para Claude en VS Code
+
+## Catálogo Hotelero Limpio según Planos Reales (v7.6)
+- [x] Contabilizado inventario real por tipología (Bloque Principal + Bloque F) desde planos
+- [x] Eliminadas tipologías incorrectas (IDs 60001-60005)
+- [x] Actualizadas tipologías existentes (IDs 1-4) con inventario real
+- [x] Creadas tipologías faltantes: Triple (12u), Cuádruple (8u), Habitación Grande (70u), Suite (2u), Personal (6u, no pública)
+- [x] Junior Suite Premium renombrada a Junior (2u, hab 138+218 Bloque F)
+- [x] internalTags con desglose por bloque, marcas G/P/* guardadas como metadata interna
+- [x] Regenerado seed-data.mjs con 9 tipologías y 237 registros totales
+- [x] 0 errores TypeScript

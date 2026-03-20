@@ -1,0 +1,118 @@
+{
+  "query": "SELECT id, slug, name, maxAdults, maxChildren, maxOccupancy, totalUnits, basePrice, isActive, sortOrder FROM room_types ORDER BY sortOrder;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, slug, name, maxAdults, maxChildren, maxOccupancy, totalUnits, basePrice, isActive, sortOrder FROM room_types ORDER BY sortOrder;",
+  "rows": [
+    {
+      "id": "1",
+      "slug": "doble-estandar",
+      "name": "Doble Estándar",
+      "maxAdults": "2",
+      "maxChildren": "0",
+      "maxOccupancy": "2",
+      "totalUnits": "22",
+      "basePrice": "110.00",
+      "isActive": "1",
+      "sortOrder": "1"
+    },
+    {
+      "id": "2",
+      "slug": "doble-superior-vistas-lago",
+      "name": "Doble Superior Vistas Lago",
+      "maxAdults": "2",
+      "maxChildren": "0",
+      "maxOccupancy": "2",
+      "totalUnits": "14",
+      "basePrice": "140.00",
+      "isActive": "1",
+      "sortOrder": "2"
+    },
+    {
+      "id": "3",
+      "slug": "familiar",
+      "name": "Familiar (3-4 personas)",
+      "maxAdults": "2",
+      "maxChildren": "2",
+      "maxOccupancy": "4",
+      "totalUnits": "8",
+      "basePrice": "170.00",
+      "isActive": "1",
+      "sortOrder": "3"
+    },
+    {
+      "id": "60006",
+      "slug": "triple",
+      "name": "Triple",
+      "maxAdults": "3",
+      "maxChildren": "0",
+      "maxOccupancy": "3",
+      "totalUnits": "12",
+      "basePrice": "130.00",
+      "isActive": "1",
+      "sortOrder": "4"
+    },
+    {
+      "id": "60007",
+      "slug": "cuadruple",
+      "name": "Cuádruple",
+      "maxAdults": "4",
+      "maxChildren": "0",
+      "maxOccupancy": "4",
+      "totalUnits": "8",
+      "basePrice": "155.00",
+      "isActive": "1",
+      "sortOrder": "5"
+    },
+    {
+      "id": "60008",
+      "slug": "habitacion-grande",
+      "name": "Habitación Grande",
+      "maxAdults": "2",
+      "maxChildren": "2",
+      "maxOccupancy": "6",
+      "totalUnits": "70",
+      "basePrice": "145.00",
+      "isActive": "1",
+      "sortOrder": "6"
+    },
+    {
+      "id": "4",
+      "slug": "junior",
+      "name": "Junior",
+      "maxAdults": "2",
+      "maxChildren": "1",
+      "maxOccupancy": "3",
+      "totalUnits": "2",
+      "basePrice": "210.00",
+      "isActive": "1",
+      "sortOrder": "7"
+    },
+    {
+      "id": "60009",
+      "slug": "suite",
+      "name": "Suite",
+      "maxAdults": "2",
+      "maxChildren": "1",
+      "maxOccupancy": "3",
+      "totalUnits": "2",
+      "basePrice": "260.00",
+      "isActive": "1",
+      "sortOrder": "8"
+    },
+    {
+      "id": "60010",
+      "slug": "personal",
+      "name": "Habitación de Personal",
+      "maxAdults": "1",
+      "maxChildren": "0",
+      "maxOccupancy": "1",
+      "totalUnits": "6",
+      "basePrice": "0.00",
+      "isActive": "0",
+      "sortOrder": "9"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tslug\tname\tmaxAdults\tmaxChildren\tmaxOccupancy\ttotalUnits\tbasePrice\tisActive\tsortOrder\n1\tdoble-estandar\tDoble Estándar\t2\t0\t2\t22\t110.00\t1\t1\n2\tdoble-superior-vistas-lago\tDoble Superior Vistas Lago\t2\t0\t2\t14\t140.00\t1\t2\n3\tfamiliar\tFamiliar (3-4 personas)\t2\t2\t4\t8\t170.00\t1\t3\n60006\ttriple\tTriple\t3\t0\t3\t12\t130.00\t1\t4\n60007\tcuadruple\tCuádruple\t4\t0\t4\t8\t155.00\t1\t5\n60008\thabitacion-grande\tHabitación Grande\t2\t2\t6\t70\t145.00\t1\t6\n4\tjunior\tJunior\t2\t1\t3\t2\t210.00\t1\t7\n60009\tsuite\tSuite\t2\t1\t3\t2\t260.00\t1\t8\n60010\tpersonal\tHabitación de Personal\t1\t0\t1\t6\t0.00\t0\t9\n",
+  "stderr": "",
+  "execution_time_ms": 64
+}
