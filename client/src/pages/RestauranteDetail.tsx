@@ -11,7 +11,7 @@ const CDN = {
 };
 
 const RESTAURANTES: Record<string, {
-  badge: string; nombre: string; tipo: string; emoji: string;
+  badge: string; nombre: string; tipo: string;
   heroImg: string; desc: string; horario: string; reserva: boolean;
   carta: { categoria: string; platos: { nombre: string; desc: string; precio: string }[] }[];
 }> = {
@@ -19,7 +19,6 @@ const RESTAURANTES: Record<string, {
     badge: "Vistas al lago",
     nombre: "El Galeón",
     tipo: "Cocina Tradicional & Parrilla",
-    emoji: "⚓",
     heroImg: CDN.lago,
     desc: "Nuestro restaurante principal con vistas panorámicas al embalse. Especializado en carnes a la parrilla, pescados frescos y cocina tradicional castellana. El lugar perfecto para celebrar ocasiones especiales con familia, amigos o empresa.",
     horario: "13:00–16:00 y 20:00–23:00 · Todos los días en temporada",
@@ -50,11 +49,44 @@ const RESTAURANTES: Record<string, {
       },
     ],
   },
+  "la-cabana-del-lago": {
+    badge: "Junto al lago",
+    nombre: "La Cabaña del Lago",
+    tipo: "Cocina de Temporada & Entorno Natural",
+    heroImg: CDN.embalse,
+    desc: "Un espacio único integrado en la naturaleza, a orillas del lago. Cocina de proximidad, producto local y una atmósfera tranquila e íntima que convierte cada visita en una experiencia sensorial completa.",
+    horario: "13:00–16:00 · 20:00–22:30 · Todos los días en temporada",
+    reserva: true,
+    carta: [
+      {
+        categoria: "Para comenzar",
+        platos: [
+          { nombre: "Sopa de trucha ahumada", desc: "Con crema de puerros y aceite de eneldo", precio: "11€" },
+          { nombre: "Ensalada del huerto", desc: "Hortalizas de temporada, queso fresco local y vinagreta de miel", precio: "9€" },
+          { nombre: "Hongos salteados", desc: "Con ajo, perejil y huevo de corral a baja temperatura", precio: "13€" },
+        ],
+      },
+      {
+        categoria: "Platos principales",
+        platos: [
+          { nombre: "Cordero lechal al horno", desc: "De producción local, con patatas panadera y romero", precio: "24€" },
+          { nombre: "Trucha del embalse a la plancha", desc: "Con mantequilla de hierbas y verduras de temporada", precio: "19€" },
+          { nombre: "Setas y vegetales de temporada", desc: "Plato vegetal de la semana según mercado", precio: "16€" },
+        ],
+      },
+      {
+        categoria: "Postres",
+        platos: [
+          { nombre: "Tarta de manzana casera", desc: "Con canela y helado de vainilla artesano", precio: "6€" },
+          { nombre: "Queso local con miel de la sierra", desc: "Tabla de quesos artesanos de la comarca", precio: "9€" },
+        ],
+      },
+    ],
+  },
   "la-cabana": {
-    badge: "Nuevo",
+    badge: "Especialidad arroces",
     nombre: "Arrocería La Cabaña",
     tipo: "Arroces & Cocina Mediterránea",
-    emoji: "🥘",
     heroImg: CDN.canoa,
     desc: "Nuevo espacio especializado en arroces y cocina mediterránea de autor. Un ambiente íntimo y acogedor junto al lago, perfecto para disfrutar de una gastronomía cuidada con los mejores ingredientes de temporada.",
     horario: "13:00–16:30 · Viernes, sábados y domingos (temporada completa)",
@@ -89,7 +121,6 @@ const RESTAURANTES: Record<string, {
     badge: "Música en vivo",
     nombre: "Nassau Bar & Music",
     tipo: "Cócteles, Tapas & Música en Vivo",
-    emoji: "🎵",
     heroImg: CDN.kayak,
     desc: "El punto de encuentro del resort. Cócteles artesanales, tapas creativas y música en vivo los fines de semana. El lugar ideal para el aperitivo, el after-beach o simplemente disfrutar del atardecer sobre el lago.",
     horario: "11:00–02:00 · Fines de semana hasta 03:00 · Música en vivo viernes y sábados desde 21:00",
@@ -149,7 +180,6 @@ export default function RestauranteDetail() {
               </button>
             </Link>
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-4xl">{r.emoji}</span>
               <span className="bg-accent/90 text-white text-xs font-display font-bold uppercase tracking-widest px-4 py-1.5 rounded-full">
                 {r.badge}
               </span>
