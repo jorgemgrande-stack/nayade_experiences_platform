@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
+import z from "zod";
+import { router, publicProcedure, protectedProcedure, adminrestProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import {
   getAllRestaurants, getRestaurantBySlug, getRestaurantById,
@@ -10,7 +10,7 @@ import {
   createBooking, getBookingByLocator, getBookingById, updateBooking, getBookings, getBookingsByDate,
   addBookingLog, getBookingLogs,
   getDashboardStats,
-  getRestaurantsByUser, assignStaff, removeStaff,
+  getRestaurantsByUser, assignStaff, removeStaff, getStaffByRestaurant,
 } from "../restaurantsDb";
 import { notifyOwner } from "../_core/notification";
 
@@ -43,33 +43,31 @@ export const restaurantsRouter = router({
   getBySlug: publicProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ input }) => {
-      const r = await getRestaurantBySlug(input.slug);
-      if (!r) throw new TRPCError({ code: "NOT_FOUND" });
-      return r;
+      return getRestaurantBySlug(input.slug);
     }),
 
-  /** Disponibilidad de un restaurante para una fecha */
+  /** Disponibilidad de turnos para una fecha */
   getAvailability: publicProcedure
     .input(z.object({ restaurantId: z.number(), date: z.string() }))
     .query(async ({ input }) => {
       return getAvailability(input.restaurantId, input.date);
     }),
 
-  /** Turnos activos de un restaurante */
+  /** Turnos activos de un restaurante (público) */
   getShifts: publicProcedure
     .input(z.object({ restaurantId: z.number() }))
     .query(async ({ input }) => {
       return getShiftsByRestaurant(input.restaurantId);
     }),
 
-  /** Crear reserva (público — sin autenticación) */
+  /** Crear reserva desde el formulario público */
   createBooking: publicProcedure
     .input(z.object({
       restaurantId: z.number(),
       shiftId: z.number(),
       date: z.string(),
       time: z.string(),
-      guests: z.number().min(1).max(30),
+      guests: z.number().min(1),
       guestName: z.string().min(1),
       guestLastName: z.string().optional(),
       guestEmail: z.string().email(),
@@ -86,49 +84,25 @@ export const restaurantsRouter = router({
       if (!restaurant.acceptsOnlineBooking) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Este restaurante no acepta reservas online" });
       }
-
-      // Verificar disponibilidad
-      const availability = await getAvailability(input.restaurantId, input.date);
-      const shift = availability.find(s => s.shiftId === input.shiftId);
-      if (!shift) throw new TRPCError({ code: "BAD_REQUEST", message: "Turno no disponible" });
-      if (shift.available < input.guests) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: `Solo quedan ${shift.available} plazas disponibles` });
-      }
-
       const depositAmount = (Number(restaurant.depositPerGuest) * input.guests).toFixed(2);
-
-      const { locator } = await createBooking({
-        restaurantId: input.restaurantId,
-        shiftId: input.shiftId,
-        date: input.date,
-        time: input.time,
-        guests: input.guests,
+      const result = await createBooking({
+        ...input,
         depositAmount,
-        guestName: input.guestName,
-        guestLastName: input.guestLastName,
-        guestEmail: input.guestEmail,
-        guestPhone: input.guestPhone,
-        highchair: input.highchair ?? false,
-        allergies: input.allergies,
-        birthday: input.birthday ?? false,
-        specialRequests: input.specialRequests,
-        accessibility: input.accessibility ?? false,
-        isVip: false,
-        status: "pending_payment",
         channel: "web",
-        paymentStatus: "pending",
+        paymentStatus: Number(depositAmount) > 0 ? "pending" : "paid",
+        highchair: input.highchair ?? false,
+        birthday: input.birthday ?? false,
+        accessibility: input.accessibility ?? false,
       });
-
-      // Notificar al owner
+      // Notificación interna
       await notifyOwner({
-        title: `Nueva reserva restaurante: ${restaurant.name}`,
-        content: `Localizador: ${locator} | ${input.guestName} | ${input.guests} personas | ${input.date} ${input.time}`,
-      });
-
-      return { locator, depositAmount };
+        title: `Nueva reserva: ${restaurant.name}`,
+        content: `${input.guestName} ${input.guestLastName ?? ""} — ${input.guests} pax — ${input.date} ${input.time} — Localizador: ${result.locator}`,
+      }).catch(() => {});
+      return { locator: result.locator, depositAmount };
     }),
 
-  /** Consultar reserva por localizador (para página de confirmación) */
+  /** Consultar reserva por localizador */
   getBookingByLocator: publicProcedure
     .input(z.object({ locator: z.string() }))
     .query(async ({ input }) => {
@@ -137,18 +111,26 @@ export const restaurantsRouter = router({
       return booking;
     }),
 
-  // ── ADMIN / ADMINREST ────────────────────────────────────────────────────
+  // ── ADMIN + ADMINREST ─────────────────────────────────────────────────────
 
   /** Dashboard de un restaurante */
-  getDashboard: protectedProcedure
+  getDashboard: adminrestProcedure
     .input(z.object({ restaurantId: z.number() }))
     .query(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
       return getDashboardStats(input.restaurantId);
     }),
 
+  /** Restaurantes accesibles para el usuario actual */
+  myRestaurants: adminrestProcedure.query(async ({ ctx }) => {
+    if (ctx.user.role === "admin") return getAllRestaurants(false);
+    const ids = await getRestaurantsByUser(ctx.user.id);
+    const all = await getAllRestaurants(false);
+    return all.filter(r => ids.includes(r.id));
+  }),
+
   /** Listado de reservas con filtros */
-  adminGetBookings: protectedProcedure
+  adminGetBookings: adminrestProcedure
     .input(z.object({
       restaurantId: z.number(),
       date: z.string().optional(),
@@ -165,7 +147,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Reservas de un día concreto */
-  adminGetBookingsByDate: protectedProcedure
+  adminGetBookingsByDate: adminrestProcedure
     .input(z.object({ restaurantId: z.number(), date: z.string() }))
     .query(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
@@ -173,7 +155,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Detalle de una reserva */
-  adminGetBooking: protectedProcedure
+  adminGetBooking: adminrestProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input, ctx }) => {
       const booking = await getBookingById(input.id);
@@ -184,7 +166,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Actualizar estado de una reserva */
-  adminUpdateBookingStatus: protectedProcedure
+  adminUpdateBookingStatus: adminrestProcedure
     .input(z.object({
       id: z.number(),
       status: z.enum(["confirmed", "cancelled", "modified", "no_show", "completed"]),
@@ -204,7 +186,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Crear reserva manual desde admin */
-  adminCreateBooking: protectedProcedure
+  adminCreateBooking: adminrestProcedure
     .input(z.object({
       restaurantId: z.number(),
       shiftId: z.number(),
@@ -245,7 +227,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Editar datos de una reserva */
-  adminEditBooking: protectedProcedure
+  adminEditBooking: adminrestProcedure
     .input(z.object({
       id: z.number(),
       guestName: z.string().optional(),
@@ -274,7 +256,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Turnos de un restaurante (admin) */
-  adminGetShifts: protectedProcedure
+  adminGetShifts: adminrestProcedure
     .input(z.object({ restaurantId: z.number() }))
     .query(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
@@ -282,7 +264,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Crear turno */
-  adminCreateShift: protectedProcedure
+  adminCreateShift: adminrestProcedure
     .input(z.object({
       restaurantId: z.number(),
       name: z.string(),
@@ -297,7 +279,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Actualizar turno */
-  adminUpdateShift: protectedProcedure
+  adminUpdateShift: adminrestProcedure
     .input(z.object({
       id: z.number(),
       restaurantId: z.number(),
@@ -315,7 +297,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Eliminar turno */
-  adminDeleteShift: protectedProcedure
+  adminDeleteShift: adminrestProcedure
     .input(z.object({ id: z.number(), restaurantId: z.number() }))
     .mutation(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
@@ -323,7 +305,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Cierres de un restaurante */
-  adminGetClosures: protectedProcedure
+  adminGetClosures: adminrestProcedure
     .input(z.object({ restaurantId: z.number(), fromDate: z.string().optional(), toDate: z.string().optional() }))
     .query(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
@@ -331,7 +313,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Crear cierre */
-  adminCreateClosure: protectedProcedure
+  adminCreateClosure: adminrestProcedure
     .input(z.object({
       restaurantId: z.number(),
       date: z.string(),
@@ -344,7 +326,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Eliminar cierre */
-  adminDeleteClosure: protectedProcedure
+  adminDeleteClosure: adminrestProcedure
     .input(z.object({ id: z.number(), restaurantId: z.number() }))
     .mutation(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
@@ -353,13 +335,13 @@ export const restaurantsRouter = router({
 
   // ── SOLO ADMIN GLOBAL ────────────────────────────────────────────────────
 
-  /** Listado completo de restaurantes (admin) */
+  /** Listado completo de restaurantes (admin global) */
   adminGetAll: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
     return getAllRestaurants(false);
   }),
 
-  /** Crear restaurante */
+  /** Crear restaurante (solo admin global) */
   adminCreate: protectedProcedure
     .input(z.object({
       slug: z.string(),
@@ -386,7 +368,7 @@ export const restaurantsRouter = router({
       return createRestaurant(input as any);
     }),
 
-  /** Actualizar restaurante */
+  /** Actualizar restaurante (solo admin global) */
   adminUpdate: protectedProcedure
     .input(z.object({
       id: z.number(),
@@ -415,7 +397,7 @@ export const restaurantsRouter = router({
       return updateRestaurant(id, data as any);
     }),
 
-  /** Asignar staff adminrest a un restaurante */
+  /** Asignar staff adminrest a un restaurante (solo admin global) */
   adminAssignStaff: protectedProcedure
     .input(z.object({ userId: z.number(), restaurantId: z.number() }))
     .mutation(async ({ input, ctx }) => {
@@ -423,7 +405,7 @@ export const restaurantsRouter = router({
       return assignStaff(input.userId, input.restaurantId);
     }),
 
-  /** Quitar staff de un restaurante */
+  /** Quitar staff de un restaurante (solo admin global) */
   adminRemoveStaff: protectedProcedure
     .input(z.object({ userId: z.number(), restaurantId: z.number() }))
     .mutation(async ({ input, ctx }) => {
@@ -431,8 +413,16 @@ export const restaurantsRouter = router({
       return removeStaff(input.userId, input.restaurantId);
     }),
 
+  /** Listar staff asignado a un restaurante (solo admin global) */
+  adminGetStaff: protectedProcedure
+    .input(z.object({ restaurantId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return getStaffByRestaurant(input.restaurantId);
+    }),
+
   /** Reservas de un día (calendario visual) */
-  adminGetCalendar: protectedProcedure
+  adminGetCalendar: adminrestProcedure
     .input(z.object({ restaurantId: z.number(), date: z.string() }))
     .query(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
@@ -440,7 +430,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Añadir nota interna a una reserva */
-  adminAddNote: protectedProcedure
+  adminAddNote: adminrestProcedure
     .input(z.object({ bookingId: z.number(), note: z.string() }))
     .mutation(async ({ input, ctx }) => {
       const booking = await getBookingById(input.bookingId);
@@ -452,7 +442,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Actualizar configuración de un restaurante */
-  adminUpdateConfig: protectedProcedure
+  adminUpdateConfig: adminrestProcedure
     .input(z.object({
       restaurantId: z.number(),
       acceptsOnlineBooking: z.boolean().optional(),
@@ -468,7 +458,7 @@ export const restaurantsRouter = router({
     }),
 
   /** Eliminar reserva */
-  adminDeleteBooking: protectedProcedure
+  adminDeleteBooking: adminrestProcedure
     .input(z.object({ bookingId: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const booking = await getBookingById(input.bookingId);
@@ -478,15 +468,4 @@ export const restaurantsRouter = router({
       await addBookingLog(input.bookingId, "deleted_by_admin", "Eliminada por admin", ctx.user.id);
       return { ok: true };
     }),
-
-  /** Restaurantes asignados al usuario actual (para adminrest) */
-  myRestaurants: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role === "admin") return getAllRestaurants(false);
-    if (ctx.user.role === "adminrest") {
-      const ids = await getRestaurantsByUser(ctx.user.id);
-      const all = await getAllRestaurants(false);
-      return all.filter(r => ids.includes(r.id));
-    }
-    throw new TRPCError({ code: "FORBIDDEN" });
-  }),
 });

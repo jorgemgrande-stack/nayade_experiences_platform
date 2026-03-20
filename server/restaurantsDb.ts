@@ -347,3 +347,23 @@ export async function removeStaff(userId: number, restaurantId: number) {
     and(eq(restaurantStaff.userId, userId), eq(restaurantStaff.restaurantId, restaurantId))
   );
 }
+
+export async function getStaffByRestaurant(restaurantId: number) {
+  const db = await getDb();
+  const { users } = await import("../drizzle/schema");
+  const rows = await db
+    .select({
+      staffId: restaurantStaff.id,
+      userId: restaurantStaff.userId,
+      restaurantId: restaurantStaff.restaurantId,
+      assignedAt: restaurantStaff.createdAt,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      isActive: users.isActive,
+    })
+    .from(restaurantStaff)
+    .innerJoin(users, eq(restaurantStaff.userId, users.id))
+    .where(eq(restaurantStaff.restaurantId, restaurantId));
+  return rows;
+}

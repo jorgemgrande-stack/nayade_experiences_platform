@@ -24,7 +24,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,21 +45,27 @@ import {
   CheckCircle,
   Clock,
   XCircle,
+  UtensilsCrossed,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { toast } from "sonner";
 
 const ROLES = [
-  { value: "admin", label: "Administrador", color: "bg-red-100 text-red-800 border-red-200" },
-  { value: "agente", label: "Agente Comercial", color: "bg-blue-100 text-blue-800 border-blue-200" },
-  { value: "monitor", label: "Monitor", color: "bg-green-100 text-green-800 border-green-200" },
-  { value: "user", label: "Usuario", color: "bg-gray-100 text-gray-700 border-gray-200" },
+  { value: "admin",     label: "Administrador",       color: "bg-red-100 text-red-800 border-red-200" },
+  { value: "agente",    label: "Agente Comercial",     color: "bg-blue-100 text-blue-800 border-blue-200" },
+  { value: "monitor",   label: "Monitor",              color: "bg-green-100 text-green-800 border-green-200" },
+  { value: "adminrest", label: "Gestor Restaurantes",  color: "bg-orange-100 text-orange-800 border-orange-200" },
+  { value: "user",      label: "Usuario",              color: "bg-gray-100 text-gray-700 border-gray-200" },
 ] as const;
 
 type Role = (typeof ROLES)[number]["value"];
 
 function RoleBadge({ role }: { role: string }) {
   const r = ROLES.find((x) => x.value === role);
-  if (!r) return <Badge variant="outline">{role}</Badge>;
+  if (!r) return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-gray-100 text-gray-700 border-gray-200">{role}</span>;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${r.color}`}>
       <Shield className="w-3 h-3" />
@@ -88,6 +93,124 @@ function StatusBadge({ inviteAccepted, isActive }: { inviteAccepted: boolean; is
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
       <Clock className="w-3 h-3" /> Invitación pendiente
     </span>
+  );
+}
+
+/** Panel de asignación de restaurantes para usuarios con rol adminrest */
+function RestaurantAssignPanel({ userId, userName }: { userId: number; userName: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const utils = trpc.useUtils();
+
+  const { data: allRestaurants = [] } = trpc.restaurants.adminGetAll.useQuery(undefined, { enabled: expanded });
+  const { data: staffList = [], isLoading: loadingStaff } = trpc.restaurants.adminGetStaff.useQuery(
+    // We need to get restaurants assigned to this user — we query each restaurant's staff
+    // Instead we'll use myRestaurants approach: query all restaurants and filter by staff
+    { restaurantId: 0 }, // placeholder — we'll handle this differently below
+    { enabled: false }
+  );
+
+  // For each restaurant, check if this user is in the staff
+  // We use a per-restaurant query approach via adminGetStaff
+  const assignStaff = trpc.restaurants.adminAssignStaff.useMutation({
+    onSuccess: () => {
+      utils.restaurants.adminGetStaff.invalidate();
+      toast.success("Restaurante asignado");
+    },
+    onError: (e) => toast.error("Error", { description: e.message }),
+  });
+
+  const removeStaff = trpc.restaurants.adminRemoveStaff.useMutation({
+    onSuccess: () => {
+      utils.restaurants.adminGetStaff.invalidate();
+      toast.success("Restaurante desasignado");
+    },
+    onError: (e) => toast.error("Error", { description: e.message }),
+  });
+
+  return (
+    <div className="mt-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-xs text-orange-600 hover:text-orange-700 font-medium transition-colors"
+      >
+        <UtensilsCrossed className="w-3 h-3" />
+        Gestionar restaurantes asignados
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+      </button>
+
+      {expanded && (
+        <RestaurantAssignList
+          userId={userId}
+          allRestaurants={allRestaurants}
+          onAssign={(restaurantId) => assignStaff.mutate({ userId, restaurantId })}
+          onRemove={(restaurantId) => removeStaff.mutate({ userId, restaurantId })}
+          isPending={assignStaff.isPending || removeStaff.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Lista de restaurantes con checkboxes de asignación */
+function RestaurantAssignList({
+  userId,
+  allRestaurants,
+  onAssign,
+  onRemove,
+  isPending,
+}: {
+  userId: number;
+  allRestaurants: { id: number; name: string; slug: string }[];
+  onAssign: (id: number) => void;
+  onRemove: (id: number) => void;
+  isPending: boolean;
+}) {
+  // Query staff for each restaurant to determine assignment
+  const staffQueries = allRestaurants.map((r) =>
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    trpc.restaurants.adminGetStaff.useQuery({ restaurantId: r.id })
+  );
+
+  if (allRestaurants.length === 0) {
+    return <p className="text-xs text-gray-400 mt-2 ml-4">No hay restaurantes disponibles.</p>;
+  }
+
+  return (
+    <div className="mt-2 ml-4 space-y-1.5 bg-orange-50 border border-orange-200 rounded-lg p-3">
+      <p className="text-xs font-semibold text-orange-700 mb-2">Restaurantes con acceso:</p>
+      {allRestaurants.map((restaurant, idx) => {
+        const staffData = staffQueries[idx]?.data ?? [];
+        const isAssigned = staffData.some((s: any) => s.userId === userId);
+        const isLoading = staffQueries[idx]?.isLoading;
+
+        return (
+          <div key={restaurant.id} className="flex items-center justify-between gap-2">
+            <span className="text-xs text-gray-700 font-medium">{restaurant.name}</span>
+            {isLoading ? (
+              <span className="text-xs text-gray-400">...</span>
+            ) : isAssigned ? (
+              <button
+                onClick={() => onRemove(restaurant.id)}
+                disabled={isPending}
+                className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
+              >
+                <Minus className="w-3 h-3" />
+                Quitar
+              </button>
+            ) : (
+              <button
+                onClick={() => onAssign(restaurant.id)}
+                disabled={isPending}
+                className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-medium disabled:opacity-50"
+              >
+                <Plus className="w-3 h-3" />
+                Asignar
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -151,7 +274,7 @@ export default function UsersManager() {
       toast.error("Campos requeridos", { description: "Nombre y email son obligatorios." });
       return;
     }
-    createUser.mutate({ ...form, origin: window.location.origin });
+    createUser.mutate({ ...form, role: form.role as any, origin: window.location.origin });
   };
 
   if (isLoading) {
@@ -204,6 +327,10 @@ export default function UsersManager() {
                     <div>
                       <div className="font-medium text-gray-900">{user.name ?? "—"}</div>
                       <div className="text-gray-500 text-xs">{user.email ?? "—"}</div>
+                      {/* Panel de asignación de restaurantes para adminrest */}
+                      {user.role === "adminrest" && (
+                        <RestaurantAssignPanel userId={user.id} userName={user.name ?? user.email ?? "Usuario"} />
+                      )}
                     </div>
                   </div>
                 </td>
@@ -211,10 +338,10 @@ export default function UsersManager() {
                   <Select
                     value={user.role}
                     onValueChange={(value) =>
-                      changeRole.mutate({ userId: user.id, role: value as Role })
+                      changeRole.mutate({ userId: user.id, role: value as any })
                     }
                   >
-                    <SelectTrigger className="w-44 h-7 text-xs border-0 bg-transparent p-0 focus:ring-0 focus:ring-offset-0">
+                    <SelectTrigger className="w-48 h-7 text-xs border-0 bg-transparent p-0 focus:ring-0 focus:ring-offset-0">
                       <SelectValue>
                         <RoleBadge role={user.role} />
                       </SelectValue>
@@ -345,11 +472,18 @@ export default function UsersManager() {
                 <SelectContent>
                   {ROLES.map((r) => (
                     <SelectItem key={r.value} value={r.value}>
-                      {r.label}
+                      <div className="flex items-center gap-2">
+                        <RoleBadge role={r.value} />
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {form.role === "adminrest" && (
+                <p className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg p-2 mt-1">
+                  Este usuario solo tendrá acceso al gestor de reservas de restaurante. Podrás asignarle los restaurantes específicos después de crearlo.
+                </p>
+              )}
             </div>
             <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
               Se enviará un email automático a la dirección indicada con un enlace para que el usuario establezca su contraseña. El enlace expira en 72 horas.

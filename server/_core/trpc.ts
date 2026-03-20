@@ -43,3 +43,29 @@ export const adminProcedure = t.procedure.use(
     });
   }),
 );
+
+/**
+ * adminrestProcedure: acepta usuarios con rol 'admin' o 'adminrest'.
+ * Usado para todos los procedimientos del módulo de restaurantes.
+ * El rol adminrest tiene acceso completo al gestor de reservas pero
+ * solo a los restaurantes que tiene asignados.
+ */
+export const adminrestProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+
+    if (!ctx.user || !['admin', 'adminrest'].includes(ctx.user.role as string)) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Acceso restringido al módulo de restaurantes",
+      });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        user: ctx.user,
+      },
+    });
+  }),
+);

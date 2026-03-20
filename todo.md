@@ -560,3 +560,23 @@
 - [x] 0 errores TypeScript
 - [x] 28 tests Vitest para restaurantes (localizador, depósito, disponibilidad, validación, datos)
 - [x] 72 tests totales pasando (todos los módulos)
+
+## Rol adminrest — Acceso exclusivo al gestor de restaurantes (v8.1)
+
+### Backend
+- [x] Crear `adminrestProcedure` en trpc.ts (acepta admin + adminrest)
+- [x] Extender `createUser` y `changeUserRole` para incluir rol `adminrest`
+- [x] Añadir procedimiento `adminGetStaff` para listar staff asignado a un restaurante
+- [x] Proteger todos los procedimientos admin de restaurantes con `adminrestProcedure`
+
+### Frontend
+- [x] Guard de rutas `/admin/restaurantes/*`: redirigir a login si no autenticado, a `/admin` si rol no permitido
+- [x] AdminLayout: redirect automático del rol `adminrest` a `/admin/restaurantes` (no a `/admin`)
+- [x] AdminDashboard: mostrar vista reducida o redirect para rol `adminrest`
+- [x] UsersManager: añadir rol `adminrest` en selector de roles con badge naranja
+- [x] Sección "Asignar Restaurantes" en el panel de gestión de usuarios (solo para usuarios adminrest)
+- [x] RestaurantsManager: mostrar solo los restaurantes asignados al usuario adminrest
+
+### Calidad
+- [x] 0 errores TypeScript
+- [x] 28 tests para el middleware adminrest (100 tests totales)

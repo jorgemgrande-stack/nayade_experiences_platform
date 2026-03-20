@@ -1012,7 +1012,7 @@ export async function clonePack(id: number) {
 export async function createInvitedUser(data: {
   name: string;
   email: string;
-  role: "user" | "admin" | "monitor" | "agente";
+  role: "user" | "admin" | "monitor" | "agente" | "adminrest";
   inviteToken: string;
   inviteTokenExpiry: Date;
 }) {
@@ -1035,7 +1035,7 @@ export async function createInvitedUser(data: {
   return { success: true, id: Number(result[0].insertId) };
 }
 
-export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente") {
+export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente" | "adminrest") {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));

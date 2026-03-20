@@ -768,7 +768,7 @@ export const appRouter = router({
     createUser: adminProcedure.input(z.object({
       name: z.string().min(2),
       email: z.string().email(),
-      role: z.enum(["user", "admin", "monitor", "agente"]),
+      role: z.enum(["user", "admin", "monitor", "agente", "adminrest"]),
       origin: z.string(),
     })).mutation(async ({ input }) => {
       const { nanoid } = await import("nanoid");
@@ -788,7 +788,7 @@ export const appRouter = router({
     }),
     changeUserRole: adminProcedure.input(z.object({
       userId: z.number(),
-      role: z.enum(["user", "admin", "monitor", "agente"]),
+      role: z.enum(["user", "admin", "monitor", "agente", "adminrest"]),
     })).mutation(async ({ input }) => {
       return changeUserRole(input.userId, input.role);
     }),

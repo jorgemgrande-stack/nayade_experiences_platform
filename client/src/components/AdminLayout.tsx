@@ -1,16 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, Package, FileText, Calendar, BarChart3,
-  Settings, Menu, X, Mountain, LogOut, Users, Image, ChevronDown,
-  Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed,
+  Settings, Menu, X, LogOut, Users, Image, ChevronDown,
+  Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 import { useLocation as useWouterLocation } from "wouter";
+import { getLoginUrl } from "@/const";
 
 const navItems = [
   {
@@ -117,6 +116,15 @@ const navItems = [
   },
 ];
 
+/** Etiqueta y color por rol */
+const ROLE_META: Record<string, { label: string; color: string }> = {
+  admin:     { label: "Administrador",         color: "text-red-400" },
+  agente:    { label: "Agente Comercial",       color: "text-blue-400" },
+  monitor:   { label: "Monitor",               color: "text-green-400" },
+  adminrest: { label: "Gestor Restaurantes",   color: "text-orange-400" },
+  user:      { label: "Usuario",               color: "text-gray-400" },
+};
+
 interface AdminLayoutProps {
   children: React.ReactNode;
   title?: string;
@@ -125,8 +133,28 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
-  const [location] = useWouterLocation();
-  const { user, logout } = useAuth();
+  const [location, navigate] = useWouterLocation();
+  const { user, logout, loading, isAuthenticated } = useAuth();
+
+  const userRole = (user as any)?.role ?? "user";
+  const roleMeta = ROLE_META[userRole] ?? ROLE_META.user;
+
+  // ── Guard: redirect adminrest a /admin/restaurantes si intenta acceder a /admin ──
+  useEffect(() => {
+    if (!loading && isAuthenticated && userRole === "adminrest" && location === "/admin") {
+      navigate("/admin/restaurantes");
+    }
+  }, [loading, isAuthenticated, userRole, location, navigate]);
+
+  // ── Guard: bloquear acceso a rutas no permitidas ──
+  useEffect(() => {
+    if (!loading && isAuthenticated && userRole === "adminrest") {
+      const isRestaurantRoute = location.startsWith("/admin/restaurantes");
+      if (!isRestaurantRoute) {
+        navigate("/admin/restaurantes");
+      }
+    }
+  }, [loading, isAuthenticated, userRole, location, navigate]);
 
   const toggleExpanded = (href: string) => {
     setExpandedItems((prev) =>
@@ -135,9 +163,54 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   };
 
   const isActive = (href: string) => location === href || location.startsWith(href + "/");
-  const userRole = (user as any)?.role ?? "user";
 
   const filteredNav = navItems.filter((item) => item.roles.includes(userRole));
+
+  // ── Loading state ──
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // ── Not authenticated ──
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-sm px-4">
+          <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-accent" />
+          </div>
+          <h2 className="text-2xl font-display font-bold text-foreground mb-2">Acceso Restringido</h2>
+          <p className="text-muted-foreground mb-6">Debes iniciar sesión para acceder al panel de administración.</p>
+          <Button
+            className="bg-primary text-white hover:bg-primary/90 px-8 py-3 text-base font-semibold w-full"
+            onClick={() => { window.location.href = getLoginUrl(location); }}
+          >
+            Iniciar Sesión
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Role not allowed for any admin section ──
+  if (!["admin", "agente", "monitor", "adminrest"].includes(userRole)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center max-w-sm px-4">
+          <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="text-2xl font-display font-bold text-foreground mb-2">Sin permisos</h2>
+          <p className="text-muted-foreground mb-6">Tu cuenta no tiene acceso al panel de administración.</p>
+          <Button variant="outline" onClick={() => navigate("/")}>Volver al inicio</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -151,14 +224,16 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       >
         {/* Logo */}
         <div className="h-16 flex items-center px-4 border-b border-sidebar-border shrink-0">
-          <Link href="/admin" className="flex items-center gap-2 min-w-0">
+          <Link href={userRole === "adminrest" ? "/admin/restaurantes" : "/admin"} className="flex items-center gap-2 min-w-0">
             <img
               src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade-azul_ea3fd894.jpg"
               alt="Náyade Admin"
               className={cn("object-contain rounded-full shrink-0", sidebarOpen ? "h-10 w-10" : "h-8 w-8")}
             />
             {sidebarOpen && (
-              <span className="text-xs text-amber-400 tracking-widest uppercase font-display font-bold shrink-0">Admin</span>
+              <span className="text-xs text-amber-400 tracking-widest uppercase font-display font-bold shrink-0">
+                {userRole === "adminrest" ? "Restaurantes" : "Admin"}
+              </span>
             )}
           </Link>
           <button
@@ -240,13 +315,14 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             {sidebarOpen && (
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-sidebar-foreground truncate">{user?.name ?? "Usuario"}</p>
-                <p className="text-xs text-sidebar-foreground/50 capitalize">{userRole}</p>
+                <p className={cn("text-xs font-medium capitalize", roleMeta.color)}>{roleMeta.label}</p>
               </div>
             )}
             {sidebarOpen && (
               <button
                 onClick={logout}
                 className="w-7 h-7 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/50 hover:text-red-400 transition-colors"
+                title="Cerrar sesión"
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>
@@ -270,11 +346,13 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
               <Bell className="w-4 h-4" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
             </Button>
-            <Link href="/" target="_blank">
-              <Button variant="outline" size="sm" className="text-xs">
-                Ver sitio web
-              </Button>
-            </Link>
+            {userRole !== "adminrest" && (
+              <Link href="/" target="_blank">
+                <Button variant="outline" size="sm" className="text-xs">
+                  Ver sitio web
+                </Button>
+              </Link>
+            )}
           </div>
         </header>
 
