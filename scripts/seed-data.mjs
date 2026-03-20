@@ -1,6 +1,6 @@
 /**
  * seed-data.mjs — Datos de producción de Nayade Experiences
- * Generado automáticamente el 2026-03-20T00:23:05.703Z
+ * Generado automáticamente el 2026-03-20T00:26:56.309Z
  * Uso: node scripts/seed-data.mjs
  */
 import mysql from 'mysql2/promise';
@@ -62,8 +62,8 @@ async function main() {
     iconName: null,
     sortOrder: 1,
     isActive: 1,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   {
     id: 30002,
@@ -75,8 +75,8 @@ async function main() {
     iconName: null,
     sortOrder: 2,
     isActive: 1,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   {
     id: 30003,
@@ -88,8 +88,8 @@ async function main() {
     iconName: null,
     sortOrder: 3,
     isActive: 1,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   {
     id: 30004,
@@ -101,8 +101,8 @@ async function main() {
     iconName: null,
     sortOrder: 4,
     isActive: 1,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   {
     id: 30005,
@@ -114,8 +114,8 @@ async function main() {
     iconName: null,
     sortOrder: 5,
     isActive: 1,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   {
     id: 30006,
@@ -127,8 +127,8 @@ async function main() {
     iconName: null,
     sortOrder: 6,
     isActive: 1,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   {
     id: 30007,
@@ -140,8 +140,8 @@ async function main() {
     iconName: null,
     sortOrder: 7,
     isActive: 1,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   {
     id: 30008,
@@ -153,8 +153,8 @@ async function main() {
     iconName: null,
     sortOrder: 8,
     isActive: 1,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   ];
   await insertBatch(conn, 'categories', categoriesData, 'Categorías');
@@ -173,8 +173,8 @@ async function main() {
     longitude: null,
     isActive: 1,
     sortOrder: 0,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-19T00:47:09.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-19T04:47:09.000Z"
   },
   {
     id: 30002,
@@ -187,8 +187,8 @@ async function main() {
     longitude: null,
     isActive: 1,
     sortOrder: 0,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-19T00:50:43.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-19T04:50:43.000Z"
   },
   {
     id: 30003,
@@ -201,8 +201,8 @@ async function main() {
     longitude: null,
     isActive: 1,
     sortOrder: 0,
-    createdAt: "2026-03-16T16:32:53.000Z",
-    updatedAt: "2026-03-16T16:32:53.000Z"
+    createdAt: "2026-03-16T20:32:53.000Z",
+    updatedAt: "2026-03-16T20:32:53.000Z"
   },
   ];
   await insertBatch(conn, 'locations', locationsData, 'Ubicaciones');
@@ -223,8 +223,8 @@ async function main() {
     sortOrder: 10,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 2,
@@ -235,8 +235,8 @@ async function main() {
     sortOrder: 20,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 3,
@@ -247,8 +247,8 @@ async function main() {
     sortOrder: 30,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 4,
@@ -259,8 +259,8 @@ async function main() {
     sortOrder: 40,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 5,
@@ -271,8 +271,8 @@ async function main() {
     sortOrder: 50,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 6,
@@ -283,8 +283,8 @@ async function main() {
     sortOrder: 60,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 7,
@@ -295,8 +295,8 @@ async function main() {
     sortOrder: 70,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 8,
@@ -307,8 +307,8 @@ async function main() {
     sortOrder: 20,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 9,
@@ -319,8 +319,8 @@ async function main() {
     sortOrder: 40,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 10,
@@ -331,8 +331,8 @@ async function main() {
     sortOrder: 10,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 11,
@@ -343,8 +343,8 @@ async function main() {
     sortOrder: 30,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 12,
@@ -355,8 +355,8 @@ async function main() {
     sortOrder: 50,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 13,
@@ -367,8 +367,8 @@ async function main() {
     sortOrder: 60,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 14,
@@ -379,8 +379,8 @@ async function main() {
     sortOrder: 70,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 15,
@@ -391,8 +391,8 @@ async function main() {
     sortOrder: 80,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 16,
@@ -403,8 +403,8 @@ async function main() {
     sortOrder: 90,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 17,
@@ -415,8 +415,8 @@ async function main() {
     sortOrder: 10,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 18,
@@ -427,8 +427,8 @@ async function main() {
     sortOrder: 20,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 19,
@@ -439,8 +439,8 @@ async function main() {
     sortOrder: 30,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 20,
@@ -451,8 +451,8 @@ async function main() {
     sortOrder: 10,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 21,
@@ -463,8 +463,8 @@ async function main() {
     sortOrder: 20,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 22,
@@ -475,8 +475,8 @@ async function main() {
     sortOrder: 30,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-18T23:17:22.000Z",
-    updatedAt: "2026-03-18T23:17:22.000Z"
+    createdAt: "2026-03-19T03:17:22.000Z",
+    updatedAt: "2026-03-19T03:17:22.000Z"
   },
   {
     id: 30001,
@@ -487,8 +487,8 @@ async function main() {
     sortOrder: 100,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T00:52:13.000Z",
-    updatedAt: "2026-03-19T00:52:25.000Z"
+    createdAt: "2026-03-19T04:52:13.000Z",
+    updatedAt: "2026-03-19T04:52:25.000Z"
   },
   {
     id: 30002,
@@ -499,8 +499,8 @@ async function main() {
     sortOrder: 110,
     isActive: 1,
     menuZone: "header",
-    createdAt: "2026-03-19T00:53:05.000Z",
-    updatedAt: "2026-03-19T01:12:27.000Z"
+    createdAt: "2026-03-19T04:53:05.000Z",
+    updatedAt: "2026-03-19T05:12:27.000Z"
   },
   ];
   await insertBatch(conn, 'menu_items', menuItemsData, 'Ítems de menú');
@@ -520,8 +520,8 @@ async function main() {
     reserveUrl: null,
     sortOrder: 1,
     isActive: 1,
-    createdAt: "2026-03-17T00:37:31.000Z",
-    updatedAt: "2026-03-17T00:37:31.000Z"
+    createdAt: "2026-03-17T04:37:31.000Z",
+    updatedAt: "2026-03-17T04:37:31.000Z"
   },
   {
     id: 30002,
@@ -535,8 +535,8 @@ async function main() {
     reserveUrl: null,
     sortOrder: 2,
     isActive: 1,
-    createdAt: "2026-03-17T00:43:34.000Z",
-    updatedAt: "2026-03-17T00:43:34.000Z"
+    createdAt: "2026-03-17T04:43:34.000Z",
+    updatedAt: "2026-03-17T04:43:34.000Z"
   },
   {
     id: 60001,
@@ -550,8 +550,8 @@ async function main() {
     reserveUrl: null,
     sortOrder: 3,
     isActive: 1,
-    createdAt: "2026-03-17T22:52:20.000Z",
-    updatedAt: "2026-03-17T22:52:20.000Z"
+    createdAt: "2026-03-18T02:52:20.000Z",
+    updatedAt: "2026-03-18T02:52:20.000Z"
   },
   {
     id: 60002,
@@ -565,8 +565,8 @@ async function main() {
     reserveUrl: null,
     sortOrder: 4,
     isActive: 1,
-    createdAt: "2026-03-17T22:58:29.000Z",
-    updatedAt: "2026-03-17T22:58:29.000Z"
+    createdAt: "2026-03-18T02:58:29.000Z",
+    updatedAt: "2026-03-18T02:58:29.000Z"
   },
   ];
   await insertBatch(conn, 'slideshow_items', slideshowItemsData, 'Slideshow');
@@ -582,8 +582,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   {
     id: 2,
@@ -593,8 +593,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   {
     id: 3,
@@ -604,8 +604,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   {
     id: 4,
@@ -615,8 +615,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T02:29:02.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T06:29:02.000Z"
   },
   {
     id: 5,
@@ -626,8 +626,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 0,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   {
     id: 6,
@@ -637,8 +637,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 0,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   {
     id: 7,
@@ -648,8 +648,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   {
     id: 8,
@@ -659,8 +659,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   {
     id: 9,
@@ -670,8 +670,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   {
     id: 10,
@@ -681,8 +681,8 @@ async function main() {
     metaTitle: null,
     metaDescription: null,
     isPublished: 1,
-    createdAt: "2026-03-19T01:29:08.000Z",
-    updatedAt: "2026-03-19T01:29:08.000Z"
+    createdAt: "2026-03-19T05:29:08.000Z",
+    updatedAt: "2026-03-19T05:29:08.000Z"
   },
   ];
   await insertBatch(conn, 'static_pages', staticPagesData, 'Páginas estáticas');
@@ -697,8 +697,8 @@ async function main() {
     sortOrder: 0,
     data: "{\"ctaText\":\"Reservar ahora\",\"ctaUrl\":\"/reservar\",\"imageUrl\":\"https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773930631-fd1fch.png\",\"overlayOpacity\":50,\"subtitle\":\"Subtítulo dAlójate frente al embalse de Los Ángeles de San Rafael. Naturaleza, confort y aventura a la puerta de tu habitación.escriptivo\",\"title\":\"Hotel Nayade\"}",
     isVisible: 1,
-    createdAt: "2026-03-19T02:49:45.000Z",
-    updatedAt: "2026-03-19T02:49:45.000Z"
+    createdAt: "2026-03-19T06:49:45.000Z",
+    updatedAt: "2026-03-19T06:49:45.000Z"
   },
   {
     id: 6,
@@ -707,8 +707,8 @@ async function main() {
     sortOrder: 1,
     data: "{\"body\":\"Descripción lore ipsum del contenido...\",\"ctaText\":\"Ver Habitaciones\",\"ctaUrl\":\"\",\"imagePosition\":\"left\",\"imageUrl\":\"\",\"title\":\"Bienestar en plena naturalezao de sección\"}",
     isVisible: 1,
-    createdAt: "2026-03-19T02:49:45.000Z",
-    updatedAt: "2026-03-19T02:49:45.000Z"
+    createdAt: "2026-03-19T06:49:45.000Z",
+    updatedAt: "2026-03-19T06:49:45.000Z"
   },
   {
     id: 7,
@@ -717,8 +717,8 @@ async function main() {
     sortOrder: 2,
     data: "{\"items\":[{\"description\":\"Descripcilllón\",\"icon\":\"⭐\",\"title\":\"Lore ipsum\"},{\"description\":\"Descripción33\",\"icon\":\"⭐\",\"title\":\"2\"}],\"title\":\"¿Por qué elegirnos?\"}",
     isVisible: 1,
-    createdAt: "2026-03-19T02:49:45.000Z",
-    updatedAt: "2026-03-19T02:49:45.000Z"
+    createdAt: "2026-03-19T06:49:45.000Z",
+    updatedAt: "2026-03-19T06:49:45.000Z"
   },
   ];
   await insertBatch(conn, 'page_blocks', pageBlocksData, 'Bloques de página');
@@ -858,8 +858,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30002,
@@ -889,8 +889,8 @@ async function main() {
     sortOrder: 6,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30003,
@@ -920,8 +920,8 @@ async function main() {
     sortOrder: 0,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30004,
@@ -951,8 +951,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30005,
@@ -982,8 +982,8 @@ async function main() {
     sortOrder: 7,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30006,
@@ -1013,8 +1013,8 @@ async function main() {
     sortOrder: 8,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30007,
@@ -1044,8 +1044,8 @@ async function main() {
     sortOrder: 9,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30008,
@@ -1075,8 +1075,8 @@ async function main() {
     sortOrder: 10,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30009,
@@ -1106,8 +1106,8 @@ async function main() {
     sortOrder: 11,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   {
     id: 30015,
@@ -1137,8 +1137,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-16T16:33:51.000Z",
-    updatedAt: "2026-03-19T01:06:10.000Z"
+    createdAt: "2026-03-16T20:33:51.000Z",
+    updatedAt: "2026-03-19T05:06:10.000Z"
   },
   {
     id: 90001,
@@ -1168,8 +1168,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T23:51:29.000Z",
-    updatedAt: "2026-03-19T00:28:56.000Z"
+    createdAt: "2026-03-19T03:51:29.000Z",
+    updatedAt: "2026-03-19T04:28:56.000Z"
   },
   ];
   await insertBatch(conn, 'experiences', experiencesData, 'Experiencias');
@@ -1187,7 +1187,7 @@ async function main() {
     options: "[]",
     isRequired: 1,
     sortOrder: 0,
-    createdAt: "2026-03-17T20:17:58.000Z"
+    createdAt: "2026-03-18T00:17:58.000Z"
   },
   {
     id: 2,
@@ -1199,7 +1199,7 @@ async function main() {
     options: "[]",
     isRequired: 0,
     sortOrder: 2,
-    createdAt: "2026-03-17T20:27:58.000Z"
+    createdAt: "2026-03-18T00:27:58.000Z"
   },
   {
     id: 30001,
@@ -1211,7 +1211,7 @@ async function main() {
     options: "[]",
     isRequired: 0,
     sortOrder: 1,
-    createdAt: "2026-03-17T21:05:39.000Z"
+    createdAt: "2026-03-18T01:05:39.000Z"
   },
   {
     id: 30002,
@@ -1223,7 +1223,7 @@ async function main() {
     options: "[]",
     isRequired: 0,
     sortOrder: 1,
-    createdAt: "2026-03-17T21:08:23.000Z"
+    createdAt: "2026-03-18T01:08:23.000Z"
   },
   ];
   await insertBatch(conn, 'experience_variants', experienceVariantsData, 'Variantes de experiencias');
@@ -1261,8 +1261,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T04:48:38.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-18T08:48:38.000Z"
   },
   {
     id: 2,
@@ -1294,8 +1294,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T20:11:54.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-19T00:11:54.000Z"
   },
   {
     id: 3,
@@ -1327,8 +1327,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T20:13:05.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-19T00:13:05.000Z"
   },
   {
     id: 4,
@@ -1360,8 +1360,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T20:15:06.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-19T00:15:06.000Z"
   },
   {
     id: 5,
@@ -1393,8 +1393,8 @@ async function main() {
     sortOrder: 5,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T20:15:39.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-19T00:15:39.000Z"
   },
   {
     id: 6,
@@ -1426,8 +1426,8 @@ async function main() {
     sortOrder: 6,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-19T01:57:24.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-19T05:57:24.000Z"
   },
   {
     id: 7,
@@ -1459,8 +1459,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T04:04:24.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-18T08:04:24.000Z"
   },
   {
     id: 8,
@@ -1492,8 +1492,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T04:04:24.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-18T08:04:24.000Z"
   },
   {
     id: 9,
@@ -1525,8 +1525,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T04:04:24.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-18T08:04:24.000Z"
   },
   {
     id: 10,
@@ -1558,8 +1558,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T04:04:24.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-18T08:04:24.000Z"
   },
   {
     id: 11,
@@ -1591,8 +1591,8 @@ async function main() {
     sortOrder: 5,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T04:04:24.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-18T08:04:24.000Z"
   },
   {
     id: 12,
@@ -1624,8 +1624,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T04:04:24.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-18T08:04:24.000Z"
   },
   {
     id: 13,
@@ -1657,8 +1657,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-18T04:04:24.000Z",
-    updatedAt: "2026-03-18T04:04:24.000Z"
+    createdAt: "2026-03-18T08:04:24.000Z",
+    updatedAt: "2026-03-18T08:04:24.000Z"
   },
   ];
   await insertBatch(conn, 'packs', packsData, 'Packs');
@@ -1695,8 +1695,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T03:57:10.000Z",
-    updatedAt: "2026-03-19T04:17:36.000Z"
+    createdAt: "2026-03-19T07:57:10.000Z",
+    updatedAt: "2026-03-19T08:17:36.000Z"
   },
   {
     id: 2,
@@ -1723,8 +1723,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T03:57:10.000Z",
-    updatedAt: "2026-03-19T04:15:51.000Z"
+    createdAt: "2026-03-19T07:57:10.000Z",
+    updatedAt: "2026-03-19T08:15:51.000Z"
   },
   {
     id: 3,
@@ -1751,8 +1751,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T03:57:10.000Z",
-    updatedAt: "2026-03-19T04:16:32.000Z"
+    createdAt: "2026-03-19T07:57:10.000Z",
+    updatedAt: "2026-03-19T08:16:32.000Z"
   },
   {
     id: 4,
@@ -1779,8 +1779,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T03:57:10.000Z",
-    updatedAt: "2026-03-19T04:17:00.000Z"
+    createdAt: "2026-03-19T07:57:10.000Z",
+    updatedAt: "2026-03-19T08:17:00.000Z"
   },
   ];
   await insertBatch(conn, 'room_types', roomTypesData, 'Tipos de habitación');
@@ -1795,7 +1795,7 @@ async function main() {
     endDate: "2026-03-31",
     isActive: 1,
     sortOrder: 1,
-    createdAt: "2026-03-19T03:57:10.000Z"
+    createdAt: "2026-03-19T07:57:10.000Z"
   },
   {
     id: 2,
@@ -1804,7 +1804,7 @@ async function main() {
     endDate: "2026-05-31",
     isActive: 1,
     sortOrder: 2,
-    createdAt: "2026-03-19T03:57:10.000Z"
+    createdAt: "2026-03-19T07:57:10.000Z"
   },
   {
     id: 3,
@@ -1813,7 +1813,7 @@ async function main() {
     endDate: "2026-09-30",
     isActive: 1,
     sortOrder: 3,
-    createdAt: "2026-03-19T03:57:10.000Z"
+    createdAt: "2026-03-19T07:57:10.000Z"
   },
   ];
   await insertBatch(conn, 'room_rate_seasons', roomRateSeasonsData, 'Temporadas de tarifas');
@@ -1832,8 +1832,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:10.000Z",
-    updatedAt: "2026-03-19T03:57:10.000Z"
+    createdAt: "2026-03-19T07:57:10.000Z",
+    updatedAt: "2026-03-19T07:57:10.000Z"
   },
   {
     id: 2,
@@ -1846,8 +1846,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 3,
@@ -1860,8 +1860,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 4,
@@ -1874,8 +1874,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 5,
@@ -1888,8 +1888,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 6,
@@ -1902,8 +1902,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 7,
@@ -1916,8 +1916,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 8,
@@ -1930,8 +1930,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 9,
@@ -1944,8 +1944,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 10,
@@ -1958,8 +1958,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 11,
@@ -1972,8 +1972,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   {
     id: 12,
@@ -1986,8 +1986,8 @@ async function main() {
     supplement: "0.00",
     supplementLabel: null,
     isActive: 1,
-    createdAt: "2026-03-19T03:57:11.000Z",
-    updatedAt: "2026-03-19T03:57:11.000Z"
+    createdAt: "2026-03-19T07:57:11.000Z",
+    updatedAt: "2026-03-19T07:57:11.000Z"
   },
   ];
   await insertBatch(conn, 'room_rates', roomRatesData, 'Tarifas de habitación');
@@ -2003,7 +2003,7 @@ async function main() {
     iconName: "Waves",
     sortOrder: 1,
     isActive: 1,
-    createdAt: "2026-03-19T04:57:32.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z"
   },
   {
     id: 6,
@@ -2013,7 +2013,7 @@ async function main() {
     iconName: "Flame",
     sortOrder: 2,
     isActive: 1,
-    createdAt: "2026-03-19T04:57:32.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z"
   },
   {
     id: 7,
@@ -2023,7 +2023,7 @@ async function main() {
     iconName: "Hand",
     sortOrder: 3,
     isActive: 1,
-    createdAt: "2026-03-19T04:57:32.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z"
   },
   {
     id: 8,
@@ -2033,7 +2033,7 @@ async function main() {
     iconName: "Sparkles",
     sortOrder: 4,
     isActive: 1,
-    createdAt: "2026-03-19T04:57:32.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z"
   },
   ];
   await insertBatch(conn, 'spa_categories', spaCategoriesData, 'Categorías SPA');
@@ -2063,8 +2063,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:02:37.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:02:37.000Z"
   },
   {
     id: 12,
@@ -2088,8 +2088,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:03:13.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:03:13.000Z"
   },
   {
     id: 13,
@@ -2113,8 +2113,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:03:45.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:03:45.000Z"
   },
   {
     id: 14,
@@ -2138,8 +2138,8 @@ async function main() {
     sortOrder: 4,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:04:16.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:04:16.000Z"
   },
   {
     id: 15,
@@ -2163,8 +2163,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:03:02.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:03:02.000Z"
   },
   {
     id: 16,
@@ -2188,8 +2188,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:02:55.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:02:55.000Z"
   },
   {
     id: 17,
@@ -2213,8 +2213,8 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:03:28.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:03:28.000Z"
   },
   {
     id: 18,
@@ -2238,8 +2238,8 @@ async function main() {
     sortOrder: 3,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:04:01.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:04:01.000Z"
   },
   {
     id: 19,
@@ -2263,8 +2263,8 @@ async function main() {
     sortOrder: 1,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:02:44.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:02:44.000Z"
   },
   {
     id: 20,
@@ -2288,11 +2288,1751 @@ async function main() {
     sortOrder: 2,
     metaTitle: null,
     metaDescription: null,
-    createdAt: "2026-03-19T04:57:32.000Z",
-    updatedAt: "2026-03-19T05:03:38.000Z"
+    createdAt: "2026-03-19T08:57:32.000Z",
+    updatedAt: "2026-03-19T09:03:38.000Z"
   },
   ];
   await insertBatch(conn, 'spa_treatments', spaTreatmentsData, 'Tratamientos SPA');
+
+  // ─── Reseñas de clientes (102 registros) ───
+  await conn.query('DELETE FROM `reviews`');
+  const reviewsData = [
+  {
+    id: 1,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Laura Martínez",
+    authorEmail: "laura.m@gmail.com",
+    rating: 5,
+    title: "Una escapada perfecta",
+    body: "Todo impecable desde el primer momento. La habitación estaba limpia, la cama comodísima y las vistas al jardín muy tranquilas. El personal siempre amable y dispuesto a ayudar. Repetiremos sin duda.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-10",
+    verifiedBooking: 1,
+    createdAt: "2026-03-11T14:23:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 2,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Javier Rodríguez",
+    authorEmail: "javier.r@hotmail.com",
+    rating: 5,
+    title: "Relación calidad-precio excelente",
+    body: "Para ser una habitación estándar supera las expectativas. Baño amplio, buena insonorización y el desayuno incluido estaba delicioso. El embalse a cinco minutos andando es un plus increíble.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-05",
+    verifiedBooking: 1,
+    createdAt: "2026-03-06T14:15:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 3,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Carmen Sánchez",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy buena estancia",
+    body: "Habitación cómoda y bien equipada. El WiFi funcionó perfectamente todo el tiempo. Quizás el aire acondicionado hacía un poco de ruido por la noche pero nada que impidiera dormir bien.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-28",
+    verifiedBooking: 0,
+    createdAt: "2026-03-01T16:40:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 4,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Miguel Torres",
+    authorEmail: "mangel.t@gmail.com",
+    rating: 5,
+    title: "Tranquilidad total",
+    body: "Vine a desconectar y lo conseguí al cien por cien. El entorno natural es espectacular y la habitación muy acogedora. El personal te hace sentir como en casa.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-20",
+    verifiedBooking: 1,
+    createdAt: "2026-02-21T21:00:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 5,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Sofía Pérez",
+    authorEmail: "sofia.perez@yahoo.es",
+    rating: 4,
+    title: "Recomendable para parejas",
+    body: "Pasamos un fin de semana romántico y fue genial. La habitación tiene todo lo necesario, el colchón es de muy buena calidad. Repetiríamos, aunque nos gustaría más opciones de almohada.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-14",
+    verifiedBooking: 1,
+    createdAt: "2026-02-15T17:30:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 6,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Antonio García",
+    authorEmail: null,
+    rating: 5,
+    title: "Sorprendentemente bueno",
+    body: "No esperaba tanto de una habitación estándar. Espaciosa, bien decorada y con una ducha de presión excelente. El check-in fue rápido y el personal muy profesional.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-30",
+    verifiedBooking: 0,
+    createdAt: "2026-01-31T13:45:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 7,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Elena Fernández",
+    authorEmail: "elena.f@outlook.com",
+    rating: 4,
+    title: "Estancia muy agradable",
+    body: "El hotel tiene un ambiente muy especial. La habitación estaba perfectamente limpia y el servicio de habitaciones fue puntual. La zona de actividades acuáticas es un valor añadido enorme.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-22",
+    verifiedBooking: 1,
+    createdAt: "2026-01-23T19:20:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 8,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Pablo Moreno",
+    authorEmail: "pablo.moreno@gmail.com",
+    rating: 5,
+    title: "Lo mejor del año",
+    body: "Llevaba tiempo queriendo venir y no me ha decepcionado. La habitación es amplia, el entorno es precioso y el personal muy atento. La combinación de hotel y actividades acuáticas es imbatible.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-15",
+    verifiedBooking: 1,
+    createdAt: "2026-01-16T22:10:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 9,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Isabel López",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy recomendable",
+    body: "Buena relación calidad-precio. La habitación cumple con todo lo prometido. El único detalle es que la televisión tenía pocos canales, pero tampoco vine a ver la tele.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-08",
+    verifiedBooking: 0,
+    createdAt: "2026-01-09T15:05:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 10,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Roberto Jiménez",
+    authorEmail: "roberto.j@gmail.com",
+    rating: 5,
+    title: "Perfecto para desconectar",
+    body: "El lugar es mágico. Habitación limpia, cómoda y con todo lo necesario. El lago al lado hace que todo sea especial. El personal es de diez, siempre con una sonrisa.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-28",
+    verifiedBooking: 1,
+    createdAt: "2025-12-29T14:30:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 11,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "Ana Ruiz",
+    authorEmail: "ana.ruiz@hotmail.com",
+    rating: 3,
+    title: "Correcta pero mejorable",
+    body: "La habitación es funcional y está bien ubicada. Sin embargo, el baño podría estar más actualizado y la decoración es algo anticuada. El servicio fue amable y el desayuno bastante completo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-15",
+    verifiedBooking: 0,
+    createdAt: "2025-12-16T16:00:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 12,
+    entityType: "hotel",
+    entityId: 1,
+    authorName: "David Navarro",
+    authorEmail: null,
+    rating: 3,
+    title: "Bien, aunque con algún detalle",
+    body: "La estancia fue agradable en general. La habitación estaba limpia pero el colchón podría ser más firme. El entorno natural compensa cualquier pequeño inconveniente. Volvería si mejoran esos detalles.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-05",
+    verifiedBooking: 0,
+    createdAt: "2025-12-06T20:45:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 13,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Marta Gómez",
+    authorEmail: "marta.g@gmail.com",
+    rating: 5,
+    title: "Las vistas son espectaculares",
+    body: "Despertar con el lago frente a ti no tiene precio. La habitación es preciosa, con una decoración elegante y mucha luz natural. El servicio impecable y el desayuno de primera. Absolutamente recomendable.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-12",
+    verifiedBooking: 1,
+    createdAt: "2026-03-13T12:30:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 14,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Carlos Vega",
+    authorEmail: "carlos.v@hotmail.com",
+    rating: 5,
+    title: "Romántico e inolvidable",
+    body: "Sorprendí a mi pareja con esta habitación y quedó encantada. Las vistas al lago desde la cama son simplemente mágicas. El personal muy atento y el spa del hotel es un complemento perfecto.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-08",
+    verifiedBooking: 1,
+    createdAt: "2026-03-09T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 15,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Patricia Molina",
+    authorEmail: null,
+    rating: 5,
+    title: "Superior en todos los sentidos",
+    body: "Merece cada euro. La habitación es amplia, luminosa y con unas vistas que quitan el aliento. La cama es enorme y comodísima. Nos costó mucho salir de la habitación.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-25",
+    verifiedBooking: 1,
+    createdAt: "2026-02-26T14:45:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 16,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Fernando Díaz",
+    authorEmail: "fernando.d@gmail.com",
+    rating: 4,
+    title: "Muy buena experiencia",
+    body: "La habitación con vistas al lago es una pasada. El baño es moderno y amplio. Quizás el precio es algo elevado para lo que ofrece en comparación con otras opciones, pero las vistas lo justifican.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-18",
+    verifiedBooking: 0,
+    createdAt: "2026-02-19T16:20:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 17,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Lucía Herrera",
+    authorEmail: "lucia.h@yahoo.es",
+    rating: 5,
+    title: "Perfecta para aniversarios",
+    body: "Celebramos nuestro aniversario aquí y fue mágico. Las vistas al atardecer desde la habitación son de película. El personal nos preparó una sorpresa romántica que nos encantó.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-10",
+    verifiedBooking: 1,
+    createdAt: "2026-02-11T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 18,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Andrés Castillo",
+    authorEmail: null,
+    rating: 4,
+    title: "Habitación de lujo a buen precio",
+    body: "Para lo que ofrece, el precio es muy competitivo. La vista al lago desde la ventana es lo mejor. La decoración es moderna y el baño está muy bien equipado.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-28",
+    verifiedBooking: 0,
+    createdAt: "2026-01-29T21:30:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 19,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Nuria Blanco",
+    authorEmail: "nuria.b@outlook.com",
+    rating: 5,
+    title: "Increíble experiencia",
+    body: "Todo perfecto. La habitación, el servicio, el entorno... Es difícil encontrar un lugar así. Las vistas al lago son lo más, especialmente al amanecer. Volveremos seguro.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-20",
+    verifiedBooking: 1,
+    createdAt: "2026-01-21T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 20,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Sergio Ramos",
+    authorEmail: "sergio.r@gmail.com",
+    rating: 5,
+    title: "Mejor que en las fotos",
+    body: "Las fotos ya eran bonitas pero en persona es todavía mejor. La habitación huele bien, está impecable y las vistas son una maravilla. El personal muy profesional y amable.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-10",
+    verifiedBooking: 1,
+    createdAt: "2026-01-11T17:15:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 21,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Cristina Ortega",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy satisfecha",
+    body: "Habitación cómoda con unas vistas privilegiadas. El único punto de mejora sería la velocidad del WiFi. Todo lo demás fue excelente: limpieza, atención al cliente y ubicación.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-30",
+    verifiedBooking: 0,
+    createdAt: "2025-12-31T15:45:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 22,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Álvaro Morales",
+    authorEmail: "alvaro.m@hotmail.com",
+    rating: 5,
+    title: "Un sueño hecho realidad",
+    body: "Llevaba años queriendo venir y no me ha decepcionado. Las vistas al lago desde la cama son simplemente perfectas. El hotel tiene un encanto especial que no se encuentra en otros sitios.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-20",
+    verifiedBooking: 1,
+    createdAt: "2025-12-21T13:00:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 23,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Raquel Fuentes",
+    authorEmail: null,
+    rating: 3,
+    title: "Buena estancia con algún fallo",
+    body: "Las vistas son increíbles, eso es innegable. Sin embargo, tuvimos un problema con el agua caliente la primera noche y tardaron un poco en solucionarlo. El desayuno estuvo bien pero sin grandes sorpresas.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-10",
+    verifiedBooking: 0,
+    createdAt: "2025-12-11T18:30:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 24,
+    entityType: "hotel",
+    entityId: 2,
+    authorName: "Tomás Guerrero",
+    authorEmail: "tomas.g@gmail.com",
+    rating: 3,
+    title: "Bien pero esperaba más",
+    body: "La habitación es bonita y las vistas al lago son lo mejor. Sin embargo, para el precio que tiene esperaba un nivel de servicio superior. El baño necesita una renovación. En general, correcta.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-11-28",
+    verifiedBooking: 0,
+    createdAt: "2025-11-29T21:00:00.000Z",
+    updatedAt: "2026-03-19T12:10:11.000Z"
+  },
+  {
+    id: 25,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Beatriz Campos",
+    authorEmail: "beatriz.c@gmail.com",
+    rating: 5,
+    title: "Ideal para familias con niños",
+    body: "Vinimos con dos niños de 6 y 9 años y fue perfecto. La habitación tiene espacio de sobra, los niños pudieron jugar y nosotros descansar. Las actividades acuáticas del complejo son un regalo para los peques.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-08",
+    verifiedBooking: 1,
+    createdAt: "2026-03-09T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 26,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Marcos Iglesias",
+    authorEmail: "marcos.i@hotmail.com",
+    rating: 5,
+    title: "Vacaciones familiares perfectas",
+    body: "Tres generaciones juntas y todos encantados. Los abuelos con la tranquilidad del entorno, los padres con el spa y los niños con el lago. La habitación familiar es espaciosa y muy bien equipada.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-01",
+    verifiedBooking: 1,
+    createdAt: "2026-03-02T14:30:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 27,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Verónica Soto",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy cómoda para familias",
+    body: "La habitación familiar es amplia y tiene todo lo necesario. Los niños disfrutaron muchísimo. Quizás faltaría una pequeña zona de juegos interior para los días de lluvia, pero en general muy bien.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-22",
+    verifiedBooking: 0,
+    createdAt: "2026-02-23T19:15:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 28,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Guillermo Pardo",
+    authorEmail: "guillermo.p@gmail.com",
+    rating: 5,
+    title: "El mejor hotel familiar de la zona",
+    body: "Hemos probado varios hoteles con niños y este es sin duda el mejor. El personal está acostumbrado a familias y lo nota. La habitación tiene literas para los niños y cama grande para los padres.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-15",
+    verifiedBooking: 1,
+    createdAt: "2026-02-16T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 29,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Natalia Vargas",
+    authorEmail: "natalia.v@yahoo.es",
+    rating: 4,
+    title: "Los niños no querían irse",
+    body: "Eso lo dice todo. La habitación es grande, el entorno es seguro y las actividades para niños son increíbles. El personal muy amable con los más pequeños. Repetiremos en verano.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-08",
+    verifiedBooking: 1,
+    createdAt: "2026-02-09T17:45:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 30,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Héctor Romero",
+    authorEmail: null,
+    rating: 5,
+    title: "Experiencia familiar inmejorable",
+    body: "Todo pensado para que las familias disfruten. La habitación tiene espacio para todos, el baño es grande y hay una zona de descanso separada. Los niños adoraron el lago y las actividades acuáticas.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-25",
+    verifiedBooking: 1,
+    createdAt: "2026-01-26T13:30:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 31,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Sandra Medina",
+    authorEmail: "sandra.m@outlook.com",
+    rating: 5,
+    title: "Superó todas las expectativas",
+    body: "Vine con mis tres hijos y mi marido y fue una experiencia increíble. La habitación familiar es enorme, con mucho espacio para todos. El personal muy atento con los niños. Volveremos seguro.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-18",
+    verifiedBooking: 1,
+    createdAt: "2026-01-19T20:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 32,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Óscar Delgado",
+    authorEmail: "oscar.d@gmail.com",
+    rating: 4,
+    title: "Muy recomendable para familias",
+    body: "Buena opción para venir con niños. La habitación es amplia y cómoda. El entorno natural es perfecto para que los niños se desconecten de las pantallas. El precio es razonable para lo que ofrece.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-12",
+    verifiedBooking: 0,
+    createdAt: "2026-01-13T16:30:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 33,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Rosa Peña",
+    authorEmail: null,
+    rating: 5,
+    title: "Vacaciones de ensueño",
+    body: "Llevábamos años sin hacer una escapada familiar y este lugar fue perfecto para retomar esa tradición. La habitación es cómoda, el entorno precioso y el servicio excelente. Los niños ya preguntan cuándo volvemos.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-26",
+    verifiedBooking: 1,
+    createdAt: "2025-12-27T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 34,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Víctor Serrano",
+    authorEmail: "victor.s@hotmail.com",
+    rating: 5,
+    title: "Perfecto para desconectar en familia",
+    body: "Sin pantallas, sin prisas, solo naturaleza y familia. La habitación familiar tiene todo lo necesario y el entorno invita a desconectar. Los niños disfrutaron del lago y nosotros del spa. Diez sobre diez.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-18",
+    verifiedBooking: 1,
+    createdAt: "2025-12-19T14:15:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 35,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Pilar Aguilar",
+    authorEmail: null,
+    rating: 3,
+    title: "Correcta para familias",
+    body: "La habitación es amplia pero la decoración es algo sosa para los niños. Echamos de menos más entretenimiento para los más pequeños dentro del hotel. Las actividades acuáticas son geniales pero dependen del tiempo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-08",
+    verifiedBooking: 0,
+    createdAt: "2025-12-09T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 36,
+    entityType: "hotel",
+    entityId: 3,
+    authorName: "Emilio Cano",
+    authorEmail: "emilio.c@gmail.com",
+    rating: 3,
+    title: "Bien pero con margen de mejora",
+    body: "La habitación familiar es funcional pero podría tener más detalles pensados para niños. El baño es pequeño para cuatro personas. El entorno es precioso y el personal amable. En general, una estancia correcta.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-11-30",
+    verifiedBooking: 0,
+    createdAt: "2025-12-01T21:30:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 37,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Adriana Lozano",
+    authorEmail: "adriana.l@gmail.com",
+    rating: 5,
+    title: "Lujo y naturaleza en perfecta armonía",
+    body: "La Junior Suite es simplemente espectacular. El jacuzzi privado con vistas al lago es algo que no olvidaremos. El servicio de habitaciones fue impecable y el desayuno en la terraza fue mágico.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-14",
+    verifiedBooking: 1,
+    createdAt: "2026-03-15T13:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 38,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Ignacio Prieto",
+    authorEmail: "ignacio.p@hotmail.com",
+    rating: 5,
+    title: "La mejor suite que he pisado",
+    body: "Y he pisado unas cuantas. El espacio es enorme, la decoración exquisita y las vistas al lago desde la bañera de hidromasaje son algo único. El personal anticipó todas nuestras necesidades.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-10",
+    verifiedBooking: 1,
+    createdAt: "2026-03-11T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 39,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Mónica Rubio",
+    authorEmail: null,
+    rating: 5,
+    title: "Para ocasiones especiales",
+    body: "Celebramos nuestro décimo aniversario aquí y fue perfecto. La suite tiene un nivel de lujo que no esperábamos en un hotel de montaña. El jacuzzi, la terraza privada y el servicio personalizado son de diez.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-05",
+    verifiedBooking: 1,
+    createdAt: "2026-03-06T15:30:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 40,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Gonzalo Reyes",
+    authorEmail: "gonzalo.r@gmail.com",
+    rating: 5,
+    title: "Experiencia de cinco estrellas",
+    body: "La Junior Suite Premium merece su nombre. Espaciosa, lujosa y con unas vistas al lago que te dejan sin palabras. El servicio de mayordomo fue un detalle que no esperábamos y que marcó la diferencia.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-28",
+    verifiedBooking: 1,
+    createdAt: "2026-03-01T13:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 41,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Inés Domínguez",
+    authorEmail: "ines.d@yahoo.es",
+    rating: 4,
+    title: "Casi perfecta",
+    body: "La suite es preciosa y el jacuzzi con vistas al lago es una experiencia única. El único punto de mejora sería la carta del servicio de habitaciones, que podría ser más variada. En general, una estancia de lujo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-22",
+    verifiedBooking: 0,
+    createdAt: "2026-02-23T17:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 42,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Lorenzo Pascual",
+    authorEmail: null,
+    rating: 5,
+    title: "Vale cada céntimo",
+    body: "Sí, es cara. Pero vale absolutamente cada céntimo. La terraza privada con vistas al lago al amanecer es algo que no tiene precio. El personal fue extraordinariamente atento durante toda la estancia.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-16",
+    verifiedBooking: 1,
+    createdAt: "2026-02-17T14:45:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 43,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Amparo Nieto",
+    authorEmail: "amparo.n@outlook.com",
+    rating: 5,
+    title: "Incomparable",
+    body: "He viajado mucho y pocas veces me he sentido tan bien atendida. La suite es enorme, la decoración elegante y el jacuzzi privado es un lujo que merece la pena. El entorno natural hace el resto.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-10",
+    verifiedBooking: 1,
+    createdAt: "2026-02-11T15:15:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 44,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Rodrigo Vidal",
+    authorEmail: "rodrigo.v@gmail.com",
+    rating: 5,
+    title: "Una noche que vale por un año",
+    body: "Vine solo una noche y me supo a poco. La Junior Suite es el tipo de habitación en la que quieres quedarte para siempre. El jacuzzi, las vistas, el silencio... Todo es perfecto.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-30",
+    verifiedBooking: 1,
+    createdAt: "2026-01-31T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 45,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Consuelo Marín",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy buena experiencia de lujo",
+    body: "La suite es magnífica. Quizás esperaba un poco más en cuanto a la amenidades del baño, pero el espacio y las vistas son excepcionales. El personal muy profesional y discreto.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-22",
+    verifiedBooking: 0,
+    createdAt: "2026-01-23T16:30:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 46,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Esteban Flores",
+    authorEmail: "esteban.f@hotmail.com",
+    rating: 5,
+    title: "El mejor regalo que me he hecho",
+    body: "Me lo regalé a mí mismo por mi cumpleaños y fue la mejor decisión. La Junior Suite es todo lo que promete y más. El jacuzzi con vistas al lago es simplemente irrepetible.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-15",
+    verifiedBooking: 1,
+    createdAt: "2026-01-16T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 47,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Dolores Gutiérrez",
+    authorEmail: null,
+    rating: 3,
+    title: "Buena suite pero con detalles a mejorar",
+    body: "La habitación es grande y lujosa, pero encontramos algunos detalles de mantenimiento que no estaban a la altura del precio. El jacuzzi tardó en calentarse y la terraza necesitaba limpieza. El personal fue muy amable y lo solucionó.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-28",
+    verifiedBooking: 0,
+    createdAt: "2025-12-29T20:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 48,
+    entityType: "hotel",
+    entityId: 4,
+    authorName: "Bernardo Ortiz",
+    authorEmail: "bernardo.o@gmail.com",
+    rating: 3,
+    title: "Esperaba más por el precio",
+    body: "La suite es bonita y el jacuzzi es un plus, pero para el precio que tiene esperaba un servicio más personalizado. El desayuno fue correcto pero sin nada especial. Las vistas al lago son lo mejor con diferencia.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-18",
+    verifiedBooking: 0,
+    createdAt: "2025-12-19T17:00:00.000Z",
+    updatedAt: "2026-03-19T12:11:03.000Z"
+  },
+  {
+    id: 49,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Valeria Montoya",
+    authorEmail: "valeria.m@gmail.com",
+    rating: 5,
+    title: "Renovación total del cuerpo y la mente",
+    body: "El circuito hidrotermal es una experiencia que todo el mundo debería vivir. Las diferentes temperaturas del agua, la sauna y el baño turco crean una combinación perfecta para descansar. Salí como nueva.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-13",
+    verifiedBooking: 1,
+    createdAt: "2026-03-14T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 50,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Hugo Bermúdez",
+    authorEmail: "hugo.b@hotmail.com",
+    rating: 5,
+    title: "El mejor spa de la zona",
+    body: "He probado varios spas en la región y este es sin duda el mejor. El circuito hidrotermal está muy bien diseñado, las instalaciones son modernas y el personal muy atento. Una experiencia de lujo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-09",
+    verifiedBooking: 1,
+    createdAt: "2026-03-10T13:30:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 51,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Claudia Espinoza",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy relajante",
+    body: "El circuito está muy bien. Las instalaciones son modernas y el ambiente muy tranquilo. Quizás los 90 minutos se quedan cortos cuando estás tan a gusto. Repetiría sin duda.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-02",
+    verifiedBooking: 0,
+    createdAt: "2026-03-03T16:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 52,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Rubén Alonso",
+    authorEmail: "ruben.a@gmail.com",
+    rating: 5,
+    title: "Perfecto para desconectar",
+    body: "Vine con mi pareja y fue una experiencia increíble. El circuito hidrotermal está muy bien organizado y las instalaciones son impecables. El personal muy discreto y profesional.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-24",
+    verifiedBooking: 1,
+    createdAt: "2026-02-25T19:30:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 53,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Yolanda Castro",
+    authorEmail: "yolanda.c@yahoo.es",
+    rating: 4,
+    title: "Muy buena experiencia",
+    body: "El circuito hidrotermal es una maravilla. Las diferentes zonas están muy bien pensadas y la temperatura del agua perfecta. Salí completamente relajada. Solo le faltaría una zona de descanso más amplia.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-18",
+    verifiedBooking: 0,
+    createdAt: "2026-02-19T17:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 54,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Ramón Herrero",
+    authorEmail: null,
+    rating: 5,
+    title: "Una tarde de lujo",
+    body: "Vine a celebrar mi cumpleaños y fue el mejor regalo. El circuito hidrotermal es espectacular, con una piscina de agua caliente con vistas al lago que es simplemente mágica. El personal muy amable.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-12",
+    verifiedBooking: 1,
+    createdAt: "2026-02-13T21:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 55,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Silvia Mora",
+    authorEmail: "silvia.m@outlook.com",
+    rating: 5,
+    title: "Imprescindible",
+    body: "Si vienes a Náyade y no haces el circuito hidrotermal, te estás perdiendo lo mejor. Las instalaciones son de primer nivel y el ambiente muy relajante. Salí completamente renovada.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-05",
+    verifiedBooking: 1,
+    createdAt: "2026-02-06T15:45:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 56,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Joaquín Rivas",
+    authorEmail: "joaquin.r@gmail.com",
+    rating: 5,
+    title: "Mejor que en un hotel de cinco estrellas",
+    body: "He estado en spas de hoteles de lujo y este circuito no tiene nada que envidiarles. Las instalaciones son modernas, el agua perfectamente temperada y el ambiente muy tranquilo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-28",
+    verifiedBooking: 1,
+    createdAt: "2026-01-29T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 57,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Miriam Cabrera",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy satisfecha",
+    body: "El circuito hidrotermal es una experiencia muy completa. Las instalaciones están bien mantenidas y el personal es muy atento. El único detalle es que estaba bastante lleno el día que fui.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-20",
+    verifiedBooking: 0,
+    createdAt: "2026-01-21T18:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 58,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Álvaro Cortés",
+    authorEmail: "alvaro.c@hotmail.com",
+    rating: 5,
+    title: "Experiencia única",
+    body: "El circuito hidrotermal con vistas al lago es algo que no se puede describir, hay que vivirlo. Las instalaciones son perfectas y el personal muy profesional. Volveré cada vez que pueda.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-12",
+    verifiedBooking: 1,
+    createdAt: "2026-01-13T16:30:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 59,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Esperanza Gil",
+    authorEmail: null,
+    rating: 3,
+    title: "Bien pero mejorable",
+    body: "El circuito está bien pero esperaba más por el precio. Las instalaciones son correctas aunque algunas zonas necesitan renovación. El personal fue amable y el ambiente tranquilo. En general, una experiencia correcta.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-22",
+    verifiedBooking: 0,
+    createdAt: "2025-12-23T20:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 60,
+    entityType: "spa",
+    entityId: 11,
+    authorName: "Nicolás Fuentes",
+    authorEmail: "nicolas.f@gmail.com",
+    rating: 3,
+    title: "Correcto pero sin sorpresas",
+    body: "El circuito hidrotermal cumple lo que promete pero no destaca especialmente. Las instalaciones están bien pero algunas zonas podrían estar más limpias. El personal fue correcto. Para el precio, esperaba algo más especial.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-12",
+    verifiedBooking: 0,
+    createdAt: "2025-12-13T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 61,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Daniela Ríos",
+    authorEmail: "daniela.r@gmail.com",
+    rating: 5,
+    title: "La experiencia romántica perfecta",
+    body: "Mi pareja y yo lo disfrutamos muchísimo. La cabina privada para parejas es una maravilla, con jacuzzi y zona de relax solo para nosotros. El personal nos trató de forma exquisita. Perfecto para aniversarios.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-11",
+    verifiedBooking: 1,
+    createdAt: "2026-03-12T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 62,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Sebastián Mora",
+    authorEmail: "sebastian.m@hotmail.com",
+    rating: 5,
+    title: "Romántico e íntimo",
+    body: "Sorprendí a mi novia con este circuito y fue un éxito total. La privacidad, el jacuzzi y la atención personalizada hacen de esta experiencia algo muy especial. Totalmente recomendable para parejas.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-07",
+    verifiedBooking: 1,
+    createdAt: "2026-03-08T13:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 63,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Rebeca Navarro",
+    authorEmail: null,
+    rating: 5,
+    title: "Ideal para celebraciones",
+    body: "Celebramos nuestro aniversario aquí y fue perfecto. El circuito para parejas tiene todo lo que necesitas: privacidad, jacuzzi, zona de relax y un servicio impecable. Salimos completamente relajados y felices.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-27",
+    verifiedBooking: 1,
+    createdAt: "2026-02-28T16:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 64,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Ernesto Blanco",
+    authorEmail: "ernesto.b@gmail.com",
+    rating: 4,
+    title: "Muy buena experiencia en pareja",
+    body: "El circuito para parejas es una experiencia muy especial. La privacidad es total y las instalaciones son de calidad. Quizás el tiempo podría ser un poco más largo, pero en general muy satisfechos.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-20",
+    verifiedBooking: 0,
+    createdAt: "2026-02-21T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 65,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Paloma Vega",
+    authorEmail: "paloma.v@yahoo.es",
+    rating: 5,
+    title: "Una tarde mágica",
+    body: "Vinimos para celebrar San Valentín y fue una experiencia increíble. La cabina privada con jacuzzi es una maravilla y el personal muy atento. Nos prepararon una sorpresa romántica que nos encantó.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-14",
+    verifiedBooking: 1,
+    createdAt: "2026-02-15T15:30:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 66,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Leandro Sanz",
+    authorEmail: null,
+    rating: 5,
+    title: "Perfecto para reconectar",
+    body: "Con el ritmo de vida que llevamos, este circuito para parejas fue exactamente lo que necesitábamos. Dos horas de relax total, sin teléfonos y solo nosotros dos. Salimos como nuevos.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-08",
+    verifiedBooking: 1,
+    createdAt: "2026-02-09T17:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 67,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Alicia Mendoza",
+    authorEmail: "alicia.m@outlook.com",
+    rating: 4,
+    title: "Muy recomendable",
+    body: "El circuito para parejas es una experiencia muy agradable. Las instalaciones son modernas y el ambiente muy íntimo. El único detalle es que el jacuzzi tardó un poco en calentarse. En general, muy satisfecha.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-25",
+    verifiedBooking: 0,
+    createdAt: "2026-01-26T20:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 68,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Germán Peña",
+    authorEmail: "german.p@gmail.com",
+    rating: 5,
+    title: "Excepcional",
+    body: "El circuito spa para parejas es simplemente excepcional. La privacidad, el jacuzzi, la zona de relax y el servicio personalizado hacen de esta experiencia algo muy especial. Lo recomiendo a todas las parejas.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-18",
+    verifiedBooking: 1,
+    createdAt: "2026-01-19T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 69,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Susana Leal",
+    authorEmail: null,
+    rating: 3,
+    title: "Bien pero esperaba más intimidad",
+    body: "El circuito para parejas es bonito pero la separación con otras parejas no es total. Esperaba más privacidad. Las instalaciones son correctas y el personal amable. En general, una experiencia agradable pero no excepcional.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-20",
+    verifiedBooking: 0,
+    createdAt: "2025-12-21T19:30:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 70,
+    entityType: "spa",
+    entityId: 12,
+    authorName: "Mauricio Pons",
+    authorEmail: "mauricio.p@hotmail.com",
+    rating: 3,
+    title: "Correcto pero sin destacar",
+    body: "El circuito para parejas cumple lo que promete pero no es tan especial como esperaba. Las instalaciones son correctas y el personal amable. Para el precio, esperaba algo más exclusivo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-08",
+    verifiedBooking: 0,
+    createdAt: "2025-12-09T21:00:00.000Z",
+    updatedAt: "2026-03-19T12:12:20.000Z"
+  },
+  {
+    id: 71,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Lorena Campos",
+    authorEmail: "lorena.c@gmail.com",
+    rating: 5,
+    title: "El complemento perfecto para la estancia",
+    body: "Nos alojamos en el hotel y el acceso al spa fue un regalo. El circuito para huéspedes es una maravilla, con todas las instalaciones en perfecto estado. Una experiencia que complementa perfectamente la estancia.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-10",
+    verifiedBooking: 1,
+    createdAt: "2026-03-11T13:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 72,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Arturo Méndez",
+    authorEmail: null,
+    rating: 5,
+    title: "Imprescindible si te alojas aquí",
+    body: "Como huésped del hotel, el acceso al spa es un lujo que no debes perderte. El circuito es completo y las instalaciones están en perfectas condiciones. El personal muy atento y profesional.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-04",
+    verifiedBooking: 1,
+    createdAt: "2026-03-05T15:30:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 73,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Celia Romero",
+    authorEmail: "celia.r@hotmail.com",
+    rating: 4,
+    title: "Muy buena experiencia",
+    body: "El circuito para huéspedes es una muy buena opción. Las instalaciones son modernas y el ambiente muy relajante. Quizás el horario podría ser más amplio, pero en general muy satisfecha.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-26",
+    verifiedBooking: 0,
+    createdAt: "2026-02-27T16:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 74,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Iván Guerrero",
+    authorEmail: "ivan.g@gmail.com",
+    rating: 5,
+    title: "Vale la pena alojarse solo por esto",
+    body: "El spa para huéspedes es uno de los mejores que he visto. Las instalaciones son de lujo y el personal muy atento. La combinación de hotel y spa hace de este lugar un destino único.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-18",
+    verifiedBooking: 1,
+    createdAt: "2026-02-19T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 75,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Noelia Ibáñez",
+    authorEmail: null,
+    rating: 5,
+    title: "Experiencia de cinco estrellas",
+    body: "El circuito spa para huéspedes es simplemente espectacular. Las instalaciones son modernas, el ambiente muy tranquilo y el personal muy profesional. Un lujo que merece la pena.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-10",
+    verifiedBooking: 1,
+    createdAt: "2026-02-11T14:45:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 76,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Marcos Rueda",
+    authorEmail: "marcos.r@outlook.com",
+    rating: 4,
+    title: "Muy recomendable",
+    body: "El spa para huéspedes es una experiencia muy completa. Las instalaciones están bien mantenidas y el personal es muy atento. El único detalle es que a veces hay que esperar para algunas zonas.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-28",
+    verifiedBooking: 0,
+    createdAt: "2026-01-29T17:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 77,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Irene Molina",
+    authorEmail: "irene.m@gmail.com",
+    rating: 5,
+    title: "Perfecto para descansar",
+    body: "Después de un día de actividades acuáticas, el spa fue el complemento perfecto. El circuito para huéspedes tiene todo lo necesario para recuperarse y relajarse. Muy recomendable.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-20",
+    verifiedBooking: 1,
+    createdAt: "2026-01-21T21:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 78,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Rodrigo Salas",
+    authorEmail: null,
+    rating: 5,
+    title: "Una experiencia única",
+    body: "El spa para huéspedes del hotel es simplemente increíble. Las instalaciones son de primer nivel y el ambiente muy relajante. La combinación de hotel, actividades y spa hace de este lugar algo especial.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-12",
+    verifiedBooking: 1,
+    createdAt: "2026-01-13T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 79,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Amparo Vidal",
+    authorEmail: "amparo.v@hotmail.com",
+    rating: 3,
+    title: "Correcto pero sin sorpresas",
+    body: "El circuito para huéspedes es correcto pero no excepcional. Las instalaciones están bien pero algunas zonas podrían estar más actualizadas. El personal fue amable. En general, una experiencia agradable.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-28",
+    verifiedBooking: 0,
+    createdAt: "2025-12-29T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 80,
+    entityType: "spa",
+    entityId: 13,
+    authorName: "Félix Carrasco",
+    authorEmail: null,
+    rating: 3,
+    title: "Bien pero mejorable",
+    body: "El spa para huéspedes cumple lo que promete pero esperaba algo más especial. Las instalaciones son correctas y el personal amable. Para el precio de la habitación, esperaba un acceso más exclusivo al spa.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-15",
+    verifiedBooking: 0,
+    createdAt: "2025-12-16T16:30:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 81,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Cristina Varela",
+    authorEmail: "cristina.v@gmail.com",
+    rating: 5,
+    title: "Las manos mágicas de la terapeuta",
+    body: "El masaje relajante fue una experiencia transformadora. La terapeuta fue muy profesional, adaptando la presión a mis necesidades. Salí completamente renovada, sin tensiones y con una sensación de bienestar increíble.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-12",
+    verifiedBooking: 1,
+    createdAt: "2026-03-13T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 82,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Enrique Soto",
+    authorEmail: "enrique.s@hotmail.com",
+    rating: 5,
+    title: "El mejor masaje de mi vida",
+    body: "No exagero. El masaje relajante de 50 minutos fue simplemente perfecto. La terapeuta supo exactamente dónde tenía las tensiones y las trabajó de forma magistral. Salí flotando.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-08",
+    verifiedBooking: 1,
+    createdAt: "2026-03-09T13:30:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 83,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Nadia Flores",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy relajante",
+    body: "El masaje fue muy agradable. La terapeuta muy profesional y el ambiente muy tranquilo. Quizás 50 minutos se quedan cortos, pero el resultado fue muy bueno. Repetiría sin duda.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-01",
+    verifiedBooking: 0,
+    createdAt: "2026-03-02T17:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 84,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Tomás Herrera",
+    authorEmail: "tomas.h@gmail.com",
+    rating: 5,
+    title: "Imprescindible después de las actividades",
+    body: "Después de un día de deportes acuáticos, el masaje relajante fue exactamente lo que necesitaba. La terapeuta muy profesional y el ambiente muy tranquilo. Salí como nuevo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-24",
+    verifiedBooking: 1,
+    createdAt: "2026-02-25T20:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 85,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Lola Jiménez",
+    authorEmail: "lola.j@yahoo.es",
+    rating: 5,
+    title: "Una hora de puro placer",
+    body: "El masaje relajante es una experiencia que todo el mundo debería vivir. La terapeuta fue muy atenta y profesional, adaptando el masaje a mis necesidades. El ambiente del spa es muy tranquilo y relajante.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-16",
+    verifiedBooking: 1,
+    createdAt: "2026-02-17T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 86,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Andrés Navarro",
+    authorEmail: null,
+    rating: 5,
+    title: "Perfecto para desconectar",
+    body: "Vine con mucho estrés y salí completamente relajado. El masaje relajante fue una experiencia increíble. La terapeuta muy profesional y el ambiente del spa muy tranquilo. Lo recomiendo a todo el mundo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-09",
+    verifiedBooking: 1,
+    createdAt: "2026-02-10T16:30:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 87,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Pilar Ramos",
+    authorEmail: "pilar.r@outlook.com",
+    rating: 4,
+    title: "Muy buena experiencia",
+    body: "El masaje relajante fue muy agradable. La terapeuta muy profesional y el ambiente muy tranquilo. El único detalle es que la sala podría estar un poco más caliente. En general, muy satisfecha.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-02",
+    verifiedBooking: 0,
+    createdAt: "2026-02-03T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 88,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Javier Blanco",
+    authorEmail: "javier.b@gmail.com",
+    rating: 5,
+    title: "Excepcional",
+    body: "El masaje relajante de 50 minutos es una experiencia que vale cada euro. La terapeuta fue muy profesional y el resultado fue increíble. Salí sin una sola tensión en el cuerpo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-26",
+    verifiedBooking: 1,
+    createdAt: "2026-01-27T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 89,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Carmen López",
+    authorEmail: null,
+    rating: 4,
+    title: "Muy recomendable",
+    body: "El masaje fue muy bueno. La terapeuta muy profesional y atenta. El ambiente del spa es muy tranquilo y relajante. Repetiría sin duda. Solo le daría un 4 porque esperaba un poco más de tiempo.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-18",
+    verifiedBooking: 0,
+    createdAt: "2026-01-19T18:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 90,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Rafael Moreno",
+    authorEmail: "rafael.m@hotmail.com",
+    rating: 5,
+    title: "Transformador",
+    body: "El masaje relajante fue una experiencia transformadora. Llegué con mucho estrés y salí completamente renovado. La terapeuta fue muy profesional y el ambiente del spa muy tranquilo. Volveré pronto.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-10",
+    verifiedBooking: 1,
+    createdAt: "2026-01-11T15:30:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 91,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Beatriz Ortega",
+    authorEmail: null,
+    rating: 3,
+    title: "Bien pero esperaba más",
+    body: "El masaje fue correcto pero no excepcional. La terapeuta fue amable pero la presión podría haber sido mayor. El ambiente del spa es tranquilo. Para el precio, esperaba algo más especial.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-25",
+    verifiedBooking: 0,
+    createdAt: "2025-12-26T20:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 92,
+    entityType: "spa",
+    entityId: 16,
+    authorName: "Guillermo Pons",
+    authorEmail: "guillermo.p@gmail.com",
+    rating: 3,
+    title: "Correcto pero mejorable",
+    body: "El masaje relajante cumple lo que promete pero no destaca especialmente. La terapeuta fue amable pero la técnica podría mejorar. El ambiente del spa es tranquilo. En general, una experiencia correcta.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-14",
+    verifiedBooking: 0,
+    createdAt: "2025-12-15T17:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 93,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Verónica Pardo",
+    authorEmail: "veronica.p@gmail.com",
+    rating: 5,
+    title: "Una experiencia sensorial única",
+    body: "El ritual de aromaterapia es algo que no había vivido antes. Los aromas, la música, la temperatura... Todo está perfectamente coordinado para crear una experiencia sensorial completa. Salí completamente transformada.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-13",
+    verifiedBooking: 1,
+    createdAt: "2026-03-14T15:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 94,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Nicolás Aguilar",
+    authorEmail: "nicolas.a@hotmail.com",
+    rating: 5,
+    title: "El tratamiento estrella del spa",
+    body: "El ritual sensorial de aromaterapia es simplemente el mejor tratamiento del spa. Los 90 minutos pasan volando y el resultado es increíble. La terapeuta muy profesional y los aromas perfectamente elegidos.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-09",
+    verifiedBooking: 1,
+    createdAt: "2026-03-10T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 95,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Luciana Reyes",
+    authorEmail: null,
+    rating: 5,
+    title: "Transformador",
+    body: "El ritual de aromaterapia fue una experiencia que cambió mi percepción del bienestar. Los aromas, el masaje y el ambiente crean una combinación perfecta. Salí completamente renovada y con una sensación de paz increíble.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-03-02",
+    verifiedBooking: 1,
+    createdAt: "2026-03-03T14:30:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 96,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Esteban Mora",
+    authorEmail: "esteban.m@gmail.com",
+    rating: 4,
+    title: "Muy especial",
+    body: "El ritual sensorial es una experiencia muy especial. Los aromas son increíbles y la terapeuta muy profesional. Quizás esperaba un poco más de trabajo en los puntos de tensión, pero en general muy satisfecho.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-24",
+    verifiedBooking: 0,
+    createdAt: "2026-02-25T18:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 97,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Gabriela Castro",
+    authorEmail: "gabriela.c@yahoo.es",
+    rating: 5,
+    title: "El mejor regalo que me han hecho",
+    body: "Me lo regalaron por mi cumpleaños y fue el mejor regalo de mi vida. El ritual de aromaterapia es una experiencia que todo el mundo debería vivir. Los aromas, la música y el masaje crean algo mágico.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-17",
+    verifiedBooking: 1,
+    createdAt: "2026-02-18T15:30:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 98,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Óscar Fuentes",
+    authorEmail: null,
+    rating: 5,
+    title: "Increíble experiencia sensorial",
+    body: "El ritual de aromaterapia es algo que no se puede describir, hay que vivirlo. Los 90 minutos son un viaje sensorial completo. La terapeuta muy profesional y los aromas perfectamente seleccionados.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-10",
+    verifiedBooking: 1,
+    createdAt: "2026-02-11T16:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 99,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Marisol Vega",
+    authorEmail: "marisol.v@outlook.com",
+    rating: 4,
+    title: "Muy recomendable",
+    body: "El ritual sensorial es una experiencia muy agradable. Los aromas son increíbles y la terapeuta muy profesional. El único detalle es que la sala podría estar un poco más oscura para mayor relajación.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-02-03",
+    verifiedBooking: 0,
+    createdAt: "2026-02-04T19:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 100,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Fernando Castillo",
+    authorEmail: "fernando.c@gmail.com",
+    rating: 5,
+    title: "Una hora y media de puro placer",
+    body: "El ritual de aromaterapia de 90 minutos es una experiencia que vale cada euro. Los aromas, el masaje y el ambiente crean algo único. La terapeuta fue extraordinariamente profesional y atenta.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2026-01-27",
+    verifiedBooking: 1,
+    createdAt: "2026-01-28T14:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 101,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Inés Serrano",
+    authorEmail: null,
+    rating: 3,
+    title: "Bien pero esperaba más",
+    body: "El ritual de aromaterapia es agradable pero no tan especial como esperaba. Los aromas son bonitos pero la técnica de masaje podría mejorar. El ambiente del spa es tranquilo. En general, una experiencia correcta.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-22",
+    verifiedBooking: 0,
+    createdAt: "2025-12-23T20:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  {
+    id: 102,
+    entityType: "spa",
+    entityId: 20,
+    authorName: "Alejandro Ruiz",
+    authorEmail: "alejandro.r@hotmail.com",
+    rating: 3,
+    title: "Correcto pero mejorable",
+    body: "El ritual sensorial cumple lo que promete pero no destaca especialmente. Los aromas son agradables pero esperaba una técnica de masaje más elaborada. El ambiente es tranquilo. Para el precio, esperaba algo más.",
+    status: "approved",
+    adminReply: null,
+    adminRepliedAt: null,
+    stayDate: "2025-12-10",
+    verifiedBooking: 0,
+    createdAt: "2025-12-11T17:00:00.000Z",
+    updatedAt: "2026-03-19T12:13:13.000Z"
+  },
+  ];
+  await insertBatch(conn, 'reviews', reviewsData, 'Reseñas de clientes');
 
   // Reactivar FK checks
   await conn.query('SET FOREIGN_KEY_CHECKS = 1');

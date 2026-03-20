@@ -91,6 +91,7 @@ async function main() {
     room_rates: await fetchTable(conn, 'room_rates'),
     spa_categories: await fetchTable(conn, 'spa_categories'),
     spa_treatments: await fetchTable(conn, 'spa_treatments'),
+    reviews: await fetchTable(conn, 'reviews'),
   };
 
   await conn.end();
@@ -172,6 +173,7 @@ async function main() {
     ['room_rates', 'Tarifas de habitación'],
     ['spa_categories', 'Categorías SPA'],
     ['spa_treatments', 'Tratamientos SPA'],
+    ['reviews', 'Reseñas de clientes'],
   ];
 
   for (const [table, label] of tableOrder) {

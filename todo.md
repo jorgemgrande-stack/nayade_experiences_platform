@@ -498,3 +498,8 @@
 - [x] Resumen final de registros insertados por tabla
 - [x] Verificado: ejecuta limpio con node scripts/seed-data.mjs (126 registros insertados)
 - [x] Script auxiliar scripts/export-to-seed.mjs para regenerar el seed desde la BD actual
+
+## Seed: Añadir Reseñas (v7.5)
+- [x] Añadir tabla reviews a export-to-seed.mjs
+- [x] Regenerar seed-data.mjs con las 102 reseñas incluidas (140 KB, 228 registros totales)
+- [x] Verificado: seed ejecuta limpio con 18 tablas y 228 registros insertados
