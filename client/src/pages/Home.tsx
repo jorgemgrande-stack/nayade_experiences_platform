@@ -315,7 +315,7 @@ export default function Home() {
             ) : (
               <div
                 className="rounded-3xl overflow-hidden shadow-2xl"
-                style={{ background: "rgba(10,20,40,0.82)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset" }}
+                style={{ background: "rgba(10,20,40,0.52)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.15)", boxShadow: "0 32px 64px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.08) inset" }}
               >
                 {/* Barra superior */}
                 <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
