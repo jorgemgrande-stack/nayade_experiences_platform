@@ -163,7 +163,7 @@ export default function SlideshowManager() {
 
   return (
     <AdminLayout title="Gestión del Slideshow">
-      <div className="min-h-screen bg-[#080e1c] text-white px-6 py-6">
+      <div className="px-6 py-6">
         {/* Page header */}
         <div className="flex items-center justify-between mb-6 pb-5 border-b border-white/10">
           <div className="flex items-center gap-3">
