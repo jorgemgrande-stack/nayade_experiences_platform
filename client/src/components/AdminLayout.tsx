@@ -29,6 +29,7 @@ const navItems = [
       { label: "Menús", href: "/admin/cms/menus" },
       { label: "Páginas", href: "/admin/cms/paginas" },
       { label: "Multimedia", href: "/admin/cms/multimedia" },
+      { label: "Galería", href: "/admin/cms/galeria" },
     ],
   },
   {

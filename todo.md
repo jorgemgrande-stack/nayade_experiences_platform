@@ -710,3 +710,15 @@
 - [x] Corregir PublicFooter.tsx: slugs correctos + añadida Arrocería La Cabaña
 - [x] Corregir menu_items en BD: UPDATE slugs + INSERT Arrocería La Cabaña
 - [x] Corregir orden de rutas en App.tsx: rutas fijas /reserva-ok y /reserva-ko antes de /:slug
+
+## Gestor de Galería en admin — v8.13
+- [x] Auditar galería pública actual (fotos hardcodeadas vs BD)
+- [x] Schema BD: tabla gallery_items (id, imageUrl, fileKey, title, category, sortOrder, isActive, createdAt)
+- [x] Migración SQL aplicada
+- [x] tRPC: gallery.getItems (público), gallery.getCategories (público), gallery.adminCreate/adminUpdate/adminDelete/adminReorder (admin)
+- [x] Admin: gestor de galería con subida de fotos a S3, categorías, orden drag-and-drop
+- [x] Admin: registrar ruta /admin/cms/galeria en sidebar bajo CMS
+- [x] Página pública /galeria: conectar a BD en lugar de fotos hardcodeadas
+- [x] Filtros de categoría en la galería pública funcionan con datos reales
+- [x] gallery.getItems y gallery.getCategories añadidos a whitelist authGuard (acceso móvil sin sesión)
+- [x] 0 errores TypeScript, 100 tests pasando

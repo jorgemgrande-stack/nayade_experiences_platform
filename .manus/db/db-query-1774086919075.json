@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `gallery_items` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`imageUrl` text NOT NULL,\n\t`fileKey` varchar(512) NOT NULL,\n\t`title` varchar(256) DEFAULT '',\n\t`category` varchar(128) NOT NULL DEFAULT 'General',\n\t`sortOrder` int NOT NULL DEFAULT 0,\n\t`isActive` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `gallery_items_id` PRIMARY KEY(`id`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute CREATE TABLE `gallery_items` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`imageUrl` text NOT NULL,\n\t`fileKey` varchar(512) NOT NULL,\n\t`title` varchar(256) DEFAULT '',\n\t`category` varchar(128) NOT NULL DEFAULT 'General',\n\t`sortOrder` int NOT NULL DEFAULT 0,\n\t`isActive` boolean NOT NULL DEFAULT true,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\t`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n\tCONSTRAINT `gallery_items_id` PRIMARY KEY(`id`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 156
+}

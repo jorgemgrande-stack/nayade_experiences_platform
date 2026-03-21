@@ -744,3 +744,18 @@ export const restaurantStaff = mysqlTable("restaurant_staff", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type RestaurantStaff = typeof restaurantStaff.$inferSelect;
+
+// ─── GALLERY ─────────────────────────────────────────────────────────────────
+export const galleryItems = mysqlTable("gallery_items", {
+  id: int("id").autoincrement().primaryKey(),
+  imageUrl: text("imageUrl").notNull(),
+  fileKey: varchar("fileKey", { length: 512 }).notNull(),
+  title: varchar("title", { length: 256 }).default(""),
+  category: varchar("category", { length: 128 }).notNull().default("General"),
+  sortOrder: int("sortOrder").notNull().default(0),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type GalleryItem = typeof galleryItems.$inferSelect;
+export type NewGalleryItem = typeof galleryItems.$inferInsert;

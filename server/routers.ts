@@ -1,4 +1,13 @@
 import { COOKIE_NAME } from "@shared/const";
+import {
+  getActiveGalleryItems,
+  getGalleryCategories,
+  getAllGalleryItems,
+  createGalleryItem,
+  updateGalleryItem,
+  deleteGalleryItem,
+  reorderGalleryItems,
+} from "./galleryDb";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -1100,5 +1109,57 @@ export const appRouter = router({
   spa: spaRouter,
   reviews: reviewsRouter,
   restaurants: restaurantsRouter,
+  gallery: router({
+    /** Público: obtener fotos activas */
+    getItems: publicProcedure
+      .input(z.object({ category: z.string().optional() }))
+      .query(async ({ input }) => {
+        const items = await getActiveGalleryItems();
+        if (input.category && input.category !== "Todas") {
+          return items.filter((i) => i.category === input.category);
+        }
+        return items;
+      }),
+    /** Público: obtener categorías únicas */
+    getCategories: publicProcedure.query(async () => getGalleryCategories()),
+    /** Admin: obtener todas las fotos */
+    adminGetAll: adminProcedure.query(async () => getAllGalleryItems()),
+    /** Admin: crear foto */
+    adminCreate: adminProcedure
+      .input(z.object({
+        imageUrl: z.string().url(),
+        fileKey: z.string(),
+        title: z.string().optional(),
+        category: z.string().default("General"),
+        isActive: z.boolean().default(true),
+      }))
+      .mutation(async ({ input }) => createGalleryItem(input)),
+    /** Admin: actualizar foto */
+    adminUpdate: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        category: z.string().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return updateGalleryItem(id, data);
+      }),
+    /** Admin: eliminar foto */
+    adminDelete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteGalleryItem(input.id);
+        return { success: true };
+      }),
+    /** Admin: reordenar fotos */
+    adminReorder: adminProcedure
+      .input(z.object({ orderedIds: z.array(z.number()) }))
+      .mutation(async ({ input }) => {
+        await reorderGalleryItems(input.orderedIds);
+        return { success: true };
+      }),
+  }),
 });
 export type AppRouter = typeof appRouter;

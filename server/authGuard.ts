@@ -109,6 +109,10 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "quotes.getByPaymentToken",
   "quotes.createPaymentLink",
 
+  // ── Galería pública ──────────────────────────────────────────────────────
+  "gallery.getItems",
+  "gallery.getCategories",
+
   // ── Reservas (estado público) ─────────────────────────────────────────────
   "reservations.getStatus",
   "reservations.getByLocator",
