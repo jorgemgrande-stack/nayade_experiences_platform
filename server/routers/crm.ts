@@ -681,12 +681,22 @@ export const crmRouter = router({
 
         await logActivity("lead", input.leadId, "converted_to_quote", ctx.user.id, ctx.user.name, { quoteId, quoteNumber });
         await logActivity("quote", quoteId, "quote_created", ctx.user.id, ctx.user.name, { fromLead: input.leadId });
-
         return { success: true, quoteId, quoteNumber };
       }),
-  }),
 
-  // ─── QUOTES ────────────────────────────────────────────────────────────────
+    delete: staff
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const [lead] = await db.select().from(leads).where(eq(leads.id, input.id));
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
+        // Borrar actividad relacionada
+        await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "lead"), eq(crmActivityLog.entityId, input.id)));
+        await db.delete(leads).where(eq(leads.id, input.id));
+        await logActivity("lead", input.id, "lead_deleted", ctx.user.id, ctx.user.name, { name: lead.name });
+        return { success: true };
+      }),
+  }),
+  // ─── QUOTESES ────────────────────────────────────────────────────────────────
 
   quotes: router({
     list: staff
@@ -1083,9 +1093,27 @@ export const crmRouter = router({
 
         return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl };
       }),
-  }),
 
-  // ─── RESERVATIONS ──────────────────────────────────────────────────────────
+    delete: staff
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.id));
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
+        // Borrar actividad e invoices relacionadas
+        await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, input.id)));
+        await db.delete(invoices).where(eq(invoices.quoteId, input.id));
+        await db.delete(quotes).where(eq(quotes.id, input.id));
+        // Si el lead asociado no tiene más presupuestos, volver a estado "nueva"
+        if (quote.leadId) {
+          const remaining = await db.select({ cnt: count() }).from(quotes).where(eq(quotes.leadId, quote.leadId));
+          if ((remaining[0]?.cnt ?? 0) === 0) {
+            await db.update(leads).set({ opportunityStatus: "nueva", status: "nuevo", updatedAt: new Date() }).where(eq(leads.id, quote.leadId));
+          }
+        }
+        return { success: true };
+      }),
+  }),
+  // ─── RESERVATIONSS ──────────────────────────────────────────────────────────
 
   reservations: router({
     list: staff

@@ -46,6 +46,7 @@ import {
   Filter,
   ArrowUpRight,
   Banknote,
+  Pencil,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -353,6 +354,141 @@ function LeadDetailModal({
   );
 }
 
+// ─── LEAD EDIT MODAL ────────────────────────────────────────────────────────
+
+function LeadEditModal({
+  leadId,
+  onClose,
+}: {
+  leadId: number;
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.crm.leads.get.useQuery({ id: leadId });
+  const [form, setForm] = useState<{
+    name: string; email: string; phone: string; selectedCategory: string;
+    selectedProduct: string; message: string; priority: string; opportunityStatus: string;
+  } | null>(null);
+
+  // Populate form once data loads
+  if (data && !form) {
+    const { lead } = data;
+    setForm({
+      name: lead.name ?? "",
+      email: lead.email ?? "",
+      phone: lead.phone ?? "",
+      selectedCategory: lead.selectedCategory ?? "",
+      selectedProduct: lead.selectedProduct ?? "",
+      message: lead.message ?? "",
+      priority: lead.priority ?? "media",
+      opportunityStatus: lead.opportunityStatus ?? "nueva",
+    });
+  }
+
+  const updateLead = trpc.crm.leads.update.useMutation({
+    onSuccess: () => {
+      toast.success("Lead actualizado");
+      utils.crm.leads.list.invalidate();
+      utils.crm.leads.counters.invalidate();
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  if (isLoading || !form) {
+    return (
+      <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white">
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+        </div>
+      </DialogContent>
+    );
+  }
+
+  return (
+    <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="text-white flex items-center gap-2">
+          <Pencil className="w-4 h-4 text-orange-400" /> Editar Lead
+        </DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-white/60 text-xs">Nombre</Label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Email</Label>
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Teléfono</Label>
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Categoría</Label>
+            <Input value={form.selectedCategory} onChange={(e) => setForm({ ...form, selectedCategory: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div className="col-span-2">
+            <Label className="text-white/60 text-xs">Producto / Experiencia</Label>
+            <Input value={form.selectedProduct} onChange={(e) => setForm({ ...form, selectedProduct: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Prioridad</Label>
+            <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-white/10">
+                <SelectItem value="baja" className="text-white">Baja</SelectItem>
+                <SelectItem value="media" className="text-white">Media</SelectItem>
+                <SelectItem value="alta" className="text-white">Alta</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Estado oportunidad</Label>
+            <Select value={form.opportunityStatus} onValueChange={(v) => setForm({ ...form, opportunityStatus: v })}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-white/10">
+                <SelectItem value="nueva" className="text-white">1. Nueva Oportunidad</SelectItem>
+                <SelectItem value="enviada" className="text-white">2. Oportunidad Enviada</SelectItem>
+                <SelectItem value="ganada" className="text-white">3. Oportunidad Ganada</SelectItem>
+                <SelectItem value="perdida" className="text-white">4. Oportunidad Perdida</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="col-span-2">
+            <Label className="text-white/60 text-xs">Mensaje / Comentarios</Label>
+            <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-16 text-sm" />
+          </div>
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button
+          size="sm"
+          onClick={() => updateLead.mutate({
+              id: leadId,
+              name: form.name,
+              email: form.email,
+              phone: form.phone,
+              selectedCategory: form.selectedCategory,
+              selectedProduct: form.selectedProduct,
+              message: form.message,
+              priority: form.priority as "baja" | "media" | "alta",
+              opportunityStatus: form.opportunityStatus as "nueva" | "enviada" | "ganada" | "perdida",
+            })}
+          disabled={updateLead.isPending}
+          className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
+        >
+          {updateLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+          Guardar cambios
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
 // ─── QUOTE BUILDER MODAL ─────────────────────────────────────────────────────
 
 function QuoteBuilderModal({
@@ -571,6 +707,157 @@ function QuoteBuilderModal({
         >
           {convertToQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
           Crear Presupuesto
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+// ─── QUOTE EDIT MODAL ────────────────────────────────────────────────────────
+
+function QuoteEditModal({
+  quoteId,
+  onClose,
+}: {
+  quoteId: number;
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const { data, isLoading } = trpc.crm.quotes.get.useQuery({ id: quoteId });
+  const [title, setTitle] = useState("");
+  const [conditions, setConditions] = useState("");
+  const [notes, setNotes] = useState("");
+  const [taxRate, setTaxRate] = useState(21);
+  const [validUntil, setValidUntil] = useState("");
+  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number }[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  if (data && !initialized) {
+    const q = data.quote;
+    setTitle(q.title ?? "");
+    setConditions(q.conditions ?? "");
+    setNotes(q.notes ?? "");
+    setTaxRate(q.tax ? parseFloat(String(q.tax)) : 21);
+    setValidUntil(q.validUntil ? new Date(q.validUntil).toISOString().split("T")[0] : "");
+    const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+    setItems(rawItems.length > 0 ? rawItems : [{ description: "", quantity: 1, unitPrice: 0, total: 0 }]);
+    setInitialized(true);
+  }
+
+  const subtotal = items.reduce((s, i) => s + i.total, 0);
+  const taxAmount = subtotal * (taxRate / 100);
+  const total = subtotal + taxAmount;
+
+  const updateItem = (idx: number, field: string, value: string | number) => {
+    setItems((prev) => prev.map((item, i) => {
+      if (i !== idx) return item;
+      const updated = { ...item, [field]: value };
+      if (field === "quantity" || field === "unitPrice") updated.total = Number(updated.quantity) * Number(updated.unitPrice);
+      return updated;
+    }));
+  };
+
+  const updateQuote = trpc.crm.quotes.update.useMutation({
+    onSuccess: () => {
+      toast.success("Presupuesto actualizado");
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.get.invalidate({ id: quoteId });
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  if (isLoading || !initialized) {
+    return (
+      <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white">
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+        </div>
+      </DialogContent>
+    );
+  }
+
+  return (
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="text-white flex items-center gap-2">
+          <Pencil className="w-4 h-4 text-orange-400" /> Editar Presupuesto
+        </DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <Label className="text-white/60 text-xs">Título *</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Válido hasta</Label>
+            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">IVA (%)</Label>
+            <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-white/10">
+                <SelectItem value="0" className="text-white">0% (exento)</SelectItem>
+                <SelectItem value="10" className="text-white">10%</SelectItem>
+                <SelectItem value="21" className="text-white">21%</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-white/60 text-xs">Conceptos *</Label>
+            <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
+              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0 }])}>
+              <Plus className="w-3 h-3 mr-1" /> Añadir línea
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {items.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                <Input className="col-span-5 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm" placeholder="Descripción"
+                  value={item.description} onChange={(e) => updateItem(idx, "description", e.target.value)} />
+                <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center" type="number" min={1}
+                  value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
+                <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-right" type="number" min={0} step={0.01}
+                  value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
+                <div className="col-span-2 text-right text-sm font-semibold text-orange-400">{item.total.toFixed(2)} €</div>
+                <Button size="sm" variant="ghost" className="col-span-1 text-white/30 hover:text-red-400 p-1"
+                  onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
+          <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+          <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+          <div className="flex justify-between text-base font-bold text-white border-t border-white/10 pt-2">
+            <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
+          </div>
+        </div>
+        <div>
+          <Label className="text-white/60 text-xs">Notas para el cliente</Label>
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-16 text-sm" />
+        </div>
+        <div>
+          <Label className="text-white/60 text-xs">Condiciones</Label>
+          <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-12 text-sm" />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button
+          size="sm"
+          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items, subtotal, taxRate, total, validUntil })}
+          disabled={updateQuote.isPending}
+          className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
+        >
+          {updateQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+          Guardar cambios
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -805,8 +1092,12 @@ export default function CRMDashboard() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  const [editLeadId, setEditLeadId] = useState<number | null>(null);
+  const [deleteLeadId, setDeleteLeadId] = useState<number | null>(null);
   const [convertLeadId, setConvertLeadId] = useState<number | null>(null);
   const [selectedQuoteId, setSelectedQuoteId] = useState<number | null>(null);
+  const [editQuoteId, setEditQuoteId] = useState<number | null>(null);
+  const [deleteQuoteId, setDeleteQuoteId] = useState<number | null>(null);
 
   const { data: leadCounters } = trpc.crm.leads.counters.useQuery();
   const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery();
@@ -836,6 +1127,27 @@ export default function CRMDashboard() {
   const { data: leadsData, isLoading: leadsLoading } = trpc.crm.leads.list.useQuery(leadsFilter);
   const { data: quotesData, isLoading: quotesLoading } = trpc.crm.quotes.list.useQuery(quotesFilter);
   const { data: resData, isLoading: resLoading } = trpc.crm.reservations.list.useQuery(resFilter);
+
+  const utils = trpc.useUtils();
+  const deleteLead = trpc.crm.leads.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Lead eliminado");
+      setDeleteLeadId(null);
+      utils.crm.leads.list.invalidate();
+      utils.crm.leads.counters.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteQuote = trpc.crm.quotes.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Presupuesto eliminado");
+      setDeleteQuoteId(null);
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const handleTabChange = (t: Tab) => {
     setTab(t);
@@ -962,16 +1274,36 @@ export default function CRMDashboard() {
                             variant="ghost"
                             className="text-white/50 hover:text-white h-7 px-2 text-xs"
                             onClick={() => setSelectedLeadId(lead.id)}
+                            title="Ver ficha"
                           >
-                            <Eye className="w-3.5 h-3.5 mr-1" /> Ver
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs"
+                            onClick={() => setEditLeadId(lead.id)}
+                            title="Editar lead"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
                             className="text-orange-400 hover:text-orange-300 h-7 px-2 text-xs"
                             onClick={() => setConvertLeadId(lead.id)}
+                            title="Crear presupuesto"
                           >
-                            <FileText className="w-3.5 h-3.5 mr-1" /> Presupuesto
+                            <FileText className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-400 hover:text-red-300 h-7 px-2 text-xs"
+                            onClick={() => setDeleteLeadId(lead.id)}
+                            title="Eliminar lead"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
                       </td>
@@ -1018,14 +1350,46 @@ export default function CRMDashboard() {
                         <div className="text-xs text-white/40">{new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-white/50 hover:text-white h-7 px-2 text-xs"
-                          onClick={() => setSelectedQuoteId(quote.id)}
-                        >
-                          <Eye className="w-3.5 h-3.5 mr-1" /> Ver
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-white/50 hover:text-white h-7 px-2 text-xs"
+                            onClick={() => setSelectedQuoteId(quote.id)}
+                            title="Ver presupuesto"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs"
+                            onClick={() => setEditQuoteId(quote.id)}
+                            title="Editar presupuesto"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          {quote.status === "borrador" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-orange-400 hover:text-orange-300 h-7 px-2 text-xs"
+                              onClick={() => setSelectedQuoteId(quote.id)}
+                              title="Enviar al cliente"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-400 hover:text-red-300 h-7 px-2 text-xs"
+                            onClick={() => setDeleteQuoteId(quote.id)}
+                            title="Eliminar presupuesto"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1111,6 +1475,68 @@ export default function CRMDashboard() {
             onClose={() => setSelectedQuoteId(null)}
           />
         )}
+      </Dialog>
+
+      {/* Edit Lead */}
+      <Dialog open={editLeadId !== null} onOpenChange={(o) => !o && setEditLeadId(null)}>
+        {editLeadId !== null && (
+          <LeadEditModal leadId={editLeadId} onClose={() => setEditLeadId(null)} />
+        )}
+      </Dialog>
+
+      {/* Delete Lead confirmation */}
+      <Dialog open={deleteLeadId !== null} onOpenChange={(o) => !o && setDeleteLeadId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" /> Eliminar lead
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-white/60 py-2">Esta acción es irreversible. Se eliminará el lead y toda su actividad asociada.</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteLeadId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => deleteLeadId !== null && deleteLead.mutate({ id: deleteLeadId })}
+              disabled={deleteLead.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleteLead.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Quote */}
+      <Dialog open={editQuoteId !== null} onOpenChange={(o) => !o && setEditQuoteId(null)}>
+        {editQuoteId !== null && (
+          <QuoteEditModal quoteId={editQuoteId} onClose={() => setEditQuoteId(null)} />
+        )}
+      </Dialog>
+
+      {/* Delete Quote confirmation */}
+      <Dialog open={deleteQuoteId !== null} onOpenChange={(o) => !o && setDeleteQuoteId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" /> Eliminar presupuesto
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-white/60 py-2">Esta acción es irreversible. Se eliminará el presupuesto y sus facturas asociadas.</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteQuoteId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => deleteQuoteId !== null && deleteQuote.mutate({ id: deleteQuoteId })}
+              disabled={deleteQuote.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleteQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </DashboardLayout>
   );

@@ -329,8 +329,8 @@ export default function Home() {
                   <p className="text-white/40 text-xs">Recibirás tu propuesta en menos de 24h</p>
                 </div>
 
-                {/* Formulario con scroll */}
-                <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
+                {/* Formulario sin scroll */}
+                <div>
                   <form onSubmit={handleHeroSubmit} className="px-6 py-5 space-y-4">
                     <input type="text" name="website" value={heroForm.honeypot} onChange={(e) => setHeroForm({ ...heroForm, honeypot: e.target.value })} style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
 

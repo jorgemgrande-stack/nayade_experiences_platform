@@ -897,3 +897,32 @@
 - [x] BCC reservas@hotelnayade.es en email de presupuesto enviado desde CRM (sendEmail helper)
 - [x] BCC reservas@hotelnayade.es en email de confirmación de pago desde CRM (sendEmail helper)
 - [x] 0 errores TypeScript
+
+## CRM Controladores Completos + Fix Hero — v9.3
+
+### Fix Hero
+- [x] Eliminado scroll innecesario del formulario del hero
+
+### Backend tRPC
+- [x] leads.delete (borrar lead con confirmación)
+- [x] leads.update completo (editar todos los campos del lead)
+- [x] quotes.delete (borrar presupuesto)
+- [x] quotes.update completo (editar presupuesto con items)
+- [x] Lógica de estados compartidos: lead.opportunityStatus se actualiza automáticamente al cambiar el estado del presupuesto vinculado
+
+### Frontend CRM — Leads
+- [x] Tabla leads: botones Ver (blanco) / Editar (azul) / Convertir en presupuesto (naranja) / Borrar (rojo)
+- [x] Modal Ver lead: ficha completa con historial de actividad y notas
+- [x] Modal Editar lead: formulario con todos los campos editables + estado de oportunidad (4 etapas)
+- [x] Modal Borrar lead: dialog de confirmación con advertencia irreversible
+- [x] Modal Convertir en presupuesto: crea presupuesto y cambia estado a "enviada"
+- [x] Estado compartido: 4 etapas (Nueva / Enviada / Ganada / Perdida) en leads y presupuestos
+
+### Frontend CRM — Presupuestos
+- [x] Tabla presupuestos: botones Ver (blanco) / Editar (azul) / Enviar (naranja, solo borrador) / Borrar (rojo)
+- [x] Modal Ver presupuesto: ficha completa con items, estado, historial y facturas
+- [x] Modal Editar presupuesto: editor completo con líneas, IVA, condiciones, validez
+- [x] Modal Borrar presupuesto: dialog de confirmación con advertencia irreversible
+- [x] Botón Enviar: envía email al cliente y cambia estado a "enviado" + actualiza lead a "enviada"
+
+- [x] 0 errores TypeScript
