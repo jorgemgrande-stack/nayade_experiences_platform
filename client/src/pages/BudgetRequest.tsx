@@ -105,20 +105,24 @@ export default function BudgetRequest() {
 
   return (
     <PublicLayout>
-      {/* Header */}
-      <section className="bg-[oklch(0.14_0.03_240)] py-16">
-        <div className="container">
-          <div className="flex items-center gap-2 text-white/50 text-sm mb-4">
-            <Link href="/" className="hover:text-amber-400 transition-colors">Inicio</Link>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span className="text-white/80">Solicitar Presupuesto</span>
+      {/* Hero */}
+      <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
+        <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/31bc24b6-13c3-4ea1-a67f-16a927473c61_d7582ff1.png" alt="Solicitar Presupuesto" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
+        <div className="absolute inset-0 flex items-center">
+          <div className="container">
+            <div className="max-w-2xl text-white">
+              <span className="inline-block bg-accent/90 text-white text-xs font-display font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
+                Grupos & Empresas
+              </span>
+              <h1 className="text-5xl md:text-6xl font-heading font-bold leading-tight mb-4">
+                Solicita tu Presupuesto
+              </h1>
+              <p className="text-xl text-white/85 font-display">
+                Cuéntanos qué tipo de experiencia buscas y te enviaremos una propuesta personalizada en menos de 24 horas.
+              </p>
+            </div>
           </div>
-          <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-3">
-            Solicita tu Presupuesto
-          </h1>
-          <p className="text-white/60 text-lg max-w-xl">
-            Cuéntanos qué tipo de experiencia buscas y te enviaremos una propuesta personalizada en menos de 24 horas.
-          </p>
         </div>
       </section>
 

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Clock, MapPin, Phone, Utensils, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-const CDN_HERO = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg";
+const CDN_HERO = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/Cableski_4bb813a1.png";
 
 // Fallback images por slug
 const FALLBACK_IMAGES: Record<string, string> = {
@@ -20,7 +20,7 @@ export default function Restaurantes() {
   return (
     <PublicLayout>
       {/* Hero */}
-      <section className="relative h-[55vh] min-h-[420px] overflow-hidden">
+      <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
         <img src={CDN_HERO} alt="Restaurantes Náyade" className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/35 to-black/70" />
         <div className="absolute inset-0 flex items-center">

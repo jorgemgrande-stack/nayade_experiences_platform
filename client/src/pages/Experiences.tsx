@@ -62,20 +62,24 @@ export default function Experiences() {
 
   return (
     <PublicLayout>
-      {/* Page Header */}
-      <section className="bg-[oklch(0.14_0.03_240)] py-16">
-        <div className="container">
-          <div className="flex items-center gap-2 text-white/50 text-sm mb-4">
-            <Link href="/" className="hover:text-amber-400 transition-colors">Inicio</Link>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span className="text-white/80">Experiencias</span>
+      {/* Hero */}
+      <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
+        <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/wakeboard_b574701d.jpg" alt="Experiencias Náyade" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
+        <div className="absolute inset-0 flex items-center">
+          <div className="container">
+            <div className="max-w-2xl text-white">
+              <span className="inline-block bg-accent/90 text-white text-xs font-display font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
+                Deportes Acuáticos
+              </span>
+              <h1 className="text-5xl md:text-6xl font-heading font-bold leading-tight mb-4">
+                Nuestras Experiencias
+              </h1>
+              <p className="text-xl text-white/85 font-display">
+                Descubre nuestra colección de aventuras únicas diseñadas para cada tipo de explorador.
+              </p>
+            </div>
           </div>
-          <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-3">
-            Todas las Experiencias
-          </h1>
-          <p className="text-white/60 text-lg max-w-xl">
-            Descubre nuestra colección de aventuras únicas diseñadas para cada tipo de explorador.
-          </p>
         </div>
       </section>
 

@@ -711,6 +711,15 @@
 - [x] Corregir menu_items en BD: UPDATE slugs + INSERT Arrocería La Cabaña
 - [x] Corregir orden de rutas en App.tsx: rutas fijas /reserva-ok y /reserva-ko antes de /:slug
 
+## Headers uniformizados al estilo Packs — v8.15
+- [x] Restaurantes: foto hero cambiada a imagen de terraza junto al lago (Cableski.png), altura 50vh/380px
+- [x] Experiencias: header plano reemplazado por hero con imagen (wakeboard) y estilo Packs
+- [x] Galería: header plano reemplazado por hero con imagen (panorámica embalse) y estilo Packs
+- [x] Ubicación: header plano reemplazado por hero con imagen (panorámica embalse) y estilo Packs
+- [x] Presupuesto: header plano reemplazado por hero con imagen (kayak) y estilo Packs
+- [x] Hotel y SPA: sin cambios (respetado según instrucciones)
+- [x] 0 errores TypeScript
+
 ## Gestor de Galería en admin — v8.13
 - [x] Auditar galería pública actual (fotos hardcodeadas vs BD)
 - [x] Schema BD: tabla gallery_items (id, imageUrl, fileKey, title, category, sortOrder, isActive, createdAt)
