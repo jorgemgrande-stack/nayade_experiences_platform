@@ -926,3 +926,14 @@
 - [x] Botón Enviar: envía email al cliente y cambia estado a "enviado" + actualiza lead a "enviada"
 
 - [x] 0 errores TypeScript
+
+## Contadores CRM Visuales — v9.4
+- [x] CounterCard rediseñado: tarjetas grandes p-5, número 4xl/bold, gradiente de fondo profundo, borde luminoso activo con glow shadow
+- [x] Blob de glow en esquina superior derecha con hover intensificado
+- [x] Icono en caja con fondo y borde del mismo color
+- [x] Barra inferior activa (h-0.5) al seleccionar un contador
+- [x] Animación count-up (hook useCountUp) al cargar los datos numéricos
+- [x] Separación visual en dos grupos: "Pipeline de Oportunidades" (azul) y "Presupuestos & Ingresos" (naranja)
+- [x] Subtitulo descriptivo en cada tarjeta
+- [x] Color orange añadido al sistema de colores (Ingresos Totales)
+- [x] 0 errores TypeScript

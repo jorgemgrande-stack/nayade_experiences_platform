@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -92,7 +92,87 @@ function PriorityDot({ priority }: { priority: Priority }) {
   return <span className={`inline-block w-2 h-2 rounded-full ${map[priority] ?? "bg-slate-400"}`} title={priority} />;
 }
 
-// ─── COUNTER CARD ─────────────────────────────────────────────────────────────
+// ─// ─── COUNTER CARD ─────────────────────────────────────────────────────
+
+// Count-up animation hook
+function useCountUp(target: number, duration = 800) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (target === 0) { setCount(0); return; }
+    let start = 0;
+    const step = target / (duration / 16);
+    const timer = setInterval(() => {
+      start += step;
+      if (start >= target) { setCount(target); clearInterval(timer); }
+      else setCount(Math.floor(start));
+    }, 16);
+    return () => clearInterval(timer);
+  }, [target, duration]);
+  return count;
+}
+
+const COUNTER_STYLES = {
+  blue: {
+    bg: "bg-gradient-to-br from-blue-950/80 via-blue-900/40 to-[#080e1c]",
+    border: "border-blue-500/30",
+    activeBorder: "border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.35)]",
+    glow: "bg-blue-500/10",
+    icon: "text-blue-400",
+    number: "text-blue-300",
+    label: "text-blue-300/70",
+    dot: "bg-blue-400",
+  },
+  amber: {
+    bg: "bg-gradient-to-br from-amber-950/80 via-amber-900/30 to-[#080e1c]",
+    border: "border-amber-500/30",
+    activeBorder: "border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.35)]",
+    glow: "bg-amber-500/10",
+    icon: "text-amber-400",
+    number: "text-amber-300",
+    label: "text-amber-300/70",
+    dot: "bg-amber-400",
+  },
+  green: {
+    bg: "bg-gradient-to-br from-emerald-950/80 via-emerald-900/30 to-[#080e1c]",
+    border: "border-emerald-500/30",
+    activeBorder: "border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.35)]",
+    glow: "bg-emerald-500/10",
+    icon: "text-emerald-400",
+    number: "text-emerald-300",
+    label: "text-emerald-300/70",
+    dot: "bg-emerald-400",
+  },
+  red: {
+    bg: "bg-gradient-to-br from-red-950/80 via-red-900/30 to-[#080e1c]",
+    border: "border-red-500/30",
+    activeBorder: "border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.35)]",
+    glow: "bg-red-500/10",
+    icon: "text-red-400",
+    number: "text-red-300",
+    label: "text-red-300/70",
+    dot: "bg-red-400",
+  },
+  slate: {
+    bg: "bg-gradient-to-br from-slate-800/80 via-slate-700/30 to-[#080e1c]",
+    border: "border-slate-500/30",
+    activeBorder: "border-slate-400 shadow-[0_0_20px_rgba(148,163,184,0.25)]",
+    glow: "bg-slate-500/10",
+    icon: "text-slate-400",
+    number: "text-slate-300",
+    label: "text-slate-300/70",
+    dot: "bg-slate-400",
+  },
+  orange: {
+    bg: "bg-gradient-to-br from-orange-950/80 via-orange-900/30 to-[#080e1c]",
+    border: "border-orange-500/30",
+    activeBorder: "border-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.35)]",
+    glow: "bg-orange-500/10",
+    icon: "text-orange-400",
+    number: "text-orange-300",
+    label: "text-orange-300/70",
+    dot: "bg-orange-400",
+  },
+};
 
 function CounterCard({
   label,
@@ -101,34 +181,53 @@ function CounterCard({
   active,
   onClick,
   color = "blue",
+  subtitle,
 }: {
   label: string;
   value: number | string;
   icon: React.ElementType;
   active?: boolean;
   onClick?: () => void;
-  color?: "blue" | "amber" | "green" | "red" | "slate";
+  color?: keyof typeof COUNTER_STYLES;
+  subtitle?: string;
 }) {
-  const colorMap = {
-    blue: "from-blue-600/20 to-blue-800/10 border-blue-500/20 text-blue-400",
-    amber: "from-amber-600/20 to-amber-800/10 border-amber-500/20 text-amber-400",
-    green: "from-emerald-600/20 to-emerald-800/10 border-emerald-500/20 text-emerald-400",
-    red: "from-red-600/20 to-red-800/10 border-red-500/20 text-red-400",
-    slate: "from-slate-600/20 to-slate-800/10 border-slate-500/20 text-slate-400",
-  };
+  const s = COUNTER_STYLES[color] ?? COUNTER_STYLES.blue;
+  const numericValue = typeof value === "number" ? value : null;
+  const displayValue = typeof value === "string" ? value : undefined;
+  const animated = useCountUp(numericValue ?? 0);
+
   return (
     <button
       onClick={onClick}
-      className={`relative flex flex-col gap-2 p-4 rounded-xl border bg-gradient-to-br transition-all duration-200 text-left w-full
-        ${colorMap[color]}
-        ${active ? "ring-2 ring-offset-1 ring-offset-[#0d1526] ring-current scale-[1.02]" : "hover:scale-[1.01] hover:brightness-110"}
+      className={`group relative flex flex-col justify-between p-5 rounded-2xl border transition-all duration-300 text-left w-full overflow-hidden
+        ${s.bg} ${active ? s.activeBorder : s.border}
+        ${onClick ? "cursor-pointer hover:scale-[1.03] hover:brightness-110" : "cursor-default"}
+        ${active ? "scale-[1.03]" : ""}
       `}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-white/50 uppercase tracking-wider">{label}</span>
-        <Icon className="w-4 h-4 opacity-60" />
+      {/* Glow blob */}
+      <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full blur-2xl opacity-60 ${s.glow} transition-opacity duration-300 group-hover:opacity-90`} />
+
+      {/* Top row: label + icon */}
+      <div className="flex items-start justify-between mb-3 relative z-10">
+        <span className={`text-xs font-semibold uppercase tracking-widest ${s.label}`}>{label}</span>
+        <div className={`p-2 rounded-xl ${s.glow} border ${active ? s.activeBorder : s.border}`}>
+          <Icon className={`w-4 h-4 ${s.icon}`} />
+        </div>
       </div>
-      <span className="text-2xl font-bold text-white">{value}</span>
+
+      {/* Number */}
+      <div className="relative z-10">
+        <span className={`text-4xl font-black tabular-nums tracking-tight ${s.number}`}>
+          {numericValue !== null ? animated : displayValue}
+        </span>
+        {subtitle && <p className={`text-xs mt-1 ${s.label}`}>{subtitle}</p>}
+      </div>
+
+      {/* Active indicator bar */}
+      {active && (
+        <div className={`absolute bottom-0 left-0 right-0 h-0.5 ${s.dot}`} />
+      )}
     </button>
   );
 }
@@ -1168,16 +1267,104 @@ export default function CRMDashboard() {
           </div>
         </div>
 
-        {/* Top KPI strip */}
-        <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-          <CounterCard label="Leads nuevos" value={leadCounters?.nueva ?? 0} icon={Users} color="blue" active={tab === "leads" && filterStatus === "nueva"} onClick={() => { handleTabChange("leads"); setFilterStatus("nueva"); }} />
-          <CounterCard label="Leads enviados" value={leadCounters?.enviada ?? 0} icon={Send} color="amber" active={tab === "leads" && filterStatus === "enviada"} onClick={() => { handleTabChange("leads"); setFilterStatus("enviada"); }} />
-          <CounterCard label="Ganados" value={leadCounters?.ganada ?? 0} icon={Star} color="green" active={tab === "leads" && filterStatus === "ganada"} onClick={() => { handleTabChange("leads"); setFilterStatus("ganada"); }} />
-          <CounterCard label="Perdidos" value={leadCounters?.perdida ?? 0} icon={XCircle} color="red" active={tab === "leads" && filterStatus === "perdida"} onClick={() => { handleTabChange("leads"); setFilterStatus("perdida"); }} />
-          <CounterCard label="Presup. borrador" value={quoteCounters?.borrador ?? 0} icon={FileText} color="slate" active={tab === "quotes" && filterStatus === "borrador"} onClick={() => { handleTabChange("quotes"); setFilterStatus("borrador"); }} />
-          <CounterCard label="Presup. enviados" value={quoteCounters?.enviado ?? 0} icon={Clock} color="amber" active={tab === "quotes" && filterStatus === "enviado"} onClick={() => { handleTabChange("quotes"); setFilterStatus("enviado"); }} />
-          <CounterCard label="Reservas hoy" value={resCounters?.hoy ?? 0} icon={CalendarCheck} color="green" active={tab === "reservations"} onClick={() => handleTabChange("reservations")} />
-          <CounterCard label="Ingresos total" value={`${Number(resCounters?.ingresos ?? 0).toFixed(0)} €`} icon={Banknote} color="green" onClick={() => handleTabChange("reservations")} />
+        {/* Top KPI strip — dos grupos diferenciados */}
+        <div className="px-6 py-5 space-y-4">
+
+          {/* Grupo 1: Pipeline de Oportunidades */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-blue-400 to-blue-600" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Pipeline de Oportunidades</span>
+              <div className="flex-1 h-px bg-white/5" />
+              {(leadCounters?.total ?? 0) > 0 && (
+                <span className="text-xs text-white/30">{leadCounters?.total ?? 0} leads totales</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <CounterCard
+                label="Nueva Oportunidad"
+                value={leadCounters?.nueva ?? 0}
+                icon={Users}
+                color="blue"
+                subtitle="Leads sin gestionar"
+                active={tab === "leads" && filterStatus === "nueva"}
+                onClick={() => { handleTabChange("leads"); setFilterStatus("nueva"); }}
+              />
+              <CounterCard
+                label="Oportunidad Enviada"
+                value={leadCounters?.enviada ?? 0}
+                icon={Send}
+                color="amber"
+                subtitle="Presupuesto en cliente"
+                active={tab === "leads" && filterStatus === "enviada"}
+                onClick={() => { handleTabChange("leads"); setFilterStatus("enviada"); }}
+              />
+              <CounterCard
+                label="Oportunidad Ganada"
+                value={leadCounters?.ganada ?? 0}
+                icon={Star}
+                color="green"
+                subtitle="Reservas confirmadas"
+                active={tab === "leads" && filterStatus === "ganada"}
+                onClick={() => { handleTabChange("leads"); setFilterStatus("ganada"); }}
+              />
+              <CounterCard
+                label="Oportunidad Perdida"
+                value={leadCounters?.perdida ?? 0}
+                icon={XCircle}
+                color="red"
+                subtitle="Descartadas manualmente"
+                active={tab === "leads" && filterStatus === "perdida"}
+                onClick={() => { handleTabChange("leads"); setFilterStatus("perdida"); }}
+              />
+            </div>
+          </div>
+
+          {/* Grupo 2: Presupuestos & Ingresos */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-orange-400 to-orange-600" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Presupuestos &amp; Ingresos</span>
+              <div className="flex-1 h-px bg-white/5" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <CounterCard
+                label="En Borrador"
+                value={quoteCounters?.borrador ?? 0}
+                icon={FileText}
+                color="slate"
+                subtitle="Pendientes de enviar"
+                active={tab === "quotes" && filterStatus === "borrador"}
+                onClick={() => { handleTabChange("quotes"); setFilterStatus("borrador"); }}
+              />
+              <CounterCard
+                label="Enviados al Cliente"
+                value={quoteCounters?.enviado ?? 0}
+                icon={Clock}
+                color="amber"
+                subtitle="Esperando respuesta"
+                active={tab === "quotes" && filterStatus === "enviado"}
+                onClick={() => { handleTabChange("quotes"); setFilterStatus("enviado"); }}
+              />
+              <CounterCard
+                label="Reservas Hoy"
+                value={resCounters?.hoy ?? 0}
+                icon={CalendarCheck}
+                color="green"
+                subtitle="Confirmadas hoy"
+                active={tab === "reservations"}
+                onClick={() => handleTabChange("reservations")}
+              />
+              <CounterCard
+                label="Ingresos Totales"
+                value={`${Number(resCounters?.ingresos ?? 0).toFixed(0)} €`}
+                icon={Banknote}
+                color="orange"
+                subtitle="Reservas pagadas"
+                onClick={() => handleTabChange("reservations")}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Tabs */}
