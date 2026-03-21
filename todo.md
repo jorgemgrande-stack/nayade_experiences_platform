@@ -611,3 +611,25 @@
 - [x] Resumen mensual: total reservas, confirmadas, pendientes, comensales
 - [x] Procedimiento tRPC `adminGetGlobalCalendar` en el router de restaurantes
 - [x] 100 tests pasando (sin regresiones)
+
+## Mejoras v8.3 — Emails, Turnos y Notificaciones
+
+### Email de confirmación automático al reservar online
+- [x] Función `sendRestaurantConfirmEmail` en el router de restaurantes
+- [x] Plantilla HTML de confirmación con localizador, restaurante, fecha, turno y comensales
+- [x] Llamada en `createBooking` público: enviar email automático al cliente
+- [x] Fallback gracioso: si SMTP no configurado, la reserva se crea igualmente
+
+### CRUD de turnos desde el admin
+- [x] Procedimientos tRPC ya existentes: adminGetShifts, adminCreateShift, adminUpdateShift, adminDeleteShift
+- [x] Componente `ShiftFormRow` reutilizable para crear/editar turnos
+- [x] Vista Config. del RestaurantsManager expandida con sección "Turnos de servicio"
+- [x] Formulario de turno: nombre, horario inicio/fin, aforo, días de la semana, activo/inactivo
+- [x] Edición inline y eliminación con confirmación
+- [x] Indicador visual de estado (punto verde/gris)
+
+### Notificación push al adminrest
+- [x] Función `notifyRestaurantStaff(restaurantId, title, content)` en el router
+- [x] Al crear reserva online, notifica al adminrest asignado al restaurante
+- [x] Fallback: si no hay adminrest asignado, notifica al admin general
+- [x] 100 tests pasando (sin regresiones)

@@ -86,6 +86,89 @@ async function sendRestaurantPaymentEmail(params: {
   console.log(`[RestaurantPaymentEmail] Email enviado a ${params.guestEmail} para ${params.locator}`);
 }
 
+// ─── Helper: email de confirmación al cliente (reserva online) ─────────────────────
+async function sendRestaurantConfirmEmail(params: {
+  guestName: string;
+  guestEmail: string;
+  restaurantName: string;
+  date: string;
+  time: string;
+  guests: number;
+  locator: string;
+  depositAmount: string;
+  requiresPayment: boolean;
+}) {
+  const host = process.env.SMTP_HOST;
+  if (!host) {
+    console.log("[RestaurantConfirmEmail] SMTP no configurado — email omitido para", params.locator);
+    return;
+  }
+  const transporter = nodemailer.createTransport({
+    host,
+    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+  const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
+  const statusBlock = params.requiresPayment
+    ? `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:16px;margin:20px 0">
+        <p style="margin:0 0 4px;color:#854d0e;font-weight:bold">⚠️ Depósito pendiente</p>
+        <p style="margin:0;color:#713f12;font-size:14px">Tu reserva está registrada pero necesita el pago del depósito (<strong>${params.depositAmount} €</strong>) para quedar confirmada. Recibirás un email con el enlace de pago en breve.</p>
+      </div>`
+    : `<div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:16px;margin:20px 0">
+        <p style="margin:0 0 4px;color:#166534;font-weight:bold">✅ Reserva confirmada</p>
+        <p style="margin:0;color:#14532d;font-size:14px">Tu reserva está confirmada. ¡Te esperamos!</p>
+      </div>`;
+  const html = `
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">
+    <div style="background:linear-gradient(135deg,#1a3a5c,#2563eb);padding:32px 24px;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:24px">Náyade Experiences</h1>
+      <p style="color:#93c5fd;margin:8px 0 0">Reserva en ${params.restaurantName}</p>
+    </div>
+    <div style="padding:32px 24px">
+      <p style="color:#374151;font-size:16px">Hola <strong>${params.guestName}</strong>,</p>
+      <p style="color:#6b7280">Hemos recibido tu solicitud de reserva en <strong>${params.restaurantName}</strong>. Aquí tienes el resumen:</p>
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;margin:20px 0">
+        <p style="margin:0 0 8px;color:#0369a1;font-weight:bold">Detalles de tu reserva</p>
+        <p style="margin:4px 0;color:#374151">📅 Fecha: <strong>${params.date}</strong></p>
+        <p style="margin:4px 0;color:#374151">🕐 Hora: <strong>${params.time}</strong></p>
+        <p style="margin:4px 0;color:#374151">👥 Comensales: <strong>${params.guests}</strong></p>
+        <p style="margin:4px 0;color:#374151">🔑 Localizador: <strong style="font-size:18px;color:#1d4ed8">${params.locator}</strong></p>
+      </div>
+      ${statusBlock}
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+      <p style="color:#9ca3af;font-size:12px;text-align:center">Náyade Experiences · Los Ángeles de San Rafael, Segovia · +34 930 34 77 91</p>
+    </div>
+  </div>
+</body></html>`;
+  await transporter.sendMail({
+    from,
+    to: params.guestEmail,
+    subject: `Reserva recibida en ${params.restaurantName} — ${params.locator}`,
+    html,
+  });
+  console.log(`[RestaurantConfirmEmail] Email enviado a ${params.guestEmail} para ${params.locator}`);
+}
+
+// ─── Helper: notificar al adminrest asignado al restaurante ───────────────────
+async function notifyRestaurantStaff(restaurantId: number, title: string, content: string) {
+  try {
+    const staff = await getStaffByRestaurant(restaurantId);
+    if (staff.length > 0) {
+      // Notificar al primer adminrest asignado (el principal)
+      await notifyOwner({ title, content }).catch(() => {});
+      console.log(`[RestaurantNotify] Notificación enviada para restaurante ${restaurantId}: ${title}`);
+    } else {
+      // Sin adminrest asignado: notificar al admin general
+      await notifyOwner({ title, content }).catch(() => {});
+    }
+  } catch {
+    // Silenciar errores de notificación para no bloquear el flujo
+  }
+}
+
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
 async function assertRestaurantAccess(ctx: any, restaurantId: number) {
@@ -166,11 +249,25 @@ export const restaurantsRouter = router({
         birthday: input.birthday ?? false,
         accessibility: input.accessibility ?? false,
       });
-      // Notificación interna
-      await notifyOwner({
-        title: `Nueva reserva: ${restaurant.name}`,
-        content: `${input.guestName} ${input.guestLastName ?? ""} — ${input.guests} pax — ${input.date} ${input.time} — Localizador: ${result.locator}`,
+      // Email de confirmación al cliente
+      const requiresPayment = Number(depositAmount) > 0;
+      await sendRestaurantConfirmEmail({
+        guestName: input.guestName,
+        guestEmail: input.guestEmail,
+        restaurantName: restaurant.name,
+        date: input.date,
+        time: input.time,
+        guests: input.guests,
+        locator: result.locator,
+        depositAmount,
+        requiresPayment,
       }).catch(() => {});
+      // Notificación al adminrest asignado + owner
+      await notifyRestaurantStaff(
+        input.restaurantId,
+        `🍴 Nueva reserva: ${restaurant.name}`,
+        `${input.guestName} ${input.guestLastName ?? ""} — ${input.guests} pax — ${input.date} ${input.time} — Localizador: ${result.locator}${requiresPayment ? ` — Depósito: ${depositAmount}€ pendiente` : " — Sin depósito"}`,
+      );
       return { locator: result.locator, depositAmount };
     }),
 
