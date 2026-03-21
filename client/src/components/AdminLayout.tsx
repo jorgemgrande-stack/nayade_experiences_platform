@@ -47,14 +47,14 @@ const navItems = [
     ],
   },
   {
-    label: "Presupuestos",
-    href: "/admin/presupuestos",
+    label: "CRM",
+    href: "/admin/crm",
     icon: FileText,
     roles: ["admin", "agente"],
     children: [
-      { label: "Leads", href: "/admin/presupuestos/leads" },
-      { label: "Presupuestos", href: "/admin/presupuestos/lista" },
-      { label: "Nuevo Presupuesto", href: "/admin/presupuestos/nuevo" },
+      { label: "Leads", href: "/admin/crm" },
+      { label: "Presupuestos", href: "/admin/crm" },
+      { label: "Reservas", href: "/admin/crm" },
     ],
   },
   {

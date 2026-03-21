@@ -137,11 +137,11 @@ function Router() {
       <Route path="/admin/productos/ubicaciones" component={LocationsManager} />
       <Route path="/admin/productos/variantes" component={VariantsManager} />
 
-      {/* Quotes & Leads */}
-      <Route path="/admin/presupuestos" component={LeadsManager} />
-      <Route path="/admin/presupuestos/leads" component={LeadsManager} />
-      <Route path="/admin/presupuestos/lista" component={QuotesList} />
-      <Route path="/admin/presupuestos/nuevo" component={QuoteBuilder} />
+      {/* Quotes & Leads — redirigido al nuevo CRM */}
+      <Route path="/admin/presupuestos">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
+      <Route path="/admin/presupuestos/leads">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
+      <Route path="/admin/presupuestos/lista">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
+      <Route path="/admin/presupuestos/nuevo">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
 
       {/* Operations */}
       <Route path="/admin/operaciones" component={CalendarView} />
