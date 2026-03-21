@@ -1,28 +1,33 @@
-import { Link } from "wouter";
-import { ChevronRight, MapPin, ArrowRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useRef } from "react";
+import { Navigation, Car, Train, Clock, MapPin, Phone, Mail } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
-import { trpc } from "@/lib/trpc";
+import { MapView } from "@/components/Map";
 
-const staticLocations = [
-  { id: 1, slug: "pirineos", name: "Pirineos", description: "El paraíso del esquí y la nieve en España. Pistas para todos los niveles con vistas espectaculares.", imageUrl: "https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=800&q=80", experienceCount: 8, region: "Aragón / Cataluña" },
-  { id: 2, slug: "costa-brava", name: "Costa Brava", description: "Calas de aguas cristalinas perfectas para el kayak, buceo y deportes acuáticos.", imageUrl: "https://images.unsplash.com/photo-1530866495561-507c9faab2ed?w=800&q=80", experienceCount: 6, region: "Cataluña" },
-  { id: 3, slug: "sierra-guadarrama", name: "Sierra de Guadarrama", description: "Montañas accesibles desde Madrid ideales para escalada, senderismo y multiaventura.", imageUrl: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800&q=80", experienceCount: 7, region: "Madrid / Segovia" },
-  { id: 4, slug: "sierra-nevada", name: "Sierra Nevada", description: "La estación de esquí más meridional de Europa con experiencias únicas todo el año.", imageUrl: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&q=80", experienceCount: 5, region: "Andalucía" },
-  { id: 5, slug: "picos-europa", name: "Picos de Europa", description: "Parque Nacional de impresionante belleza para los amantes de la naturaleza y la aventura.", imageUrl: "https://images.unsplash.com/photo-1551632811-561732d1e306?w=800&q=80", experienceCount: 4, region: "Asturias / Cantabria" },
-  { id: 6, slug: "costa-vasca", name: "Costa Vasca", description: "Olas legendarias y paisajes dramáticos para el surf y los deportes de mar.", imageUrl: "https://images.unsplash.com/photo-1502680390469-be75c86b636f?w=800&q=80", experienceCount: 3, region: "País Vasco" },
-];
+// Coordenadas exactas de Náyade Experiences / Skicenter Los Ángeles de San Rafael
+const NAYADE_LOCATION = { lat: 40.8189, lng: -4.0047 };
 
 export default function Locations() {
-  const { data: dbLocations } = trpc.public.getLocations.useQuery();
-  const locations = dbLocations?.length ? dbLocations : staticLocations;
+  const mapRef = useRef<google.maps.Map | null>(null);
+
+  function handleMapReady(map: google.maps.Map) {
+    mapRef.current = map;
+    // Marcador con etiqueta personalizada
+    new window.google.maps.marker.AdvancedMarkerElement({
+      map,
+      position: NAYADE_LOCATION,
+      title: "Náyade Experiences · Skicenter",
+    });
+  }
 
   return (
     <PublicLayout>
       {/* Hero */}
       <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
-        <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/5f23cf10-be16-424a-a48f-031f5b74e35f_843d3fb3.png" alt="Ubicación Náyade" className="w-full h-full object-cover" />
+        <img
+          src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/start_245b3bb4.png"
+          alt="Los Ángeles de San Rafael"
+          className="w-full h-full object-cover object-center"
+        />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
         <div className="absolute inset-0 flex items-center">
           <div className="container">
@@ -41,58 +46,152 @@ export default function Locations() {
         </div>
       </section>
 
-      {/* Map Placeholder */}
-      <section className="bg-muted/30 py-8">
+      {/* Mapa interactivo */}
+      <section className="py-12 bg-background">
         <div className="container">
-          <div className="rounded-2xl overflow-hidden border border-border/50 bg-muted h-64 flex items-center justify-center">
-            <div className="text-center">
-              <MapPin className="w-10 h-10 text-accent mx-auto mb-2" />
-              <p className="text-muted-foreground font-medium">Mapa interactivo de destinos</p>
-              <p className="text-sm text-muted-foreground">Próximamente disponible</p>
+          <div className="mb-8 text-center">
+            <h2 className="text-3xl font-heading font-bold text-foreground mb-2">
+              Encuéntranos en el <span className="text-accent">Embalse de Los Ángeles</span>
+            </h2>
+            <p className="text-muted-foreground font-display max-w-xl mx-auto">
+              Carretera de Los Ángeles de San Rafael, Segovia. Aparcamiento gratuito en las instalaciones.
+            </p>
+          </div>
+          <div className="rounded-2xl overflow-hidden border border-border/50 shadow-lg">
+            <MapView
+              initialCenter={NAYADE_LOCATION}
+              initialZoom={14}
+              onMapReady={handleMapReady}
+              className="h-[480px]"
+            />
+          </div>
+          {/* Botón Google Maps */}
+          <div className="mt-4 flex justify-center">
+            <a
+              href="https://maps.google.com/?q=Skicenter+Los+Angeles+San+Rafael+Segovia"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-display font-semibold px-6 py-2.5 rounded-full transition-colors shadow-md shadow-accent/20"
+            >
+              <Navigation className="w-4 h-4" />
+              Abrir en Google Maps
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Cómo llegar */}
+      <section className="py-14 bg-muted/30 border-t border-border/30">
+        <div className="container">
+          <h2 className="text-2xl font-heading font-bold text-foreground mb-8 text-center">
+            Cómo Llegar
+          </h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* En coche */}
+            <div className="bg-card rounded-2xl p-6 border border-border/50 shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center mb-4">
+                <Car className="w-5 h-5 text-accent" />
+              </div>
+              <h3 className="font-heading font-bold text-foreground mb-2">En Coche</h3>
+              <ul className="space-y-2 text-sm text-muted-foreground font-display">
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  Desde Madrid: A-6 dirección La Coruña, salida Guadarrama, N-603 hasta Los Ángeles de San Rafael. <strong className="text-foreground">~45 min</strong>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  Desde Segovia: N-603 dirección Madrid. <strong className="text-foreground">~30 min</strong>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  Aparcamiento gratuito en las instalaciones.
+                </li>
+              </ul>
+            </div>
+
+            {/* En tren */}
+            <div className="bg-card rounded-2xl p-6 border border-border/50 shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center mb-4">
+                <Train className="w-5 h-5 text-accent" />
+              </div>
+              <h3 className="font-heading font-bold text-foreground mb-2">En Tren + Bus</h3>
+              <ul className="space-y-2 text-sm text-muted-foreground font-display">
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  Tren Cercanías C-8 Madrid-Cercedilla (45 min).
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  Bus desde Cercedilla hasta Los Ángeles de San Rafael (~20 min).
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  También bus directo desde Segovia.
+                </li>
+              </ul>
+            </div>
+
+            {/* Horarios */}
+            <div className="bg-card rounded-2xl p-6 border border-border/50 shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center mb-4">
+                <Clock className="w-5 h-5 text-accent" />
+              </div>
+              <h3 className="font-heading font-bold text-foreground mb-2">Horarios</h3>
+              <ul className="space-y-2 text-sm text-muted-foreground font-display">
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  <span><strong className="text-foreground">Temporada:</strong> Abril – Octubre 2026</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  <span><strong className="text-foreground">Deportes acuáticos:</strong> 10:00 – 20:00</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  <span><strong className="text-foreground">Restaurantes:</strong> 10:00 – 23:00</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-accent font-bold shrink-0">·</span>
+                  <span><strong className="text-foreground">SPA & Hotel:</strong> Todo el año</span>
+                </li>
+              </ul>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Locations Grid */}
-      <section className="py-16">
+      {/* Contacto rápido */}
+      <section className="py-12 bg-background border-t border-border/30">
         <div className="container">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(locations as typeof staticLocations).map((loc) => (
-              <Link key={loc.id} href={`/ubicaciones/${loc.slug}`}>
-                <div className="group bg-card rounded-2xl overflow-hidden border border-border/50 card-hover cursor-pointer">
-                  <div className="relative aspect-[16/9] overflow-hidden">
-                    <img
-                      src={loc.imageUrl ?? "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800&q=80"}
-                      alt={loc.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 overlay-dark" />
-                    <div className="absolute bottom-4 left-4">
-                      <h3 className="font-display font-bold text-xl text-white">{loc.name}</h3>
-                      {loc.region && (
-                        <div className="flex items-center gap-1 text-white/70 text-sm mt-1">
-                          <MapPin className="w-3 h-3" />
-                          {loc.region}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="p-5">
-                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{loc.description}</p>
-                    <div className="flex items-center justify-between">
-                      <Badge className="bg-accent/10 text-accent border-accent/20 text-xs">
-                        {loc.experienceCount ?? "?"} experiencias
-                      </Badge>
-                      <Button size="sm" variant="ghost" className="text-accent hover:text-accent hover:bg-accent/10 p-0 h-auto">
-                        Ver destino
-                        <ArrowRight className="ml-1 w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
+          <div className="grid md:grid-cols-3 gap-6 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                <MapPin className="w-5 h-5 text-accent" />
+              </div>
+              <h3 className="font-heading font-bold text-foreground">Dirección</h3>
+              <p className="text-muted-foreground font-display text-sm">
+                Carretera de Los Ángeles de San Rafael<br />
+                Los Ángeles de San Rafael, Segovia
+              </p>
+            </div>
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                <Phone className="w-5 h-5 text-accent" />
+              </div>
+              <h3 className="font-heading font-bold text-foreground">Teléfono</h3>
+              <a href="tel:+34930347791" className="text-accent font-display font-semibold hover:underline">
+                +34 930 34 77 91
+              </a>
+            </div>
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
+                <Mail className="w-5 h-5 text-accent" />
+              </div>
+              <h3 className="font-heading font-bold text-foreground">Email</h3>
+              <a href="mailto:reservas@nayadeexperiences.es" className="text-accent font-display font-semibold hover:underline text-sm">
+                reservas@nayadeexperiences.es
+              </a>
+            </div>
           </div>
         </div>
       </section>
