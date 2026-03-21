@@ -21,15 +21,24 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Package, FileText, Calendar, BarChart3, Settings, Users, Image, BedDouble, Sparkles, UtensilsCrossed } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Page 1", path: "/" },
-  { icon: Users, label: "Page 2", path: "/some-path" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/admin" },
+  { icon: Image,           label: "CMS",        path: "/admin/cms" },
+  { icon: Package,         label: "Productos",  path: "/admin/productos" },
+  { icon: FileText,        label: "CRM",        path: "/admin/crm" },
+  { icon: Calendar,        label: "Operaciones",path: "/admin/operaciones" },
+  { icon: BarChart3,       label: "Contabilidad",path: "/admin/contabilidad" },
+  { icon: BedDouble,       label: "Hotel",      path: "/admin/hotel" },
+  { icon: Sparkles,        label: "SPA",        path: "/admin/spa" },
+  { icon: UtensilsCrossed, label: "Restaurantes",path: "/admin/restaurantes" },
+  { icon: Users,           label: "Usuarios",   path: "/admin/usuarios" },
+  { icon: Settings,        label: "Configuración",path: "/admin/configuracion" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
