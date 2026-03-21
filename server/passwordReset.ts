@@ -14,6 +14,7 @@ import nodemailer from "nodemailer";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { users, passwordResetTokens } from "../drizzle/schema";
+import { buildPasswordResetHtml } from "./emailTemplates";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 const TOKEN_EXPIRY_MINUTES = 60; // El enlace caduca en 1 hora
@@ -39,37 +40,7 @@ function createMailer() {
 async function sendResetEmail(to: string, resetUrl: string, name: string) {
   const mailer = createMailer();
 
-  const html = `
-<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:sans-serif;background:#f5f5f5;margin:0;padding:0">
-  <div style="max-width:520px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">
-    <div style="background:#0d1b2a;padding:32px 40px;text-align:center">
-      <div style="display:inline-block;background:#f5a623;color:#0d1b2a;font-weight:700;font-size:20px;width:44px;height:44px;line-height:44px;border-radius:10px;margin-bottom:12px">N</div>
-      <div style="color:#f5a623;font-size:11px;letter-spacing:3px;text-transform:uppercase">NÁYADE EXPERIENCES</div>
-    </div>
-    <div style="padding:40px">
-      <h2 style="color:#0d1b2a;margin:0 0 12px">Recuperar contraseña</h2>
-      <p style="color:#555;line-height:1.6">Hola ${name ?? ""},</p>
-      <p style="color:#555;line-height:1.6">Hemos recibido una solicitud para restablecer la contraseña de tu cuenta. Haz clic en el botón de abajo para crear una nueva contraseña:</p>
-      <div style="text-align:center;margin:32px 0">
-        <a href="${resetUrl}" style="background:#f5a623;color:#0d1b2a;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;font-size:15px;display:inline-block">
-          Restablecer contraseña
-        </a>
-      </div>
-      <p style="color:#888;font-size:13px;line-height:1.6">Este enlace caduca en <strong>${TOKEN_EXPIRY_MINUTES} minutos</strong>. Si no solicitaste este cambio, puedes ignorar este mensaje.</p>
-      <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
-      <p style="color:#aaa;font-size:12px">Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
-        <a href="${resetUrl}" style="color:#f5a623;word-break:break-all">${resetUrl}</a>
-      </p>
-    </div>
-    <div style="background:#f9f9f9;padding:20px 40px;text-align:center">
-      <p style="color:#bbb;font-size:12px;margin:0">Los Ángeles de San Rafael, Segovia · nayadeexperiences.es</p>
-    </div>
-  </div>
-</body>
-</html>`;
+  const html = buildPasswordResetHtml({ name: name ?? "", resetUrl, expiryMinutes: TOKEN_EXPIRY_MINUTES });
 
   if (!mailer) {
     // Sin SMTP: imprimir en consola para desarrollo

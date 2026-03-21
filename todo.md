@@ -672,3 +672,15 @@
 - [x] Fix frontend RestaurantsManager: badge distingue paid+depositAmount>0 (verde) vs paid+depositAmount=0 (gris)
 - [x] Fix frontend GlobalCalendar: mismo fix en el panel lateral del calendario
 - [x] 0 errores TypeScript reales (tsc --noEmit), 100 tests pasando
+
+## Rediseño plantillas email corporativas — v8.10
+- [x] Subir logo Náyade al CDN (https://d2xsxph8kpxj0f.cloudfront.net/...)
+- [x] Inventariar todas las plantillas de email existentes (6 plantillas)
+- [x] Crear módulo emailTemplates.ts con plantilla base HTML corporativa (azul marino #1e3a6e, naranja #f97316, logo, datos contacto)
+- [x] Rediseñar: email confirmación reserva restaurante (cliente) — buildRestaurantConfirmHtml
+- [x] Rediseñar: email link de pago depósito restaurante (cliente) — buildRestaurantPaymentLinkHtml
+- [x] Rediseñar: email confirmación reserva experiencia/pack (cliente) — buildReservationConfirmHtml
+- [x] Rediseñar: email pago fallido experiencia/pack (cliente) — buildReservationFailedHtml
+- [x] Rediseñar: email invitación/activación de cuenta — buildInviteHtml
+- [x] Rediseñar: email recuperación de contraseña — buildPasswordResetHtml
+- [x] Enviar 6 plantillas de prueba a jgrande@skicenter.es — todas entregadas con éxito

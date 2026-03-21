@@ -1,4 +1,5 @@
 import z from "zod";
+import nodemailer from "nodemailer";
 import { router, publicProcedure, protectedProcedure, adminrestProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import {
@@ -14,7 +15,20 @@ import {
 } from "../restaurantsDb";
 import { notifyOwner } from "../_core/notification";
 import { buildRedsysForm, generateMerchantOrder, getRedsysUrl } from "../redsys";
-import nodemailer from "nodemailer";
+import { buildRestaurantPaymentLinkHtml, buildRestaurantConfirmHtml } from "../emailTemplates";
+
+// ─── Helper: crear transporter SMTP ──────────────────────────────────────────
+function createSmtpTransporter() {
+  const host = process.env.SMTP_HOST;
+  if (!host) return null;
+  return nodemailer.createTransport({
+    host,
+    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    tls: { rejectUnauthorized: false },
+  });
+}
 
 // ─── Helper: enviar email de link de pago ─────────────────────────────────────
 async function sendRestaurantPaymentEmail(params: {
@@ -32,56 +46,30 @@ async function sendRestaurantPaymentEmail(params: {
   signatureVersion: string;
   origin: string;
 }) {
-  const host = process.env.SMTP_HOST;
-  if (!host) {
+  const transporter = createSmtpTransporter();
+  if (!transporter) {
     console.log("[RestaurantPaymentEmail] SMTP no configurado — email omitido para", params.locator);
     return;
   }
-  const transporter = nodemailer.createTransport({
-    host,
-    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
   const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
-  const html = `
-<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px">
-  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">
-    <div style="background:linear-gradient(135deg,#1a3a5c,#2563eb);padding:32px 24px;text-align:center">
-      <h1 style="color:#fff;margin:0;font-size:24px">Náyade Experiences</h1>
-      <p style="color:#93c5fd;margin:8px 0 0">Reserva en ${params.restaurantName}</p>
-    </div>
-    <div style="padding:32px 24px">
-      <p style="color:#374151;font-size:16px">Hola <strong>${params.guestName}</strong>,</p>
-      <p style="color:#6b7280">Tu reserva en <strong>${params.restaurantName}</strong> ha sido registrada. Para confirmarla, es necesario abonar el depósito de reserva.</p>
-      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;margin:20px 0">
-        <p style="margin:0 0 8px;color:#0369a1;font-weight:bold">Detalles de tu reserva</p>
-        <p style="margin:4px 0;color:#374151">📅 Fecha: <strong>${params.date}</strong></p>
-        <p style="margin:4px 0;color:#374151">🕐 Hora: <strong>${params.time}</strong></p>
-        <p style="margin:4px 0;color:#374151">👥 Comensales: <strong>${params.guests}</strong></p>
-        <p style="margin:4px 0;color:#374151">🔑 Localizador: <strong>${params.locator}</strong></p>
-        <p style="margin:4px 0;color:#374151">💳 Depósito a pagar: <strong>${params.depositAmount} €</strong></p>
-      </div>
-      <p style="color:#6b7280;font-size:14px">Haz clic en el botón para pagar el depósito de forma segura con tarjeta:</p>
-      <form method="POST" action="${params.redsysUrl}" style="text-align:center;margin:24px 0">
-        <input type="hidden" name="Ds_SignatureVersion" value="${params.signatureVersion}">
-        <input type="hidden" name="Ds_MerchantParameters" value="${params.merchantParams}">
-        <input type="hidden" name="Ds_Signature" value="${params.signature}">
-        <button type="submit" style="background:#2563eb;color:#fff;border:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer">
-          Pagar depósito (${params.depositAmount} €)
-        </button>
-      </form>
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-      <p style="color:#9ca3af;font-size:12px;text-align:center">Náyade Experiences · Los Ángeles de San Rafael, Segovia</p>
-    </div>
-  </div>
-</body></html>`;
   await transporter.sendMail({
     from,
     to: params.guestEmail,
-    subject: `Completa tu reserva en ${params.restaurantName} — Depósito pendiente (${params.locator})`,
-    html,
+    subject: `💳 Completa tu reserva en ${params.restaurantName} — Depósito pendiente (${params.locator})`,
+    html: buildRestaurantPaymentLinkHtml({
+      guestName: params.guestName,
+      guestEmail: params.guestEmail,
+      restaurantName: params.restaurantName,
+      date: params.date,
+      time: params.time,
+      guests: params.guests,
+      locator: params.locator,
+      depositAmount: params.depositAmount,
+      redsysUrl: params.redsysUrl,
+      merchantParams: params.merchantParams,
+      signature: params.signature,
+      signatureVersion: params.signatureVersion,
+    }),
   });
   console.log(`[RestaurantPaymentEmail] Email enviado a ${params.guestEmail} para ${params.locator}`);
 }
@@ -98,56 +86,26 @@ async function sendRestaurantConfirmEmail(params: {
   depositAmount: string;
   requiresPayment: boolean;
 }) {
-  const host = process.env.SMTP_HOST;
-  if (!host) {
+  const transporter = createSmtpTransporter();
+  if (!transporter) {
     console.log("[RestaurantConfirmEmail] SMTP no configurado — email omitido para", params.locator);
     return;
   }
-  const transporter = nodemailer.createTransport({
-    host,
-    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
   const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
-  const statusBlock = params.requiresPayment
-    ? `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:16px;margin:20px 0">
-        <p style="margin:0 0 4px;color:#854d0e;font-weight:bold">⚠️ Depósito pendiente</p>
-        <p style="margin:0;color:#713f12;font-size:14px">Tu reserva está registrada pero necesita el pago del depósito (<strong>${params.depositAmount} €</strong>) para quedar confirmada. Recibirás un email con el enlace de pago en breve.</p>
-      </div>`
-    : `<div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:16px;margin:20px 0">
-        <p style="margin:0 0 4px;color:#166534;font-weight:bold">✅ Reserva confirmada</p>
-        <p style="margin:0;color:#14532d;font-size:14px">Tu reserva está confirmada. ¡Te esperamos!</p>
-      </div>`;
-  const html = `
-<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px">
-  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">
-    <div style="background:linear-gradient(135deg,#1a3a5c,#2563eb);padding:32px 24px;text-align:center">
-      <h1 style="color:#fff;margin:0;font-size:24px">Náyade Experiences</h1>
-      <p style="color:#93c5fd;margin:8px 0 0">Reserva en ${params.restaurantName}</p>
-    </div>
-    <div style="padding:32px 24px">
-      <p style="color:#374151;font-size:16px">Hola <strong>${params.guestName}</strong>,</p>
-      <p style="color:#6b7280">Hemos recibido tu solicitud de reserva en <strong>${params.restaurantName}</strong>. Aquí tienes el resumen:</p>
-      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;margin:20px 0">
-        <p style="margin:0 0 8px;color:#0369a1;font-weight:bold">Detalles de tu reserva</p>
-        <p style="margin:4px 0;color:#374151">📅 Fecha: <strong>${params.date}</strong></p>
-        <p style="margin:4px 0;color:#374151">🕐 Hora: <strong>${params.time}</strong></p>
-        <p style="margin:4px 0;color:#374151">👥 Comensales: <strong>${params.guests}</strong></p>
-        <p style="margin:4px 0;color:#374151">🔑 Localizador: <strong style="font-size:18px;color:#1d4ed8">${params.locator}</strong></p>
-      </div>
-      ${statusBlock}
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
-      <p style="color:#9ca3af;font-size:12px;text-align:center">Náyade Experiences · Los Ángeles de San Rafael, Segovia · +34 930 34 77 91</p>
-    </div>
-  </div>
-</body></html>`;
   await transporter.sendMail({
     from,
     to: params.guestEmail,
-    subject: `Reserva recibida en ${params.restaurantName} — ${params.locator}`,
-    html,
+    subject: `🏔️ Reserva recibida en ${params.restaurantName} — ${params.locator}`,
+    html: buildRestaurantConfirmHtml({
+      guestName: params.guestName,
+      restaurantName: params.restaurantName,
+      date: params.date,
+      time: params.time,
+      guests: params.guests,
+      locator: params.locator,
+      depositAmount: params.depositAmount,
+      requiresPayment: params.requiresPayment,
+    }),
   });
   console.log(`[RestaurantConfirmEmail] Email enviado a ${params.guestEmail} para ${params.locator}`);
 }
