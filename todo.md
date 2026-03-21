@@ -702,3 +702,11 @@
 - [x] Email confirmación: incluye hora exacta elegida por el cliente
 - [x] Landing pública: muestra teléfono, email, ubicación y horarios desde la ficha
 - [x] 0 errores TypeScript (tsc --noEmit), 100 tests pasando
+
+## Bug slugs restaurantes — v8.12
+- [x] Landing de restaurantes no encontrada: slug en URL no coincide con slug en BD
+- [x] Causa raíz: menú/footer usaban /la-cabana y /nassau en lugar de /la-cabana-del-lago y /nassau-bar
+- [x] Corregir PublicNav.tsx: slugs correctos + añadida Arrocería La Cabaña
+- [x] Corregir PublicFooter.tsx: slugs correctos + añadida Arrocería La Cabaña
+- [x] Corregir menu_items en BD: UPDATE slugs + INSERT Arrocería La Cabaña
+- [x] Corregir orden de rutas en App.tsx: rutas fijas /reserva-ok y /reserva-ko antes de /:slug

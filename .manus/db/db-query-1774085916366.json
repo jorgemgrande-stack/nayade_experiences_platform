@@ -1,0 +1,30 @@
+{
+  "query": "SELECT id, label, url FROM menu_items WHERE url LIKE '%restaurante%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, label, url FROM menu_items WHERE url LIKE '%restaurante%';",
+  "rows": [
+    {
+      "id": "5",
+      "label": "Restaurantes",
+      "url": "/restaurantes"
+    },
+    {
+      "id": "20",
+      "label": "El Galeón",
+      "url": "/restaurantes/el-galeon"
+    },
+    {
+      "id": "21",
+      "label": "La Cabaña del Lago",
+      "url": "/restaurantes/la-cabana"
+    },
+    {
+      "id": "22",
+      "label": "Nassau Bar & Music",
+      "url": "/restaurantes/nassau"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tlabel\turl\n5\tRestaurantes\t/restaurantes\n20\tEl Galeón\t/restaurantes/el-galeon\n21\tLa Cabaña del Lago\t/restaurantes/la-cabana\n22\tNassau Bar & Music\t/restaurantes/nassau\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

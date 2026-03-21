@@ -1,0 +1,9 @@
+{
+  "query": "\nUPDATE menu_items SET url = '/restaurantes/la-cabana-del-lago' WHERE id = 21;\nUPDATE menu_items SET url = '/restaurantes/nassau-bar', label = 'Nassau Bar & Music' WHERE id = 22;\nINSERT INTO menu_items (label, url, parentId, isActive, sortOrder, menuZone) VALUES ('Arrocería La Cabaña', '/restaurantes/arroceria-la-cabana', 5, 1, 4, 'header');\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nUPDATE menu_items SET url = '/restaurantes/la-cabana-del-lago' WHERE id = 21;\nUPDATE menu_items SET url = '/restaurantes/nassau-bar', label = 'Nassau Bar & Music' WHERE id = 22;\nINSERT INTO menu_items (label, url, parentId, isActive, sortOrder, menuZone) VALUES ('Arrocería La Cabaña', '/restaurantes/arroceria-la-cabana', 5, 1, 4, 'header');\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 77
+}

@@ -1,0 +1,30 @@
+{
+  "query": "SELECT id, name, slug FROM restaurants ORDER BY id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, name, slug FROM restaurants ORDER BY id;",
+  "rows": [
+    {
+      "id": "1",
+      "name": "El Galeón",
+      "slug": "el-galeon"
+    },
+    {
+      "id": "2",
+      "name": "Nassau Bar & Music",
+      "slug": "nassau-bar"
+    },
+    {
+      "id": "3",
+      "name": "La Cabaña del Lago",
+      "slug": "la-cabana-del-lago"
+    },
+    {
+      "id": "4",
+      "name": "Arrocería La Cabaña",
+      "slug": "arroceria-la-cabana"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tslug\n1\tEl Galeón\tel-galeon\n2\tNassau Bar & Music\tnassau-bar\n3\tLa Cabaña del Lago\tla-cabana-del-lago\n4\tArrocería La Cabaña\tarroceria-la-cabana\n",
+  "stderr": "",
+  "execution_time_ms": 105
+}

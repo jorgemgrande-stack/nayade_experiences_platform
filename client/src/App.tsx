@@ -98,10 +98,10 @@ function Router() {
       <Route path="/spa" component={Spa} />
       <Route path="/spa/:slug" component={SpaDetail} />
       <Route path="/restaurantes" component={Restaurantes} />
-      <Route path="/restaurantes/:slug" component={RestauranteDetail} />
-      <Route path="/restaurantes/:slug/reservar" component={RestaurantBooking} />
       <Route path="/restaurantes/reserva-ok" component={RestauranteReservaOk} />
       <Route path="/restaurantes/reserva-ko" component={RestauranteReservaKo} />
+      <Route path="/restaurantes/:slug" component={RestauranteDetail} />
+      <Route path="/restaurantes/:slug/reservar" component={RestaurantBooking} />
       {/* ── RESERVA ROUTES ── */}
       <Route path="/reserva/ok" component={ReservaOk} />
       <Route path="/reserva/error" component={ReservaError} />
