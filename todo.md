@@ -950,3 +950,28 @@
 - [x] Frontend: fondo azul muy suave en filas de leads no leídos
 - [x] Frontend: al abrir la ficha del lead, seenAt se actualiza (leads.get ya lo hace)
 - [x] 0 errores TypeScript
+
+## CRM Presupuestos Mejorado + Clientes — v9.7
+
+### Backend
+- [x] Tabla `clients`: id, name, email, phone, company, nif, address, notes, created_at
+- [x] Migrar BD con nueva tabla clients
+- [x] tRPC clients.list / clients.create / clients.update / clients.delete
+- [x] tRPC crm.products.searchForQuote (búsqueda de experiencias/packs para líneas)
+- [x] quotes.convertFromLead: asunto automático "Presupuesto Nayade Experiences - @Nombre"
+
+### Frontend CRM — Modal Presupuesto mejorado
+- [x] Asunto automático al convertir lead: "Presupuesto Nayade Experiences - @NombreCliente"
+- [x] Nombre del cliente prellenado automáticamente desde el lead vinculado
+- [x] Líneas de concepto con buscador de productos (autocompletado con experiencias/packs)
+- [x] Botón "Crear y Enviar" visible en el modal de creación
+- [x] Al crear presupuesto nuevo: búsqueda de cliente existente o crear nuevo inline
+
+### Frontend CRM — Módulo Clientes
+- [x] Página /admin/crm/clientes con tabla de clientes
+- [x] CRUD completo: crear, editar, borrar clientes
+- [x] Búsqueda en tiempo real por nombre/email/empresa
+- [x] Modal ficha de cliente con todos los campos
+- [x] Item "Clientes" en el submenu CRM del sidebar
+
+- [x] 0 errores TypeScript

@@ -55,6 +55,7 @@ const navItems = [
       { label: "Leads", href: "/admin/crm" },
       { label: "Presupuestos", href: "/admin/crm" },
       { label: "Reservas", href: "/admin/crm" },
+      { label: "Clientes", href: "/admin/crm/clientes" },
     ],
   },
   {

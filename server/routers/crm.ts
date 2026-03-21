@@ -12,6 +12,8 @@ import {
   reservations,
   invoices,
   crmActivityLog,
+  clients,
+  experiences,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import nodemailer from "nodemailer";
@@ -1219,8 +1221,103 @@ export const crmRouter = router({
       }),
   }),
 
-  // ─── PIPELINE (embudo comercial) ───────────────────────────────────────────
+  // ─── CLIENTS ────────────────────────────────────────────────────────────────
+  clients: router({
+    list: staff.input(z.object({
+      search: z.string().optional(),
+      limit: z.number().default(50),
+      offset: z.number().default(0),
+    })).query(async ({ input }) => {
+      const conditions: ReturnType<typeof like>[] = [];
+      if (input.search) {
+        conditions.push(or(
+          like(clients.name, `%${input.search}%`),
+          like(clients.email, `%${input.search}%`),
+          like(clients.company, `%${input.search}%`),
+        ) as ReturnType<typeof like>);
+      }
+      const rows = await db.select().from(clients)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(clients.createdAt))
+        .limit(input.limit)
+        .offset(input.offset);
+      const [{ total }] = await db.select({ total: count() }).from(clients)
+        .where(conditions.length ? and(...conditions) : undefined);
+      return { items: rows, total };
+    }),
+    get: staff.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      const [client] = await db.select().from(clients).where(eq(clients.id, input.id));
+      if (!client) throw new TRPCError({ code: "NOT_FOUND" });
+      // Get associated quotes
+      const clientQuotes = await db.select().from(quotes)
+        .where(like(quotes.title, `%${client.name}%`))
+        .orderBy(desc(quotes.createdAt)).limit(20);
+      return { ...client, quotes: clientQuotes };
+    }),
+    create: staff.input(z.object({
+      name: z.string().min(1),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      company: z.string().optional(),
+      nif: z.string().optional(),
+      address: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const [result] = await db.insert(clients).values({
+        name: input.name,
+        email: input.email,
+        phone: input.phone ?? "",
+        company: input.company ?? "",
+        nif: input.nif ?? "",
+        address: input.address,
+        notes: input.notes,
+      });
+      return { id: (result as any).insertId };
+    }),
+    update: staff.input(z.object({
+      id: z.number(),
+      name: z.string().min(1).optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+      company: z.string().optional(),
+      nif: z.string().optional(),
+      address: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.update(clients).set(data).where(eq(clients.id, id));
+      return { success: true };
+    }),
+    delete: staff.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+      await db.delete(clients).where(eq(clients.id, input.id));
+      return { success: true };
+    }),
+  }),
 
+  // ─── PRODUCTS SEARCH (para líneas de presupuesto) ────────────────────────────
+  products: router({
+    search: staff.input(z.object({
+      q: z.string().optional(),
+      limit: z.number().default(20),
+    })).query(async ({ input }) => {
+      const conditions = input.q
+        ? [or(like(experiences.title, `%${input.q}%`), like(experiences.shortDescription, `%${input.q}%`))]
+        : [];
+      const rows = await db.select({
+        id: experiences.id,
+        title: experiences.title,
+        basePrice: experiences.basePrice,
+        image: experiences.image1,
+        coverImage: experiences.coverImageUrl,
+      }).from(experiences)
+        .where(and(eq(experiences.isActive, true), ...(conditions as any[])))
+        .orderBy(experiences.title)
+        .limit(input.limit);
+      return rows;
+    }),
+  }),
+
+  // --- PIPELINE (embudo comercial) ---
   pipeline: router({
     summary: staff.query(async () => {
       const [leadsData, quotesData, reservationsData] = await Promise.all([

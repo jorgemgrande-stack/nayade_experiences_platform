@@ -819,3 +819,19 @@ export const galleryItems = mysqlTable("gallery_items", {
 });
 export type GalleryItem = typeof galleryItems.$inferSelect;
 export type NewGalleryItem = typeof galleryItems.$inferInsert;
+
+// ─── CLIENTS (CRM) ───────────────────────────────────────────────────────────
+export const clients = mysqlTable("clients", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 256 }).notNull(),
+  email: varchar("email", { length: 256 }).notNull(),
+  phone: varchar("phone", { length: 64 }).default(""),
+  company: varchar("company", { length: 256 }).default(""),
+  nif: varchar("nif", { length: 64 }).default(""),
+  address: text("address"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Client = typeof clients.$inferSelect;
+export type InsertClient = typeof clients.$inferInsert;

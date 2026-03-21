@@ -81,6 +81,7 @@ import Settings from "./pages/admin/settings/Settings";
 
 // CRM
 import CRMDashboard from "./pages/admin/crm/CRMDashboard";
+import ClientsManager from "./pages/admin/crm/ClientsManager";
 
 function Router() {
   return (
@@ -173,6 +174,7 @@ function Router() {
       <Route path="/admin/crm/leads" component={CRMDashboard} />
       <Route path="/admin/crm/presupuestos" component={CRMDashboard} />
       <Route path="/admin/crm/reservas" component={CRMDashboard} />
+      <Route path="/admin/crm/clientes" component={ClientsManager} />
 
       {/* Users & Settings */}
       <Route path="/admin/usuarios" component={UsersManager} />

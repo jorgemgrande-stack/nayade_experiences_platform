@@ -241,7 +241,7 @@ function LeadDetailModal({
 }: {
   leadId: number;
   onClose: () => void;
-  onConvert: (leadId: number) => void;
+  onConvert: (leadId: number, leadName?: string) => void;
 }) {
   const [note, setNote] = useState("");
   const utils = trpc.useUtils();
@@ -444,7 +444,7 @@ function LeadDetailModal({
         <Button
           size="sm"
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
-          onClick={() => { onClose(); onConvert(leadId); }}
+          onClick={() => { onClose(); onConvert(leadId, undefined); }}
         >
           <FileText className="w-4 h-4 mr-1" /> Crear Presupuesto
         </Button>
@@ -588,17 +588,66 @@ function LeadEditModal({
   );
 }
 
+// ─── PRODUCT SEARCH COMBOBOX ─────────────────────────────────────────────────
+
+function ProductSearchInput({
+  value,
+  onChange,
+  onSelect,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSelect: (product: { title: string; basePrice: string }) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const { data: products } = trpc.crm.products.search.useQuery(
+    { q, limit: 10 },
+    { enabled: open }
+  );
+
+  return (
+    <div className="relative">
+      <Input
+        className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
+        placeholder="Descripción o busca un producto..."
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+      />
+      {open && products && products.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+          {products.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="w-full text-left px-3 py-2 hover:bg-white/10 text-sm text-white flex justify-between items-center gap-2"
+              onMouseDown={() => { onSelect(p as any); setOpen(false); }}
+            >
+              <span className="truncate">{p.title}</span>
+              <span className="text-orange-400 text-xs shrink-0">{Number(p.basePrice).toFixed(2)} €</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── QUOTE BUILDER MODAL ─────────────────────────────────────────────────────
 
 function QuoteBuilderModal({
   leadId,
+  leadName,
   onClose,
 }: {
   leadId: number;
+  leadName: string;
   onClose: () => void;
 }) {
   const utils = trpc.useUtils();
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(`Presupuesto Nayade Experiences - ${leadName}`);
   const [description, setDescription] = useState("");
   const [conditions, setConditions] = useState("Presupuesto válido por 15 días. Sujeto a disponibilidad.");
   const [validUntil, setValidUntil] = useState(() => {
@@ -611,6 +660,7 @@ function QuoteBuilderModal({
   const [items, setItems] = useState([
     { description: "", quantity: 1, unitPrice: 0, total: 0 },
   ]);
+  const [sendAfterCreate, setSendAfterCreate] = useState(false);
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const taxAmount = subtotal * (taxRate / 100);
@@ -629,21 +679,31 @@ function QuoteBuilderModal({
     );
   };
 
+  const sendQuote = trpc.crm.quotes.send.useMutation({
+    onSuccess: () => toast.success("Presupuesto enviado al cliente"),
+    onError: (e) => toast.error(e.message),
+  });
+
   const convertToQuote = trpc.crm.leads.convertToQuote.useMutation({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       toast.success(`Presupuesto ${data.quoteNumber} creado`);
       utils.crm.leads.counters.invalidate();
       utils.crm.quotes.counters.invalidate();
+      utils.crm.quotes.list.invalidate();
+      if (sendAfterCreate) {
+        await sendQuote.mutateAsync({ id: data.quoteId });
+      }
       onClose();
     },
     onError: (e) => toast.error(e.message),
   });
 
-  const handleSubmit = () => {
+  const handleSubmit = (andSend = false) => {
     if (!title || items.some((i) => !i.description)) {
       toast.error("Completa el título y todos los conceptos");
       return;
     }
+    setSendAfterCreate(andSend);
     convertToQuote.mutate({
       leadId,
       title,
@@ -664,19 +724,20 @@ function QuoteBuilderModal({
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <FileText className="w-5 h-5 text-orange-400" /> Nuevo Presupuesto
+          {leadName && <span className="text-white/40 text-sm font-normal ml-1">para {leadName}</span>}
         </DialogTitle>
       </DialogHeader>
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Título del presupuesto *</Label>
+            <Label className="text-white/60 text-xs">Asunto del presupuesto *</Label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ej: Pack Aventura Acuática para 10 personas"
               className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1"
             />
+            <p className="text-white/30 text-xs mt-1">Generado automáticamente. Puedes editarlo.</p>
           </div>
           <div>
             <Label className="text-white/60 text-xs">Válido hasta</Label>
@@ -702,10 +763,12 @@ function QuoteBuilderModal({
           </div>
         </div>
 
-        {/* Items */}
+        {/* Items con buscador de productos */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-white/60 text-xs">Conceptos *</Label>
+            <Label className="text-white/60 text-xs">
+              Conceptos * <span className="text-white/30">(escribe o busca un producto)</span>
+            </Label>
             <Button
               size="sm"
               variant="ghost"
@@ -715,15 +778,28 @@ function QuoteBuilderModal({
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
+          <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mb-1">
+            <span className="col-span-5">Descripción</span>
+            <span className="col-span-2 text-center">Cant.</span>
+            <span className="col-span-2 text-right">P.Unit.</span>
+            <span className="col-span-2 text-right">Total</span>
+          </div>
           <div className="space-y-2">
             {items.map((item, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                <Input
-                  className="col-span-5 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
-                  placeholder="Descripción"
-                  value={item.description}
-                  onChange={(e) => updateItem(idx, "description", e.target.value)}
-                />
+                <div className="col-span-5">
+                  <ProductSearchInput
+                    value={item.description}
+                    onChange={(v) => updateItem(idx, "description", v)}
+                    onSelect={(p) => {
+                      setItems((prev) => prev.map((it, i) => {
+                        if (i !== idx) return it;
+                        const unitPrice = Number(p.basePrice);
+                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity };
+                      }));
+                    }}
+                  />
+                </div>
                 <Input
                   className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center"
                   type="number"
@@ -753,12 +829,6 @@ function QuoteBuilderModal({
                 </Button>
               </div>
             ))}
-          </div>
-          <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mt-1 px-0">
-            <span className="col-span-5" />
-            <span className="col-span-2 text-center">Cant.</span>
-            <span className="col-span-2 text-right">P.Unit.</span>
-            <span className="col-span-2 text-right">Total</span>
           </div>
         </div>
 
@@ -794,18 +864,27 @@ function QuoteBuilderModal({
         </div>
       </div>
 
-      <DialogFooter>
+      <DialogFooter className="gap-2 flex-wrap">
         <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
           Cancelar
         </Button>
         <Button
           size="sm"
-          onClick={handleSubmit}
+          onClick={() => handleSubmit(false)}
+          disabled={convertToQuote.isPending}
+          className="bg-white/10 hover:bg-white/20 text-white border border-white/15"
+        >
+          {convertToQuote.isPending && !sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
+          Guardar borrador
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => handleSubmit(true)}
           disabled={convertToQuote.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
-          {convertToQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
-          Crear Presupuesto
+          {convertToQuote.isPending && sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}
+          Crear y Enviar al cliente
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -1194,6 +1273,7 @@ export default function CRMDashboard() {
   const [editLeadId, setEditLeadId] = useState<number | null>(null);
   const [deleteLeadId, setDeleteLeadId] = useState<number | null>(null);
   const [convertLeadId, setConvertLeadId] = useState<number | null>(null);
+  const [convertLeadName, setConvertLeadName] = useState<string>("");
   const [selectedQuoteId, setSelectedQuoteId] = useState<number | null>(null);
   const [editQuoteId, setEditQuoteId] = useState<number | null>(null);
   const [deleteQuoteId, setDeleteQuoteId] = useState<number | null>(null);
@@ -1561,7 +1641,7 @@ export default function CRMDashboard() {
                             size="sm"
                             variant="ghost"
                             className="text-orange-400 hover:text-orange-300 h-7 px-2 text-xs"
-                            onClick={() => setConvertLeadId(lead.id)}
+                            onClick={() => { setConvertLeadId(lead.id); setConvertLeadName(lead.name); }}
                             title="Crear presupuesto"
                           >
                             <FileText className="w-3.5 h-3.5" />
@@ -1724,7 +1804,7 @@ export default function CRMDashboard() {
           <LeadDetailModal
             leadId={selectedLeadId}
             onClose={() => setSelectedLeadId(null)}
-            onConvert={(id) => setConvertLeadId(id)}
+            onConvert={(id, name) => { setConvertLeadId(id); setConvertLeadName(name ?? ""); }}
           />
         )}
       </Dialog>
@@ -1733,7 +1813,8 @@ export default function CRMDashboard() {
         {convertLeadId !== null && (
           <QuoteBuilderModal
             leadId={convertLeadId}
-            onClose={() => setConvertLeadId(null)}
+            leadName={convertLeadName}
+            onClose={() => { setConvertLeadId(null); setConvertLeadName(""); }}
           />
         )}
       </Dialog>
