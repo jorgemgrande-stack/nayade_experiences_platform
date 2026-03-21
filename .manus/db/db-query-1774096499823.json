@@ -1,0 +1,55 @@
+{
+  "query": "SELECT id, name, email, source, selectedCategory, selectedProduct, createdAt FROM leads ORDER BY createdAt DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, name, email, source, selectedCategory, selectedProduct, createdAt FROM leads ORDER BY createdAt DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "240001",
+      "name": "Jorge",
+      "email": "jgrande@slkicenter.es",
+      "source": "landing_presupuesto",
+      "selectedCategory": "Experiencias",
+      "selectedProduct": "Blob Jump",
+      "createdAt": "2026-03-21 12:30:37"
+    },
+    {
+      "id": "210002",
+      "name": "Test User",
+      "email": "test@example.com",
+      "source": "web",
+      "selectedCategory": "NULL",
+      "selectedProduct": "NULL",
+      "createdAt": "2026-03-21 11:44:37"
+    },
+    {
+      "id": "210001",
+      "name": "Test User",
+      "email": "test@example.com",
+      "source": "web",
+      "selectedCategory": "NULL",
+      "selectedProduct": "NULL",
+      "createdAt": "2026-03-21 11:36:03"
+    },
+    {
+      "id": "180001",
+      "name": "Test User",
+      "email": "test@example.com",
+      "source": "web",
+      "selectedCategory": "NULL",
+      "selectedProduct": "NULL",
+      "createdAt": "2026-03-21 10:12:35"
+    },
+    {
+      "id": "150001",
+      "name": "Test User",
+      "email": "test@example.com",
+      "source": "web",
+      "selectedCategory": "NULL",
+      "selectedProduct": "NULL",
+      "createdAt": "2026-03-21 09:20:35"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tsource\tselectedCategory\tselectedProduct\tcreatedAt\n240001\tJorge\tjgrande@slkicenter.es\tlanding_presupuesto\tExperiencias\tBlob Jump\t2026-03-21 12:30:37\n210002\tTest User\ttest@example.com\tweb\tNULL\tNULL\t2026-03-21 11:44:37\n210001\tTest User\ttest@example.com\tweb\tNULL\tNULL\t2026-03-21 11:36:03\n180001\tTest User\ttest@example.com\tweb\tNULL\tNULL\t2026-03-21 10:12:35\n150001\tTest User\ttest@example.com\tweb\tNULL\tNULL\t2026-03-21 09:20:35\n",
+  "stderr": "",
+  "execution_time_ms": 62
+}

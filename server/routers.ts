@@ -257,54 +257,59 @@ export const appRouter = router({
           source: "landing_presupuesto",
         });
 
-        // Enviar emails (no bloquear si falla)
-        try {
-          const smtpHost = process.env.SMTP_HOST;
-          const smtpUser = process.env.SMTP_USER;
-          const smtpPass = process.env.SMTP_PASS;
-          const smtpPort = parseInt(process.env.SMTP_PORT ?? "465", 10);
-          const from = process.env.SMTP_FROM ?? `"Náyade Experiences" <${smtpUser}>`;
+        // Enviar emails (try/catch independientes: si el email del usuario falla, el del admin sigue)
+        const smtpHost = process.env.SMTP_HOST;
+        const smtpUser = process.env.SMTP_USER;
+        const smtpPass = process.env.SMTP_PASS;
+        const smtpPort = parseInt(process.env.SMTP_PORT ?? "465", 10);
+        const from = process.env.SMTP_FROM ?? `"Náyade Experiences" <${smtpUser}>`;
 
-          if (smtpHost && smtpUser && smtpPass) {
-            const transporter = nodemailer.createTransport({
-              host: smtpHost,
-              port: smtpPort,
-              secure: smtpPort === 465,
-              auth: { user: smtpUser, pass: smtpPass },
-              tls: { rejectUnauthorized: false },
-            });
+        if (smtpHost && smtpUser && smtpPass) {
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: smtpPort,
+            secure: smtpPort === 465,
+            auth: { user: smtpUser, pass: smtpPass },
+            tls: { rejectUnauthorized: false },
+          });
 
-            const emailData = {
-              name: input.name,
-              email: input.email,
-              phone: input.phone,
-              arrivalDate: new Date(input.arrivalDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
-              adults: input.adults,
-              children: input.children,
-              selectedCategory: input.selectedCategory,
-              selectedProduct: input.selectedProduct,
-              comments: input.comments ?? "",
-              submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
-            };
+          const emailData = {
+            name: input.name,
+            email: input.email,
+            phone: input.phone,
+            arrivalDate: new Date(input.arrivalDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+            adults: input.adults,
+            children: input.children,
+            selectedCategory: input.selectedCategory,
+            selectedProduct: input.selectedProduct,
+            comments: input.comments ?? "",
+            submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
+          };
 
-            // Email al usuario
+          // Email al usuario (independiente: si su email es inválido no bloquea el del admin)
+          try {
             await transporter.sendMail({
               from,
               to: input.email,
               subject: "Solicitud de presupuesto recibida — Náyade Experiences",
               html: buildBudgetRequestUserHtml(emailData),
             });
+          } catch (userEmailErr) {
+            console.error("[submitBudget] Email al usuario fallido:", userEmailErr);
+          }
 
-            // Email al administrador
+          // Email al administrador (siempre intenta, independiente del email del usuario)
+          try {
+            const adminEmail = process.env.ADMIN_EMAIL ?? "reservas@nayadeexperiences.es";
             await transporter.sendMail({
               from,
-              to: "reservas@hotelnayade.es",
-              subject: `Nueva solicitud de presupuesto — ${input.name}`,
+              to: adminEmail,
+              subject: `⚠️ Nueva solicitud — ${input.name} (${input.selectedCategory})`,
               html: buildBudgetRequestAdminHtml(emailData),
             });
+          } catch (adminEmailErr) {
+            console.error("[submitBudget] Email al admin fallido:", adminEmailErr);
           }
-        } catch (emailErr) {
-          console.error("[submitBudget] Email send failed (lead saved):", emailErr);
         }
 
         return { success: true, leadId: lead.id };

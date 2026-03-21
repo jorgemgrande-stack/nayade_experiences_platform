@@ -769,3 +769,10 @@
 - [x] Bloque de beneficios ligero (4 iconos) mantenido debajo del hero
 - [x] Lógica funcional intacta (leads, emails, validaciones, honeypot)
 - [x] 0 errores TypeScript, 100 tests pasando
+
+## Fix emails formulario presupuesto — v8.21
+- [x] Diagnosticado: lead sí llega a BD, SMTP funciona, el problema era email admin hardcodeado a reservas@hotelnayade.es (dominio inexistente) y un solo try/catch que cortaba el flujo
+- [x] Corregido: email admin usa ADMIN_EMAIL env var (fallback reservas@nayadeexperiences.es)
+- [x] Corregido: try/catch independientes para email usuario y email admin (uno no bloquea al otro)
+- [x] Verificado: email de prueba enviado a reservas@nayadeexperiences.es con éxito (messageId confirmado)
+- [x] 0 errores TypeScript
