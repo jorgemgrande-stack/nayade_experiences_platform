@@ -331,9 +331,13 @@ export default function GlobalCalendar() {
                         {/* Teléfono y comensales */}
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground font-display">
                           {b.guestPhone && (
-                            <span className="flex items-center gap-1">
+                            <a
+                              href={`tel:${b.guestPhone}`}
+                              className="flex items-center gap-1 hover:text-accent hover:underline transition-colors"
+                              title="Llamar al cliente"
+                            >
                               <Phone className="w-3 h-3" /> {b.guestPhone}
-                            </span>
+                            </a>
                           )}
                           <span className="flex items-center gap-1">
                             <Users className="w-3 h-3" /> {b.guests}p.

@@ -519,22 +519,34 @@ export default function RestaurantsManager() {
                             {STATUS_LABELS[b.status]?.label ?? b.status}
                           </span>
                           <span className="font-mono text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">#{b.locator}</span>
-                          {/* Icono de pago */}
-                          {b.paymentStatus === "pending" ? (
-                            <span className="flex items-center gap-1 text-xs text-orange-600 font-display">
-                              <CreditCard className="w-3.5 h-3.5" /> Pago pendiente
+                          {/* Icono de pago — badge visual prominente */}
+                          {b.paymentStatus === "paid" ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-display font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-700">
+                              <CheckCircle className="w-3 h-3" /> Pagado
                             </span>
-                          ) : b.paymentStatus === "paid" ? (
-                            <span className="flex items-center gap-1 text-xs text-green-600 font-display">
-                              <CheckCircle className="w-3.5 h-3.5" /> Pagado
+                          ) : Number(b.depositAmount) > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-display font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border border-orange-200 dark:border-orange-700">
+                              <CreditCard className="w-3 h-3" /> Sin pagar
                             </span>
-                          ) : null}
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-display font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/40">
+                              <Ban className="w-3 h-3" /> Sin depósito
+                            </span>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground font-display">
                           <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{b.date} · {b.time}</span>
                           <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{b.guests} comensales</span>
                           {b.guestEmail && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{b.guestEmail}</span>}
-                          {b.guestPhone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{b.guestPhone}</span>}
+                          {b.guestPhone && (
+                            <a
+                              href={`tel:${b.guestPhone}`}
+                              className="flex items-center gap-1 hover:text-accent hover:underline transition-colors"
+                              title="Llamar al cliente"
+                            >
+                              <Phone className="w-3.5 h-3.5" />{b.guestPhone}
+                            </a>
+                          )}
                           {b.depositAmount && Number(b.depositAmount) > 0 && (
                             <span className="flex items-center gap-1 text-accent font-semibold">
                               <CreditCard className="w-3.5 h-3.5" /> {b.depositAmount} €
@@ -557,6 +569,32 @@ export default function RestaurantsManager() {
                       </div>
                       {/* Acciones */}
                       <div className="flex flex-col gap-2 shrink-0">
+                        {/* Toggle Show / No-show — check manual prominente */}
+                        {(b.status === "confirmed" || b.status === "no_show") && (
+                          <button
+                            onClick={() => updateStatusMutation.mutate({
+                              id: b.id,
+                              status: b.status === "no_show" ? "confirmed" : "no_show",
+                            })}
+                            title={b.status === "no_show" ? "Marcar como Show (asistió)" : "Marcar como No-show (no asistió)"}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-display font-bold transition-all border-2 select-none ${
+                              b.status === "no_show"
+                                ? "bg-gray-800 dark:bg-gray-700 border-gray-700 text-white"
+                                : "bg-white dark:bg-card border-gray-200 dark:border-border/60 text-gray-500 hover:border-gray-400 hover:text-gray-700"
+                            }`}
+                          >
+                            <span className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
+                              b.status === "no_show"
+                                ? "bg-gray-600 border-gray-500"
+                                : "bg-green-500 border-green-400"
+                            }`}>
+                              {b.status === "no_show"
+                                ? <XCircle className="w-2.5 h-2.5 text-white" />
+                                : <CheckCircle className="w-2.5 h-2.5 text-white" />}
+                            </span>
+                            {b.status === "no_show" ? "No-show" : "Show"}
+                          </button>
+                        )}
                         {(b.status === "pending_payment" || (b.status as string) === "pending") && (
                           <div className="flex gap-2">
                             <button
@@ -574,20 +612,12 @@ export default function RestaurantsManager() {
                           </div>
                         )}
                         {b.status === "confirmed" && (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => updateStatusMutation.mutate({ id: b.id, status: "no_show" })}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-xs font-display font-semibold transition-colors"
-                            >
-                              <Clock className="w-3.5 h-3.5" /> No show
-                            </button>
-                            <button
-                              onClick={() => updateStatusMutation.mutate({ id: b.id, status: "cancelled" })}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-display font-semibold transition-colors"
-                            >
-                              <XCircle className="w-3.5 h-3.5" /> Cancelar
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => updateStatusMutation.mutate({ id: b.id, status: "cancelled" })}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-display font-semibold transition-colors"
+                          >
+                            <XCircle className="w-3.5 h-3.5" /> Cancelar
+                          </button>
                         )}
                         <div className="flex gap-2">
                           <button

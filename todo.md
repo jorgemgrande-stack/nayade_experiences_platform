@@ -633,3 +633,11 @@
 - [x] Al crear reserva online, notifica al adminrest asignado al restaurante
 - [x] Fallback: si no hay adminrest asignado, notifica al admin general
 - [x] 100 tests pasando (sin regresiones)
+
+## Mejoras v8.4 — Tarjeta de reserva mejorada
+
+- [x] Toggle manual Show/No-show en la tarjeta de reserva (check visual que alterna entre Show/No-show)
+- [x] Badge visual de estado de pago: verde “Pagado” / naranja “Sin pagar” / gris “Sin depósito”
+- [x] Teléfono del cliente clickable con `tel:` en la tarjeta de reserva (RestaurantsManager)
+- [x] Teléfono clickable también en el panel lateral del GlobalCalendar
+- [x] 0 errores TypeScript, 100 tests pasando
