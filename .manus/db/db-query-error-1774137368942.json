@@ -1,0 +1,8 @@
+{
+  "query": "ALTER TABLE clients ADD COLUMN tags JSON DEFAULT (JSON_ARRAY()) AFTER birthDate;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute ALTER TABLE clients ADD COLUMN tags JSON DEFAULT (JSON_ARRAY()) AFTER birthDate;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1674 (HY000) at line 1: Statement is unsafe because it uses a system function that may return a different value on the slave"
+  ]
+}

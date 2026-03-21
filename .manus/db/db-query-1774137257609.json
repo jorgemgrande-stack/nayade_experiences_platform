@@ -1,0 +1,21 @@
+{
+  "query": "\nSELECT 'leads' as tabla, COUNT(*) as total FROM leads\nUNION ALL\nSELECT 'clients' as tabla, COUNT(*) as total FROM clients;\n\nSELECT l.id as lead_id, l.name, l.email, c.id as client_id, c.source\nFROM leads l\nLEFT JOIN clients c ON c.email = l.email\nORDER BY l.id DESC LIMIT 10;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT 'leads' as tabla, COUNT(*) as total FROM leads\nUNION ALL\nSELECT 'clients' as tabla, COUNT(*) as total FROM clients;\n\nSELECT l.id as lead_id, l.name, l.email, c.id as client_id, c.source\nFROM leads l\nLEFT JOIN clients c ON c.email = l.email\nORDER BY l.id DESC LIMIT 10;\n",
+  "rows": [
+    {
+      "tabla": "clients",
+      "total": "0"
+    },
+    {
+      "tabla": "leads",
+      "total": "1"
+    }
+  ],
+  "messages": [
+    "lead_id\tname\temail\tclient_id\tsource",
+    "420003\tAbdulah\tjgrande@skicenter.es\tNULL\tNULL"
+  ],
+  "stdout": "tabla\ttotal\nclients\t0\nleads\t1\nlead_id\tname\temail\tclient_id\tsource\n420003\tAbdulah\tjgrande@skicenter.es\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 104
+}

@@ -193,6 +193,7 @@ export async function createLead(data: {
         email: data.email,
         phone: data.phone ?? "",
         company: data.company ?? "",
+        tags: [],
         isConverted: false,
         totalBookings: 0,
       });

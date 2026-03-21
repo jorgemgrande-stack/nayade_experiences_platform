@@ -1,0 +1,20 @@
+{
+  "query": "\n-- Verificar el lead existente\nSELECT id, name, email FROM leads ORDER BY id DESC LIMIT 3;\n\n-- Verificar que clients sigue vacío\nSELECT COUNT(*) as total_clients FROM clients;\n\n-- Verificar que la columna tags existe ahora\nSHOW COLUMNS FROM clients WHERE Field = 'tags';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Verificar el lead existente\nSELECT id, name, email FROM leads ORDER BY id DESC LIMIT 3;\n\n-- Verificar que clients sigue vacío\nSELECT COUNT(*) as total_clients FROM clients;\n\n-- Verificar que la columna tags existe ahora\nSHOW COLUMNS FROM clients WHERE Field = 'tags';\n",
+  "rows": [
+    {
+      "id": "420003",
+      "name": "Abdulah",
+      "email": "jgrande@skicenter.es"
+    }
+  ],
+  "messages": [
+    "total_clients",
+    "0",
+    "Field\tType\tNull\tKey\tDefault\tExtra",
+    "tags\tjson\tYES\t\tNULL\t"
+  ],
+  "stdout": "id\tname\temail\n420003\tAbdulah\tjgrande@skicenter.es\ntotal_clients\n0\nField\tType\tNull\tKey\tDefault\tExtra\ntags\tjson\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 77
+}
