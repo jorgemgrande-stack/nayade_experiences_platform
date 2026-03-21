@@ -12,6 +12,7 @@ import {
   packCrossSells,
   pageBlocks,
   staticPages,
+  clients, Client, InsertClient,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -152,6 +153,8 @@ export async function createLead(data: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  // 1. Insertar el lead
   const result = await db.insert(leads).values({
     name: data.name,
     email: data.email,
@@ -170,7 +173,37 @@ export async function createLead(data: {
     selectedCategory: data.selectedCategory ?? null,
     selectedProduct: data.selectedProduct ?? null,
   });
-  return { id: Number(result[0].insertId), success: true };
+  const leadId = Number(result[0].insertId);
+
+  // 2. Crear o actualizar cliente automáticamente
+  // Si ya existe un cliente con ese email, vincularlo al lead (sin sobreescribir datos)
+  // Si no existe, crear uno nuevo con los datos básicos del lead
+  try {
+    const existing = await db.select({ id: clients.id })
+      .from(clients)
+      .where(eq(clients.email, data.email))
+      .limit(1);
+
+    if (existing.length === 0) {
+      // Crear nuevo cliente con datos básicos del lead
+      await db.insert(clients).values({
+        leadId,
+        source: "lead",
+        name: data.name,
+        email: data.email,
+        phone: data.phone ?? "",
+        company: data.company ?? "",
+        isConverted: false,
+        totalBookings: 0,
+      });
+    }
+    // Si ya existe, no sobreescribir — el cliente ya tiene sus datos
+  } catch (e) {
+    // No bloquear el lead si falla la creación del cliente
+    console.warn("[createLead] No se pudo crear/vincular cliente:", e);
+  }
+
+  return { id: leadId, success: true };
 }
 
 export async function getAllLeads(params: { status?: string; limit?: number; offset?: number }) {

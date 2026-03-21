@@ -823,13 +823,29 @@ export type NewGalleryItem = typeof galleryItems.$inferInsert;
 // ─── CLIENTS (CRM) ───────────────────────────────────────────────────────────
 export const clients = mysqlTable("clients", {
   id: int("id").autoincrement().primaryKey(),
+  // Origen del cliente
+  leadId: int("leadId"),                          // Lead que originó este cliente (puede ser null si se creó manualmente)
+  source: varchar("source", { length: 64 }).default("lead").notNull(), // 'lead' | 'manual' | 'reservation'
+  // Datos básicos (rellenados desde el lead)
   name: varchar("name", { length: 256 }).notNull(),
   email: varchar("email", { length: 256 }).notNull(),
   phone: varchar("phone", { length: 64 }).default(""),
   company: varchar("company", { length: 256 }).default(""),
+  // Datos ampliados (se completan cuando el presupuesto se convierte en reserva)
   nif: varchar("nif", { length: 64 }).default(""),
   address: text("address"),
+  city: varchar("city", { length: 128 }).default(""),
+  postalCode: varchar("postalCode", { length: 16 }).default(""),
+  country: varchar("country", { length: 64 }).default("ES"),
+  birthDate: varchar("birthDate", { length: 10 }),  // YYYY-MM-DD
+  // Preferencias y notas
   notes: text("notes"),
+  tags: json("tags").$type<string[]>().default([]),
+  // Estado del cliente
+  isConverted: boolean("isConverted").default(false).notNull(), // true cuando ha tenido al menos una reserva confirmada
+  totalBookings: int("totalBookings").default(0).notNull(),
+  totalSpent: decimal("totalSpent", { precision: 10, scale: 2 }).default("0"),
+  lastBookingAt: timestamp("lastBookingAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

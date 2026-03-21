@@ -1271,6 +1271,7 @@ export const crmRouter = router({
         nif: input.nif ?? "",
         address: input.address,
         notes: input.notes,
+        source: "manual",
       });
       return { id: (result as any).insertId };
     }),
@@ -1282,10 +1283,31 @@ export const crmRouter = router({
       company: z.string().optional(),
       nif: z.string().optional(),
       address: z.string().optional(),
+      city: z.string().optional(),
+      postalCode: z.string().optional(),
+      country: z.string().optional(),
+      birthDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ input }) => {
       const { id, ...data } = input;
-      await db.update(clients).set(data).where(eq(clients.id, id));
+      await db.update(clients).set(data as any).where(eq(clients.id, id));
+      return { success: true };
+    }),
+    // Ampliar datos del cliente cuando se convierte (presupuesto → reserva)
+    expand: staff.input(z.object({
+      id: z.number(),
+      nif: z.string().optional(),
+      address: z.string().optional(),
+      city: z.string().optional(),
+      postalCode: z.string().optional(),
+      country: z.string().optional(),
+      birthDate: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.update(clients)
+        .set({ ...data as any, isConverted: true })
+        .where(eq(clients.id, id));
       return { success: true };
     }),
     delete: staff.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
