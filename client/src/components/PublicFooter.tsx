@@ -44,7 +44,7 @@ export default function PublicFooter() {
           <div className="lg:col-span-2">
             <Link href="/" className="inline-block mb-5 cursor-pointer">
               <img
-                src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_white_v2_812c5d52.png"
+                src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_White_41263eee.png"
                 alt="Náyade Experiences"
                 className="h-20 w-auto object-contain"
               />

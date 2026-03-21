@@ -190,7 +190,7 @@ export default function PublicNav() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 cursor-pointer">
             <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade-azul_ea3fd894.jpg"
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png"
               alt="Náyade Experiences"
               className="h-14 w-auto object-contain"
             />

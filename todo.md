@@ -790,3 +790,20 @@
 - [x] 10 Razones: fondo dark navy con radial-gradient, tarjetas glass con línea acento animada, CTA "Diseña tu Experiencia"
 - [x] Sabores del Lago: vinculado a trpc.restaurants.getAll (fotos reales, banda Abierto/Cerrado, próximo turno, skeleton loading)
 - [x] 0 errores TypeScript
+
+## Logos nuevos + Plantillas Email Premium — v8.24
+- [x] Subir nayade_blue.png (logo circular azul) al CDN con fondo transparente
+- [x] Subir nayade_White.png (logo circular blanco) al CDN con fondo transparente
+- [x] Actualizar header público con logo azul (sin recuadro blanco)
+- [x] Actualizar footer con logo blanco (sin recuadro blanco)
+- [x] Actualizar sidebar admin con logo azul
+- [x] Rediseñar plantilla email confirmación reserva: estilo premium dark navy + naranja, wave SVG, logo circular, iconos SVG inline
+- [x] Rediseñar plantilla email pago fallido: estilo moderno aspiracional
+- [x] Rediseñar plantilla email restaurante confirmación: estilo resort premium
+- [x] Rediseñar plantilla email restaurante link de pago: estilo resort premium
+- [x] Rediseñar plantilla email invitación de cuenta: estilo corporativo premium
+- [x] Rediseñar plantilla email recuperación de contraseña: estilo moderno
+- [x] Rediseñar plantilla email solicitud presupuesto (usuario): estilo resort premium
+- [x] Rediseñar plantilla email solicitud presupuesto (admin): estilo operacional moderno con CTA mailto
+- [x] Enviar 8 plantillas de prueba a administracion@nayadeexperiences.es
+- [x] 0 errores TypeScript, tests pasando

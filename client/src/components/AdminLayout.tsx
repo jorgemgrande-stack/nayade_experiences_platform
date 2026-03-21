@@ -228,7 +228,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         <div className="h-16 flex items-center px-4 border-b border-sidebar-border shrink-0">
           <Link href={userRole === "adminrest" ? "/admin/restaurantes" : "/admin"} className="flex items-center gap-2 min-w-0">
             <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade-azul_ea3fd894.jpg"
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png"
               alt="Náyade Admin"
               className={cn("object-contain rounded-full shrink-0", sidebarOpen ? "h-10 w-10" : "h-8 w-8")}
             />
