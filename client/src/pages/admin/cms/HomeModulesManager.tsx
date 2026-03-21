@@ -74,13 +74,13 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
   const availableExperiences = allExperiences?.filter((e: Exp) => !selectedIds.includes(e.id) && e.isActive) ?? [];
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-5 mb-5">
+    <div className="bg-muted/30 border border-border/50 rounded-xl p-5 mb-5">
       {/* Header del módulo */}
-      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/10">
+      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border/50">
         <span className="text-2xl">{icon}</span>
         <div className="flex-1 min-w-0">
-          <h3 className="text-base font-semibold text-white m-0">{label}</h3>
-          <p className="text-xs text-white/40 mt-0.5">{description}</p>
+          <h3 className="text-base font-semibold text-foreground m-0">{label}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
         </div>
         {saving && (
           <span className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
@@ -101,12 +101,12 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
             <span className="bg-orange-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">
               {selectedIds.length}
             </span>
-            <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Productos seleccionados
             </span>
           </div>
           {selectedExperiences.length === 0 ? (
-            <div className="py-8 text-center text-white/30 text-xs border-2 border-dashed border-white/10 rounded-lg">
+            <div className="py-8 text-center text-muted-foreground text-xs border-2 border-dashed border-border rounded-lg">
               Sin productos seleccionados.<br />Añade desde la lista de la derecha.
             </div>
           ) : (
@@ -116,24 +116,24 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
                   {exp.image1 ? (
                     <img src={exp.image1} alt={exp.title} className="w-10 h-10 object-cover rounded-md shrink-0" />
                   ) : (
-                    <div className="w-10 h-10 bg-white/10 rounded-md shrink-0 flex items-center justify-center text-base">🖼️</div>
+                    <div className="w-10 h-10 bg-muted rounded-md shrink-0 flex items-center justify-center text-base">🖼️</div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-semibold text-white truncate">{exp.title}</div>
-                    <div className="text-[10px] text-white/40">{exp.basePrice}€</div>
+                    <div className="text-xs font-semibold text-foreground truncate">{exp.title}</div>
+                    <div className="text-[10px] text-muted-foreground">{exp.basePrice}€</div>
                   </div>
                   <div className="flex flex-col gap-1">
                     <button
                       onClick={() => moveUp(exp.id)}
                       disabled={idx === 0}
-                      className="w-6 h-6 rounded border border-white/20 flex items-center justify-center text-white/50 hover:text-white hover:border-white/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      className="w-6 h-6 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-border/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
                       <ArrowUp className="w-3 h-3" />
                     </button>
                     <button
                       onClick={() => moveDown(exp.id)}
                       disabled={idx === selectedExperiences.length - 1}
-                      className="w-6 h-6 rounded border border-white/20 flex items-center justify-center text-white/50 hover:text-white hover:border-white/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      className="w-6 h-6 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:border-border/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
                       <ArrowDown className="w-3 h-3" />
                     </button>
@@ -153,26 +153,26 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
         {/* Columna derecha: disponibles */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Productos disponibles
             </span>
           </div>
           {availableExperiences.length === 0 ? (
-            <div className="py-8 text-center text-white/30 text-xs">
+            <div className="py-8 text-center text-muted-foreground text-xs">
               Todos los productos están seleccionados
             </div>
           ) : (
             <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pr-1">
               {availableExperiences.map((exp) => (
-                <div key={exp.id} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg p-2 hover:bg-white/8 transition-colors">
+                <div key={exp.id} className="flex items-center gap-2 bg-muted/30 border border-border/50 rounded-lg p-2 hover:bg-muted/50 transition-colors">
                   {exp.image1 ? (
                     <img src={exp.image1} alt={exp.title} className="w-10 h-10 object-cover rounded-md shrink-0" />
                   ) : (
-                    <div className="w-10 h-10 bg-white/10 rounded-md shrink-0 flex items-center justify-center text-base">🖼️</div>
+                    <div className="w-10 h-10 bg-muted rounded-md shrink-0 flex items-center justify-center text-base">🖼️</div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-white/80 truncate">{exp.title}</div>
-                    <div className="text-[10px] text-white/40">{exp.basePrice}€</div>
+                    <div className="text-xs font-medium text-foreground truncate">{exp.title}</div>
+                    <div className="text-[10px] text-muted-foreground">{exp.basePrice}€</div>
                   </div>
                   <button
                     onClick={() => toggleExperience(exp.id)}
@@ -196,13 +196,13 @@ export default function HomeModulesManager() {
     <AdminLayout title="Módulos de la Home">
       <div className="px-6 py-6">
         {/* Page header */}
-        <div className="flex items-center gap-3 mb-6 pb-5 border-b border-white/10">
+        <div className="flex items-center gap-3 mb-6 pb-5 border-b border-border/50">
           <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
             <LayoutGrid className="w-5 h-5 text-orange-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white leading-none">Módulos de la Home</h1>
-            <p className="text-xs text-white/40 mt-1">
+            <h1 className="text-xl font-bold text-foreground leading-none">Módulos de la Home</h1>
+            <p className="text-xs text-muted-foreground mt-1">
               Selecciona qué productos aparecen en cada sección de la página principal. El orden de la lista determina el orden en la web.
             </p>
           </div>

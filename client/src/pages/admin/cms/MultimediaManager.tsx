@@ -101,14 +101,14 @@ export default function MultimediaManager() {
     <AdminLayout title="Multimedia">
       <div className="px-6 py-6">
       {/* Page header */}
-      <div className="flex items-center justify-between mb-6 pb-5 border-b border-white/10">
+      <div className="flex items-center justify-between mb-6 pb-5 border-b border-border/50">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
             <FolderOpen className="w-5 h-5 text-orange-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white leading-none">Biblioteca Multimedia</h1>
-            <p className="text-xs text-white/40 mt-1">{filtered.length} archivos</p>
+            <h1 className="text-xl font-bold text-foreground leading-none">Biblioteca Multimedia</h1>
+            <p className="text-xs text-muted-foreground mt-1">{filtered.length} archivos</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -220,9 +220,9 @@ export default function MultimediaManager() {
                 </Button>
               </div>
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5">
-                <p className="text-white text-xs truncate">{file.originalName || file.filename}</p>
+                <p className="text-xs truncate text-foreground">{file.originalName || file.filename}</p>
                 {file.size && (
-                  <p className="text-white/60 text-[10px]">{formatSize(file.size)}</p>
+                  <p className="text-muted-foreground text-[10px]">{formatSize(file.size)}</p>
                 )}
               </div>
             </div>

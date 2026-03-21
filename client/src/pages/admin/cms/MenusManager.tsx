@@ -244,14 +244,14 @@ export default function MenusManager() {
     <AdminLayout title="Gestión de Menús">
       <div className="px-6 py-6">
       {/* Page header */}
-      <div className="flex items-center justify-between mb-6 pb-5 border-b border-white/10">
+      <div className="flex items-center justify-between mb-6 pb-5 border-b border-border/50">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
             <Navigation className="w-5 h-5 text-orange-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white leading-none">Estructura del Menú de Navegación</h1>
-            <p className="text-xs text-white/40 mt-1">
+            <h1 className="text-xl font-bold text-foreground leading-none">Estructura del Menú de Navegación</h1>
+            <p className="text-xs text-muted-foreground mt-1">
               Edita etiquetas y URLs haciendo clic sobre ellas · Usa las flechas para reordenar · Los cambios se guardan automáticamente
             </p>
           </div>
