@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "@/components/DashboardLayout";
+import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -1335,7 +1335,7 @@ export default function CRMDashboard() {
   };
 
   return (
-    <DashboardLayout>
+    <AdminLayout title="CRM Comercial">
       <div className="min-h-screen bg-[#080e1c] text-white">
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-white/5">
@@ -1889,6 +1889,6 @@ export default function CRMDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </AdminLayout>
   );
 }

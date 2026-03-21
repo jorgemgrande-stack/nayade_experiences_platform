@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "@/components/DashboardLayout";
+import AdminLayout from "@/components/AdminLayout";
 
 // ─── Constantes de módulos disponibles ───────────────────────────────────────
 const HOME_MODULES = [
@@ -166,7 +166,7 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function HomeModulesManager() {
   return (
-    <DashboardLayout>
+    <AdminLayout title="Módulos de la Home">
       <div style={{ padding: "0 0 40px 0" }}>
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827", margin: 0 }}>Módulos de la Home</h1>
@@ -185,6 +185,6 @@ export default function HomeModulesManager() {
           />
         ))}
       </div>
-    </DashboardLayout>
+    </AdminLayout>
   );
 }

@@ -4,7 +4,7 @@
  */
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import DashboardLayout from "@/components/DashboardLayout";
+import AdminLayout from "@/components/AdminLayout";
 import {
   CreditCard, Search, Filter, Download, Eye, X,
   CheckCircle, Clock, XCircle, AlertCircle, Ban,
@@ -240,7 +240,7 @@ export default function ReservationsManager() {
   };
 
   return (
-    <DashboardLayout>
+    <AdminLayout title="Reservas Redsys">
       <div style={{ padding: "1.5rem", maxWidth: "1400px" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
@@ -476,6 +476,6 @@ export default function ReservationsManager() {
       {selectedId !== null && (
         <ReservationDetailModal id={selectedId} onClose={() => setSelectedId(null)} />
       )}
-    </DashboardLayout>
+    </AdminLayout>
   );
 }
