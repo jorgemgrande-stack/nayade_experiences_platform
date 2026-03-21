@@ -807,3 +807,16 @@
 - [x] Rediseñar plantilla email solicitud presupuesto (admin): estilo operacional moderno con CTA mailto
 - [x] Enviar 8 plantillas de prueba a administracion@nayadeexperiences.es
 - [x] 0 errores TypeScript, tests pasando
+
+## Ritmo Visual Home — v8.25
+- [x] Auditar todos los módulos de la home (9 secciones, todas dark navy = monótono)
+- [x] Sección Experiencias: fondo blanco puro, tarjetas con sombra suave, texto gris oscuro
+- [x] Sección Packs: foto panorámica de fondo visible + overlay semitransparente (no sólido)
+- [x] Sección Hotel: split foto/blanco puro, tarjetas habitaciones en gris claro, iconos azul cielo
+- [x] Sección SPA: foto de fondo visible en columna contenido + overlay verde oscuro semitransparente
+- [x] Sección Restaurantes: fondo arena/crema cálido (#faf7f2→#f5ede0), tarjetas foto-fondo
+- [x] Sección 10 Razones: foto del lago de fondo + overlay azul marino semitransparente + radial glow
+- [x] Sección Testimonios: fondo blanco/gris muy claro (#f8fafc→#eef2f7), cards blancas con sombra
+- [x] Sección CTA Final: foto kayak de fondo + overlay oscuro fuerte, botón naranja impactante
+- [x] Ritmo alternado: oscuro→claro→foto→claro→foto→claro→foto→claro→foto
+- [x] 0 errores TypeScript
