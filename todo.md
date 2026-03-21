@@ -878,3 +878,11 @@
 ### Tests
 - [x] 114 tests Vitest pasando (7 test files, incluyendo crm.test.ts)
 - [x] 0 errores TypeScript
+
+## Badges Notificación Sidebar Admin — v9.1
+- [x] Badge rojo con contador de leads nuevos en item Presupuestos del sidebar (icono colapsado + pill inline expandido)
+- [x] Badge naranja con contador de presupuestos enviados pendientes en item Presupuestos
+- [x] Campana del topbar con contador total (leads nuevos + presupuestos pendientes) y tooltip descriptivo
+- [x] Polling automático cada 60s con refetchInterval (solo para admin y agente)
+- [x] Badge desaparece cuando el contador llega a 0
+- [x] 0 errores TypeScript

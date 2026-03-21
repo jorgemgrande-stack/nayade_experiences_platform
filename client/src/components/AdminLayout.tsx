@@ -10,6 +10,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { useLocation as useWouterLocation } from "wouter";
 import { getLoginUrl } from "@/const";
+import { trpc } from "@/lib/trpc";
 
 const navItems = [
   {
@@ -168,6 +169,23 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
   const filteredNav = navItems.filter((item) => item.roles.includes(userRole));
 
+  // ── Badges de notificación en tiempo real (polling cada 60s) ──
+  const { data: leadCounters } = trpc.crm.leads.counters.useQuery(undefined, {
+    enabled: isAuthenticated && ["admin", "agente"].includes(userRole),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
+  const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery(undefined, {
+    enabled: isAuthenticated && ["admin", "agente"].includes(userRole),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
+
+  // Leads nuevos sin gestionar + presupuestos enviados pendientes de respuesta
+  const newLeads = leadCounters?.nueva ?? 0;
+  const pendingQuotes = quoteCounters?.enviado ?? 0;
+  const totalAlerts = newLeads + pendingQuotes;
+
   // ── Loading state ──
   if (loading) {
     return (
@@ -265,10 +283,35 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                           : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                       )}
                     >
-                      <item.icon className="w-4 h-4 shrink-0" />
+                      <div className="relative shrink-0">
+                        <item.icon className="w-4 h-4" />
+                        {/* Badge leads nuevos en item Presupuestos */}
+                        {item.href === "/admin/presupuestos" && newLeads > 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
+                            {newLeads > 99 ? "99+" : newLeads}
+                          </span>
+                        )}
+                        {/* Badge presupuestos enviados en item Presupuestos */}
+                        {item.href === "/admin/presupuestos" && pendingQuotes > 0 && newLeads === 0 && (
+                          <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
+                            {pendingQuotes > 99 ? "99+" : pendingQuotes}
+                          </span>
+                        )}
+                      </div>
                       {sidebarOpen && (
                         <>
                           <span className="flex-1 text-left">{item.label}</span>
+                          {/* Badges inline cuando sidebar está expandido */}
+                          {item.href === "/admin/presupuestos" && newLeads > 0 && (
+                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold px-1 mr-1">
+                              {newLeads > 99 ? "99+" : newLeads}
+                            </span>
+                          )}
+                          {item.href === "/admin/presupuestos" && pendingQuotes > 0 && (
+                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-white text-[10px] font-bold px-1 mr-1">
+                              {pendingQuotes > 99 ? "99+" : pendingQuotes}
+                            </span>
+                          )}
                           <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} />
                         </>
                       )}
@@ -299,7 +342,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                         : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                     )}>
                       <item.icon className="w-4 h-4 shrink-0" />
-                      {sidebarOpen && <span>{item.label}</span>}
+                      {sidebarOpen && <span className="flex-1">{item.label}</span>}
                     </div>
                   </Link>
                 )}
@@ -344,9 +387,13 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             <Button variant="ghost" size="icon" className="w-9 h-9">
               <Search className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="w-9 h-9 relative">
+            <Button variant="ghost" size="icon" className="w-9 h-9 relative" title={totalAlerts > 0 ? `${newLeads} leads nuevos · ${pendingQuotes} presupuestos pendientes` : "Sin alertas"}>
               <Bell className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
+              {totalAlerts > 0 && (
+                <span className="absolute top-1 right-1 min-w-[16px] h-[16px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-0.5 leading-none">
+                  {totalAlerts > 99 ? "99+" : totalAlerts}
+                </span>
+              )}
             </Button>
             {userRole !== "adminrest" && (
               <Link href="/" target="_blank">
