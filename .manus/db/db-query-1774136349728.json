@@ -1,0 +1,98 @@
+{
+  "query": "SELECT id, title, subtitle, badge, isActive, sortOrder FROM slideshow_items ORDER BY sortOrder;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, title, subtitle, badge, isActive, sortOrder FROM slideshow_items ORDER BY sortOrder;",
+  "rows": [
+    {
+      "id": "30001",
+      "title": "La aventura acuatica te espera",
+      "subtitle": "A solo 45 minutos de Madrid",
+      "badge": "Temporada Abril — Octubre 2026",
+      "isActive": "1",
+      "sortOrder": "1"
+    },
+    {
+      "id": "30002",
+      "title": "Cableski & Wakeboard",
+      "subtitle": "Adrenalina y diversión para todos los niveles",
+      "badge": "Aventura Estrella",
+      "isActive": "1",
+      "sortOrder": "2"
+    },
+    {
+      "id": "60001",
+      "title": "Banana Ski & Donuts",
+      "subtitle": "Risas, velocidad y emoción sobre el agua",
+      "badge": "Adrenalina en estado puro",
+      "isActive": "1",
+      "sortOrder": "3"
+    },
+    {
+      "id": "60002",
+      "title": "Paseo en Canoas & Kayaks",
+      "subtitle": "Explora el embalse a tu ritmo",
+      "badge": "Naturaleza en estado puro",
+      "isActive": "1",
+      "sortOrder": "4"
+    },
+    {
+      "id": "120001",
+      "title": "Blob Jump",
+      "subtitle": "Lanzamiento acrobático sobre colchón hinchable",
+      "badge": "Adrenalina Pura",
+      "isActive": "1",
+      "sortOrder": "10"
+    },
+    {
+      "id": "120002",
+      "title": "Paseos en Barco",
+      "subtitle": "Paseo exclusivo por el embalse",
+      "badge": "Grupos & Celebraciones",
+      "isActive": "1",
+      "sortOrder": "20"
+    },
+    {
+      "id": "120003",
+      "title": "Aventura Hinchable Acuática",
+      "subtitle": "Parque acuático hinchable flotante",
+      "badge": "Diversión Familiar",
+      "isActive": "1",
+      "sortOrder": "30"
+    },
+    {
+      "id": "120004",
+      "title": "Pack Cableski Experience",
+      "subtitle": "Wakeboard + Cableski + Almuerzo incluido",
+      "badge": "Pack Completo",
+      "isActive": "1",
+      "sortOrder": "40"
+    },
+    {
+      "id": "120005",
+      "title": "Pass Day Nayade",
+      "subtitle": "Acceso ilimitado a todas las actividades acuáticas",
+      "badge": "Día Completo",
+      "isActive": "1",
+      "sortOrder": "50"
+    },
+    {
+      "id": "120006",
+      "title": "Pack Aventura Escolar",
+      "subtitle": "Actividades acuáticas para colegios y grupos",
+      "badge": "Grupos Escolares",
+      "isActive": "1",
+      "sortOrder": "60"
+    },
+    {
+      "id": "120007",
+      "title": "Team Building Premium",
+      "subtitle": "Actividades de equipo en entorno natural único",
+      "badge": "Empresas",
+      "isActive": "1",
+      "sortOrder": "70"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttitle\tsubtitle\tbadge\tisActive\tsortOrder\n30001\tLa aventura acuatica te espera\tA solo 45 minutos de Madrid\tTemporada Abril — Octubre 2026\t1\t1\n30002\tCableski & Wakeboard\tAdrenalina y diversión para todos los niveles\tAventura Estrella\t1\t2\n60001\tBanana Ski & Donuts\tRisas, velocidad y emoción sobre el agua\tAdrenalina en estado puro\t1\t3\n60002\tPaseo en Canoas & Kayaks\tExplora el embalse a tu ritmo\tNaturaleza en estado puro\t1\t4\n120001\tBlob Jump\tLanzamiento acrobático sobre colchón hinchable\tAdrenalina Pura\t1\t10\n120002\tPaseos en Barco\tPaseo exclusivo por el embalse\tGrupos & Celebraciones\t1\t20\n120003\tAventura Hinchable Acuática\tParque acuático hinchable flotante\tDiversión Familiar\t1\t30\n120004\tPack Cableski Experience\tWakeboard + Cableski + Almuerzo incluido\tPack Completo\t1\t40\n120005\tPass Day Nayade\tAcceso ilimitado a todas las actividades acuáticas\tDía Completo\t1\t50\n120006\tPack Aventura Escolar\tActividades acuáticas para colegios y grupos\tGrupos Escolares\t1\t60\n120007\tTeam Building Premium\tActividades de equipo en entorno natural único\tEmpresas\t1\t70\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

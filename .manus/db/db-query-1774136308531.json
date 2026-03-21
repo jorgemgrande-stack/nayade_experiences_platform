@@ -1,0 +1,154 @@
+{
+  "query": "SHOW COLUMNS FROM slideshow_items; SELECT id, title, subtitle, imageUrl, isActive, sortOrder FROM slideshow_items ORDER BY sortOrder LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SHOW COLUMNS FROM slideshow_items; SELECT id, title, subtitle, imageUrl, isActive, sortOrder FROM slideshow_items ORDER BY sortOrder LIMIT 10;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "imageUrl",
+      "Type": "text",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "badge",
+      "Type": "varchar(128)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "title",
+      "Type": "varchar(256)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "subtitle",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "description",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "ctaText",
+      "Type": "varchar(128)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "ctaUrl",
+      "Type": "varchar(512)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "reserveUrl",
+      "Type": "varchar(512)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "sortOrder",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "isActive",
+      "Type": "tinyint(1)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "1",
+      "Extra": ""
+    },
+    {
+      "Field": "createdAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "updatedAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    },
+    {
+      "Field": "id",
+      "Type": "title",
+      "Null": "subtitle",
+      "Key": "imageUrl",
+      "Default": "isActive",
+      "Extra": "sortOrder"
+    },
+    {
+      "Field": "30001",
+      "Type": "La aventura acuatica te espera",
+      "Null": "A solo 45 minutos de Madrid",
+      "Key": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773693332340-aublzr.png",
+      "Default": "1",
+      "Extra": "1"
+    },
+    {
+      "Field": "30002",
+      "Type": "Cableski & Wakeboard",
+      "Null": "Adrenalina y diversión para todos los niveles",
+      "Key": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773693695092-4zost6.png",
+      "Default": "1",
+      "Extra": "2"
+    },
+    {
+      "Field": "60001",
+      "Type": "Banana Ski & Donuts",
+      "Null": "Risas, velocidad y emoción sobre el agua",
+      "Key": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773193255-wcvyce.png",
+      "Default": "1",
+      "Extra": "3"
+    },
+    {
+      "Field": "60002",
+      "Type": "Paseo en Canoas & Kayaks",
+      "Null": "Explora el embalse a tu ritmo",
+      "Key": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773604803-a8i0cf.png",
+      "Default": "1",
+      "Extra": "4"
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\nimageUrl\ttext\tNO\t\tNULL\t\nbadge\tvarchar(128)\tYES\t\tNULL\t\ntitle\tvarchar(256)\tYES\t\tNULL\t\nsubtitle\ttext\tYES\t\tNULL\t\ndescription\ttext\tYES\t\tNULL\t\nctaText\tvarchar(128)\tYES\t\tNULL\t\nctaUrl\tvarchar(512)\tYES\t\tNULL\t\nreserveUrl\tvarchar(512)\tYES\t\tNULL\t\nsortOrder\tint\tNO\t\t0\t\nisActive\ttinyint(1)\tNO\t\t1\t\ncreatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\t\nupdatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\nid\ttitle\tsubtitle\timageUrl\tisActive\tsortOrder\n30001\tLa aventura acuatica te espera\tA solo 45 minutos de Madrid\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773693332340-aublzr.png\t1\t1\n30002\tCableski & Wakeboard\tAdrenalina y diversión para todos los niveles\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773693695092-4zost6.png\t1\t2\n60001\tBanana Ski & Donuts\tRisas, velocidad y emoción sobre el agua\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773193255-wcvyce.png\t1\t3\n60002\tPaseo en Canoas & Kayaks\tExplora el embalse a tu ritmo\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773773604803-a8i0cf.png\t1\t4\n",
+  "stderr": "",
+  "execution_time_ms": 71
+}

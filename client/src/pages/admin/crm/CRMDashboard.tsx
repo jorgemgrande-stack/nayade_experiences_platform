@@ -1387,6 +1387,32 @@ export default function CRMDashboard() {
     onError: (e) => toast.error(e.message),
   });
 
+  const generatePdfMutation = trpc.crm.quotes.generatePdf.useMutation({
+    onError: (e) => toast.error(e.message),
+  });
+
+  const downloadQuotePdf = async (quoteId: number, quoteNumber: string) => {
+    const toastId = toast.loading(`Generando PDF ${quoteNumber}...`);
+    try {
+      const result = await generatePdfMutation.mutateAsync({ id: quoteId });
+      const byteChars = atob(result.pdfBase64);
+      const byteNums = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNums)], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("PDF descargado", { id: toastId });
+    } catch {
+      toast.error("Error al generar el PDF", { id: toastId });
+    }
+  };
+
   const handleTabChange = (t: Tab) => {
     setTab(t);
     setFilterStatus("all");

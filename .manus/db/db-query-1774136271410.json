@@ -1,0 +1,22 @@
+{
+  "query": "SHOW TABLES LIKE '%image%'; SHOW TABLES LIKE '%experience%'; SHOW TABLES LIKE '%slide%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SHOW TABLES LIKE '%image%'; SHOW TABLES LIKE '%experience%'; SHOW TABLES LIKE '%slide%';",
+  "rows": [
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%experience%)": "experience_variants"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%experience%)": "experiences"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%experience%)": "Tables_in_AV298FS8t5SaTurBBRqhgQ (%slide%)"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ (%experience%)": "slideshow_items"
+    }
+  ],
+  "messages": [],
+  "stdout": "Tables_in_AV298FS8t5SaTurBBRqhgQ (%experience%)\nexperience_variants\nexperiences\nTables_in_AV298FS8t5SaTurBBRqhgQ (%slide%)\nslideshow_items\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

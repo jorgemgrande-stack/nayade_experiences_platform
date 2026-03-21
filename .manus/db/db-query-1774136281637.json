@@ -1,0 +1,42 @@
+{
+  "query": "SELECT id, title, shortDescription, coverImageUrl, image1, image2 FROM experiences WHERE title LIKE '%Blob%' OR title LIKE '%Paseo%' OR title LIKE '%Hinchable%' OR title LIKE '%Pass Day%' OR title LIKE '%Cableski%' OR title LIKE '%Escolar%' OR title LIKE '%Team%' ORDER BY title LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, title, shortDescription, coverImageUrl, image1, image2 FROM experiences WHERE title LIKE '%Blob%' OR title LIKE '%Paseo%' OR title LIKE '%Hinchable%' OR title LIKE '%Pass Day%' OR title LIKE '%Cableski%' OR title LIKE '%Escolar%' OR title LIKE '%Team%' ORDER BY title LIMIT 20;",
+  "rows": [
+    {
+      "id": "30009",
+      "title": "Aventura Hinchable Acuática",
+      "shortDescription": "Parque acuático hinchable flotante con toboganes y trampolines.",
+      "coverImageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773778862239-e30o1s.png",
+      "image1": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773778862239-e30o1s.png",
+      "image2": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773778867350-w70k1r.png"
+    },
+    {
+      "id": "30001",
+      "title": "Blob Jump",
+      "shortDescription": "Lanzamiento acrobático sobre colchón hinchable. Adrenalina pura en el lago.",
+      "coverImageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773762402377-dymd02.png",
+      "image1": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773762402377-dymd02.png",
+      "image2": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773762413686-d56xu2.png"
+    },
+    {
+      "id": "30003",
+      "title": "Cableski & Wakeboard Dia Completo",
+      "shortDescription": "Wakeboard y esquí acuático con sistema de cable. Material y monitor incluidos.",
+      "coverImageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773766863713-7gry6r.jpg",
+      "image1": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773766863713-7gry6r.jpg",
+      "image2": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773766869680-r66be7.png"
+    },
+    {
+      "id": "30008",
+      "title": "Paseos en Barco",
+      "shortDescription": "Paseo exclusivo por el embalse. Ideal para grupos y celebraciones.",
+      "coverImageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773863577215-flvnwb.png",
+      "image1": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773863577215-flvnwb.png",
+      "image2": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773863584309-yg396y.png"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttitle\tshortDescription\tcoverImageUrl\timage1\timage2\n30009\tAventura Hinchable Acuática\tParque acuático hinchable flotante con toboganes y trampolines.\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773778862239-e30o1s.png\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773778862239-e30o1s.png\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773778867350-w70k1r.png\n30001\tBlob Jump\tLanzamiento acrobático sobre colchón hinchable. Adrenalina pura en el lago.\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773762402377-dymd02.png\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773762402377-dymd02.png\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773762413686-d56xu2.png\n30003\tCableski & Wakeboard Dia Completo\tWakeboard y esquí acuático con sistema de cable. Material y monitor incluidos.\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773766863713-7gry6r.jpg\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773766863713-7gry6r.jpg\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773766869680-r66be7.png\n30008\tPaseos en Barco\tPaseo exclusivo por el embalse. Ideal para grupos y celebraciones.\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773863577215-flvnwb.png\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773863577215-flvnwb.png\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1773863584309-yg396y.png\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

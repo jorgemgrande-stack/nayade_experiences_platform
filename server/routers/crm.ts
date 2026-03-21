@@ -1225,6 +1225,169 @@ export const crmRouter = router({
         }
         return { success: true };
       }),
+
+    generatePdf: staff
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        // Fetch quote + lead data
+        const rows = await db
+          .select({
+            id: quotes.id,
+            quoteNumber: quotes.quoteNumber,
+            title: quotes.title,
+            status: quotes.status,
+            total: quotes.total,
+            subtotal: quotes.subtotal,
+            discount: quotes.discount,
+            tax: quotes.tax,
+            items: quotes.items,
+            validUntil: quotes.validUntil,
+            notes: quotes.notes,
+            conditions: quotes.conditions,
+            paymentLinkUrl: quotes.paymentLinkUrl,
+            createdAt: quotes.createdAt,
+            clientName: leads.name,
+            clientEmail: leads.email,
+            clientPhone: leads.phone,
+            clientCompany: leads.company,
+          })
+          .from(quotes)
+          .leftJoin(leads, eq(quotes.leadId, leads.id))
+          .where(eq(quotes.id, input.id));
+
+        const quote = rows[0];
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
+
+        const items: { description: string; quantity: number; unitPrice: number; total: number }[] =
+          Array.isArray(quote.items) ? quote.items as { description: string; quantity: number; unitPrice: number; total: number }[] : JSON.parse((quote.items as unknown as string) ?? "[]");
+
+        const itemRows = items
+          .map(
+            (item) =>
+              `<tr>
+                <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:14px;color:rgba(255,255,255,0.85);">${item.description}</td>
+                <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:center;font-size:14px;color:rgba(255,255,255,0.85);">${item.quantity}</td>
+                <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:14px;color:rgba(255,255,255,0.85);">${Number(item.unitPrice).toFixed(2)} \u20ac</td>
+                <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:14px;font-weight:600;color:#f97316;">${Number(item.total).toFixed(2)} \u20ac</td>
+              </tr>`
+          )
+          .join("");
+
+        const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  @page { margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #0a0f1e; color: #fff; }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#0a0f1e;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <div style="max-width:700px;margin:0 auto;background:#0d1526;min-height:100vh;">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#1a3a6b 0%,#0d1f3c 60%,#1a3a6b 100%);padding:40px 40px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.5px;">N\u00c1YADE EXPERIENCES</div>
+          <div style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:4px;">Los \u00c1ngeles de San Rafael, Segovia</div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;">reservas@nayadeexperiences.es \u00b7 +34 930 34 77 91</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="display:inline-block;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.3);border-radius:20px;padding:4px 14px;font-size:11px;color:#f97316;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;">Presupuesto</div>
+          <div style="font-size:20px;font-weight:800;color:#f97316;">${quote.quoteNumber}</div>
+          <div style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:4px;">Fecha: ${new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
+          ${quote.validUntil ? `<div style="color:rgba(255,255,255,0.4);font-size:11px;">V\u00e1lido hasta: ${new Date(quote.validUntil).toLocaleDateString("es-ES")}</div>` : ""}
+        </div>
+      </div>
+      <!-- Client info -->
+      <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;margin-bottom:0;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.4);margin-bottom:8px;">Cliente</div>
+        <div style="font-size:16px;font-weight:700;color:#fff;">${quote.clientName ?? ""}</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.6);margin-top:2px;">${quote.clientEmail ?? ""}${quote.clientPhone ? " \u00b7 " + quote.clientPhone : ""}${quote.clientCompany ? " \u00b7 " + quote.clientCompany : ""}</div>
+      </div>
+      <svg viewBox="0 0 700 40" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-top:16px;margin-bottom:-1px;"><path d="M0,20 C175,40 525,0 700,20 L700,40 L0,40 Z" fill="#0d1526"/></svg>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:32px 40px;">
+      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:24px;">
+        <h2 style="color:#ffffff;font-size:18px;font-weight:700;margin:0 0 16px;">${quote.title}</h2>
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:rgba(249,115,22,0.1);">
+              <th style="padding:10px 16px;text-align:left;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Descripci\u00f3n</th>
+              <th style="padding:10px 16px;text-align:center;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Cant.</th>
+              <th style="padding:10px 16px;text-align:right;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Precio</th>
+              <th style="padding:10px 16px;text-align:right;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
+          ${Number(quote.discount) > 0 ? `<div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px;"><span>Descuento</span><span>-${Number(quote.discount).toFixed(2)} \u20ac</span></div>` : ""}
+          ${Number(quote.tax) > 0 ? `<div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px;"><span>IVA</span><span>${Number(quote.tax).toFixed(2)} \u20ac</span></div>` : ""}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+            <span style="color:#ffffff;font-size:16px;font-weight:700;">TOTAL</span>
+            <span style="color:#f97316;font-size:24px;font-weight:800;">${Number(quote.total).toFixed(2)} \u20ac</span>
+          </div>
+        </div>
+      </div>
+
+      ${quote.notes ? `<div style="background:rgba(255,255,255,0.04);border-left:3px solid #f97316;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:24px;"><p style="color:rgba(255,255,255,0.8);font-size:14px;margin:0;">${quote.notes}</p></div>` : ""}
+
+      ${quote.conditions ? `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;"><h4 style="color:rgba(255,255,255,0.6);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Condiciones</h4><p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;margin:0;">${quote.conditions}</p></div>` : ""}
+
+      ${quote.paymentLinkUrl ? `<div style="text-align:center;margin:32px 0;padding:20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:12px;"><p style="color:rgba(255,255,255,0.7);font-size:13px;margin:0 0 8px;">Enlace de pago:</p><p style="color:#f97316;font-size:13px;font-weight:600;word-break:break-all;margin:0;">${quote.paymentLinkUrl}</p></div>` : `<div style="text-align:center;margin:32px 0;padding:20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:12px;"><p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;">Para confirmar tu reserva, cont\u00e1ctanos:<br/><strong style="color:#f97316;">reservas@nayadeexperiences.es \u00b7 +34 930 34 77 91</strong></p></div>`}
+    </div>
+
+    <!-- Footer -->
+    <div style="background:#060c1a;padding:24px 40px;text-align:center;">
+      <svg viewBox="0 0 700 30" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:20px;margin-top:-1px;"><path d="M0,0 C175,30 525,0 700,15 L700,0 Z" fill="#0d1526"/></svg>
+      <p style="color:rgba(255,255,255,0.3);font-size:12px;margin:0 0 4px;">N\u00e1yade Experiences \u00b7 Los \u00c1ngeles de San Rafael, Segovia</p>
+      <p style="color:rgba(255,255,255,0.2);font-size:11px;margin:0;">reservas@nayadeexperiences.es \u00b7 +34 930 34 77 91</p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+        // Generate PDF using chromium
+        try {
+          const { execSync } = await import("child_process");
+          const { writeFileSync, readFileSync, unlinkSync } = await import("fs");
+          const { tmpdir } = await import("os");
+          const { join } = await import("path");
+
+          const tmpHtml = join(tmpdir(), `quote-${input.id}-${Date.now()}.html`);
+          const tmpPdf = join(tmpdir(), `quote-${input.id}-${Date.now()}.pdf`);
+          writeFileSync(tmpHtml, html);
+
+          try {
+            execSync(
+              `chromium-browser --headless --no-sandbox --disable-gpu --disable-software-rasterizer --print-to-pdf="${tmpPdf}" "file://${tmpHtml}" 2>/dev/null`,
+              { timeout: 20000 }
+            );
+            const pdfBuffer = readFileSync(tmpPdf);
+            unlinkSync(tmpHtml);
+            try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+
+            // Return as base64 for direct download
+            return {
+              success: true,
+              pdfBase64: pdfBuffer.toString("base64"),
+              filename: `Presupuesto-${quote.quoteNumber}.pdf`,
+            };
+          } catch (e) {
+            unlinkSync(tmpHtml);
+            try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+            throw e;
+          }
+        } catch (err) {
+          console.error("PDF generation failed:", err);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo generar el PDF. Int\u00e9ntalo de nuevo." });
+        }
+      }),
   }),
   // ─── RESERVATIONSS ──────────────────────────────────────────────────────────
 
