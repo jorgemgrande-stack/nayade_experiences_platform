@@ -52,6 +52,15 @@ const PUBLIC_TRPC_ROUTES = new Set([
 
   // ── Módulos de la home ────────────────────────────────────────────────────
   "homeModules.getModule",
+  "homeModules.getAllModules",
+
+  // ── Experiencias y productos (router legacy) ──────────────────────────────
+  "experiences.getAll",
+  "experiences.getBySlug",
+  "experiences.getFeatured",
+  "categories.getAll",
+  "locations.getAll",
+  "locations.getBySlug",
 
   // ── Packs ─────────────────────────────────────────────────────────────────
   "packs.getAll",
@@ -70,9 +79,9 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "hotel.createHotelBooking",
 
   // ── SPA ───────────────────────────────────────────────────────────────────
+  "spa.getCategories",
   "spa.getTreatments",
   "spa.getTreatmentBySlug",
-  "spa.getCategories",
   "spa.getAvailableSlots",
   "spa.getSlotsByMonth",
   "spa.createBooking",
@@ -82,7 +91,7 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "reviews.getPublicReviews",
   "reviews.submitReview",
 
-  // ── Restaurantes (público) ────────────────────────────────────────────────
+  // ── Restaurantes — router nuevo (sin 'e') ─────────────────────────────────
   "restaurants.getAll",
   "restaurants.getBySlug",
   "restaurants.getAvailability",
@@ -90,14 +99,19 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "restaurants.createBooking",
   "restaurants.getBookingByLocator",
 
+  // ── Restaurantes — router legacy (con 'e') ────────────────────────────────
+  "restaurantes.getAll",
+  "restaurantes.getBySlug",
+
   // ── Leads y presupuestos (formularios públicos) ───────────────────────────
   "leads.create",
   "public.submitLead",
   "quotes.getByPaymentToken",
   "quotes.createPaymentLink",
 
-  // ── Reservas (estado de pago público) ────────────────────────────────────
+  // ── Reservas (estado público) ─────────────────────────────────────────────
   "reservations.getStatus",
+  "reservations.getByLocator",
 
   // ── Sistema ───────────────────────────────────────────────────────────────
   "system.notifyOwner",
@@ -109,12 +123,8 @@ const PUBLIC_TRPC_ROUTES = new Set([
 function extractProcedureNames(url: string): string[] {
   // Eliminar query string
   const path = url.split("?")[0];
-  // Cuando el middleware está montado en /api/trpc, req.url llega como
-  // "/restaurants.getAll" (ya sin el prefijo /api/trpc)
-  // También soportamos la URL completa por si acaso
-  const procedurePart = path
-    .replace(/^\/api\/trpc\//, "")  // URL completa
-    .replace(/^\//, "");             // URL relativa (ya sin prefijo)
+  // Eliminar el prefijo /api/trpc/
+  const procedurePart = path.replace(/^\/api\/trpc\//, "").replace(/^\//, "");
   if (!procedurePart) return [];
   // Puede ser un batch: "auth.me,hotel.getRoomTypes"
   return procedurePart.split(",").map(p => p.trim()).filter(Boolean);

@@ -3,6 +3,9 @@ import multer from "multer";
 import { storagePut } from "./storage";
 import { sdk } from "./_core/sdk";
 import { createMediaFile } from "./db";
+import { getUserFromRequest } from "./localAuth";
+
+const USE_LOCAL_AUTH = process.env.LOCAL_AUTH === "true";
 
 const router = Router();
 
@@ -28,12 +31,21 @@ const upload = multer({
 // Middleware de autenticación admin reutilizable
 async function requireAdmin(req: Request, res: Response, next: () => void) {
   try {
-    const user = await sdk.authenticateRequest(req);
-    if (!user || user.role !== "admin") {
-      res.status(403).json({ error: "Acceso denegado. Se requiere rol admin." });
-      return;
+    if (USE_LOCAL_AUTH) {
+      const user = await getUserFromRequest(req);
+      if (!user || user.role !== "admin") {
+        res.status(403).json({ error: "Acceso denegado. Se requiere rol admin." });
+        return;
+      }
+      (req as Request & { adminUser: typeof user }).adminUser = user;
+    } else {
+      const user = await sdk.authenticateRequest(req);
+      if (!user || user.role !== "admin") {
+        res.status(403).json({ error: "Acceso denegado. Se requiere rol admin." });
+        return;
+      }
+      (req as Request & { adminUser: typeof user }).adminUser = user;
     }
-    (req as Request & { adminUser: typeof user }).adminUser = user;
     next();
   } catch {
     res.status(401).json({ error: "No autenticado." });
