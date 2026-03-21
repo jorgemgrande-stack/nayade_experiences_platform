@@ -393,6 +393,19 @@ export const restaurantsRouter = router({
           signatureVersion: redsysForm.Ds_SignatureVersion,
           origin: input.origin,
         }).catch(err => console.error("[RestaurantPaymentEmail] Error:", err));
+      } else {
+        // Sin depósito requerido → enviar email de confirmación directa al cliente
+        sendRestaurantConfirmEmail({
+          guestEmail: input.guestEmail,
+          guestName: input.guestName,
+          restaurantName: restaurant.name,
+          date: input.date,
+          time: input.time,
+          guests: input.guests,
+          depositAmount: "0",
+          locator,
+          requiresPayment: false,
+        }).catch(err => console.error("[RestaurantConfirmEmail] Error:", err));
       }
       // Notificación interna
       await notifyOwner({
