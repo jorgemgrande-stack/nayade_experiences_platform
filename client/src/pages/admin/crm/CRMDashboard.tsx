@@ -1367,6 +1367,78 @@ export default function CRMDashboard() {
           </div>
         </div>
 
+        {/* Barra de ratio de conversión */}
+        {(leadCounters?.total ?? 0) > 0 && (
+          <div className="px-6 pb-4">
+            <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-4 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600" />
+                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Ratio de Conversión</span>
+                  {(leadCounters?.sinLeer ?? 0) > 0 && (
+                    <span className="flex items-center gap-1 text-xs text-blue-400 font-medium">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                      </span>
+                      {leadCounters?.sinLeer ?? 0} sin leer
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-4 text-xs text-white/40">
+                  <span className="text-emerald-400 font-bold text-sm">
+                    {leadCounters?.total ? Math.round(((leadCounters.ganada ?? 0) / leadCounters.total) * 100) : 0}%
+                  </span>
+                  <span>{leadCounters?.ganada ?? 0} ganadas de {leadCounters?.total ?? 0} leads</span>
+                </div>
+              </div>
+              {/* Barra segmentada */}
+              <div className="relative h-3 bg-white/5 rounded-full overflow-hidden">
+                {/* Ganadas */}
+                <div
+                  className="absolute left-0 top-0 h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-1000"
+                  style={{ width: `${leadCounters?.total ? ((leadCounters.ganada ?? 0) / leadCounters.total) * 100 : 0}%` }}
+                />
+                {/* Enviadas (apiladas) */}
+                <div
+                  className="absolute top-0 h-full bg-gradient-to-r from-amber-500/60 to-amber-400/60 rounded-full transition-all duration-1000"
+                  style={{
+                    left: `${leadCounters?.total ? ((leadCounters.ganada ?? 0) / leadCounters.total) * 100 : 0}%`,
+                    width: `${leadCounters?.total ? ((leadCounters.enviada ?? 0) / leadCounters.total) * 100 : 0}%`,
+                  }}
+                />
+                {/* Nuevas (apiladas) */}
+                <div
+                  className="absolute top-0 h-full bg-gradient-to-r from-blue-500/40 to-blue-400/40 rounded-full transition-all duration-1000"
+                  style={{
+                    left: `${leadCounters?.total ? (((leadCounters.ganada ?? 0) + (leadCounters.enviada ?? 0)) / leadCounters.total) * 100 : 0}%`,
+                    width: `${leadCounters?.total ? ((leadCounters.nueva ?? 0) / leadCounters.total) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+              {/* Leyenda */}
+              <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  Ganadas ({leadCounters?.ganada ?? 0})
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
+                  Enviadas ({leadCounters?.enviada ?? 0})
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500/40" />
+                  Nuevas ({leadCounters?.nueva ?? 0})
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
+                  Perdidas ({leadCounters?.perdida ?? 0})
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="px-6">
           <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
@@ -1432,12 +1504,23 @@ export default function CRMDashboard() {
                   ) : !leadsData?.length ? (
                     <tr><td colSpan={6} className="text-center py-12 text-white/30 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
                   ) : leadsData.map((lead) => (
-                    <tr key={lead.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                    <tr key={lead.id} className={`border-t border-white/5 hover:bg-white/3 transition-colors ${!lead.seenAt ? "bg-blue-950/20" : ""}`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
-                          <PriorityDot priority={lead.priority as Priority} />
+                          {/* Punto pulse para leads no leídos */}
+                          {!lead.seenAt ? (
+                            <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
+                            </span>
+                          ) : (
+                            <PriorityDot priority={lead.priority as Priority} />
+                          )}
                           <div>
-                            <div className="text-sm font-medium text-white">{lead.name}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-medium text-white">{lead.name}</span>
+                              {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">Nuevo</span>}
+                            </div>
                             <div className="text-xs text-white/40">{lead.email}</div>
                           </div>
                         </div>

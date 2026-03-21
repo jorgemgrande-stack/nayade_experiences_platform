@@ -13,7 +13,7 @@ import {
   invoices,
   crmActivityLog,
 } from "../../drizzle/schema";
-import { eq, desc, and, gte, lte, like, or, sql, count, sum } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import nodemailer from "nodemailer";
 import { storagePut } from "../storage";
 
@@ -511,7 +511,7 @@ export const crmRouter = router({
       const startOfWeek = new Date(now);
       startOfWeek.setDate(now.getDate() - now.getDay());
 
-      const [total, nueva, enviada, ganada, perdida, hoy, semana] = await Promise.all([
+      const [total, nueva, enviada, ganada, perdida, hoy, semana, sinLeer] = await Promise.all([
         db.select({ cnt: count() }).from(leads),
         db.select({ cnt: count() }).from(leads).where(eq(leads.opportunityStatus, "nueva")),
         db.select({ cnt: count() }).from(leads).where(eq(leads.opportunityStatus, "enviada")),
@@ -519,6 +519,7 @@ export const crmRouter = router({
         db.select({ cnt: count() }).from(leads).where(eq(leads.opportunityStatus, "perdida")),
         db.select({ cnt: count() }).from(leads).where(gte(leads.createdAt, startOfDay)),
         db.select({ cnt: count() }).from(leads).where(gte(leads.createdAt, startOfWeek)),
+        db.select({ cnt: count() }).from(leads).where(isNull(leads.seenAt)),
       ]);
 
       return {
@@ -529,6 +530,7 @@ export const crmRouter = router({
         perdida: perdida[0]?.cnt ?? 0,
         hoy: hoy[0]?.cnt ?? 0,
         semana: semana[0]?.cnt ?? 0,
+        sinLeer: sinLeer[0]?.cnt ?? 0,
       };
     }),
 

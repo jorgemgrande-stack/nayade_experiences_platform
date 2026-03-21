@@ -937,3 +937,16 @@
 - [x] Subtitulo descriptivo en cada tarjeta
 - [x] Color orange añadido al sistema de colores (Ingresos Totales)
 - [x] 0 errores TypeScript
+
+## Barra Conversión + Leads No Leídos — v9.5
+- [x] Backend: leads.get ya actualiza seenAt al abrir la ficha (existente)
+- [x] Backend: leads.list devuelve seenAt para detectar no leídos
+- [x] Backend: leads.counters incluye campo "sinLeer" (isNull(leads.seenAt))
+- [x] Frontend: barra de progreso segmentada (verde=ganadas, ámbar=enviadas, azul=nuevas) con porcentaje en tiempo real
+- [x] Frontend: leyenda de colores debajo de la barra con contadores
+- [x] Frontend: indicador "X sin leer" con punto pulse azul en el header de la barra
+- [x] Frontend: punto pulse azul animado en filas de leads con seenAt NULL
+- [x] Frontend: etiqueta "NUEVO" en pill azul junto al nombre del lead no leído
+- [x] Frontend: fondo azul muy suave en filas de leads no leídos
+- [x] Frontend: al abrir la ficha del lead, seenAt se actualiza (leads.get ya lo hace)
+- [x] 0 errores TypeScript
