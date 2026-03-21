@@ -700,7 +700,8 @@ export default function RestaurantsManager() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {b.paymentStatus === "pending" && <span title="Pago pendiente"><CreditCard className="w-4 h-4 text-orange-500" /></span>}
-                        {b.paymentStatus === "paid" && <span title="Pagado"><CheckCircle className="w-4 h-4 text-green-500" /></span>}
+                        {b.paymentStatus === "paid" && Number(b.depositAmount) > 0 && <span title="Pagado"><CheckCircle className="w-4 h-4 text-green-500" /></span>}
+                        {b.paymentStatus === "paid" && Number(b.depositAmount) === 0 && <span title="Sin depósito"><Ban className="w-4 h-4 text-muted-foreground" /></span>}
                         <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${STATUS_LABELS[b.status]?.color ?? STATUS_LABELS.pending.color}`}>
                           {STATUS_LABELS[b.status]?.label ?? b.status}
                         </span>

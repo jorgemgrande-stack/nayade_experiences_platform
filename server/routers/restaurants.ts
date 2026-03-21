@@ -381,7 +381,11 @@ export const restaurantsRouter = router({
       await assertRestaurantAccess(ctx, input.restaurantId);
       const restaurant = await getRestaurantById(input.restaurantId);
       if (!restaurant) throw new TRPCError({ code: "NOT_FOUND" });
-      const depositAmount = (Number(restaurant.depositPerGuest) * input.guests).toFixed(2);
+      // rawDepositAmount: importe calculado según configuración del restaurante
+      // depositAmount: si el admin no requiere pago, se guarda "0" para que el
+      // frontend distinga "sin depósito" (depositAmount=0) de "pagado" (depositAmount>0 + paid)
+      const rawDepositAmount = (Number(restaurant.depositPerGuest) * input.guests).toFixed(2);
+      const depositAmount = input.requiresPayment ? rawDepositAmount : "0";
       const paymentStatus = input.requiresPayment ? "pending" : "paid";
       const status = input.requiresPayment ? "pending_payment" : "confirmed";
       const { locator } = await createBooking({
@@ -401,8 +405,8 @@ export const restaurantsRouter = router({
         `Por ${ctx.user.name}${input.requiresPayment ? " (con pago pendiente)" : ""}`, ctx.user.id);
       // Si se requiere pago: generar formulario Redsys y enviar email al cliente
       let redsysForm = null;
-      if (input.requiresPayment && Number(depositAmount) > 0 && input.origin) {
-        const amountCents = Math.round(Number(depositAmount) * 100);
+      if (input.requiresPayment && Number(rawDepositAmount) > 0 && input.origin) {
+        const amountCents = Math.round(Number(rawDepositAmount) * 100);
         const merchantOrder = generateMerchantOrder();
         // Guardar merchantOrder en la reserva para correlacionar el IPN
         await (await import("../restaurantsDb")).updateBooking(booking!.id, { merchantOrder } as any);
@@ -423,7 +427,7 @@ export const restaurantsRouter = router({
           date: input.date,
           time: input.time,
           guests: input.guests,
-          depositAmount,
+          depositAmount: rawDepositAmount,
           locator,
           redsysUrl: getRedsysUrl(),
           merchantParams: redsysForm.Ds_MerchantParameters,

@@ -664,3 +664,11 @@
 - [x] Causa raíz: authGuard bloqueaba con 401 todos los procedimientos no listados (sin cookie de sesión en móvil)
 - [x] Corregir authGuard.ts: añadidos todos los procedimientos públicos reales del frontend
 - [x] Corregir menú móvil PublicNav.tsx: label navega directamente, chevron expande submenú
+
+## Bug lógica depósito en reservas admin — v8.8
+- [x] Bug: al crear reserva sin marcar "cobrar depósito", el listado mostraba icono de pagado
+- [x] Causa raíz: servidor guardaba depositAmount del restaurante aunque requiresPayment=false
+- [x] Fix servidor: cuando requiresPayment=false, depositAmount se guarda como "0"
+- [x] Fix frontend RestaurantsManager: badge distingue paid+depositAmount>0 (verde) vs paid+depositAmount=0 (gris)
+- [x] Fix frontend GlobalCalendar: mismo fix en el panel lateral del calendario
+- [x] 0 errores TypeScript reales (tsc --noEmit), 100 tests pasando

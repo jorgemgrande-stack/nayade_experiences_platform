@@ -3,7 +3,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import {
   ChevronLeft, ChevronRight, Loader2, CreditCard, CheckCircle,
-  Phone, Users, UtensilsCrossed, Clock, Filter,
+  Phone, Users, UtensilsCrossed, Clock, Filter, Ban,
 } from "lucide-react";
 
 const DAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -311,14 +311,22 @@ export default function GlobalCalendar() {
                             <span className={`w-2 h-2 rounded-full ${restaurantColorMap[b.restaurantId] ?? "bg-gray-400"}`} />
                             <span className="text-xs font-display text-muted-foreground truncate max-w-[100px]">{b.restaurantName}</span>
                           </div>
-                          {/* Icono de pago */}
+                          {/* Icono de pago:
+                               - pending → naranja (pago pendiente)
+                               - paid + depositAmount > 0 → verde (pagado de verdad)
+                               - paid + depositAmount = 0 → gris (sin depósito requerido)
+                          */}
                           {b.paymentStatus === "pending" ? (
                             <span title="Pago pendiente">
                               <CreditCard className="w-4 h-4 text-orange-500" />
                             </span>
-                          ) : b.paymentStatus === "paid" ? (
+                          ) : b.paymentStatus === "paid" && Number(b.depositAmount) > 0 ? (
                             <span title="Pagado">
                               <CheckCircle className="w-4 h-4 text-green-500" />
+                            </span>
+                          ) : b.paymentStatus === "paid" && Number(b.depositAmount) === 0 ? (
+                            <span title="Sin depósito">
+                              <Ban className="w-4 h-4 text-muted-foreground" />
                             </span>
                           ) : null}
                         </div>
