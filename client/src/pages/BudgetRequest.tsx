@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import {
-  CheckCircle, Phone, Mail, Clock, Users, ChevronRight,
-  Send, Star, Shield, Zap, ArrowRight, CalendarDays
+  CheckCircle, Phone, Mail, Users, ChevronRight,
+  Send, Star, Shield, Zap, ArrowRight, Waves,
+  Sparkles, Heart, TreePine, SunMedium
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,19 +13,25 @@ import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
-// ─── Categorías fijas del selector ────────────────────────────────────────────
-const STATIC_CATEGORIES = [
-  { id: "Experiencias", label: "Experiencias Acuáticas" },
-  { id: "Packs", label: "Packs Completos" },
-  { id: "Hotel", label: "Hotel" },
-  { id: "Spa", label: "SPA & Bienestar" },
-  { id: "Pack colegios", label: "Pack Colegios" },
-  { id: "Pack teambuilding", label: "Pack Teambuilding" },
+// ─── Assets ───────────────────────────────────────────────────────────────────
+const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1774088145054-jpwq7l.png";
+const STRIP_IMAGES = [
+  "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/wakeboard_b574701d.jpg",
+  "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/aventura_hinchable_7c004251.png",
+  "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa4_0e502ffb.png",
+  "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/31bc24b6-13c3-4ea1-a67f-16a927473c61_d7582ff1.png",
 ];
 
-const SPECIAL_OPTION = "__special__";
+// ─── Categorías ───────────────────────────────────────────────────────────────
+const STATIC_CATEGORIES = [
+  { id: "Experiencias", label: "Experiencias Acuáticas", icon: "🌊" },
+  { id: "Packs", label: "Packs Completos", icon: "⭐" },
+  { id: "Hotel", label: "Hotel", icon: "🏨" },
+  { id: "Spa", label: "SPA & Bienestar", icon: "🧖" },
+  { id: "Pack colegios", label: "Pack Colegios", icon: "🎒" },
+  { id: "Pack teambuilding", label: "Pack Teambuilding", icon: "🤝" },
+];
 
-// ─── Productos estáticos por categoría (fallback + SPA/Hotel/Colegios/TB) ─────
 const STATIC_PRODUCTS: Record<string, string[]> = {
   Hotel: ["Habitación Estándar", "Habitación Superior", "Suite Lago", "Suite Premium"],
   Spa: ["Circuito SPA", "Masaje Relajante", "Tratamiento Facial", "Pack Pareja SPA"],
@@ -32,31 +39,50 @@ const STATIC_PRODUCTS: Record<string, string[]> = {
   "Pack teambuilding": ["Teambuilding Básico", "Teambuilding Premium", "Jornada Corporativa Completa"],
 };
 
-// ─── Badges de confianza ───────────────────────────────────────────────────────
-const TRUST_BADGES = [
-  { icon: Zap, label: "Respuesta en 24h" },
-  { icon: Shield, label: "Sin compromiso" },
-  { icon: Star, label: "Propuesta personalizada" },
-  { icon: Users, label: "Atención directa" },
+const SPECIAL_OPTION = "__special__";
+
+// ─── Experiencias de tipo ─────────────────────────────────────────────────────
+const EXPERIENCE_TYPES = [
+  { icon: Waves, label: "Deportes acuáticos", color: "text-sky-400" },
+  { icon: TreePine, label: "Aventura & Naturaleza", color: "text-emerald-400" },
+  { icon: Heart, label: "Parejas & Romántico", color: "text-rose-400" },
+  { icon: Users, label: "Familias & Grupos", color: "text-amber-400" },
+  { icon: SunMedium, label: "Relax & Bienestar", color: "text-violet-400" },
+  { icon: Sparkles, label: "Eventos & Empresas", color: "text-orange-400" },
 ];
+
+// ─── Hook de animación al scroll ──────────────────────────────────────────────
+function useFadeIn() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
+      { threshold: 0.1 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return { ref, visible };
+}
 
 export default function BudgetRequest() {
   const [submitted, setSubmitted] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedProduct, setSelectedProduct] = useState("");
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    arrivalDate: "",
-    adults: "1",
-    children: "0",
-    comments: "",
-    honeypot: "", // anti-spam
+    name: "", email: "", phone: "", arrivalDate: "",
+    adults: "1", children: "0", comments: "", honeypot: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // ─── Cargar experiencias y packs dinámicamente ─────────────────────────────
+  const heroFade = useFadeIn();
+  const formFade = useFadeIn();
+  const benefitsFade = useFadeIn();
+
+  // ─── Cargar productos dinámicos ──────────────────────────────────────────
   const { data: experiences } = trpc.public.getExperiences.useQuery(
     { limit: 100 },
     { enabled: selectedCategory === "Experiencias" }
@@ -66,95 +92,80 @@ export default function BudgetRequest() {
     { enabled: selectedCategory === "Packs" }
   );
 
-  // ─── Productos según categoría seleccionada ────────────────────────────────
   const products = useMemo(() => {
-    if (selectedCategory === "Experiencias" && experiences) {
-      return experiences.map((e: any) => e.title);
-    }
-    if (selectedCategory === "Packs" && packs) {
-      return packs.map((p: any) => p.title);
-    }
+    if (selectedCategory === "Experiencias" && experiences) return experiences.map((e: any) => e.title);
+    if (selectedCategory === "Packs" && packs) return packs.map((p: any) => p.title);
     return STATIC_PRODUCTS[selectedCategory] ?? [];
   }, [selectedCategory, experiences, packs]);
 
   const submitBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setSubmitted(true),
-    onError: () => toast.error("Error al enviar la solicitud. Por favor, inténtalo de nuevo."),
+    onError: () => toast.error("Error al enviar. Por favor, inténtalo de nuevo."),
   });
 
-  // ─── Validación ───────────────────────────────────────────────────────────
   const validate = () => {
-    const newErrors: Record<string, string> = {};
-    if (!formData.name.trim() || formData.name.trim().length < 2)
-      newErrors.name = "Introduce tu nombre completo";
-    if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
-      newErrors.email = "Introduce un email válido";
-    if (!formData.phone.trim() || formData.phone.trim().length < 6)
-      newErrors.phone = "Introduce un teléfono válido";
-    if (!formData.arrivalDate)
-      newErrors.arrivalDate = "Selecciona el día de llegada";
-    if (!selectedCategory)
-      newErrors.category = "Selecciona una categoría";
-    if (!selectedProduct)
-      newErrors.product = "Selecciona una experiencia o elige propuesta personalizada";
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const e: Record<string, string> = {};
+    if (!formData.name.trim() || formData.name.trim().length < 2) e.name = "Introduce tu nombre";
+    if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) e.email = "Email no válido";
+    if (!formData.phone.trim() || formData.phone.trim().length < 6) e.phone = "Teléfono no válido";
+    if (!formData.arrivalDate) e.arrivalDate = "Selecciona una fecha";
+    if (!selectedCategory) e.category = "Selecciona una categoría";
+    if (!selectedProduct) e.product = "Selecciona una experiencia";
+    setErrors(e);
+    return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
     if (!validate()) return;
-
     await submitBudget.mutateAsync({
-      name: formData.name.trim(),
-      email: formData.email.trim(),
-      phone: formData.phone.trim(),
+      name: formData.name.trim(), email: formData.email.trim(), phone: formData.phone.trim(),
       arrivalDate: formData.arrivalDate,
-      adults: parseInt(formData.adults) || 1,
-      children: parseInt(formData.children) || 0,
-      selectedCategory,
-      selectedProduct: selectedProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : selectedProduct,
+      adults: parseInt(formData.adults) || 1, children: parseInt(formData.children) || 0,
+      selectedCategory, selectedProduct: selectedProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : selectedProduct,
       comments: formData.comments.trim() || undefined,
       honeypot: formData.honeypot || undefined,
     });
   };
 
   const handleCategorySelect = (cat: string) => {
-    setSelectedCategory(cat);
-    setSelectedProduct("");
-    setErrors((prev) => ({ ...prev, category: "", product: "" }));
+    setSelectedCategory(cat); setSelectedProduct("");
+    setErrors((p) => ({ ...p, category: "", product: "" }));
   };
 
   // ─── Pantalla de éxito ────────────────────────────────────────────────────
   if (submitted) {
     return (
       <PublicLayout>
-        <div className="min-h-[70vh] flex items-center justify-center bg-gradient-to-b from-background to-muted/30">
-          <div className="text-center max-w-lg mx-auto px-6 py-16">
-            <div className="w-24 h-24 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-8 shadow-lg">
-              <CheckCircle className="w-12 h-12 text-emerald-500" />
+        <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
+          <div className="absolute inset-0">
+            <img src={HERO_BG} alt="" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
+          </div>
+          <div className="relative z-10 text-center max-w-xl mx-auto px-6 py-20">
+            <div className="w-28 h-28 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center mx-auto mb-8">
+              <CheckCircle className="w-14 h-14 text-emerald-400" />
             </div>
-            <h2 className="text-4xl font-heading font-bold text-foreground mb-4">
-              ¡Solicitud enviada!
-            </h2>
-            <p className="text-lg text-muted-foreground mb-8 leading-relaxed">
-              Nuestro equipo te contactará muy pronto con una propuesta personalizada.
-              Normalmente respondemos en <strong className="text-foreground">menos de 24 horas</strong>.
+            <h2 className="text-5xl font-heading font-bold text-white mb-4">¡Perfecto!</h2>
+            <p className="text-xl text-white/80 mb-3 font-display">Tu experiencia está en camino.</p>
+            <p className="text-white/60 mb-10 leading-relaxed">
+              Nuestro equipo revisará tu solicitud y te enviará una propuesta personalizada en
+              <strong className="text-amber-400"> menos de 24 horas</strong>.
             </p>
-            <div className="bg-card rounded-2xl border border-border/50 p-6 mb-8 text-left space-y-4">
+            <div className="grid grid-cols-3 gap-4 mb-10">
               {[
-                { icon: Clock, text: "Respuesta en menos de 24 horas" },
-                { icon: Phone, text: "Te llamaremos al número proporcionado" },
-                { icon: Mail, text: "Recibirás la propuesta por email" },
-              ].map(({ icon: Icon, text }) => (
-                <div key={text} className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <Icon className="w-4 h-4 text-accent shrink-0" />
-                  <span>{text}</span>
+                { icon: Zap, label: "Respuesta rápida" },
+                { icon: Star, label: "Propuesta a medida" },
+                { icon: Shield, label: "Sin compromiso" },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10 text-center">
+                  <Icon className="w-5 h-5 text-amber-400 mx-auto mb-2" />
+                  <span className="text-white/70 text-xs">{label}</span>
                 </div>
               ))}
             </div>
-            <Button asChild className="bg-gold-gradient text-white hover:opacity-90 font-semibold h-12 px-8">
-              <Link href="/">Volver al inicio <ArrowRight className="ml-2 w-4 h-4" /></Link>
+            <Button asChild className="bg-amber-500 hover:bg-amber-400 text-white font-semibold h-12 px-8 rounded-full shadow-lg">
+              <Link href="/">Explorar más experiencias <ArrowRight className="ml-2 w-4 h-4" /></Link>
             </Button>
           </div>
         </div>
@@ -164,348 +175,374 @@ export default function BudgetRequest() {
 
   return (
     <PublicLayout>
-      {/* ── Hero ──────────────────────────────────────────────────────────── */}
-      <section className="relative h-[50vh] min-h-[380px] overflow-hidden">
-        <img
-          src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/31bc24b6-13c3-4ea1-a67f-16a927473c61_d7582ff1.png"
-          alt="Solicitar Presupuesto"
-          className="w-full h-full object-cover object-center"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/75" />
-        <div className="absolute inset-0 flex items-center">
-          <div className="container">
-            <div className="max-w-2xl text-white">
-              <span className="inline-block bg-accent/90 text-white text-xs font-display font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4">
-                Propuesta personalizada
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          HERO — Pantalla completa aspiracional
+      ══════════════════════════════════════════════════════════════════════ */}
+      <section className="relative min-h-screen flex items-center overflow-hidden">
+        {/* Fondo */}
+        <img src={HERO_BG} alt="Náyade Experiences" className="absolute inset-0 w-full h-full object-cover object-center scale-105" style={{ animation: "slowZoom 20s ease-in-out infinite alternate" }} />
+        {/* Overlay degradado */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-black/20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+        <div className="relative z-10 container py-32">
+          <div className="max-w-2xl">
+            {/* Badge */}
+            <div
+              ref={heroFade.ref}
+              className="transition-all duration-1000"
+              style={{ opacity: heroFade.visible ? 1 : 0, transform: heroFade.visible ? "translateY(0)" : "translateY(30px)" }}
+            >
+              <span className="inline-flex items-center gap-2 bg-amber-500/90 text-white text-xs font-display font-bold uppercase tracking-widest px-5 py-2 rounded-full mb-8 shadow-lg">
+                <Sparkles className="w-3.5 h-3.5" />
+                Experiencias únicas · A 40 min de Madrid
               </span>
-              <h1 className="text-4xl md:text-5xl font-heading font-bold leading-tight mb-4">
-                Organizamos tu experiencia<br />
-                <span className="text-amber-400">a medida</span>
+
+              {/* Claim principal */}
+              <h1 className="text-5xl md:text-7xl font-heading font-black text-white leading-[1.05] mb-6">
+                Diseñamos<br />
+                <span className="text-amber-400">tu experiencia</span><br />
+                perfecta
               </h1>
-              <p className="text-lg text-white/85 font-display">
-                Cuéntanos qué experiencia buscas y te preparamos tu propuesta personalizada en menos de 24h.
+
+              {/* Subclaim */}
+              <p className="text-xl md:text-2xl text-white/75 font-display font-light mb-10 leading-relaxed max-w-lg">
+                Actividades acuáticas, relax, escapadas y aventura en el embalse de Los Ángeles de San Rafael.
               </p>
+
+              {/* Tipos de experiencia */}
+              <div className="flex flex-wrap gap-3 mb-12">
+                {EXPERIENCE_TYPES.map(({ icon: Icon, label, color }) => (
+                  <div key={label} className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/15 rounded-full px-4 py-2 text-sm text-white/80">
+                    <Icon className={`w-3.5 h-3.5 ${color}`} />
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA scroll */}
+              <a href="#formulario" className="inline-flex items-center gap-3 text-white/60 text-sm hover:text-amber-400 transition-colors group">
+                <span>Cuéntanos qué quieres vivir</span>
+                <span className="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center group-hover:border-amber-400 transition-colors">
+                  <ChevronRight className="w-4 h-4 rotate-90" />
+                </span>
+              </a>
             </div>
           </div>
         </div>
-      </section>
 
-      {/* ── Trust badges ─────────────────────────────────────────────────── */}
-      <section className="bg-[oklch(0.14_0.03_240)] py-5">
-        <div className="container">
-          <div className="flex flex-wrap justify-center gap-6 md:gap-10">
-            {TRUST_BADGES.map(({ icon: Icon, label }) => (
-              <div key={label} className="flex items-center gap-2 text-white/80 text-sm">
-                <Icon className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
+        {/* Strip de miniaturas en la parte inferior */}
+        <div className="absolute bottom-0 right-0 w-full md:w-1/2 h-32 hidden md:flex overflow-hidden">
+          {STRIP_IMAGES.map((src, i) => (
+            <div key={i} className="flex-1 relative overflow-hidden">
+              <img src={src} alt="" className="w-full h-full object-cover opacity-60 hover:opacity-90 transition-opacity duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+            </div>
+          ))}
+          <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-transparent" />
         </div>
       </section>
 
-      {/* ── Formulario + sidebar ──────────────────────────────────────────── */}
-      <section className="py-16 bg-gradient-to-b from-background to-muted/20">
-        <div className="container">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 items-start">
+      {/* ══════════════════════════════════════════════════════════════════════
+          FORMULARIO PREMIUM
+      ══════════════════════════════════════════════════════════════════════ */}
+      <section id="formulario" className="relative py-24 bg-gradient-to-b from-[oklch(0.10_0.03_240)] to-[oklch(0.14_0.04_240)] overflow-hidden">
+        {/* Decoración de fondo */}
+        <div className="absolute inset-0 opacity-5" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, oklch(0.7 0.2 220) 0%, transparent 50%), radial-gradient(circle at 80% 20%, oklch(0.8 0.15 50) 0%, transparent 40%)" }} />
 
-            {/* ── Formulario principal ─────────────────────────────────── */}
-            <div className="lg:col-span-2">
-              <div className="bg-card rounded-3xl border border-border/50 shadow-sm p-8">
-                <h2 className="text-2xl font-heading font-bold text-foreground mb-2">
-                  Cuéntanos qué necesitas
-                </h2>
-                <p className="text-muted-foreground mb-8">
-                  Respuesta rápida y sin compromiso. En menos de 24h recibirás tu propuesta.
-                </p>
+        <div className="relative z-10 container">
+          {/* Encabezado de sección */}
+          <div className="text-center mb-16">
+            <p className="text-amber-400 font-display text-sm uppercase tracking-widest mb-3">Propuesta personalizada</p>
+            <h2 className="text-4xl md:text-5xl font-heading font-bold text-white mb-4">
+              Cuéntanos qué te gustaría vivir…<br />
+              <span className="text-amber-400">nosotros lo hacemos realidad</span>
+            </h2>
+            <p className="text-white/50 max-w-lg mx-auto text-lg">
+              Rellena el formulario y en menos de 24h recibirás una propuesta diseñada especialmente para ti.
+            </p>
+          </div>
 
-                <form onSubmit={handleSubmit} className="space-y-8">
-                  {/* Honeypot anti-spam (oculto) */}
-                  <input
-                    type="text"
-                    name="website"
-                    value={formData.honeypot}
-                    onChange={(e) => setFormData({ ...formData, honeypot: e.target.value })}
-                    style={{ display: "none" }}
-                    tabIndex={-1}
-                    autoComplete="off"
-                  />
+          <div
+            ref={formFade.ref}
+            className="transition-all duration-1000 delay-200"
+            style={{ opacity: formFade.visible ? 1 : 0, transform: formFade.visible ? "translateY(0)" : "translateY(40px)" }}
+          >
+            <div className="max-w-3xl mx-auto">
+              {/* Card flotante del formulario */}
+              <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+                {/* Barra superior decorativa */}
+                <div className="h-1 bg-gradient-to-r from-amber-500 via-orange-400 to-amber-500" />
 
-                  {/* ── Datos de contacto ─────────────────────────────── */}
+                <form onSubmit={handleSubmit} className="p-8 md:p-12 space-y-10">
+                  {/* Honeypot */}
+                  <input type="text" name="website" value={formData.honeypot} onChange={(e) => setFormData({ ...formData, honeypot: e.target.value })} style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
+
+                  {/* ── Bloque 1: ¿Quién eres? ─────────────────────────── */}
                   <div>
-                    <h3 className="font-display font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-4">
-                      Datos de contacto
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
+                        <span className="text-amber-400 text-sm font-bold">1</span>
+                      </div>
+                      <h3 className="text-white font-display font-semibold text-lg">¿Quién eres?</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <div>
-                        <Label htmlFor="name" className="text-sm font-medium">
-                          Nombre y apellidos <span className="text-red-500">*</span>
-                        </Label>
+                        <Label htmlFor="name" className="text-white/60 text-sm mb-2 block">Nombre y apellidos <span className="text-amber-400">*</span></Label>
                         <Input
-                          id="name"
-                          value={formData.name}
+                          id="name" value={formData.name}
                           onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setErrors({ ...errors, name: "" }); }}
-                          className={`mt-1.5 h-11 ${errors.name ? "border-red-400" : ""}`}
+                          className={`h-13 bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 rounded-xl focus:border-amber-500/50 focus:ring-amber-500/20 text-base ${errors.name ? "border-red-400/60" : ""}`}
                           placeholder="Tu nombre completo"
                         />
-                        {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                        {errors.name && <p className="text-red-400 text-xs mt-1.5">{errors.name}</p>}
                       </div>
                       <div>
-                        <Label htmlFor="email" className="text-sm font-medium">
-                          Email <span className="text-red-500">*</span>
-                        </Label>
+                        <Label htmlFor="email" className="text-white/60 text-sm mb-2 block">Email <span className="text-amber-400">*</span></Label>
                         <Input
-                          id="email"
-                          type="email"
-                          value={formData.email}
+                          id="email" type="email" value={formData.email}
                           onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setErrors({ ...errors, email: "" }); }}
-                          className={`mt-1.5 h-11 ${errors.email ? "border-red-400" : ""}`}
+                          className={`h-13 bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 rounded-xl focus:border-amber-500/50 text-base ${errors.email ? "border-red-400/60" : ""}`}
                           placeholder="tu@email.com"
                         />
-                        {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                        {errors.email && <p className="text-red-400 text-xs mt-1.5">{errors.email}</p>}
                       </div>
                       <div>
-                        <Label htmlFor="phone" className="text-sm font-medium">
-                          Teléfono <span className="text-red-500">*</span>
-                        </Label>
+                        <Label htmlFor="phone" className="text-white/60 text-sm mb-2 block">Teléfono <span className="text-amber-400">*</span></Label>
                         <Input
-                          id="phone"
-                          type="tel"
-                          value={formData.phone}
+                          id="phone" type="tel" value={formData.phone}
                           onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); setErrors({ ...errors, phone: "" }); }}
-                          className={`mt-1.5 h-11 ${errors.phone ? "border-red-400" : ""}`}
+                          className={`h-13 bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 rounded-xl focus:border-amber-500/50 text-base ${errors.phone ? "border-red-400/60" : ""}`}
                           placeholder="+34 600 000 000"
                         />
-                        {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone}</p>}
+                        {errors.phone && <p className="text-red-400 text-xs mt-1.5">{errors.phone}</p>}
                       </div>
                       <div>
-                        <Label htmlFor="arrivalDate" className="text-sm font-medium">
-                          Día de llegada <span className="text-red-500">*</span>
-                        </Label>
+                        <Label htmlFor="arrivalDate" className="text-white/60 text-sm mb-2 block">Fecha de llegada <span className="text-amber-400">*</span></Label>
                         <Input
-                          id="arrivalDate"
-                          type="date"
-                          value={formData.arrivalDate}
+                          id="arrivalDate" type="date" value={formData.arrivalDate}
                           min={new Date().toISOString().split("T")[0]}
                           onChange={(e) => { setFormData({ ...formData, arrivalDate: e.target.value }); setErrors({ ...errors, arrivalDate: "" }); }}
-                          className={`mt-1.5 h-11 ${errors.arrivalDate ? "border-red-400" : ""}`}
+                          className={`h-13 bg-white/[0.06] border-white/10 text-white rounded-xl focus:border-amber-500/50 text-base ${errors.arrivalDate ? "border-red-400/60" : ""}`}
+                          style={{ colorScheme: "dark" }}
                         />
-                        {errors.arrivalDate && <p className="text-red-500 text-xs mt-1">{errors.arrivalDate}</p>}
+                        {errors.arrivalDate && <p className="text-red-400 text-xs mt-1.5">{errors.arrivalDate}</p>}
                       </div>
                     </div>
                   </div>
 
-                  {/* ── Personas ──────────────────────────────────────── */}
+                  {/* ── Bloque 2: ¿Cuántos sois? ──────────────────────── */}
                   <div>
-                    <h3 className="font-display font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-4">
-                      Número de personas
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
+                        <span className="text-amber-400 text-sm font-bold">2</span>
+                      </div>
+                      <h3 className="text-white font-display font-semibold text-lg">¿Cuántos sois?</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-5">
                       <div>
-                        <Label htmlFor="adults" className="text-sm font-medium flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5 text-muted-foreground" /> Adultos
+                        <Label htmlFor="adults" className="text-white/60 text-sm mb-2 block flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5" /> Adultos
                         </Label>
-                        <Input
-                          id="adults"
-                          type="number"
-                          min="1"
-                          max="200"
-                          value={formData.adults}
+                        <Input id="adults" type="number" min="1" max="200" value={formData.adults}
                           onChange={(e) => setFormData({ ...formData, adults: e.target.value })}
-                          className="mt-1.5 h-11"
+                          className="h-13 bg-white/[0.06] border-white/10 text-white rounded-xl focus:border-amber-500/50 text-base"
+                          style={{ colorScheme: "dark" }}
                         />
                       </div>
                       <div>
-                        <Label htmlFor="children" className="text-sm font-medium flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5 text-muted-foreground" /> Niños
+                        <Label htmlFor="children" className="text-white/60 text-sm mb-2 block flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5" /> Niños
                         </Label>
-                        <Input
-                          id="children"
-                          type="number"
-                          min="0"
-                          max="200"
-                          value={formData.children}
+                        <Input id="children" type="number" min="0" max="200" value={formData.children}
                           onChange={(e) => setFormData({ ...formData, children: e.target.value })}
-                          className="mt-1.5 h-11"
+                          className="h-13 bg-white/[0.06] border-white/10 text-white rounded-xl focus:border-amber-500/50 text-base"
+                          style={{ colorScheme: "dark" }}
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* ── Selector jerárquico ───────────────────────────── */}
+                  {/* ── Bloque 3: ¿Qué quieres vivir? ────────────────── */}
                   <div>
-                    <h3 className="font-display font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-4">
-                      Selecciona la experiencia
-                    </h3>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
+                        <span className="text-amber-400 text-sm font-bold">3</span>
+                      </div>
+                      <h3 className="text-white font-display font-semibold text-lg">¿Qué quieres vivir?</h3>
+                    </div>
 
-                    {/* Nivel 1: Categoría */}
-                    <div className="mb-4">
-                      <Label className="text-sm font-medium mb-2 block">
-                        Categoría <span className="text-red-500">*</span>
-                      </Label>
-                      <div className="flex flex-wrap gap-2">
+                    {/* Selector de categoría */}
+                    <div className="mb-5">
+                      <p className="text-white/50 text-sm mb-3">Elige una categoría <span className="text-amber-400">*</span></p>
+                      <div className="flex flex-wrap gap-2.5">
                         {STATIC_CATEGORIES.map((cat) => (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => handleCategorySelect(cat.id)}
-                            className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
+                          <button key={cat.id} type="button" onClick={() => handleCategorySelect(cat.id)}
+                            className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium border transition-all duration-200 ${
                               selectedCategory === cat.id
-                                ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                                : "border-border text-muted-foreground hover:border-accent hover:text-accent bg-background"
+                                ? "bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20"
+                                : "border-white/15 text-white/60 hover:border-amber-500/40 hover:text-white bg-white/[0.04]"
                             }`}
                           >
-                            {cat.label}
+                            <span>{cat.icon}</span> {cat.label}
                           </button>
                         ))}
                       </div>
-                      {errors.category && <p className="text-red-500 text-xs mt-2">{errors.category}</p>}
+                      {errors.category && <p className="text-red-400 text-xs mt-2">{errors.category}</p>}
                     </div>
 
-                    {/* Nivel 2: Producto (aparece al seleccionar categoría) */}
+                    {/* Selector de producto */}
                     {selectedCategory && (
-                      <div className="mt-4 p-4 bg-muted/40 rounded-2xl border border-border/50">
-                        <Label className="text-sm font-medium mb-3 block flex items-center gap-1.5">
-                          <ChevronRight className="w-3.5 h-3.5 text-accent" />
-                          Experiencia específica <span className="text-red-500">*</span>
-                        </Label>
+                      <div className="mt-5 p-5 bg-white/[0.03] border border-white/[0.08] rounded-2xl">
+                        <p className="text-white/50 text-sm mb-3 flex items-center gap-1.5">
+                          <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
+                          Experiencia específica <span className="text-amber-400">*</span>
+                        </p>
                         <div className="flex flex-wrap gap-2">
                           {products.map((product: string) => (
-                            <button
-                              key={product}
-                              type="button"
+                            <button key={product} type="button"
                               onClick={() => { setSelectedProduct(product); setErrors({ ...errors, product: "" }); }}
-                              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                              className={`px-3.5 py-2 rounded-full text-sm border transition-all duration-200 ${
                                 selectedProduct === product
-                                  ? "bg-accent text-white border-accent shadow-sm"
-                                  : "border-border text-muted-foreground hover:border-accent hover:text-accent bg-background"
+                                  ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                                  : "border-white/10 text-white/50 hover:border-sky-500/30 hover:text-white/80 bg-white/[0.03]"
                               }`}
                             >
                               {product}
                             </button>
                           ))}
-                          {/* Opción especial */}
-                          <button
-                            type="button"
+                          <button type="button"
                             onClick={() => { setSelectedProduct(SPECIAL_OPTION); setErrors({ ...errors, product: "" }); }}
-                            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5 ${
+                            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm border transition-all duration-200 ${
                               selectedProduct === SPECIAL_OPTION
-                                ? "bg-amber-500 text-white border-amber-500 shadow-sm"
-                                : "border-amber-300 text-amber-600 hover:bg-amber-50 bg-background"
+                                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                : "border-amber-500/20 text-amber-400/70 hover:border-amber-500/40 hover:text-amber-300 bg-white/[0.03]"
                             }`}
                           >
-                            <Star className="w-3 h-3" />
-                            Petición especial / Propuesta personalizada
+                            <Star className="w-3 h-3" /> Propuesta personalizada
                           </button>
                         </div>
-                        {errors.product && <p className="text-red-500 text-xs mt-2">{errors.product}</p>}
+                        {errors.product && <p className="text-red-400 text-xs mt-2">{errors.product}</p>}
                       </div>
                     )}
                   </div>
 
-                  {/* ── Comentarios ───────────────────────────────────── */}
+                  {/* ── Bloque 4: Algo más que quieras contarnos ──────── */}
                   <div>
-                    <Label htmlFor="comments" className="text-sm font-medium">
-                      Comentarios adicionales
-                    </Label>
-                    <Textarea
-                      id="comments"
-                      value={formData.comments}
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
+                        <span className="text-amber-400 text-sm font-bold">4</span>
+                      </div>
+                      <h3 className="text-white font-display font-semibold text-lg">¿Algo más que quieras contarnos?</h3>
+                    </div>
+                    <Textarea value={formData.comments}
                       onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
-                      className="mt-1.5 resize-none"
+                      className="bg-white/[0.06] border-white/10 text-white placeholder:text-white/25 rounded-xl focus:border-amber-500/50 resize-none text-base"
                       rows={4}
-                      placeholder="Cuéntanos qué necesitas: tipo de experiencia, número total de personas, ocasión especial o cualquier detalle importante."
+                      placeholder="Ocasión especial, preferencias, número de personas concreto, fechas alternativas… cuéntanos todo lo que necesites."
                     />
                   </div>
 
-                  {/* ── Botón de envío ────────────────────────────────── */}
+                  {/* ── CTA ───────────────────────────────────────────── */}
                   <div>
-                    <Button
-                      type="submit"
-                      disabled={submitBudget.isPending}
-                      className="w-full bg-gold-gradient text-white hover:opacity-90 font-semibold h-13 text-base rounded-xl shadow-lg"
+                    <Button type="submit" disabled={submitBudget.isPending}
+                      className="w-full h-16 text-lg font-bold rounded-2xl shadow-2xl transition-all duration-300 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0"
                     >
                       {submitBudget.isPending ? (
-                        <span className="flex items-center gap-2">
-                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Enviando solicitud...
+                        <span className="flex items-center gap-3">
+                          <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Preparando tu propuesta…
                         </span>
                       ) : (
-                        <span className="flex items-center gap-2">
-                          <Send className="w-4 h-4" />
-                          Solicitar mi propuesta personalizada
+                        <span className="flex items-center gap-3">
+                          <Send className="w-5 h-5" />
+                          Quiero mi propuesta personalizada
                         </span>
                       )}
                     </Button>
-                    <p className="text-xs text-muted-foreground text-center mt-3">
-                      Al enviar aceptas nuestra{" "}
-                      <Link href="/privacidad" className="underline hover:text-accent">política de privacidad</Link>.
-                      Respuesta garantizada en menos de 24h.
+                    <p className="text-white/30 text-xs text-center mt-4">
+                      Sin compromiso · Respuesta en menos de 24h ·{" "}
+                      <Link href="/privacidad" className="underline hover:text-amber-400">Política de privacidad</Link>
                     </p>
                   </div>
                 </form>
               </div>
-            </div>
 
-            {/* ── Sidebar ──────────────────────────────────────────────── */}
-            <div className="space-y-6">
-              {/* Cómo funciona */}
-              <div className="bg-card rounded-2xl border border-border/50 p-6">
-                <h3 className="font-display font-semibold text-foreground mb-5">¿Cómo funciona?</h3>
-                <div className="space-y-5">
-                  {[
-                    { step: "01", title: "Envía tu solicitud", desc: "Rellena el formulario con los detalles de tu experiencia ideal." },
-                    { step: "02", title: "Analizamos tu petición", desc: "Nuestro equipo estudia tu solicitud y prepara una propuesta personalizada." },
-                    { step: "03", title: "Recibe tu presupuesto", desc: "En menos de 24h recibirás un presupuesto detallado por email." },
-                    { step: "04", title: "Confirma y disfruta", desc: "Acepta el presupuesto y prepárate para la aventura." },
-                  ].map((item) => (
-                    <div key={item.step} className="flex gap-4">
-                      <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <span className="text-xs font-bold text-accent">{item.step}</span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm text-foreground">{item.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{item.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Contacto directo */}
-              <div className="bg-[oklch(0.14_0.03_240)] rounded-2xl p-6 text-white">
-                <h3 className="font-display font-semibold mb-4">¿Prefieres llamarnos?</h3>
-                <p className="text-white/60 text-sm mb-4">Nuestro equipo está disponible para atenderte directamente.</p>
-                <div className="space-y-3">
-                  <a href="tel:+34930347791" className="flex items-center gap-3 text-sm text-white/70 hover:text-amber-400 transition-colors">
-                    <Phone className="w-4 h-4 text-amber-400" />
-                    +34 930 34 77 91
-                  </a>
-                  <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-3 text-sm text-white/70 hover:text-amber-400 transition-colors">
-                    <Mail className="w-4 h-4 text-amber-400" />
-                    reservas@nayadeexperiences.es
-                  </a>
-                  <div className="flex items-center gap-3 text-sm text-white/70">
-                    <CalendarDays className="w-4 h-4 text-amber-400" />
-                    Lun–Vie: 9:00 – 19:00
-                  </div>
-                </div>
-              </div>
-
-              {/* Grupos y empresas */}
-              <div className="bg-accent/5 border border-accent/20 rounded-2xl p-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Users className="w-5 h-5 text-accent" />
-                  <h3 className="font-display font-semibold text-foreground text-sm">Grupos y Empresas</h3>
-                </div>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Para grupos de más de 20 personas o eventos corporativos, contamos con tarifas especiales y gestión personalizada.
-                </p>
+              {/* Datos de contacto bajo el formulario */}
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-6 text-white/40 text-sm">
+                <a href="tel:+34930347791" className="flex items-center gap-2 hover:text-amber-400 transition-colors">
+                  <Phone className="w-4 h-4" /> +34 930 34 77 91
+                </a>
+                <span className="hidden sm:block text-white/20">·</span>
+                <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-amber-400 transition-colors">
+                  <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
+                </a>
               </div>
             </div>
           </div>
         </div>
       </section>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          BENEFICIOS — Iconos experienciales
+      ══════════════════════════════════════════════════════════════════════ */}
+      <section className="py-20 bg-gradient-to-b from-[oklch(0.14_0.04_240)] to-background overflow-hidden">
+        <div
+          ref={benefitsFade.ref}
+          className="container transition-all duration-1000 delay-300"
+          style={{ opacity: benefitsFade.visible ? 1 : 0, transform: benefitsFade.visible ? "translateY(0)" : "translateY(30px)" }}
+        >
+          {/* Separador visual */}
+          <div className="flex items-center gap-4 mb-16">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent to-white/10" />
+            <span className="text-white/30 text-xs uppercase tracking-widest font-display">Por qué elegirnos</span>
+            <div className="flex-1 h-px bg-gradient-to-l from-transparent to-white/10" />
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
+            {[
+              { icon: Zap, title: "Respuesta en 24h", desc: "Recibirás tu propuesta personalizada en menos de un día.", color: "text-amber-400", bg: "bg-amber-500/10" },
+              { icon: Star, title: "100% personalizado", desc: "Cada experiencia se diseña según tus necesidades.", color: "text-sky-400", bg: "bg-sky-500/10" },
+              { icon: Shield, title: "Sin compromiso", desc: "Solicita tu presupuesto sin ninguna obligación.", color: "text-emerald-400", bg: "bg-emerald-500/10" },
+              { icon: Heart, title: "Parejas, familias y empresas", desc: "Experiencias para todo tipo de grupos.", color: "text-rose-400", bg: "bg-rose-500/10" },
+            ].map(({ icon: Icon, title, desc, color, bg }) => (
+              <div key={title} className="text-center group">
+                <div className={`w-16 h-16 ${bg} rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300`}>
+                  <Icon className={`w-7 h-7 ${color}`} />
+                </div>
+                <h4 className="text-white font-display font-semibold text-sm mb-2">{title}</h4>
+                <p className="text-white/40 text-xs leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Strip de fotos */}
+          <div className="grid grid-cols-4 gap-3 rounded-2xl overflow-hidden h-40">
+            {STRIP_IMAGES.map((src, i) => (
+              <div key={i} className="relative overflow-hidden group">
+                <img src={src} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors duration-300" />
+              </div>
+            ))}
+          </div>
+
+          {/* Mini refuerzo de confianza */}
+          <div className="mt-12 text-center">
+            <p className="text-white/30 text-sm font-display">
+              Más de <span className="text-amber-400 font-semibold">10.000 experiencias</span> vividas en el embalse de Los Ángeles de San Rafael
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Animación CSS para el zoom lento del hero */}
+      <style>{`
+        @keyframes slowZoom {
+          from { transform: scale(1.05); }
+          to   { transform: scale(1.12); }
+        }
+      `}</style>
     </PublicLayout>
   );
 }

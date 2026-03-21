@@ -746,3 +746,17 @@
 - [x] Backend: si email falla, lead se guarda igualmente (try/catch)
 - [x] public.submitBudget añadido a whitelist authGuard
 - [x] 0 errores TypeScript, 100 tests pasando
+
+## Rediseño Visual Premium Landing Presupuesto — v8.18
+- [x] Hero a pantalla completa con foto aspiracional + overlay degradado elegante + zoom lento animado
+- [x] Claim emocional grande ("Diseñamos tu experiencia perfecta") + subclaim comercial
+- [x] Formulario premium en card flotante dark glass con barra degradada, sombras y bordes redondeados
+- [x] Inputs grandes con estilo dark, botón CTA protagonista degradado naranja
+- [x] Bloque de iconos experienciales (agua, aventura, parejas, familias, relax, empresas)
+- [x] Frases de confianza: 24h, personalizado, sin compromiso, parejas/familias/empresas
+- [x] Separadores visuales suaves + animaciones fade-in al scroll con IntersectionObserver
+- [x] Strip de miniaturas de fotos reales en hero y sección beneficios
+- [x] Copy publicitario en todo el formulario (pasos numerados, preguntas experienciales)
+- [x] Pantalla de éxito inmersiva sobre fondo de foto
+- [x] Lógica funcional (leads, emails, validaciones, honeypot) intacta
+- [x] 0 errores TypeScript, 100 tests pasando
