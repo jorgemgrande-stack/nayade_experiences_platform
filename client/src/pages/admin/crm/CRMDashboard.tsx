@@ -199,29 +199,29 @@ function CounterCard({
   return (
     <button
       onClick={onClick}
-      className={`group relative flex flex-col justify-between p-5 rounded-2xl border transition-all duration-300 text-left w-full overflow-hidden
+      className={`group relative flex flex-col justify-between p-3.5 rounded-xl border transition-all duration-300 text-left w-full overflow-hidden
         ${s.bg} ${active ? s.activeBorder : s.border}
-        ${onClick ? "cursor-pointer hover:scale-[1.03] hover:brightness-110" : "cursor-default"}
-        ${active ? "scale-[1.03]" : ""}
+        ${onClick ? "cursor-pointer hover:scale-[1.02] hover:brightness-110" : "cursor-default"}
+        ${active ? "scale-[1.02]" : ""}
       `}
     >
       {/* Glow blob */}
-      <div className={`absolute -top-4 -right-4 w-20 h-20 rounded-full blur-2xl opacity-60 ${s.glow} transition-opacity duration-300 group-hover:opacity-90`} />
+      <div className={`absolute -top-3 -right-3 w-14 h-14 rounded-full blur-xl opacity-50 ${s.glow} transition-opacity duration-300 group-hover:opacity-80`} />
 
       {/* Top row: label + icon */}
-      <div className="flex items-start justify-between mb-3 relative z-10">
-        <span className={`text-xs font-semibold uppercase tracking-widest ${s.label}`}>{label}</span>
-        <div className={`p-2 rounded-xl ${s.glow} border ${active ? s.activeBorder : s.border}`}>
-          <Icon className={`w-4 h-4 ${s.icon}`} />
+      <div className="flex items-center justify-between mb-2 relative z-10">
+        <span className={`text-[10px] font-semibold uppercase tracking-widest ${s.label}`}>{label}</span>
+        <div className={`p-1.5 rounded-lg ${s.glow} border ${active ? s.activeBorder : s.border}`}>
+          <Icon className={`w-3.5 h-3.5 ${s.icon}`} />
         </div>
       </div>
 
       {/* Number */}
       <div className="relative z-10">
-        <span className={`text-4xl font-black tabular-nums tracking-tight ${s.number}`}>
+        <span className={`text-2xl font-black tabular-nums tracking-tight ${s.number}`}>
           {numericValue !== null ? animated : displayValue}
         </span>
-        {subtitle && <p className={`text-xs mt-1 ${s.label}`}>{subtitle}</p>}
+        {subtitle && <p className={`text-[10px] mt-0.5 ${s.label}`}>{subtitle}</p>}
       </div>
 
       {/* Active indicator bar */}
