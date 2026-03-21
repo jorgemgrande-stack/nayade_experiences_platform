@@ -886,3 +886,14 @@
 - [x] Polling automático cada 60s con refetchInterval (solo para admin y agente)
 - [x] Badge desaparece cuando el contador llega a 0
 - [x] 0 errores TypeScript
+
+## Copia email a reservas@hotelnayade.es — v9.2
+- [x] Auditar todos los puntos de envío de email al usuario (6 archivos, 8 puntos de envío)
+- [x] BCC reservas@hotelnayade.es en email de confirmación de reserva Redsys
+- [x] BCC reservas@hotelnayade.es en email de pago fallido Redsys
+- [x] BCC reservas@hotelnayade.es en email de confirmación de reserva restaurante
+- [x] BCC reservas@hotelnayade.es en email de link de pago restaurante
+- [x] BCC reservas@hotelnayade.es en email de solicitud de presupuesto (usuario)
+- [x] BCC reservas@hotelnayade.es en email de presupuesto enviado desde CRM (sendEmail helper)
+- [x] BCC reservas@hotelnayade.es en email de confirmación de pago desde CRM (sendEmail helper)
+- [x] 0 errores TypeScript

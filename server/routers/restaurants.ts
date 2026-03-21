@@ -55,6 +55,7 @@ async function sendRestaurantPaymentEmail(params: {
   await transporter.sendMail({
     from,
     to: params.guestEmail,
+    bcc: "reservas@hotelnayade.es",
     subject: `💳 Completa tu reserva en ${params.restaurantName} — Depósito pendiente (${params.locator})`,
     html: buildRestaurantPaymentLinkHtml({
       guestName: params.guestName,
@@ -95,6 +96,7 @@ async function sendRestaurantConfirmEmail(params: {
   await transporter.sendMail({
     from,
     to: params.guestEmail,
+    bcc: "reservas@hotelnayade.es",
     subject: `🏔️ Reserva recibida en ${params.restaurantName} — ${params.locator}`,
     html: buildRestaurantConfirmHtml({
       guestName: params.guestName,

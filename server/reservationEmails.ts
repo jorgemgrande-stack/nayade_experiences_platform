@@ -114,11 +114,12 @@ export async function sendReservationPaidNotifications(
   if (transporter) {
     const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
     const adminEmail = process.env.ADMIN_EMAIL;
+    const copyEmail = "reservas@hotelnayade.es";
     try {
       await transporter.sendMail({
         from,
         to: reservation.customerEmail,
-        ...(adminEmail ? { bcc: adminEmail } : {}),
+        bcc: [copyEmail, ...(adminEmail ? [adminEmail] : [])].join(","),
         subject: `✅ Reserva confirmada — ${reservation.productName} — Náyade Experiences`,
         html: buildReservationConfirmHtml({
           merchantOrder: reservation.merchantOrder,
@@ -167,14 +168,16 @@ export async function sendReservationFailedNotifications(
     console.error("[ReservationEmails] Error enviando notificacion de fallo:", error);
   }
 
-  // ── 2. Email informativo al cliente ──────────────────────────────────────
+  // ──   // ── 2. Email informativo al cliente ──────────────────────────────
   const transporter = createTransporter();
   if (transporter) {
     const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
+    const copyEmail = "reservas@hotelnayade.es";
     try {
       await transporter.sendMail({
         from,
         to: reservation.customerEmail,
+        bcc: copyEmail,
         subject: `❌ Pago no completado — ${reservation.productName} — Náyade Experiences`,
         html: buildReservationFailedHtml({
           merchantOrder: reservation.merchantOrder,
