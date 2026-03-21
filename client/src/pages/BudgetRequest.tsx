@@ -56,20 +56,22 @@ export default function BudgetRequest() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ─── Cargar productos dinámicos ──────────────────────────────────────────
-  const { data: experiences } = trpc.public.getExperiences.useQuery(
-    { limit: 100 },
+  // getExperiences tiene max limit:50 en el router
+  const { data: experiencesList } = trpc.public.getExperiences.useQuery(
+    { limit: 50 },
     { enabled: selectedCategory === "Experiencias" }
   );
-  const { data: packs } = trpc.packs.getByCategory.useQuery(
-    { category: undefined },
+  // packs.getByCategory acepta category opcional (sin filtro = todos)
+  const { data: packsList } = trpc.packs.getByCategory.useQuery(
+    {} as { category?: "dia" | "escolar" | "empresa" },
     { enabled: selectedCategory === "Packs" }
   );
 
   const products = useMemo(() => {
-    if (selectedCategory === "Experiencias" && experiences) return experiences.map((e: any) => e.title);
-    if (selectedCategory === "Packs" && packs) return packs.map((p: any) => p.title);
+    if (selectedCategory === "Experiencias" && experiencesList) return experiencesList.map((e: any) => e.title);
+    if (selectedCategory === "Packs" && packsList) return packsList.map((p: any) => p.title);
     return STATIC_PRODUCTS[selectedCategory] ?? [];
-  }, [selectedCategory, experiences, packs]);
+  }, [selectedCategory, experiencesList, packsList]);
 
   const submitBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setSubmitted(true),

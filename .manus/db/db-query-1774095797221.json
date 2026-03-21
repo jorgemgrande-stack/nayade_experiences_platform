@@ -1,0 +1,20 @@
+{
+  "query": "SELECT 'experiences' as tabla, COUNT(*) as total, SUM(CASE WHEN isActive=1 THEN 1 ELSE 0 END) as activos FROM experiences\nUNION ALL\nSELECT 'packs', COUNT(*), SUM(CASE WHEN isActive=1 THEN 1 ELSE 0 END) FROM packs;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT 'experiences' as tabla, COUNT(*) as total, SUM(CASE WHEN isActive=1 THEN 1 ELSE 0 END) as activos FROM experiences\nUNION ALL\nSELECT 'packs', COUNT(*), SUM(CASE WHEN isActive=1 THEN 1 ELSE 0 END) FROM packs;",
+  "rows": [
+    {
+      "tabla": "packs",
+      "total": "13",
+      "activos": "13"
+    },
+    {
+      "tabla": "experiences",
+      "total": "11",
+      "activos": "11"
+    }
+  ],
+  "messages": [],
+  "stdout": "tabla\ttotal\tactivos\npacks\t13\t13\nexperiences\t11\t11\n",
+  "stderr": "",
+  "execution_time_ms": 135
+}

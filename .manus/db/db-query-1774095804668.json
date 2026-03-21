@@ -1,0 +1,80 @@
+{
+  "query": "SELECT id, title, isActive FROM experiences ORDER BY sortOrder LIMIT 20;\nSELECT id, title, category, isActive FROM packs ORDER BY sortOrder LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, title, isActive FROM experiences ORDER BY sortOrder LIMIT 20;\nSELECT id, title, category, isActive FROM packs ORDER BY sortOrder LIMIT 20;",
+  "rows": [
+    {
+      "id": "30003",
+      "title": "Cableski & Wakeboard Dia Completo",
+      "isActive": "1"
+    },
+    {
+      "id": "30001",
+      "title": "Blob Jump",
+      "isActive": "1"
+    },
+    {
+      "id": "30004",
+      "title": "Canoas & Kayaks",
+      "isActive": "1"
+    },
+    {
+      "id": "30015",
+      "title": "Circuito SPA Hidrotermal",
+      "isActive": "1"
+    },
+    {
+      "id": "90001",
+      "title": "Donuts Ski",
+      "isActive": "1"
+    },
+    {
+      "id": "30002",
+      "title": "Banana Ski",
+      "isActive": "1"
+    },
+    {
+      "id": "30005",
+      "title": "Paddle Surf",
+      "isActive": "1"
+    },
+    {
+      "id": "30006",
+      "title": "Hidrobicis",
+      "isActive": "1"
+    },
+    {
+      "id": "30007",
+      "title": "Minimotos Eléctricas Acuáticas",
+      "isActive": "1"
+    },
+    {
+      "id": "30008",
+      "title": "Paseos en Barco",
+      "isActive": "1"
+    },
+    {
+      "id": "30009",
+      "title": "Aventura Hinchable Acuática",
+      "isActive": "1"
+    }
+  ],
+  "messages": [
+    "id\ttitle\tcategory\tisActive",
+    "12\tTeam Building Básico\tempresa\t1",
+    "1\tDay Pass Náyade\tdia\t1",
+    "7\tPack Escolar Básico\tescolar\t1",
+    "8\tPack Aventura Escolar\tescolar\t1",
+    "2\tPack Discovery\tdia\t1",
+    "13\tTeam Building Premium\tempresa\t1",
+    "9\tPack Multiaventura\tescolar\t1",
+    "3\tPack Aventura\tdia\t1",
+    "4\tPack Adrenalina\tdia\t1",
+    "10\tEstancia Básica\tescolar\t1",
+    "5\tPack Lago Gourmet\tdia\t1",
+    "11\tEstancia Activa\tescolar\t1",
+    "6\tPack CableSki Experience\tdia\t1"
+  ],
+  "stdout": "id\ttitle\tisActive\n30003\tCableski & Wakeboard Dia Completo\t1\n30001\tBlob Jump\t1\n30004\tCanoas & Kayaks\t1\n30015\tCircuito SPA Hidrotermal\t1\n90001\tDonuts Ski\t1\n30002\tBanana Ski\t1\n30005\tPaddle Surf\t1\n30006\tHidrobicis\t1\n30007\tMinimotos Eléctricas Acuáticas\t1\n30008\tPaseos en Barco\t1\n30009\tAventura Hinchable Acuática\t1\nid\ttitle\tcategory\tisActive\n12\tTeam Building Básico\tempresa\t1\n1\tDay Pass Náyade\tdia\t1\n7\tPack Escolar Básico\tescolar\t1\n8\tPack Aventura Escolar\tescolar\t1\n2\tPack Discovery\tdia\t1\n13\tTeam Building Premium\tempresa\t1\n9\tPack Multiaventura\tescolar\t1\n3\tPack Aventura\tdia\t1\n4\tPack Adrenalina\tdia\t1\n10\tEstancia Básica\tescolar\t1\n5\tPack Lago Gourmet\tdia\t1\n11\tEstancia Activa\tescolar\t1\n6\tPack CableSki Experience\tdia\t1\n",
+  "stderr": "",
+  "execution_time_ms": 71
+}
