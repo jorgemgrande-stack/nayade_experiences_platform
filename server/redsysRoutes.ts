@@ -8,6 +8,8 @@ import express from "express";
 import { validateRedsysNotification } from "./redsys";
 import { updateReservationPayment, getReservationByMerchantOrder } from "./db";
 import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
+import { getBookingByMerchantOrder, updateBooking, addBookingLog } from "./restaurantsDb";
+import { notifyOwner } from "./_core/notification";
 
 const redsysRouter = express.Router();
 
@@ -120,4 +122,91 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
   }
 });
 
+/**
+ * POST /api/redsys/restaurant-notification
+ * IPN de Redsys para reservas de restaurante (depósito de 5€/comensal)
+ */
+redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ extended: true }), async (req, res) => {
+  const { Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature } = req.body;
+
+  console.log("[Redsys Restaurant IPN] Notificación recibida:", {
+    Ds_SignatureVersion,
+    Ds_MerchantParameters: Ds_MerchantParameters?.slice(0, 50) + "...",
+    Ds_Signature: Ds_Signature?.slice(0, 20) + "...",
+  });
+
+  if (!Ds_SignatureVersion || !Ds_MerchantParameters || !Ds_Signature) {
+    console.error("[Redsys Restaurant IPN] Parámetros faltantes");
+    return res.status(400).send("KO");
+  }
+
+  try {
+    const result = validateRedsysNotification({
+      Ds_SignatureVersion,
+      Ds_MerchantParameters,
+      Ds_Signature,
+    });
+
+    console.log("[Redsys Restaurant IPN] Validación:", {
+      isValid: result.isValid,
+      isAuthorized: result.isAuthorized,
+      merchantOrder: result.merchantOrder,
+      responseCode: result.responseCode,
+    });
+
+    if (!result.isValid) {
+      console.error("[Redsys Restaurant IPN] Firma inválida");
+      return res.status(400).send("KO");
+    }
+
+    const booking = await getBookingByMerchantOrder(result.merchantOrder);
+    if (!booking) {
+      console.error("[Redsys Restaurant IPN] Reserva no encontrada:", result.merchantOrder);
+      return res.status(404).send("KO");
+    }
+
+    // Evitar doble procesamiento
+    if (booking.paymentStatus === "paid") {
+      console.log("[Redsys Restaurant IPN] Ya pagada:", result.merchantOrder);
+      return res.send("OK");
+    }
+
+    if (result.isAuthorized) {
+      await updateBooking(booking.id, {
+        paymentStatus: "paid",
+        status: "confirmed",
+        paymentTransactionId: result.merchantOrder,
+        paidAt: new Date(),
+      });
+      await addBookingLog(
+        booking.id,
+        "payment_confirmed",
+        `Pago Redsys confirmado. Código: ${result.responseCode}. Importe: ${result.amount / 100}€`,
+      );
+      await notifyOwner({
+        title: `Pago confirmado: Reserva ${booking.locator}`,
+        content: `${booking.guestName} — ${booking.guests} pax — ${booking.date} ${booking.time} — ${booking.depositAmount}€ pagado`,
+      }).catch(() => {});
+      console.log(`[Redsys Restaurant IPN] Reserva ${booking.locator} marcada como pagada`);
+    } else {
+      await updateBooking(booking.id, {
+        paymentStatus: "failed",
+        status: "payment_failed",
+      });
+      await addBookingLog(
+        booking.id,
+        "payment_failed",
+        `Pago Redsys fallido. Código: ${result.responseCode}`,
+      );
+      console.log(`[Redsys Restaurant IPN] Reserva ${booking.locator} marcada como pago fallido`);
+    }
+
+    return res.send("OK");
+  } catch (error) {
+    console.error("[Redsys Restaurant IPN] Error:", error);
+    return res.status(500).send("KO");
+  }
+});
+
 export default redsysRouter;
+

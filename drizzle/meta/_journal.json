@@ -43,6 +43,13 @@
       "when": 1773875755120,
       "tag": "0005_adorable_leopardon",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1774053876203,
+      "tag": "0006_giant_emma_frost",
+      "breakpoints": true
     }
   ]
 }

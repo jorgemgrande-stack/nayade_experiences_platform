@@ -20,6 +20,8 @@ import Hotel from "./pages/Hotel";
 import Spa from "./pages/Spa";
 import Restaurantes from "./pages/Restaurantes";
 import RestauranteDetail from "./pages/RestauranteDetail";
+import RestauranteReservaOk from "./pages/RestauranteReservaOk";
+import RestauranteReservaKo from "./pages/RestauranteReservaKo";
 import ReservaOk from "./pages/ReservaOk";
 import ReservaError from "./pages/ReservaError";
 import SetPassword from "./pages/SetPassword";
@@ -98,6 +100,8 @@ function Router() {
       <Route path="/restaurantes" component={Restaurantes} />
       <Route path="/restaurantes/:slug" component={RestauranteDetail} />
       <Route path="/restaurantes/:slug/reservar" component={RestaurantBooking} />
+      <Route path="/restaurantes/reserva-ok" component={RestauranteReservaOk} />
+      <Route path="/restaurantes/reserva-ko" component={RestauranteReservaKo} />
       {/* ── RESERVA ROUTES ── */}
       <Route path="/reserva/ok" component={ReservaOk} />
       <Route path="/reserva/error" component={ReservaError} />

@@ -716,6 +716,7 @@ export const restaurantBookings = mysqlTable("restaurant_bookings", {
   paymentStatus: mysqlEnum("paymentStatus", ["pending", "paid", "failed", "refunded"]).default("pending").notNull(),
   paymentTransactionId: varchar("paymentTransactionId", { length: 256 }),
   paymentMethod: varchar("paymentMethod", { length: 64 }),
+  merchantOrder: varchar("merchantOrder", { length: 32 }),
   paidAt: timestamp("paidAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

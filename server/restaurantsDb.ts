@@ -367,3 +367,14 @@ export async function getStaffByRestaurant(restaurantId: number) {
     .where(eq(restaurantStaff.restaurantId, restaurantId));
   return rows;
 }
+
+/** Buscar reserva de restaurante por merchantOrder (para IPN de Redsys) */
+export async function getBookingByMerchantOrder(merchantOrder: string) {
+  const db = await getDb();
+  const rows = await db
+    .select()
+    .from(restaurantBookings)
+    .where(eq(restaurantBookings.merchantOrder, merchantOrder))
+    .limit(1);
+  return rows[0] ?? null;
+}

@@ -641,3 +641,19 @@
 - [x] Teléfono del cliente clickable con `tel:` en la tarjeta de reserva (RestaurantsManager)
 - [x] Teléfono clickable también en el panel lateral del GlobalCalendar
 - [x] 0 errores TypeScript, 100 tests pasando
+
+### Mejoras v8.5 — Páginas de confirmación de reserva de restaurante
+- [x] Página /restaurantes/reserva-ok — confirmación de pago exitoso con datos de la reserva
+- [x] Página /restaurantes/reserva-ko — error de pago con opción de reintentar
+- [x] Procedimiento tRPC `restaurants.getBookingByLocator` para consultar estado real
+- [x] Conectar las URLs de retorno Redsys del flujo de restaurante a las nuevas páginas
+- [x] Registrar rutas en App.tsx
+- [x] 0 errores TypeScript reales (tsc --noEmit), 100 tests pasando
+
+## Mejoras v8.6 — Endpoint IPN Redsys para restaurantes
+- [x] Función `getBookingByMerchantOrder` en restaurantsDb.ts
+- [x] Endpoint POST /api/redsys/restaurant-notification en redsysRoutes.ts
+- [x] Actualiza paymentStatus/status de la reserva de restaurante al recibir IPN
+- [x] Notificación al owner cuando se confirma un pago de restaurante
+- [x] Páginas /restaurantes/reserva-ok y /restaurantes/reserva-ko registradas en App.tsx
+- [x] 0 errores TypeScript reales (tsc --noEmit)
