@@ -47,6 +47,7 @@ import {
   ArrowUpRight,
   Banknote,
   Pencil,
+  FileDown,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -1099,6 +1100,20 @@ function QuoteDetailModal({
     },
   });
 
+  const generatePdf = trpc.crm.quotes.generatePdf.useMutation({
+    onError: (e) => toast.error(e.message),
+  });
+
+  const downloadPdf = async () => {
+    try {
+      const result = await generatePdf.mutateAsync({ id: quoteId });
+      const link = document.createElement("a");
+      link.href = `data:application/pdf;base64,${result.pdfBase64}`;
+      link.download = `presupuesto-${quote.quoteNumber}.pdf`;
+      link.click();
+    } catch (_) { /* error ya mostrado */ }
+  };
+
   if (isLoading) {
     return (
       <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white">
@@ -1250,6 +1265,10 @@ function QuoteDetailModal({
             </Button>
           </>
         )}
+        <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs" onClick={downloadPdf} disabled={generatePdf.isPending}>
+          {generatePdf.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1" />}
+          Descargar PDF
+        </Button>
         <Button size="sm" variant="ghost" className="text-white/40 hover:text-white text-xs" onClick={() => duplicate.mutate({ id: quoteId })}>
           <Copy className="w-3.5 h-3.5 mr-1" /> Duplicar
         </Button>
@@ -1851,6 +1870,12 @@ export default function CRMDashboard() {
                               <XCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
+                          {/* Descargar PDF */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-amber-300 h-7 w-7 p-0"
+                            onClick={() => downloadQuotePdf(quote.id, quote.quoteNumber)} title="Descargar presupuesto en PDF"
+                            disabled={generatePdfMutation.isPending}>
+                            <FileDown className="w-3.5 h-3.5" />
+                          </Button>
                           {/* Duplicar */}
                           <Button size="sm" variant="ghost" className="text-white/40 hover:text-white/70 h-7 w-7 p-0"
                             onClick={() => duplicateQuoteMutation.mutate({ id: quote.id })} title="Duplicar presupuesto">
