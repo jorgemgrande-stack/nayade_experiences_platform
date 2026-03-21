@@ -1,0 +1,1 @@
+ALTER TABLE `restaurant_shifts` ADD `slotMinutes` int DEFAULT 30 NOT NULL;

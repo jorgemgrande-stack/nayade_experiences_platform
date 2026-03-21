@@ -764,16 +764,16 @@ export default function RestaurantsManager() {
   );
 }
 
-// \u2500\u2500 Subcomponente de configuraci\u00f3n \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-const DAYS_ES = ["Dom", "Lun", "Mar", "Mi\u00e9", "Jue", "Vie", "S\u00e1b"];
+// ── Subcomponente de configuración ────────────────────────────────────────────
+const DAYS_ES = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 type ShiftFormState = {
   name: string; startTime: string; endTime: string;
-  maxCapacity: number; daysOfWeek: number[]; isActive: boolean;
+  maxCapacity: number; daysOfWeek: number[]; slotMinutes: number; isActive: boolean;
 };
 const EMPTY_SHIFT: ShiftFormState = {
   name: "", startTime: "13:00", endTime: "16:00",
-  maxCapacity: 60, daysOfWeek: [0,1,2,3,4,5,6], isActive: true,
+  maxCapacity: 60, daysOfWeek: [0,1,2,3,4,5,6], slotMinutes: 30, isActive: true,
 };
 
 function ShiftFormRow({ initial, onSave, onCancel, isSaving }: {
@@ -797,7 +797,7 @@ function ShiftFormRow({ initial, onSave, onCancel, isSaving }: {
             className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50" />
         </div>
         <div>
-          <label className="text-xs font-display text-muted-foreground mb-1 block">Aforo m\u00e1ximo *</label>
+          <label className="text-xs font-display text-muted-foreground mb-1 block">Aforo máximo *</label>
           <input type="number" min="1" max="500" value={form.maxCapacity}
             onChange={e => setForm(f => ({ ...f, maxCapacity: Number(e.target.value) }))}
             className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50" />
@@ -813,8 +813,27 @@ function ShiftFormRow({ initial, onSave, onCancel, isSaving }: {
             className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50" />
         </div>
       </div>
+      {/* Granularidad de slots */}
       <div>
-        <label className="text-xs font-display text-muted-foreground mb-2 block">D\u00edas activos</label>
+        <label className="text-xs font-display text-muted-foreground mb-1 block">Intervalo entre reservas</label>
+        <div className="flex gap-2">
+          {[15, 30, 60].map(m => (
+            <button key={m} type="button" onClick={() => setForm(f => ({ ...f, slotMinutes: m }))}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-display font-semibold transition-colors border ${
+                form.slotMinutes === m
+                  ? "bg-accent text-white border-accent"
+                  : "bg-background text-muted-foreground border-border/60 hover:border-accent/50"
+              }`}>
+              {m === 60 ? "Cada hora" : `Cada ${m} min`}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground font-display mt-1">
+          Los clientes podrán elegir hora dentro del turno con este intervalo
+        </p>
+      </div>
+      <div>
+        <label className="text-xs font-display text-muted-foreground mb-2 block">Días activos</label>
         <div className="flex gap-1.5 flex-wrap">
           {DAYS_ES.map((d, i) => (
             <button key={i} type="button" onClick={() => toggleDay(i)}
@@ -843,21 +862,51 @@ function ShiftFormRow({ initial, onSave, onCancel, isSaving }: {
   );
 }
 
-function RestaurantConfig({ restaurant }: { restaurant: { id: number; name: string; acceptsOnlineBooking: boolean; depositPerGuest: string | null; maxGroupSize: number | null; cancellationPolicy: string | null } }) {
+type ConfigTab = "ficha" | "operativa" | "turnos";
+
+function RestaurantConfig({ restaurant }: { restaurant: any }) {
   const utils = trpc.useUtils();
-  const [form, setForm] = useState({
-    acceptsOnlineBooking: restaurant.acceptsOnlineBooking,
-    depositPerGuest: restaurant.depositPerGuest ?? "5.00",
-    maxGroupSize: restaurant.maxGroupSize ?? 20,
-    cancellationPolicy: restaurant.cancellationPolicy ?? "",
-  });
+  const [tab, setTab] = useState<ConfigTab>("ficha");
   const [saved, setSaved] = useState(false);
   const [showNewShift, setShowNewShift] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState<number | null>(null);
 
-  const updateMutation = trpc.restaurants.adminUpdateConfig.useMutation({
-    onSuccess: () => { utils.restaurants.adminGetAll.invalidate(); setSaved(true); setTimeout(() => setSaved(false), 2000); },
+  // Estado ficha pública
+  const [ficha, setFicha] = useState({
+    name: restaurant.name ?? "",
+    shortDesc: restaurant.shortDesc ?? "",
+    longDesc: restaurant.longDesc ?? "",
+    cuisine: restaurant.cuisine ?? "",
+    heroImage: restaurant.heroImage ?? "",
+    menuUrl: restaurant.menuUrl ?? "",
+    phone: restaurant.phone ?? "",
+    email: restaurant.email ?? "",
+    location: restaurant.location ?? "",
+    badge: restaurant.badge ?? "",
+    isActive: restaurant.isActive ?? true,
   });
+
+  // Estado configuración operativa
+  const [operativa, setOperativa] = useState({
+    acceptsOnlineBooking: restaurant.acceptsOnlineBooking ?? true,
+    depositPerGuest: restaurant.depositPerGuest ?? "5.00",
+    maxGroupSize: restaurant.maxGroupSize ?? 20,
+    minAdvanceHours: restaurant.minAdvanceHours ?? 2,
+    maxAdvanceDays: restaurant.maxAdvanceDays ?? 60,
+    cancellationHours: restaurant.cancellationHours ?? 24,
+    cancellationPolicy: restaurant.cancellationPolicy ?? "",
+    legalText: restaurant.legalText ?? "",
+    operativeEmail: restaurant.operativeEmail ?? "",
+  });
+
+  const updateMutation = trpc.restaurants.adminUpdateConfig.useMutation({
+    onSuccess: () => {
+      utils.restaurants.adminGetAll.invalidate();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    },
+  });
+
   const { data: shifts, isLoading: shiftsLoading } = trpc.restaurants.adminGetShifts.useQuery({ restaurantId: restaurant.id });
   const createShiftMutation = trpc.restaurants.adminCreateShift.useMutation({
     onSuccess: () => { utils.restaurants.adminGetShifts.invalidate(); setShowNewShift(false); },
@@ -869,124 +918,249 @@ function RestaurantConfig({ restaurant }: { restaurant: { id: number; name: stri
     onSuccess: () => utils.restaurants.adminGetShifts.invalidate(),
   });
 
+  function handleSaveFicha() {
+    updateMutation.mutate({ restaurantId: restaurant.id, ...ficha });
+  }
+  function handleSaveOperativa() {
+    updateMutation.mutate({ restaurantId: restaurant.id, ...operativa });
+  }
+
+  const inputCls = "w-full px-4 py-2.5 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50";
+  const labelCls = "text-sm font-display text-muted-foreground mb-1 block";
+
   return (
-    <div className="max-w-2xl space-y-6">
-      {/* Configuraci\u00f3n general */}
-      <div className="bg-card rounded-2xl border border-border/40 p-6 space-y-5">
-        <h3 className="font-heading font-bold text-foreground">Configuraci\u00f3n de {restaurant.name}</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-display font-semibold text-foreground text-sm">Reservas online activas</p>
-            <p className="text-xs text-muted-foreground font-display">Los clientes podr\u00e1n reservar desde la web</p>
-          </div>
-          <button onClick={() => setForm(f => ({ ...f, acceptsOnlineBooking: !f.acceptsOnlineBooking }))}
-            className={`w-12 h-6 rounded-full transition-colors ${form.acceptsOnlineBooking ? "bg-accent" : "bg-muted-foreground/30"}`}>
-            <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${form.acceptsOnlineBooking ? "translate-x-6" : "translate-x-0"}`} />
+    <div className="max-w-2xl space-y-4">
+      {/* Tabs */}
+      <div className="flex gap-1 bg-muted/40 rounded-xl p-1">
+        {(["ficha", "operativa", "turnos"] as ConfigTab[]).map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`flex-1 py-2 rounded-lg text-sm font-display font-semibold capitalize transition-colors ${
+              tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}>
+            {t === "ficha" ? "Ficha pública" : t === "operativa" ? "Configuración" : "Turnos"}
           </button>
-        </div>
-        <div>
-          <label className="text-sm font-display text-muted-foreground mb-1 block">Dep\u00f3sito por comensal (\u20ac)</label>
-          <input type="number" min="0" step="0.50" value={form.depositPerGuest}
-            onChange={e => setForm(f => ({ ...f, depositPerGuest: e.target.value }))}
-            className="w-full px-4 py-2.5 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50" />
-        </div>
-        <div>
-          <label className="text-sm font-display text-muted-foreground mb-1 block">Tama\u00f1o m\u00e1ximo de grupo</label>
-          <input type="number" min="1" max="100" value={form.maxGroupSize}
-            onChange={e => setForm(f => ({ ...f, maxGroupSize: Number(e.target.value) }))}
-            className="w-full px-4 py-2.5 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50" />
-        </div>
-        <div>
-          <label className="text-sm font-display text-muted-foreground mb-1 block">Pol\u00edtica de cancelaci\u00f3n</label>
-          <textarea value={form.cancellationPolicy} onChange={e => setForm(f => ({ ...f, cancellationPolicy: e.target.value }))}
-            rows={3} className="w-full px-4 py-2.5 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none"
-            placeholder="Cancelaci\u00f3n gratuita hasta 24h antes..." />
-        </div>
-        <Button onClick={() => updateMutation.mutate({ restaurantId: restaurant.id, ...form })} disabled={updateMutation.isPending}
-          className="w-full bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold">
-          {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : null}
-          {saved ? "\u00a1Guardado!" : "Guardar configuraci\u00f3n"}
-        </Button>
+        ))}
       </div>
 
-      {/* Gesti\u00f3n de turnos */}
-      <div className="bg-card rounded-2xl border border-border/40 p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-heading font-bold text-foreground">Turnos de servicio</h3>
-            <p className="text-xs text-muted-foreground font-display mt-0.5">Gestiona los turnos disponibles para reservar</p>
+      {/* Tab: Ficha pública */}
+      {tab === "ficha" && (
+        <div className="bg-card rounded-2xl border border-border/40 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-heading font-bold text-foreground">Ficha pública — {ficha.name}</h3>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-display text-muted-foreground">{ficha.isActive ? "Visible" : "Oculto"}</span>
+              <button onClick={() => setFicha(f => ({ ...f, isActive: !f.isActive }))}
+                className={`w-10 h-5 rounded-full transition-colors ${ficha.isActive ? "bg-accent" : "bg-muted-foreground/30"}`}>
+                <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${ficha.isActive ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
           </div>
-          <Button size="sm" onClick={() => { setShowNewShift(true); setEditingShiftId(null); }}
-            className="bg-accent hover:bg-accent/90 text-white rounded-full font-display text-xs">
-            <Plus className="w-3.5 h-3.5 mr-1" /> Nuevo turno
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className={labelCls}>Nombre del restaurante *</label>
+              <input value={ficha.name} onChange={e => setFicha(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="El Galeón" />
+            </div>
+            <div>
+              <label className={labelCls}>Badge / Etiqueta</label>
+              <input value={ficha.badge} onChange={e => setFicha(f => ({ ...f, badge: e.target.value }))} className={inputCls} placeholder="Nuevo, Recomendado..." />
+            </div>
+            <div>
+              <label className={labelCls}>Tipo de cocina</label>
+              <input value={ficha.cuisine} onChange={e => setFicha(f => ({ ...f, cuisine: e.target.value }))} className={inputCls} placeholder="Mediterránea, Arrocera..." />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Descripción corta (listado)</label>
+              <textarea value={ficha.shortDesc} onChange={e => setFicha(f => ({ ...f, shortDesc: e.target.value }))} rows={2} className={inputCls + " resize-none"} placeholder="Breve descripción que aparece en el listado de restaurantes..." />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Descripción completa (ficha)</label>
+              <textarea value={ficha.longDesc} onChange={e => setFicha(f => ({ ...f, longDesc: e.target.value }))} rows={4} className={inputCls + " resize-none"} placeholder="Descripción detallada del restaurante, ambiente, especialidades..." />
+            </div>
+            <div>
+              <label className={labelCls}>Teléfono</label>
+              <input value={ficha.phone} onChange={e => setFicha(f => ({ ...f, phone: e.target.value }))} className={inputCls} placeholder="+34 921 000 000" />
+            </div>
+            <div>
+              <label className={labelCls}>Email de contacto</label>
+              <input type="email" value={ficha.email} onChange={e => setFicha(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="restaurante@nayadeexperiences.es" />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Ubicación / Dirección</label>
+              <input value={ficha.location} onChange={e => setFicha(f => ({ ...f, location: e.target.value }))} className={inputCls} placeholder="Ctra. de Los Ángeles, s/n, El Espinar, Segovia" />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>URL imagen principal (hero)</label>
+              <input value={ficha.heroImage} onChange={e => setFicha(f => ({ ...f, heroImage: e.target.value }))} className={inputCls} placeholder="https://cdn.../imagen.jpg" />
+              {ficha.heroImage && (
+                <img src={ficha.heroImage} alt="Hero" className="mt-2 w-full h-28 object-cover rounded-xl border border-border/40" onError={e => ((e.currentTarget as HTMLImageElement).style.display = "none")} />
+              )}
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>URL menú (PDF o enlace)</label>
+              <input value={ficha.menuUrl} onChange={e => setFicha(f => ({ ...f, menuUrl: e.target.value }))} className={inputCls} placeholder="https://..." />
+            </div>
+          </div>
+          <Button onClick={handleSaveFicha} disabled={updateMutation.isPending}
+            className="w-full bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold">
+            {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : null}
+            {saved ? "¡Guardado!" : "Guardar ficha"}
           </Button>
         </div>
+      )}
 
-        {showNewShift && (
-          <ShiftFormRow initial={EMPTY_SHIFT}
-            onSave={(data) => createShiftMutation.mutate({ restaurantId: restaurant.id, ...data })}
-            onCancel={() => setShowNewShift(false)}
-            isSaving={createShiftMutation.isPending} />
-        )}
+      {/* Tab: Configuración operativa */}
+      {tab === "operativa" && (
+        <div className="bg-card rounded-2xl border border-border/40 p-6 space-y-4">
+          <h3 className="font-heading font-bold text-foreground">Configuración operativa</h3>
 
-        {shiftsLoading ? (
-          <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
-        ) : shifts && shifts.length > 0 ? (
-          <div className="space-y-2">
-            {shifts.map(shift => (
-              <div key={shift.id}>
-                {editingShiftId === shift.id ? (
-                  <ShiftFormRow
-                    initial={{
-                      name: shift.name, startTime: shift.startTime, endTime: shift.endTime,
-                      maxCapacity: shift.maxCapacity,
-                      daysOfWeek: (shift.daysOfWeek as number[]) ?? [0,1,2,3,4,5,6],
-                      isActive: shift.isActive,
-                    }}
-                    onSave={(data) => updateShiftMutation.mutate({ id: shift.id, restaurantId: restaurant.id, ...data })}
-                    onCancel={() => setEditingShiftId(null)}
-                    isSaving={updateShiftMutation.isPending} />
-                ) : (
-                  <div className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
-                    shift.isActive ? "border-border/40 bg-muted/20" : "border-border/20 bg-muted/10 opacity-60"
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${shift.isActive ? "bg-green-500" : "bg-gray-400"}`} />
-                      <div>
-                        <p className="font-display font-semibold text-foreground text-sm">{shift.name}</p>
-                        <p className="text-xs text-muted-foreground font-display">
-                          {shift.startTime} \u2013 {shift.endTime} \u00b7 {shift.maxCapacity} pax \u00b7{" "}
-                          {((shift.daysOfWeek as number[]) ?? []).map((d: number) => DAYS_ES[d]).join(", ")}
-                        </p>
+          {/* Booking on/off */}
+          <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/40">
+            <div>
+              <p className="font-display font-semibold text-foreground text-sm">Reservas online activas</p>
+              <p className="text-xs text-muted-foreground font-display">Los clientes podrán reservar desde la web</p>
+            </div>
+            <button onClick={() => setOperativa(f => ({ ...f, acceptsOnlineBooking: !f.acceptsOnlineBooking }))}
+              className={`w-12 h-6 rounded-full transition-colors ${operativa.acceptsOnlineBooking ? "bg-accent" : "bg-muted-foreground/30"}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${operativa.acceptsOnlineBooking ? "translate-x-6" : "translate-x-0"}`} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Depósito por comensal (€)</label>
+              <input type="number" min="0" step="0.50" value={operativa.depositPerGuest}
+                onChange={e => setOperativa(f => ({ ...f, depositPerGuest: e.target.value }))} className={inputCls} />
+              <p className="text-xs text-muted-foreground font-display mt-1">0 = sin depósito requerido</p>
+            </div>
+            <div>
+              <label className={labelCls}>Grupo máximo (comensales)</label>
+              <input type="number" min="1" max="200" value={operativa.maxGroupSize}
+                onChange={e => setOperativa(f => ({ ...f, maxGroupSize: Number(e.target.value) }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Antelación mínima (horas)</label>
+              <input type="number" min="0" max="168" value={operativa.minAdvanceHours}
+                onChange={e => setOperativa(f => ({ ...f, minAdvanceHours: Number(e.target.value) }))} className={inputCls} />
+              <p className="text-xs text-muted-foreground font-display mt-1">Horas antes de la reserva que se puede hacer</p>
+            </div>
+            <div>
+              <label className={labelCls}>Anticipación máxima (días)</label>
+              <input type="number" min="1" max="365" value={operativa.maxAdvanceDays}
+                onChange={e => setOperativa(f => ({ ...f, maxAdvanceDays: Number(e.target.value) }))} className={inputCls} />
+              <p className="text-xs text-muted-foreground font-display mt-1">Días hacia adelante que se puede reservar</p>
+            </div>
+            <div>
+              <label className={labelCls}>Cancelación gratuita hasta (horas)</label>
+              <input type="number" min="0" max="168" value={operativa.cancellationHours}
+                onChange={e => setOperativa(f => ({ ...f, cancellationHours: Number(e.target.value) }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Email operativo (notificaciones)</label>
+              <input type="email" value={operativa.operativeEmail}
+                onChange={e => setOperativa(f => ({ ...f, operativeEmail: e.target.value }))} className={inputCls}
+                placeholder="reservas@restaurante.es" />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Política de cancelación (texto público)</label>
+              <textarea value={operativa.cancellationPolicy} onChange={e => setOperativa(f => ({ ...f, cancellationPolicy: e.target.value }))}
+                rows={3} className={inputCls + " resize-none"} placeholder="Cancelación gratuita hasta 24h antes..." />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Texto legal / aviso (pie del formulario de reserva)</label>
+              <textarea value={operativa.legalText} onChange={e => setOperativa(f => ({ ...f, legalText: e.target.value }))}
+                rows={2} className={inputCls + " resize-none"} placeholder="Al realizar la reserva aceptas nuestra política de privacidad..." />
+            </div>
+          </div>
+
+          <Button onClick={handleSaveOperativa} disabled={updateMutation.isPending}
+            className="w-full bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold">
+            {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : saved ? <CheckCircle className="w-4 h-4 mr-2" /> : null}
+            {saved ? "¡Guardado!" : "Guardar configuración"}
+          </Button>
+        </div>
+      )}
+
+      {/* Tab: Turnos */}
+      {tab === "turnos" && (
+        <div className="bg-card rounded-2xl border border-border/40 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-heading font-bold text-foreground">Turnos de servicio</h3>
+              <p className="text-xs text-muted-foreground font-display mt-0.5">Cada turno define un rango horario; el cliente elige hora concreta dentro del rango</p>
+            </div>
+            <Button size="sm" onClick={() => { setShowNewShift(true); setEditingShiftId(null); }}
+              className="bg-accent hover:bg-accent/90 text-white rounded-full font-display text-xs">
+              <Plus className="w-3.5 h-3.5 mr-1" /> Nuevo turno
+            </Button>
+          </div>
+
+          {showNewShift && (
+            <ShiftFormRow initial={EMPTY_SHIFT}
+              onSave={(data) => createShiftMutation.mutate({ restaurantId: restaurant.id, ...data })}
+              onCancel={() => setShowNewShift(false)}
+              isSaving={createShiftMutation.isPending} />
+          )}
+
+          {shiftsLoading ? (
+            <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : shifts && shifts.length > 0 ? (
+            <div className="space-y-2">
+              {shifts.map(shift => (
+                <div key={shift.id}>
+                  {editingShiftId === shift.id ? (
+                    <ShiftFormRow
+                      initial={{
+                        name: shift.name, startTime: shift.startTime, endTime: shift.endTime,
+                        maxCapacity: shift.maxCapacity,
+                        daysOfWeek: (shift.daysOfWeek as number[]) ?? [0,1,2,3,4,5,6],
+                        slotMinutes: (shift as any).slotMinutes ?? 30,
+                        isActive: shift.isActive,
+                      }}
+                      onSave={(data) => updateShiftMutation.mutate({ id: shift.id, restaurantId: restaurant.id, ...data })}
+                      onCancel={() => setEditingShiftId(null)}
+                      isSaving={updateShiftMutation.isPending} />
+                  ) : (
+                    <div className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
+                      shift.isActive ? "border-border/40 bg-muted/20" : "border-border/20 bg-muted/10 opacity-60"
+                    }`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${shift.isActive ? "bg-green-500" : "bg-gray-400"}`} />
+                        <div>
+                          <p className="font-display font-semibold text-foreground text-sm">{shift.name}</p>
+                          <p className="text-xs text-muted-foreground font-display">
+                            {shift.startTime} – {shift.endTime} · {shift.maxCapacity} pax · cada {(shift as any).slotMinutes ?? 30} min ·{" "}
+                            {((shift.daysOfWeek as number[]) ?? []).map((d: number) => DAYS_ES[d]).join(", ")}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button onClick={() => setEditingShiftId(shift.id)}
+                          className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => {
+                            if (confirm(`¿Eliminar el turno "${shift.name}"? Esta acción no se puede deshacer.`)) {
+                              deleteShiftMutation.mutate({ id: shift.id, restaurantId: restaurant.id });
+                            }
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-muted-foreground hover:text-red-600">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex gap-1">
-                      <button onClick={() => setEditingShiftId(shift.id)}
-                        className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => {
-                          if (confirm(`\u00bfEliminar el turno "${shift.name}"? Esta acci\u00f3n no se puede deshacer.`)) {
-                            deleteShiftMutation.mutate({ id: shift.id, restaurantId: restaurant.id });
-                          }
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-muted-foreground hover:text-red-600">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-6 text-muted-foreground">
-            <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm font-display">No hay turnos configurados</p>
-            <p className="text-xs font-display mt-1">Crea el primer turno para que los clientes puedan reservar</p>
-          </div>
-        )}
-      </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 text-muted-foreground">
+              <Clock className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm font-display">No hay turnos configurados</p>
+              <p className="text-xs font-display mt-1">Crea el primer turno para que los clientes puedan reservar</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

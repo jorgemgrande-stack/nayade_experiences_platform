@@ -684,3 +684,21 @@
 - [x] Rediseñar: email invitación/activación de cuenta — buildInviteHtml
 - [x] Rediseñar: email recuperación de contraseña — buildPasswordResetHtml
 - [x] Enviar 6 plantillas de prueba a jgrande@skicenter.es — todas entregadas con éxito
+
+## Configuración real de restaurantes — v8.11
+- [x] Schema BD: campo slotMinutes añadido a restaurant_shifts (default 30 min)
+- [x] Migración SQL aplicada via webdev_execute_sql
+- [x] Router: adminUpdateConfig ampliado con todos los campos de la ficha (phone, email, location, description, longDescription, cuisine, badge, heroImage, galleryImages, cancellationPolicy, minAdvanceHours, maxAdvanceDays, depositPerGuest, maxGroupSize, acceptsOnlineBooking)
+- [x] Router: adminCreateShift y adminUpdateShift con campo slotMinutes
+- [x] Router: getAvailability devuelve slotMinutes por turno
+- [x] Admin: panel Configuración reemplaza duplicidad con 3 tabs: Ficha / Operativa / Turnos
+- [x] Admin: tab Ficha — nombre, descripción corta/larga, cocina, badge, teléfono, email, ubicación, política cancelación
+- [x] Admin: tab Operativa — booking on/off, depósito, grupo máximo, antelación mín/máx, subida hero + galería
+- [x] Admin: tab Turnos — CRUD con nombre, horario inicio/fin, días, capacidad, slotMinutes
+- [x] Admin: creación de nuevo restaurante desde botón + formulario completo
+- [x] Formulario público: selector de hora concreta dentro del turno (slots cada slotMinutes)
+- [x] Formulario público: aviso levantamiento de mesa (30 min antes del siguiente turno)
+- [x] Formulario público: botón Continuar requiere hora seleccionada además de turno
+- [x] Email confirmación: incluye hora exacta elegida por el cliente
+- [x] Landing pública: muestra teléfono, email, ubicación y horarios desde la ficha
+- [x] 0 errores TypeScript (tsc --noEmit), 100 tests pasando

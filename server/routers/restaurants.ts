@@ -461,10 +461,11 @@ export const restaurantsRouter = router({
       endTime: z.string(),
       maxCapacity: z.number().min(1),
       daysOfWeek: z.array(z.number()).optional(),
+      slotMinutes: z.number().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
-      return createShift({ ...input, daysOfWeek: input.daysOfWeek ?? [0,1,2,3,4,5,6] });
+      return createShift({ ...input, daysOfWeek: input.daysOfWeek ?? [0,1,2,3,4,5,6], slotMinutes: input.slotMinutes ?? 30 });
     }),
 
   /** Actualizar turno */
@@ -477,6 +478,7 @@ export const restaurantsRouter = router({
       endTime: z.string().optional(),
       maxCapacity: z.number().optional(),
       daysOfWeek: z.array(z.number()).optional(),
+      slotMinutes: z.number().optional(),
       isActive: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -630,14 +632,33 @@ export const restaurantsRouter = router({
       return { ok: true };
     }),
 
-  /** Actualizar configuración de un restaurante */
+  /** Actualizar configuración de un restaurante (ficha completa + operativa) */
   adminUpdateConfig: adminrestProcedure
     .input(z.object({
       restaurantId: z.number(),
+      // Ficha pública
+      name: z.string().optional(),
+      shortDesc: z.string().optional(),
+      longDesc: z.string().optional(),
+      cuisine: z.string().optional(),
+      heroImage: z.string().optional(),
+      galleryImages: z.array(z.string()).optional(),
+      menuUrl: z.string().optional(),
+      phone: z.string().optional(),
+      email: z.string().optional(),
+      location: z.string().optional(),
+      badge: z.string().optional(),
+      // Configuración operativa
       acceptsOnlineBooking: z.boolean().optional(),
       depositPerGuest: z.string().optional(),
       maxGroupSize: z.number().optional(),
+      minAdvanceHours: z.number().optional(),
+      maxAdvanceDays: z.number().optional(),
+      cancellationHours: z.number().optional(),
       cancellationPolicy: z.string().optional(),
+      legalText: z.string().optional(),
+      operativeEmail: z.string().optional(),
+      isActive: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);

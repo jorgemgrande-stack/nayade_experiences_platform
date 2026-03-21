@@ -164,6 +164,7 @@ export async function getAvailability(restaurantId: number, date: string) {
       startTime: shift.startTime,
       endTime: shift.endTime,
       maxCapacity: shift.maxCapacity,
+      slotMinutes: (shift as any).slotMinutes ?? 30,
       occupied,
       available: Math.max(0, available),
       isFull: available <= 0,

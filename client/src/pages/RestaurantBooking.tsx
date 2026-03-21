@@ -332,38 +332,100 @@ export default function RestaurantBooking() {
                       No hay turnos disponibles para esta fecha.
                     </p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {availability.map(shift => {
-                        const available = shift.available >= guests;
-                        const isSelected = selectedShift === shift.shiftId;
+                    <div className="space-y-4">
+                      {/* Selector de turno */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {availability.map(shift => {
+                          const available = shift.available >= guests;
+                          const isSelected = selectedShift === shift.shiftId;
+                          return (
+                            <button
+                              key={shift.shiftId}
+                              disabled={!available}
+                              onClick={() => {
+                                setSelectedShift(shift.shiftId);
+                                setSelectedTime(""); // reset hora al cambiar turno
+                              }}
+                              className={`p-4 rounded-xl border text-left transition-all ${
+                                isSelected
+                                  ? "border-accent bg-accent/10"
+                                  : available
+                                  ? "border-border/60 hover:border-accent/50 hover:bg-muted/50"
+                                  : "border-border/30 opacity-50 cursor-not-allowed"
+                              }`}
+                            >
+                              <div className="font-heading font-bold text-foreground">{shift.shiftName}</div>
+                              <div className="text-sm text-muted-foreground font-display mt-1">
+                                {shift.startTime} – {shift.endTime}
+                              </div>
+                              <div className={`text-xs mt-2 font-display font-semibold ${
+                                available ? "text-green-600" : "text-red-500"
+                              }`}>
+                                {available ? `${shift.available} plazas disponibles` : "Sin plazas suficientes"}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Selector de hora concreta dentro del turno */}
+                      {selectedShift && (() => {
+                        const shift = availability.find(s => s.shiftId === selectedShift);
+                        if (!shift) return null;
+                        // Generar slots cada slotMinutes dentro del rango
+                        const slots: string[] = [];
+                        const [sh, sm] = shift.startTime.split(":").map(Number);
+                        const [eh, em] = shift.endTime.split(":").map(Number);
+                        const startMins = sh * 60 + sm;
+                        const endMins = eh * 60 + em;
+                        const slotStep = (shift as any).slotMinutes ?? 30;
+                        for (let mins = startMins; mins < endMins; mins += slotStep) {
+                          const hh = String(Math.floor(mins / 60)).padStart(2, "0");
+                          const mm = String(mins % 60).padStart(2, "0");
+                          slots.push(`${hh}:${mm}`);
+                        }
+                        // Aviso levantamiento de mesa: 30 min antes del inicio del siguiente turno
+                        const shiftIdx = availability.findIndex(s => s.shiftId === selectedShift);
+                        const nextShift = availability[shiftIdx + 1];
+                        let tableUpMsg = "";
+                        if (nextShift) {
+                          const [nsh, nsm] = nextShift.startTime.split(":").map(Number);
+                          const tableUpMins = nsh * 60 + nsm - 30;
+                          const tuh = String(Math.floor(tableUpMins / 60)).padStart(2, "0");
+                          const tum = String(tableUpMins % 60).padStart(2, "0");
+                          tableUpMsg = `La mesa deberá quedar libre a las ${tuh}:${tum} (30 min antes del inicio del turno ${nextShift.shiftName}).`;
+                        }
                         return (
-                          <button
-                            key={shift.shiftId}
-                            disabled={!available}
-                            onClick={() => {
-                              setSelectedShift(shift.shiftId);
-                              setSelectedTime(shift.startTime);
-                            }}
-                            className={`p-4 rounded-xl border text-left transition-all ${
-                              isSelected
-                                ? "border-accent bg-accent/10"
-                                : available
-                                ? "border-border/60 hover:border-accent/50 hover:bg-muted/50"
-                                : "border-border/30 opacity-50 cursor-not-allowed"
-                            }`}
-                          >
-                            <div className="font-heading font-bold text-foreground">{shift.shiftName}</div>
-                            <div className="text-sm text-muted-foreground font-display mt-1">
-                              {shift.startTime} – {shift.endTime}
+                          <div className="bg-card rounded-xl border border-border/40 p-4 space-y-3">
+                            <p className="text-sm font-display font-semibold text-foreground flex items-center gap-2">
+                              <Clock className="w-4 h-4 text-accent" />
+                              Elige tu hora — turno <span className="text-accent">{shift.shiftName}</span>
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {slots.map(slot => (
+                                <button
+                                  key={slot}
+                                  type="button"
+                                  onClick={() => setSelectedTime(slot)}
+                                  className={`px-3 py-1.5 rounded-full text-sm font-display font-semibold transition-colors border ${
+                                    selectedTime === slot
+                                      ? "bg-accent text-white border-accent"
+                                      : "bg-background text-foreground border-border/60 hover:border-accent/50 hover:bg-accent/5"
+                                  }`}
+                                >
+                                  {slot}
+                                </button>
+                              ))}
                             </div>
-                            <div className={`text-xs mt-2 font-display font-semibold ${
-                              available ? "text-green-600" : "text-red-500"
-                            }`}>
-                              {available ? `${shift.available} plazas disponibles` : "Sin plazas suficientes"}
-                            </div>
-                          </button>
+                            {tableUpMsg && (
+                              <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-lg p-3">
+                                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs font-display text-amber-700 dark:text-amber-400">{tableUpMsg}</p>
+                              </div>
+                            )}
+                          </div>
                         );
-                      })}
+                      })()}
                     </div>
                   )}
                 </div>
@@ -386,7 +448,7 @@ export default function RestaurantBooking() {
               <div className="flex justify-end">
                 <Button
                   onClick={() => setStep(2)}
-                  disabled={!selectedDate || !selectedShift}
+                  disabled={!selectedDate || !selectedShift || !selectedTime}
                   className="bg-accent hover:bg-accent/90 text-white rounded-full px-8 py-3 font-display font-semibold"
                 >
                   Continuar <ChevronRight className="w-4 h-4 ml-1" />

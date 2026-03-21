@@ -666,6 +666,7 @@ export const restaurantShifts = mysqlTable("restaurant_shifts", {
   endTime: varchar("endTime", { length: 5 }).notNull(),
   maxCapacity: int("maxCapacity").notNull(),
   daysOfWeek: json("daysOfWeek").$type<number[]>().default([0,1,2,3,4,5,6]), // 0=Dom..6=Sáb
+  slotMinutes: int("slotMinutes").default(30).notNull(), // Granularidad de slots: 15, 30 o 60 min
   isActive: boolean("isActive").default(true).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
 });
