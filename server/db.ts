@@ -143,7 +143,12 @@ export async function createLead(data: {
   locationId?: number;
   preferredDate?: string;
   numberOfPersons?: number;
+  numberOfAdults?: number;
+  numberOfChildren?: number;
   budget?: string;
+  source?: string;
+  selectedCategory?: string;
+  selectedProduct?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -157,9 +162,13 @@ export async function createLead(data: {
     locationId: data.locationId ?? null,
     preferredDate: data.preferredDate ? new Date(data.preferredDate) : null,
     numberOfPersons: data.numberOfPersons ?? null,
+    numberOfAdults: data.numberOfAdults ?? null,
+    numberOfChildren: data.numberOfChildren ?? null,
     budget: data.budget ?? null,
     status: "nuevo",
-    source: "web",
+    source: data.source ?? "web",
+    selectedCategory: data.selectedCategory ?? null,
+    selectedProduct: data.selectedProduct ?? null,
   });
   return { id: Number(result[0].insertId), success: true };
 }

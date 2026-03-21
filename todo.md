@@ -731,3 +731,18 @@
 - [x] Filtros de categoría en la galería pública funcionan con datos reales
 - [x] gallery.getItems y gallery.getCategories añadidos a whitelist authGuard (acceso móvil sin sesión)
 - [x] 0 errores TypeScript, 100 tests pasando
+
+## Rediseño Landing Solicitar Presupuesto — v8.17
+- [x] Auditar BudgetRequest.tsx, routers y schema de leads actuales
+- [x] Schema BD: añadir campos selectedCategory, selectedProduct, numberOfAdults, numberOfChildren a leads
+- [x] Backend: procedimiento public.submitBudget con campos nuevos, emails automáticos (usuario + admin reservas@hotelnayade.es)
+- [x] Frontend: hero comercial con claim potente + subtítulo orientado a conversión
+- [x] Frontend: formulario simplificado (nombre, email, teléfono, día llegada, adultos, niños, experiencia, comentarios)
+- [x] Frontend: selector jerárquico Categoría → Producto (carga dinámica desde BD para Experiencias y Packs)
+- [x] Frontend: opción "Petición especial / Propuesta personalizada" siempre visible
+- [x] Frontend: honeypot anti-spam + validaciones email/teléfono/fecha
+- [x] Frontend: pantalla de confirmación post-envío visual y sin redirección rota
+- [x] Backend: origen del lead guardado como "landing_presupuesto"
+- [x] Backend: si email falla, lead se guarda igualmente (try/catch)
+- [x] public.submitBudget añadido a whitelist authGuard
+- [x] 0 errores TypeScript, 100 tests pasando

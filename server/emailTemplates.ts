@@ -392,3 +392,75 @@ export function buildPasswordResetHtml(d: PasswordResetData): string {
     ${emailFooter()}`;
   return emailWrapper("Recuperar contraseña — Náyade Experiences", body);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLANTILLA: Solicitud de presupuesto — Email al usuario (confirmación)
+// ═══════════════════════════════════════════════════════════════════════════════
+export interface BudgetRequestEmailData {
+  name: string;
+  email: string;
+  phone: string;
+  arrivalDate: string;
+  adults: number;
+  children: number;
+  selectedCategory: string;
+  selectedProduct: string;
+  comments: string;
+  submittedAt: string;
+}
+
+export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
+  const body = `
+    ${emailHeader("Solicitud de Presupuesto")}
+    <tr><td style="padding:32px 40px 0;">
+      <h2 style="color:${BRAND_BLUE};font-size:20px;margin:0 0 12px;font-weight:700;">¡Hemos recibido tu solicitud!</h2>
+      <p style="color:#6b7280;font-size:15px;line-height:1.7;margin:0 0 20px;">
+        Hola <strong>${d.name}</strong>, gracias por contactar con Náyade Experiences.<br/>
+        Nuestro equipo está preparando tu propuesta personalizada y te contactaremos en <strong>menos de 24 horas</strong>.
+      </p>
+      ${alertBlock("success", "✅ Solicitud recibida correctamente",
+        "Revisaremos todos los detalles y te enviaremos una propuesta a medida para que disfrutes de la mejor experiencia posible.")}
+      <h3 style="color:${BRAND_BLUE};font-size:16px;margin:24px 0 12px;font-weight:700;">Resumen de tu solicitud</h3>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;">
+        ${detailRow("📅", "Día de llegada", d.arrivalDate)}
+        ${detailRow("👥", "Adultos", String(d.adults))}
+        ${detailRow("🧒", "Niños", String(d.children))}
+        ${detailRow("🏷️", "Categoría", d.selectedCategory)}
+        ${detailRow("⭐", "Experiencia solicitada", d.selectedProduct)}
+        ${d.comments ? detailRow("💬", "Comentarios", d.comments) : ""}
+        ${detailRow("📞", "Teléfono de contacto", d.phone)}
+      </table>
+      <p style="color:#6b7280;font-size:14px;line-height:1.7;margin:0 0 28px;">
+        Si necesitas modificar algún dato o tienes alguna pregunta, contáctanos en
+        <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};">reservas@nayadeexperiences.es</a>
+        o llámanos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};">+34 930 34 77 91</a>.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper("Solicitud de presupuesto recibida — Náyade Experiences", body);
+}
+
+export function buildBudgetRequestAdminHtml(d: BudgetRequestEmailData): string {
+  const body = `
+    ${emailHeader("Nueva Solicitud de Presupuesto")}
+    <tr><td style="padding:32px 40px 0;">
+      <h2 style="color:${BRAND_BLUE};font-size:20px;margin:0 0 12px;font-weight:700;">Nueva solicitud de presupuesto</h2>
+      ${alertBlock("warning", "⚡ Acción requerida",
+        "Se ha recibido una nueva solicitud de presupuesto. Contacta al cliente en menos de 24 horas.")}
+      <h3 style="color:${BRAND_BLUE};font-size:16px;margin:24px 0 12px;font-weight:700;">Datos del cliente</h3>
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;">
+        ${detailRow("👤", "Nombre", d.name)}
+        ${detailRow("📧", "Email", d.email)}
+        ${detailRow("📞", "Teléfono", d.phone)}
+        ${detailRow("📅", "Día de llegada", d.arrivalDate)}
+        ${detailRow("👥", "Adultos", String(d.adults))}
+        ${detailRow("🧒", "Niños", String(d.children))}
+        ${detailRow("🏷️", "Categoría", d.selectedCategory)}
+        ${detailRow("⭐", "Experiencia solicitada", d.selectedProduct)}
+        ${d.comments ? detailRow("💬", "Comentarios", d.comments) : ""}
+        ${detailRow("🕐", "Fecha de envío", d.submittedAt)}
+      </table>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper("Nueva solicitud de presupuesto — Náyade Experiences", body);
+}

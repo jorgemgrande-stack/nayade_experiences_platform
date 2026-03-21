@@ -198,6 +198,10 @@ export const leads = mysqlTable("leads", {
   assignedTo: int("assignedTo"),
   ghlContactId: varchar("ghlContactId", { length: 128 }),
   source: varchar("source", { length: 128 }).default("web"),
+  selectedCategory: varchar("selectedCategory", { length: 128 }),
+  selectedProduct: varchar("selectedProduct", { length: 256 }),
+  numberOfAdults: int("numberOfAdults"),
+  numberOfChildren: int("numberOfChildren"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

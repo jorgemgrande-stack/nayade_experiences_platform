@@ -64,6 +64,13 @@
       "when": 1774086907901,
       "tag": "0008_colorful_gorgon",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1774092622946,
+      "tag": "0009_gorgeous_franklin_richards",
+      "breakpoints": true
     }
   ]
 }

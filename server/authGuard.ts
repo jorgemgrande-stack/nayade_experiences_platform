@@ -40,6 +40,7 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "public.getSlideshowItems",
   "public.getMenuItems",
   "public.submitLead",
+  "public.submitBudget",
   "public.getPublicPage",
   "public.getPublicPageBlocks",
 
@@ -106,6 +107,7 @@ const PUBLIC_TRPC_ROUTES = new Set([
   // ── Leads y presupuestos (formularios públicos) ───────────────────────────
   "leads.create",
   "public.submitLead",
+  "public.submitBudget",
   "quotes.getByPaymentToken",
   "quotes.createPaymentLink",
 

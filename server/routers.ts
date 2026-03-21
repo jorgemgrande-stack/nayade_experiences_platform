@@ -110,6 +110,8 @@ import {
   generateMerchantOrder,
 } from "./redsys";
 import { sendInviteEmail } from "./inviteEmail";
+import nodemailer from "nodemailer";
+import { buildBudgetRequestUserHtml, buildBudgetRequestAdminHtml } from "./emailTemplates";
 import { getDb } from "./db";
 import { siteSettings } from "../drizzle/schema";
 import { hotelRouter } from "./routers/hotel";
@@ -222,6 +224,90 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         return createLead(input);
+      }),
+
+    submitBudget: publicProcedure
+      .input(z.object({
+        name: z.string().min(2),
+        email: z.string().email(),
+        phone: z.string().min(6),
+        arrivalDate: z.string(),
+        adults: z.number().int().min(1).default(1),
+        children: z.number().int().min(0).default(0),
+        selectedCategory: z.string().min(1),
+        selectedProduct: z.string().min(1),
+        comments: z.string().optional(),
+        honeypot: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        // Anti-spam: honeypot
+        if (input.honeypot) return { success: true };
+
+        const lead = await createLead({
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          message: input.comments,
+          preferredDate: input.arrivalDate,
+          numberOfAdults: input.adults,
+          numberOfChildren: input.children,
+          numberOfPersons: input.adults + input.children,
+          selectedCategory: input.selectedCategory,
+          selectedProduct: input.selectedProduct,
+          source: "landing_presupuesto",
+        });
+
+        // Enviar emails (no bloquear si falla)
+        try {
+          const smtpHost = process.env.SMTP_HOST;
+          const smtpUser = process.env.SMTP_USER;
+          const smtpPass = process.env.SMTP_PASS;
+          const smtpPort = parseInt(process.env.SMTP_PORT ?? "465", 10);
+          const from = process.env.SMTP_FROM ?? `"Náyade Experiences" <${smtpUser}>`;
+
+          if (smtpHost && smtpUser && smtpPass) {
+            const transporter = nodemailer.createTransport({
+              host: smtpHost,
+              port: smtpPort,
+              secure: smtpPort === 465,
+              auth: { user: smtpUser, pass: smtpPass },
+              tls: { rejectUnauthorized: false },
+            });
+
+            const emailData = {
+              name: input.name,
+              email: input.email,
+              phone: input.phone,
+              arrivalDate: new Date(input.arrivalDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+              adults: input.adults,
+              children: input.children,
+              selectedCategory: input.selectedCategory,
+              selectedProduct: input.selectedProduct,
+              comments: input.comments ?? "",
+              submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
+            };
+
+            // Email al usuario
+            await transporter.sendMail({
+              from,
+              to: input.email,
+              subject: "Solicitud de presupuesto recibida — Náyade Experiences",
+              html: buildBudgetRequestUserHtml(emailData),
+            });
+
+            // Email al administrador
+            await transporter.sendMail({
+              from,
+              to: "reservas@hotelnayade.es",
+              subject: `Nueva solicitud de presupuesto — ${input.name}`,
+              html: buildBudgetRequestAdminHtml(emailData),
+            });
+          }
+        } catch (emailErr) {
+          console.error("[submitBudget] Email send failed (lead saved):", emailErr);
+        }
+
+        return { success: true, leadId: lead.id };
       }),
 
     getPublicPage: publicProcedure
