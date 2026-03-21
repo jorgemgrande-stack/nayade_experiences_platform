@@ -1,0 +1,58 @@
+{
+  "query": "\nSELECT r.id, r.slug, r.name, r.shortDesc, r.cuisine, r.heroImage, r.badge, r.acceptsOnlineBooking, r.isActive,\n  GROUP_CONCAT(CONCAT(rs.name, ' ', rs.startTime, '-', rs.endTime) ORDER BY rs.sortOrder SEPARATOR ' | ') AS shifts\nFROM restaurants r\nLEFT JOIN restaurant_shifts rs ON rs.restaurantId = r.id AND rs.isActive = 1\nWHERE r.isActive = 1\nGROUP BY r.id\nORDER BY r.sortOrder;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT r.id, r.slug, r.name, r.shortDesc, r.cuisine, r.heroImage, r.badge, r.acceptsOnlineBooking, r.isActive,\n  GROUP_CONCAT(CONCAT(rs.name, ' ', rs.startTime, '-', rs.endTime) ORDER BY rs.sortOrder SEPARATOR ' | ') AS shifts\nFROM restaurants r\nLEFT JOIN restaurant_shifts rs ON rs.restaurantId = r.id AND rs.isActive = 1\nWHERE r.isActive = 1\nGROUP BY r.id\nORDER BY r.sortOrder;\n",
+  "rows": [
+    {
+      "id": "1",
+      "slug": "el-galeon",
+      "name": "El Galeón",
+      "shortDesc": "Cocina tradicional marinera con vistas al lago",
+      "cuisine": "Cocina marinera castellana",
+      "heroImage": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80",
+      "badge": "Restaurante Principal",
+      "acceptsOnlineBooking": "1",
+      "isActive": "1",
+      "shifts": "Comida 13:00-15:30 | Cena 20:00-23:00"
+    },
+    {
+      "id": "2",
+      "slug": "nassau-bar",
+      "name": "Nassau Bar & Music",
+      "shortDesc": "Bar de copas con música en vivo y ambiente tropical",
+      "cuisine": "Tapas y cócteles",
+      "heroImage": "https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=1200&q=80",
+      "badge": "Bar & Music",
+      "acceptsOnlineBooking": "1",
+      "isActive": "1",
+      "shifts": "2º Turno de Comida 14:00-16:00 | 1er turno de comida 12:00-14:00 | 1er Turno de tarde 19:00-21:00 | Noche 21:00-23:00"
+    },
+    {
+      "id": "3",
+      "slug": "la-cabana-del-lago",
+      "name": "La Cabaña del Lago",
+      "shortDesc": "Gastronomía de montaña en un entorno natural privilegiado",
+      "cuisine": "Cocina de montaña y brasa",
+      "heroImage": "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1200&q=80",
+      "badge": "Cocina de Montaña",
+      "acceptsOnlineBooking": "1",
+      "isActive": "1",
+      "shifts": "Comida 13:30-16:00 | Cena 20:30-23:00"
+    },
+    {
+      "id": "4",
+      "slug": "arroceria-la-cabana",
+      "name": "Arrocería La Cabaña",
+      "shortDesc": "Los mejores arroces y paellas en un ambiente único",
+      "cuisine": "Arroces y paellas",
+      "heroImage": "https://images.unsplash.com/photo-1534080564583-6be75777b70a?w=1200&q=80",
+      "badge": "Especialidad Arroces",
+      "acceptsOnlineBooking": "1",
+      "isActive": "1",
+      "shifts": "Comida (Arroces) 14:00-16:30 | Cena (Arroces) 21:00-23:00"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tslug\tname\tshortDesc\tcuisine\theroImage\tbadge\tacceptsOnlineBooking\tisActive\tshifts\n1\tel-galeon\tEl Galeón\tCocina tradicional marinera con vistas al lago\tCocina marinera castellana\thttps://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80\tRestaurante Principal\t1\t1\tComida 13:00-15:30 | Cena 20:00-23:00\n2\tnassau-bar\tNassau Bar & Music\tBar de copas con música en vivo y ambiente tropical\tTapas y cócteles\thttps://images.unsplash.com/photo-1470337458703-46ad1756a187?w=1200&q=80\tBar & Music\t1\t1\t2º Turno de Comida 14:00-16:00 | 1er turno de comida 12:00-14:00 | 1er Turno de tarde 19:00-21:00 | Noche 21:00-23:00\n3\tla-cabana-del-lago\tLa Cabaña del Lago\tGastronomía de montaña en un entorno natural privilegiado\tCocina de montaña y brasa\thttps://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1200&q=80\tCocina de Montaña\t1\t1\tComida 13:30-16:00 | Cena 20:30-23:00\n4\tarroceria-la-cabana\tArrocería La Cabaña\tLos mejores arroces y paellas en un ambiente único\tArroces y paellas\thttps://images.unsplash.com/photo-1534080564583-6be75777b70a?w=1200&q=80\tEspecialidad Arroces\t1\t1\tComida (Arroces) 14:00-16:30 | Cena (Arroces) 21:00-23:00\n",
+  "stderr": "",
+  "execution_time_ms": 75
+}

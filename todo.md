@@ -784,3 +784,9 @@
 - [x] Bloque Sabores del Lago (Restaurantes): tarjetas foto-fondo con emoji, tipo y CTA, fondo dark marrón cálido
 - [x] Bloque Testimonios: cards glass dark con avatar inicial, línea acento, métricas de confianza (10.000+ clientes, 4.8★)
 - [x] 0 errores TypeScript
+
+## Mejoras bloques Home — v8.23
+- [x] Hotel Náyade: nueva foto (puente/lago), fondo blanco→gris claro (#f8fafc→#e8eef5), iconos SVG vectoriales (cama, olas, usuarios, estrella)
+- [x] 10 Razones: fondo dark navy con radial-gradient, tarjetas glass con línea acento animada, CTA "Diseña tu Experiencia"
+- [x] Sabores del Lago: vinculado a trpc.restaurants.getAll (fotos reales, banda Abierto/Cerrado, próximo turno, skeleton loading)
+- [x] 0 errores TypeScript

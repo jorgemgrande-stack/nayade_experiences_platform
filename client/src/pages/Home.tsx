@@ -16,7 +16,7 @@ const CDN = {
   hero1: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/embalse-verano_64368cd4.jpg",
   hero2: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/cableski_53f05d4a.jpg",
   hero3: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/kayak-grupo_b3eca02d.jpg",
-  hotel: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/hotel-lago_f2ec080b.jpg",
+  hotel: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/d049863d-3421-411f-a64f-64eb34408da9_145ab8b4.png",
   canoa: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/canoa-lago_b18c5886.jpg",
   blob: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/blob-jump2_94e0b06d.jpg",
   banana: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/banana-ski_43cb68d6.jpg",
@@ -132,10 +132,10 @@ const packs = [
 ];
 
 const habitaciones = [
-  { tipo: "Doble Estándar", precio: "130€", rango: "110€ – 150€ / noche", icono: "🛏️", desc: "Confort y vistas al entorno natural" },
-  { tipo: "Doble Superior / Vistas Lago", precio: "160€", rango: "140€ – 180€ / noche", icono: "🌊", desc: "Vistas directas al embalse" },
-  { tipo: "Familiar (3-4 personas)", precio: "195€", rango: "170€ – 220€ / noche", icono: "👨‍👩‍👧‍👦", desc: "Espacio para toda la familia" },
-  { tipo: "Junior Suite Premium", precio: "235€", rango: "210€ – 260€ / noche", icono: "⭐", desc: "Máximo confort y exclusividad" },
+  { tipo: "Doble Estándar", precio: "130€", rango: "110€ – 150€ / noche", iconSvg: "bed", desc: "Confort y vistas al entorno natural" },
+  { tipo: "Doble Superior / Vistas Lago", precio: "160€", rango: "140€ – 180€ / noche", iconSvg: "waves", desc: "Vistas directas al embalse" },
+  { tipo: "Familiar (3-4 personas)", precio: "195€", rango: "170€ – 220€ / noche", iconSvg: "users", desc: "Espacio para toda la familia" },
+  { tipo: "Junior Suite Premium", precio: "235€", rango: "210€ – 260€ / noche", iconSvg: "star", desc: "Máximo confort y exclusividad" },
 ];
 
 const restaurantes = [
@@ -186,6 +186,32 @@ export default function Home() {
   const { data: slideshowItemsRaw } = trpc.public.getSlideshowItems.useQuery();
   const { data: homeExperiences } = trpc.homeModules.getModule.useQuery({ moduleKey: "experiences_featured" });
   const { data: homePacks } = trpc.homeModules.getModule.useQuery({ moduleKey: "packs_day" });
+  const restaurantsQuery = trpc.restaurants.getAll.useQuery();
+
+  function isRestaurantOpenNow(shifts: Array<{ startTime: string; endTime: string; daysOfWeek?: number[] }> | undefined): boolean {
+    if (!shifts || shifts.length === 0) return false;
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    return shifts.some((shift) => {
+      const days = shift.daysOfWeek ?? [0,1,2,3,4,5,6];
+      if (!days.includes(dayOfWeek)) return false;
+      const [sh, sm] = shift.startTime.split(":").map(Number);
+      const [eh, em] = shift.endTime.split(":").map(Number);
+      return currentMinutes >= sh * 60 + sm && currentMinutes <= eh * 60 + em;
+    });
+  }
+
+  function getNextShift(shifts: Array<{ name: string; startTime: string; endTime: string }> | undefined): string {
+    if (!shifts || shifts.length === 0) return "";
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const upcoming = shifts
+      .map((s) => { const [h, m] = s.startTime.split(":").map(Number); return { ...s, startMin: h * 60 + m }; })
+      .filter((s) => s.startMin > currentMinutes)
+      .sort((a, b) => a.startMin - b.startMin);
+    return upcoming.length > 0 ? `Abre a las ${upcoming[0].startTime}` : "";
+  }
   // Use DB slides if available, otherwise fall back to hardcoded
   const activeSlides = slideshowItemsRaw && slideshowItemsRaw.length > 0
     ? slideshowItemsRaw.map((s: any) => ({
@@ -467,43 +493,53 @@ export default function Home() {
           {/* Columna imagen */}
           <div className="relative overflow-hidden" style={{ minHeight: 400 }}>
             <img src={CDN.hotel} alt="Hotel Náyade" className="absolute inset-0 w-full h-full object-cover" />
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to right, transparent 60%, rgba(10,22,40,1) 100%)" }} />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to right, transparent 55%, rgba(248,250,252,1) 100%)" }} />
             {/* Badge flotante */}
-            <div className="absolute bottom-8 left-8 bg-accent text-accent-foreground rounded-2xl px-5 py-4 shadow-xl">
-              <div className="text-2xl font-heading font-bold">★★★</div>
-              <div className="font-display text-sm font-semibold">Hotel Náyade</div>
-              <div className="font-display text-xs opacity-80">117 habitaciones</div>
+            <div className="absolute bottom-8 left-8 bg-white rounded-2xl px-5 py-4 shadow-xl border border-gray-100">
+              <div className="text-2xl font-heading font-bold text-amber-500">★★★</div>
+              <div className="font-display text-sm font-semibold text-gray-800">Hotel Náyade</div>
+              <div className="font-display text-xs text-gray-500">117 habitaciones</div>
             </div>
           </div>
-          {/* Columna contenido */}
-          <div className="flex flex-col justify-center px-8 py-16 lg:px-14" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0d2240 100%)" }}>
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-white/70 text-xs font-display font-bold uppercase tracking-widest mb-5 w-fit">
+          {/* Columna contenido — fondo blanco a gris claro */}
+          <div className="flex flex-col justify-center px-8 py-16 lg:px-14" style={{ background: "linear-gradient(160deg, #f8fafc 0%, #e8eef5 100%)" }}>
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-display font-bold uppercase tracking-widest mb-5 w-fit">
               Alojamiento Premium
             </span>
-            <h2 className="text-4xl md:text-5xl font-heading font-bold text-white mb-4">
-              Hotel <span className="text-accent">Náyade</span>
+            <h2 className="text-4xl md:text-5xl font-heading font-bold text-gray-900 mb-4">
+              Hotel <span className="text-primary">Náyade</span>
             </h2>
-            <p className="text-white/65 text-lg mb-8 leading-relaxed">
+            <p className="text-gray-600 text-lg mb-8 leading-relaxed">
               Ubicado frente al embalse en Los Ángeles de San Rafael. Un refugio de confort diseñado para descansar tras un día de aventura, combinando servicios de calidad con un entorno natural inigualable.
             </p>
             <div className="grid grid-cols-2 gap-3 mb-8">
-              {habitaciones.map((hab) => (
-                <div key={hab.tipo} className="rounded-2xl p-4 border border-white/10 hover:border-accent/40 transition-colors" style={{ background: "rgba(255,255,255,0.05)" }}>
-                  <div className="text-2xl mb-1">{hab.icono}</div>
-                  <div className="font-display font-bold text-sm text-white mb-0.5">{hab.tipo}</div>
-                  <div className="text-accent font-display font-bold text-lg">{hab.precio}€</div>
-                  <div className="text-white/45 text-xs">{hab.rango}</div>
-                </div>
-              ))}
+              {habitaciones.map((hab) => {
+                const svgIcons: Record<string, React.ReactNode> = {
+                  bed: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5 text-primary"><path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"/><path d="M2 12V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6"/><line x1="2" y1="20" x2="22" y2="20"/></svg>,
+                  waves: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5 text-primary"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/></svg>,
+                  users: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5 text-primary"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+                  star: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5 text-primary"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+                };
+                return (
+                  <div key={hab.tipo} className="rounded-2xl p-4 border border-gray-200 hover:border-primary/40 hover:shadow-md transition-all bg-white">
+                    <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl mb-2" style={{ background: "rgba(14,165,233,0.08)" }}>
+                      {svgIcons[hab.iconSvg]}
+                    </div>
+                    <div className="font-display font-bold text-sm text-gray-800 mb-0.5">{hab.tipo}</div>
+                    <div className="text-primary font-display font-bold text-lg">{hab.precio}</div>
+                    <div className="text-gray-400 text-xs">{hab.rango}</div>
+                  </div>
+                );
+              })}
             </div>
             <div className="flex gap-3 mb-6 flex-wrap">
               <Link href="/hotel">
-                <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-8">
+                <Button size="lg" className="bg-primary hover:bg-primary/90 text-white font-display font-semibold rounded-full px-8 shadow-md">
                   Ver Habitaciones <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Link>
               <Link href="/presupuesto">
-                <Button size="lg" variant="outline" className="border-white/25 text-white hover:bg-white/10 font-display font-semibold rounded-full px-8 bg-transparent">
+                <Button size="lg" variant="outline" className="border-primary/30 text-primary hover:bg-primary/5 font-display font-semibold rounded-full px-8 bg-white">
                   Solicitar Precio
                 </Button>
               </Link>
@@ -597,36 +633,56 @@ export default function Home() {
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {restaurantes.map((rest) => {
-              const restImgs: Record<string, string> = {
-                "Restaurante El Galeón": CDN.barco,
-                "La Cabaña del Lago": CDN.cableski2,
-                "Nassau Bar & Music": CDN.panoramica,
-                "Arrocería La Cabaña": CDN.hero1,
-              };
-              const bg = restImgs[rest.nombre] || CDN.hero1;
+            {(restaurantsQuery.data ?? []).map((rest) => {
+              const heroImg = rest.heroImage && !rest.heroImage.includes("unsplash") ? rest.heroImage : CDN.barco;
+              const isOpen = isRestaurantOpenNow((rest as any).shifts);
+              const nextShift = getNextShift((rest as any).shifts);
               return (
-                <div key={rest.nombre} className="group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl shadow-lg" style={{ minHeight: 340 }}>
-                  <img src={bg} alt={rest.nombre} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                  <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(15,8,2,0.97) 40%, rgba(15,8,2,0.2) 100%)" }} />
-                  <div className="relative z-10 flex flex-col justify-end h-full p-6" style={{ minHeight: 340 }}>
-                    <div className="text-3xl mb-2">{rest.emoji}</div>
-                    <h3 className="font-heading font-bold text-lg text-white mb-1">{rest.nombre}</h3>
-                    <p className="text-accent font-display text-xs font-semibold uppercase tracking-wide mb-2">{rest.tipo}</p>
-                    <p className="text-white/65 text-sm leading-relaxed mb-4">{rest.desc}</p>
-                    {rest.reserva ? (
-                      <Link href={`/restaurantes/${rest.nombre.toLowerCase().replace(/\s+/g, '-')}`}>
+                <Link key={rest.slug} href={`/restaurantes/${rest.slug}`}>
+                  <div className="group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl shadow-lg" style={{ minHeight: 360 }}>
+                    <img src={heroImg} alt={rest.name} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                    <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(15,8,2,0.97) 40%, rgba(15,8,2,0.15) 100%)" }} />
+                    {/* Banda abierto/cerrado */}
+                    <div className="absolute top-4 right-4 z-20">
+                      {isOpen ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-display font-bold shadow-lg">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" /> Abierto
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-700/80 text-white/70 text-xs font-display font-bold backdrop-blur-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white/40" /> Cerrado
+                        </span>
+                      )}
+                    </div>
+                    <div className="relative z-10 flex flex-col justify-end h-full p-6" style={{ minHeight: 360 }}>
+                      {rest.badge && (
+                        <span className="inline-block px-2 py-0.5 rounded-full bg-accent/20 text-accent text-xs font-display font-semibold mb-2 w-fit">{rest.badge}</span>
+                      )}
+                      <h3 className="font-heading font-bold text-lg text-white mb-1">{rest.name}</h3>
+                      <p className="text-accent font-display text-xs font-semibold uppercase tracking-wide mb-2">{rest.cuisine}</p>
+                      <p className="text-white/65 text-sm leading-relaxed mb-3 line-clamp-2">{rest.shortDesc}</p>
+                      {/* Horario */}
+                      {!isOpen && nextShift && (
+                        <div className="flex items-center gap-1.5 text-white/50 text-xs mb-3">
+                          <Clock className="w-3 h-3" /> {nextShift}
+                        </div>
+                      )}
+                      {rest.acceptsOnlineBooking ? (
                         <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-accent text-accent-foreground text-xs font-display font-bold transition-all group-hover:gap-2.5 w-fit">
                           <Calendar className="w-3.5 h-3.5" /> Reservar Mesa
                         </span>
-                      </Link>
-                    ) : (
-                      <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white/10 text-white/50 text-xs font-display border border-white/10">Próximamente</span>
-                    )}
+                      ) : (
+                        <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white/10 text-white/50 text-xs font-display border border-white/10">Próximamente</span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </Link>
               );
             })}
+            {/* Skeleton mientras carga */}
+            {restaurantsQuery.isLoading && Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="rounded-3xl bg-white/5 animate-pulse" style={{ minHeight: 360 }} />
+            ))}
           </div>
           <div className="text-center mt-12">
             <Link href="/restaurantes">
@@ -639,23 +695,45 @@ export default function Home() {
       </section>
 
       {/* ─── POR QUÉ NAYADE ─────────────────────────────────────────── */}
-      <section className="py-20 bg-background">
-        <div className="container">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl md:text-5xl font-heading font-bold text-foreground mb-4">
-              10 Razones para <span className="text-gradient-lago">Elegirnos</span>
+      <section className="py-24 relative overflow-hidden" style={{ background: "linear-gradient(160deg, #0a1628 0%, #0d2240 50%, #061020 100%)" }}>
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, rgba(14,165,233,0.3) 0%, transparent 60%), radial-gradient(circle at 80% 20%, rgba(249,115,22,0.2) 0%, transparent 50%)" }} />
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+        <div className="container relative z-10">
+          <div className="text-center mb-14">
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-xs font-display font-bold uppercase tracking-widest mb-5">
+              ¿Por qué Náyade?
+            </span>
+            <h2 className="text-4xl md:text-6xl font-heading font-bold text-white mb-4">
+              10 Razones para <span className="text-accent">Elegirnos</span>
             </h2>
+            <p className="text-white/55 text-lg max-w-2xl mx-auto">
+              Un destino único donde la naturaleza, el deporte y el bienestar se fusionan a solo 45 minutos de Madrid.
+            </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {razones.map((r, i) => (
-              <div key={i} className="text-center p-6 rounded-2xl bg-muted border border-border hover:border-primary/30 hover:bg-secondary/30 transition-all duration-200">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary mb-3">
-                  {r.icon}
+              <div
+                key={i}
+                className="group relative text-center p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl cursor-default"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)" }}
+              >
+                {/* Línea acento top al hover */}
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-accent rounded-full transition-all duration-300 group-hover:w-3/4" />
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-4 transition-all duration-300 group-hover:scale-110" style={{ background: "rgba(249,115,22,0.15)", border: "1px solid rgba(249,115,22,0.25)" }}>
+                  <span className="text-accent">{r.icon}</span>
                 </div>
-                <h4 className="font-display font-bold text-sm text-foreground mb-1">{r.titulo}</h4>
-                <p className="text-muted-foreground text-xs">{r.desc}</p>
+                <h4 className="font-display font-bold text-sm text-white mb-1.5">{r.titulo}</h4>
+                <p className="text-white/50 text-xs leading-relaxed">{r.desc}</p>
               </div>
             ))}
+          </div>
+          <div className="text-center mt-12">
+            <Link href="/presupuesto">
+              <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-10 shadow-lg shadow-accent/20">
+                Diseña tu Experiencia <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
