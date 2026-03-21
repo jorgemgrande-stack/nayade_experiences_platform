@@ -101,6 +101,8 @@ import {
   generateMerchantOrder,
 } from "./redsys";
 import { sendInviteEmail } from "./inviteEmail";
+import { getDb } from "./db";
+import { siteSettings } from "../drizzle/schema";
 import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
 import { reviewsRouter } from "./routers/reviews";
@@ -376,6 +378,26 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         return upsertPage(input);
+      }),
+
+    // ── Site Settings ─────────────────────────────────────────────────────────
+    getSiteSettings: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return {};
+      const rows = await db.select().from(siteSettings);
+      return Object.fromEntries(rows.map(r => [r.key, r.value]));
+    }),
+    updateSiteSettings: adminProcedure
+      .input(z.object({ settings: z.record(z.string(), z.string().nullable()) }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
+        for (const [key, value] of Object.entries(input.settings)) {
+          await db.insert(siteSettings)
+            .values({ key, value: value ?? "", type: "text" })
+            .onDuplicateKeyUpdate({ set: { value: value ?? "" } });
+        }
+        return { ok: true };
       }),
   }),
 

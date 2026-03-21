@@ -580,3 +580,34 @@
 ### Calidad
 - [x] 0 errores TypeScript
 - [x] 28 tests para el middleware adminrest (100 tests totales)
+
+## Mejoras Backoffice Restaurantes v8.2
+
+### Creación de reservas desde admin (punto 1)
+- [x] Botón "Nueva Reserva" en RestaurantsManager que abre modal de creación
+- [x] Formulario completo: restaurante, turno, fecha, hora, comensales, datos cliente
+- [x] Selector "¿Requiere pago de depósito?" (sí/no) — por defecto sí (5€/comensal)
+- [x] Si pago=sí: generar link de pago Redsys y enviarlo por email al cliente
+- [x] Si pago=no: crear reserva directamente como "confirmed" sin pago
+- [x] Procedimiento tRPC `adminCreateBooking` extendido con requiresPayment + sendPaymentEmail
+- [x] Plantilla de email con link de pago para reservas de restaurante
+
+### Configuración del admin (punto 2)
+- [x] Página /admin/configuracion funcional con persistencia en BD (tabla site_settings)
+- [x] Sección: Datos generales del sitio (nombre, email, teléfono, dirección, web, SEO)
+- [x] Sección: Horarios de apertura (temporada alta/baja, días)
+- [x] Sección: Parámetros de pagos (IVA, moneda, validez presupuesto, depósito restaurante)
+- [x] Sección: Notificaciones (emails de alertas por tipo de reserva)
+- [x] Sección: Integraciones GHL (informativa, apunta a Secrets del panel)
+- [x] Procedimientos cms.getSiteSettings y cms.updateSiteSettings en el router
+
+### Calendario global de restaurantes (punto 3)
+- [x] Nuevo ítem en sidebar admin: "Calendario Global" bajo Restaurantes
+- [x] Ruta /admin/restaurantes/calendario → GlobalCalendar.tsx
+- [x] Vista mensual con puntos de color por restaurante y contador de reservas por día
+- [x] Filtro por restaurante (selector + botones de leyenda con colores)
+- [x] Click en día: panel lateral con timing ordenado por hora
+- [x] Cada reserva muestra: hora, nombre cliente, teléfono, restaurante, icono de pago
+- [x] Resumen mensual: total reservas, confirmadas, pendientes, comensales
+- [x] Procedimiento tRPC `adminGetGlobalCalendar` en el router de restaurantes
+- [x] 100 tests pasando (sin regresiones)

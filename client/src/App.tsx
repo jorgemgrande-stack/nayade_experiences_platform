@@ -70,6 +70,7 @@ import RestaurantBooking from "./pages/RestaurantBooking";
 
 // Restaurants Admin
 import RestaurantsManager from "./pages/admin/restaurants/RestaurantsManager";
+import GlobalCalendar from "./pages/admin/restaurants/GlobalCalendar";
 
 // Users & Settings
 import UsersManager from "./pages/admin/users/UsersManager";
@@ -155,6 +156,7 @@ function Router() {
       {/* Restaurants Admin */}
       <Route path="/admin/restaurantes" component={RestaurantsManager} />
       <Route path="/admin/restaurantes/reservas" component={RestaurantsManager} />
+      <Route path="/admin/restaurantes/calendario" component={GlobalCalendar} />
       <Route path="/admin/restaurantes/configuracion" component={RestaurantsManager} />
 
       {/* Users & Settings */}

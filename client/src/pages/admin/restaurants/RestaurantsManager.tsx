@@ -1,21 +1,22 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
   Calendar, List, Settings, Users, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, Clock, Loader2, Phone, Mail, RefreshCw,
-  AlertCircle, Edit, Trash2, MessageSquare,
+  AlertCircle, Edit, Trash2, MessageSquare, Plus, CreditCard, Ban,
 } from "lucide-react";
 
 type ViewMode = "list" | "calendar" | "config";
 type StatusFilter = "all" | "pending" | "confirmed" | "cancelled" | "no_show";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pending:   { label: "Pendiente",  color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
-  confirmed: { label: "Confirmada", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
-  cancelled: { label: "Cancelada",  color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
-  no_show:   { label: "No show",    color: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+  pending:         { label: "Pendiente",       color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
+  pending_payment: { label: "Pago pendiente",  color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
+  confirmed:       { label: "Confirmada",      color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
+  cancelled:       { label: "Cancelada",       color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
+  no_show:         { label: "No show",         color: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
 };
 
 const DAYS = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
@@ -25,6 +26,282 @@ function formatDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
+// ── Modal de nueva reserva ────────────────────────────────────────────────────
+function NewBookingModal({
+  restaurantId,
+  restaurantName,
+  depositPerGuest,
+  onClose,
+  onSuccess,
+}: {
+  restaurantId: number;
+  restaurantName: string;
+  depositPerGuest: string | null;
+  onClose: () => void;
+  onSuccess: (locator: string) => void;
+}) {
+  const [form, setForm] = useState({
+    date: formatDate(new Date()),
+    time: "14:00",
+    guests: 2,
+    guestName: "",
+    guestLastName: "",
+    guestEmail: "",
+    guestPhone: "",
+    allergies: "",
+    specialRequests: "",
+    highchair: false,
+    birthday: false,
+    accessibility: false,
+    isVip: false,
+    requiresPayment: false,
+  });
+  const [shiftId, setShiftId] = useState<number | null>(null);
+
+  const { data: shifts } = trpc.restaurants.adminGetShifts.useQuery({ restaurantId });
+  const utils = trpc.useUtils();
+
+  // Calcular depósito estimado
+  const depositPerPax = Number(depositPerGuest ?? 0);
+  const estimatedDeposit = (depositPerPax * form.guests).toFixed(2);
+
+  const createMutation = trpc.restaurants.adminCreateBooking.useMutation({
+    onSuccess: (data) => {
+      utils.restaurants.adminGetBookings.invalidate();
+      utils.restaurants.adminGetCalendar.invalidate();
+      onSuccess(data.locator);
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!shiftId) return;
+    createMutation.mutate({
+      restaurantId,
+      shiftId,
+      ...form,
+      origin: window.location.origin,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-card rounded-2xl border border-border/40 p-6 w-full max-w-lg shadow-2xl my-4">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-heading font-bold text-foreground text-lg">Nueva reserva</h3>
+            <p className="text-sm text-muted-foreground font-display">{restaurantName}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-muted transition-colors">
+            <XCircle className="w-5 h-5 text-muted-foreground" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Fecha, hora y turno */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-display text-muted-foreground mb-1 block">Fecha *</label>
+              <input
+                type="date"
+                required
+                value={form.date}
+                onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-display text-muted-foreground mb-1 block">Hora *</label>
+              <input
+                type="time"
+                required
+                value={form.time}
+                onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-display text-muted-foreground mb-1 block">Turno *</label>
+              <select
+                required
+                value={shiftId ?? ""}
+                onChange={e => setShiftId(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+              >
+                <option value="">Seleccionar turno</option>
+                {shifts?.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.startTime}–{s.endTime})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-display text-muted-foreground mb-1 block">Comensales *</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                required
+                value={form.guests}
+                onChange={e => setForm(f => ({ ...f, guests: Number(e.target.value) }))}
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+              />
+            </div>
+          </div>
+
+          {/* Datos del cliente */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-display text-muted-foreground mb-1 block">Nombre *</label>
+              <input
+                type="text"
+                required
+                value={form.guestName}
+                onChange={e => setForm(f => ({ ...f, guestName: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+                placeholder="Nombre"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-display text-muted-foreground mb-1 block">Apellidos</label>
+              <input
+                type="text"
+                value={form.guestLastName}
+                onChange={e => setForm(f => ({ ...f, guestLastName: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+                placeholder="Apellidos"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-display text-muted-foreground mb-1 block">Email *</label>
+              <input
+                type="email"
+                required
+                value={form.guestEmail}
+                onChange={e => setForm(f => ({ ...f, guestEmail: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+                placeholder="cliente@email.com"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-display text-muted-foreground mb-1 block">Teléfono</label>
+              <input
+                type="tel"
+                value={form.guestPhone}
+                onChange={e => setForm(f => ({ ...f, guestPhone: e.target.value }))}
+                className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+                placeholder="+34 600 000 000"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-display text-muted-foreground mb-1 block">Alergias / intolerancias</label>
+            <input
+              type="text"
+              value={form.allergies}
+              onChange={e => setForm(f => ({ ...f, allergies: e.target.value }))}
+              className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+              placeholder="Gluten, lactosa..."
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-display text-muted-foreground mb-1 block">Peticiones especiales</label>
+            <textarea
+              value={form.specialRequests}
+              onChange={e => setForm(f => ({ ...f, specialRequests: e.target.value }))}
+              rows={2}
+              className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none"
+              placeholder="Mesa junto a la ventana, decoración cumpleaños..."
+            />
+          </div>
+
+          {/* Opciones extra */}
+          <div className="flex flex-wrap gap-3">
+            {[
+              { key: "highchair", label: "Trona" },
+              { key: "birthday", label: "Cumpleaños" },
+              { key: "accessibility", label: "Accesibilidad" },
+              { key: "isVip", label: "VIP" },
+            ].map(({ key, label }) => (
+              <label key={key} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={(form as any)[key]}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-accent"
+                />
+                <span className="text-sm font-display text-foreground">{label}</span>
+              </label>
+            ))}
+          </div>
+
+          {/* Selector de pago */}
+          {depositPerPax > 0 && (
+            <div className={`rounded-xl border-2 p-4 transition-all ${form.requiresPayment ? "border-orange-400 bg-orange-50 dark:bg-orange-900/20" : "border-border/40 bg-muted/30"}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <CreditCard className={`w-4 h-4 ${form.requiresPayment ? "text-orange-600" : "text-muted-foreground"}`} />
+                  <span className={`font-display font-semibold text-sm ${form.requiresPayment ? "text-orange-700 dark:text-orange-300" : "text-foreground"}`}>
+                    Cobrar depósito
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, requiresPayment: !f.requiresPayment }))}
+                  className={`w-12 h-6 rounded-full transition-colors ${form.requiresPayment ? "bg-orange-500" : "bg-muted-foreground/30"}`}
+                >
+                  <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform mx-0.5 ${form.requiresPayment ? "translate-x-6" : "translate-x-0"}`} />
+                </button>
+              </div>
+              {form.requiresPayment ? (
+                <div className="text-sm font-display text-orange-700 dark:text-orange-300">
+                  <p>Se enviará un email a <strong>{form.guestEmail || "el cliente"}</strong> con un enlace de pago seguro (Redsys).</p>
+                  <p className="mt-1 font-semibold">Importe: {estimatedDeposit} € ({form.guests} × {depositPerPax} €)</p>
+                </div>
+              ) : (
+                <p className="text-xs font-display text-muted-foreground">
+                  La reserva se confirmará directamente sin cobrar depósito. Depósito estándar: {depositPerPax} €/comensal.
+                </p>
+              )}
+            </div>
+          )}
+
+          {depositPerPax === 0 && (
+            <div className="rounded-xl border border-border/40 bg-muted/30 p-3 flex items-center gap-2">
+              <Ban className="w-4 h-4 text-muted-foreground" />
+              <p className="text-xs font-display text-muted-foreground">Este restaurante no tiene depósito configurado. La reserva se confirmará directamente.</p>
+            </div>
+          )}
+
+          {createMutation.isError && (
+            <p className="text-sm text-red-600 font-display">{createMutation.error.message}</p>
+          )}
+
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="outline" onClick={onClose} className="rounded-full font-display">Cancelar</Button>
+            <Button
+              type="submit"
+              disabled={createMutation.isPending || !shiftId}
+              className={`rounded-full font-display font-semibold ${form.requiresPayment ? "bg-orange-500 hover:bg-orange-600 text-white" : "bg-accent hover:bg-accent/90 text-white"}`}
+            >
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {form.requiresPayment ? "Crear y enviar link de pago" : "Crear reserva confirmada"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
 export default function RestaurantsManager() {
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -34,31 +311,28 @@ export default function RestaurantsManager() {
   const [editingBooking, setEditingBooking] = useState<number | null>(null);
   const [noteText, setNoteText] = useState("");
   const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showNewBooking, setShowNewBooking] = useState(false);
+  const [successLocator, setSuccessLocator] = useState<string | null>(null);
 
   // Data
   const { data: restaurants, isLoading: loadingRest } = trpc.restaurants.adminGetAll.useQuery();
   const selectedRestaurant = restaurants?.find(r => r.id === selectedRestaurantId);
-
   const { data: bookings, isLoading: loadingBookings, refetch: refetchBookings } = trpc.restaurants.adminGetBookings.useQuery(
     { restaurantId: selectedRestaurantId ?? 0, status: statusFilter === "all" ? undefined : statusFilter },
     { enabled: !!selectedRestaurantId }
   );
-
   const { data: calendarData } = trpc.restaurants.adminGetCalendar.useQuery(
     { restaurantId: selectedRestaurantId ?? 0, date: selectedDate },
     { enabled: !!selectedRestaurantId && viewMode === "calendar" }
   );
-
   const utils = trpc.useUtils();
 
   const updateStatusMutation = trpc.restaurants.adminUpdateBookingStatus.useMutation({
     onSuccess: () => { utils.restaurants.adminGetBookings.invalidate(); utils.restaurants.adminGetCalendar.invalidate(); },
   });
-
   const addNoteMutation = trpc.restaurants.adminAddNote.useMutation({
     onSuccess: () => { utils.restaurants.adminGetBookings.invalidate(); setShowNoteModal(false); setNoteText(""); },
   });
-
   const deleteBookingMutation = trpc.restaurants.adminDeleteBooking.useMutation({
     onSuccess: () => utils.restaurants.adminGetBookings.invalidate(),
   });
@@ -145,7 +419,14 @@ export default function RestaurantsManager() {
               <p className="text-sm text-muted-foreground font-display">{selectedRestaurant?.cuisine}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Botón nueva reserva */}
+            <Button
+              onClick={() => setShowNewBooking(true)}
+              className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Nueva reserva
+            </Button>
             {/* Selector de restaurante rápido */}
             <select
               value={selectedRestaurantId}
@@ -178,6 +459,22 @@ export default function RestaurantsManager() {
           </div>
         </div>
 
+        {/* Banner de éxito tras crear reserva */}
+        {successLocator && (
+          <div className="mb-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              <div>
+                <p className="font-display font-semibold text-green-800 dark:text-green-300">Reserva creada correctamente</p>
+                <p className="text-sm text-green-700 dark:text-green-400">Localizador: <strong className="font-mono">{successLocator}</strong></p>
+              </div>
+            </div>
+            <button onClick={() => setSuccessLocator(null)} className="text-green-600 hover:text-green-800 p-1">
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* ── VISTA LISTA ── */}
         {viewMode === "list" && (
           <div>
@@ -195,7 +492,6 @@ export default function RestaurantsManager() {
                 </button>
               ))}
             </div>
-
             {loadingBookings ? (
               <div className="flex items-center justify-center h-40">
                 <Loader2 className="w-6 h-6 animate-spin text-accent" />
@@ -204,6 +500,12 @@ export default function RestaurantsManager() {
               <div className="bg-muted/50 rounded-2xl p-12 text-center">
                 <Calendar className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                 <p className="text-muted-foreground font-display">No hay reservas con este filtro.</p>
+                <Button
+                  onClick={() => setShowNewBooking(true)}
+                  className="mt-4 bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold"
+                >
+                  <Plus className="w-4 h-4 mr-2" /> Crear primera reserva
+                </Button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -213,16 +515,31 @@ export default function RestaurantsManager() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-2 flex-wrap">
                           <span className="font-heading font-bold text-foreground">{b.guestName} {b.guestLastName ?? ""}</span>
-                          <span className={`text-xs font-display font-semibold px-2.5 py-0.5 rounded-full ${STATUS_LABELS[b.status]?.color}`}>
-                            {STATUS_LABELS[b.status]?.label}
+                          <span className={`text-xs font-display font-semibold px-2.5 py-0.5 rounded-full ${STATUS_LABELS[b.status]?.color ?? STATUS_LABELS.pending.color}`}>
+                            {STATUS_LABELS[b.status]?.label ?? b.status}
                           </span>
                           <span className="font-mono text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">#{b.locator}</span>
+                          {/* Icono de pago */}
+                          {b.paymentStatus === "pending" ? (
+                            <span className="flex items-center gap-1 text-xs text-orange-600 font-display">
+                              <CreditCard className="w-3.5 h-3.5" /> Pago pendiente
+                            </span>
+                          ) : b.paymentStatus === "paid" ? (
+                            <span className="flex items-center gap-1 text-xs text-green-600 font-display">
+                              <CheckCircle className="w-3.5 h-3.5" /> Pagado
+                            </span>
+                          ) : null}
                         </div>
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground font-display">
                           <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{b.date} · {b.time}</span>
                           <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{b.guests} comensales</span>
                           {b.guestEmail && <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{b.guestEmail}</span>}
                           {b.guestPhone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{b.guestPhone}</span>}
+                          {b.depositAmount && Number(b.depositAmount) > 0 && (
+                            <span className="flex items-center gap-1 text-accent font-semibold">
+                              <CreditCard className="w-3.5 h-3.5" /> {b.depositAmount} €
+                            </span>
+                          )}
                         </div>
                         {b.allergies && (
                           <p className="text-xs text-amber-600 dark:text-amber-400 font-display mt-2 flex items-center gap-1">
@@ -249,12 +566,12 @@ export default function RestaurantsManager() {
                               <CheckCircle className="w-3.5 h-3.5" /> Confirmar
                             </button>
                             <button
-                            onClick={() => updateStatusMutation.mutate({ id: b.id, status: "cancelled" })}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-display font-semibold transition-colors"
-                          >
-                            <XCircle className="w-3.5 h-3.5" /> Cancelar
-                          </button>
-                        </div>
+                              onClick={() => updateStatusMutation.mutate({ id: b.id, status: "cancelled" })}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-display font-semibold transition-colors"
+                            >
+                              <XCircle className="w-3.5 h-3.5" /> Cancelar
+                            </button>
+                          </div>
                         )}
                         {b.status === "confirmed" && (
                           <div className="flex gap-2">
@@ -265,12 +582,12 @@ export default function RestaurantsManager() {
                               <Clock className="w-3.5 h-3.5" /> No show
                             </button>
                             <button
-                            onClick={() => updateStatusMutation.mutate({ id: b.id, status: "cancelled" })}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-display font-semibold transition-colors"
-                          >
-                            <XCircle className="w-3.5 h-3.5" /> Cancelar
-                          </button>
-                        </div>
+                              onClick={() => updateStatusMutation.mutate({ id: b.id, status: "cancelled" })}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-display font-semibold transition-colors"
+                            >
+                              <XCircle className="w-3.5 h-3.5" /> Cancelar
+                            </button>
+                          </div>
                         )}
                         <div className="flex gap-2">
                           <button
@@ -280,7 +597,8 @@ export default function RestaurantsManager() {
                             <Edit className="w-3.5 h-3.5" /> Nota
                           </button>
                           <button
-                            onClick={() => { if (confirm("\u00bfEliminar esta reserva?")) deleteBookingMutation.mutate({ bookingId: b.id as number }); }}                        className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg text-xs font-display font-semibold transition-colors"
+                            onClick={() => { if (confirm("¿Eliminar esta reserva?")) deleteBookingMutation.mutate({ bookingId: b.id as number }); }}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg text-xs font-display font-semibold transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -350,9 +668,13 @@ export default function RestaurantsManager() {
                         <div className="font-display font-semibold text-sm text-foreground truncate">{b.guestName} {b.guestLastName ?? ""}</div>
                         {b.guestPhone && <div className="text-xs text-muted-foreground font-display">{b.guestPhone}</div>}
                       </div>
-                      <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full shrink-0 ${STATUS_LABELS[b.status]?.color}`}>
-                        {STATUS_LABELS[b.status]?.label}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {b.paymentStatus === "pending" && <span title="Pago pendiente"><CreditCard className="w-4 h-4 text-orange-500" /></span>}
+                        {b.paymentStatus === "paid" && <span title="Pagado"><CheckCircle className="w-4 h-4 text-green-500" /></span>}
+                        <span className={`text-xs font-display font-semibold px-2 py-0.5 rounded-full ${STATUS_LABELS[b.status]?.color ?? STATUS_LABELS.pending.color}`}>
+                          {STATUS_LABELS[b.status]?.label ?? b.status}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -390,6 +712,21 @@ export default function RestaurantsManager() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Modal de nueva reserva */}
+        {showNewBooking && selectedRestaurant && (
+          <NewBookingModal
+            restaurantId={selectedRestaurant.id}
+            restaurantName={selectedRestaurant.name}
+            depositPerGuest={selectedRestaurant.depositPerGuest}
+            onClose={() => setShowNewBooking(false)}
+            onSuccess={(locator) => {
+              setShowNewBooking(false);
+              setSuccessLocator(locator);
+              setTimeout(() => setSuccessLocator(null), 8000);
+            }}
+          />
         )}
       </div>
     </AdminLayout>

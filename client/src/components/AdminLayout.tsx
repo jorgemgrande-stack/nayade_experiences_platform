@@ -99,6 +99,7 @@ const navItems = [
     roles: ["admin", "adminrest"],
     children: [
       { label: "Reservas", href: "/admin/restaurantes/reservas" },
+      { label: "Calendario Global", href: "/admin/restaurantes/calendario" },
       { label: "Configuración", href: "/admin/restaurantes/configuracion" },
     ],
   },

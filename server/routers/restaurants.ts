@@ -13,6 +13,78 @@ import {
   getRestaurantsByUser, assignStaff, removeStaff, getStaffByRestaurant,
 } from "../restaurantsDb";
 import { notifyOwner } from "../_core/notification";
+import { buildRedsysForm, generateMerchantOrder, getRedsysUrl } from "../redsys";
+import nodemailer from "nodemailer";
+
+// ─── Helper: enviar email de link de pago ─────────────────────────────────────
+async function sendRestaurantPaymentEmail(params: {
+  guestEmail: string;
+  guestName: string;
+  restaurantName: string;
+  date: string;
+  time: string;
+  guests: number;
+  depositAmount: string;
+  locator: string;
+  redsysUrl: string;
+  merchantParams: string;
+  signature: string;
+  signatureVersion: string;
+  origin: string;
+}) {
+  const host = process.env.SMTP_HOST;
+  if (!host) {
+    console.log("[RestaurantPaymentEmail] SMTP no configurado — email omitido para", params.locator);
+    return;
+  }
+  const transporter = nodemailer.createTransport({
+    host,
+    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+  const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
+  const html = `
+<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">
+    <div style="background:linear-gradient(135deg,#1a3a5c,#2563eb);padding:32px 24px;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:24px">Náyade Experiences</h1>
+      <p style="color:#93c5fd;margin:8px 0 0">Reserva en ${params.restaurantName}</p>
+    </div>
+    <div style="padding:32px 24px">
+      <p style="color:#374151;font-size:16px">Hola <strong>${params.guestName}</strong>,</p>
+      <p style="color:#6b7280">Tu reserva en <strong>${params.restaurantName}</strong> ha sido registrada. Para confirmarla, es necesario abonar el depósito de reserva.</p>
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px;margin:20px 0">
+        <p style="margin:0 0 8px;color:#0369a1;font-weight:bold">Detalles de tu reserva</p>
+        <p style="margin:4px 0;color:#374151">📅 Fecha: <strong>${params.date}</strong></p>
+        <p style="margin:4px 0;color:#374151">🕐 Hora: <strong>${params.time}</strong></p>
+        <p style="margin:4px 0;color:#374151">👥 Comensales: <strong>${params.guests}</strong></p>
+        <p style="margin:4px 0;color:#374151">🔑 Localizador: <strong>${params.locator}</strong></p>
+        <p style="margin:4px 0;color:#374151">💳 Depósito a pagar: <strong>${params.depositAmount} €</strong></p>
+      </div>
+      <p style="color:#6b7280;font-size:14px">Haz clic en el botón para pagar el depósito de forma segura con tarjeta:</p>
+      <form method="POST" action="${params.redsysUrl}" style="text-align:center;margin:24px 0">
+        <input type="hidden" name="Ds_SignatureVersion" value="${params.signatureVersion}">
+        <input type="hidden" name="Ds_MerchantParameters" value="${params.merchantParams}">
+        <input type="hidden" name="Ds_Signature" value="${params.signature}">
+        <button type="submit" style="background:#2563eb;color:#fff;border:none;padding:14px 32px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer">
+          Pagar depósito (${params.depositAmount} €)
+        </button>
+      </form>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+      <p style="color:#9ca3af;font-size:12px;text-align:center">Náyade Experiences · Los Ángeles de San Rafael, Segovia</p>
+    </div>
+  </div>
+</body></html>`;
+  await transporter.sendMail({
+    from,
+    to: params.guestEmail,
+    subject: `Completa tu reserva en ${params.restaurantName} — Depósito pendiente (${params.locator})`,
+    html,
+  });
+  console.log(`[RestaurantPaymentEmail] Email enviado a ${params.guestEmail} para ${params.locator}`);
+}
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
@@ -185,7 +257,7 @@ export const restaurantsRouter = router({
       return { ok: true };
     }),
 
-  /** Crear reserva manual desde admin */
+  /** Crear reserva manual desde admin con opción de pago */
   adminCreateBooking: adminrestProcedure
     .input(z.object({
       restaurantId: z.number(),
@@ -203,27 +275,72 @@ export const restaurantsRouter = router({
       specialRequests: z.string().optional(),
       accessibility: z.boolean().optional(),
       isVip: z.boolean().optional(),
-      status: z.enum(["confirmed", "pending_payment"]).default("confirmed"),
+      /** Si true: reserva pendiente de pago + email con link Redsys al cliente */
+      requiresPayment: z.boolean().default(false),
+      /** URL base del frontend (para construir las URLs de retorno de Redsys) */
+      origin: z.string().url().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await assertRestaurantAccess(ctx, input.restaurantId);
       const restaurant = await getRestaurantById(input.restaurantId);
       if (!restaurant) throw new TRPCError({ code: "NOT_FOUND" });
       const depositAmount = (Number(restaurant.depositPerGuest) * input.guests).toFixed(2);
+      const paymentStatus = input.requiresPayment ? "pending" : "paid";
+      const status = input.requiresPayment ? "pending_payment" : "confirmed";
       const { locator } = await createBooking({
         ...input,
         depositAmount,
         channel: "admin",
         createdByUserId: ctx.user.id,
-        paymentStatus: input.status === "confirmed" ? "paid" : "pending",
+        paymentStatus,
+        status: status as any,
         isVip: input.isVip ?? false,
         highchair: input.highchair ?? false,
         birthday: input.birthday ?? false,
         accessibility: input.accessibility ?? false,
       });
-      await addBookingLog((await getBookingByLocator(locator))!.id,
-        "created_by_admin", `Por ${ctx.user.name}`, ctx.user.id);
-      return { locator };
+      const booking = await getBookingByLocator(locator);
+      await addBookingLog(booking!.id, "created_by_admin",
+        `Por ${ctx.user.name}${input.requiresPayment ? " (con pago pendiente)" : ""}`, ctx.user.id);
+      // Si se requiere pago: generar formulario Redsys y enviar email al cliente
+      let redsysForm = null;
+      if (input.requiresPayment && Number(depositAmount) > 0 && input.origin) {
+        const amountCents = Math.round(Number(depositAmount) * 100);
+        const merchantOrder = generateMerchantOrder();
+        // Guardar merchantOrder en la reserva para correlacionar el IPN
+        await (await import("../restaurantsDb")).updateBooking(booking!.id, { merchantOrder } as any);
+        redsysForm = buildRedsysForm({
+          amount: amountCents,
+          merchantOrder,
+          productDescription: `Depósito reserva ${restaurant.name} ${input.date} ${input.time}`,
+          notifyUrl: `${input.origin}/api/redsys/restaurant-notification`,
+          okUrl: `${input.origin}/restaurantes/reserva-ok?locator=${locator}`,
+          koUrl: `${input.origin}/restaurantes/reserva-ko?locator=${locator}`,
+          holderName: input.guestName,
+        });
+        // Enviar email con link de pago
+        sendRestaurantPaymentEmail({
+          guestEmail: input.guestEmail,
+          guestName: input.guestName,
+          restaurantName: restaurant.name,
+          date: input.date,
+          time: input.time,
+          guests: input.guests,
+          depositAmount,
+          locator,
+          redsysUrl: getRedsysUrl(),
+          merchantParams: redsysForm.Ds_MerchantParameters,
+          signature: redsysForm.Ds_Signature,
+          signatureVersion: redsysForm.Ds_SignatureVersion,
+          origin: input.origin,
+        }).catch(err => console.error("[RestaurantPaymentEmail] Error:", err));
+      }
+      // Notificación interna
+      await notifyOwner({
+        title: `Nueva reserva admin: ${restaurant.name}`,
+        content: `${input.guestName} — ${input.guests} pax — ${input.date} ${input.time} — ${locator}${input.requiresPayment ? " (PAGO PENDIENTE)" : " (CONFIRMADA)"}`,
+      }).catch(() => {});
+      return { locator, depositAmount, requiresPayment: input.requiresPayment, redsysForm };
     }),
 
   /** Editar datos de una reserva */
@@ -467,5 +584,80 @@ export const restaurantsRouter = router({
       await updateBooking(input.bookingId, { status: "cancelled" });
       await addBookingLog(input.bookingId, "deleted_by_admin", "Eliminada por admin", ctx.user.id);
       return { ok: true };
+    }),
+
+  /**
+   * Calendario global: reservas de todos los restaurantes accesibles
+   * para un mes dado (YYYY-MM). Devuelve reservas agrupadas por fecha.
+   */
+  adminGetGlobalCalendar: adminrestProcedure
+    .input(z.object({
+      yearMonth: z.string().regex(/^\d{4}-\d{2}$/), // "2026-03"
+      restaurantId: z.number().optional(),           // filtro opcional por restaurante
+    }))
+    .query(async ({ input, ctx }) => {
+      // Determinar qué restaurantes puede ver el usuario
+      let allowedIds: number[];
+      if (ctx.user.role === "admin") {
+        const all = await getAllRestaurants(false);
+        allowedIds = all.map(r => r.id);
+      } else {
+        allowedIds = await getRestaurantsByUser(ctx.user.id);
+      }
+      if (input.restaurantId && !allowedIds.includes(input.restaurantId)) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      const targetIds = input.restaurantId ? [input.restaurantId] : allowedIds;
+      // Obtener reservas del mes para todos los restaurantes target
+      const [year, month] = input.yearMonth.split("-").map(Number);
+      const dateFrom = `${input.yearMonth}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const dateTo = `${input.yearMonth}-${String(lastDay).padStart(2, "0")}`;
+      // Obtener nombre de restaurantes para enriquecer la respuesta
+      const allRestaurants = await getAllRestaurants(false);
+      const restaurantMap = Object.fromEntries(allRestaurants.map(r => [r.id, r.name]));
+      // Recopilar reservas de todos los restaurantes
+      const allBookings: any[] = [];
+      for (const rid of targetIds) {
+        const result = await getBookings({ restaurantId: rid, dateFrom, dateTo, limit: 500 });
+        for (const b of result) {
+          allBookings.push({
+            id: b.id,
+            locator: b.locator,
+            restaurantId: rid,
+            restaurantName: restaurantMap[rid] ?? "Restaurante",
+            date: b.date,
+            time: b.time,
+            guests: b.guests,
+            guestName: b.guestName,
+            guestLastName: b.guestLastName,
+            guestPhone: b.guestPhone,
+            status: b.status,
+            paymentStatus: b.paymentStatus,
+            depositAmount: b.depositAmount,
+          });
+        }
+      }
+      // Ordenar por fecha y hora
+      allBookings.sort((a, b) => {
+        const da = `${a.date} ${a.time}`;
+        const db = `${b.date} ${b.time}`;
+        return da < db ? -1 : da > db ? 1 : 0;
+      });
+      // Agrupar por fecha
+      const byDate: Record<string, typeof allBookings> = {};
+      for (const b of allBookings) {
+        if (!byDate[b.date]) byDate[b.date] = [];
+        byDate[b.date].push(b);
+      }
+      return {
+        yearMonth: input.yearMonth,
+        restaurantId: input.restaurantId ?? null,
+        bookings: allBookings,
+        byDate,
+        restaurants: allRestaurants
+          .filter(r => allowedIds.includes(r.id))
+          .map(r => ({ id: r.id, name: r.name, slug: r.slug })),
+      };
     }),
 });
