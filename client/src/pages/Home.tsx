@@ -21,6 +21,15 @@ const CDN = {
   blob: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/blob-jump2_94e0b06d.jpg",
   banana: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/banana-ski_43cb68d6.jpg",
   paddle: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/paddle-surf_78ab1b6f.jpg",
+  spa1: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa4_0e502ffb.png",
+  spa2: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa2_f1c857bc.png",
+  wakeboard: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/wakeboard_b574701d.jpg",
+  hinchable: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/aventura_hinchable_7c004251.png",
+  kayak2: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/31bc24b6-13c3-4ea1-a67f-16a927473c61_d7582ff1.png",
+  tubing: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/060194d5-9574-409c-b5a1-a367eb93bc7f_49e240ae.png",
+  barco: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/28d8f7b8-1454-4060-b6de-0a399da63a69_4e751661.png",
+  panoramica: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/5f23cf10-be16-424a-a48f-031f5b74e35f_843d3fb3.png",
+  cableski2: "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/Cableski_ce1b5e0c.png",
 };
 
 const heroSlides: Array<{ img: string; badge: string; title: string; subtitle: string; desc: string; cta: string; ctaLink: string; reserveUrl: string }> = [
@@ -373,197 +382,258 @@ export default function Home() {
       </section>
 
       {/* ─── PACKS DE DÍA ───────────────────────────────────────────── */}
-      <section className="py-20 bg-lago-light">
-        <div className="container">
-          <div className="text-center mb-12">
-            <Badge className="mb-3 bg-primary/10 text-primary border-0 font-display text-xs uppercase tracking-widest">
-              Visita de Día · Abril — Octubre
-            </Badge>
-            <h2 className="text-4xl md:text-5xl font-heading font-bold text-foreground mb-4">
-              Packs de <span className="text-gradient-sol">Día Completo</span>
+      <section className="py-24 relative overflow-hidden" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0d2240 50%, #0a1628 100%)" }}>
+        <div className="absolute inset-0 opacity-5">
+          <img src={CDN.panoramica} alt="" className="w-full h-full object-cover" />
+        </div>
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+
+        <div className="relative z-10 container">
+          <div className="text-center mb-14">
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-xs font-display font-bold uppercase tracking-widest mb-4">
+              <Anchor className="w-3 h-3" /> Visita de Día · Abril — Octubre
+            </span>
+            <h2 className="text-4xl md:text-6xl font-heading font-bold text-white mb-4">
+              Packs de <span className="text-accent">Día Completo</span>
             </h2>
-            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-              Elige tu combinación perfecta. Reserva online y obtén un <strong>10% de descuento</strong>
+            <p className="text-white/60 text-lg max-w-xl mx-auto">
+              Elige tu combinación perfecta. Reserva online y obtén un{" "}
+              <span className="text-accent font-bold">10% de descuento</span>
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {packs.map((pack) => (
-              <Link key={pack.slug} href={`/packs/${pack.slug}`}>
-                <div className={`relative rounded-2xl overflow-hidden card-hover cursor-pointer border-2 ${pack.highlight ? "border-accent shadow-lg scale-[1.02]" : "border-transparent shadow-sm"}`}>
-                  {pack.highlight && (
-                    <div className="absolute top-0 left-0 right-0 bg-accent text-accent-foreground text-center text-xs font-display font-bold py-1.5 uppercase tracking-widest">
-                      ★ Más Popular
-                    </div>
-                  )}
-                  <div className={`p-6 ${pack.highlight ? "pt-10" : ""} ${pack.color}`}>
-                    <h3 className="font-heading font-bold text-xl mb-1">{pack.name}</h3>
-                    <div className="flex items-baseline gap-1 mb-4">
-                      <span className="text-4xl font-display font-extrabold">{pack.price}</span>
-                      <span className="text-sm opacity-80">{pack.unit}</span>
-                    </div>
-                    <ul className="space-y-2">
-                      {pack.items.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm opacity-90">
-                          <span className="mt-0.5 flex-shrink-0">✓</span>
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-5 pt-4 border-t border-current/20">
-                      <span className="font-display font-semibold text-sm flex items-center gap-1">
-                        Reservar ahora <ArrowRight className="w-3.5 h-3.5" />
-                      </span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {packs.map((pack, idx) => {
+              const packImgs = [CDN.wakeboard, CDN.kayak2, CDN.hinchable, CDN.tubing, CDN.barco, CDN.banana];
+              const bg = packImgs[idx % packImgs.length];
+              return (
+                <Link key={pack.slug} href={`/packs/${pack.slug}`}>
+                  <div
+                    className={`group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${
+                      pack.highlight ? "ring-2 ring-accent shadow-accent/20 shadow-xl" : "shadow-lg"
+                    }`}
+                    style={{ minHeight: 400 }}
+                  >
+                    <img src={bg} alt={pack.name} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                    <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(5,15,35,0.96) 45%, rgba(5,15,35,0.25) 100%)" }} />
+                    {pack.highlight && (
+                      <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-accent text-accent-foreground text-xs font-display font-bold uppercase tracking-widest whitespace-nowrap">
+                        ★ Más Popular
+                      </div>
+                    )}
+                    <div className="relative z-10 flex flex-col justify-end h-full p-6" style={{ minHeight: 400 }}>
+                      <div className="mb-3">
+                        <div className="flex items-baseline gap-1 mb-1">
+                          <span className="text-4xl font-display font-extrabold text-white">{pack.price}</span>
+                          <span className="text-white/60 text-sm">{pack.unit}</span>
+                        </div>
+                        <h3 className="font-heading font-bold text-xl text-white mb-3">{pack.name}</h3>
+                      </div>
+                      <ul className="space-y-1.5 mb-5">
+                        {pack.items.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-white/75">
+                            <span className="text-accent mt-0.5 flex-shrink-0">✓</span>
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex items-center justify-between pt-4 border-t border-white/15">
+                        <span className="font-display font-semibold text-sm text-white/70">Ver detalles</span>
+                        <span className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-accent text-accent-foreground text-xs font-display font-bold transition-all group-hover:gap-2.5">
+                          Reservar <ArrowRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="text-center mt-12">
+            <Link href="/packs">
+              <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-10 shadow-lg">
+                Ver Todos los Packs <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
 
       {/* ─── HOTEL NÁYADE ───────────────────────────────────────────── */}
-      <section className="py-20 bg-background">
-        <div className="container">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div className="relative">
-              <div className="rounded-3xl overflow-hidden shadow-xl">
-                <img src={CDN.hotel} alt="Hotel Náyade" className="w-full h-[480px] object-cover" />
-              </div>
-              <div className="absolute -bottom-6 -right-6 bg-accent text-accent-foreground rounded-2xl p-5 shadow-lg hidden md:block">
-                <div className="text-3xl font-heading font-bold">★★★</div>
-                <div className="font-display text-sm font-semibold">Hotel Náyade</div>
-                <div className="font-display text-xs opacity-80">117 habitaciones</div>
-              </div>
+      <section className="relative overflow-hidden py-0">
+        <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[640px]">
+          {/* Columna imagen */}
+          <div className="relative overflow-hidden" style={{ minHeight: 400 }}>
+            <img src={CDN.hotel} alt="Hotel Náyade" className="absolute inset-0 w-full h-full object-cover" />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(to right, transparent 60%, rgba(10,22,40,1) 100%)" }} />
+            {/* Badge flotante */}
+            <div className="absolute bottom-8 left-8 bg-accent text-accent-foreground rounded-2xl px-5 py-4 shadow-xl">
+              <div className="text-2xl font-heading font-bold">★★★</div>
+              <div className="font-display text-sm font-semibold">Hotel Náyade</div>
+              <div className="font-display text-xs opacity-80">117 habitaciones</div>
             </div>
-            <div>
-              <Badge className="mb-4 bg-secondary text-secondary-foreground border-0 font-display text-xs uppercase tracking-widest">
-                Alojamiento Premium
-              </Badge>
-              <h2 className="text-4xl md:text-5xl font-heading font-bold text-foreground mb-4">
-                Hotel <span className="text-gradient-lago">Náyade</span>
-              </h2>
-              <p className="text-muted-foreground text-lg mb-6 leading-relaxed">
-                Ubicado frente al embalse en el complejo Los Ángeles de San Rafael. Un refugio de confort diseñado para descansar tras un día de aventura, combinando servicios de calidad con un entorno natural inigualable.
-              </p>
-              <div className="grid grid-cols-2 gap-3 mb-8">
-                {habitaciones.map((hab) => (
-                  <div key={hab.tipo} className="bg-muted rounded-xl p-4 border border-border">
-                    <div className="text-2xl mb-1">{hab.icono}</div>
-                    <div className="font-display font-bold text-sm text-foreground mb-0.5">{hab.tipo}</div>
-                    <div className="text-accent font-display font-bold text-lg">{hab.precio}€</div>
-                    <div className="text-muted-foreground text-xs">{hab.rango}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-3 mb-6">
-                <Link href="/hotel">
-                  <Button size="lg" className="bg-primary hover:bg-primary/90 text-primary-foreground font-display font-semibold rounded-full px-8">
-                    Ver Habitaciones <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-                <Link href="/presupuesto">
-                  <Button size="lg" variant="outline" className="border-primary text-primary hover:bg-primary/5 font-display font-semibold rounded-full px-8">
-                    Solicitar Precio
-                  </Button>
-                </Link>
-              </div>
-              <HotelSearchBar
-                params={hotelSearch}
-                onChange={setHotelSearch}
-                onSearch={handleHotelSearch}
-                buttonLabel="Ver disponibilidad"
-              />
+          </div>
+          {/* Columna contenido */}
+          <div className="flex flex-col justify-center px-8 py-16 lg:px-14" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0d2240 100%)" }}>
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-white/70 text-xs font-display font-bold uppercase tracking-widest mb-5 w-fit">
+              Alojamiento Premium
+            </span>
+            <h2 className="text-4xl md:text-5xl font-heading font-bold text-white mb-4">
+              Hotel <span className="text-accent">Náyade</span>
+            </h2>
+            <p className="text-white/65 text-lg mb-8 leading-relaxed">
+              Ubicado frente al embalse en Los Ángeles de San Rafael. Un refugio de confort diseñado para descansar tras un día de aventura, combinando servicios de calidad con un entorno natural inigualable.
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-8">
+              {habitaciones.map((hab) => (
+                <div key={hab.tipo} className="rounded-2xl p-4 border border-white/10 hover:border-accent/40 transition-colors" style={{ background: "rgba(255,255,255,0.05)" }}>
+                  <div className="text-2xl mb-1">{hab.icono}</div>
+                  <div className="font-display font-bold text-sm text-white mb-0.5">{hab.tipo}</div>
+                  <div className="text-accent font-display font-bold text-lg">{hab.precio}€</div>
+                  <div className="text-white/45 text-xs">{hab.rango}</div>
+                </div>
+              ))}
             </div>
+            <div className="flex gap-3 mb-6 flex-wrap">
+              <Link href="/hotel">
+                <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-8">
+                  Ver Habitaciones <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </Link>
+              <Link href="/presupuesto">
+                <Button size="lg" variant="outline" className="border-white/25 text-white hover:bg-white/10 font-display font-semibold rounded-full px-8 bg-transparent">
+                  Solicitar Precio
+                </Button>
+              </Link>
+            </div>
+            <HotelSearchBar
+              params={hotelSearch}
+              onChange={setHotelSearch}
+              onSearch={handleHotelSearch}
+              buttonLabel="Ver disponibilidad"
+            />
           </div>
         </div>
       </section>
 
       {/* ─── SPA ────────────────────────────────────────────────────── */}
-      <section className="py-20 bg-lago-dark text-white">
-        <div className="container">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <Badge className="mb-4 bg-white/15 text-white border-0 font-display text-xs uppercase tracking-widest">
-                Bienestar & Relax
-              </Badge>
-              <h2 className="text-4xl md:text-5xl font-heading font-bold text-white mb-4">
-                SPA <span className="text-accent">Náyade</span>
-              </h2>
-              <p className="text-white/70 text-lg mb-8 leading-relaxed">
-                Un santuario de paz donde el cuerpo recupera su equilibrio. Disfruta de nuestras instalaciones termales y tratamientos exclusivos con vistas al lago.
-              </p>
-              <div className="grid grid-cols-2 gap-4 mb-8">
+      <section className="relative overflow-hidden py-0">
+        <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[620px]">
+          {/* Columna contenido */}
+          <div className="flex flex-col justify-center px-8 py-16 lg:px-14 order-2 lg:order-1" style={{ background: "linear-gradient(135deg, #0d1f1a 0%, #0a2a20 100%)" }}>
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-white/70 text-xs font-display font-bold uppercase tracking-widest mb-5 w-fit">
+              Bienestar & Relax
+            </span>
+            <h2 className="text-4xl md:text-5xl font-heading font-bold text-white mb-4">
+              SPA <span className="text-accent">Náyade</span>
+            </h2>
+            <p className="text-white/65 text-lg mb-8 leading-relaxed">
+              Un santuario de paz donde el cuerpo recupera su equilibrio. Disfruta de nuestras instalaciones termales y tratamientos exclusivos con vistas al lago.
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-8">
+              {[
+                { label: "Circuito SPA", precio: "25€/persona", desc: "Piscinas termales + chorros" },
+                { label: "Pack Pareja", precio: "40€/2 pax", desc: "Experiencia romántica" },
+                { label: "Huéspedes Hotel", precio: "20€/persona", desc: "Precio especial hotel" },
+                { label: "Niños (<12 años)", precio: "10€", desc: "Diversión en familia" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl p-4 border border-white/10 hover:border-accent/40 transition-colors" style={{ background: "rgba(255,255,255,0.05)" }}>
+                  <div className="font-display font-bold text-white text-sm mb-0.5">{item.label}</div>
+                  <div className="text-accent font-display font-bold text-xl">{item.precio}</div>
+                  <div className="text-white/50 text-xs">{item.desc}</div>
+                </div>
+              ))}
+            </div>
+            <Link href="/spa">
+              <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-8 w-fit">
+                Reservar SPA <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+          </div>
+          {/* Columna imagen doble */}
+          <div className="relative order-1 lg:order-2 grid grid-rows-2 gap-0 overflow-hidden" style={{ minHeight: 400 }}>
+            <div className="relative overflow-hidden">
+              <img src={CDN.spa1} alt="SPA Náyade tratamientos" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-105" />
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/30" />
+            </div>
+            <div className="relative overflow-hidden">
+              <img src={CDN.spa2} alt="SPA Náyade noche" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 hover:scale-105" />
+              <div className="absolute inset-0 bg-gradient-to-t from-transparent to-black/30" />
+              {/* Servicios overlay */}
+              <div className="absolute bottom-4 left-4 right-4 grid grid-cols-2 gap-2">
                 {[
-                  { label: "Circuito SPA", precio: "25€/persona", desc: "Piscinas termales + chorros" },
-                  { label: "Pack Pareja", precio: "40€/2 pax", desc: "Experiencia romántica" },
-                  { label: "Huéspedes Hotel", precio: "20€/persona", desc: "Precio especial hotel" },
-                  { label: "Niños (<12 años)", precio: "10€", desc: "Diversión en familia" },
+                  { emoji: "🌊", titulo: "Circuito Hidrotermal" },
+                  { emoji: "🧖", titulo: "Masajes Terapéuticos" },
+                  { emoji: "🧖‍♀️", titulo: "Sauna & Baño Turco" },
+                  { emoji: "✨", titulo: "Clinic SPA" },
                 ].map((item) => (
-                  <div key={item.label} className="bg-white/10 rounded-xl p-4 border border-white/15">
-                    <div className="font-display font-bold text-white text-sm mb-0.5">{item.label}</div>
-                    <div className="text-accent font-display font-bold text-xl">{item.precio}</div>
-                    <div className="text-white/60 text-xs">{item.desc}</div>
+                  <div key={item.titulo} className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: "rgba(10,22,40,0.75)", backdropFilter: "blur(8px)" }}>
+                    <span className="text-lg">{item.emoji}</span>
+                    <span className="text-white text-xs font-display font-semibold">{item.titulo}</span>
                   </div>
                 ))}
               </div>
-              <Link href="/spa">
-                <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-8">
-                  Reservar SPA <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { emoji: "🌊", titulo: "Circuito Hidrotermal", desc: "Piscinas a diferentes temperaturas, chorros cervicales y lumbares" },
-                { emoji: "🧖", titulo: "Masajes", desc: "Relajantes, deportivos y descontracturantes con terapeutas certificados" },
-                { emoji: "🧖‍♀️", titulo: "Zona Wellness", desc: "Sauna finlandesa, baño turco y duchas de contrastes" },
-                { emoji: "✨", titulo: "Clinic SPA", desc: "Tratamientos faciales y corporales de última generación" },
-              ].map((item) => (
-                <div key={item.titulo} className="bg-white/8 rounded-2xl p-5 border border-white/12">
-                  <div className="text-3xl mb-3">{item.emoji}</div>
-                  <h4 className="font-display font-bold text-white text-sm mb-1">{item.titulo}</h4>
-                  <p className="text-white/60 text-xs leading-relaxed">{item.desc}</p>
-                </div>
-              ))}
             </div>
           </div>
         </div>
       </section>
 
       {/* ─── RESTAURANTES ───────────────────────────────────────────── */}
-      <section className="py-20 bg-arena">
-        <div className="container">
-          <div className="text-center mb-12">
-            <Badge className="mb-3 bg-accent/15 text-accent border-0 font-display text-xs uppercase tracking-widest">
+      <section className="py-24 relative overflow-hidden" style={{ background: "linear-gradient(160deg, #1a0f05 0%, #2a1a08 50%, #1a0f05 100%)" }}>
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+        <div className="container relative z-10">
+          <div className="text-center mb-14">
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-xs font-display font-bold uppercase tracking-widest mb-4">
               Gastronomía
-            </Badge>
-            <h2 className="text-4xl md:text-5xl font-heading font-bold text-foreground mb-4">
-              Sabores del <span className="text-gradient-sol">Lago</span>
+            </span>
+            <h2 className="text-4xl md:text-6xl font-heading font-bold text-white mb-4">
+              Sabores del <span className="text-accent">Lago</span>
             </h2>
-            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
+            <p className="text-white/55 text-lg max-w-xl mx-auto">
               Desde desayunos con vistas hasta cenas temáticas. Cocina internacional y sabores locales en espacios únicos
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {restaurantes.map((rest) => (
-              <div key={rest.nombre} className="bg-card rounded-2xl p-6 border border-border shadow-sm card-hover">
-                <div className="text-4xl mb-4">{rest.emoji}</div>
-                <h3 className="font-heading font-bold text-lg text-foreground mb-1">{rest.nombre}</h3>
-                <p className="text-accent font-display text-xs font-semibold uppercase tracking-wide mb-3">{rest.tipo}</p>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-4">{rest.desc}</p>
-                {rest.reserva ? (
-                  <Link href={`/restaurantes/${rest.nombre.toLowerCase().replace(/\s+/g, '-')}`}>
-                    <Button size="sm" className="w-full bg-primary/10 hover:bg-primary/20 text-primary font-display font-semibold rounded-full border-0">
-                      <Calendar className="w-3.5 h-3.5 mr-1.5" /> Reservar Mesa
-                    </Button>
-                  </Link>
-                ) : (
-                  <Badge className="bg-muted text-muted-foreground border-0 font-display text-xs">Próximamente</Badge>
-                )}
-              </div>
-            ))}
+            {restaurantes.map((rest) => {
+              const restImgs: Record<string, string> = {
+                "Restaurante El Galeón": CDN.barco,
+                "La Cabaña del Lago": CDN.cableski2,
+                "Nassau Bar & Music": CDN.panoramica,
+                "Arrocería La Cabaña": CDN.hero1,
+              };
+              const bg = restImgs[rest.nombre] || CDN.hero1;
+              return (
+                <div key={rest.nombre} className="group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl shadow-lg" style={{ minHeight: 340 }}>
+                  <img src={bg} alt={rest.nombre} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                  <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(15,8,2,0.97) 40%, rgba(15,8,2,0.2) 100%)" }} />
+                  <div className="relative z-10 flex flex-col justify-end h-full p-6" style={{ minHeight: 340 }}>
+                    <div className="text-3xl mb-2">{rest.emoji}</div>
+                    <h3 className="font-heading font-bold text-lg text-white mb-1">{rest.nombre}</h3>
+                    <p className="text-accent font-display text-xs font-semibold uppercase tracking-wide mb-2">{rest.tipo}</p>
+                    <p className="text-white/65 text-sm leading-relaxed mb-4">{rest.desc}</p>
+                    {rest.reserva ? (
+                      <Link href={`/restaurantes/${rest.nombre.toLowerCase().replace(/\s+/g, '-')}`}>
+                        <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-accent text-accent-foreground text-xs font-display font-bold transition-all group-hover:gap-2.5 w-fit">
+                          <Calendar className="w-3.5 h-3.5" /> Reservar Mesa
+                        </span>
+                      </Link>
+                    ) : (
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-white/10 text-white/50 text-xs font-display border border-white/10">Próximamente</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-center mt-12">
+            <Link href="/restaurantes">
+              <Button size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground font-display font-semibold rounded-full px-10 shadow-lg">
+                Ver Todos los Restaurantes <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -591,26 +661,65 @@ export default function Home() {
       </section>
 
       {/* ─── TESTIMONIOS ────────────────────────────────────────────── */}
-      <section className="py-20 bg-lago-light">
-        <div className="container">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-heading font-bold text-foreground mb-3">
-              Lo que Dicen <span className="text-gradient-lago">Nuestros Clientes</span>
+      <section className="py-24 relative overflow-hidden" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0d2240 50%, #0a1628 100%)" }}>
+        <div className="absolute inset-0 opacity-5">
+          <img src={CDN.hero3} alt="" className="w-full h-full object-cover" />
+        </div>
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-accent/30 to-transparent" />
+        <div className="container relative z-10">
+          <div className="text-center mb-14">
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-xs font-display font-bold uppercase tracking-widest mb-4">
+              <Star className="w-3 h-3 fill-accent" /> Opiniones Verificadas
+            </span>
+            <h2 className="text-4xl md:text-6xl font-heading font-bold text-white mb-4">
+              Lo que Dicen <span className="text-accent">Nuestros Clientes</span>
             </h2>
+            <p className="text-white/55 text-lg max-w-xl mx-auto">
+              Más de 10.000 experiencias vividas. Estas son algunas de sus historias.
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonios.map((t, i) => (
-              <div key={i} className="bg-card rounded-2xl p-7 border border-border shadow-sm">
-                <div className="flex gap-0.5 mb-4">
-                  {Array.from({ length: t.stars }).map((_, j) => (
-                    <Star key={j} className="w-4 h-4 fill-accent text-accent" />
-                  ))}
+              <div
+                key={i}
+                className="group relative rounded-3xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(12px)" }}
+              >
+                {/* Línea de acento superior */}
+                <div className="h-0.5 w-full bg-gradient-to-r from-transparent via-accent to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
+                <div className="p-8">
+                  <div className="flex gap-1 mb-5">
+                    {Array.from({ length: t.stars }).map((_, j) => (
+                      <Star key={j} className="w-4 h-4 fill-accent text-accent" />
+                    ))}
+                  </div>
+                  <p className="text-white/80 text-base leading-relaxed mb-6 italic">
+                    "{t.texto}"
+                  </p>
+                  <div className="flex items-center gap-3 pt-5 border-t border-white/10">
+                    <div className="w-10 h-10 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center text-accent font-display font-bold text-sm flex-shrink-0">
+                      {t.autor.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="font-display font-bold text-white text-sm">{t.autor}</div>
+                      <div className="text-white/45 text-xs">{t.tipo}</div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-foreground/80 text-sm leading-relaxed mb-5 italic">"{t.texto}"</p>
-                <div>
-                  <div className="font-display font-bold text-foreground text-sm">{t.autor}</div>
-                  <div className="text-muted-foreground text-xs">{t.tipo}</div>
-                </div>
+              </div>
+            ))}
+          </div>
+          {/* Métricas de confianza */}
+          <div className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { num: "10.000+", label: "Clientes satisfechos" },
+              { num: "4.8★", label: "Valoración media" },
+              { num: "15+", label: "Años de experiencia" },
+              { num: "10", label: "Actividades acuáticas" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center py-6 px-4 rounded-2xl" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div className="text-3xl font-heading font-bold text-accent mb-1">{stat.num}</div>
+                <div className="text-white/55 text-sm font-display">{stat.label}</div>
               </div>
             ))}
           </div>

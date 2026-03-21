@@ -776,3 +776,11 @@
 - [x] Corregido: try/catch independientes para email usuario y email admin (uno no bloquea al otro)
 - [x] Verificado: email de prueba enviado a reservas@nayadeexperiences.es con éxito (messageId confirmado)
 - [x] 0 errores TypeScript
+
+## Rediseño bloques Home — v8.22
+- [x] Bloque Packs Día Completo: tarjetas foto-fondo aspiracionales, fondo dark navy, overlay degradado, badge ★ Más Popular
+- [x] Bloque Hotel Náyade: layout split imagen izquierda + contenido dark navy derecha, badge flotante ★★★, grid de habitaciones con precios
+- [x] Bloque SPA: layout split contenido dark verde + doble imagen derecha con servicios overlay glass
+- [x] Bloque Sabores del Lago (Restaurantes): tarjetas foto-fondo con emoji, tipo y CTA, fondo dark marrón cálido
+- [x] Bloque Testimonios: cards glass dark con avatar inicial, línea acento, métricas de confianza (10.000+ clientes, 4.8★)
+- [x] 0 errores TypeScript

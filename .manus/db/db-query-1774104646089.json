@@ -1,0 +1,90 @@
+{
+  "query": "SELECT title, category, imageUrl FROM gallery_items WHERE isActive = 1 ORDER BY category, sortOrder LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT title, category, imageUrl FROM gallery_items WHERE isActive = 1 ORDER BY category, sortOrder LIMIT 20;",
+  "rows": [
+    {
+      "title": "Wakeboard en el embalse",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/wakeboard_b574701d.jpg"
+    },
+    {
+      "title": "Bici acuática",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/bici_acuatica_5a5d37da.jpg"
+    },
+    {
+      "title": "Paddle Surf",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/p-47369-vente-a-disfrutar-del-paddle-surf_14861213627873_82482cb2.jpg"
+    },
+    {
+      "title": "Actividades acuáticas en el lago",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/1aeca073-a6d8-46bb-970c-a4b211651c55_648d3976.png"
+    },
+    {
+      "title": "Kayak en aguas cristalinas",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/31bc24b6-13c3-4ea1-a67f-16a927473c61_d7582ff1.png"
+    },
+    {
+      "title": "Moto acuática infantil",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/41036eac-2f7e-4c9d-afb4-8b68dffeae3e_664b6cd6.png"
+    },
+    {
+      "title": "Tubing en el embalse",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/060194d5-9574-409c-b5a1-a367eb93bc7f_49e240ae.png"
+    },
+    {
+      "title": "Paseo en barco por el embalse",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/28d8f7b8-1454-4060-b6de-0a399da63a69_4e751661.png"
+    },
+    {
+      "title": "Banana ski en el lago",
+      "category": "Acuático",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/49e4001d-3abe-4f13-9d72-cb04be491a23_9306c7cc.png"
+    },
+    {
+      "title": "Nuestro Embalse en los andles de san rafael",
+      "category": "General",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1774088145054-jpwq7l.png"
+    },
+    {
+      "title": "Puente sobre el embalse",
+      "category": "General",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/d049863d-3421-411f-a64f-64eb34408da9_d6f91f90.png"
+    },
+    {
+      "title": "Panorámica del embalse",
+      "category": "General",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/5f23cf10-be16-424a-a48f-031f5b74e35f_843d3fb3.png"
+    },
+    {
+      "title": "Parque hinchable acuático",
+      "category": "Multiaventura",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/aventura_hinchable_7c004251.png"
+    },
+    {
+      "title": "Aventura hinchable en el lago",
+      "category": "Multiaventura",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/aventura_hinchable3_110bdaad.png"
+    },
+    {
+      "title": "Sala de tratamientos SPA",
+      "category": "SPA",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa4_0e502ffb.png"
+    },
+    {
+      "title": "Edificio SPA Náyade de noche",
+      "category": "SPA",
+      "imageUrl": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa2_f1c857bc.png"
+    }
+  ],
+  "messages": [],
+  "stdout": "title\tcategory\timageUrl\nWakeboard en el embalse\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/wakeboard_b574701d.jpg\nBici acuática\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/bici_acuatica_5a5d37da.jpg\nPaddle Surf\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/p-47369-vente-a-disfrutar-del-paddle-surf_14861213627873_82482cb2.jpg\nActividades acuáticas en el lago\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/1aeca073-a6d8-46bb-970c-a4b211651c55_648d3976.png\nKayak en aguas cristalinas\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/31bc24b6-13c3-4ea1-a67f-16a927473c61_d7582ff1.png\nMoto acuática infantil\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/41036eac-2f7e-4c9d-afb4-8b68dffeae3e_664b6cd6.png\nTubing en el embalse\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/060194d5-9574-409c-b5a1-a367eb93bc7f_49e240ae.png\nPaseo en barco por el embalse\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/28d8f7b8-1454-4060-b6de-0a399da63a69_4e751661.png\nBanana ski en el lago\tAcuático\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/49e4001d-3abe-4f13-9d72-cb04be491a23_9306c7cc.png\nNuestro Embalse en los andles de san rafael\tGeneral\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1774088145054-jpwq7l.png\nPuente sobre el embalse\tGeneral\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/d049863d-3421-411f-a64f-64eb34408da9_d6f91f90.png\nPanorámica del embalse\tGeneral\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/5f23cf10-be16-424a-a48f-031f5b74e35f_843d3fb3.png\nParque hinchable acuático\tMultiaventura\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/aventura_hinchable_7c004251.png\nAventura hinchable en el lago\tMultiaventura\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/aventura_hinchable3_110bdaad.png\nSala de tratamientos SPA\tSPA\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa4_0e502ffb.png\nEdificio SPA Náyade de noche\tSPA\thttps://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa2_f1c857bc.png\n",
+  "stderr": "",
+  "execution_time_ms": 483
+}
