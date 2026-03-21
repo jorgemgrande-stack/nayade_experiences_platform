@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { LayoutGrid, CheckCircle, Loader2, ArrowUp, ArrowDown, X, Plus } from "lucide-react";
 
 // ─── Constantes de módulos disponibles ───────────────────────────────────────
 const HOME_MODULES = [
@@ -73,54 +74,76 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
   const availableExperiences = allExperiences?.filter((e: Exp) => !selectedIds.includes(e.id) && e.isActive) ?? [];
 
   return (
-    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 24, marginBottom: 24 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-        <span style={{ fontSize: 28 }}>{icon}</span>
-        <div>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#111827" }}>{label}</h3>
-          <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{description}</p>
+    <div className="bg-white/5 border border-white/10 rounded-xl p-5 mb-5">
+      {/* Header del módulo */}
+      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/10">
+        <span className="text-2xl">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-white m-0">{label}</h3>
+          <p className="text-xs text-white/40 mt-0.5">{description}</p>
         </div>
         {saving && (
-          <span style={{ marginLeft: "auto", fontSize: 12, color: "#f97316", fontWeight: 600 }}>Guardando...</span>
+          <span className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+            <Loader2 className="w-3 h-3 animate-spin" /> Guardando...
+          </span>
         )}
         {saved && (
-          <span style={{ marginLeft: "auto", fontSize: 12, color: "#22c55e", fontWeight: 600 }}>✓ Guardado</span>
+          <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+            <CheckCircle className="w-3 h-3" /> Guardado
+          </span>
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 16 }}>
+      <div className="grid grid-cols-2 gap-5">
         {/* Columna izquierda: seleccionados */}
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ background: "#f97316", color: "#fff", borderRadius: 9999, padding: "1px 8px", fontSize: 11 }}>{selectedIds.length}</span>
-            Productos seleccionados
+          <div className="flex items-center gap-2 mb-3">
+            <span className="bg-orange-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5">
+              {selectedIds.length}
+            </span>
+            <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
+              Productos seleccionados
+            </span>
           </div>
           {selectedExperiences.length === 0 ? (
-            <div style={{ padding: "20px 0", textAlign: "center", color: "#9ca3af", fontSize: 13, border: "2px dashed #e5e7eb", borderRadius: 8 }}>
+            <div className="py-8 text-center text-white/30 text-xs border-2 border-dashed border-white/10 rounded-lg">
               Sin productos seleccionados.<br />Añade desde la lista de la derecha.
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="flex flex-col gap-2">
               {selectedExperiences.map((exp, idx) => (
-                <div key={exp.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 10px" }}>
+                <div key={exp.id} className="flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-lg p-2">
                   {exp.image1 ? (
-                    <img src={exp.image1} alt={exp.title} style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                    <img src={exp.image1} alt={exp.title} className="w-10 h-10 object-cover rounded-md shrink-0" />
                   ) : (
-                    <div style={{ width: 44, height: 44, background: "#e5e7eb", borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🖼️</div>
+                    <div className="w-10 h-10 bg-white/10 rounded-md shrink-0 flex items-center justify-center text-base">🖼️</div>
                   )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{exp.title}</div>
-                    <div style={{ fontSize: 11, color: "#6b7280" }}>{exp.basePrice}€</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-white truncate">{exp.title}</div>
+                    <div className="text-[10px] text-white/40">{exp.basePrice}€</div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <button onClick={() => moveUp(exp.id)} disabled={idx === 0} style={{ background: "none", border: "1px solid #d1d5db", borderRadius: 4, width: 22, height: 22, cursor: idx === 0 ? "not-allowed" : "pointer", opacity: idx === 0 ? 0.4 : 1, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>▲</button>
-                    <button onClick={() => moveDown(exp.id)} disabled={idx === selectedExperiences.length - 1} style={{ background: "none", border: "1px solid #d1d5db", borderRadius: 4, width: 22, height: 22, cursor: idx === selectedExperiences.length - 1 ? "not-allowed" : "pointer", opacity: idx === selectedExperiences.length - 1 ? 0.4 : 1, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>▼</button>
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => moveUp(exp.id)}
+                      disabled={idx === 0}
+                      className="w-6 h-6 rounded border border-white/20 flex items-center justify-center text-white/50 hover:text-white hover:border-white/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => moveDown(exp.id)}
+                      disabled={idx === selectedExperiences.length - 1}
+                      className="w-6 h-6 rounded border border-white/20 flex items-center justify-center text-white/50 hover:text-white hover:border-white/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
                   </div>
                   <button
                     onClick={() => toggleExperience(exp.id)}
-                    style={{ background: "#fee2e2", border: "none", borderRadius: 6, width: 28, height: 28, cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", color: "#ef4444", flexShrink: 0 }}
-                  >✕</button>
+                    className="w-7 h-7 bg-red-500/20 border border-red-500/30 rounded-md flex items-center justify-center text-red-400 hover:bg-red-500/30 transition-colors shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -129,30 +152,34 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
 
         {/* Columna derecha: disponibles */}
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 }}>
-            Productos disponibles
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
+              Productos disponibles
+            </span>
           </div>
           {availableExperiences.length === 0 ? (
-            <div style={{ padding: "20px 0", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
+            <div className="py-8 text-center text-white/30 text-xs">
               Todos los productos están seleccionados
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 400, overflowY: "auto" }}>
+            <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pr-1">
               {availableExperiences.map((exp) => (
-                <div key={exp.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}>
+                <div key={exp.id} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg p-2 hover:bg-white/8 transition-colors">
                   {exp.image1 ? (
-                    <img src={exp.image1} alt={exp.title} style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                    <img src={exp.image1} alt={exp.title} className="w-10 h-10 object-cover rounded-md shrink-0" />
                   ) : (
-                    <div style={{ width: 40, height: 40, background: "#e5e7eb", borderRadius: 6, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🖼️</div>
+                    <div className="w-10 h-10 bg-white/10 rounded-md shrink-0 flex items-center justify-center text-base">🖼️</div>
                   )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{exp.title}</div>
-                    <div style={{ fontSize: 11, color: "#9ca3af" }}>{exp.basePrice}€</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-white/80 truncate">{exp.title}</div>
+                    <div className="text-[10px] text-white/40">{exp.basePrice}€</div>
                   </div>
                   <button
                     onClick={() => toggleExperience(exp.id)}
-                    style={{ background: "#f97316", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, color: "#fff", fontWeight: 600, flexShrink: 0 }}
-                  >+ Añadir</button>
+                    className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-semibold rounded-md px-2.5 py-1.5 transition-colors shrink-0"
+                  >
+                    <Plus className="w-3 h-3" /> Añadir
+                  </button>
                 </div>
               ))}
             </div>
@@ -167,14 +194,21 @@ function ModuleEditor({ moduleKey, label, description, icon }: { moduleKey: stri
 export default function HomeModulesManager() {
   return (
     <AdminLayout title="Módulos de la Home">
-      <div style={{ padding: "0 0 40px 0" }}>
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827", margin: 0 }}>Módulos de la Home</h1>
-          <p style={{ color: "#6b7280", marginTop: 4, fontSize: 14 }}>
-            Selecciona qué productos aparecen en cada sección de la página principal. El orden de la lista determina el orden en la web.
-          </p>
+      <div className="min-h-screen bg-[#080e1c] text-white px-6 py-6">
+        {/* Page header */}
+        <div className="flex items-center gap-3 mb-6 pb-5 border-b border-white/10">
+          <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
+            <LayoutGrid className="w-5 h-5 text-orange-400" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white leading-none">Módulos de la Home</h1>
+            <p className="text-xs text-white/40 mt-1">
+              Selecciona qué productos aparecen en cada sección de la página principal. El orden de la lista determina el orden en la web.
+            </p>
+          </div>
         </div>
 
+        {/* Módulos */}
         {HOME_MODULES.map((mod) => (
           <ModuleEditor
             key={mod.key}
