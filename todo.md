@@ -657,3 +657,10 @@
 - [x] Notificación al owner cuando se confirma un pago de restaurante
 - [x] Páginas /restaurantes/reserva-ok y /restaurantes/reserva-ko registradas en App.tsx
 - [x] 0 errores TypeScript reales (tsc --noEmit)
+
+## Bugs móvil (iPhone 15) — v8.7
+- [x] Productos no cargan en móvil: Experiencias, Packs, Hotel, SPA (en PC sí cargan)
+- [x] Menú móvil: categorías principales (Experiencias, Packs, Hotel, SPA, etc.) no son clickables
+- [x] Causa raíz: authGuard bloqueaba con 401 todos los procedimientos no listados (sin cookie de sesión en móvil)
+- [x] Corregir authGuard.ts: añadidos todos los procedimientos públicos reales del frontend
+- [x] Corregir menú móvil PublicNav.tsx: label navega directamente, chevron expande submenú

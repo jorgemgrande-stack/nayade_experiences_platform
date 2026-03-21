@@ -261,22 +261,21 @@ export default function PublicNav() {
           {navLinks.map((link) => (
             <div key={link.href}>
               <div className="flex items-center justify-between">
+                {/* El label siempre navega a la ruta principal del ítem */}
                 <button
                   className="flex-1 text-left px-4 py-3 rounded-xl hover:bg-muted font-display font-medium text-foreground cursor-pointer"
-                  onClick={() => {
-                    if (!link.children) {
-                      mobileNavigate(link.href);
-                    } else {
-                      setExpandedMobile(expandedMobile === link.label ? null : link.label);
-                    }
-                  }}
+                  onClick={() => mobileNavigate(link.href)}
                 >
                   {link.label}
                 </button>
+                {/* Si tiene hijos, el chevron expande/colapsa el submenú */}
                 {link.children && (
                   <button
                     className="p-3 text-muted-foreground hover:text-primary"
-                    onClick={() => setExpandedMobile(expandedMobile === link.label ? null : link.label)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedMobile(expandedMobile === link.label ? null : link.label);
+                    }}
                   >
                     <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", expandedMobile === link.label && "rotate-180")} />
                   </button>

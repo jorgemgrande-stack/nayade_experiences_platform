@@ -11,6 +11,10 @@
  * Funciona en ambos modos:
  *  - LOCAL_AUTH=true → verifica cookie JWT propia (nayade_session)
  *  - Manus OAuth     → verifica cookie de sesión del SDK de Manus
+ *
+ * IMPORTANTE: Esta lista debe incluir TODOS los procedimientos que se llaman
+ * desde páginas públicas (sin login). Si falta alguno, los usuarios sin sesión
+ * (incluyendo móviles/Safari sin cookies de admin) recibirán 401.
  */
 
 import type { Request, Response, NextFunction } from "express";
@@ -21,48 +25,81 @@ import { sdk } from "./_core/sdk";
 // Formato: "router.procedure" tal como aparece en la URL de tRPC
 // Ejemplo: /api/trpc/auth.me → "auth.me"
 const PUBLIC_TRPC_ROUTES = new Set([
-  // Auth
+  // ── Auth ──────────────────────────────────────────────────────────────────
   "auth.me",
   "auth.logout",
-  // Contenido público de la web
+
+  // ── Router "public" — contenido público general ───────────────────────────
+  "public.getFeaturedExperiences",
+  "public.getExperiences",
+  "public.getExperienceBySlug",
+  "public.getVariantsByExperience",
+  "public.setPassword",
+  "public.getCategories",
+  "public.getLocations",
+  "public.getSlideshowItems",
+  "public.getMenuItems",
+  "public.submitLead",
+  "public.getPublicPage",
+  "public.getPublicPageBlocks",
+
+  // ── CMS público ───────────────────────────────────────────────────────────
   "cms.getSiteSettings",
   "cms.getSlideshow",
   "cms.getMenuItems",
   "cms.getStaticPage",
   "cms.getHomeModules",
-  // Experiencias y productos
-  "experiences.getAll",
-  "experiences.getBySlug",
-  "experiences.getFeatured",
-  "categories.getAll",
-  "locations.getAll",
-  "locations.getBySlug",
+
+  // ── Módulos de la home ────────────────────────────────────────────────────
+  "homeModules.getModule",
+
+  // ── Packs ─────────────────────────────────────────────────────────────────
   "packs.getAll",
   "packs.getBySlug",
+  "packs.getByCategory",
   "packs.getCategories",
-  // Hotel y SPA
+
+  // ── Hotel ─────────────────────────────────────────────────────────────────
   "hotel.getRoomTypes",
   "hotel.getRoomBySlug",
+  "hotel.getRoomTypeBySlug",
   "hotel.getAvailability",
+  "hotel.searchAvailability",
+  "hotel.getRoomCalendar",
   "hotel.createBooking",
+  "hotel.createHotelBooking",
+
+  // ── SPA ───────────────────────────────────────────────────────────────────
   "spa.getTreatments",
   "spa.getTreatmentBySlug",
+  "spa.getCategories",
+  "spa.getAvailableSlots",
+  "spa.getSlotsByMonth",
   "spa.createBooking",
-  // Reseñas
+  "spa.createSpaBooking",
+
+  // ── Reseñas ───────────────────────────────────────────────────────────────
   "reviews.getPublicReviews",
   "reviews.submitReview",
-  // Restaurantes (público)
+
+  // ── Restaurantes (público) ────────────────────────────────────────────────
   "restaurants.getAll",
   "restaurants.getBySlug",
   "restaurants.getAvailability",
   "restaurants.getShifts",
   "restaurants.createBooking",
   "restaurants.getBookingByLocator",
-  // Leads y presupuestos (formularios públicos)
+
+  // ── Leads y presupuestos (formularios públicos) ───────────────────────────
   "leads.create",
+  "public.submitLead",
   "quotes.getByPaymentToken",
   "quotes.createPaymentLink",
-  // Sistema
+
+  // ── Reservas (estado de pago público) ────────────────────────────────────
+  "reservations.getStatus",
+
+  // ── Sistema ───────────────────────────────────────────────────────────────
   "system.notifyOwner",
 ]);
 
