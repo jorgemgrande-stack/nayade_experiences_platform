@@ -1,7 +1,8 @@
 /**
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
- */import { router, protectedProcedure } from "../\_core/trpc";
+ */import { router, protectedProcedure } from "../_core/trpc";
+import { createLead } from "../db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -688,6 +689,30 @@ export const crmRouter = router({
         return { success: true, quoteId, quoteNumber };
       }),
 
+    create: staff
+      .input(z.object({
+        name: z.string().min(2),
+        email: z.string().email(),
+        phone: z.string().optional(),
+        company: z.string().optional(),
+        message: z.string().optional(),
+        preferredDate: z.string().optional(),
+        numberOfAdults: z.number().optional(),
+        numberOfChildren: z.number().optional(),
+        selectedCategory: z.string().optional(),
+        selectedProduct: z.string().optional(),
+        source: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        // Usar createLead de db.ts para que se cree el cliente automáticamente
+        const result = await createLead({
+          ...input,
+          source: input.source ?? "admin",
+        });
+        await logActivity("lead", result.id, "lead_created_admin", ctx.user.id, ctx.user.name, { name: input.name });
+        return result;
+      }),
+
     delete: staff
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input, ctx }) => {
@@ -721,13 +746,43 @@ export const crmRouter = router({
         if (input.from) conditions.push(gte(quotes.createdAt, new Date(input.from)));
         if (input.to) conditions.push(lte(quotes.createdAt, new Date(input.to)));
 
-        return db
-          .select()
+        // Join con leads para obtener datos del cliente
+        const rows = await db
+          .select({
+            id: quotes.id,
+            quoteNumber: quotes.quoteNumber,
+            title: quotes.title,
+            status: quotes.status,
+            total: quotes.total,
+            subtotal: quotes.subtotal,
+            discount: quotes.discount,
+            tax: quotes.tax,
+            items: quotes.items,
+            validUntil: quotes.validUntil,
+            notes: quotes.notes,
+            conditions: quotes.conditions,
+            paymentLinkUrl: quotes.paymentLinkUrl,
+            paidAt: quotes.paidAt,
+            sentAt: quotes.sentAt,
+            invoiceNumber: quotes.invoiceNumber,
+            invoicePdfUrl: quotes.invoicePdfUrl,
+            createdAt: quotes.createdAt,
+            updatedAt: quotes.updatedAt,
+            leadId: quotes.leadId,
+            agentId: quotes.agentId,
+            // Datos del cliente (desde el lead)
+            clientName: leads.name,
+            clientEmail: leads.email,
+            clientPhone: leads.phone,
+            clientCompany: leads.company,
+          })
           .from(quotes)
+          .leftJoin(leads, eq(quotes.leadId, leads.id))
           .where(conditions.length ? and(...conditions) : undefined)
           .orderBy(desc(quotes.createdAt))
           .limit(input.limit)
           .offset(input.offset);
+        return rows;
       }),
 
     counters: staff.query(async () => {
@@ -1096,6 +1151,60 @@ export const crmRouter = router({
         }
 
         return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl };
+      }),
+
+    // ─── ESCENARIO B: Convertir a reserva SIN pago previo (admin manual) ──────
+    convertToReservation: staff
+      .input(z.object({
+        quoteId: z.number(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
+        const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead asociado no encontrado" });
+
+        const now = new Date();
+        const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
+        const total = Number(quote.total);
+
+        // Crear reserva con estado pending_payment (no pagada)
+        const [resResult] = await db.insert(reservations).values({
+          productId: 0,
+          productName: quote.title,
+          bookingDate: now.toISOString().split("T")[0],
+          people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
+          amountTotal: Math.round(total * 100),
+          amountPaid: 0,
+          status: "pending_payment",
+          customerName: lead.name,
+          customerEmail: lead.email,
+          customerPhone: lead.phone ?? "",
+          merchantOrder: reservationRef.substring(0, 12),
+          notes: input.notes ?? `Convertido manualmente desde presupuesto ${quote.quoteNumber}`,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+        const reservationId = (resResult as { insertId: number }).insertId;
+
+        // Actualizar presupuesto: estado aceptado (ganado comercialmente) pero sin factura
+        await db.update(quotes).set({
+          status: "aceptado",
+          updatedAt: now,
+        }).where(eq(quotes.id, input.quoteId));
+
+        // Actualizar lead: oportunidad ganada comercialmente
+        await db.update(leads).set({
+          opportunityStatus: "ganada",
+          status: "convertido",
+          updatedAt: now,
+        }).where(eq(leads.id, quote.leadId));
+
+        await logActivity("quote", quote.id, "converted_to_reservation_manual", ctx.user.id, ctx.user.name, { reservationId, status: "pending_payment" });
+        await logActivity("lead", quote.leadId, "opportunity_won_manual", ctx.user.id, ctx.user.name, { quoteId: quote.id });
+
+        return { success: true, reservationId, reservationRef, status: "pending_payment" };
       }),
 
     delete: staff

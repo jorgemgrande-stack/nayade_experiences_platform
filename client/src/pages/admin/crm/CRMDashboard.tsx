@@ -1277,6 +1277,10 @@ export default function CRMDashboard() {
   const [selectedQuoteId, setSelectedQuoteId] = useState<number | null>(null);
   const [editQuoteId, setEditQuoteId] = useState<number | null>(null);
   const [deleteQuoteId, setDeleteQuoteId] = useState<number | null>(null);
+  const [sendQuoteId, setSendQuoteId] = useState<number | null>(null);
+  const [confirmPaymentId, setConfirmPaymentId] = useState<number | null>(null);
+  const [convertReservationId, setConvertReservationId] = useState<number | null>(null);
+  const [markLostQuoteId, setMarkLostQuoteId] = useState<number | null>(null);
 
   const { data: leadCounters } = trpc.crm.leads.counters.useQuery();
   const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery();
@@ -1324,6 +1328,61 @@ export default function CRMDashboard() {
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const sendQuoteMutation = trpc.crm.quotes.send.useMutation({
+    onSuccess: () => {
+      toast.success("Presupuesto enviado al cliente");
+      setSendQuoteId(null);
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const confirmPaymentMutation = trpc.crm.quotes.confirmPayment.useMutation({
+    onSuccess: () => {
+      toast.success("Pago confirmado — reserva y factura generadas");
+      setConfirmPaymentId(null);
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+      utils.crm.reservations.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const convertReservationMutation = trpc.crm.quotes.convertToReservation.useMutation({
+    onSuccess: () => {
+      toast.success("Convertido a reserva (pendiente de cobro)");
+      setConvertReservationId(null);
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+      utils.crm.reservations.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const markLostQuoteMutation = trpc.crm.quotes.markLost.useMutation({
+    onSuccess: () => {
+      toast.success("Presupuesto marcado como perdido");
+      setMarkLostQuoteId(null);
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const duplicateQuoteMutation = trpc.crm.quotes.duplicate.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Presupuesto duplicado: ${data.quoteNumber}`);
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.counters.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -1670,73 +1729,109 @@ export default function CRMDashboard() {
                 <thead>
                   <tr className="border-b border-white/8 bg-white/5">
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Referencia</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Título</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
                     <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Total</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Creado</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Fecha</th>
                     <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {quotesLoading ? (
-                    <tr><td colSpan={6} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !quotesData?.length ? (
-                    <tr><td colSpan={6} className="text-center py-12 text-white/30 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-white/30 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
                   ) : quotesData.map((quote) => (
-                    <tr key={quote.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                    <tr key={quote.id} className="border-t border-white/5 hover:bg-white/3 transition-colors group">
                       <td className="px-4 py-3">
                         <div className="text-sm font-mono font-medium text-orange-400">{quote.quoteNumber}</div>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-sm text-white/70 truncate max-w-[200px]">{quote.title}</div>
+                        <div className="text-[10px] text-white/30 mt-0.5">{new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <QuoteStatusBadge status={quote.status as QuoteStatus} />
+                        <div className="text-sm font-medium text-white/90">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
+                        <div className="text-[10px] text-white/40 truncate max-w-[140px]">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <div className="text-sm text-white/70 truncate max-w-[180px]">{quote.title}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          <QuoteStatusBadge status={quote.status as QuoteStatus} />
+                          {quote.status === "aceptado" && !quote.paidAt && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-full">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                              Pendiente cobro
+                            </span>
+                          )}
+                          {quote.paidAt && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                              <CheckCircle className="w-2.5 h-2.5" />
+                              Cobrado
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className="text-sm font-bold text-white">{Number(quote.total).toFixed(2)} €</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-xs text-white/40">{new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
+                        <div className="text-xs text-white/40">
+                          {quote.sentAt ? (
+                            <span className="text-blue-400/70">Env. {new Date(quote.sentAt).toLocaleDateString("es-ES")}</span>
+                          ) : (
+                            new Date(quote.createdAt).toLocaleDateString("es-ES")
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-white/50 hover:text-white h-7 px-2 text-xs"
-                            onClick={() => setSelectedQuoteId(quote.id)}
-                            title="Ver presupuesto"
-                          >
+                        <div className="flex items-center justify-end gap-0.5">
+                          {/* Ver */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-white h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title="Ver detalle">
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs"
-                            onClick={() => setEditQuoteId(quote.id)}
-                            title="Editar presupuesto"
-                          >
+                          {/* Editar */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-blue-300 h-7 w-7 p-0" onClick={() => setEditQuoteId(quote.id)} title="Editar">
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
-                          {quote.status === "borrador" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-orange-400 hover:text-orange-300 h-7 px-2 text-xs"
-                              onClick={() => setSelectedQuoteId(quote.id)}
-                              title="Enviar al cliente"
-                            >
+                          {/* Enviar al cliente (solo borrador) */}
+                          {(quote.status === "borrador") && (
+                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-orange-300 h-7 w-7 p-0" onClick={() => setSendQuoteId(quote.id)} title="Enviar al cliente">
                               <Send className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-400 hover:text-red-300 h-7 px-2 text-xs"
-                            onClick={() => setDeleteQuoteId(quote.id)}
-                            title="Eliminar presupuesto"
-                          >
+                          {/* Reenviar (si ya fue enviado) */}
+                          {quote.status === "enviado" && (
+                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-blue-300 h-7 w-7 p-0"
+                              onClick={() => sendQuoteMutation.mutate({ id: quote.id })} title="Reenviar al cliente">
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {/* Confirmar pago (enviado o aceptado sin pago) */}
+                          {(quote.status === "enviado" || (quote.status === "aceptado" && !quote.paidAt)) && (
+                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title="Confirmar pago recibido">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {/* Convertir a reserva sin pago (enviado) */}
+                          {quote.status === "enviado" && (
+                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-purple-300 h-7 w-7 p-0" onClick={() => setConvertReservationId(quote.id)} title="Convertir a reserva (pendiente cobro)">
+                              <CalendarCheck className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {/* Marcar perdido */}
+                          {(quote.status === "borrador" || quote.status === "enviado") && (
+                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-red-300 h-7 w-7 p-0" onClick={() => setMarkLostQuoteId(quote.id)} title="Marcar como perdido">
+                              <XCircle className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {/* Duplicar */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-white/70 h-7 w-7 p-0"
+                            onClick={() => duplicateQuoteMutation.mutate({ id: quote.id })} title="Duplicar presupuesto">
+                            <Copy className="w-3.5 h-3.5" />
+                          </Button>
+                          {/* Eliminar */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-red-400 h-7 w-7 p-0" onClick={() => setDeleteQuoteId(quote.id)} title="Eliminar">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -1885,6 +1980,101 @@ export default function CRMDashboard() {
             >
               {deleteQuote.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
               Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Send Quote confirmation */}
+      <Dialog open={sendQuoteId !== null} onOpenChange={(o) => !o && setSendQuoteId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Send className="w-5 h-5 text-orange-400" /> Enviar presupuesto al cliente
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-white/60 py-2">Se enviará el presupuesto por email al cliente y se actualizará el estado a "Enviado".</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setSendQuoteId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => sendQuoteId !== null && sendQuoteMutation.mutate({ id: sendQuoteId })}
+              disabled={sendQuoteMutation.isPending}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {sendQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}
+              Enviar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Payment */}
+      <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => !o && setConfirmPaymentId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-400" /> Confirmar pago recibido
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-white/60 py-2">Se marcará el presupuesto como pagado, se generará la reserva y la factura PDF automáticamente.</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setConfirmPaymentId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => confirmPaymentId !== null && confirmPaymentMutation.mutate({ quoteId: confirmPaymentId })}
+              disabled={confirmPaymentMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {confirmPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+              Confirmar pago
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Convert to Reservation (no payment) */}
+      <Dialog open={convertReservationId !== null} onOpenChange={(o) => !o && setConvertReservationId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CalendarCheck className="w-5 h-5 text-purple-400" /> Convertir a reserva
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-white/60 py-2">Se creará una reserva con estado <strong className="text-amber-400">pendiente de cobro</strong>. La oportunidad se marcará como ganada. Podrás confirmar el pago más adelante.</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setConvertReservationId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => convertReservationId !== null && convertReservationMutation.mutate({ quoteId: convertReservationId })}
+              disabled={convertReservationMutation.isPending}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {convertReservationMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CalendarCheck className="w-4 h-4 mr-1" />}
+              Crear reserva
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark Lost */}
+      <Dialog open={markLostQuoteId !== null} onOpenChange={(o) => !o && setMarkLostQuoteId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <XCircle className="w-5 h-5 text-red-400" /> Marcar presupuesto como perdido
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-white/60 py-2">Se marcará el presupuesto y la oportunidad como perdidos. Esta acción se puede revertir editando el estado manualmente.</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setMarkLostQuoteId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => markLostQuoteId !== null && markLostQuoteMutation.mutate({ id: markLostQuoteId })}
+              disabled={markLostQuoteMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {markLostQuoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
+              Marcar perdido
             </Button>
           </DialogFooter>
         </DialogContent>
