@@ -760,3 +760,12 @@
 - [x] Pantalla de éxito inmersiva sobre fondo de foto
 - [x] Lógica funcional (leads, emails, validaciones, honeypot) intacta
 - [x] 0 errores TypeScript, 100 tests pasando
+
+## Ajuste UX — Formulario integrado en Hero (split layout) — v8.19
+- [x] Hero a pantalla completa con layout split: claim izquierda + formulario glass derecha
+- [x] Formulario visible sin scroll en desktop (card con scroll interno si el selector se expande)
+- [x] Card flotante glass: rgba(10,20,40,0.82) + blur(20px) + sombra premium + borde sutil
+- [x] Bloque oscuro secundario eliminado
+- [x] Bloque de beneficios ligero (4 iconos) mantenido debajo del hero
+- [x] Lógica funcional intacta (leads, emails, validaciones, honeypot)
+- [x] 0 errores TypeScript, 100 tests pasando

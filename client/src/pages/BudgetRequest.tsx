@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "wouter";
 import {
   CheckCircle, Phone, Mail, Users, ChevronRight,
@@ -15,21 +15,15 @@ import { toast } from "sonner";
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1774088145054-jpwq7l.png";
-const STRIP_IMAGES = [
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/wakeboard_b574701d.jpg",
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/aventura_hinchable_7c004251.png",
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/spa4_0e502ffb.png",
-  "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/31bc24b6-13c3-4ea1-a67f-16a927473c61_d7582ff1.png",
-];
 
 // ─── Categorías ───────────────────────────────────────────────────────────────
 const STATIC_CATEGORIES = [
-  { id: "Experiencias", label: "Experiencias Acuáticas", icon: "🌊" },
-  { id: "Packs", label: "Packs Completos", icon: "⭐" },
+  { id: "Experiencias", label: "Acuáticas", icon: "🌊" },
+  { id: "Packs", label: "Packs", icon: "⭐" },
   { id: "Hotel", label: "Hotel", icon: "🏨" },
-  { id: "Spa", label: "SPA & Bienestar", icon: "🧖" },
-  { id: "Pack colegios", label: "Pack Colegios", icon: "🎒" },
-  { id: "Pack teambuilding", label: "Pack Teambuilding", icon: "🤝" },
+  { id: "Spa", label: "SPA", icon: "🧖" },
+  { id: "Pack colegios", label: "Colegios", icon: "🎒" },
+  { id: "Pack teambuilding", label: "Empresas", icon: "🤝" },
 ];
 
 const STATIC_PRODUCTS: Record<string, string[]> = {
@@ -41,32 +35,15 @@ const STATIC_PRODUCTS: Record<string, string[]> = {
 
 const SPECIAL_OPTION = "__special__";
 
-// ─── Experiencias de tipo ─────────────────────────────────────────────────────
-const EXPERIENCE_TYPES = [
-  { icon: Waves, label: "Deportes acuáticos", color: "text-sky-400" },
-  { icon: TreePine, label: "Aventura & Naturaleza", color: "text-emerald-400" },
-  { icon: Heart, label: "Parejas & Romántico", color: "text-rose-400" },
-  { icon: Users, label: "Familias & Grupos", color: "text-amber-400" },
-  { icon: SunMedium, label: "Relax & Bienestar", color: "text-violet-400" },
-  { icon: Sparkles, label: "Eventos & Empresas", color: "text-orange-400" },
+// ─── Tipos de experiencia (chips decorativos) ─────────────────────────────────
+const EXP_CHIPS = [
+  { icon: Waves, label: "Deportes acuáticos", color: "text-sky-300" },
+  { icon: TreePine, label: "Aventura", color: "text-emerald-300" },
+  { icon: Heart, label: "Parejas", color: "text-rose-300" },
+  { icon: Users, label: "Familias", color: "text-amber-300" },
+  { icon: SunMedium, label: "Relax & SPA", color: "text-violet-300" },
+  { icon: Sparkles, label: "Empresas", color: "text-orange-300" },
 ];
-
-// ─── Hook de animación al scroll ──────────────────────────────────────────────
-function useFadeIn() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
-      { threshold: 0.1 }
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-  return { ref, visible };
-}
 
 export default function BudgetRequest() {
   const [submitted, setSubmitted] = useState(false);
@@ -77,10 +54,6 @@ export default function BudgetRequest() {
     adults: "1", children: "0", comments: "", honeypot: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  const heroFade = useFadeIn();
-  const formFade = useFadeIn();
-  const benefitsFade = useFadeIn();
 
   // ─── Cargar productos dinámicos ──────────────────────────────────────────
   const { data: experiences } = trpc.public.getExperiences.useQuery(
@@ -122,7 +95,8 @@ export default function BudgetRequest() {
       name: formData.name.trim(), email: formData.email.trim(), phone: formData.phone.trim(),
       arrivalDate: formData.arrivalDate,
       adults: parseInt(formData.adults) || 1, children: parseInt(formData.children) || 0,
-      selectedCategory, selectedProduct: selectedProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : selectedProduct,
+      selectedCategory,
+      selectedProduct: selectedProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : selectedProduct,
       comments: formData.comments.trim() || undefined,
       honeypot: formData.honeypot || undefined,
     });
@@ -138,33 +112,27 @@ export default function BudgetRequest() {
     return (
       <PublicLayout>
         <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
-          <div className="absolute inset-0">
-            <img src={HERO_BG} alt="" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/80" />
-          </div>
+          <img src={HERO_BG} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div className="relative z-10 text-center max-w-xl mx-auto px-6 py-20">
-            <div className="w-28 h-28 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center mx-auto mb-8">
-              <CheckCircle className="w-14 h-14 text-emerald-400" />
+            <div className="w-24 h-24 rounded-full bg-white/10 border border-white/20 flex items-center justify-center mx-auto mb-8">
+              <CheckCircle className="w-12 h-12 text-emerald-400" />
             </div>
             <h2 className="text-5xl font-heading font-bold text-white mb-4">¡Perfecto!</h2>
-            <p className="text-xl text-white/80 mb-3 font-display">Tu experiencia está en camino.</p>
-            <p className="text-white/60 mb-10 leading-relaxed">
-              Nuestro equipo revisará tu solicitud y te enviará una propuesta personalizada en
+            <p className="text-xl text-white/75 mb-3 font-display">Tu experiencia está en camino.</p>
+            <p className="text-white/55 mb-10 leading-relaxed">
+              Nuestro equipo te enviará una propuesta personalizada en
               <strong className="text-amber-400"> menos de 24 horas</strong>.
             </p>
-            <div className="grid grid-cols-3 gap-4 mb-10">
-              {[
-                { icon: Zap, label: "Respuesta rápida" },
-                { icon: Star, label: "Propuesta a medida" },
-                { icon: Shield, label: "Sin compromiso" },
-              ].map(({ icon: Icon, label }) => (
-                <div key={label} className="bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10 text-center">
+            <div className="grid grid-cols-3 gap-3 mb-10">
+              {[{ icon: Zap, label: "Respuesta rápida" }, { icon: Star, label: "A tu medida" }, { icon: Shield, label: "Sin compromiso" }].map(({ icon: Icon, label }) => (
+                <div key={label} className="bg-white/10 rounded-2xl p-4 border border-white/10 text-center">
                   <Icon className="w-5 h-5 text-amber-400 mx-auto mb-2" />
-                  <span className="text-white/70 text-xs">{label}</span>
+                  <span className="text-white/60 text-xs">{label}</span>
                 </div>
               ))}
             </div>
-            <Button asChild className="bg-amber-500 hover:bg-amber-400 text-white font-semibold h-12 px-8 rounded-full shadow-lg">
+            <Button asChild className="bg-amber-500 hover:bg-amber-400 text-white font-semibold h-12 px-8 rounded-full">
               <Link href="/">Explorar más experiencias <ArrowRight className="ml-2 w-4 h-4" /></Link>
             </Button>
           </div>
@@ -175,308 +143,262 @@ export default function BudgetRequest() {
 
   return (
     <PublicLayout>
-
       {/* ══════════════════════════════════════════════════════════════════════
-          HERO — Pantalla completa aspiracional
+          HERO SPLIT — Pantalla completa: claim izquierda + formulario derecha
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="relative min-h-screen flex items-center overflow-hidden">
-        {/* Fondo */}
-        <img src={HERO_BG} alt="Náyade Experiences" className="absolute inset-0 w-full h-full object-cover object-center scale-105" style={{ animation: "slowZoom 20s ease-in-out infinite alternate" }} />
-        {/* Overlay degradado */}
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-black/20" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+      <section className="relative min-h-screen flex items-stretch overflow-hidden">
 
-        <div className="relative z-10 container py-32">
-          <div className="max-w-2xl">
-            {/* Badge */}
+        {/* Fondo aspiracional */}
+        <img
+          src={HERO_BG}
+          alt="Náyade Experiences"
+          className="absolute inset-0 w-full h-full object-cover object-center"
+          style={{ animation: "slowZoom 25s ease-in-out infinite alternate" }}
+        />
+        {/* Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/30" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+
+        {/* Contenido split */}
+        <div className="relative z-10 container flex flex-col lg:flex-row items-center gap-8 lg:gap-12 py-24 lg:py-0 min-h-screen">
+
+          {/* ── Columna izquierda: Claim ─────────────────────────────────── */}
+          <div className="flex-1 text-white lg:py-24">
+            <span className="inline-flex items-center gap-2 bg-amber-500/90 text-white text-xs font-display font-bold uppercase tracking-widest px-5 py-2 rounded-full mb-6 shadow-lg">
+              <Sparkles className="w-3.5 h-3.5" />
+              A 40 min de Madrid · Temporada 2026
+            </span>
+
+            <h1 className="text-4xl md:text-5xl xl:text-6xl font-heading font-black leading-[1.05] mb-5">
+              Diseñamos<br />
+              <span className="text-amber-400">tu experiencia</span><br />
+              perfecta
+            </h1>
+
+            <p className="text-lg md:text-xl text-white/70 font-display font-light mb-8 leading-relaxed max-w-md">
+              Actividades acuáticas, relax, escapadas y aventura en el embalse de Los Ángeles de San Rafael.
+            </p>
+
+            {/* Chips de tipos */}
+            <div className="flex flex-wrap gap-2 mb-8">
+              {EXP_CHIPS.map(({ icon: Icon, label, color }) => (
+                <div key={label} className="flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full px-3 py-1.5 text-xs text-white/75">
+                  <Icon className={`w-3 h-3 ${color}`} />
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            {/* Trust pills */}
+            <div className="flex flex-col gap-2">
+              {[
+                { icon: Zap, text: "Respuesta en menos de 24h" },
+                { icon: Star, text: "Propuesta 100% personalizada" },
+                { icon: Shield, text: "Sin compromiso" },
+              ].map(({ icon: Icon, text }) => (
+                <div key={text} className="flex items-center gap-2 text-sm text-white/55">
+                  <Icon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  {text}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Columna derecha: Formulario glass flotante ───────────────── */}
+          <div className="w-full lg:w-[480px] xl:w-[520px] shrink-0 lg:py-8">
             <div
-              ref={heroFade.ref}
-              className="transition-all duration-1000"
-              style={{ opacity: heroFade.visible ? 1 : 0, transform: heroFade.visible ? "translateY(0)" : "translateY(30px)" }}
+              className="rounded-3xl overflow-hidden shadow-2xl"
+              style={{
+                background: "rgba(10, 20, 40, 0.82)",
+                backdropFilter: "blur(20px)",
+                WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                boxShadow: "0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset",
+              }}
             >
-              <span className="inline-flex items-center gap-2 bg-amber-500/90 text-white text-xs font-display font-bold uppercase tracking-widest px-5 py-2 rounded-full mb-8 shadow-lg">
-                <Sparkles className="w-3.5 h-3.5" />
-                Experiencias únicas · A 40 min de Madrid
-              </span>
+              {/* Barra superior degradada */}
+              <div className="h-1 bg-gradient-to-r from-amber-500 via-orange-400 to-amber-500" />
 
-              {/* Claim principal */}
-              <h1 className="text-5xl md:text-7xl font-heading font-black text-white leading-[1.05] mb-6">
-                Diseñamos<br />
-                <span className="text-amber-400">tu experiencia</span><br />
-                perfecta
-              </h1>
-
-              {/* Subclaim */}
-              <p className="text-xl md:text-2xl text-white/75 font-display font-light mb-10 leading-relaxed max-w-lg">
-                Actividades acuáticas, relax, escapadas y aventura en el embalse de Los Ángeles de San Rafael.
-              </p>
-
-              {/* Tipos de experiencia */}
-              <div className="flex flex-wrap gap-3 mb-12">
-                {EXPERIENCE_TYPES.map(({ icon: Icon, label, color }) => (
-                  <div key={label} className="flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/15 rounded-full px-4 py-2 text-sm text-white/80">
-                    <Icon className={`w-3.5 h-3.5 ${color}`} />
-                    {label}
-                  </div>
-                ))}
+              {/* Encabezado del formulario */}
+              <div className="px-7 pt-6 pb-4 border-b border-white/[0.07]">
+                <h2 className="text-white font-heading font-bold text-xl">Cuéntanos qué quieres vivir</h2>
+                <p className="text-white/45 text-sm mt-1">Recibirás tu propuesta en menos de 24h</p>
               </div>
 
-              {/* CTA scroll */}
-              <a href="#formulario" className="inline-flex items-center gap-3 text-white/60 text-sm hover:text-amber-400 transition-colors group">
-                <span>Cuéntanos qué quieres vivir</span>
-                <span className="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center group-hover:border-amber-400 transition-colors">
-                  <ChevronRight className="w-4 h-4 rotate-90" />
-                </span>
-              </a>
-            </div>
-          </div>
-        </div>
-
-        {/* Strip de miniaturas en la parte inferior */}
-        <div className="absolute bottom-0 right-0 w-full md:w-1/2 h-32 hidden md:flex overflow-hidden">
-          {STRIP_IMAGES.map((src, i) => (
-            <div key={i} className="flex-1 relative overflow-hidden">
-              <img src={src} alt="" className="w-full h-full object-cover opacity-60 hover:opacity-90 transition-opacity duration-500" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-            </div>
-          ))}
-          <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-transparent" />
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════════════════════
-          FORMULARIO PREMIUM
-      ══════════════════════════════════════════════════════════════════════ */}
-      <section id="formulario" className="relative py-24 bg-gradient-to-b from-[oklch(0.10_0.03_240)] to-[oklch(0.14_0.04_240)] overflow-hidden">
-        {/* Decoración de fondo */}
-        <div className="absolute inset-0 opacity-5" style={{ backgroundImage: "radial-gradient(circle at 20% 50%, oklch(0.7 0.2 220) 0%, transparent 50%), radial-gradient(circle at 80% 20%, oklch(0.8 0.15 50) 0%, transparent 40%)" }} />
-
-        <div className="relative z-10 container">
-          {/* Encabezado de sección */}
-          <div className="text-center mb-16">
-            <p className="text-amber-400 font-display text-sm uppercase tracking-widest mb-3">Propuesta personalizada</p>
-            <h2 className="text-4xl md:text-5xl font-heading font-bold text-white mb-4">
-              Cuéntanos qué te gustaría vivir…<br />
-              <span className="text-amber-400">nosotros lo hacemos realidad</span>
-            </h2>
-            <p className="text-white/50 max-w-lg mx-auto text-lg">
-              Rellena el formulario y en menos de 24h recibirás una propuesta diseñada especialmente para ti.
-            </p>
-          </div>
-
-          <div
-            ref={formFade.ref}
-            className="transition-all duration-1000 delay-200"
-            style={{ opacity: formFade.visible ? 1 : 0, transform: formFade.visible ? "translateY(0)" : "translateY(40px)" }}
-          >
-            <div className="max-w-3xl mx-auto">
-              {/* Card flotante del formulario */}
-              <div className="bg-white/[0.04] backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
-                {/* Barra superior decorativa */}
-                <div className="h-1 bg-gradient-to-r from-amber-500 via-orange-400 to-amber-500" />
-
-                <form onSubmit={handleSubmit} className="p-8 md:p-12 space-y-10">
+              {/* Formulario con scroll interno si es necesario */}
+              <div className="overflow-y-auto max-h-[calc(100vh-260px)] lg:max-h-[calc(100vh-200px)]">
+                <form onSubmit={handleSubmit} className="px-7 py-5 space-y-5">
                   {/* Honeypot */}
                   <input type="text" name="website" value={formData.honeypot} onChange={(e) => setFormData({ ...formData, honeypot: e.target.value })} style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
 
-                  {/* ── Bloque 1: ¿Quién eres? ─────────────────────────── */}
-                  <div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
-                        <span className="text-amber-400 text-sm font-bold">1</span>
-                      </div>
-                      <h3 className="text-white font-display font-semibold text-lg">¿Quién eres?</h3>
+                  {/* Nombre + Email */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-white/50 text-xs mb-1.5 block">Nombre <span className="text-amber-400">*</span></Label>
+                      <Input
+                        value={formData.name}
+                        onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setErrors({ ...errors, name: "" }); }}
+                        className={`h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50 ${errors.name ? "border-red-400/60" : ""}`}
+                        placeholder="Tu nombre"
+                      />
+                      {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div>
-                        <Label htmlFor="name" className="text-white/60 text-sm mb-2 block">Nombre y apellidos <span className="text-amber-400">*</span></Label>
-                        <Input
-                          id="name" value={formData.name}
-                          onChange={(e) => { setFormData({ ...formData, name: e.target.value }); setErrors({ ...errors, name: "" }); }}
-                          className={`h-13 bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 rounded-xl focus:border-amber-500/50 focus:ring-amber-500/20 text-base ${errors.name ? "border-red-400/60" : ""}`}
-                          placeholder="Tu nombre completo"
-                        />
-                        {errors.name && <p className="text-red-400 text-xs mt-1.5">{errors.name}</p>}
-                      </div>
-                      <div>
-                        <Label htmlFor="email" className="text-white/60 text-sm mb-2 block">Email <span className="text-amber-400">*</span></Label>
-                        <Input
-                          id="email" type="email" value={formData.email}
-                          onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setErrors({ ...errors, email: "" }); }}
-                          className={`h-13 bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 rounded-xl focus:border-amber-500/50 text-base ${errors.email ? "border-red-400/60" : ""}`}
-                          placeholder="tu@email.com"
-                        />
-                        {errors.email && <p className="text-red-400 text-xs mt-1.5">{errors.email}</p>}
-                      </div>
-                      <div>
-                        <Label htmlFor="phone" className="text-white/60 text-sm mb-2 block">Teléfono <span className="text-amber-400">*</span></Label>
-                        <Input
-                          id="phone" type="tel" value={formData.phone}
-                          onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); setErrors({ ...errors, phone: "" }); }}
-                          className={`h-13 bg-white/[0.06] border-white/10 text-white placeholder:text-white/30 rounded-xl focus:border-amber-500/50 text-base ${errors.phone ? "border-red-400/60" : ""}`}
-                          placeholder="+34 600 000 000"
-                        />
-                        {errors.phone && <p className="text-red-400 text-xs mt-1.5">{errors.phone}</p>}
-                      </div>
-                      <div>
-                        <Label htmlFor="arrivalDate" className="text-white/60 text-sm mb-2 block">Fecha de llegada <span className="text-amber-400">*</span></Label>
-                        <Input
-                          id="arrivalDate" type="date" value={formData.arrivalDate}
-                          min={new Date().toISOString().split("T")[0]}
-                          onChange={(e) => { setFormData({ ...formData, arrivalDate: e.target.value }); setErrors({ ...errors, arrivalDate: "" }); }}
-                          className={`h-13 bg-white/[0.06] border-white/10 text-white rounded-xl focus:border-amber-500/50 text-base ${errors.arrivalDate ? "border-red-400/60" : ""}`}
-                          style={{ colorScheme: "dark" }}
-                        />
-                        {errors.arrivalDate && <p className="text-red-400 text-xs mt-1.5">{errors.arrivalDate}</p>}
-                      </div>
+                    <div>
+                      <Label className="text-white/50 text-xs mb-1.5 block">Email <span className="text-amber-400">*</span></Label>
+                      <Input
+                        type="email" value={formData.email}
+                        onChange={(e) => { setFormData({ ...formData, email: e.target.value }); setErrors({ ...errors, email: "" }); }}
+                        className={`h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50 ${errors.email ? "border-red-400/60" : ""}`}
+                        placeholder="tu@email.com"
+                      />
+                      {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
                     </div>
                   </div>
 
-                  {/* ── Bloque 2: ¿Cuántos sois? ──────────────────────── */}
-                  <div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
-                        <span className="text-amber-400 text-sm font-bold">2</span>
-                      </div>
-                      <h3 className="text-white font-display font-semibold text-lg">¿Cuántos sois?</h3>
+                  {/* Teléfono + Fecha */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-white/50 text-xs mb-1.5 block">Teléfono <span className="text-amber-400">*</span></Label>
+                      <Input
+                        type="tel" value={formData.phone}
+                        onChange={(e) => { setFormData({ ...formData, phone: e.target.value }); setErrors({ ...errors, phone: "" }); }}
+                        className={`h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50 ${errors.phone ? "border-red-400/60" : ""}`}
+                        placeholder="+34 600 000 000"
+                      />
+                      {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
                     </div>
-                    <div className="grid grid-cols-2 gap-5">
-                      <div>
-                        <Label htmlFor="adults" className="text-white/60 text-sm mb-2 block flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5" /> Adultos
-                        </Label>
-                        <Input id="adults" type="number" min="1" max="200" value={formData.adults}
-                          onChange={(e) => setFormData({ ...formData, adults: e.target.value })}
-                          className="h-13 bg-white/[0.06] border-white/10 text-white rounded-xl focus:border-amber-500/50 text-base"
-                          style={{ colorScheme: "dark" }}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="children" className="text-white/60 text-sm mb-2 block flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5" /> Niños
-                        </Label>
-                        <Input id="children" type="number" min="0" max="200" value={formData.children}
-                          onChange={(e) => setFormData({ ...formData, children: e.target.value })}
-                          className="h-13 bg-white/[0.06] border-white/10 text-white rounded-xl focus:border-amber-500/50 text-base"
-                          style={{ colorScheme: "dark" }}
-                        />
-                      </div>
+                    <div>
+                      <Label className="text-white/50 text-xs mb-1.5 block">Fecha llegada <span className="text-amber-400">*</span></Label>
+                      <Input
+                        type="date" value={formData.arrivalDate}
+                        min={new Date().toISOString().split("T")[0]}
+                        onChange={(e) => { setFormData({ ...formData, arrivalDate: e.target.value }); setErrors({ ...errors, arrivalDate: "" }); }}
+                        className={`h-10 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-amber-500/50 ${errors.arrivalDate ? "border-red-400/60" : ""}`}
+                        style={{ colorScheme: "dark" }}
+                      />
+                      {errors.arrivalDate && <p className="text-red-400 text-xs mt-1">{errors.arrivalDate}</p>}
                     </div>
                   </div>
 
-                  {/* ── Bloque 3: ¿Qué quieres vivir? ────────────────── */}
-                  <div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
-                        <span className="text-amber-400 text-sm font-bold">3</span>
-                      </div>
-                      <h3 className="text-white font-display font-semibold text-lg">¿Qué quieres vivir?</h3>
+                  {/* Personas */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-white/50 text-xs mb-1.5 block flex items-center gap-1"><Users className="w-3 h-3" /> Adultos</Label>
+                      <Input type="number" min="1" max="200" value={formData.adults}
+                        onChange={(e) => setFormData({ ...formData, adults: e.target.value })}
+                        className="h-10 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-amber-500/50"
+                        style={{ colorScheme: "dark" }}
+                      />
                     </div>
+                    <div>
+                      <Label className="text-white/50 text-xs mb-1.5 block flex items-center gap-1"><Users className="w-3 h-3" /> Niños</Label>
+                      <Input type="number" min="0" max="200" value={formData.children}
+                        onChange={(e) => setFormData({ ...formData, children: e.target.value })}
+                        className="h-10 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-amber-500/50"
+                        style={{ colorScheme: "dark" }}
+                      />
+                    </div>
+                  </div>
 
-                    {/* Selector de categoría */}
-                    <div className="mb-5">
-                      <p className="text-white/50 text-sm mb-3">Elige una categoría <span className="text-amber-400">*</span></p>
-                      <div className="flex flex-wrap gap-2.5">
-                        {STATIC_CATEGORIES.map((cat) => (
-                          <button key={cat.id} type="button" onClick={() => handleCategorySelect(cat.id)}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium border transition-all duration-200 ${
-                              selectedCategory === cat.id
-                                ? "bg-amber-500 text-white border-amber-500 shadow-lg shadow-amber-500/20"
-                                : "border-white/15 text-white/60 hover:border-amber-500/40 hover:text-white bg-white/[0.04]"
+                  {/* Selector de categoría */}
+                  <div>
+                    <Label className="text-white/50 text-xs mb-2 block">¿Qué quieres vivir? <span className="text-amber-400">*</span></Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {STATIC_CATEGORIES.map((cat) => (
+                        <button key={cat.id} type="button" onClick={() => handleCategorySelect(cat.id)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 ${
+                            selectedCategory === cat.id
+                              ? "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20"
+                              : "border-white/15 text-white/55 hover:border-amber-500/40 hover:text-white bg-white/[0.05]"
+                          }`}
+                        >
+                          <span>{cat.icon}</span> {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                    {errors.category && <p className="text-red-400 text-xs mt-1.5">{errors.category}</p>}
+                  </div>
+
+                  {/* Selector de producto */}
+                  {selectedCategory && (
+                    <div className="p-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl">
+                      <p className="text-white/40 text-xs mb-2 flex items-center gap-1">
+                        <ChevronRight className="w-3 h-3 text-amber-400" />
+                        Experiencia <span className="text-amber-400">*</span>
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {products.map((product: string) => (
+                          <button key={product} type="button"
+                            onClick={() => { setSelectedProduct(product); setErrors({ ...errors, product: "" }); }}
+                            className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                              selectedProduct === product
+                                ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                                : "border-white/10 text-white/45 hover:border-sky-500/30 hover:text-white/75 bg-white/[0.03]"
                             }`}
                           >
-                            <span>{cat.icon}</span> {cat.label}
+                            {product}
                           </button>
                         ))}
+                        <button type="button"
+                          onClick={() => { setSelectedProduct(SPECIAL_OPTION); setErrors({ ...errors, product: "" }); }}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-all ${
+                            selectedProduct === SPECIAL_OPTION
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                              : "border-amber-500/20 text-amber-400/60 hover:border-amber-500/40 bg-white/[0.03]"
+                          }`}
+                        >
+                          <Star className="w-2.5 h-2.5" /> Propuesta personalizada
+                        </button>
                       </div>
-                      {errors.category && <p className="text-red-400 text-xs mt-2">{errors.category}</p>}
+                      {errors.product && <p className="text-red-400 text-xs mt-1.5">{errors.product}</p>}
                     </div>
+                  )}
 
-                    {/* Selector de producto */}
-                    {selectedCategory && (
-                      <div className="mt-5 p-5 bg-white/[0.03] border border-white/[0.08] rounded-2xl">
-                        <p className="text-white/50 text-sm mb-3 flex items-center gap-1.5">
-                          <ChevronRight className="w-3.5 h-3.5 text-amber-400" />
-                          Experiencia específica <span className="text-amber-400">*</span>
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {products.map((product: string) => (
-                            <button key={product} type="button"
-                              onClick={() => { setSelectedProduct(product); setErrors({ ...errors, product: "" }); }}
-                              className={`px-3.5 py-2 rounded-full text-sm border transition-all duration-200 ${
-                                selectedProduct === product
-                                  ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
-                                  : "border-white/10 text-white/50 hover:border-sky-500/30 hover:text-white/80 bg-white/[0.03]"
-                              }`}
-                            >
-                              {product}
-                            </button>
-                          ))}
-                          <button type="button"
-                            onClick={() => { setSelectedProduct(SPECIAL_OPTION); setErrors({ ...errors, product: "" }); }}
-                            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm border transition-all duration-200 ${
-                              selectedProduct === SPECIAL_OPTION
-                                ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                                : "border-amber-500/20 text-amber-400/70 hover:border-amber-500/40 hover:text-amber-300 bg-white/[0.03]"
-                            }`}
-                          >
-                            <Star className="w-3 h-3" /> Propuesta personalizada
-                          </button>
-                        </div>
-                        {errors.product && <p className="text-red-400 text-xs mt-2">{errors.product}</p>}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ── Bloque 4: Algo más que quieras contarnos ──────── */}
+                  {/* Comentarios */}
                   <div>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
-                        <span className="text-amber-400 text-sm font-bold">4</span>
-                      </div>
-                      <h3 className="text-white font-display font-semibold text-lg">¿Algo más que quieras contarnos?</h3>
-                    </div>
-                    <Textarea value={formData.comments}
+                    <Label className="text-white/50 text-xs mb-1.5 block">Comentarios (opcional)</Label>
+                    <Textarea
+                      value={formData.comments}
                       onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
-                      className="bg-white/[0.06] border-white/10 text-white placeholder:text-white/25 rounded-xl focus:border-amber-500/50 resize-none text-base"
-                      rows={4}
-                      placeholder="Ocasión especial, preferencias, número de personas concreto, fechas alternativas… cuéntanos todo lo que necesites."
+                      className="bg-white/[0.07] border-white/10 text-white placeholder:text-white/20 rounded-xl text-sm resize-none focus:border-amber-500/50"
+                      rows={2}
+                      placeholder="Ocasión especial, preferencias, grupo grande…"
                     />
                   </div>
 
-                  {/* ── CTA ───────────────────────────────────────────── */}
-                  <div>
+                  {/* CTA */}
+                  <div className="pb-2">
                     <Button type="submit" disabled={submitBudget.isPending}
-                      className="w-full h-16 text-lg font-bold rounded-2xl shadow-2xl transition-all duration-300 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0"
+                      className="w-full h-12 text-sm font-bold rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0 shadow-lg shadow-amber-500/20 transition-all duration-300"
                     >
                       {submitBudget.isPending ? (
-                        <span className="flex items-center gap-3">
-                          <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span className="flex items-center gap-2">
+                          <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                           Preparando tu propuesta…
                         </span>
                       ) : (
-                        <span className="flex items-center gap-3">
-                          <Send className="w-5 h-5" />
+                        <span className="flex items-center gap-2">
+                          <Send className="w-4 h-4" />
                           Quiero mi propuesta personalizada
                         </span>
                       )}
                     </Button>
-                    <p className="text-white/30 text-xs text-center mt-4">
-                      Sin compromiso · Respuesta en menos de 24h ·{" "}
-                      <Link href="/privacidad" className="underline hover:text-amber-400">Política de privacidad</Link>
+                    <p className="text-white/25 text-xs text-center mt-2.5">
+                      Sin compromiso · Respuesta en &lt;24h ·{" "}
+                      <Link href="/privacidad" className="underline hover:text-amber-400">Privacidad</Link>
                     </p>
                   </div>
                 </form>
               </div>
 
-              {/* Datos de contacto bajo el formulario */}
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-6 text-white/40 text-sm">
-                <a href="tel:+34930347791" className="flex items-center gap-2 hover:text-amber-400 transition-colors">
-                  <Phone className="w-4 h-4" /> +34 930 34 77 91
+              {/* Footer del card: contacto directo */}
+              <div className="px-7 py-4 border-t border-white/[0.07] flex flex-col sm:flex-row items-center justify-center gap-4 text-white/35 text-xs">
+                <a href="tel:+34930347791" className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
+                  <Phone className="w-3.5 h-3.5" /> +34 930 34 77 91
                 </a>
-                <span className="hidden sm:block text-white/20">·</span>
-                <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-amber-400 transition-colors">
-                  <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
+                <span className="hidden sm:block text-white/15">·</span>
+                <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
+                  <Mail className="w-3.5 h-3.5" /> reservas@nayadeexperiences.es
                 </a>
               </div>
             </div>
@@ -485,62 +407,34 @@ export default function BudgetRequest() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          BENEFICIOS — Iconos experienciales
+          SECCIÓN LIGERA DE BENEFICIOS (debajo del hero, sin bloque oscuro)
       ══════════════════════════════════════════════════════════════════════ */}
-      <section className="py-20 bg-gradient-to-b from-[oklch(0.14_0.04_240)] to-background overflow-hidden">
-        <div
-          ref={benefitsFade.ref}
-          className="container transition-all duration-1000 delay-300"
-          style={{ opacity: benefitsFade.visible ? 1 : 0, transform: benefitsFade.visible ? "translateY(0)" : "translateY(30px)" }}
-        >
-          {/* Separador visual */}
-          <div className="flex items-center gap-4 mb-16">
-            <div className="flex-1 h-px bg-gradient-to-r from-transparent to-white/10" />
-            <span className="text-white/30 text-xs uppercase tracking-widest font-display">Por qué elegirnos</span>
-            <div className="flex-1 h-px bg-gradient-to-l from-transparent to-white/10" />
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
+      <section className="py-14 bg-background border-t border-border/30">
+        <div className="container">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             {[
-              { icon: Zap, title: "Respuesta en 24h", desc: "Recibirás tu propuesta personalizada en menos de un día.", color: "text-amber-400", bg: "bg-amber-500/10" },
-              { icon: Star, title: "100% personalizado", desc: "Cada experiencia se diseña según tus necesidades.", color: "text-sky-400", bg: "bg-sky-500/10" },
-              { icon: Shield, title: "Sin compromiso", desc: "Solicita tu presupuesto sin ninguna obligación.", color: "text-emerald-400", bg: "bg-emerald-500/10" },
-              { icon: Heart, title: "Parejas, familias y empresas", desc: "Experiencias para todo tipo de grupos.", color: "text-rose-400", bg: "bg-rose-500/10" },
+              { icon: Zap, title: "Respuesta en 24h", desc: "Propuesta personalizada en menos de un día.", color: "text-amber-500", bg: "bg-amber-500/10" },
+              { icon: Star, title: "100% personalizado", desc: "Diseñamos la experiencia según tus necesidades.", color: "text-sky-500", bg: "bg-sky-500/10" },
+              { icon: Shield, title: "Sin compromiso", desc: "Solicita sin ninguna obligación.", color: "text-emerald-500", bg: "bg-emerald-500/10" },
+              { icon: Heart, title: "Para todos", desc: "Parejas, familias, grupos y empresas.", color: "text-rose-500", bg: "bg-rose-500/10" },
             ].map(({ icon: Icon, title, desc, color, bg }) => (
-              <div key={title} className="text-center group">
-                <div className={`w-16 h-16 ${bg} rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform duration-300`}>
-                  <Icon className={`w-7 h-7 ${color}`} />
+              <div key={title} className="group">
+                <div className={`w-12 h-12 ${bg} rounded-2xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform duration-300`}>
+                  <Icon className={`w-5 h-5 ${color}`} />
                 </div>
-                <h4 className="text-white font-display font-semibold text-sm mb-2">{title}</h4>
-                <p className="text-white/40 text-xs leading-relaxed">{desc}</p>
+                <h4 className="font-display font-semibold text-sm text-foreground mb-1">{title}</h4>
+                <p className="text-muted-foreground text-xs leading-relaxed">{desc}</p>
               </div>
             ))}
-          </div>
-
-          {/* Strip de fotos */}
-          <div className="grid grid-cols-4 gap-3 rounded-2xl overflow-hidden h-40">
-            {STRIP_IMAGES.map((src, i) => (
-              <div key={i} className="relative overflow-hidden group">
-                <img src={src} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                <div className="absolute inset-0 bg-black/30 group-hover:bg-black/10 transition-colors duration-300" />
-              </div>
-            ))}
-          </div>
-
-          {/* Mini refuerzo de confianza */}
-          <div className="mt-12 text-center">
-            <p className="text-white/30 text-sm font-display">
-              Más de <span className="text-amber-400 font-semibold">10.000 experiencias</span> vividas en el embalse de Los Ángeles de San Rafael
-            </p>
           </div>
         </div>
       </section>
 
-      {/* Animación CSS para el zoom lento del hero */}
+      {/* Animación zoom lento del hero */}
       <style>{`
         @keyframes slowZoom {
-          from { transform: scale(1.05); }
-          to   { transform: scale(1.12); }
+          from { transform: scale(1.0); }
+          to   { transform: scale(1.08); }
         }
       `}</style>
     </PublicLayout>
