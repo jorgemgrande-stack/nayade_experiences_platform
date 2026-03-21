@@ -242,13 +242,19 @@ export default function MenusManager() {
 
   return (
     <AdminLayout title="Gestión de Menús">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">Estructura del Menú de Navegación</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Edita etiquetas y URLs haciendo clic sobre ellas · Usa las flechas para reordenar · Los cambios se guardan automáticamente
-          </p>
+      <div className="min-h-screen bg-[#080e1c] text-white px-6 py-6">
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-6 pb-5 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
+            <Navigation className="w-5 h-5 text-orange-400" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white leading-none">Estructura del Menú de Navegación</h1>
+            <p className="text-xs text-white/40 mt-1">
+              Edita etiquetas y URLs haciendo clic sobre ellas · Usa las flechas para reordenar · Los cambios se guardan automáticamente
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -439,8 +445,9 @@ export default function MenusManager() {
       </div>
 
       {/* Info */}
-      <div className="mt-4 p-3 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-700">
+      <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-300">
         <strong>Tip:</strong> Los cambios se persisten en la base de datos en tiempo real. El menú de navegación del sitio público se actualiza automáticamente al recargar la página.
+      </div>
       </div>
     </AdminLayout>
   );

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Upload, Copy, Trash2, Image, Search, Grid3X3, List, X } from "lucide-react";
+import { Upload, Copy, Trash2, Image, Search, Grid3X3, List, X, FolderOpen } from "lucide-react";
 
 export default function MultimediaManager() {
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -99,11 +99,17 @@ export default function MultimediaManager() {
 
   return (
     <AdminLayout title="Multimedia">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">Biblioteca Multimedia</h2>
-          <p className="text-sm text-muted-foreground mt-1">{filtered.length} archivos</p>
+      <div className="min-h-screen bg-[#080e1c] text-white px-6 py-6">
+      {/* Page header */}
+      <div className="flex items-center justify-between mb-6 pb-5 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-orange-500/15 border border-orange-500/25">
+            <FolderOpen className="w-5 h-5 text-orange-400" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white leading-none">Biblioteca Multimedia</h1>
+            <p className="text-xs text-white/40 mt-1">{filtered.length} archivos</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <div className="relative">
@@ -294,6 +300,7 @@ export default function MultimediaManager() {
           </table>
         </div>
       )}
+      </div>
     </AdminLayout>
   );
 }
