@@ -820,3 +820,11 @@
 - [x] Sección CTA Final: foto kayak de fondo + overlay oscuro fuerte, botón naranja impactante
 - [x] Ritmo alternado: oscuro→claro→foto→claro→foto→claro→foto→claro→foto
 - [x] 0 errores TypeScript
+
+## Formulario Presupuesto en Hero Home — v8.26
+- [x] Revisar formulario de la página /presupuesto
+- [x] Layout hero split: texto+CTAs izquierda / formulario derecha (glass card)
+- [x] Formulario con los mismos campos que /presupuesto (nombre, email, teléfono, tipo, fecha, personas, mensaje)
+- [x] Envío conectado al mismo tRPC public.submitBudget
+- [x] Pantalla de éxito inline con botón de nueva solicitud
+- [x] 0 errores TypeScript

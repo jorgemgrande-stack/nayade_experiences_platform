@@ -1,14 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
   Waves, MapPin, Star, Clock, Users, ChevronRight, ChevronLeft,
-  ArrowRight, Phone, Mail, Anchor, Wind, Zap, Heart, Shield, Calendar
+  ArrowRight, Phone, Mail, Anchor, Wind, Zap, Heart, Shield, Calendar,
+  Send, Sparkles
 } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import BookingModal from "@/components/BookingModal";
 import HotelSearchBar, { type HotelSearchParams } from "@/components/HotelSearchBar";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 // CDN images
 const CDN = {
@@ -146,6 +151,71 @@ export default function Home() {
 
   const slide = activeSlides[Math.min(currentSlide, activeSlides.length - 1)];
 
+  // ── Estado formulario hero ─────────────────────────────────────────
+  const HERO_CATEGORIES = [
+    { id: "Experiencias", label: "Acuáticas", icon: "🌊" },
+    { id: "Packs", label: "Packs", icon: "⭐" },
+    { id: "Hotel", label: "Hotel", icon: "🏨" },
+    { id: "Spa", label: "SPA", icon: "🧖" },
+    { id: "Pack colegios", label: "Colegios", icon: "🎒" },
+    { id: "Pack teambuilding", label: "Empresas", icon: "🤝" },
+  ];
+  const HERO_STATIC_PRODUCTS: Record<string, string[]> = {
+    Hotel: ["Habitación Estándar", "Habitación Superior", "Suite Lago", "Suite Premium"],
+    Spa: ["Circuito SPA", "Masaje Relajante", "Tratamiento Facial", "Pack Pareja SPA"],
+    "Pack colegios": ["Pack Escolar Básico", "Pack Escolar Aventura", "Pack Escolar Náutico"],
+    "Pack teambuilding": ["Teambuilding Básico", "Teambuilding Premium", "Jornada Corporativa Completa"],
+  };
+  const SPECIAL_OPTION = "__special__";
+  const [heroFormSubmitted, setHeroFormSubmitted] = useState(false);
+  const [heroCategory, setHeroCategory] = useState("");
+  const [heroProduct, setHeroProduct] = useState("");
+  const [heroForm, setHeroForm] = useState({ name: "", email: "", phone: "", arrivalDate: "", adults: "2", children: "0", comments: "", honeypot: "" });
+  const [heroErrors, setHeroErrors] = useState<Record<string, string>>({});
+
+  const { data: heroExperiencesList } = trpc.public.getExperiences.useQuery(
+    { limit: 50 }, { enabled: heroCategory === "Experiencias" }
+  );
+  const { data: heroPacksList } = trpc.packs.getByCategory.useQuery(
+    {} as { category?: "dia" | "escolar" | "empresa" }, { enabled: heroCategory === "Packs" }
+  );
+  const heroProducts = useMemo(() => {
+    if (heroCategory === "Experiencias" && heroExperiencesList) return heroExperiencesList.map((e: any) => e.title);
+    if (heroCategory === "Packs" && heroPacksList) return heroPacksList.map((p: any) => p.title);
+    return HERO_STATIC_PRODUCTS[heroCategory] ?? [];
+  }, [heroCategory, heroExperiencesList, heroPacksList]);
+
+  const submitHeroBudget = trpc.public.submitBudget.useMutation({
+    onSuccess: () => setHeroFormSubmitted(true),
+    onError: () => toast.error("Error al enviar. Por favor, inténtalo de nuevo."),
+  });
+
+  const validateHeroForm = () => {
+    const e: Record<string, string> = {};
+    if (!heroForm.name.trim() || heroForm.name.trim().length < 2) e.name = "Introduce tu nombre";
+    if (!heroForm.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(heroForm.email)) e.email = "Email no válido";
+    if (!heroForm.phone.trim() || heroForm.phone.trim().length < 6) e.phone = "Teléfono no válido";
+    if (!heroForm.arrivalDate) e.arrivalDate = "Selecciona una fecha";
+    if (!heroCategory) e.category = "Selecciona una categoría";
+    if (!heroProduct) e.product = "Selecciona una experiencia";
+    setHeroErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleHeroSubmit = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (!validateHeroForm()) return;
+    await submitHeroBudget.mutateAsync({
+      name: heroForm.name.trim(), email: heroForm.email.trim(), phone: heroForm.phone.trim(),
+      arrivalDate: heroForm.arrivalDate,
+      adults: parseInt(heroForm.adults) || 1, children: parseInt(heroForm.children) || 0,
+      selectedCategory: heroCategory,
+      selectedProduct: heroProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : heroProduct,
+      comments: heroForm.comments.trim() || undefined,
+      honeypot: heroForm.honeypot || undefined,
+    });
+  };
+
   const svgIcons: Record<string, React.ReactNode> = {
     bed:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5"><path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"/><path d="M2 12V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v6"/><line x1="2" y1="20" x2="22" y2="20"/></svg>,
     waves: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/></svg>,
@@ -157,61 +227,267 @@ export default function Home() {
     <PublicLayout>
 
       {/* ══════════════════════════════════════════════════════════════════
-          1. HERO SLIDESHOW — foto de fondo + overlay
+          1. HERO SPLIT — foto de fondo + claim izquierda + formulario derecha
           ══════════════════════════════════════════════════════════════════ */}
-      <section className="relative h-[92vh] min-h-[600px] overflow-hidden">
+      <section className="relative min-h-screen overflow-hidden flex items-stretch">
+        {/* Fondo slideshow */}
         {activeSlides.map((s, i) => (
           <div key={i} className={`absolute inset-0 transition-opacity duration-1000 ${i === currentSlide ? "opacity-100" : "opacity-0"}`}>
             <img src={s.img} alt={s.title} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-hero-gradient" />
           </div>
         ))}
-        <div className="relative z-10 h-full flex items-center">
-          <div className="container">
-            <div className="max-w-2xl">
-              <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/90 text-white text-xs font-display font-bold uppercase tracking-widest mb-5">
-                <Anchor className="w-3 h-3" /> {slide.badge}
-              </span>
-              <h1 className="text-5xl md:text-7xl font-heading font-bold text-white leading-tight mb-3">{slide.title}</h1>
-              <p className="text-xl md:text-2xl text-white/80 font-display font-medium mb-3">{slide.subtitle}</p>
-              <p className="text-base md:text-lg text-white/70 mb-8 max-w-lg leading-relaxed">{slide.desc}</p>
-              <div className="flex flex-wrap gap-3">
-                {slide.reserveUrl && (
-                  <Link href={slide.reserveUrl}>
-                    <Button size="lg" className="bg-orange-500 hover:bg-orange-600 text-white font-display font-semibold rounded-full px-8 text-base shadow-lg">
-                      Reservar Ahora <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                )}
-                {slide.cta && slide.ctaLink && (
-                  <Link href={slide.ctaLink}>
-                    <Button size="lg" className={slide.reserveUrl ? "border-white/50 text-white hover:bg-white/15 font-display font-semibold rounded-full px-8 text-base bg-transparent border" : "bg-orange-500 hover:bg-orange-600 text-white font-display font-semibold rounded-full px-8 text-base shadow-lg"}>
-                      {slide.cta} <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                )}
-                <Link href="/presupuesto">
-                  <Button size="lg" variant="outline" className="border-white/50 text-white hover:bg-white/15 font-display font-semibold rounded-full px-8 text-base bg-transparent">
-                    Solicitar Presupuesto
+        {/* Overlay degradado: más oscuro a la izquierda, algo más claro a la derecha */}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to right, rgba(5,15,35,0.88) 0%, rgba(5,15,35,0.72) 55%, rgba(5,15,35,0.60) 100%)" }} />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(5,15,35,0.55) 0%, transparent 40%)" }} />
+
+        {/* Contenido split */}
+        <div className="relative z-10 container flex flex-col lg:flex-row items-center gap-8 lg:gap-10 py-28 lg:py-0 min-h-screen">
+
+          {/* ── Columna izquierda: Claim + CTAs ─────────────────────────── */}
+          <div className="flex-1 text-white lg:py-28">
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/90 text-white text-xs font-display font-bold uppercase tracking-widest mb-5">
+              <Anchor className="w-3 h-3" /> {slide.badge}
+            </span>
+            <h1 className="text-4xl md:text-5xl xl:text-6xl font-heading font-bold text-white leading-tight mb-3">{slide.title}</h1>
+            <p className="text-xl md:text-2xl text-white/80 font-display font-medium mb-3">{slide.subtitle}</p>
+            <p className="text-base md:text-lg text-white/65 mb-8 max-w-lg leading-relaxed">{slide.desc}</p>
+            <div className="flex flex-wrap gap-3 mb-8">
+              {slide.reserveUrl && (
+                <Link href={slide.reserveUrl}>
+                  <Button size="lg" className="bg-orange-500 hover:bg-orange-600 text-white font-display font-semibold rounded-full px-8 text-base shadow-lg">
+                    Reservar Ahora <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
-              </div>
+              )}
+              {slide.cta && slide.ctaLink && (
+                <Link href={slide.ctaLink}>
+                  <Button size="lg" className={slide.reserveUrl ? "border-white/50 text-white hover:bg-white/15 font-display font-semibold rounded-full px-8 text-base bg-transparent border" : "bg-orange-500 hover:bg-orange-600 text-white font-display font-semibold rounded-full px-8 text-base shadow-lg"}>
+                    {slide.cta} <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+              )}
+            </div>
+            {/* Trust pills */}
+            <div className="flex flex-col gap-2">
+              {[
+                { icon: Zap, text: "Respuesta en menos de 24h" },
+                { icon: Star, text: "Propuesta 100% personalizada" },
+                { icon: Shield, text: "Sin compromiso" },
+              ].map(({ icon: Icon, text }) => (
+                <div key={text} className="flex items-center gap-2 text-sm text-white/50">
+                  <Icon className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                  {text}
+                </div>
+              ))}
+            </div>
+            {/* Controles slideshow */}
+            <div className="flex items-center gap-3 mt-8">
+              <button onClick={() => setCurrentSlide((p) => (p - 1 + activeSlides.length) % activeSlides.length)} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-all">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {activeSlides.map((_, i) => (
+                <button key={i} onClick={() => setCurrentSlide(i)} className={`rounded-full transition-all duration-300 ${i === currentSlide ? "w-8 h-2.5 bg-orange-500" : "w-2.5 h-2.5 bg-white/40 hover:bg-white/70"}`} />
+              ))}
+              <button onClick={() => setCurrentSlide((p) => (p + 1) % activeSlides.length)} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-all">
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
+
+          {/* ── Columna derecha: Formulario glass ───────────────────────── */}
+          <div className="w-full lg:w-[460px] xl:w-[500px] shrink-0 lg:py-10">
+            {heroFormSubmitted ? (
+              /* Pantalla de éxito inline */
+              <div
+                className="rounded-3xl overflow-hidden shadow-2xl text-center px-8 py-12"
+                style={{ background: "rgba(10,20,40,0.85)", backdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.12)" }}
+              >
+                <div className="w-20 h-20 rounded-full bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center mx-auto mb-6">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-10 h-10 text-emerald-400"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <h3 className="text-2xl font-heading font-bold text-white mb-3">¡Perfecto!</h3>
+                <p className="text-white/65 mb-6">Tu solicitud ha sido enviada. Recibirás tu propuesta personalizada en <strong className="text-orange-400">menos de 24 horas</strong>.</p>
+                <Button onClick={() => { setHeroFormSubmitted(false); setHeroCategory(""); setHeroProduct(""); setHeroForm({ name: "", email: "", phone: "", arrivalDate: "", adults: "2", children: "0", comments: "", honeypot: "" }); }}
+                  className="bg-orange-500 hover:bg-orange-600 text-white rounded-full px-6">
+                  Nueva solicitud
+                </Button>
+              </div>
+            ) : (
+              <div
+                className="rounded-3xl overflow-hidden shadow-2xl"
+                style={{ background: "rgba(10,20,40,0.82)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset" }}
+              >
+                {/* Barra superior */}
+                <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-orange-500" />
+
+                {/* Encabezado */}
+                <div className="px-6 pt-5 pb-4 border-b border-white/[0.07]">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Sparkles className="w-4 h-4 text-orange-400" />
+                    <h2 className="text-white font-heading font-bold text-lg">Solicita tu Propuesta</h2>
+                  </div>
+                  <p className="text-white/40 text-xs">Recibirás tu propuesta en menos de 24h</p>
+                </div>
+
+                {/* Formulario con scroll */}
+                <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
+                  <form onSubmit={handleHeroSubmit} className="px-6 py-5 space-y-4">
+                    <input type="text" name="website" value={heroForm.honeypot} onChange={(e) => setHeroForm({ ...heroForm, honeypot: e.target.value })} style={{ display: "none" }} tabIndex={-1} autoComplete="off" />
+
+                    {/* Nombre + Email */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Nombre <span className="text-orange-400">*</span></Label>
+                        <Input value={heroForm.name} onChange={(e) => { setHeroForm({ ...heroForm, name: e.target.value }); setHeroErrors({ ...heroErrors, name: "" }); }}
+                          className={`h-9 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-orange-500/50 ${heroErrors.name ? "border-red-400/60" : ""}`}
+                          placeholder="Tu nombre" />
+                        {heroErrors.name && <p className="text-red-400 text-xs mt-1">{heroErrors.name}</p>}
+                      </div>
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Email <span className="text-orange-400">*</span></Label>
+                        <Input type="email" value={heroForm.email} onChange={(e) => { setHeroForm({ ...heroForm, email: e.target.value }); setHeroErrors({ ...heroErrors, email: "" }); }}
+                          className={`h-9 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-orange-500/50 ${heroErrors.email ? "border-red-400/60" : ""}`}
+                          placeholder="tu@email.com" />
+                        {heroErrors.email && <p className="text-red-400 text-xs mt-1">{heroErrors.email}</p>}
+                      </div>
+                    </div>
+
+                    {/* Teléfono + Fecha */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Teléfono <span className="text-orange-400">*</span></Label>
+                        <Input type="tel" value={heroForm.phone} onChange={(e) => { setHeroForm({ ...heroForm, phone: e.target.value }); setHeroErrors({ ...heroErrors, phone: "" }); }}
+                          className={`h-9 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-orange-500/50 ${heroErrors.phone ? "border-red-400/60" : ""}`}
+                          placeholder="+34 600 000 000" />
+                        {heroErrors.phone && <p className="text-red-400 text-xs mt-1">{heroErrors.phone}</p>}
+                      </div>
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Fecha llegada <span className="text-orange-400">*</span></Label>
+                        <Input type="date" value={heroForm.arrivalDate} min={new Date().toISOString().split("T")[0]}
+                          onChange={(e) => { setHeroForm({ ...heroForm, arrivalDate: e.target.value }); setHeroErrors({ ...heroErrors, arrivalDate: "" }); }}
+                          className={`h-9 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-orange-500/50 ${heroErrors.arrivalDate ? "border-red-400/60" : ""}`}
+                          style={{ colorScheme: "dark" }} />
+                        {heroErrors.arrivalDate && <p className="text-red-400 text-xs mt-1">{heroErrors.arrivalDate}</p>}
+                      </div>
+                    </div>
+
+                    {/* Adultos + Niños */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block flex items-center gap-1"><Users className="w-3 h-3" /> Adultos</Label>
+                        <Input type="number" min="1" max="200" value={heroForm.adults} onChange={(e) => setHeroForm({ ...heroForm, adults: e.target.value })}
+                          className="h-9 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-orange-500/50" style={{ colorScheme: "dark" }} />
+                      </div>
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block flex items-center gap-1"><Users className="w-3 h-3" /> Niños</Label>
+                        <Input type="number" min="0" max="200" value={heroForm.children} onChange={(e) => setHeroForm({ ...heroForm, children: e.target.value })}
+                          className="h-9 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-orange-500/50" style={{ colorScheme: "dark" }} />
+                      </div>
+                    </div>
+
+                    {/* Categoría */}
+                    <div>
+                      <Label className="text-white/50 text-xs mb-2 block">¿Qué quieres vivir? <span className="text-orange-400">*</span></Label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {HERO_CATEGORIES.map((cat) => (
+                          <button key={cat.id} type="button"
+                            onClick={() => { setHeroCategory(cat.id); setHeroProduct(""); setHeroErrors({ ...heroErrors, category: "", product: "" }); }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 ${
+                              heroCategory === cat.id
+                                ? "bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20"
+                                : "border-white/15 text-white/55 hover:border-orange-500/40 hover:text-white bg-white/[0.05]"
+                            }`}
+                          >
+                            <span>{cat.icon}</span> {cat.label}
+                          </button>
+                        ))}
+                      </div>
+                      {heroErrors.category && <p className="text-red-400 text-xs mt-1.5">{heroErrors.category}</p>}
+                    </div>
+
+                    {/* Producto */}
+                    {heroCategory && (
+                      <div className="p-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl">
+                        <p className="text-white/40 text-xs mb-2 flex items-center gap-1">
+                          <ChevronRight className="w-3 h-3 text-orange-400" />
+                          Experiencia <span className="text-orange-400">*</span>
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {heroProducts.map((product: string) => (
+                            <button key={product} type="button"
+                              onClick={() => { setHeroProduct(product); setHeroErrors({ ...heroErrors, product: "" }); }}
+                              className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                                heroProduct === product
+                                  ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                                  : "border-white/10 text-white/45 hover:border-sky-500/30 hover:text-white/75 bg-white/[0.03]"
+                              }`}
+                            >
+                              {product}
+                            </button>
+                          ))}
+                          <button type="button"
+                            onClick={() => { setHeroProduct(SPECIAL_OPTION); setHeroErrors({ ...heroErrors, product: "" }); }}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-all ${
+                              heroProduct === SPECIAL_OPTION
+                                ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                                : "border-orange-500/20 text-orange-400/60 hover:border-orange-500/40 bg-white/[0.03]"
+                            }`}
+                          >
+                            <Star className="w-2.5 h-2.5" /> Propuesta personalizada
+                          </button>
+                        </div>
+                        {heroErrors.product && <p className="text-red-400 text-xs mt-1.5">{heroErrors.product}</p>}
+                      </div>
+                    )}
+
+                    {/* Comentarios */}
+                    <div>
+                      <Label className="text-white/50 text-xs mb-1.5 block">Comentarios (opcional)</Label>
+                      <Textarea value={heroForm.comments} onChange={(e) => setHeroForm({ ...heroForm, comments: e.target.value })}
+                        className="bg-white/[0.07] border-white/10 text-white placeholder:text-white/20 rounded-xl text-sm resize-none focus:border-orange-500/50"
+                        rows={2} placeholder="Ocasión especial, preferencias, grupo grande…" />
+                    </div>
+
+                    {/* CTA */}
+                    <div className="pb-1">
+                      <Button type="submit" disabled={submitHeroBudget.isPending}
+                        className="w-full h-11 text-sm font-bold rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white border-0 shadow-lg shadow-orange-500/20 transition-all duration-300"
+                      >
+                        {submitHeroBudget.isPending ? (
+                          <span className="flex items-center gap-2">
+                            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Preparando tu propuesta…
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            <Send className="w-4 h-4" />
+                            Quiero mi propuesta personalizada
+                          </span>
+                        )}
+                      </Button>
+                      <p className="text-white/25 text-xs text-center mt-2">
+                        Sin compromiso · Respuesta en &lt;24h
+                      </p>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Footer contacto */}
+                <div className="px-6 py-3 border-t border-white/[0.07] flex flex-col sm:flex-row items-center justify-center gap-3 text-white/30 text-xs">
+                  <a href="tel:+34930347791" className="flex items-center gap-1.5 hover:text-orange-400 transition-colors">
+                    <Phone className="w-3.5 h-3.5" /> +34 930 34 77 91
+                  </a>
+                  <span className="hidden sm:block text-white/15">·</span>
+                  <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-1.5 hover:text-orange-400 transition-colors">
+                    <Mail className="w-3.5 h-3.5" /> reservas@nayadeexperiences.es
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        {/* Controles */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3">
-          <button onClick={() => setCurrentSlide((p) => (p - 1 + activeSlides.length) % activeSlides.length)} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-all">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          {activeSlides.map((_, i) => (
-            <button key={i} onClick={() => setCurrentSlide(i)} className={`rounded-full transition-all duration-300 ${i === currentSlide ? "w-8 h-2.5 bg-orange-500" : "w-2.5 h-2.5 bg-white/40 hover:bg-white/70"}`} />
-          ))}
-          <button onClick={() => setCurrentSlide((p) => (p + 1) % activeSlides.length)} className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-white transition-all">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        {/* Info rápida */}
+
+        {/* Info rápida — barra inferior */}
         <div className="absolute bottom-0 left-0 right-0 z-10">
           <div className="container">
             <div className="grid grid-cols-3 gap-px bg-white/10 rounded-t-2xl overflow-hidden backdrop-blur-sm">
