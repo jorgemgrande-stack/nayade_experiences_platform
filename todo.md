@@ -828,3 +828,53 @@
 - [x] Envío conectado al mismo tRPC public.submitBudget
 - [x] Pantalla de éxito inline con botón de nueva solicitud
 - [x] 0 errores TypeScript
+
+## CRM Comercial Completo — v9.0
+
+### Base de Datos
+- [x] Ampliar tabla leads: opportunity_status, priority, internal_notes, last_contact_at, lost_reason
+- [x] Ampliar tabla quotes: lead_id, quote_number, subtotal, tax, total, conditions, valid_until, sent_at, viewed_at
+- [x] Crear tabla crm_activity_log: entity_type, entity_id, action, actor_id, details, created_at
+- [x] Crear tabla invoices: quote_id, invoice_number, client_name, client_email, items_json, subtotal, tax, total, pdf_url, issued_at
+
+### Backend tRPC (crm router)
+- [x] leads.list con filtros (opportunityStatus, search) + paginación
+- [x] leads.counters (nueva/enviada/ganada/perdida/total)
+- [x] leads.get (ficha completa con actividad, quotes asociados)
+- [x] leads.update (cambiar opportunityStatus, priority)
+- [x] leads.addNote (notas internas con autor y timestamp)
+- [x] leads.markLost (acción manual)
+- [x] leads.convertToQuote (crea quote con datos del lead, genera quote_number)
+- [x] quotes.list con filtros + paginación
+- [x] quotes.counters KPI (borrador/enviado/aceptado/rechazado/total)
+- [x] quotes.get (ficha completa con items, lead y facturas)
+- [x] quotes.send (envía email al cliente con link de pago, cambia status)
+- [x] quotes.resend (reenvío rápido)
+- [x] quotes.duplicate (duplicar presupuesto con nuevo número)
+- [x] quotes.markLost (acción manual)
+- [x] quotes.confirmPayment (confirma pago, genera factura, crea reserva, envía email)
+- [x] reservations.list con filtros + paginación
+- [x] reservations.counters (confirmadas/hoy/ingresos)
+
+### Frontend CRM — Panel unificado /admin/crm
+- [x] 8 contadores clickables en strip superior (leads nueva/enviada/ganada/perdida + presup. borrador/enviado + reservas hoy + ingresos)
+- [x] Tabs: Leads / Presupuestos / Reservas con badges de conteo
+- [x] Búsqueda en tiempo real + filtro por estado activo
+- [x] Tabla Leads: prioridad, nombre/email, producto, fecha, estado, acciones
+- [x] Modal ficha de lead: datos, presupuestos asociados, notas internas, cambio de estado, marcar perdido, crear presupuesto
+- [x] Modal editor de presupuesto: título, líneas (descripción/cantidad/precio/total), IVA, condiciones, validez, totales
+- [x] Tabla Presupuestos: referencia, título, estado, total, fecha, acciones
+- [x] Modal ficha de presupuesto: tabla de items, facturas asociadas, botones enviar/reenviar/confirmar pago/duplicar/perdido
+- [x] Tabla Reservas: cliente, producto, estado, importe, fecha
+- [x] Acceso al CRM desde AdminDashboard (acciones rápidas + módulos)
+
+### Facturación
+- [x] Numeración correlativa de facturas (FAC-YYYY-NNNN)
+- [x] Generación de factura HTML al confirmar pago
+- [x] Email automático al cliente con número de factura
+- [ ] PDF de factura (roadmap: pdfkit o puppeteer)
+- [ ] Descarga de factura PDF desde admin (roadmap)
+
+### Tests
+- [x] 114 tests Vitest pasando (7 test files, incluyendo crm.test.ts)
+- [x] 0 errores TypeScript

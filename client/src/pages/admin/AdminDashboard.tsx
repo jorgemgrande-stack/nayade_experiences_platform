@@ -15,7 +15,7 @@ const quickActions = [
   { label: "Nuevo Presupuesto", href: "/admin/presupuestos/nuevo", icon: FileText, color: "bg-blue-500" },
   { label: "Nueva Reserva", href: "/admin/operaciones/reservas", icon: Calendar, color: "bg-emerald-500" },
   { label: "Añadir Experiencia", href: "/admin/productos/experiencias", icon: Package, color: "bg-purple-500" },
-  { label: "Ver Leads", href: "/admin/presupuestos/leads", icon: Users, color: "bg-amber-500" },
+  { label: "CRM Comercial", href: "/admin/crm", icon: Users, color: "bg-amber-500" },
 ];
 
 const recentActivity = [
@@ -175,7 +175,7 @@ export default function AdminDashboard() {
               {[
                 { label: "Gestor CMS", href: "/admin/cms", desc: "Contenido y multimedia" },
                 { label: "Productos", href: "/admin/productos/experiencias", desc: "Experiencias y categorías" },
-                { label: "Presupuestos", href: "/admin/presupuestos/leads", desc: "Leads y cotizaciones" },
+                { label: "CRM Comercial", href: "/admin/crm", desc: "Leads, presupuestos y reservas" },
                 { label: "Operaciones", href: "/admin/operaciones/calendario", desc: "Calendario y monitores" },
                 { label: "Contabilidad", href: "/admin/contabilidad/dashboard", desc: "Informes y métricas" },
               ].map((mod) => (

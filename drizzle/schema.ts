@@ -195,6 +195,13 @@ export const leads = mysqlTable("leads", {
   numberOfPersons: int("numberOfPersons"),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   status: mysqlEnum("status", ["nuevo", "contactado", "en_proceso", "convertido", "perdido"]).default("nuevo").notNull(),
+  // CRM fields
+  opportunityStatus: mysqlEnum("opportunityStatus", ["nueva", "enviada", "ganada", "perdida"]).default("nueva").notNull(),
+  priority: mysqlEnum("priority", ["baja", "media", "alta"]).default("media").notNull(),
+  lastContactAt: timestamp("lastContactAt"),
+  lostReason: text("lostReason"),
+  seenAt: timestamp("seenAt"),
+  internalNotes: json("internalNotes").$type<{ text: string; authorId: number; authorName: string; createdAt: string }[]>().default([]),
   assignedTo: int("assignedTo"),
   ghlContactId: varchar("ghlContactId", { length: 128 }),
   source: varchar("source", { length: 128 }).default("web"),
@@ -225,7 +232,15 @@ export const quotes = mysqlTable("quotes", {
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
   validUntil: timestamp("validUntil"),
-  status: mysqlEnum("status", ["borrador", "enviado", "aceptado", "rechazado", "expirado"]).default("borrador").notNull(),
+  status: mysqlEnum("status", ["borrador", "enviado", "aceptado", "rechazado", "expirado", "perdido"]).default("borrador").notNull(),
+  // CRM fields
+  sentAt: timestamp("sentAt"),
+  viewedAt: timestamp("viewedAt"),
+  conditions: text("conditions"),
+  redsysOrderId: varchar("redsysOrderId", { length: 32 }),
+  invoiceNumber: varchar("invoiceNumber", { length: 32 }),
+  invoicePdfUrl: text("invoicePdfUrl"),
+  invoiceGeneratedAt: timestamp("invoiceGeneratedAt"),
   paymentLinkToken: varchar("paymentLinkToken", { length: 128 }).unique(),
   paymentLinkUrl: text("paymentLinkUrl"),
   paidAt: timestamp("paidAt"),
@@ -234,6 +249,47 @@ export const quotes = mysqlTable("quotes", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+
+// ─── CRM ACTIVITY LOG ─────────────────────────────────────────────────────────
+export const crmActivityLog = mysqlTable("crm_activity_log", {
+  id: int("id").autoincrement().primaryKey(),
+  entityType: mysqlEnum("entityType", ["lead", "quote", "reservation", "invoice"]).notNull(),
+  entityId: int("entityId").notNull(),
+  action: varchar("action", { length: 128 }).notNull(),
+  actorId: int("actorId"),
+  actorName: varchar("actorName", { length: 256 }),
+  details: json("details").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type CrmActivityLog = typeof crmActivityLog.$inferSelect;
+export type InsertCrmActivityLog = typeof crmActivityLog.$inferInsert;
+
+// ─── INVOICES ─────────────────────────────────────────────────────────────────
+export const invoices = mysqlTable("invoices", {
+  id: int("id").autoincrement().primaryKey(),
+  invoiceNumber: varchar("invoiceNumber", { length: 32 }).notNull().unique(),
+  quoteId: int("quoteId"),
+  reservationId: int("reservationId"),
+  clientName: varchar("clientName", { length: 256 }).notNull(),
+  clientEmail: varchar("clientEmail", { length: 320 }).notNull(),
+  clientPhone: varchar("clientPhone", { length: 32 }),
+  clientNif: varchar("clientNif", { length: 32 }),
+  clientAddress: text("clientAddress"),
+  itemsJson: json("itemsJson").$type<{ description: string; quantity: number; unitPrice: number; total: number }[]>().default([]),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
+  taxRate: decimal("taxRate", { precision: 5, scale: 2 }).default("21"),
+  taxAmount: decimal("taxAmount", { precision: 10, scale: 2 }).default("0"),
+  total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  pdfUrl: text("pdfUrl"),
+  pdfKey: text("pdfKey"),
+  status: mysqlEnum("status", ["generada", "enviada", "anulada"]).default("generada").notNull(),
+  issuedAt: timestamp("issuedAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Invoice = typeof invoices.$inferSelect;
+export type InsertInvoice = typeof invoices.$inferInsert;
 
 // ─── BOOKINGS & CALENDAR ─────────────────────────────────────────────────────
 

@@ -79,6 +79,9 @@ import GlobalCalendar from "./pages/admin/restaurants/GlobalCalendar";
 import UsersManager from "./pages/admin/users/UsersManager";
 import Settings from "./pages/admin/settings/Settings";
 
+// CRM
+import CRMDashboard from "./pages/admin/crm/CRMDashboard";
+
 function Router() {
   return (
     <Switch>
@@ -164,6 +167,12 @@ function Router() {
       <Route path="/admin/restaurantes/reservas" component={RestaurantsManager} />
       <Route path="/admin/restaurantes/calendario" component={GlobalCalendar} />
       <Route path="/admin/restaurantes/configuracion" component={RestaurantsManager} />
+
+      {/* CRM */}
+      <Route path="/admin/crm" component={CRMDashboard} />
+      <Route path="/admin/crm/leads" component={CRMDashboard} />
+      <Route path="/admin/crm/presupuestos" component={CRMDashboard} />
+      <Route path="/admin/crm/reservas" component={CRMDashboard} />
 
       {/* Users & Settings */}
       <Route path="/admin/usuarios" component={UsersManager} />

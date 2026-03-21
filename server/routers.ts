@@ -118,6 +118,7 @@ import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
 import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
+import { crmRouter } from "./routers/crm";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -1200,6 +1201,7 @@ export const appRouter = router({
   spa: spaRouter,
   reviews: reviewsRouter,
   restaurants: restaurantsRouter,
+  crm: crmRouter,
   gallery: router({
     /** Público: obtener fotos activas */
     getItems: publicProcedure
