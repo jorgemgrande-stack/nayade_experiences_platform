@@ -630,11 +630,17 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
 // ═══════════════════════════════════════════════════════════════════════════════
 export interface ConfirmationEmailData {
   clientName: string;
-  reservationRef: string;
+  reservationRef: string;   // número de factura
+  quoteNumber?: string;     // número de presupuesto original
   quoteTitle: string;
   items: { description: string; quantity: number; unitPrice: number; total: number }[];
+  subtotal?: string;
+  taxAmount?: string;
   total: string;
   invoiceUrl?: string;
+  bookingDate?: string;     // fecha del evento si aplica
+  contactPhone?: string;
+  contactEmail?: string;
 }
 
 export function buildConfirmationHtml(d: ConfirmationEmailData): string {
@@ -657,6 +663,21 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
       </td></tr>`
     : "";
 
+  const subtotalRow = d.subtotal
+    ? `<tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Subtotal</td><td style="padding:6px 12px;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${Number(d.subtotal).toFixed(2)} €</td></tr>`
+    : "";
+  const taxRow = d.taxAmount
+    ? `<tr><td style="padding:6px 12px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA (21%)</td><td style="padding:6px 12px;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${Number(d.taxAmount).toFixed(2)} €</td></tr>`
+    : "";
+  const bookingDateRow = d.bookingDate
+    ? `<tr><td style="padding:8px 40px 0;"><div style="background:#fffbeb;border-left:4px solid ${BRAND_ORANGE};border-radius:6px;padding:12px 18px;"><p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;">📅 <strong>Fecha de la actividad:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.bookingDate}</span></p></div></td></tr>`
+    : "";
+  const quoteRefRow = d.quoteNumber
+    ? `<br/><span style="color:#9ca3af;font-size:12px;">Presupuesto original: <strong>${d.quoteNumber}</strong></span>`
+    : "";
+  const contactPhone = d.contactPhone ?? "+34 930 34 77 91";
+  const contactEmail = d.contactEmail ?? "reservas@nayadeexperiences.es";
+
   const body = `
     ${emailHeader("Reserva Confirmada", "¡Tu aventura está lista!")}
     <tr><td style="padding:32px 40px 0;">
@@ -667,21 +688,25 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
       </p>
       ${statusBlock("success", "Pago procesado correctamente", "Tu plaza está reservada. Recibirás toda la información necesaria para el día de tu visita.")}
     </td></tr>
-    <tr><td style="padding:0 40px 8px;">
+    ${bookingDateRow}
+    <tr><td style="padding:8px 40px 8px;">
       <div style="background:linear-gradient(135deg,#f0f4f8,#e8eef7);border-radius:12px;padding:20px 24px;border:1px solid #dce4f0;">
         <p style="color:${BRAND_MID_BLUE};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">${d.quoteTitle}</p>
         <table width="100%" cellpadding="0" cellspacing="0">
           <tbody>${itemRowsHtml}</tbody>
         </table>
-        <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;border-top:1px solid #dce4f0;">
+          ${subtotalRow}
+          ${taxRow}
           <tr style="background:${BRAND_BLUE};"><td style="padding:10px 12px;color:#fff;font-size:15px;font-weight:700;font-family:Arial,sans-serif;">Total pagado</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} €</td></tr>
         </table>
       </div>
     </td></tr>
     <tr><td style="padding:8px 40px;">
       <div style="background:#f8fafc;border-left:4px solid ${BRAND_ORANGE};border-radius:6px;padding:14px 18px;">
-        <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-          ${SVG.ref}&nbsp;<strong>Referencia de reserva:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.reservationRef}</span><br/>
+        <p style="color:#374151;font-size:13px;margin:0;line-height:1.8;font-family:Arial,sans-serif;">
+          ${SVG.ref}&nbsp;<strong>Referencia de factura:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.reservationRef}</span>
+          ${quoteRefRow}<br/>
           <span style="color:#9ca3af;font-size:12px;">Guarda este número para cualquier consulta.</span>
         </p>
       </div>
@@ -690,8 +715,8 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     <tr><td style="padding:8px 40px 32px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         ¿Necesitas modificar tu reserva? Escríbenos a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
-        o llámanos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+        <a href="mailto:${contactEmail}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${contactEmail}</a>
+        o llámanos al <a href="tel:${contactPhone.replace(/\s/g,"")}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${contactPhone}</a>.
       </p>
     </td></tr>
     ${emailFooter()}`;

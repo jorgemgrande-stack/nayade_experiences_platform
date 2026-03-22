@@ -1074,3 +1074,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] URLs de Redsys ya son dinámicas (window.location.origin) — no requieren cambio de código
 - [x] Actualizado fallback de dominio: skicenter.es y manus.space → www.nayadeexperiences.es
 - [x] 126 tests pasando · 0 errores TypeScript
+
+## Email confirmación de pago al cliente — v9.34 [COMPLETADO]
+- [x] Auditado handler IPN: email ya existía pero con BCC incorrecto y email duplicado
+- [x] Mejorada plantilla buildConfirmationHtml: subtotal, IVA, fecha actividad, número presupuesto
+- [x] Corregido BCC: ahora siempre va a reservas@nayadeexperiences.es
+- [x] Eliminado email duplicado: sendReservationPaidNotifications solo para reservas directas
+- [x] 11 tests nuevos en confirmationEmail.test.ts
+- [x] 138 tests pasando · 0 errores TypeScript

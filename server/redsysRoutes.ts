@@ -139,6 +139,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           // ── Enviar email de confirmación al cliente ──
           const clientEmail = lead?.email ?? updatedReservation.customerEmail;
           const clientName  = lead?.name  ?? updatedReservation.customerName;
+          const COPY_EMAIL  = "reservas@nayadeexperiences.es";
           if (clientEmail) {
             try {
               const transporter = createTransporter();
@@ -146,18 +147,24 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                 const html = buildConfirmationHtml({
                   clientName,
                   reservationRef: invoiceNumber,
+                  quoteNumber: quote.quoteNumber,
                   quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
                   items,
+                  subtotal: String(subtotal),
+                  taxAmount: String(taxAmount),
                   total: String(total),
+                  bookingDate: updatedReservation.bookingDate ?? undefined,
+                  contactEmail: COPY_EMAIL,
+                  contactPhone: "+34 930 34 77 91",
                 });
                 await transporter.sendMail({
-                  from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+                  from: process.env.SMTP_FROM ?? `Náyade Experiences <${COPY_EMAIL}>`,
                   to: clientEmail,
-                  bcc: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+                  bcc: COPY_EMAIL,
                   subject: `✅ Reserva confirmada — ${quote.quoteNumber} — Náyade Experiences`,
                   html,
                 });
-                console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail}`);
+                console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail} (BCC: ${COPY_EMAIL})`);
               }
             } catch (emailErr) {
               console.error("[Redsys IPN] Error al enviar email de confirmación:", emailErr);
@@ -169,8 +176,11 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
       }
     }
+    // Solo enviar el email estándar de reserva para reservas directas.
+    // Las reservas de presupuesto ya reciben el email de confirmación de presupuesto arriba.
+    const isQuoteReservation = updatedReservation?.quoteSource === "presupuesto" && !!updatedReservation?.quoteId;
     if (updatedReservation) {
-      if (result.isAuthorized) {
+      if (result.isAuthorized && !isQuoteReservation) {
         sendReservationPaidNotifications({
           id: updatedReservation.id,
           merchantOrder: updatedReservation.merchantOrder,
