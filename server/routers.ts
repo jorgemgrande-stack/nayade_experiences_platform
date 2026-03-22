@@ -34,11 +34,6 @@ import {
   createLocation,
   updateLocation,
   deleteLocation,
-  getAllLeads,
-  updateLeadStatus,
-  getAllQuotes,
-  createQuote,
-  updateQuoteStatus,
   getAllBookings,
   createBooking,
   updateBookingStatus,
@@ -757,73 +752,7 @@ export const appRouter = router({
       }),
   }),
 
-  // ─── ADMIN: LEADS & QUOTES ────────────────────────────────────────────────
-  leads: router({
-    getAll: staffProcedure
-      .input(z.object({
-        status: z.string().optional(),
-        limit: z.number().default(20),
-        offset: z.number().default(0),
-      }))
-      .query(async ({ input }) => {
-        return getAllLeads(input);
-      }),
-
-    updateStatus: staffProcedure
-      .input(z.object({
-        id: z.number(),
-        status: z.enum(["nuevo", "contactado", "en_proceso", "convertido", "perdido"]),
-        assignedTo: z.number().optional(),
-      }))
-      .mutation(async ({ input }) => {
-        return updateLeadStatus(input.id, input.status, input.assignedTo);
-      }),
-  }),
-
-  quotes: router({
-    getAll: staffProcedure
-      .input(z.object({
-        status: z.string().optional(),
-        limit: z.number().default(20),
-        offset: z.number().default(0),
-      }))
-      .query(async ({ input }) => {
-        return getAllQuotes(input);
-      }),
-
-    create: staffProcedure
-      .input(z.object({
-        leadId: z.number(),
-        title: z.string(),
-        description: z.string().optional(),
-        items: z.array(z.object({
-          description: z.string(),
-          quantity: z.number(),
-          unitPrice: z.number(),
-          total: z.number(),
-        })),
-        subtotal: z.string(),
-        discount: z.string().default("0"),
-        tax: z.string().default("0"),
-        total: z.string(),
-        validUntil: z.string().optional(),
-        notes: z.string().optional(),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        return createQuote({ ...input, agentId: ctx.user.id });
-      }),
-
-    updateStatus: staffProcedure
-      .input(z.object({
-        id: z.number(),
-        status: z.enum(["borrador", "enviado", "aceptado", "rechazado", "expirado"]),
-      }))
-      .mutation(async ({ input }) => {
-        return updateQuoteStatus(input.id, input.status);
-      }),
-  }),
-
-  // ─── ADMIN: BOOKINGS & CALENDAR ───────────────────────────────────────────
+  // ─── ADMIN: BOOKINGS & CALENDAR───────────────────────────────────────────
   bookings: router({
     getAll: protectedProcedure
       .input(z.object({

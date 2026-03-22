@@ -1057,3 +1057,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Fix: añadir las 3 rutas públicas de presupuesto por token a `PUBLIC_TRPC_ROUTES` en `server/authGuard.ts`
 - [x] Verificado: endpoint responde correctamente con datos del presupuesto de Cristina Battistelli
 - [x] 126 tests pasando · 0 errores TypeScript
+
+## Limpieza de Routers Legacy — v9.32 [COMPLETADO]
+- [x] Auditar procedimientos leads.* y quotes.* en server/routers.ts
+- [x] Verificar que ningún componente frontend los consume (grep en client/src)
+- [x] Eliminar los procedimientos legacy de routers.ts (65 líneas eliminadas)
+- [x] Eliminar archivos frontend muertos: LeadsManager.tsx, QuoteBuilder.tsx, QuotesList.tsx + carpeta admin/quotes/
+- [x] Limpiar entradas obsoletas de authGuard.ts (leads.create, quotes.getByPaymentToken, quotes.createPaymentLink)
+- [x] Actualizar tests nayade.test.ts para usar crm.leads.list y crm.quotes.list
+- [x] 126 tests pasando · 0 errores TypeScript

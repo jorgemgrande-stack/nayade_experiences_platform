@@ -105,11 +105,8 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "restaurantes.getBySlug",
 
   // ── Leads y presupuestos (formularios públicos) ───────────────────────────
-  "leads.create",
   "public.submitLead",
   "public.submitBudget",
-  "quotes.getByPaymentToken",
-  "quotes.createPaymentLink",
 
   // ── Presupuestos por token (página pública /presupuesto/:token) ───────────
   "crm.quotes.getByToken",

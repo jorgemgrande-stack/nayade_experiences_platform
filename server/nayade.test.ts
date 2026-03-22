@@ -168,19 +168,17 @@ describe("admin access control", () => {
   });
 });
 
-// ─── Quotes Module Tests ──────────────────────────────────────────────────────
-
-describe("quotes module", () => {
-  it("staff can get all leads", async () => {
+// ─── CRM Leads & Quotes Module Tests ───────────────────────────────────────
+describe("crm leads & quotes module", () => {
+  it("staff can list leads via crm router", async () => {
     const caller = appRouter.createCaller(createAdminContext());
-    const leads = await caller.leads.getAll({ limit: 10, offset: 0 });
-    expect(Array.isArray(leads)).toBe(true);
+    const result = await caller.crm.leads.list({ limit: 10, offset: 0 });
+    expect(Array.isArray(result)).toBe(true);
   });
-
-  it("staff can get all quotes", async () => {
+  it("staff can list quotes via crm router", async () => {
     const caller = appRouter.createCaller(createAdminContext());
-    const quotes = await caller.quotes.getAll({ limit: 10, offset: 0 });
-    expect(Array.isArray(quotes)).toBe(true);
+    const result = await caller.crm.quotes.list({ limit: 10, offset: 0 });
+    expect(Array.isArray(result)).toBe(true);
   });
 });
 
