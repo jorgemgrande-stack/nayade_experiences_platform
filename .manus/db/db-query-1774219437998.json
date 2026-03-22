@@ -1,0 +1,20 @@
+{
+  "query": "SELECT id, invoiceNumber, clientName, clientEmail, status, total, issuedAt, quoteId FROM invoices ORDER BY id DESC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, invoiceNumber, clientName, clientEmail, status, total, issuedAt, quoteId FROM invoices ORDER BY id DESC LIMIT 10;",
+  "rows": [
+    {
+      "id": "30001",
+      "invoiceNumber": "FAC-2026-0001",
+      "clientName": "Eva Longoria",
+      "clientEmail": "jorgemgrande@gmail.com",
+      "status": "generada",
+      "total": "143.39",
+      "issuedAt": "2026-03-22 22:40:47",
+      "quoteId": "120004"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tinvoiceNumber\tclientName\tclientEmail\tstatus\ttotal\tissuedAt\tquoteId\n30001\tFAC-2026-0001\tEva Longoria\tjorgemgrande@gmail.com\tgenerada\t143.39\t2026-03-22 22:40:47\t120004\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

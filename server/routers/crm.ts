@@ -2179,7 +2179,7 @@ export const crmRouter = router({
           db.select({ total: count() }).from(invoices).where(whereClause),
           db.select({
             subtotalSum: sql<string>`COALESCE(SUM(subtotal), 0)`,
-            taxSum: sql<string>`COALESCE(SUM(tax_amount), 0)`,
+            taxSum: sql<string>`COALESCE(SUM(taxAmount), 0)`,
             grandTotal: sql<string>`COALESCE(SUM(total), 0)`,
           }).from(invoices).where(whereClause),
         ]);

@@ -1,0 +1,19 @@
+{
+  "query": "SELECT id, invoiceNumber, clientName, status, total, invoiceType, paymentMethod FROM invoices WHERE id = 30001;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, invoiceNumber, clientName, status, total, invoiceType, paymentMethod FROM invoices WHERE id = 30001;",
+  "rows": [
+    {
+      "id": "30001",
+      "invoiceNumber": "FAC-2026-0001",
+      "clientName": "Eva Longoria",
+      "status": "generada",
+      "total": "143.39",
+      "invoiceType": "factura",
+      "paymentMethod": "redsys"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tinvoiceNumber\tclientName\tstatus\ttotal\tinvoiceType\tpaymentMethod\n30001\tFAC-2026-0001\tEva Longoria\tgenerada\t143.39\tfactura\tredsys\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}
