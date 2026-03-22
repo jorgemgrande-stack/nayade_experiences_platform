@@ -1123,3 +1123,18 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Modal contextual completo con participantes, duración, saltos, notas según familia
 - [x] Validación y submit actualizados para enviar activitiesJson como array (no JSON.stringify)
 - [x] 138 tests pasando · 0 errores TypeScript
+
+## Mostrar activitiesJson enriquecido en CRM y email — v9.39 [COMPLETADO]
+
+- [x] Auditado: el CRM tenía código para mostrar activitiesJson pero usaba JSON.parse innecesario que fallaba silenciosamente
+- [x] Corregido CRMDashboard.tsx: usa Array.isArray() directamente (Drizzle ya devuelve JSON parseado)
+- [x] Mejorado detalle del lead: chips de color sky-blue para cada detalle contextual (Duración, Saltos, Nivel, Tipo, Notas)
+- [x] Actualizada columna "Producto" en la lista de leads: muestra nombre + pax de cada actividad (hasta 2, con "+N más")
+- [x] Corregido error de Babel en Home.tsx: parseInt con radix explícito
+- [x] Corregidas keys duplicadas en sidebar del admin (subitems CRM con mismo href)
+- [x] Añadida función buildActivitiesBlock() en emailTemplates.ts: bloque HTML premium con chips azules por detalle
+- [x] Actualizado BudgetRequestEmailData: campo activitiesJson opcional
+- [x] Email al usuario: muestra sección "Actividades solicitadas" cuando hay activitiesJson
+- [x] Email al admin: también muestra sección de actividades enriquecidas
+- [x] submitBudget en routers.ts: pasa activitiesJson al emailData
+- [x] 138 tests pasando · 0 errores TypeScript

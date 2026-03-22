@@ -1,0 +1,45 @@
+{
+  "query": "SELECT id, name, email, selectedProduct, LEFT(CAST(activitiesJson AS CHAR), 300) as activities_preview FROM leads ORDER BY id DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, name, email, selectedProduct, LEFT(CAST(activitiesJson AS CHAR), 300) as activities_preview FROM leads ORDER BY id DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "540004",
+      "name": "prueba",
+      "email": "jgrande@skicenter.es",
+      "selectedProduct": "Paddle Surf",
+      "activities_preview": "[{\"details\": {\"duration\": \"Media jornada\"}, \"experienceId\": 30005, \"experienceTitle\": \"Paddle Surf\", \"family\": \"alquiler\", \"participants\": 2}]"
+    },
+    {
+      "id": "540003",
+      "name": "Test User",
+      "email": "test@example.com",
+      "selectedProduct": "NULL",
+      "activities_preview": "NULL"
+    },
+    {
+      "id": "540002",
+      "name": "Test User",
+      "email": "test@example.com",
+      "selectedProduct": "NULL",
+      "activities_preview": "NULL"
+    },
+    {
+      "id": "540001",
+      "name": "Test User",
+      "email": "test@example.com",
+      "selectedProduct": "NULL",
+      "activities_preview": "NULL"
+    },
+    {
+      "id": "510001",
+      "name": "Test User",
+      "email": "test@example.com",
+      "selectedProduct": "NULL",
+      "activities_preview": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tselectedProduct\tactivities_preview\n540004\tprueba\tjgrande@skicenter.es\tPaddle Surf\t[{\"details\": {\"duration\": \"Media jornada\"}, \"experienceId\": 30005, \"experienceTitle\": \"Paddle Surf\", \"family\": \"alquiler\", \"participants\": 2}]\n540003\tTest User\ttest@example.com\tNULL\tNULL\n540002\tTest User\ttest@example.com\tNULL\tNULL\n540001\tTest User\ttest@example.com\tNULL\tNULL\n510001\tTest User\ttest@example.com\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

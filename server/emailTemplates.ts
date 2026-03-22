@@ -432,9 +432,48 @@ export function buildPasswordResetHtml(d: PasswordResetData): string {
   return emailWrapper("Recuperar contraseña — Náyade Experiences", body);
 }
 
+export interface ActivityEmailEntry {
+  experienceTitle: string;
+  participants: number;
+  details: Record<string, string | number>;
+}
+
+// ─── Helper: bloque de actividades enriquecidas ─────────────────────────────
+function buildActivitiesBlock(activities: ActivityEmailEntry[]): string {
+  const labelMap: Record<string, string> = {
+    duration: 'Duración', jumps: 'Saltos', level: 'Nivel', type: 'Tipo', notes: 'Notas'
+  };
+  const rows = activities.map((act) => {
+    const detailChips = Object.entries(act.details || {})
+      .map(([k, v]) => `<span style="display:inline-block;background:#e0f2fe;color:#0369a1;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;margin:2px 3px 2px 0;font-family:Arial,sans-serif;">${labelMap[k] ?? k}: ${String(v)}</span>`)
+      .join('');
+    return `
+      <tr>
+        <td style="padding:10px 0;border-bottom:1px solid #e8eef7;">
+          <table width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td style="color:#0a1628;font-size:13px;font-weight:700;font-family:Arial,sans-serif;">
+              ${SVG.star}&nbsp;${act.experienceTitle}
+            </td>
+            <td align="right" style="color:#f97316;font-size:13px;font-weight:700;font-family:Arial,sans-serif;white-space:nowrap;">
+              ${act.participants} pax
+            </td>
+          </tr></table>
+          ${detailChips ? `<div style="margin-top:5px;">${detailChips}</div>` : ''}
+        </td>
+      </tr>`;
+  }).join('');
+  return `<tr><td style="padding:0 40px 8px;">
+    <div style="background:linear-gradient(135deg,#f0f9ff,#e0f2fe);border-radius:12px;padding:20px 24px;border:1px solid #bae6fd;">
+      <p style="color:#0369a1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Actividades solicitadas</p>
+      <table width="100%" cellpadding="0" cellspacing="0">${rows}</table>
+    </div>
+  </td></tr>`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PLANTILLA 7: Solicitud de presupuesto — Email al usuario (confirmación)
 // ═══════════════════════════════════════════════════════════════════════════════
+
 export interface BudgetRequestEmailData {
   name: string;
   email: string;
@@ -446,6 +485,7 @@ export interface BudgetRequestEmailData {
   selectedProduct: string;
   comments: string;
   submittedAt: string;
+  activitiesJson?: ActivityEmailEntry[];
 }
 
 export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
@@ -465,10 +505,11 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
       ${detailRow(SVG.users,    "Adultos",                String(d.adults))}
       ${detailRow(SVG.child,    "Niños",                  String(d.children))}
       ${detailRow(SVG.tag,      "Categoría",              d.selectedCategory)}
-      ${detailRow(SVG.star,     "Experiencia solicitada", d.selectedProduct)}
+      ${!d.activitiesJson?.length ? detailRow(SVG.star, "Experiencia solicitada", d.selectedProduct) : ""}
       ${d.comments ? detailRow(SVG.chat, "Comentarios", d.comments) : ""}
       ${detailRow(SVG.phone,    "Teléfono de contacto",   d.phone)}
     `)}
+    ${d.activitiesJson?.length ? buildActivitiesBlock(d.activitiesJson) : ""}
     <tr><td style="padding:8px 40px 32px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         ¿Necesitas modificar algún dato? Escríbenos a
@@ -496,10 +537,11 @@ export function buildBudgetRequestAdminHtml(d: BudgetRequestEmailData): string {
       ${detailRow(SVG.users,    "Adultos",                String(d.adults))}
       ${detailRow(SVG.child,    "Niños",                  String(d.children))}
       ${detailRow(SVG.tag,      "Categoría",              d.selectedCategory)}
-      ${detailRow(SVG.star,     "Experiencia solicitada", d.selectedProduct)}
+      ${!d.activitiesJson?.length ? detailRow(SVG.star, "Experiencia solicitada", d.selectedProduct) : ""}
       ${d.comments ? detailRow(SVG.chat, "Comentarios", d.comments) : ""}
       ${detailRow(SVG.clock,    "Fecha de envío",         d.submittedAt)}
     `)}
+    ${d.activitiesJson?.length ? buildActivitiesBlock(d.activitiesJson) : ""}
     <tr><td style="padding:8px 40px 32px;">
       ${ctaButton("Contactar al cliente", `mailto:${d.email}`)}
     </td></tr>

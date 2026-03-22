@@ -355,36 +355,36 @@ function LeadDetailModal({
             </div>
           )}
           {/* Actividades enriquecidas desde el formulario multi-actividad */}
-          {lead.activitiesJson && (() => {
-            try {
-              const acts = JSON.parse(typeof lead.activitiesJson === 'string' ? lead.activitiesJson : JSON.stringify(lead.activitiesJson));
-              if (!Array.isArray(acts) || acts.length === 0) return null;
-              return (
-                <div className="pt-2 border-t border-white/10">
-                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2">Actividades solicitadas</p>
-                  <div className="space-y-1.5">
-                    {acts.map((act: any, i: number) => (
-                      <div key={i} className="bg-white/[0.06] rounded-lg px-3 py-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-white">{act.experienceTitle}</span>
-                          <span className="text-xs text-orange-400 font-semibold">{act.participants} pax</span>
-                        </div>
-                        {act.details && Object.keys(act.details).length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-1">
-                            {Object.entries(act.details).map(([k, v]) => (
-                              <span key={k} className="text-xs bg-white/10 text-white/50 rounded-full px-2 py-0.5">
-                                {String(k)}: {String(v)}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+          {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 && (
+            <div className="pt-2 border-t border-white/10">
+              <p className="text-xs text-white/40 uppercase tracking-wider mb-2">Actividades solicitadas</p>
+              <div className="space-y-2">
+                {(lead.activitiesJson as any[]).map((act: any, i: number) => (
+                  <div key={i} className="bg-white/[0.06] rounded-lg px-3 py-2.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold text-white">{act.experienceTitle}</span>
+                      <span className="text-xs text-orange-400 font-bold bg-orange-500/10 px-2 py-0.5 rounded-full">{act.participants} pax</span>
+                    </div>
+                    {act.details && Object.keys(act.details).length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {Object.entries(act.details).map(([k, v]) => {
+                          const labelMap: Record<string, string> = {
+                            duration: 'Duración', jumps: 'Saltos', level: 'Nivel',
+                            type: 'Tipo', notes: 'Notas'
+                          };
+                          return (
+                            <span key={k} className="text-xs bg-sky-500/10 text-sky-300 border border-sky-500/20 rounded-full px-2 py-0.5">
+                              {labelMap[k] ?? k}: <strong>{String(v)}</strong>
+                            </span>
+                          );
+                        })}
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              );
-            } catch { return null; }
-          })()}
+                ))}
+              </div>
+            </div>
+          )}
           {lead.message && (
             <div className="pt-2 border-t border-white/10">
               <p className="text-sm text-white/60 italic">"{lead.message}"</p>
@@ -2170,7 +2170,21 @@ export default function CRMDashboard() {
                         </div>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-sm text-white/60">{lead.selectedProduct || lead.selectedCategory || "—"}</div>
+                        {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            {(lead.activitiesJson as any[]).slice(0, 2).map((act: any, i: number) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <span className="text-sm text-white/80">{act.experienceTitle}</span>
+                                <span className="text-xs text-orange-400 font-semibold">{act.participants}p</span>
+                              </div>
+                            ))}
+                            {(lead.activitiesJson as any[]).length > 2 && (
+                              <span className="text-xs text-white/30">+{(lead.activitiesJson as any[]).length - 2} más</span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-white/60">{lead.selectedProduct || lead.selectedCategory || "—"}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
                         <div className="text-sm text-white/50">{lead.preferredDate ? new Date(lead.preferredDate).toLocaleDateString("es-ES") : "—"}</div>

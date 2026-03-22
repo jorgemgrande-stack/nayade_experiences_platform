@@ -288,6 +288,7 @@ export const appRouter = router({
             selectedProduct: input.selectedProduct,
             comments: input.comments ?? "",
             submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
+            activitiesJson: input.activitiesJson ?? undefined,
           };
 
           // Email al usuario (independiente: si su email es inválido no bloquea el del admin)

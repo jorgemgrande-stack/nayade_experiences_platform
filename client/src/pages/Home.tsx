@@ -219,7 +219,7 @@ export default function Home() {
   const openHeroActivityModal = useCallback((exp: { id: number; title: string; slug: string }) => {
     const family = getHeroFamilyForSlug(exp.slug);
     const existing = heroSelectedActivities.find((a) => a.experienceId === exp.id);
-    setHeroModalParticipants(existing?.participants ?? (parseInt(heroForm.adults) || 2));
+    setHeroModalParticipants(existing?.participants ?? (parseInt(heroForm.adults, 10) || 2));
     setHeroModalDetails(existing?.details ?? {});
     setHeroModalState({ open: true, experienceId: exp.id, experienceTitle: exp.title, family, slug: exp.slug });
   }, [heroSelectedActivities, heroForm.adults]);

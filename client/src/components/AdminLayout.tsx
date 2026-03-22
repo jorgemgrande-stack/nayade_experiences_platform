@@ -54,10 +54,10 @@ const navItems = [
     icon: FileText,
     roles: ["admin", "agente"],
     children: [
-      { label: "Leads", href: "/admin/crm" },
-      { label: "Presupuestos", href: "/admin/crm" },
-      { label: "Reservas", href: "/admin/crm" },
-      { label: "Clientes", href: "/admin/crm/clientes" },
+      { label: "Leads", href: "/admin/crm", key: "crm-leads" },
+      { label: "Presupuestos", href: "/admin/crm", key: "crm-presupuestos" },
+      { label: "Reservas", href: "/admin/crm", key: "crm-reservas" },
+      { label: "Clientes", href: "/admin/crm/clientes", key: "crm-clientes" },
     ],
   },
   {
@@ -339,7 +339,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                     {sidebarOpen && isExpanded && item.children && (
                       <div className="ml-4 mt-1 space-y-0.5">
                         {item.children.map((child) => (
-                          <Link key={child.href} href={child.href}>
+                          <Link key={(child as any).key ?? child.href} href={child.href}>
                             <div className={cn(
                               "block px-3 py-2 rounded-lg text-xs font-medium transition-all",
                               location === child.href
