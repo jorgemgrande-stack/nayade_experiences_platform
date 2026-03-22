@@ -1185,3 +1185,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Badge violeta "Generado con IA" más grande en el header del modal de detalle del presupuesto
 - [x] Tooltip descriptivo en ambos badges explicando el origen automático
 - [x] 145 tests pasando · 0 errores TypeScript
+
+## Bug: Botón CTA invisible en email de presupuesto — v9.44 [COMPLETADO]
+
+- [x] Causa: gradiente CSS no renderizado en Outlook → fondo blanco + texto blanco = invisible
+- [x] Corregido ctaButton: fondo sólido #E85D04 con borde #c94d00, texto blanco, font-size 18px, padding 22px 60px
+- [x] Añadido bloque contenedor naranja claro (#fff7ed) con borde #fed7aa alrededor del botón
+- [x] Texto de apoyo: "🔒 Tu reserva está a un clic" + "Haz clic para confirmar y pagar de forma segura"
+- [x] Botón con icono ▶ y letra-espaciado para mayor impacto visual
+- [x] 145 tests pasando · 0 errores TypeScript

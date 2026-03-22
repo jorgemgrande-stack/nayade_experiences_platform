@@ -144,10 +144,10 @@ function statusBlock(type: "success" | "warning" | "error", title: string, body:
 
 // ─── Helper: botón CTA premium ────────────────────────────────────────────────
 function ctaButton(text: string, href: string): string {
-  return `<div style="text-align:center;margin:28px 0;">
+  return `<div style="text-align:center;margin:32px 0;">
     <a href="${href}"
-       style="display:inline-block;background:linear-gradient(135deg,${BRAND_ORANGE},#ea6c0a);color:#ffffff;font-size:15px;font-weight:700;padding:16px 44px;border-radius:50px;text-decoration:none;letter-spacing:0.5px;box-shadow:0 4px 15px rgba(249,115,22,0.4);font-family:Arial,sans-serif;">
-      ${text} →
+       style="display:inline-block;background:#E85D04;color:#ffffff;font-size:18px;font-weight:900;padding:22px 60px;border-radius:8px;text-decoration:none;letter-spacing:1px;font-family:Arial,Helvetica,sans-serif;border:3px solid #c94d00;">
+      &#9654;&nbsp;&nbsp;${text}
     </a>
   </div>`;
 }
@@ -621,7 +621,14 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
     : "";
 
   const ctaBlock = d.paymentLinkUrl
-    ? `<tr><td style="padding:8px 40px;">${ctaButton("Confirmar y Pagar Ahora", d.paymentLinkUrl)}<p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;font-family:Arial,sans-serif;">Pago 100% seguro · Redsys · SSL</p></td></tr>`
+    ? `<tr><td style="padding:8px 40px;">
+        <div style="background:#fff7ed;border:2px solid #fed7aa;border-radius:12px;padding:28px 24px;text-align:center;">
+          <p style="color:#9a3412;font-size:14px;font-weight:700;margin:0 0 6px;font-family:Arial,sans-serif;">&#128274; Tu reserva está a un clic</p>
+          <p style="color:#c2410c;font-size:13px;margin:0 0 20px;font-family:Arial,sans-serif;">Haz clic en el botón para confirmar y pagar de forma segura</p>
+          ${ctaButton("Confirmar y Pagar Ahora", d.paymentLinkUrl)}
+          <p style="color:#9ca3af;font-size:12px;margin:0;font-family:Arial,sans-serif;">&#128274; Pago 100% seguro &middot; Redsys &middot; SSL</p>
+        </div>
+      </td></tr>`
     : `<tr><td style="padding:8px 40px;">
         <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:20px;text-align:center;">
           <p style="color:#374151;font-size:14px;margin:0;font-family:Arial,sans-serif;">
