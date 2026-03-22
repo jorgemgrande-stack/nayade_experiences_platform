@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import {
   Users,
+  User,
   FileText,
   CalendarCheck,
   TrendingUp,
@@ -633,6 +634,294 @@ function ProductSearchInput({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── DIRECT QUOTE MODAL (sin lead previo) ───────────────────────────────────
+
+function DirectQuoteModal({ onClose }: { onClose: () => void }) {
+  const utils = trpc.useUtils();
+
+  // Paso 1: datos del cliente
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [clientCompany, setClientCompany] = useState("");
+  const [clientSearch, setClientSearch] = useState("");
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
+
+  // Paso 2: líneas de presupuesto
+  const [title, setTitle] = useState("Presupuesto Nayade Experiences");
+  const [conditions, setConditions] = useState("Presupuesto válido por 15 días. Sujeto a disponibilidad.");
+  const [validUntil, setValidUntil] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 15);
+    return d.toISOString().split("T")[0];
+  });
+  const [notes, setNotes] = useState("");
+  const [taxRate, setTaxRate] = useState(21);
+  const [items, setItems] = useState([{ description: "", quantity: 1, unitPrice: 0, total: 0 }]);
+  const [sendAfterCreate, setSendAfterCreate] = useState(false);
+
+  const subtotal = items.reduce((s, i) => s + i.total, 0);
+  const taxAmount = subtotal * (taxRate / 100);
+  const total = subtotal + taxAmount;
+
+  // Búsqueda de clientes existentes
+  const { data: clientSuggestions } = trpc.crm.clients.list.useQuery(
+    { search: clientSearch, limit: 6 },
+    { enabled: clientSearch.length >= 2 }
+  );
+
+  const updateItem = (idx: number, field: string, value: string | number) => {
+    setItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        const updated = { ...item, [field]: value };
+        if (field === "quantity" || field === "unitPrice") {
+          updated.total = Number(updated.quantity) * Number(updated.unitPrice);
+        }
+        return updated;
+      })
+    );
+  };
+
+  const createDirect = trpc.crm.quotes.createDirect.useMutation({
+    onSuccess: (data) => {
+      toast.success(
+        data.sent
+          ? `Presupuesto ${data.quoteNumber} creado y enviado al cliente`
+          : `Presupuesto ${data.quoteNumber} guardado como borrador`
+      );
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleSubmit = (andSend: boolean) => {
+    if (!clientName || !clientEmail) {
+      toast.error("Nombre y email del cliente son obligatorios");
+      return;
+    }
+    if (items.some((i) => !i.description)) {
+      toast.error("Completa la descripción de todos los conceptos");
+      return;
+    }
+    setSendAfterCreate(andSend);
+    createDirect.mutate({
+      clientName,
+      clientEmail,
+      clientPhone: clientPhone || undefined,
+      clientCompany: clientCompany || undefined,
+      title,
+      items,
+      subtotal,
+      discount: 0,
+      taxRate,
+      total,
+      validUntil,
+      notes: notes || undefined,
+      conditions,
+      sendNow: andSend,
+    });
+  };
+
+  const selectClient = (c: { name: string; email: string; phone?: string | null; company?: string | null }) => {
+    setClientName(c.name);
+    setClientEmail(c.email);
+    setClientPhone(c.phone ?? "");
+    setClientCompany(c.company ?? "");
+    setClientSearch("");
+    setShowClientSuggestions(false);
+    setTitle(`Presupuesto Nayade Experiences - ${c.name}`);
+  };
+
+  return (
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="text-white flex items-center gap-2">
+          <Plus className="w-5 h-5 text-orange-400" /> Nuevo Presupuesto
+          <span className="text-white/40 text-sm font-normal ml-1">sin lead previo</span>
+        </DialogTitle>
+      </DialogHeader>
+
+      <div className="space-y-5">
+        {/* ── Sección cliente ── */}
+        <div className="bg-white/5 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <User className="w-4 h-4 text-orange-400" />
+            <span className="text-xs font-semibold uppercase tracking-widest text-white/50">Datos del cliente</span>
+          </div>
+
+          {/* Buscador de cliente existente */}
+          <div className="relative">
+            <Label className="text-white/60 text-xs">Buscar cliente existente</Label>
+            <div className="relative mt-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+              <Input
+                className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
+                placeholder="Nombre o email del cliente..."
+                value={clientSearch}
+                onChange={(e) => { setClientSearch(e.target.value); setShowClientSuggestions(true); }}
+                onFocus={() => setShowClientSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
+              />
+            </div>
+            {showClientSuggestions && (clientSuggestions?.items?.length ?? 0) > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/10 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                {clientSuggestions!.items.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="w-full text-left px-3 py-2.5 hover:bg-white/10 flex items-center justify-between gap-2"
+                    onMouseDown={() => selectClient(c)}
+                  >
+                    <div>
+                      <div className="text-sm text-white font-medium">{c.name}</div>
+                      <div className="text-xs text-white/40">{c.email}</div>
+                    </div>
+                    {c.company && <span className="text-xs text-white/30 shrink-0">{c.company}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="text-xs text-white/30 text-center">— o introduce los datos manualmente —</div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-white/60 text-xs">Nombre *</Label>
+              <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setTitle(`Presupuesto Nayade Experiences - ${e.target.value}`); }}
+                className="bg-white/5 border-white/10 text-white mt-1 text-sm" placeholder="Nombre completo" />
+            </div>
+            <div>
+              <Label className="text-white/60 text-xs">Email *</Label>
+              <Input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)}
+                className="bg-white/5 border-white/10 text-white mt-1 text-sm" placeholder="cliente@email.com" />
+            </div>
+            <div>
+              <Label className="text-white/60 text-xs">Teléfono</Label>
+              <Input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)}
+                className="bg-white/5 border-white/10 text-white mt-1 text-sm" placeholder="+34 600 000 000" />
+            </div>
+            <div>
+              <Label className="text-white/60 text-xs">Empresa</Label>
+              <Input value={clientCompany} onChange={(e) => setClientCompany(e.target.value)}
+                className="bg-white/5 border-white/10 text-white mt-1 text-sm" placeholder="Nombre empresa (opcional)" />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Asunto y fechas ── */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <Label className="text-white/60 text-xs">Asunto del presupuesto *</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)}
+              className="bg-white/5 border-white/10 text-white mt-1 text-sm" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Válido hasta</Label>
+            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)}
+              className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">IVA (%)</Label>
+            <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-white/10">
+                <SelectItem value="0" className="text-white">0% (exento)</SelectItem>
+                <SelectItem value="10" className="text-white">10%</SelectItem>
+                <SelectItem value="21" className="text-white">21%</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* ── Conceptos ── */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-white/60 text-xs">Conceptos * <span className="text-white/30">(escribe o busca un producto)</span></Label>
+            <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
+              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0 }])}>
+              <Plus className="w-3 h-3 mr-1" /> Añadir línea
+            </Button>
+          </div>
+          <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mb-1">
+            <span className="col-span-5">Descripción</span>
+            <span className="col-span-2 text-center">Cant.</span>
+            <span className="col-span-2 text-right">P.Unit.</span>
+            <span className="col-span-2 text-right">Total</span>
+          </div>
+          <div className="space-y-2">
+            {items.map((item, idx) => (
+              <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                <div className="col-span-5">
+                  <ProductSearchInput
+                    value={item.description}
+                    onChange={(v) => updateItem(idx, "description", v)}
+                    onSelect={(p) => {
+                      setItems((prev) => prev.map((it, i) => {
+                        if (i !== idx) return it;
+                        const unitPrice = Number(p.basePrice);
+                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity };
+                      }));
+                    }}
+                  />
+                </div>
+                <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center" type="number" min={1}
+                  value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
+                <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-right" type="number" min={0} step={0.01}
+                  value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
+                <div className="col-span-2 text-right text-sm font-semibold text-orange-400">{item.total.toFixed(2)} €</div>
+                <Button size="sm" variant="ghost" className="col-span-1 text-white/30 hover:text-red-400 p-1"
+                  onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Totales */}
+        <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
+          <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+          <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+          <div className="flex justify-between text-base font-bold text-white border-t border-white/10 pt-2 mt-2">
+            <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-white/60 text-xs">Notas para el cliente</Label>
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+            placeholder="Información adicional visible para el cliente..."
+            className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1 resize-none h-16 text-sm" />
+        </div>
+        <div>
+          <Label className="text-white/60 text-xs">Condiciones</Label>
+          <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)}
+            className="bg-white/5 border-white/10 text-white mt-1 resize-none h-12 text-sm" />
+        </div>
+      </div>
+
+      <DialogFooter className="gap-2 flex-wrap">
+        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button size="sm" onClick={() => handleSubmit(false)} disabled={createDirect.isPending}
+          className="bg-white/10 hover:bg-white/20 text-white border border-white/15">
+          {createDirect.isPending && !sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
+          Guardar borrador
+        </Button>
+        <Button size="sm" onClick={() => handleSubmit(true)} disabled={createDirect.isPending}
+          className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white">
+          {createDirect.isPending && sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Send className="w-4 h-4 mr-1" />}
+          Crear y Enviar al cliente
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }
 
@@ -1341,6 +1630,7 @@ export default function CRMDashboard() {
   const [confirmPaymentId, setConfirmPaymentId] = useState<number | null>(null);
   const [convertReservationId, setConvertReservationId] = useState<number | null>(null);
   const [markLostQuoteId, setMarkLostQuoteId] = useState<number | null>(null);
+  const [showDirectQuoteModal, setShowDirectQuoteModal] = useState(false);
 
   const { data: leadCounters } = trpc.crm.leads.counters.useQuery();
   const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery();
@@ -1702,6 +1992,16 @@ export default function CRMDashboard() {
               <Filter className="w-3.5 h-3.5 mr-1" /> Limpiar filtro
             </Button>
           )}
+          {/* Botón Nuevo Presupuesto — visible solo en el tab de presupuestos */}
+          {tab === "quotes" && (
+            <Button
+              size="sm"
+              onClick={() => setShowDirectQuoteModal(true)}
+              className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white ml-auto"
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> Nuevo Presupuesto
+            </Button>
+          )}
         </div>
 
         {/* Table */}
@@ -1982,6 +2282,14 @@ export default function CRMDashboard() {
       </div>
 
       {/* Modals */}
+
+      {/* Nuevo Presupuesto Directo */}
+      <Dialog open={showDirectQuoteModal} onOpenChange={(o) => !o && setShowDirectQuoteModal(false)}>
+        {showDirectQuoteModal && (
+          <DirectQuoteModal onClose={() => setShowDirectQuoteModal(false)} />
+        )}
+      </Dialog>
+
       <Dialog open={selectedLeadId !== null} onOpenChange={(o) => !o && setSelectedLeadId(null)}>
         {selectedLeadId !== null && (
           <LeadDetailModal

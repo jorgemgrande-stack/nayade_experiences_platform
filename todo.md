@@ -991,3 +991,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Reemplazar `sendConfirmationEmail()`: eliminado HTML inline oscuro, ahora usa `buildConfirmationHtml()` de emailTemplates.ts
 - [x] Reemplazar HTML inline del `generatePdf`: ahora usa `buildQuotePdfHtml()` de emailTemplates.ts
 - [x] 0 errores TypeScript
+
+## Presupuesto Directo sin Lead — v9.23
+
+- [x] Backend: procedimiento `quotes.createDirect` que crea un lead temporal y un presupuesto en un solo paso
+- [x] Backend: el lead creado por `createDirect` tiene `source: "presupuesto_directo"` para distinguirlo
+- [x] Frontend: botón "Nuevo Presupuesto" en la cabecera de la tabla de presupuestos del CRM
+- [x] Frontend: modal de creación directa con búsqueda de cliente existente (por nombre/email) o creación inline
+- [x] Frontend: mismo formulario de líneas de concepto con buscador de productos
+- [x] Frontend: opción de enviar inmediatamente o guardar como borrador
+- [x] 0 errores TypeScript

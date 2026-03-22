@@ -1220,6 +1220,115 @@ export const crmRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo generar el PDF. Inténtalo de nuevo." });
         }
       }),
+
+    // ─── CREAR PRESUPUESTO DIRECTO (sin lead previo) ─────────────────────────
+    createDirect: staff
+      .input(
+        z.object({
+          // Datos del cliente
+          clientName: z.string().min(1),
+          clientEmail: z.string().email(),
+          clientPhone: z.string().optional(),
+          clientCompany: z.string().optional(),
+          // Datos del presupuesto
+          title: z.string().min(1),
+          description: z.string().optional(),
+          items: z.array(
+            z.object({
+              description: z.string(),
+              quantity: z.number(),
+              unitPrice: z.number(),
+              total: z.number(),
+            })
+          ),
+          subtotal: z.number(),
+          discount: z.number().default(0),
+          taxRate: z.number().default(21),
+          total: z.number(),
+          validUntil: z.string().optional(),
+          notes: z.string().optional(),
+          conditions: z.string().optional(),
+          sendNow: z.boolean().default(false),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        // 1. Buscar si ya existe un lead con ese email
+        let leadId: number;
+        const [existingLead] = await db
+          .select({ id: leads.id })
+          .from(leads)
+          .where(eq(leads.email, input.clientEmail))
+          .limit(1);
+
+        if (existingLead) {
+          leadId = existingLead.id;
+        } else {
+          // 2. Crear lead silencioso con source="presupuesto_directo"
+          const [leadResult] = await db.insert(leads).values({
+            name: input.clientName,
+            email: input.clientEmail,
+            phone: input.clientPhone ?? "",
+            company: input.clientCompany ?? "",
+            source: "presupuesto_directo",
+            status: "en_proceso",
+            opportunityStatus: "nueva",
+            priority: "media",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          leadId = (leadResult as { insertId: number }).insertId;
+          await logActivity("lead", leadId, "lead_created_from_quote", ctx.user.id, ctx.user.name, { name: input.clientName });
+        }
+
+        // 3. Crear el presupuesto
+        const quoteNumber = await generateQuoteNumber();
+        const taxAmount = (input.subtotal - input.discount) * (input.taxRate / 100);
+
+        const [quoteResult] = await db.insert(quotes).values({
+          quoteNumber,
+          leadId,
+          agentId: ctx.user.id,
+          title: input.title,
+          description: input.description,
+          items: input.items,
+          subtotal: String(input.subtotal),
+          discount: String(input.discount),
+          tax: String(taxAmount),
+          total: String(input.total),
+          validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+          notes: input.notes,
+          conditions: input.conditions,
+          status: "borrador",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        const quoteId = (quoteResult as { insertId: number }).insertId;
+
+        await logActivity("quote", quoteId, "quote_created_direct", ctx.user.id, ctx.user.name, { leadId, quoteNumber });
+
+        // 4. Enviar inmediatamente si se solicita
+        if (input.sendNow) {
+          await db.update(quotes).set({ status: "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(quotes.id, quoteId));
+          await db.update(leads).set({ opportunityStatus: "enviada", status: "contactado", updatedAt: new Date() }).where(eq(leads.id, leadId));
+          await sendQuoteEmail({
+            quoteNumber,
+            title: input.title,
+            clientName: input.clientName,
+            clientEmail: input.clientEmail,
+            items: input.items,
+            subtotal: String(input.subtotal),
+            discount: String(input.discount),
+            tax: String(taxAmount),
+            total: String(input.total),
+            validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+            notes: input.notes,
+            conditions: input.conditions,
+          });
+          await logActivity("quote", quoteId, "quote_sent", ctx.user.id, ctx.user.name, { email: input.clientEmail });
+        }
+
+        return { success: true, quoteId, quoteNumber, leadId, sent: input.sendNow };
+      }),
   }),
   // ─── RESERVATIONSS ──────────────────────────────────────────────────────────
 
