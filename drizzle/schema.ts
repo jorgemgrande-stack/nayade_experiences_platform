@@ -261,6 +261,12 @@ export const quotes = mysqlTable("quotes", {
   invoiceNumber: varchar("invoiceNumber", { length: 32 }),
   invoicePdfUrl: text("invoicePdfUrl"),
   invoiceGeneratedAt: timestamp("invoiceGeneratedAt"),
+  // Justificante de pago por transferencia bancaria
+  transferProofUrl: text("transfer_proof_url"),
+  transferProofKey: text("transfer_proof_key"),
+  transferConfirmedAt: timestamp("transfer_confirmed_at"),
+  transferConfirmedBy: varchar("transfer_confirmed_by", { length: 255 }),
+  paymentMethod: mysqlEnum("payment_method", ["redsys", "transferencia", "efectivo", "otro"]),
   paymentLinkToken: varchar("paymentLinkToken", { length: 128 }).unique(),
   paymentLinkUrl: text("paymentLinkUrl"),
   paidAt: timestamp("paidAt"),

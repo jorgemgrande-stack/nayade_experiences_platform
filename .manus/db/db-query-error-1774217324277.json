@@ -1,0 +1,8 @@
+{
+  "query": "\nALTER TABLE quotes \n  ADD COLUMN transfer_proof_url TEXT NULL AFTER invoicePdfUrl,\n  ADD COLUMN transfer_proof_key TEXT NULL AFTER transfer_proof_url,\n  ADD COLUMN transfer_confirmed_at DATETIME NULL AFTER transfer_proof_key,\n  ADD COLUMN transfer_confirmed_by VARCHAR(255) NULL AFTER transfer_confirmed_at,\n  ADD COLUMN payment_method ENUM('redsys', 'transferencia', 'efectivo', 'otro') NULL AFTER transfer_confirmed_by;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nALTER TABLE quotes \n  ADD COLUMN transfer_proof_url TEXT NULL AFTER invoicePdfUrl,\n  ADD COLUMN transfer_proof_key TEXT NULL AFTER transfer_proof_url,\n  ADD COLUMN transfer_confirmed_at DATETIME NULL AFTER transfer_proof_key,\n  ADD COLUMN transfer_confirmed_by VARCHAR(255) NULL AFTER transfer_confirmed_at,\n  ADD COLUMN payment_method ENUM('redsys', 'transferencia', 'efectivo', 'otro') NULL AFTER transfer_confirmed_by;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'transfer_proof_url' in 'quotes'"
+  ]
+}

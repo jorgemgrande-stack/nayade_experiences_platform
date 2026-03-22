@@ -99,6 +99,13 @@
       "when": 1774139994336,
       "tag": "0013_wealthy_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1774217888905,
+      "tag": "0014_wild_talisman",
+      "breakpoints": true
     }
   ]
 }

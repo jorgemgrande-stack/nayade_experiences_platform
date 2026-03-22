@@ -1242,3 +1242,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Actividades de hoy: fondo bg-white/[0.03], hora en font-black, estado con dot de color
 - [x] Tipografía: font-black para títulos, uppercase tracking-widest para labels, tabular-nums para números
 - [x] 145 tests pasando · 0 errores TypeScript
+
+## Confirmación manual de pago por transferencia bancaria
+- [x] BD: añadir columna transfer_proof_url y transfer_proof_key en tabla quotes
+- [x] Backend: procedimiento tRPC quotes.confirmTransfer con upload de justificante (JPG/PNG/PDF) a S3
+- [x] Backend: al confirmar transferencia → cambiar quote a ganada, crear reserva, crear factura, log auditoría
+- [x] Frontend: botón 'Confirmar Transferencia' visible en presupuestos (borrador/enviado/convertido_carrito)
+- [x] Frontend: modal con upload obligatorio de justificante y botón de confirmación bloqueado hasta adjuntar archivo
+

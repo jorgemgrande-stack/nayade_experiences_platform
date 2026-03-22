@@ -312,6 +312,7 @@ function LeadDetailModal({
   const { lead, activity, quotes: relatedQuotes } = data;
 
   return (
+    <>
     <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="flex items-center gap-3 text-white">
@@ -521,6 +522,7 @@ function LeadDetailModal({
         </Button>
       </DialogFooter>
     </DialogContent>
+    </>
   );
 }
 
@@ -810,6 +812,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
+    <>
     <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
@@ -992,6 +995,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         </Button>
       </DialogFooter>
     </DialogContent>
+    </>
   );
 }
 
@@ -1521,6 +1525,11 @@ function QuoteDetailModal({
   const [paymentLink, setPaymentLink] = useState("");
   const [showPaymentInput, setShowPaymentInput] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  // Transfer proof modal state
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferFile, setTransferFile] = useState<File | null>(null);
+  const [transferProofUrl, setTransferProofUrl] = useState<string | null>(null);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
 
   const sendQuote = trpc.crm.quotes.send.useMutation({
     onSuccess: () => {
@@ -1580,6 +1589,56 @@ function QuoteDetailModal({
   const generatePdf = trpc.crm.quotes.generatePdf.useMutation({
     onError: (e) => toast.error(e.message),
   });
+  const uploadTransferProof = trpc.crm.quotes.uploadTransferProof.useMutation({
+    onSuccess: (data) => {
+      setTransferProofUrl(data.url);
+      toast.success("Justificante subido correctamente");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const confirmTransfer = trpc.crm.quotes.confirmTransfer.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Pago por transferencia confirmado · Factura ${data.invoiceNumber} generada`);
+      utils.crm.quotes.get.invalidate({ id: quoteId });
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+      utils.crm.reservations.counters.invalidate();
+      setShowTransferModal(false);
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const handleTransferFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/png", "application/pdf"];
+    if (!allowed.includes(file.type)) {
+      toast.error("Solo se permiten archivos JPG, PNG o PDF");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("El archivo no puede superar 10 MB");
+      return;
+    }
+    setTransferFile(file);
+    setIsUploadingProof(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const base64 = (ev.target?.result as string).split(",")[1];
+        await uploadTransferProof.mutateAsync({
+          quoteId,
+          fileBase64: base64,
+          fileName: file.name,
+          mimeType: file.type as "image/jpeg" | "image/png" | "application/pdf",
+        });
+        setIsUploadingProof(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (_) {
+      setIsUploadingProof(false);
+    }
+  };
 
   const downloadPdf = async () => {
     try {
@@ -1610,7 +1669,9 @@ function QuoteDetailModal({
   const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
 
   return (
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <>
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
+      <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-700/20 border border-orange-500/30 flex items-center justify-center">
@@ -1738,7 +1799,31 @@ function QuoteDetailModal({
         )}
       </div>
 
-      <DialogFooter className="flex gap-2 flex-wrap pt-2 border-t border-white/10">
+      </div>
+      <DialogFooter className="flex gap-2 flex-wrap pt-3 pb-4 px-6 border-t border-white/10 shrink-0">
+        {/* Confirmar Transferencia Bancaria */}
+        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
+          <Button
+            size="sm"
+            className="bg-blue-700 hover:bg-blue-800 text-white text-xs"
+            onClick={() => setShowTransferModal(true)}
+          >
+            <Banknote className="w-3.5 h-3.5 mr-1" />
+            Confirmar Transferencia
+          </Button>
+        )}
+        {/* Confirmar Pago Redsys */}
+        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
+          <Button
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+            onClick={() => confirmPayment.mutate({ quoteId })}
+            disabled={confirmPayment.isPending}
+          >
+            {confirmPayment.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+            Confirmar Pago
+          </Button>
+        )}
         {/* Enviar / Reenviar */}
         {quote.status === "borrador" && (
           <>
@@ -1767,22 +1852,8 @@ function QuoteDetailModal({
             Reenviar
           </Button>
         )}
-
-        {/* Confirmar Pago */}
-        {(quote.status === "enviado" || quote.status === "borrador") && (
-          <Button
-            size="sm"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-            onClick={() => confirmPayment.mutate({ quoteId })}
-            disabled={confirmPayment.isPending}
-          >
-            {confirmPayment.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
-            Confirmar Pago
-          </Button>
-        )}
-
         {/* Convertir a Reserva sin pago */}
-        {(quote.status === "enviado" || quote.status === "borrador") && (
+        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
           <Button
             size="sm"
             variant="outline"
@@ -1794,18 +1865,15 @@ function QuoteDetailModal({
             Reserva s/pago
           </Button>
         )}
-
         {/* Descargar PDF */}
         <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs" onClick={downloadPdf} disabled={generatePdf.isPending}>
           {generatePdf.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1" />}
           Descargar PDF
         </Button>
-
         {/* Duplicar */}
         <Button size="sm" variant="ghost" className="text-white/40 hover:text-white text-xs" onClick={() => duplicate.mutate({ id: quoteId })} disabled={duplicate.isPending}>
           <Copy className="w-3.5 h-3.5 mr-1" /> Duplicar
         </Button>
-
         {/* Marcar perdido */}
         {quote.status !== "aceptado" && quote.status !== "perdido" && (
           <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 text-xs" onClick={() => markLost.mutate({ id: quoteId })} disabled={markLost.isPending}>
@@ -1814,6 +1882,85 @@ function QuoteDetailModal({
         )}
       </DialogFooter>
     </DialogContent>
+
+      {/* ─── MODAL: Confirmar pago por transferencia bancaria ─── */}
+      <Dialog open={showTransferModal} onOpenChange={setShowTransferModal}>
+        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Banknote className="w-5 h-5 text-blue-400" />
+              Confirmar pago por transferencia
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-white/60">
+              Para validar el pago por transferencia bancaria debes adjuntar obligatoriamente el justificante (JPG, PNG o PDF).
+              Solo cuando esté adjunto podrás confirmar el pago, generar la reserva y la factura.
+            </p>
+            <div className="border-2 border-dashed border-white/20 rounded-lg p-4 text-center hover:border-blue-500/50 transition-colors">
+              <input
+                type="file"
+                accept=".jpg,.jpeg,.png,.pdf"
+                onChange={handleTransferFileChange}
+                className="hidden"
+                id="transfer-proof-input"
+              />
+              <label htmlFor="transfer-proof-input" className="cursor-pointer">
+                {isUploadingProof ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
+                    <span className="text-sm text-white/60">Subiendo justificante...</span>
+                  </div>
+                ) : transferProofUrl ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <CheckCircle className="w-8 h-8 text-emerald-400" />
+                    <span className="text-sm text-emerald-400 font-medium">Justificante adjuntado</span>
+                    <span className="text-xs text-white/40">{transferFile?.name}</span>
+                    <span className="text-xs text-blue-400 underline">Cambiar archivo</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <Upload className="w-8 h-8 text-white/40" />
+                    <span className="text-sm text-white/60">Haz clic para adjuntar el justificante</span>
+                    <span className="text-xs text-white/30">JPG, PNG o PDF · Máx. 10 MB</span>
+                  </div>
+                )}
+              </label>
+            </div>
+            {transferProofUrl && (
+              <a
+                href={transferProofUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300 underline"
+              >
+                <Eye className="w-3.5 h-3.5" /> Ver justificante adjuntado
+              </a>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              className="text-white/60 hover:text-white"
+              onClick={() => { setShowTransferModal(false); setTransferFile(null); setTransferProofUrl(null); }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={!transferProofUrl || confirmTransfer.isPending}
+              onClick={() => confirmTransfer.mutate({ quoteId })}
+            >
+              {confirmTransfer.isPending ? (
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Confirmando...</>
+              ) : (
+                <><CheckCircle className="w-4 h-4 mr-2" /> Validar pago y generar factura</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -3141,6 +3288,7 @@ export default function CRMDashboard() {
               Marcar perdido
             </Button>
           </DialogFooter>
+
         </DialogContent>
       </Dialog>
     </AdminLayout>

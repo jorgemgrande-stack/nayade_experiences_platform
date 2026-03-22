@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE quotes \n  ADD COLUMN transfer_proof_url TEXT NULL,\n  ADD COLUMN transfer_proof_key TEXT NULL,\n  ADD COLUMN transfer_confirmed_at DATETIME NULL,\n  ADD COLUMN transfer_confirmed_by VARCHAR(255) NULL,\n  ADD COLUMN payment_method ENUM('redsys', 'transferencia', 'efectivo', 'otro') NULL;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nALTER TABLE quotes \n  ADD COLUMN transfer_proof_url TEXT NULL,\n  ADD COLUMN transfer_proof_key TEXT NULL,\n  ADD COLUMN transfer_confirmed_at DATETIME NULL,\n  ADD COLUMN transfer_confirmed_by VARCHAR(255) NULL,\n  ADD COLUMN payment_method ENUM('redsys', 'transferencia', 'efectivo', 'otro') NULL;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 4892
+}

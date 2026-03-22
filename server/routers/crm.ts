@@ -1288,6 +1288,161 @@ export const crmRouter = router({
         return { success: true, reservationId, reservationRef, status: "pending_payment" };
       }),
 
+    // ─── ESCENARIO B: Confirmación manual por transferencia bancaria ──────────
+    // Paso 1: Subir el justificante (JPG/PNG/PDF) a S3
+    uploadTransferProof: staff
+      .input(
+        z.object({
+          quoteId: z.number(),
+          fileBase64: z.string(),
+          fileName: z.string(),
+          mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const ext = input.mimeType === "application/pdf" ? "pdf" : input.mimeType === "image/png" ? "png" : "jpg";
+        const fileKey = `transfer-proofs/${input.quoteId}-${Date.now()}.${ext}`;
+        const { url } = await storagePut(fileKey, buffer, input.mimeType);
+        await db.update(quotes).set({
+          transferProofUrl: url,
+          transferProofKey: fileKey,
+          updatedAt: new Date(),
+        } as Record<string, unknown>).where(eq(quotes.id, input.quoteId));
+        return { url, fileKey };
+      }),
+
+    // Paso 2: Confirmar el pago (exige justificante ya subido)
+    confirmTransfer: staff
+      .input(
+        z.object({
+          quoteId: z.number(),
+          paidAmount: z.number().optional(),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
+        const proofUrl = (quote as Record<string, unknown>).transferProofUrl as string | null;
+        if (!proofUrl) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Debes adjuntar el justificante de transferencia antes de confirmar el pago.",
+          });
+        }
+        const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+        const now = new Date();
+        const invoiceNumber = await generateInvoiceNumber();
+        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+        const taxRate = 21;
+        const subtotal = Number(quote.subtotal);
+        const taxAmount = subtotal * (taxRate / 100);
+        const total = Number(quote.total);
+        let pdfUrl: string | null = null;
+        let pdfKey: string | null = null;
+        try {
+          const pdf = await generateInvoicePdf({
+            invoiceNumber,
+            clientName: lead.name,
+            clientEmail: lead.email,
+            clientPhone: lead.phone,
+            itemsJson: items,
+            subtotal: String(subtotal),
+            taxRate: String(taxRate),
+            taxAmount: String(taxAmount),
+            total: String(total),
+            issuedAt: now,
+          });
+          pdfUrl = pdf.url;
+          pdfKey = pdf.key;
+        } catch (e) {
+          console.error("PDF generation failed:", e);
+        }
+        const [invResult] = await db.insert(invoices).values({
+          invoiceNumber,
+          quoteId: quote.id,
+          clientName: lead.name,
+          clientEmail: lead.email,
+          clientPhone: lead.phone,
+          itemsJson: items,
+          subtotal: String(subtotal),
+          taxRate: String(taxRate),
+          taxAmount: String(taxAmount),
+          total: String(total),
+          pdfUrl,
+          pdfKey,
+          status: "generada",
+          issuedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        const invoiceId = (invResult as { insertId: number }).insertId;
+        const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
+        const [resResult] = await db.insert(reservations).values({
+          productId: 0,
+          productName: quote.title,
+          bookingDate: now.toISOString().split("T")[0],
+          people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
+          amountTotal: Math.round(total * 100),
+          amountPaid: Math.round((input.paidAmount ?? total) * 100),
+          status: "paid",
+          customerName: lead.name,
+          customerEmail: lead.email,
+          customerPhone: lead.phone ?? "",
+          merchantOrder: reservationRef.substring(0, 12),
+          notes: `Pago por transferencia bancaria confirmado manualmente. Presupuesto ${quote.quoteNumber}`,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          paidAt: Date.now(),
+        });
+        const reservationId = (resResult as { insertId: number }).insertId;
+        await db.update(quotes).set({
+          status: "aceptado",
+          paidAt: now,
+          invoiceNumber,
+          invoicePdfUrl: pdfUrl,
+          invoiceGeneratedAt: now,
+          transferConfirmedAt: now,
+          transferConfirmedBy: ctx.user.name,
+          paymentMethod: "transferencia",
+          updatedAt: now,
+        } as Record<string, unknown>).where(eq(quotes.id, input.quoteId));
+        await db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, quote.leadId));
+        await logActivity("quote", quote.id, "transfer_payment_confirmed", ctx.user.id, ctx.user.name, {
+          invoiceId, reservationId, proofUrl, confirmedBy: ctx.user.name,
+        });
+        await logActivity("lead", quote.leadId, "opportunity_won", ctx.user.id, ctx.user.name, { quoteId: quote.id, method: "transferencia" });
+        await logActivity("invoice", invoiceId, "invoice_generated", ctx.user.id, ctx.user.name, { pdfUrl });
+        try {
+          await sendConfirmationEmail({
+            clientName: lead.name,
+            clientEmail: lead.email,
+            reservationRef,
+            quoteTitle: quote.title,
+            items,
+            total: String(total),
+            invoiceUrl: pdfUrl,
+          });
+        } catch (e) { console.error("Confirmation email failed:", e); }
+        try {
+          await sendInternalNotification({
+            clientName: lead.name,
+            clientEmail: lead.email,
+            clientPhone: lead.phone,
+            reservationRef,
+            quoteTitle: quote.title,
+            total: String(total),
+            paidAt: now,
+            reservationId,
+          });
+        } catch (e) { console.error("Internal notification failed:", e); }
+        return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl };
+      }),
+
+
     delete: staff
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input, ctx }) => {
