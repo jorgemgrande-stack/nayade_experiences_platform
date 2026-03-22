@@ -1,0 +1,19 @@
+{
+  "query": "\nUPDATE invoices\nSET paymentMethod = 'transferencia',\n    isAutomatic = 0,\n    status = 'cobrada'\nWHERE invoiceNumber = 'FAC-2026-0001';\n\nSELECT id, invoiceNumber, clientName, paymentMethod, status, isAutomatic, transferProofUrl\nFROM invoices\nWHERE invoiceNumber = 'FAC-2026-0001';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nUPDATE invoices\nSET paymentMethod = 'transferencia',\n    isAutomatic = 0,\n    status = 'cobrada'\nWHERE invoiceNumber = 'FAC-2026-0001';\n\nSELECT id, invoiceNumber, clientName, paymentMethod, status, isAutomatic, transferProofUrl\nFROM invoices\nWHERE invoiceNumber = 'FAC-2026-0001';\n",
+  "rows": [
+    {
+      "id": "30001",
+      "invoiceNumber": "FAC-2026-0001",
+      "clientName": "Eva Longoria",
+      "paymentMethod": "transferencia",
+      "status": "cobrada",
+      "isAutomatic": "0",
+      "transferProofUrl": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tinvoiceNumber\tclientName\tpaymentMethod\tstatus\tisAutomatic\ttransferProofUrl\n30001\tFAC-2026-0001\tEva Longoria\ttransferencia\tcobrada\t0\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 141
+}

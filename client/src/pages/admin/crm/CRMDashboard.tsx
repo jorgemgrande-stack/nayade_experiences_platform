@@ -56,6 +56,7 @@ import {
   Upload,
   RotateCcw,
   Ban,
+  Paperclip,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -2212,6 +2213,23 @@ export default function CRMDashboard() {
     return map[method] ?? method;
   };
 
+  const getPaymentMethodBadge = (method: string | null) => {
+    if (!method) return <span className="text-white/20 text-xs">—</span>;
+    const map: Record<string, { label: string; cls: string; icon: string }> = {
+      redsys:        { label: "Tarjeta",       cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      transferencia: { label: "Transferencia", cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
+      efectivo:      { label: "Efectivo",      cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
+      otro:          { label: "Otro",          cls: "bg-white/10 text-white/50 border-white/15",             icon: "❓" },
+    };
+    const s = map[method] ?? { label: method, cls: "bg-white/10 text-white/50 border-white/15", icon: "" };
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>
+        <span>{s.icon}</span>
+        {s.label}
+      </span>
+    );
+  };
+
   const handleTabChange = (t: Tab) => {
     setTab(t);
     setFilterStatus("all");
@@ -2941,8 +2959,20 @@ export default function CRMDashboard() {
                           <div className="text-xs text-white/40">{inv.clientEmail}</div>
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
-                          <div className="text-xs text-white/50">
-                            {inv.paymentMethod ? getPaymentMethodLabel(inv.paymentMethod) : <span className="text-white/20">—</span>}
+                          <div className="flex flex-col gap-1">
+                            {getPaymentMethodBadge(inv.paymentMethod)}
+                            {inv.transferProofUrl && (
+                              <a
+                                href={inv.transferProofUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-sky-400 hover:text-sky-300 transition-colors"
+                                title="Ver justificante de transferencia"
+                              >
+                                <Paperclip className="w-3 h-3" />
+                                Justificante
+                              </a>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3">

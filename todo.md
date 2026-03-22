@@ -1250,3 +1250,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: botón 'Confirmar Transferencia' visible en presupuestos (borrador/enviado/convertido_carrito)
 - [x] Frontend: modal con upload obligatorio de justificante y botón de confirmación bloqueado hasta adjuntar archivo
 
+
+## Badges de método de pago en facturas (v5.x)
+- [x] Badge visual de método de pago en lista de facturas (Redsys, Transferencia+justificante, Efectivo, Otro)
+- [x] Corregir paymentMethod en confirmTransfer: debe guardar "transferencia" en lugar de "redsys"
