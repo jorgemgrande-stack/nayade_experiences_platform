@@ -1534,6 +1534,146 @@ export const crmRouter = router({
         };
       }),
   }),
+
+  // ─── QUOTES TIMELINE ─────────────────────────────────────────────────────────
+  timeline: router({
+    get: staff.input(z.object({ quoteId: z.number() })).query(async ({ input }) => {
+      const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
+      if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
+
+      // Construir eventos sintéticos desde los campos del quote
+      type TimelineEvent = {
+        id: string;
+        type: "created" | "sent" | "viewed" | "reminder" | "accepted" | "rejected" | "paid" | "lost" | "expired" | "activity";
+        label: string;
+        detail?: string;
+        timestamp: number;
+        actor?: string;
+      };
+
+      const events: TimelineEvent[] = [];
+
+      // 1. Creado
+      events.push({
+        id: "created",
+        type: "created",
+        label: "Presupuesto creado",
+        detail: quote.quoteNumber,
+        timestamp: new Date(quote.createdAt).getTime(),
+      });
+
+      // 2. Enviado
+      if (quote.sentAt) {
+        events.push({
+          id: "sent",
+          type: "sent",
+          label: "Enviado al cliente",
+          detail: "Email con enlace de aceptación",
+          timestamp: new Date(quote.sentAt).getTime(),
+        });
+      }
+
+      // 3. Recordatorios automáticos (estimamos desde lastReminderAt y reminderCount)
+      if (quote.reminderCount && quote.reminderCount > 0 && quote.lastReminderAt) {
+        // Si hay 2 recordatorios, el primero fue ~48h después del envío
+        if (quote.reminderCount >= 2 && quote.sentAt) {
+          const firstReminderTs = new Date(quote.sentAt).getTime() + 48 * 60 * 60 * 1000;
+          events.push({
+            id: "reminder_1",
+            type: "reminder",
+            label: "Recordatorio automático #1",
+            detail: "Presupuesto no abierto en 48h",
+            timestamp: firstReminderTs,
+          });
+        }
+        events.push({
+          id: "reminder_last",
+          type: "reminder",
+          label: `Recordatorio automático #${quote.reminderCount}`,
+          detail: "Reenvío automático del sistema",
+          timestamp: new Date(quote.lastReminderAt).getTime(),
+        });
+      }
+
+      // 4. Visto
+      if (quote.viewedAt) {
+        events.push({
+          id: "viewed",
+          type: "viewed",
+          label: "Abierto por el cliente",
+          detail: "El cliente visualizó el presupuesto",
+          timestamp: new Date(quote.viewedAt).getTime(),
+        });
+      }
+
+      // 5. Aceptado
+      if (quote.acceptedAt) {
+        events.push({
+          id: "accepted",
+          type: "accepted",
+          label: "Presupuesto aceptado",
+          detail: "El cliente aceptó el presupuesto",
+          timestamp: new Date(quote.acceptedAt).getTime(),
+        });
+      }
+
+      // 6. Pagado
+      if (quote.paidAt) {
+        events.push({
+          id: "paid",
+          type: "paid",
+          label: "Pago confirmado",
+          detail: quote.invoiceNumber ? `Factura ${quote.invoiceNumber} generada` : "Pago recibido",
+          timestamp: new Date(quote.paidAt).getTime(),
+        });
+      }
+
+      // 7. Perdido / Expirado / Rechazado (estado final negativo)
+      if (quote.status === "perdido" || quote.status === "expirado" || quote.status === "rechazado") {
+        events.push({
+          id: "closed_negative",
+          type: quote.status === "rechazado" ? "rejected" : "lost",
+          label: quote.status === "rechazado" ? "Rechazado por el cliente" : quote.status === "expirado" ? "Presupuesto expirado" : "Marcado como perdido",
+          timestamp: new Date(quote.updatedAt).getTime(),
+        });
+      }
+
+      // 8. Actividad manual del CRM (notas, cambios de estado manuales)
+      const activityLogs = await db.select().from(crmActivityLog)
+        .where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, input.quoteId)))
+        .orderBy(desc(crmActivityLog.createdAt))
+        .limit(20);
+
+      for (const log of activityLogs) {
+        // Evitar duplicados con eventos sintéticos ya añadidos
+        const isDuplicate = events.some(e =>
+          Math.abs(e.timestamp - new Date(log.createdAt).getTime()) < 2000 &&
+          (e.type === "sent" || e.type === "paid" || e.type === "accepted")
+        );
+        if (!isDuplicate) {
+          events.push({
+            id: `log_${log.id}`,
+            type: "activity",
+            label: log.action,
+            detail: log.details ? JSON.stringify(log.details) : undefined,
+            actor: log.actorName ?? undefined,
+            timestamp: new Date(log.createdAt).getTime(),
+          });
+        }
+      }
+
+      // Ordenar cronológicamente
+      events.sort((a, b) => a.timestamp - b.timestamp);
+
+      return {
+        quoteId: quote.id,
+        quoteNumber: quote.quoteNumber,
+        status: quote.status,
+        events,
+      };
+    }),
+  }),
+
   // ─── RESERVATIONSS ──────────────────────────────────────────────────────────
 
   reservations: router({

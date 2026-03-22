@@ -1334,6 +1334,77 @@ function QuoteEditModal({
 
 // ─── QUOTE DETAIL MODAL ───────────────────────────────────────────────────────
 
+// ─── QUOTE TIMELINE COMPONENT ────────────────────────────────────────────────
+
+type TimelineEventType = "created" | "sent" | "viewed" | "reminder" | "accepted" | "rejected" | "paid" | "lost" | "expired" | "activity";
+
+const TIMELINE_CONFIG: Record<TimelineEventType, { icon: React.ReactNode; color: string; bg: string }> = {
+  created:  { icon: <FileText className="w-3.5 h-3.5" />, color: "text-white/60", bg: "bg-white/10" },
+  sent:     { icon: <Send className="w-3.5 h-3.5" />, color: "text-blue-400", bg: "bg-blue-500/20" },
+  viewed:   { icon: <Eye className="w-3.5 h-3.5" />, color: "text-emerald-400", bg: "bg-emerald-500/20" },
+  reminder: { icon: <RefreshCw className="w-3.5 h-3.5" />, color: "text-amber-400", bg: "bg-amber-500/20" },
+  accepted: { icon: <CheckCircle className="w-3.5 h-3.5" />, color: "text-emerald-400", bg: "bg-emerald-500/20" },
+  rejected: { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-red-400", bg: "bg-red-500/20" },
+  paid:     { icon: <CheckCircle className="w-3.5 h-3.5" />, color: "text-orange-400", bg: "bg-orange-500/20" },
+  lost:     { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-red-400", bg: "bg-red-500/20" },
+  expired:  { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-white/40", bg: "bg-white/10" },
+  activity: { icon: <ArrowUpRight className="w-3.5 h-3.5" />, color: "text-purple-400", bg: "bg-purple-500/20" },
+};
+
+function QuoteTimeline({ quoteId }: { quoteId: number }) {
+  const { data, isLoading } = trpc.crm.timeline.get.useQuery({ quoteId });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <RefreshCw className="w-4 h-4 animate-spin text-white/30" />
+      </div>
+    );
+  }
+
+  if (!data || data.events.length === 0) {
+    return <p className="text-xs text-white/30 text-center py-4">Sin actividad registrada</p>;
+  }
+
+  return (
+    <div className="relative">
+      {/* Línea vertical */}
+      <div className="absolute left-[15px] top-0 bottom-0 w-px bg-white/10" />
+      <div className="space-y-3">
+        {data.events.map((event, idx) => {
+          const cfg = TIMELINE_CONFIG[event.type as TimelineEventType] ?? TIMELINE_CONFIG.activity;
+          const isLast = idx === data.events.length - 1;
+          return (
+            <div key={event.id} className="flex gap-3 relative">
+              {/* Icono */}
+              <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${cfg.bg} ${cfg.color} border border-white/10`}>
+                {cfg.icon}
+              </div>
+              {/* Contenido */}
+              <div className={`flex-1 pb-3 ${isLast ? "" : ""}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <span className={`text-sm font-medium ${cfg.color}`}>{event.label}</span>
+                  <span className="text-xs text-white/30 whitespace-nowrap flex-shrink-0">
+                    {new Date(event.timestamp).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                {event.detail && (
+                  <p className="text-xs text-white/40 mt-0.5">{event.detail}</p>
+                )}
+                {event.actor && (
+                  <p className="text-xs text-white/30 mt-0.5">Por: {event.actor}</p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── QUOTE DETAIL MODAL ───────────────────────────────────────────────────────
+
 function QuoteDetailModal({
   quoteId,
   onClose,
@@ -1345,6 +1416,7 @@ function QuoteDetailModal({
   const { data, isLoading } = trpc.crm.quotes.get.useQuery({ id: quoteId });
   const [paymentLink, setPaymentLink] = useState("");
   const [showPaymentInput, setShowPaymentInput] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
 
   const sendQuote = trpc.crm.quotes.send.useMutation({
     onSuccess: () => {
@@ -1518,6 +1590,26 @@ function QuoteDetailModal({
             ))}
           </div>
         )}
+
+        {/* Timeline de actividad */}
+        <div>
+          <button
+            onClick={() => setShowTimeline(!showTimeline)}
+            className="flex items-center gap-2 text-xs text-white/40 hover:text-white/70 transition-colors w-full py-1"
+          >
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/5 hover:bg-white/10 transition-colors">
+              <Eye className="w-3 h-3" />
+              {showTimeline ? "Ocultar historial" : "Ver historial de actividad"}
+            </span>
+            <div className="flex-1 h-px bg-white/10" />
+          </button>
+          {showTimeline && (
+            <div className="mt-3 pl-1">
+              <QuoteTimeline quoteId={quoteId} />
+            </div>
+          )}
+        </div>
 
         {/* Payment link input */}
         {showPaymentInput && (

@@ -1043,3 +1043,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Máximo 2 reenvíos automáticos por presupuesto (campo reminderCount en BD)
 - [x] Notificación al agente en CRM cuando se reenvía automáticamente (notifyOwner)
 - [x] 126 tests pasando · 0 errores TypeScript
+
+## Timeline de Actividad en Ficha de Presupuesto — v9.29 [COMPLETADO]
+- [x] Backend: procedimiento `crm.timeline.get(quoteId)` que sintetiza campos del quote + crmActivityLog
+- [x] 10 tipos de evento: created, sent, viewed, reminder, accepted, rejected, paid, lost, expired, activity
+- [x] Ordenación cronológica · deduplicación de eventos sintéticos vs logs manuales
+- [x] Frontend: componente `QuoteTimeline` con línea vertical, iconos coloreados por tipo y timestamp
+- [x] Frontend: botón colapsable "Ver historial de actividad" en el QuoteDetailModal
+- [x] 126 tests pasando · 0 errores TypeScript
