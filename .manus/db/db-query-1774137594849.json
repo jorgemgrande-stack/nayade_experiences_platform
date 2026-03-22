@@ -1,0 +1,15 @@
+{
+  "query": "\n-- Insertar lead de prueba\nINSERT INTO leads (name, email, phone, company, message, status, source, selectedCategory, selectedProduct, createdAt, updatedAt)\nVALUES ('María García Test', 'maria.garcia.test@gmail.com', '+34 612 345 678', 'Empresa Test SL', 'Me interesa el pack cableski para 4 personas el fin de semana', 'nuevo', 'web', 'Acuáticas', 'Cableski & Wakeboard Dia Completo', NOW(), NOW());\n\n-- Obtener el ID del lead recién creado\nSELECT id, name, email FROM leads WHERE email = 'maria.garcia.test@gmail.com';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Insertar lead de prueba\nINSERT INTO leads (name, email, phone, company, message, status, source, selectedCategory, selectedProduct, createdAt, updatedAt)\nVALUES ('María García Test', 'maria.garcia.test@gmail.com', '+34 612 345 678', 'Empresa Test SL', 'Me interesa el pack cableski para 4 personas el fin de semana', 'nuevo', 'web', 'Acuáticas', 'Cableski & Wakeboard Dia Completo', NOW(), NOW());\n\n-- Obtener el ID del lead recién creado\nSELECT id, name, email FROM leads WHERE email = 'maria.garcia.test@gmail.com';\n",
+  "rows": [
+    {
+      "id": "420004",
+      "name": "María García Test",
+      "email": "maria.garcia.test@gmail.com"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\n420004\tMaría García Test\tmaria.garcia.test@gmail.com\n",
+  "stderr": "",
+  "execution_time_ms": 72
+}

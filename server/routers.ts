@@ -292,7 +292,7 @@ export const appRouter = router({
             await transporter.sendMail({
               from,
               to: input.email,
-              bcc: "reservas@hotelnayade.es",
+              bcc: "reservas@nayadeexperiences.es",
               subject: "Solicitud de presupuesto recibida — Náyade Experiences",
               html: buildBudgetRequestUserHtml(emailData),
             });

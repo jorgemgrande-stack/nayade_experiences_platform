@@ -1,0 +1,26 @@
+{
+  "query": "\n-- Crear cliente para el lead de prueba (simulando lo que hace createLead)\nINSERT INTO clients (leadId, source, name, email, phone, company, tags, isConverted, totalBookings, createdAt, updatedAt)\nVALUES (420004, 'lead', 'María García Test', 'maria.garcia.test@gmail.com', '+34 612 345 678', 'Empresa Test SL', JSON_ARRAY(), 0, 0, NOW(), NOW());\n\n-- Verificar que ahora hay 2 clientes (Abdulah + María)\nSELECT id, name, email, source, leadId, isConverted FROM clients ORDER BY id;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Crear cliente para el lead de prueba (simulando lo que hace createLead)\nINSERT INTO clients (leadId, source, name, email, phone, company, tags, isConverted, totalBookings, createdAt, updatedAt)\nVALUES (420004, 'lead', 'María García Test', 'maria.garcia.test@gmail.com', '+34 612 345 678', 'Empresa Test SL', JSON_ARRAY(), 0, 0, NOW(), NOW());\n\n-- Verificar que ahora hay 2 clientes (Abdulah + María)\nSELECT id, name, email, source, leadId, isConverted FROM clients ORDER BY id;\n",
+  "rows": [
+    {
+      "id": "1",
+      "name": "Abdulah",
+      "email": "jgrande@skicenter.es",
+      "source": "lead",
+      "leadId": "420003",
+      "isConverted": "0"
+    },
+    {
+      "id": "2",
+      "name": "María García Test",
+      "email": "maria.garcia.test@gmail.com",
+      "source": "lead",
+      "leadId": "420004",
+      "isConverted": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tsource\tleadId\tisConverted\n1\tAbdulah\tjgrande@skicenter.es\tlead\t420003\t0\n2\tMaría García Test\tmaria.garcia.test@gmail.com\tlead\t420004\t0\n",
+  "stderr": "",
+  "execution_time_ms": 87
+}

@@ -28,7 +28,7 @@ function getDb() {
 const db = getDb();
 
 // Email helper
-const COPY_EMAIL = "reservas@hotelnayade.es";
+const COPY_EMAIL = "reservas@nayadeexperiences.es";
 async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
@@ -41,7 +41,7 @@ async function sendEmail({ to, subject, html }: { to: string; subject: string; h
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
   });
-  // Siempre enviar copia a reservas@hotelnayade.es
+  // Siempre enviar copia a reservas@nayadeexperiences.es
   await transporter.sendMail({ from: process.env.SMTP_FROM ?? user, to, bcc: COPY_EMAIL, subject, html });
 }
 // ─── HELPERS ─────────────────────────────────────────────────────────────────

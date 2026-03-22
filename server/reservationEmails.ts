@@ -114,7 +114,7 @@ export async function sendReservationPaidNotifications(
   if (transporter) {
     const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
     const adminEmail = process.env.ADMIN_EMAIL;
-    const copyEmail = "reservas@hotelnayade.es";
+    const copyEmail = "reservas@nayadeexperiences.es";
     try {
       await transporter.sendMail({
         from,
@@ -172,7 +172,7 @@ export async function sendReservationFailedNotifications(
   const transporter = createTransporter();
   if (transporter) {
     const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
-    const copyEmail = "reservas@hotelnayade.es";
+    const copyEmail = "reservas@nayadeexperiences.es";
     try {
       await transporter.sendMail({
         from,
