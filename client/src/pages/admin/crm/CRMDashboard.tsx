@@ -757,6 +757,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       notes: notes || undefined,
       conditions,
       sendNow: andSend,
+      origin: window.location.origin,
     });
   };
 
@@ -2337,7 +2338,7 @@ export default function CRMDashboard() {
                           {/* Reenviar (si ya fue enviado) */}
                           {quote.status === "enviado" && (
                             <Button size="sm" variant="ghost" className="text-white/40 hover:text-blue-300 h-7 w-7 p-0"
-                              onClick={() => sendQuoteMutation.mutate({ id: quote.id })} title="Reenviar al cliente">
+                              onClick={() => sendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title="Reenviar al cliente">
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
                           )}
@@ -2545,7 +2546,7 @@ export default function CRMDashboard() {
             <Button variant="outline" size="sm" onClick={() => setSendQuoteId(null)} className="border-white/15 text-white/60">Cancelar</Button>
             <Button
               size="sm"
-              onClick={() => sendQuoteId !== null && sendQuoteMutation.mutate({ id: sendQuoteId })}
+              onClick={() => sendQuoteId !== null && sendQuoteMutation.mutate({ id: sendQuoteId, origin: window.location.origin })}
               disabled={sendQuoteMutation.isPending}
               className="bg-orange-600 hover:bg-orange-700 text-white"
             >

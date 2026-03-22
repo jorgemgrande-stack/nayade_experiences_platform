@@ -1262,6 +1262,7 @@ export const crmRouter = router({
           notes: z.string().optional(),
           conditions: z.string().optional(),
           sendNow: z.boolean().default(false),
+          origin: z.string().url().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1347,7 +1348,19 @@ export const crmRouter = router({
 
         // 4. Enviar inmediatamente si se solicita
         if (input.sendNow) {
-          await db.update(quotes).set({ status: "enviado", sentAt: new Date(), updatedAt: new Date() }).where(eq(quotes.id, quoteId));
+          // Generar token de aceptación SIEMPRE antes de enviar el email
+          const { randomBytes } = await import("crypto");
+          const token = randomBytes(32).toString("hex");
+          const origin = input.origin ?? "https://www.nayadeexperiences.es";
+          const acceptUrl = `${origin}/presupuesto/${token}`;
+
+          await db.update(quotes).set({
+            status: "enviado",
+            sentAt: new Date(),
+            paymentLinkToken: token,
+            paymentLinkUrl: acceptUrl,
+            updatedAt: new Date(),
+          }).where(eq(quotes.id, quoteId));
           await db.update(leads).set({ opportunityStatus: "enviada", status: "contactado", updatedAt: new Date() }).where(eq(leads.id, leadId));
           await sendQuoteEmail({
             quoteNumber,
@@ -1362,8 +1375,9 @@ export const crmRouter = router({
             validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
             notes: input.notes,
             conditions: input.conditions,
+            paymentLinkUrl: acceptUrl,
           });
-          await logActivity("quote", quoteId, "quote_sent", ctx.user.id, ctx.user.name, { email: input.clientEmail });
+          await logActivity("quote", quoteId, "quote_sent", ctx.user.id, ctx.user.name, { email: input.clientEmail, acceptUrl });
         }
 
         return { success: true, quoteId, quoteNumber, leadId, sent: input.sendNow };

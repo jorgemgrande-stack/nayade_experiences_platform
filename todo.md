@@ -1138,3 +1138,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Email al admin: también muestra sección de actividades enriquecidas
 - [x] submitBudget en routers.ts: pasa activitiesJson al emailData
 - [x] 138 tests pasando · 0 errores TypeScript
+
+## Bug: Botón "Aceptar presupuesto" desaparece del email — v9.40 [COMPLETADO]
+
+- [x] Auditado: el bug estaba en createDirect con sendNow=true — no generaba token ni paymentLinkUrl antes de enviar el email
+- [x] Corregido: createDirect ahora genera token + acceptUrl y los guarda en BD antes de llamar a sendQuoteEmail
+- [x] Añadido campo origin al input de createDirect para construir la URL correcta del entorno
+- [x] Corregidas 2 llamadas de sendQuoteMutation en el frontend que no pasaban origin
+- [x] Añadido server/quoteEmail.test.ts con 7 tests de protección para buildQuoteHtml
+- [x] 145 tests pasando (7 nuevos) · 0 errores TypeScript
