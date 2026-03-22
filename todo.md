@@ -1066,3 +1066,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Limpiar entradas obsoletas de authGuard.ts (leads.create, quotes.getByPaymentToken, quotes.createPaymentLink)
 - [x] Actualizar tests nayade.test.ts para usar crm.leads.list y crm.quotes.list
 - [x] 126 tests pasando · 0 errores TypeScript
+
+## Fix payWithToken + URLs producción Redsys — v9.33 [COMPLETADO]
+- [x] Causa raíz: columna quote_id faltaba en la tabla reservations de la BD
+- [x] Aplicada migración: ALTER TABLE reservations ADD COLUMN quote_id INT NULL
+- [x] Corregido schema Drizzle: quoteSource mapea a nombre real de columna en BD
+- [x] URLs de Redsys ya son dinámicas (window.location.origin) — no requieren cambio de código
+- [x] Actualizado fallback de dominio: skicenter.es y manus.space → www.nayadeexperiences.es
+- [x] 126 tests pasando · 0 errores TypeScript

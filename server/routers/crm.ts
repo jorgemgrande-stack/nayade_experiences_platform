@@ -778,7 +778,7 @@ export const crmRouter = router({
         // Generar token único de aceptación si no existe ya
         const { randomBytes } = await import("crypto");
         const token = quote.paymentLinkToken ?? randomBytes(32).toString("hex");
-        const origin = input.origin ?? "https://skicenter.es";
+        const origin = input.origin ?? "https://www.nayadeexperiences.es";
         const acceptUrl = `${origin}/presupuesto/${token}`;
 
         // Update quote
@@ -838,7 +838,7 @@ export const crmRouter = router({
         let paymentLinkUrl = quote.paymentLinkUrl;
         if (!paymentLinkUrl || !quote.paymentLinkToken) {
           const token = randomBytes(32).toString("hex");
-          const origin = input.origin ?? "https://nayade-shop-av298fs8.manus.space";
+          const origin = input.origin ?? "https://www.nayadeexperiences.es";
           paymentLinkUrl = `${origin}/presupuesto/${token}`;
           await db.update(quotes).set({
             paymentLinkToken: token,

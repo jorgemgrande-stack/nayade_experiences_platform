@@ -410,7 +410,7 @@ export const reservations = mysqlTable("reservations", {
   redsysDsResponse: varchar("redsys_ds_response", { length: 10 }),
   notes: text("notes"),
   quoteId: int("quote_id"),
-  quoteSource: varchar("quote_source", { length: 32 }), // 'presupuesto' | 'directo'
+  quoteSource: varchar("quoteSource", { length: 32 }), // 'presupuesto' | 'directo'
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   paidAt: bigint("paid_at", { mode: "number" }),
