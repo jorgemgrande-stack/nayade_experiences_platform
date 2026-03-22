@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT \n  p.id as product_id,\n  p.name as product_name,\n  p.category,\n  v.id as variant_id,\n  v.name as variant_name,\n  v.price,\n  v.price_type,\n  v.duration,\n  v.stock,\n  v.is_active,\n  v.attributes\nFROM products p\nLEFT JOIN product_variants v ON v.product_id = p.id AND v.is_active = 1\nWHERE p.is_active = 1\nORDER BY p.category, p.name, v.sort_order, v.name\nLIMIT 80;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT \n  p.id as product_id,\n  p.name as product_name,\n  p.category,\n  v.id as variant_id,\n  v.name as variant_name,\n  v.price,\n  v.price_type,\n  v.duration,\n  v.stock,\n  v.is_active,\n  v.attributes\nFROM products p\nLEFT JOIN product_variants v ON v.product_id = p.id AND v.is_active = 1\nWHERE p.is_active = 1\nORDER BY p.category, p.name, v.sort_order, v.name\nLIMIT 80;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1146 (42S02) at line 2: Table 'av298fs8t5saturbbrqhgq.products' doesn't exist"
+  ]
+}

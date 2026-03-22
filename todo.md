@@ -1147,3 +1147,16 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregidas 2 llamadas de sendQuoteMutation en el frontend que no pasaban origin
 - [x] Añadido server/quoteEmail.test.ts con 7 tests de protección para buildQuoteHtml
 - [x] 145 tests pasando (7 nuevos) · 0 errores TypeScript
+
+## Sincronización dinámica de variantes en formularios — v9.41 [COMPLETADO]
+
+- [x] Auditadas variantes reales en BD: Blob Jump (2), Banana Ski (1), Cableski (1), resto sin variantes
+- [x] Auditados modales en Home.tsx y BudgetRequest.tsx: opciones hardcodeadas por familia
+- [x] Endpoint trpc.public.getVariantsByExperience ya existía en routers.ts (línea 169)
+- [x] BudgetRequest.tsx: ActivityModal reescrito con renderVariantFields() + renderFamilyFallback()
+- [x] Home.tsx: modal inline extraído a componente HeroActivityModal con misma lógica dinámica
+- [x] Si hay variantes en CRM → chips con nombre real + precio opcional + notas libres
+- [x] Si no hay variantes → fallback por familia (duración, saltos, tipo, notas)
+- [x] Colores de chip por familia: amber (alquiler/saltos/remolcado), sky (cableski/barco), violet (spa)
+- [x] Participantes siempre fijo e independiente de variantes
+- [x] 145 tests pasando · 0 errores TypeScript

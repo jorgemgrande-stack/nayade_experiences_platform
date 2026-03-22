@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Link } from "wouter";
 import {
   CheckCircle, Phone, Mail, Users, ChevronRight,
@@ -36,7 +36,7 @@ interface ModalState {
 }
 
 // ─── Familias de actividad ────────────────────────────────────────────────────
-// Mapeo de slug de experiencia → familia de preguntas
+// Mapeo de slug de experiencia → familia de preguntas contextuales (fallback cuando no hay variantes)
 const FAMILY_MAP: Record<string, string> = {
   "blob-jump": "saltos",
   "banana-ski": "remolcado",
@@ -58,6 +58,17 @@ function getFamilyForSlug(slug: string): string {
   }
   return "generico";
 }
+
+// Colores de chip por familia
+const FAMILY_CHIP_COLORS: Record<string, { active: string; hover: string }> = {
+  saltos:    { active: "bg-amber-500/20 text-amber-300 border-amber-500/50",   hover: "hover:border-amber-500/30 hover:text-white/80" },
+  cableski:  { active: "bg-sky-500/20 text-sky-300 border-sky-500/50",         hover: "hover:border-sky-500/30 hover:text-white/80" },
+  remolcado: { active: "bg-amber-500/20 text-amber-300 border-amber-500/50",   hover: "hover:border-amber-500/30 hover:text-white/80" },
+  alquiler:  { active: "bg-amber-500/20 text-amber-300 border-amber-500/50",   hover: "hover:border-amber-500/30 hover:text-white/80" },
+  barco:     { active: "bg-sky-500/20 text-sky-300 border-sky-500/50",         hover: "hover:border-sky-500/30 hover:text-white/80" },
+  spa:       { active: "bg-violet-500/20 text-violet-300 border-violet-500/50", hover: "hover:border-violet-500/30 hover:text-white/80" },
+  generico:  { active: "bg-amber-500/20 text-amber-300 border-amber-500/50",   hover: "hover:border-amber-500/30 hover:text-white/80" },
+};
 
 // ─── Categorías ───────────────────────────────────────────────────────────────
 const STATIC_CATEGORIES = [
@@ -100,8 +111,24 @@ function ActivityModal({
   onClose: () => void;
   onConfirm: (entry: ActivityEntry) => void;
 }) {
-  const [participants, setParticipants] = useState(totalPersons || 1);
-  const [details, setDetails] = useState<Record<string, string | number>>({});
+  const [participants, setParticipants] = React.useState(totalPersons || 1);
+  const [details, setDetails] = React.useState<Record<string, string | number>>({});
+
+  // Cargar variantes reales del CRM para esta experiencia
+  const { data: variants, isLoading: variantsLoading } = trpc.public.getVariantsByExperience.useQuery(
+    { experienceId: modal.experienceId },
+    { enabled: modal.open && modal.experienceId > 0 }
+  );
+
+  // Resetear detalles cuando cambia la experiencia
+  const prevExpId = React.useRef(modal.experienceId);
+  React.useEffect(() => {
+    if (modal.experienceId !== prevExpId.current) {
+      setDetails({});
+      setParticipants(totalPersons || 1);
+      prevExpId.current = modal.experienceId;
+    }
+  }, [modal.experienceId, totalPersons]);
 
   const handleConfirm = () => {
     const entry: ActivityEntry = {
@@ -118,7 +145,80 @@ function ActivityModal({
     setDetails((prev) => ({ ...prev, [key]: value }));
   };
 
-  const renderFamilyFields = () => {
+  const chipColors = FAMILY_CHIP_COLORS[modal.family] ?? FAMILY_CHIP_COLORS.generico;
+
+  // ─── Sección dinámica: variantes del CRM ──────────────────────────────────────
+  const renderVariantFields = () => {
+    if (variantsLoading) {
+      return (
+        <div className="flex items-center gap-2 text-white/40 text-xs py-2">
+          <div className="w-3 h-3 rounded-full border border-white/20 border-t-white/60 animate-spin" />
+          Cargando opciones…
+        </div>
+      );
+    }
+
+    if (variants && variants.length > 0) {
+      return (
+        <div className="space-y-4">
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block">¿Qué formato prefieres?</Label>
+            <div className="flex flex-wrap gap-2">
+              {variants.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setDetail("variante", v.name)}
+                  className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                    details.variante === v.name
+                      ? chipColors.active
+                      : `border-white/15 text-white/50 bg-white/[0.04] ${chipColors.hover}`
+                  }`}
+                  title={v.description ?? undefined}
+                >
+                  {v.name}
+                  {v.priceModifier && Number(v.priceModifier) > 0 && (
+                    <span className="ml-1.5 opacity-60">
+                      {v.priceType === "per_person" ? `${v.priceModifier}€/pax` : `${v.priceModifier}€`}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            {details.variante && (() => {
+              const sel = variants.find(v => v.name === details.variante);
+              return sel?.description ? (
+                <p className="text-white/30 text-xs mt-2">{sel.description}</p>
+              ) : null;
+            })()}
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block">Notas adicionales (opcional)</Label>
+            <Textarea
+              value={String(details.notas || "")}
+              onChange={(e) => setDetail("notas", e.target.value)}
+              className="bg-white/[0.07] border-white/10 text-white placeholder:text-white/20 rounded-xl text-sm resize-none"
+              rows={2}
+              placeholder="Preferencias, restricciones, nivel…"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // Sin variantes en CRM — mostrar campos contextuales por familia (fallback)
+    return renderFamilyFallback();
+  };
+
+  // ─── Fallback por familia cuando no hay variantes en CRM ─────────────────────
+  const renderFamilyFallback = () => {
+    const chipCls = (key: string, val: string) =>
+      `px-3 py-1.5 rounded-full text-xs border transition-all ${
+        (details[key] as string) === val
+          ? chipColors.active
+          : `border-white/15 text-white/50 bg-white/[0.04] ${chipColors.hover}`
+      }`;
+
     switch (modal.family) {
       case "cableski":
         return (
@@ -127,14 +227,7 @@ function ActivityModal({
               <Label className="text-white/60 text-xs mb-2 block">Duración preferida</Label>
               <div className="flex flex-wrap gap-2">
                 {["30 minutos", "1 hora", "2 horas", "Día completo"].map((opt) => (
-                  <button key={opt} type="button"
-                    onClick={() => setDetail("duracion", opt)}
-                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                      details.duracion === opt
-                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                        : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-white/80 bg-white/[0.04]"
-                    }`}
-                  >{opt}</button>
+                  <button key={opt} type="button" onClick={() => setDetail("duracion", opt)} className={chipCls("duracion", opt)}>{opt}</button>
                 ))}
               </div>
             </div>
@@ -142,20 +235,12 @@ function ActivityModal({
               <Label className="text-white/60 text-xs mb-2 block">Nivel de experiencia</Label>
               <div className="flex flex-wrap gap-2">
                 {["Principiante", "Intermedio", "Avanzado"].map((opt) => (
-                  <button key={opt} type="button"
-                    onClick={() => setDetail("nivel", opt)}
-                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                      details.nivel === opt
-                        ? "bg-sky-500/20 text-sky-300 border-sky-500/50"
-                        : "border-white/15 text-white/50 hover:border-sky-500/30 hover:text-white/80 bg-white/[0.04]"
-                    }`}
-                  >{opt}</button>
+                  <button key={opt} type="button" onClick={() => setDetail("nivel", opt)} className={chipCls("nivel", opt)}>{opt}</button>
                 ))}
               </div>
             </div>
           </div>
         );
-
       case "saltos":
         return (
           <div className="space-y-4">
@@ -176,7 +261,6 @@ function ActivityModal({
             </div>
           </div>
         );
-
       case "remolcado":
         return (
           <div className="space-y-4">
@@ -184,20 +268,12 @@ function ActivityModal({
               <Label className="text-white/60 text-xs mb-2 block">Duración preferida</Label>
               <div className="flex flex-wrap gap-2">
                 {["15 minutos", "30 minutos", "1 hora"].map((opt) => (
-                  <button key={opt} type="button"
-                    onClick={() => setDetail("duracion", opt)}
-                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                      details.duracion === opt
-                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                        : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-white/80 bg-white/[0.04]"
-                    }`}
-                  >{opt}</button>
+                  <button key={opt} type="button" onClick={() => setDetail("duracion", opt)} className={chipCls("duracion", opt)}>{opt}</button>
                 ))}
               </div>
             </div>
           </div>
         );
-
       case "alquiler":
         return (
           <div className="space-y-4">
@@ -205,20 +281,22 @@ function ActivityModal({
               <Label className="text-white/60 text-xs mb-2 block">Duración del alquiler</Label>
               <div className="flex flex-wrap gap-2">
                 {["30 minutos", "1 hora", "2 horas", "Medio día", "Día completo"].map((opt) => (
-                  <button key={opt} type="button"
-                    onClick={() => setDetail("duracion", opt)}
-                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                      details.duracion === opt
-                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                        : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-white/80 bg-white/[0.04]"
-                    }`}
-                  >{opt}</button>
+                  <button key={opt} type="button" onClick={() => setDetail("duracion", opt)} className={chipCls("duracion", opt)}>{opt}</button>
                 ))}
               </div>
             </div>
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Notas adicionales (opcional)</Label>
+              <Textarea
+                value={String(details.notas || "")}
+                onChange={(e) => setDetail("notas", e.target.value)}
+                className="bg-white/[0.07] border-white/10 text-white placeholder:text-white/20 rounded-xl text-sm resize-none"
+                rows={2}
+                placeholder="Cuéntanos qué tienes en mente…"
+              />
+            </div>
           </div>
         );
-
       case "barco":
         return (
           <div className="space-y-4">
@@ -226,14 +304,7 @@ function ActivityModal({
               <Label className="text-white/60 text-xs mb-2 block">Tipo de embarcación</Label>
               <div className="flex flex-wrap gap-2">
                 {["Barco pequeño (hasta 8 pax)", "Barco grande (hasta 20 pax)"].map((opt) => (
-                  <button key={opt} type="button"
-                    onClick={() => setDetail("tipo", opt)}
-                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                      details.tipo === opt
-                        ? "bg-sky-500/20 text-sky-300 border-sky-500/50"
-                        : "border-white/15 text-white/50 hover:border-sky-500/30 hover:text-white/80 bg-white/[0.04]"
-                    }`}
-                  >{opt}</button>
+                  <button key={opt} type="button" onClick={() => setDetail("tipo", opt)} className={chipCls("tipo", opt)}>{opt}</button>
                 ))}
               </div>
             </div>
@@ -241,20 +312,12 @@ function ActivityModal({
               <Label className="text-white/60 text-xs mb-2 block">Duración</Label>
               <div className="flex flex-wrap gap-2">
                 {["1 hora", "2 horas", "Medio día"].map((opt) => (
-                  <button key={opt} type="button"
-                    onClick={() => setDetail("duracion", opt)}
-                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                      details.duracion === opt
-                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
-                        : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-white/80 bg-white/[0.04]"
-                    }`}
-                  >{opt}</button>
+                  <button key={opt} type="button" onClick={() => setDetail("duracion", opt)} className={chipCls("duracion", opt)}>{opt}</button>
                 ))}
               </div>
             </div>
           </div>
         );
-
       case "spa":
         return (
           <div className="space-y-4">
@@ -262,20 +325,12 @@ function ActivityModal({
               <Label className="text-white/60 text-xs mb-2 block">Tipo de circuito</Label>
               <div className="flex flex-wrap gap-2">
                 {["Circuito básico (2h)", "Circuito premium (3h)", "Circuito pareja"].map((opt) => (
-                  <button key={opt} type="button"
-                    onClick={() => setDetail("tipo", opt)}
-                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                      details.tipo === opt
-                        ? "bg-violet-500/20 text-violet-300 border-violet-500/50"
-                        : "border-white/15 text-white/50 hover:border-violet-500/30 hover:text-white/80 bg-white/[0.04]"
-                    }`}
-                  >{opt}</button>
+                  <button key={opt} type="button" onClick={() => setDetail("tipo", opt)} className={chipCls("tipo", opt)}>{opt}</button>
                 ))}
               </div>
             </div>
           </div>
         );
-
       default:
         return (
           <div>
@@ -310,7 +365,7 @@ function ActivityModal({
         </DialogHeader>
 
         <div className="space-y-5 py-2">
-          {/* Participantes */}
+          {/* Participantes — siempre fijo, no depende de variantes */}
           <div>
             <Label className="text-white/60 text-xs mb-2 block flex items-center gap-1">
               <Users className="w-3 h-3" /> ¿Cuántas personas participan en esta actividad?
@@ -333,8 +388,8 @@ function ActivityModal({
             )}
           </div>
 
-          {/* Campos específicos de la familia */}
-          {renderFamilyFields()}
+          {/* Opciones dinámicas del CRM o fallback por familia */}
+          {renderVariantFields()}
         </div>
 
         <DialogFooter className="flex gap-2 pt-2">

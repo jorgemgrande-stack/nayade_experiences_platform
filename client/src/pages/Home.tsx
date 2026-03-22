@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -120,6 +120,202 @@ const testimonios = [
   { texto: "Organizamos el team building de empresa aquí y fue un éxito total. Las actividades de cableski y la gymkhana acuática superaron todas las expectativas del equipo.", autor: "Carlos M.", tipo: "Empresa · Barcelona", stars: 5 },
   { texto: "El fin de semana romántico fue perfecto. Actividades de día, spa por la tarde y cena con vistas al lago. No podíamos pedir más. Volveremos sin duda.", autor: "Laura & Javi", tipo: "Pareja · Segovia", stars: 5 },
 ];
+
+// ─── Colores de chip por familia (hero modal) ───────────────────────────────
+const HERO_CHIP_COLORS: Record<string, { active: string; hover: string }> = {
+  saltos:    { active: "bg-amber-500/20 text-amber-300 border-amber-500/50",    hover: "hover:border-amber-500/30 hover:text-white/80" },
+  cableski:  { active: "bg-sky-500/20 text-sky-300 border-sky-500/50",          hover: "hover:border-sky-500/30 hover:text-white/80" },
+  remolcado: { active: "bg-amber-500/20 text-amber-300 border-amber-500/50",    hover: "hover:border-amber-500/30 hover:text-white/80" },
+  alquiler:  { active: "bg-amber-500/20 text-amber-300 border-amber-500/50",    hover: "hover:border-amber-500/30 hover:text-white/80" },
+  barco:     { active: "bg-sky-500/20 text-sky-300 border-sky-500/50",          hover: "hover:border-sky-500/30 hover:text-white/80" },
+  spa:       { active: "bg-violet-500/20 text-violet-300 border-violet-500/50", hover: "hover:border-violet-500/30 hover:text-white/80" },
+  generico:  { active: "bg-amber-500/20 text-amber-300 border-amber-500/50",    hover: "hover:border-amber-500/30 hover:text-white/80" },
+};
+
+function HeroActivityModal({
+  modalState,
+  participants,
+  details,
+  onParticipantsChange,
+  onDetailsChange,
+  onClose,
+  onConfirm,
+}: {
+  modalState: HeroModalState;
+  participants: number;
+  details: Record<string, string | number>;
+  onParticipantsChange: React.Dispatch<React.SetStateAction<number>>;
+  onDetailsChange: React.Dispatch<React.SetStateAction<Record<string, string | number>>>;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  // Cargar variantes reales del CRM para esta experiencia
+  const { data: variants, isLoading: variantsLoading } = trpc.public.getVariantsByExperience.useQuery(
+    { experienceId: modalState.experienceId },
+    { enabled: modalState.open && modalState.experienceId > 0 }
+  );
+
+  const chipColors = HERO_CHIP_COLORS[modalState.family] ?? HERO_CHIP_COLORS.generico;
+
+  const setDetail = (key: string, value: string | number) => {
+    onDetailsChange((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const renderContent = () => {
+    if (variantsLoading) {
+      return (
+        <div className="flex items-center gap-2 text-white/40 text-xs py-2">
+          <div className="w-3 h-3 rounded-full border border-white/20 border-t-white/60 animate-spin" />
+          Cargando opciones…
+        </div>
+      );
+    }
+
+    if (variants && variants.length > 0) {
+      return (
+        <div className="space-y-4">
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block">¿Qué formato prefieres?</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {variants.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setDetail("variante", v.name)}
+                  className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                    details.variante === v.name
+                      ? chipColors.active
+                      : `border-white/10 text-white/50 bg-white/[0.03] ${chipColors.hover}`
+                  }`}
+                  title={v.description ?? undefined}
+                >
+                  {v.name}
+                  {v.priceModifier && Number(v.priceModifier) > 0 && (
+                    <span className="ml-1.5 opacity-60">
+                      {v.priceType === "per_person" ? `${v.priceModifier}€/pax` : `${v.priceModifier}€`}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block">Notas adicionales (opcional)</Label>
+            <input
+              type="text"
+              value={(details.notes as string) || ""}
+              onChange={(e) => setDetail("notes", e.target.value)}
+              className="w-full h-9 bg-white/[0.07] border border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm px-3"
+              placeholder="Preferencias, restricciones, nivel…"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // Fallback por familia cuando no hay variantes
+    const chipCls = (key: string, val: string) =>
+      `px-3 py-1.5 rounded-full text-xs border transition-all ${
+        (details[key] as string) === val
+          ? chipColors.active
+          : `border-white/10 text-white/50 bg-white/[0.03] ${chipColors.hover}`
+      }`;
+
+    return (
+      <div className="space-y-4">
+        {(modalState.family === "cableski" || modalState.family === "alquiler") && (
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Duración</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {(modalState.family === "cableski"
+                ? ["30 minutos", "1 hora", "2 horas", "Media jornada", "Jornada completa"]
+                : ["1 hora", "2 horas", "Media jornada", "Jornada completa"]
+              ).map((d) => (
+                <button key={d} type="button" onClick={() => setDetail("duration", d)} className={chipCls("duration", d)}>{d}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {modalState.family === "saltos" && (
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block">Número de saltos (total del grupo)</Label>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => setDetail("jumps", Math.max(1, ((details.jumps as number) || 1) - 1))}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-white font-semibold text-lg w-8 text-center">{(details.jumps as number) || 1}</span>
+              <button type="button" onClick={() => setDetail("jumps", ((details.jumps as number) || 1) + 1)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+        {modalState.family === "remolcado" && (
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block">Duración del paseo</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {["15 minutos", "30 minutos", "1 hora"].map((d) => (
+                <button key={d} type="button" onClick={() => setDetail("duration", d)} className={chipCls("duration", d)}>{d}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div>
+          <Label className="text-white/60 text-xs mb-2 block">Notas adicionales (opcional)</Label>
+          <input
+            type="text"
+            value={(details.notes as string) || ""}
+            onChange={(e) => setDetail("notes", e.target.value)}
+            className="w-full h-9 bg-white/[0.07] border border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm px-3"
+            placeholder="Nivel, preferencias, alergias…"
+          />
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Dialog open={modalState.open} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="bg-[#0d1b2e] border border-white/10 text-white max-w-sm rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-white text-base font-semibold">{modalState.experienceTitle}</DialogTitle>
+          <p className="text-white/40 text-xs mt-0.5">Configura esta actividad</p>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {/* Participantes — siempre fijo */}
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Participantes</Label>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => onParticipantsChange((p) => Math.max(1, p - 1))}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-white font-semibold text-lg w-8 text-center">{participants}</span>
+              <button type="button" onClick={() => onParticipantsChange((p) => Math.min(200, p + 1))}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+          {/* Opciones dinámicas del CRM o fallback */}
+          {renderContent()}
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}
+            className="border-white/15 text-white/60 hover:text-white bg-transparent">
+            Cancelar
+          </Button>
+          <Button size="sm" onClick={onConfirm}
+            className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white border-0">
+            <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Añadir actividad
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function Home() {
   const [, navigate] = useLocation();
@@ -1160,117 +1356,16 @@ export default function Home() {
         />
       )}
 
-      {/* ── Modal contextual de actividad ── */}
-      <Dialog open={heroModalState.open} onOpenChange={(open) => setHeroModalState((s) => ({ ...s, open }))}>
-        <DialogContent className="bg-[#0d1b2e] border border-white/10 text-white max-w-sm rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-white text-base font-semibold">{heroModalState.experienceTitle}</DialogTitle>
-            <p className="text-white/40 text-xs mt-0.5">Configura esta actividad</p>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            {/* Participantes */}
-            <div>
-              <Label className="text-white/60 text-xs mb-2 block flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Participantes</Label>
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => setHeroModalParticipants((p) => Math.max(1, p - 1))}
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-                <span className="text-white font-semibold text-lg w-8 text-center">{heroModalParticipants}</span>
-                <button type="button" onClick={() => setHeroModalParticipants((p) => Math.min(200, p + 1))}
-                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Duración (Cable Ski, Paddle Surf, Canoas, Alquiler) */}
-            {(heroModalState.family === "cableski" || heroModalState.family === "alquiler") && (
-              <div>
-                <Label className="text-white/60 text-xs mb-2 block flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Duración</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(heroModalState.family === "cableski"
-                    ? ["30 minutos", "1 hora", "2 horas", "Media jornada", "Jornada completa"]
-                    : ["1 hora", "2 horas", "Media jornada", "Jornada completa"]
-                  ).map((d) => (
-                    <button key={d} type="button"
-                      onClick={() => setHeroModalDetails((prev) => ({ ...prev, duration: d }))}
-                      className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                        heroModalDetails.duration === d
-                          ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
-                          : "border-white/10 text-white/50 hover:border-sky-500/30 bg-white/[0.03]"
-                      }`}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Saltos (Blob Jump) */}
-            {heroModalState.family === "saltos" && (
-              <div>
-                <Label className="text-white/60 text-xs mb-2 block">Número de saltos (total del grupo)</Label>
-                <div className="flex items-center gap-3">
-                  <button type="button" onClick={() => setHeroModalDetails((prev) => ({ ...prev, jumps: Math.max(1, ((prev.jumps as number) || 1) - 1) }))}
-                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="text-white font-semibold text-lg w-8 text-center">{(heroModalDetails.jumps as number) || 1}</span>
-                  <button type="button" onClick={() => setHeroModalDetails((prev) => ({ ...prev, jumps: ((prev.jumps as number) || 1) + 1 }))}
-                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Tipo remolcado (Banana, Donut) */}
-            {heroModalState.family === "remolcado" && (
-              <div>
-                <Label className="text-white/60 text-xs mb-2 block">Duración del paseo</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {["15 minutos", "30 minutos", "1 hora"].map((d) => (
-                    <button key={d} type="button"
-                      onClick={() => setHeroModalDetails((prev) => ({ ...prev, duration: d }))}
-                      className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
-                        heroModalDetails.duration === d
-                          ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
-                          : "border-white/10 text-white/50 hover:border-sky-500/30 bg-white/[0.03]"
-                      }`}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Notas adicionales */}
-            <div>
-              <Label className="text-white/60 text-xs mb-2 block">Notas adicionales (opcional)</Label>
-              <Input
-                value={(heroModalDetails.notes as string) || ""}
-                onChange={(e) => setHeroModalDetails((prev) => ({ ...prev, notes: e.target.value }))}
-                className="h-9 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm"
-                placeholder="Nivel, preferencias, alergias…"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" size="sm"
-              onClick={() => setHeroModalState((s) => ({ ...s, open: false }))}
-              className="border-white/15 text-white/60 hover:text-white bg-transparent">
-              Cancelar
-            </Button>
-            <Button size="sm" onClick={saveHeroActivity}
-              className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white border-0">
-              <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Añadir actividad
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* ── Modal contextual de actividad (dinámico — variantes del CRM) ── */}
+      <HeroActivityModal
+        modalState={heroModalState}
+        participants={heroModalParticipants}
+        details={heroModalDetails}
+        onParticipantsChange={setHeroModalParticipants}
+        onDetailsChange={setHeroModalDetails}
+        onClose={() => setHeroModalState((s) => ({ ...s, open: false }))}
+        onConfirm={saveHeroActivity}
+      />
     </PublicLayout>
   );
 }
