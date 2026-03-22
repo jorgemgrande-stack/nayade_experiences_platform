@@ -1,0 +1,34 @@
+{
+  "query": "SELECT id, customer_name, customer_email, product_name, status, created_at FROM reservations ORDER BY created_at DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, customer_name, customer_email, product_name, status, created_at FROM reservations ORDER BY created_at DESC;",
+  "rows": [
+    {
+      "id": "90001",
+      "customer_name": "Prueba ecomeerce",
+      "customer_email": "jgrande@skicenter.es",
+      "product_name": "Hidrobicis",
+      "status": "pending_payment",
+      "created_at": "1774194195078"
+    },
+    {
+      "id": "30001",
+      "customer_name": "Carlos Rios",
+      "customer_email": "j.grande@severalenergy.com",
+      "product_name": "Presupuesto Nayade Experiences - Carlos Rios",
+      "status": "paid",
+      "created_at": "1774131127837"
+    },
+    {
+      "id": "1",
+      "customer_name": "Jorge grande",
+      "customer_email": "jgrande@skicenter.es",
+      "product_name": "Blob Jump",
+      "status": "pending_payment",
+      "created_at": "1773797115365"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tcustomer_name\tcustomer_email\tproduct_name\tstatus\tcreated_at\n90001\tPrueba ecomeerce\tjgrande@skicenter.es\tHidrobicis\tpending_payment\t1774194195078\n30001\tCarlos Rios\tj.grande@severalenergy.com\tPresupuesto Nayade Experiences - Carlos Rios\tpaid\t1774131127837\n1\tJorge grande\tjgrande@skicenter.es\tBlob Jump\tpending_payment\t1773797115365\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}

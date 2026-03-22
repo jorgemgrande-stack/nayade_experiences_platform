@@ -1021,6 +1021,21 @@ function QuoteBuilderModal({
     { description: "", quantity: 1, unitPrice: 0, total: 0 },
   ]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
+  const [autoFilled, setAutoFilled] = useState(false);
+  const previewQuery = trpc.crm.leads.previewFromLead.useQuery(
+    { leadId },
+    { enabled: false }
+  );
+  const handleAutoFill = async () => {
+    const result = await previewQuery.refetch();
+    if (result.data?.hasActivities && result.data.items.length > 0) {
+      setItems(result.data.items);
+      setAutoFilled(true);
+      toast.success(`Lineas generadas automaticamente (${result.data.items.length})`);
+    } else {
+      toast.error("Este lead no tiene actividades seleccionadas");
+    }
+  };
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const taxAmount = subtotal * (taxRate / 100);
@@ -1087,6 +1102,25 @@ function QuoteBuilderModal({
           {leadName && <span className="text-white/40 text-sm font-normal ml-1">para {leadName}</span>}
         </DialogTitle>
       </DialogHeader>
+      {/* Boton Autogenerar con IA */}
+      <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
+        <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+        <span className="text-emerald-300 text-sm flex-1">
+          {autoFilled ? "Conceptos generados desde las actividades del lead" : "Autogenera los conceptos del presupuesto desde las actividades seleccionadas"}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/60 shrink-0"
+          onClick={handleAutoFill}
+          disabled={previewQuery.isFetching}
+        >
+          {previewQuery.isFetching
+            ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />
+            : <Sparkles className="w-3.5 h-3.5 mr-1" />}
+          {autoFilled ? "Regenerar" : "Autogenerar con IA"}
+        </Button>
+      </div>
 
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">

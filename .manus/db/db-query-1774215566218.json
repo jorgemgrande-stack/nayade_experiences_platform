@@ -1,0 +1,18 @@
+{
+  "query": "SHOW COLUMNS FROM leads LIKE 'opportunityStatus';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SHOW COLUMNS FROM leads LIKE 'opportunityStatus';",
+  "rows": [
+    {
+      "Field": "opportunityStatus",
+      "Type": "enum('nueva','enviada','ganada','perdida')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "nueva",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nopportunityStatus\tenum('nueva','enviada','ganada','perdida')\tNO\t\tnueva\t\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

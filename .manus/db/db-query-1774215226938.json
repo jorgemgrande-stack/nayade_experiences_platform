@@ -1,0 +1,9 @@
+{
+  "query": "-- Ver facturas vinculadas a las reservas\nSELECT id, invoiceNumber, reservationId, status FROM invoices WHERE reservationId IN (90001, 30001, 1);\n\n-- Borrar facturas vinculadas primero (para evitar FK constraints)\nDELETE FROM invoices WHERE reservationId IN (90001, 30001, 1);\n\n-- Borrar las tres reservas de prueba\nDELETE FROM reservations WHERE id IN (90001, 30001, 1);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute -- Ver facturas vinculadas a las reservas\nSELECT id, invoiceNumber, reservationId, status FROM invoices WHERE reservationId IN (90001, 30001, 1);\n\n-- Borrar facturas vinculadas primero (para evitar FK constraints)\nDELETE FROM invoices WHERE reservationId IN (90001, 30001, 1);\n\n-- Borrar las tres reservas de prueba\nDELETE FROM reservations WHERE id IN (90001, 30001, 1);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 77
+}

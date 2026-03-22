@@ -1,0 +1,8 @@
+{
+  "query": "SELECT id, name, email, selected_product, activities_json FROM leads ORDER BY created_at DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, name, email, selected_product, activities_json FROM leads ORDER BY created_at DESC LIMIT 5;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'created_at' in 'order clause'"
+  ]
+}

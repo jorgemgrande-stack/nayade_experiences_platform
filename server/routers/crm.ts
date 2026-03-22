@@ -694,6 +694,58 @@ export const crmRouter = router({
         return { success: true, quoteId, quoteNumber, itemCount: quoteItems.length, subtotal, total };
       }),
 
+    // ─── Previsualizar líneas desde activitiesJson (sin guardar en BD) ───────────────────────────
+    previewFromLead: staffProcedure()
+      .input(z.object({ leadId: z.number() }))
+      .query(async ({ input }) => {
+        const [lead] = await db.select().from(leads).where(eq(leads.id, input.leadId));
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
+        const activities = (lead.activitiesJson as {
+          experienceId: number;
+          experienceTitle: string;
+          family: string;
+          participants: number;
+          details: Record<string, string | number>;
+        }[] | null) ?? [];
+        if (activities.length === 0) return { items: [], hasActivities: false };
+        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number }[] = [];
+        for (const act of activities) {
+          const [exp] = await db.select().from(experiences).where(eq(experiences.id, act.experienceId));
+          const basePrice = exp ? parseFloat(String(exp.basePrice)) : 0;
+          const variants = await db.select().from(experienceVariants).where(eq(experienceVariants.experienceId, act.experienceId));
+          const selectedVariantName = act.details?.variante as string | undefined;
+          const matchedVariant = selectedVariantName
+            ? variants.find((v) => v.name === selectedVariantName)
+            : variants.length === 1 ? variants[0] : null;
+          let unitPrice = basePrice;
+          let description = act.experienceTitle;
+          if (matchedVariant) {
+            const modifier = parseFloat(String(matchedVariant.priceModifier ?? "0"));
+            if (matchedVariant.priceType === "per_person") {
+              unitPrice = modifier;
+              description = `${act.experienceTitle} — ${matchedVariant.name} (${act.participants} pax)`;
+            } else if (matchedVariant.priceType === "fixed") {
+              unitPrice = modifier;
+              description = `${act.experienceTitle} — ${matchedVariant.name}`;
+            } else if (matchedVariant.priceType === "percentage") {
+              unitPrice = basePrice * (1 + modifier / 100);
+              description = `${act.experienceTitle} — ${matchedVariant.name}`;
+            }
+          } else if (variants.length > 0) {
+            description = `${act.experienceTitle} (precio base)`;
+          }
+          const detailParts: string[] = [];
+          if (act.details?.duration) detailParts.push(String(act.details.duration));
+          if (act.details?.jumps) detailParts.push(`${act.details.jumps} saltos`);
+          if (act.details?.notes) detailParts.push(String(act.details.notes));
+          if (detailParts.length > 0) description += ` • ${detailParts.join(" · ")}`;
+          const quantity = act.participants;
+          const total = parseFloat((unitPrice * quantity).toFixed(2));
+          quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total });
+        }
+        return { items: quoteItems, hasActivities: true };
+      }),
+
     create: staff
       .input(z.object({
         name: z.string().min(2),

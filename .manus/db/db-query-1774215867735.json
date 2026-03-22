@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, name, email, status, activitiesJson FROM leads WHERE name LIKE '%Pablo%' OR email LIKE '%j.grande%' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, name, email, status, activitiesJson FROM leads WHERE name LIKE '%Pablo%' OR email LIKE '%j.grande%' LIMIT 5;",
+  "rows": [
+    {
+      "id": "570011",
+      "name": "Pablo Aragoneses",
+      "email": "j.grande@severalenergy.com",
+      "status": "nuevo",
+      "activitiesJson": "[{\"details\": {\"variante\": \"Dia completo de 10:00 am a 20:pm\"}, \"experienceId\": 30003, \"experienceTitle\": \"Cableski & Wakeboard Dia Completo\", \"family\": \"cableski\", \"participants\": 2}]"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tstatus\tactivitiesJson\n570011\tPablo Aragoneses\tj.grande@severalenergy.com\tnuevo\t[{\"details\": {\"variante\": \"Dia completo de 10:00 am a 20:pm\"}, \"experienceId\": 30003, \"experienceTitle\": \"Cableski & Wakeboard Dia Completo\", \"family\": \"cableski\", \"participants\": 2}]\n",
+  "stderr": "",
+  "execution_time_ms": 65
+}
