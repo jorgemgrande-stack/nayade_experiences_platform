@@ -1090,3 +1090,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Mensajes diferenciados: «Presupuesto pagado» vs «Reserva confirmada» según quoteSource
 - [x] Bloque «Qué pasa ahora» adaptado: factura automática para presupuestos, cancelación para directas
 - [x] 138 tests pasando · 0 errores TypeScript
+
+## Panel desplegable de notificaciones (campana) — v9.36 [COMPLETADO]
+- [x] El icono de campana en AdminLayout no tenía onClick — ahora abre un Popover
+- [x] Implementado panel desplegable (Popover) con leads nuevos y presupuestos pendientes
+- [x] Sección leads nuevos: nombre, email, navegación al CRM al hacer clic
+- [x] Sección presupuestos pendientes: nombre cliente, importe, número y fecha de envío
+- [x] Botón "Ver todos en el CRM" en el footer del panel
+- [x] Estado vacío cuando no hay notificaciones
+- [x] Datos cargados bajo demanda (solo cuando el panel está abierto)
+- [x] 138 tests pasando · 0 errores TypeScript
