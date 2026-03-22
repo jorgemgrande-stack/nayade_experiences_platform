@@ -1649,7 +1649,7 @@ function QuoteDetailModal({
           </>
         )}
         {quote.status === "enviado" && (
-          <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId })} disabled={resendQuote.isPending}>
+          <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId, origin: window.location.origin })} disabled={resendQuote.isPending}>
             {resendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
             Reenviar
           </Button>

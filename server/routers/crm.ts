@@ -823,12 +823,29 @@ export const crmRouter = router({
       }),
 
     resend: staff
-      .input(z.object({ id: z.number() }))
+      .input(z.object({
+        id: z.number(),
+        origin: z.string().url().optional(),
+      }))
       .mutation(async ({ input, ctx }) => {
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.id));
         if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+
+        // Si el presupuesto no tiene token de aceptación, generarlo ahora
+        const { randomBytes } = await import("crypto");
+        let paymentLinkUrl = quote.paymentLinkUrl;
+        if (!paymentLinkUrl || !quote.paymentLinkToken) {
+          const token = randomBytes(32).toString("hex");
+          const origin = input.origin ?? "https://nayade-shop-av298fs8.manus.space";
+          paymentLinkUrl = `${origin}/presupuesto/${token}`;
+          await db.update(quotes).set({
+            paymentLinkToken: token,
+            paymentLinkUrl,
+            updatedAt: new Date(),
+          }).where(eq(quotes.id, input.id));
+        }
 
         await sendQuoteEmail({
           quoteNumber: quote.quoteNumber,
@@ -843,10 +860,9 @@ export const crmRouter = router({
           validUntil: quote.validUntil,
           notes: quote.notes,
           conditions: quote.conditions,
-          paymentLinkUrl: quote.paymentLinkUrl,
+          paymentLinkUrl,
         });
-
-        await logActivity("quote", input.id, "quote_resent", ctx.user.id, ctx.user.name, {});
+        await logActivity("quote", input.id, "quote_resent", ctx.user.id, ctx.user.name, { paymentLinkUrl });
         return { success: true };
       }),
 
