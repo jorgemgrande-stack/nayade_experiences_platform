@@ -995,8 +995,11 @@ export const appRouter = router({
           bookingDate: reservation.bookingDate,
           people: reservation.people,
           amountTotal: reservation.amountTotal,
+          amountPaid: reservation.amountPaid ?? null,
           customerName: reservation.customerName,
           customerEmail: reservation.customerEmail,
+          quoteSource: reservation.quoteSource ?? null,
+          notes: reservation.notes ?? null,
         };
       }),
 

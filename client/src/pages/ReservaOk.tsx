@@ -163,7 +163,10 @@ export default function ReservaOk() {
 
   // Estado: PAID ✅
   if (data.status === "paid") {
-    const amountEuros = data.amountTotal ? (data.amountTotal / 100).toFixed(2) : null;
+    // Usar amountPaid si está disponible (importe real cobrado), si no amountTotal
+    const paidCents = data.amountPaid ?? data.amountTotal;
+    const amountEuros = paidCents ? (paidCents / 100).toFixed(2) : null;
+    const isQuotePayment = data.quoteSource === "presupuesto";
     return (
       <PublicLayout>
         <div className="container py-20 max-w-lg mx-auto">
@@ -172,46 +175,56 @@ export default function ReservaOk() {
               <CheckCircle className="w-10 h-10 text-emerald-600" />
             </div>
             <h1 className="text-3xl font-display font-bold text-foreground mb-2">
-              ¡Reserva confirmada!
+              ¡{isQuotePayment ? "Presupuesto pagado!" : "Reserva confirmada!"}
             </h1>
             <p className="text-muted-foreground">
-              Tu pago ha sido procesado correctamente. Recibirás un email de confirmación en breve.
+              Tu pago ha sido procesado correctamente. Recibirás un email de confirmación con todos los detalles en breve.
             </p>
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-6 mb-8 space-y-4">
             <h2 className="font-display font-semibold text-foreground text-lg border-b border-border pb-3">
-              Resumen de tu reserva
+              Resumen de tu {isQuotePayment ? "presupuesto" : "reserva"}
             </h2>
             <div className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Actividad</span>
+                <span className="text-muted-foreground">{isQuotePayment ? "Concepto" : "Actividad"}</span>
                 <span className="font-medium text-foreground">{data.productName}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Fecha</span>
-                <span className="font-medium text-foreground">{data.bookingDate}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Personas</span>
-                <span className="font-medium text-foreground">{data.people}</span>
-              </div>
+              {data.bookingDate && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Fecha</span>
+                  <span className="font-medium text-foreground">{data.bookingDate}</span>
+                </div>
+              )}
+              {!isQuotePayment && data.people && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Personas</span>
+                  <span className="font-medium text-foreground">{data.people}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Cliente</span>
                 <span className="font-medium text-foreground">{data.customerName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Email</span>
-                <span className="font-medium text-foreground">{data.customerEmail}</span>
+                <span className="text-muted-foreground">Email de confirmación</span>
+                <span className="font-medium text-foreground break-all">{data.customerEmail}</span>
               </div>
+              {data.notes && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Notas</span>
+                  <span className="font-medium text-foreground text-right max-w-[60%]">{data.notes}</span>
+                </div>
+              )}
               {amountEuros && (
                 <div className="flex justify-between pt-3 border-t border-border">
                   <span className="font-semibold text-foreground">Total pagado</span>
-                  <span className="font-bold text-emerald-600 text-lg">{amountEuros}€</span>
+                  <span className="font-bold text-emerald-600 text-lg">{amountEuros} €</span>
                 </div>
               )}
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Referencia</span>
+              <div className="flex justify-between text-xs text-muted-foreground pt-1">
+                <span>Referencia de pago</span>
                 <span className="font-mono">{merchantOrder}</span>
               </div>
             </div>
@@ -222,16 +235,31 @@ export default function ReservaOk() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                Recibirás un email de confirmación con todos los detalles.
+                Recibirás un email de confirmación con {isQuotePayment ? "la factura y" : ""} todos los detalles.
               </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                Nuestro equipo se pondrá en contacto contigo para coordinar los detalles.
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                Cancelación gratuita hasta 48h antes de la actividad.
-              </li>
+              {isQuotePayment ? (
+                <>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    Tu factura ha sido generada automáticamente y estará disponible en el email.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    Nuestro equipo se pondrá en contacto contigo para coordinar los detalles de la actividad.
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    Nuestro equipo se pondrá en contacto contigo para coordinar los detalles.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    Cancelación gratuita hasta 48h antes de la actividad.
+                  </li>
+                </>
+              )}
             </ul>
           </div>
 

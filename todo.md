@@ -1082,3 +1082,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Eliminado email duplicado: sendReservationPaidNotifications solo para reservas directas
 - [x] 11 tests nuevos en confirmationEmail.test.ts
 - [x] 138 tests pasando · 0 errores TypeScript
+
+## Verificación y mejora de /reserva/ok — v9.35 [COMPLETADO]
+- [x] Auditado ReservaOk.tsx: página ya tenía polling, todos los estados y datos básicos
+- [x] Ampliado procedimiento getStatus: devuelve amountPaid, quoteSource, notes
+- [x] Mejorado resumen: muestra importe real pagado (amountPaid), oculta personas para presupuestos
+- [x] Mensajes diferenciados: «Presupuesto pagado» vs «Reserva confirmada» según quoteSource
+- [x] Bloque «Qué pasa ahora» adaptado: factura automática para presupuestos, cancelación para directas
+- [x] 138 tests pasando · 0 errores TypeScript
