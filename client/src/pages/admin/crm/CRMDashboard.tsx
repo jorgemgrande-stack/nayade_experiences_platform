@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -50,11 +50,16 @@ import {
   Pencil,
   FileDown,
   Sparkles,
+  Receipt,
+  CreditCard,
+  Upload,
+  RotateCcw,
+  Ban,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
-type Tab = "leads" | "quotes" | "reservations";
+type Tab = "leads" | "quotes" | "reservations" | "invoices";
 
 type OpportunityStatus = "nueva" | "enviada" | "ganada" | "perdida";
 type Priority = "baja" | "media" | "alta";
@@ -1826,6 +1831,30 @@ export default function CRMDashboard() {
   const { data: quotesData, isLoading: quotesLoading } = trpc.crm.quotes.list.useQuery(quotesFilter, { enabled: tab === "quotes" });
   const { data: resData, isLoading: resLoading } = trpc.crm.reservations.list.useQuery(resFilter, { enabled: tab === "reservations" });
 
+  // ─── FACTURAS ────────────────────────────────────────────────────────────────────────────────
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "generada" | "enviada" | "cobrada" | "anulada" | "abonada">("all");
+  const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<"all" | "factura" | "abono">("all");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [confirmPaymentInvoiceId, setConfirmPaymentInvoiceId] = useState<number | null>(null);
+  const [creditNoteInvoiceId, setCreditNoteInvoiceId] = useState<number | null>(null);
+  const [voidInvoiceId, setVoidInvoiceId] = useState<number | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"transferencia" | "efectivo" | "otro">("transferencia");
+  const [creditNoteReason, setCreditNoteReason] = useState("");
+
+  const invoiceFilter = useMemo(() => ({
+    status: invoiceStatusFilter !== "all" ? invoiceStatusFilter as "generada" | "enviada" | "cobrada" | "anulada" | "abonada" : undefined,
+    invoiceType: invoiceTypeFilter !== "all" ? invoiceTypeFilter as "factura" | "abono" : undefined,
+    search: invoiceSearch || undefined,
+    limit: 50,
+    offset: 0,
+  }), [invoiceStatusFilter, invoiceTypeFilter, invoiceSearch]);
+
+  const { data: invoicesData, isLoading: invoicesLoading, refetch: refetchInvoices } = trpc.crm.invoices.listAll.useQuery(
+    invoiceFilter,
+    { enabled: tab === "invoices" }
+  );
+
   const utils = trpc.useUtils();
   const deleteLead = trpc.crm.leads.delete.useMutation({
     onSuccess: () => {
@@ -1922,6 +1951,79 @@ export default function CRMDashboard() {
     } catch {
       toast.error("Error al generar el PDF", { id: toastId });
     }
+  };
+
+  // ─── MUTACIONES DE FACTURAS ────────────────────────────────────────────────────────────────────────────────
+  const confirmManualPaymentMutation = trpc.crm.invoices.confirmManualPayment.useMutation({
+    onSuccess: () => {
+      toast.success("✅ Pago confirmado manualmente");
+      setConfirmPaymentInvoiceId(null);
+      utils.crm.invoices.listAll.invalidate();
+      utils.crm.reservations.list.invalidate();
+      refetchInvoices();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const createCreditNoteMutation = trpc.crm.invoices.createCreditNote.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Abono ${data.creditNoteNumber} generado correctamente`);
+      setCreditNoteInvoiceId(null);
+      setCreditNoteReason("");
+      utils.crm.invoices.listAll.invalidate();
+      refetchInvoices();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const resendInvoiceMutation = trpc.crm.invoices.resend.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Factura reenviada a ${data.sentTo}`);
+      utils.crm.invoices.listAll.invalidate();
+      refetchInvoices();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const voidInvoiceMutation = trpc.crm.invoices.void.useMutation({
+    onSuccess: () => {
+      toast.success("Factura anulada");
+      setVoidInvoiceId(null);
+      utils.crm.invoices.listAll.invalidate();
+      refetchInvoices();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const downloadInvoicePdf = (invoice: any) => {
+    if (invoice.pdfUrl) {
+      window.open(invoice.pdfUrl, "_blank");
+    } else {
+      toast.error("No hay PDF disponible para esta factura");
+    }
+  };
+
+  const getInvoiceStatusBadge = (status: string) => {
+    const map: Record<string, { label: string; cls: string }> = {
+      generada: { label: "Generada", cls: "bg-slate-500/15 text-slate-300 border-slate-500/30" },
+      enviada: { label: "Enviada", cls: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
+      cobrada: { label: "Cobrada", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+      anulada: { label: "Anulada", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
+      abonada: { label: "Abonada", cls: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
+    };
+    const s = map[status] ?? { label: status, cls: "bg-white/10 text-white/50 border-white/10" };
+    return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
+  };
+
+  const getPaymentMethodLabel = (method: string | null) => {
+    if (!method) return null;
+    const map: Record<string, string> = {
+      redsys: "💳 Tarjeta (Redsys)",
+      transferencia: "🏦 Transferencia",
+      efectivo: "💵 Efectivo",
+      otro: "❓ Otro",
+    };
+    return map[method] ?? method;
   };
 
   const handleTabChange = (t: Tab) => {
@@ -2122,6 +2224,7 @@ export default function CRMDashboard() {
               { key: "leads", label: "Leads", icon: Users, count: leadCounters?.total },
               { key: "quotes", label: "Presupuestos", icon: FileText, count: quoteCounters?.enviado },
               { key: "reservations", label: "Reservas", icon: CalendarCheck, count: resCounters?.confirmadas },
+              { key: "invoices", label: "Facturas", icon: Receipt, count: undefined },
             ] as const).map(({ key, label, icon: Icon, count }) => (
               <button
                 key={key}
@@ -2148,7 +2251,7 @@ export default function CRMDashboard() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={`Buscar ${tab === "leads" ? "leads" : tab === "quotes" ? "presupuestos" : "reservas"}...`}
+              placeholder={`Buscar ${tab === "leads" ? "leads" : tab === "quotes" ? "presupuestos" : tab === "reservations" ? "reservas" : "facturas"}...`}
               className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30"
             />
           </div>
@@ -2442,38 +2545,72 @@ export default function CRMDashboard() {
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Producto</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">Factura</th>
                     <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Importe</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Fecha</th>
+                    <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {resLoading ? (
-                    <tr><td colSpan={5} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !resData?.length ? (
-                    <tr><td colSpan={5} className="text-center py-12 text-white/30 text-sm">No hay reservas</td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-white/30 text-sm">No hay reservas</td></tr>
                   ) : resData.map((res: any) => (
                     <tr key={res.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
                       <td className="px-4 py-3">
                         <div className="text-sm font-medium text-white">{res.customerName}</div>
                         <div className="text-xs text-white/40">{res.customerEmail}</div>
+                        {res.reservationRef && <div className="text-xs font-mono text-white/30 mt-0.5">{res.reservationRef}</div>}
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <div className="text-sm text-white/60 truncate max-w-[200px]">{res.productName}</div>
+                        {res.paymentMethod && (
+                          <div className="text-xs text-white/30 mt-0.5">{getPaymentMethodLabel(res.paymentMethod)}</div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
-                          res.status === "paid" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                          res.status === "paid" || res.status === "confirmed" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
                           res.status === "pending_payment" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                          res.status === "cancelled" ? "bg-red-500/15 text-red-400 border-red-500/30" :
                           "bg-slate-500/15 text-slate-400 border-slate-500/30"
                         }`}>
-                          {res.status === "paid" ? "Pagado" : res.status === "pending_payment" ? "Pendiente" : res.status}
+                          {res.status === "paid" || res.status === "confirmed" ? "✅ Confirmada" :
+                           res.status === "pending_payment" ? "⏳ Pendiente" :
+                           res.status === "cancelled" ? "❌ Cancelada" : res.status}
                         </span>
                       </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {res.invoiceNumber ? (
+                          <button
+                            onClick={() => { setTab("invoices"); setInvoiceSearch(res.invoiceNumber); }}
+                            className="text-xs font-mono text-sky-400 hover:text-sky-300 transition-colors flex items-center gap-1">
+                            <Receipt className="w-3 h-3" />{res.invoiceNumber}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-white/20">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-bold text-white">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
+                        <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <div className="text-xs text-white/40">{new Date(res.createdAt).toLocaleDateString("es-ES")}</div>
+                        {res.arrivalDate && (
+                          <div className="text-xs text-white/25">✈️ {new Date(res.arrivalDate).toLocaleDateString("es-ES")}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          {/* Ver factura */}
+                          {res.invoicePdfUrl && (
+                            <button onClick={() => window.open(res.invoicePdfUrl, "_blank")} title="Descargar factura PDF"
+                              className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-colors">
+                              <FileDown className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2481,10 +2618,232 @@ export default function CRMDashboard() {
               </table>
             </div>
           )}
+
+          {/* ─── TABLA DE FACTURAS ──────────────────────────────────────────────── */}
+          {tab === "invoices" && (
+            <div>
+              {/* Filtros de facturas */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {(["all", "generada", "enviada", "cobrada", "anulada", "abonada"] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setInvoiceStatusFilter(s)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                      invoiceStatusFilter === s
+                        ? "bg-orange-600 text-white border-orange-600"
+                        : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"
+                    }`}
+                  >
+                    {s === "all" ? "Todas" : s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
+                <div className="ml-auto flex gap-2">
+                  {(["all", "factura", "abono"] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setInvoiceTypeFilter(t)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
+                        invoiceTypeFilter === t
+                          ? "bg-violet-600 text-white border-violet-600"
+                          : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"
+                      }`}
+                    >
+                      {t === "all" ? "Todos los tipos" : t.charAt(0).toUpperCase() + t.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-white/8 bg-white/5">
+                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Número</th>
+                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
+                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Método pago</th>
+                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
+                      <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Total</th>
+                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Fecha</th>
+                      <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoicesLoading ? (
+                      <tr><td colSpan={7} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    ) : !invoicesData?.items?.length ? (
+                      <tr><td colSpan={7} className="text-center py-12 text-white/30 text-sm">
+                        <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        No hay facturas
+                      </td></tr>
+                    ) : invoicesData.items.map((inv: any) => (
+                      <tr key={inv.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-mono font-bold text-white">{inv.invoiceNumber}</div>
+                          {inv.invoiceType === "abono" && (
+                            <span className="text-xs text-violet-400 font-medium">Abono</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-white">{inv.clientName}</div>
+                          <div className="text-xs text-white/40">{inv.clientEmail}</div>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          <div className="text-xs text-white/50">
+                            {inv.paymentMethod ? getPaymentMethodLabel(inv.paymentMethod) : <span className="text-white/20">—</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {getInvoiceStatusBadge(inv.status)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-bold text-orange-400">{Number(inv.total).toFixed(2)} €</span>
+                        </td>
+                        <td className="px-4 py-3 hidden sm:table-cell">
+                          <div className="text-xs text-white/40">{new Date(inv.createdAt).toLocaleDateString("es-ES")}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            {/* PDF */}
+                            {inv.pdfUrl && (
+                              <button onClick={() => downloadInvoicePdf(inv)} title="Descargar PDF"
+                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-colors">
+                                <FileDown className="w-4 h-4" />
+                              </button>
+                            )}
+                            {/* Reenviar */}
+                            {["generada", "enviada"].includes(inv.status) && (
+                              <button onClick={() => resendInvoiceMutation.mutate({ invoiceId: inv.id })} title="Reenviar por email"
+                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-400 transition-colors">
+                                <Send className="w-4 h-4" />
+                              </button>
+                            )}
+                            {/* Confirmar pago manual */}
+                            {["generada", "enviada"].includes(inv.status) && inv.invoiceType !== "abono" && (
+                              <button onClick={() => setConfirmPaymentInvoiceId(inv.id)} title="Confirmar pago manual"
+                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-emerald-400 transition-colors">
+                                <CreditCard className="w-4 h-4" />
+                              </button>
+                            )}
+                            {/* Generar abono */}
+                            {inv.status === "cobrada" && inv.invoiceType !== "abono" && (
+                              <button onClick={() => setCreditNoteInvoiceId(inv.id)} title="Generar factura de abono"
+                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-violet-400 transition-colors">
+                                <RotateCcw className="w-4 h-4" />
+                              </button>
+                            )}
+                            {/* Anular */}
+                            {!["anulada", "abonada"].includes(inv.status) && (
+                              <button onClick={() => setVoidInvoiceId(inv.id)} title="Anular factura"
+                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-red-400 transition-colors">
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Modals */}
+
+      {/* ─── MODALES DE FACTURAS ──────────────────────────────────────────────── */}
+      {/* Confirmar pago manual */}
+      <Dialog open={confirmPaymentInvoiceId !== null} onOpenChange={(o) => !o && setConfirmPaymentInvoiceId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-emerald-400" /> Confirmar pago manual
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-white/60 text-xs mb-1.5 block">Método de pago</Label>
+              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0d1526] border-white/10">
+                  <SelectItem value="transferencia" className="text-white">🏦 Transferencia bancaria</SelectItem>
+                  <SelectItem value="efectivo" className="text-white">💵 Efectivo</SelectItem>
+                  <SelectItem value="otro" className="text-white">❓ Otro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-white/40">Se marcará la factura como cobrada y se actualizará la reserva asociada.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setConfirmPaymentInvoiceId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button size="sm" onClick={() => confirmPaymentInvoiceId !== null && confirmManualPaymentMutation.mutate({ invoiceId: confirmPaymentInvoiceId, paymentMethod })}
+              disabled={confirmManualPaymentMutation.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              {confirmManualPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+              Confirmar cobro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generar abono */}
+      <Dialog open={creditNoteInvoiceId !== null} onOpenChange={(o) => { if (!o) { setCreditNoteInvoiceId(null); setCreditNoteReason(""); } }}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <RotateCcw className="w-5 h-5 text-violet-400" /> Generar factura de abono
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-white/60 text-xs mb-1.5 block">Motivo del abono *</Label>
+              <Textarea
+                value={creditNoteReason}
+                onChange={(e) => setCreditNoteReason(e.target.value)}
+                placeholder="Ej: Cancelación por condiciones meteorológicas"
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 resize-none"
+                rows={3}
+              />
+            </div>
+            <p className="text-xs text-white/40">Se generará una factura de abono por el importe total. La factura original quedará marcada como abonada.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { setCreditNoteInvoiceId(null); setCreditNoteReason(""); }} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button size="sm"
+              onClick={() => creditNoteInvoiceId !== null && creditNoteReason.trim() && createCreditNoteMutation.mutate({ invoiceId: creditNoteInvoiceId, reason: creditNoteReason })}
+              disabled={createCreditNoteMutation.isPending || !creditNoteReason.trim()}
+              className="bg-violet-600 hover:bg-violet-700 text-white">
+              {createCreditNoteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <RotateCcw className="w-4 h-4 mr-1" />}
+              Generar abono
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Anular factura */}
+      <Dialog open={voidInvoiceId !== null} onOpenChange={(o) => !o && setVoidInvoiceId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-400" /> Anular factura
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-white/60 py-2">Esta acción marcará la factura como anulada. No se puede deshacer. Para reembolsos, usa la opción de generar abono.</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setVoidInvoiceId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button size="sm"
+              onClick={() => voidInvoiceId !== null && voidInvoiceMutation.mutate({ invoiceId: voidInvoiceId })}
+              disabled={voidInvoiceMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white">
+              {voidInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Ban className="w-4 h-4 mr-1" />}
+              Anular
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Nuevo Presupuesto Directo */}
       <Dialog open={showDirectQuoteModal} onOpenChange={(o) => !o && setShowDirectQuoteModal(false)}>

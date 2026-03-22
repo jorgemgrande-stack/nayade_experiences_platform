@@ -18,6 +18,7 @@ import {
   experienceVariants,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut } from "../storage";
@@ -1926,6 +1927,267 @@ export const crmRouter = router({
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.id));
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
         return invoice;
+      }),
+
+    // ─── Listado completo con filtros ──────────────────────────────────────────
+    listAll: staff
+      .input(z.object({
+        status: z.enum(["generada", "enviada", "cobrada", "anulada", "abonada"]).optional(),
+        invoiceType: z.enum(["factura", "abono"]).optional(),
+        paymentMethod: z.enum(["redsys", "transferencia", "efectivo", "otro"]).optional(),
+        search: z.string().optional(),
+        limit: z.number().default(50),
+        offset: z.number().default(0),
+      }))
+      .query(async ({ input }) => {
+        const conditions: SQL[] = [];
+        if (input.status) conditions.push(eq(invoices.status, input.status));
+        if (input.invoiceType) conditions.push(eq(invoices.invoiceType, input.invoiceType));
+        if (input.paymentMethod) conditions.push(eq(invoices.paymentMethod, input.paymentMethod));
+        if (input.search) {
+          conditions.push(or(
+            like(invoices.invoiceNumber, `%${input.search}%`),
+            like(invoices.clientName, `%${input.search}%`),
+            like(invoices.clientEmail, `%${input.search}%`),
+          ) as SQL);
+        }
+        const [rows, [{ total }]] = await Promise.all([
+          db.select().from(invoices)
+            .where(conditions.length ? and(...conditions) : undefined)
+            .orderBy(desc(invoices.createdAt))
+            .limit(input.limit).offset(input.offset),
+          db.select({ total: count() }).from(invoices)
+            .where(conditions.length ? and(...conditions) : undefined),
+        ]);
+        return { items: rows, total };
+      }),
+
+    // ─── Confirmar pago manual (transferencia / efectivo) ──────────────────────
+    confirmManualPayment: staff
+      .input(z.object({
+        invoiceId: z.number(),
+        paymentMethod: z.enum(["transferencia", "efectivo", "otro"]),
+        transferProofUrl: z.string().url().optional(),
+        transferProofKey: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        if (invoice.status === "cobrada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está marcada como cobrada" });
+
+        const now = new Date();
+        await db.update(invoices).set({
+          status: "cobrada",
+          paymentMethod: input.paymentMethod,
+          paymentValidatedBy: ctx.user.id,
+          paymentValidatedAt: now,
+          transferProofUrl: input.transferProofUrl ?? null,
+          transferProofKey: input.transferProofKey ?? null,
+          isAutomatic: false,
+          updatedAt: now,
+        }).where(eq(invoices.id, input.invoiceId));
+
+        // Update linked reservation if exists
+        if (invoice.reservationId) {
+          await db.update(reservations).set({
+            status: "paid",
+            paymentMethod: input.paymentMethod,
+            paymentValidatedBy: ctx.user.id,
+            paymentValidatedAt: Date.now(),
+            transferProofUrl: input.transferProofUrl ?? null,
+            paidAt: Date.now(),
+            updatedAt: Date.now(),
+          }).where(eq(reservations.id, invoice.reservationId));
+        }
+        // Update linked quote if exists
+        if (invoice.quoteId) {
+          await db.update(quotes).set({
+            status: "aceptado",
+            paidAt: now,
+            updatedAt: now,
+          }).where(eq(quotes.id, invoice.quoteId));
+        }
+
+        // Send confirmation email to client
+        try {
+          const [linkedQuote] = invoice.quoteId
+            ? await db.select().from(quotes).where(eq(quotes.id, invoice.quoteId))
+            : [null];
+          const [linkedLead] = linkedQuote?.leadId
+            ? await db.select().from(leads).where(eq(leads.id, linkedQuote.leadId))
+            : [null];
+          if (invoice.clientEmail) {
+            const reservationRef = invoice.invoiceNumber.replace("FAC", "RES");
+            await sendConfirmationEmail({
+              clientName: invoice.clientName ?? "Cliente",
+              clientEmail: invoice.clientEmail,
+              reservationRef,
+              quoteTitle: invoice.invoiceNumber,
+              total: Number(invoice.total).toFixed(2),
+              items: (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [],
+              invoiceUrl: invoice.pdfUrl ?? undefined,
+            });
+          }
+        } catch (emailErr) {
+          console.error("[confirmManualPayment] Email error:", emailErr);
+        }
+
+        await logActivity("invoice", invoice.id, "payment_confirmed_manual", ctx.user.id, ctx.user.name, {
+          paymentMethod: input.paymentMethod,
+          transferProofUrl: input.transferProofUrl,
+          notes: input.notes,
+        });
+
+        return { success: true };
+      }),
+
+    // ─── Generar factura de abono (rectificativa) ──────────────────────────────
+    createCreditNote: staff
+      .input(z.object({
+        invoiceId: z.number(),
+        reason: z.string().min(1),
+        partialAmount: z.number().optional(), // if undefined → full credit note
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [original] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
+        if (!original) throw new TRPCError({ code: "NOT_FOUND" });
+        if (original.invoiceType === "abono") throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede abonar una factura de abono" });
+        if (original.status === "anulada") throw new TRPCError({ code: "BAD_REQUEST", message: "La factura ya está anulada" });
+
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const seq = await db.select({ cnt: count() }).from(invoices)
+          .where(and(like(invoices.invoiceNumber, `ABO-${year}-${month}-%`), eq(invoices.invoiceType, "abono")));
+        const seqNum = String((seq[0]?.cnt ?? 0) + 1).padStart(4, "0");
+        const creditNoteNumber = `ABO-${year}-${month}-${seqNum}`;
+
+        const creditTotal = input.partialAmount ?? Number(original.total);
+        const creditSubtotal = creditTotal / 1.21;
+        const creditTax = creditTotal - creditSubtotal;
+
+        // Negate items for credit note
+        const creditItems = (original.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]).map(item => ({
+          ...item,
+          unitPrice: -Math.abs(item.unitPrice),
+          total: -Math.abs(item.total),
+        }));
+
+        const [result] = await db.insert(invoices).values({
+          invoiceNumber: creditNoteNumber,
+          invoiceType: "abono",
+          quoteId: original.quoteId,
+          reservationId: original.reservationId,
+          clientName: original.clientName,
+          clientEmail: original.clientEmail,
+          clientPhone: original.clientPhone,
+          clientNif: original.clientNif,
+          clientAddress: original.clientAddress,
+          itemsJson: creditItems,
+          subtotal: String(-creditSubtotal),
+          taxRate: original.taxRate,
+          taxAmount: String(-creditTax),
+          total: String(-creditTotal),
+          currency: original.currency,
+          status: "generada",
+          creditNoteForId: original.id,
+          creditNoteReason: input.reason,
+          isAutomatic: false,
+          issuedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        const creditNoteId = (result as any).insertId;
+
+        // Mark original as abonada
+        await db.update(invoices).set({
+          status: "abonada",
+          updatedAt: now,
+        }).where(eq(invoices.id, input.invoiceId));
+
+        await logActivity("invoice", input.invoiceId, "credit_note_created", ctx.user.id, ctx.user.name, { creditNoteId, creditNoteNumber, reason: input.reason });
+
+        return { success: true, creditNoteId, creditNoteNumber };
+      }),
+
+    // ─── Reenviar factura por email ────────────────────────────────────────────
+    resend: staff
+      .input(z.object({
+        invoiceId: z.number(),
+        toEmail: z.string().email().optional(), // override recipient
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const COPY_EMAIL = "reservas@nayadeexperiences.es";
+        const recipient = input.toEmail ?? invoice.clientEmail;
+        const now = new Date();
+
+        try {
+          const { createTransporter } = await import("../mailer");
+          const transporter = createTransporter();
+          if (!transporter) throw new Error("SMTP not configured");
+
+          const subject = invoice.invoiceType === "abono"
+            ? `Factura de abono ${invoice.invoiceNumber} — Náyade Experiences`
+            : `Tu factura ${invoice.invoiceNumber} — Náyade Experiences`;
+
+          const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+          const htmlBody = `
+            <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+              <h2 style="color:#f97316;">Náyade Experiences</h2>
+              <p>Estimado/a <strong>${invoice.clientName}</strong>,</p>
+              <p>Adjuntamos ${invoice.invoiceType === "abono" ? "la factura de abono" : "tu factura"} <strong>${invoice.invoiceNumber}</strong>.</p>
+              <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                <tr style="background:#f3f4f6;"><th style="padding:8px;text-align:left;">Descripción</th><th style="padding:8px;text-align:right;">Cant.</th><th style="padding:8px;text-align:right;">Precio</th><th style="padding:8px;text-align:right;">Total</th></tr>
+                ${items.map(i => `<tr><td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.description}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${i.quantity}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.unitPrice).toFixed(2)} €</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.total).toFixed(2)} €</td></tr>`).join("")}
+              </table>
+              <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)} € | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)} € | <strong>TOTAL: ${Number(invoice.total).toFixed(2)} €</strong></p>
+              ${invoice.pdfUrl ? `<p><a href="${invoice.pdfUrl}" style="color:#f97316;">Descargar PDF de la factura</a></p>` : ""}
+              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · reservas@nayadeexperiences.es · +34 930 34 77 91</p>
+            </div>`;
+
+          await transporter.sendMail({
+            from: process.env.SMTP_FROM ?? `Náyade Experiences <${COPY_EMAIL}>`,
+            to: recipient,
+            bcc: COPY_EMAIL,
+            subject,
+            html: htmlBody,
+          });
+
+          await db.update(invoices).set({
+            status: invoice.status === "generada" ? "enviada" : invoice.status,
+            sentAt: invoice.sentAt ?? now,
+            lastSentAt: now,
+            sentCount: (invoice.sentCount ?? 0) + 1,
+            updatedAt: now,
+          }).where(eq(invoices.id, input.invoiceId));
+
+          await logActivity("invoice", invoice.id, "invoice_resent", ctx.user.id, ctx.user.name, { recipient });
+
+          return { success: true, sentTo: recipient };
+          } catch (e) {
+          console.error("[Invoice Resend] Error:", e);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error al enviar el email" });
+        }
+      }),
+
+
+    // ─── Anular factura ────────────────────────────────────────────────────────
+    void: staff
+      .input(z.object({ invoiceId: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+        if (["anulada", "abonada"].includes(invoice.status)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `La factura ya está ${invoice.status}` });
+        }
+        const now = new Date();
+        await db.update(invoices).set({ status: "anulada", updatedAt: now }).where(eq(invoices.id, input.invoiceId));
+        await logActivity("invoice", invoice.id, "invoice_voided", ctx.user.id, ctx.user.name, { reason: input.reason });
+        return { success: true };
       }),
   }),
 

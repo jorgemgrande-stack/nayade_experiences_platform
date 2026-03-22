@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE invoices MODIFY COLUMN status ENUM('generada','enviada','cobrada','anulada','abonada') NOT NULL DEFAULT 'generada';\n\nALTER TABLE reservations\n  ADD COLUMN IF NOT EXISTS invoiceId INT DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS invoiceNumber VARCHAR(32) DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS paymentMethod ENUM('redsys','transferencia','efectivo','otro') DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS paymentValidatedBy INT DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS paymentValidatedAt BIGINT DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS transferProofUrl TEXT DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS channel ENUM('web','crm','telefono','email','otro') DEFAULT 'web';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nALTER TABLE invoices MODIFY COLUMN status ENUM('generada','enviada','cobrada','anulada','abonada') NOT NULL DEFAULT 'generada';\n\nALTER TABLE reservations\n  ADD COLUMN IF NOT EXISTS invoiceId INT DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS invoiceNumber VARCHAR(32) DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS paymentMethod ENUM('redsys','transferencia','efectivo','otro') DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS paymentValidatedBy INT DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS paymentValidatedAt BIGINT DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS transferProofUrl TEXT DEFAULT NULL,\n  ADD COLUMN IF NOT EXISTS channel ENUM('web','crm','telefono','email','otro') DEFAULT 'web';\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 3902
+}

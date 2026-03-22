@@ -306,7 +306,22 @@ export const invoices = mysqlTable("invoices", {
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
   pdfUrl: text("pdfUrl"),
   pdfKey: text("pdfKey"),
-  status: mysqlEnum("status", ["generada", "enviada", "anulada"]).default("generada").notNull(),
+  status: mysqlEnum("status", ["generada", "enviada", "cobrada", "anulada", "abonada"]).default("generada").notNull(),
+  invoiceType: mysqlEnum("invoiceType", ["factura", "abono"]).default("factura").notNull(),
+  // Payment traceability
+  paymentMethod: mysqlEnum("paymentMethod", ["redsys", "transferencia", "efectivo", "otro"]).default("redsys"),
+  paymentValidatedBy: int("paymentValidatedBy"),   // userId who validated manual payment
+  paymentValidatedAt: timestamp("paymentValidatedAt"),
+  transferProofUrl: text("transferProofUrl"),       // S3 URL of bank transfer proof
+  transferProofKey: text("transferProofKey"),
+  isAutomatic: boolean("isAutomatic").default(true).notNull(), // true = Redsys, false = manual
+  // Credit note (abono) fields
+  creditNoteForId: int("creditNoteForId"),          // FK to original invoice if this is a credit note
+  creditNoteReason: text("creditNoteReason"),
+  // Email tracking
+  sentAt: timestamp("sentAt"),
+  lastSentAt: timestamp("lastSentAt"),
+  sentCount: int("sentCount").default(0).notNull(),
   issuedAt: timestamp("issuedAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -419,6 +434,16 @@ export const reservations = mysqlTable("reservations", {
   notes: text("notes"),
   quoteId: int("quote_id"),
   quoteSource: varchar("quoteSource", { length: 32 }), // 'presupuesto' | 'directo'
+  // Invoice link
+  invoiceId: int("invoiceId"),
+  invoiceNumber: varchar("invoiceNumber", { length: 32 }),
+  // Payment details
+  paymentMethod: mysqlEnum("paymentMethod", ["redsys", "transferencia", "efectivo", "otro"]),
+  paymentValidatedBy: int("paymentValidatedBy"),
+  paymentValidatedAt: bigint("paymentValidatedAt", { mode: "number" }),
+  transferProofUrl: text("transferProofUrl"),
+  // Channel & metadata
+  channel: mysqlEnum("channel", ["web", "crm", "telefono", "email", "otro"]).default("web"),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   paidAt: bigint("paid_at", { mode: "number" }),
