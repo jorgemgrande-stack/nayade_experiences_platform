@@ -111,6 +111,11 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "quotes.getByPaymentToken",
   "quotes.createPaymentLink",
 
+  // ── Presupuestos por token (página pública /presupuesto/:token) ───────────
+  "crm.quotes.getByToken",
+  "crm.quotes.rejectByToken",
+  "crm.quotes.payWithToken",
+
   // ── Galería pública ──────────────────────────────────────────────────────
   "gallery.getItems",
   "gallery.getCategories",

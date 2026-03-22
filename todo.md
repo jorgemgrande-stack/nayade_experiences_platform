@@ -1051,3 +1051,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: componente `QuoteTimeline` con línea vertical, iconos coloreados por tipo y timestamp
 - [x] Frontend: botón colapsable "Ver historial de actividad" en el QuoteDetailModal
 - [x] 126 tests pasando · 0 errores TypeScript
+
+## Fix Bug "Enlace no válido" en /presupuesto/:token — v9.31 [COMPLETADO]
+- [x] Diagnóstico: el middleware `authGuard.ts` bloqueaba las rutas `crm.quotes.getByToken/rejectByToken/payWithToken` con 401 porque no estaban en la lista blanca de rutas públicas
+- [x] Fix: añadir las 3 rutas públicas de presupuesto por token a `PUBLIC_TRPC_ROUTES` en `server/authGuard.ts`
+- [x] Verificado: endpoint responde correctamente con datos del presupuesto de Cristina Battistelli
+- [x] 126 tests pasando · 0 errores TypeScript
