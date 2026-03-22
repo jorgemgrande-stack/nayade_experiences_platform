@@ -15,6 +15,7 @@ import {
   crmActivityLog,
   clients,
   experiences,
+  experienceVariants,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
@@ -570,6 +571,125 @@ export const crmRouter = router({
         await logActivity("lead", input.leadId, "converted_to_quote", ctx.user.id, ctx.user.name, { quoteId, quoteNumber });
         await logActivity("quote", quoteId, "quote_created", ctx.user.id, ctx.user.name, { fromLead: input.leadId });
         return { success: true, quoteId, quoteNumber };
+      }),
+
+    // ─── Generar presupuesto automáticamente desde activitiesJson del lead ─────────────────────────
+    generateFromLead: staff
+      .input(z.object({
+        leadId: z.number(),
+        taxRate: z.number().default(21),
+        conditions: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        // 1. Cargar el lead
+        const [lead] = await db.select().from(leads).where(eq(leads.id, input.leadId));
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
+
+        const activities = (lead.activitiesJson as {
+          experienceId: number;
+          experienceTitle: string;
+          family: string;
+          participants: number;
+          details: Record<string, string | number>;
+        }[] | null) ?? [];
+
+        if (activities.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Este lead no tiene actividades seleccionadas. Añade actividades desde el formulario antes de generar el presupuesto.",
+          });
+        }
+
+        // 2. Resolver precios para cada actividad
+        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number }[] = [];
+
+        for (const act of activities) {
+          // Cargar experiencia base
+          const [exp] = await db.select().from(experiences).where(eq(experiences.id, act.experienceId));
+          const basePrice = exp ? parseFloat(String(exp.basePrice)) : 0;
+
+          // Cargar variantes de esta experiencia
+          const variants = await db
+            .select()
+            .from(experienceVariants)
+            .where(eq(experienceVariants.experienceId, act.experienceId));
+
+          // Determinar variante seleccionada (si existe)
+          const selectedVariantName = act.details?.variante as string | undefined;
+          const matchedVariant = selectedVariantName
+            ? variants.find((v) => v.name === selectedVariantName)
+            : variants.length === 1 ? variants[0] : null;
+
+          let unitPrice = basePrice;
+          let description = act.experienceTitle;
+
+          if (matchedVariant) {
+            const modifier = parseFloat(String(matchedVariant.priceModifier ?? "0"));
+            if (matchedVariant.priceType === "per_person") {
+              unitPrice = modifier;
+              description = `${act.experienceTitle} — ${matchedVariant.name} (${act.participants} pax)`;
+            } else if (matchedVariant.priceType === "fixed") {
+              unitPrice = modifier;
+              description = `${act.experienceTitle} — ${matchedVariant.name}`;
+            } else if (matchedVariant.priceType === "percentage") {
+              unitPrice = basePrice * (1 + modifier / 100);
+              description = `${act.experienceTitle} — ${matchedVariant.name}`;
+            }
+          } else if (variants.length > 0) {
+            // Hay variantes pero ninguna seleccionada: usar precio base
+            description = `${act.experienceTitle} (precio base)`;
+          }
+
+          // Añadir detalles contextuales a la descripción
+          const detailParts: string[] = [];
+          if (act.details?.duration) detailParts.push(String(act.details.duration));
+          if (act.details?.jumps) detailParts.push(`${act.details.jumps} saltos`);
+          if (act.details?.notes) detailParts.push(String(act.details.notes));
+          if (detailParts.length > 0) description += ` • ${detailParts.join(" · ")}`;
+
+          const quantity = act.participants;
+          const total = parseFloat((unitPrice * quantity).toFixed(2));
+
+          quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total });
+        }
+
+        // 3. Calcular totales
+        const subtotal = parseFloat(quoteItems.reduce((s, i) => s + i.total, 0).toFixed(2));
+        const taxAmount = parseFloat((subtotal * (input.taxRate / 100)).toFixed(2));
+        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+
+        // 4. Crear el presupuesto en borrador
+        const quoteNumber = await generateQuoteNumber();
+        const validUntil = new Date();
+        validUntil.setDate(validUntil.getDate() + 15); // válido 15 días
+
+        const [result] = await db.insert(quotes).values({
+          quoteNumber,
+          leadId: input.leadId,
+          agentId: ctx.user.id,
+          title: `Propuesta para ${lead.name}`,
+          description: `Generado automáticamente desde las actividades seleccionadas en el formulario.`,
+          items: quoteItems,
+          subtotal: String(subtotal),
+          discount: "0",
+          tax: String(taxAmount),
+          total: String(total),
+          validUntil,
+          conditions: input.conditions ?? "Presupuesto válido por 15 días. Sujeto a disponibilidad.",
+          status: "borrador",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        const quoteId = (result as { insertId: number }).insertId;
+
+        // 5. Actualizar estado del lead
+        await db.update(leads).set({ status: "en_proceso", updatedAt: new Date() }).where(eq(leads.id, input.leadId));
+
+        await logActivity("lead", input.leadId, "auto_quote_generated", ctx.user.id, ctx.user.name, { quoteId, quoteNumber, itemCount: quoteItems.length });
+        await logActivity("quote", quoteId, "quote_created", ctx.user.id, ctx.user.name, { fromLead: input.leadId, auto: true });
+
+        return { success: true, quoteId, quoteNumber, itemCount: quoteItems.length, subtotal, total };
       }),
 
     create: staff

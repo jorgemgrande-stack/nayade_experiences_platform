@@ -49,6 +49,7 @@ import {
   Banknote,
   Pencil,
   FileDown,
+  Sparkles,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -276,6 +277,21 @@ function LeadDetailModal({
     },
   });
 
+  const generateQuote = trpc.crm.leads.generateFromLead.useMutation({
+    onSuccess: (result) => {
+      toast.success(
+        `✨ Presupuesto ${result.quoteNumber} generado con ${result.itemCount} línea${result.itemCount !== 1 ? "s" : ""} — Total: ${result.total.toFixed(2)}€`,
+        { duration: 5000 }
+      );
+      utils.crm.leads.get.invalidate({ id: leadId });
+      utils.crm.quotes.list.invalidate();
+      onClose();
+      // Navegar al presupuesto generado
+      window.location.href = `/admin/crm?tab=quotes&quoteId=${result.quoteId}`;
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   if (isLoading) {
     return (
       <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white">
@@ -474,6 +490,22 @@ function LeadDetailModal({
         >
           <XCircle className="w-4 h-4 mr-1" /> Marcar perdido
         </Button>
+        {/* Botón Generar presupuesto automático — solo visible si hay actividades */}
+        {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/60"
+            onClick={() => generateQuote.mutate({ leadId })}
+            disabled={generateQuote.isPending}
+            title="Genera automáticamente las líneas del presupuesto con los precios de las variantes seleccionadas"
+          >
+            {generateQuote.isPending
+              ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+              : <Sparkles className="w-4 h-4 mr-1" />}
+            Generar presupuesto
+          </Button>
+        )}
         <Button
           size="sm"
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"

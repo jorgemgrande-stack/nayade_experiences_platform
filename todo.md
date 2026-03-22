@@ -1160,3 +1160,17 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Colores de chip por familia: amber (alquiler/saltos/remolcado), sky (cableski/barco), violet (spa)
 - [x] Participantes siempre fijo e independiente de variantes
 - [x] 145 tests pasando · 0 errores TypeScript
+
+## Botón "Generar presupuesto" desde lead — v9.42 [COMPLETADO]
+
+- [x] Auditada estructura: quotes.items es JSON con {description, quantity, unitPrice, total}[]
+- [x] Auditada lógica de precios: per_person=modifier×pax, fixed=modifier, percentage=base×(1+mod/100)
+- [x] Creado procedimiento crm.leads.generateFromLead en server/routers/crm.ts
+- [x] Resuelve precios: carga experiencia base + variantes, aplica la variante seleccionada (o única)
+- [x] Añade detalles contextuales a la descripción (duración, saltos, notas)
+- [x] Calcula subtotal + IVA 21% + total, crea presupuesto en estado borrador con 15 días de validez
+- [x] Botón verde esmeralda con icono Sparkles en DialogFooter del LeadDetailModal
+- [x] Solo visible si el lead tiene actividades (activitiesJson.length > 0)
+- [x] Toast de éxito con número de presupuesto, líneas y total
+- [x] Navega automáticamente al presupuesto generado en /admin/crm?tab=quotes
+- [x] 145 tests pasando · 0 errores TypeScript
