@@ -92,6 +92,13 @@
       "when": 1774132103117,
       "tag": "0012_thin_blur",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1774139994336,
+      "tag": "0013_wealthy_tarantula",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,33 @@
+{
+  "query": "\nSELECT * FROM clients WHERE email = 'jgrande@skicenter.es';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT * FROM clients WHERE email = 'jgrande@skicenter.es';\n",
+  "rows": [
+    {
+      "id": "3",
+      "name": "Cristina Sainz",
+      "email": "jgrande@skicenter.es",
+      "phone": "+3467656787",
+      "company": "",
+      "nif": "",
+      "address": "NULL",
+      "notes": "NULL",
+      "createdAt": "2026-03-22 00:09:02",
+      "updatedAt": "2026-03-22 00:09:02",
+      "leadId": "420005",
+      "source": "lead",
+      "city": "",
+      "postalCode": "",
+      "country": "ES",
+      "birthDate": "NULL",
+      "tags": "[]",
+      "isConverted": "0",
+      "totalBookings": "0",
+      "totalSpent": "0.00",
+      "lastBookingAt": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tphone\tcompany\tnif\taddress\tnotes\tcreatedAt\tupdatedAt\tleadId\tsource\tcity\tpostalCode\tcountry\tbirthDate\ttags\tisConverted\ttotalBookings\ttotalSpent\tlastBookingAt\n3\tCristina Sainz\tjgrande@skicenter.es\t+3467656787\t\t\tNULL\tNULL\t2026-03-22 00:09:02\t2026-03-22 00:09:02\t420005\tlead\t\t\tES\tNULL\t[]\t0\t0\t0.00\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

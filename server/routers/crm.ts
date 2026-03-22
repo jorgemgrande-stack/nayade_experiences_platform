@@ -1252,18 +1252,19 @@ export const crmRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        // 1. Buscar si ya existe un lead con ese email
+        // 1. Buscar si ya existe un lead con ese email, o crear uno nuevo
         let leadId: number;
         const [existingLead] = await db
           .select({ id: leads.id })
           .from(leads)
           .where(eq(leads.email, input.clientEmail))
+          .orderBy(desc(leads.createdAt))
           .limit(1);
 
         if (existingLead) {
           leadId = existingLead.id;
         } else {
-          // 2. Crear lead silencioso con source="presupuesto_directo"
+          // Crear lead silencioso con source="presupuesto_directo"
           const [leadResult] = await db.insert(leads).values({
             name: input.clientName,
             email: input.clientEmail,
@@ -1278,6 +1279,31 @@ export const crmRouter = router({
           });
           leadId = (leadResult as { insertId: number }).insertId;
           await logActivity("lead", leadId, "lead_created_from_quote", ctx.user.id, ctx.user.name, { name: input.clientName });
+        }
+
+        // 2. Upsert de cliente — MISMO PATRÓN ROBUSTO que createLead en db.ts
+        try {
+          await db.insert(clients).values({
+            leadId,
+            source: "presupuesto_directo",
+            name: input.clientName,
+            email: input.clientEmail,
+            phone: input.clientPhone ?? "",
+            company: input.clientCompany ?? "",
+            tags: [],
+            isConverted: false,
+            totalBookings: 0,
+          }).onDuplicateKeyUpdate({
+            set: {
+              leadId,
+              name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${input.clientName}, ${clients.name})`,
+              phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${input.clientPhone ?? ''}, ${clients.phone})`,
+              company: sql`IF(TRIM(${clients.company}) = '' OR ${clients.company} IS NULL, ${input.clientCompany ?? ''}, ${clients.company})`,
+              updatedAt: new Date(),
+            },
+          });
+        } catch (e) {
+          console.warn("[createDirect] No se pudo crear/vincular cliente:", e);
         }
 
         // 3. Crear el presupuesto

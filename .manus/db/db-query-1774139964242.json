@@ -1,0 +1,29 @@
+{
+  "query": "SHOW INDEX FROM clients;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SHOW INDEX FROM clients;",
+  "rows": [
+    {
+      "Table": "clients",
+      "Non_unique": "0",
+      "Key_name": "PRIMARY",
+      "Seq_in_index": "1",
+      "Column_name": "id",
+      "Collation": "A",
+      "Cardinality": "0",
+      "Sub_part": "NULL",
+      "Packed": "NULL",
+      "Null": "",
+      "Index_type": "BTREE",
+      "Comment": "",
+      "Index_comment": "",
+      "Visible": "YES",
+      "Expression": "NULL",
+      "Clustered": "YES",
+      "Global": "NO"
+    }
+  ],
+  "messages": [],
+  "stdout": "Table\tNon_unique\tKey_name\tSeq_in_index\tColumn_name\tCollation\tCardinality\tSub_part\tPacked\tNull\tIndex_type\tComment\tIndex_comment\tVisible\tExpression\tClustered\tGlobal\nclients\t0\tPRIMARY\t1\tid\tA\t0\tNULL\tNULL\t\tBTREE\t\t\tYES\tNULL\tYES\tNO\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}

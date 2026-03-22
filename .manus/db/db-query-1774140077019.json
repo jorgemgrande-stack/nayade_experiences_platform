@@ -1,0 +1,17 @@
+{
+  "query": "\n-- Ver el lead sin cliente\nSELECT l.id, l.name, l.email, l.source, l.createdAt\nFROM leads l\nWHERE NOT EXISTS (\n  SELECT 1 FROM clients c WHERE c.email = l.email\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Ver el lead sin cliente\nSELECT l.id, l.name, l.email, l.source, l.createdAt\nFROM leads l\nWHERE NOT EXISTS (\n  SELECT 1 FROM clients c WHERE c.email = l.email\n);\n",
+  "rows": [
+    {
+      "id": "420004",
+      "name": "María García Test",
+      "email": "maria.garcia.test@gmail.com",
+      "source": "web",
+      "createdAt": "2026-03-21 23:59:54"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tsource\tcreatedAt\n420004\tMaría García Test\tmaria.garcia.test@gmail.com\tweb\t2026-03-21 23:59:54\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

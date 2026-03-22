@@ -1001,3 +1001,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: mismo formulario de líneas de concepto con buscador de productos
 - [x] Frontend: opción de enviar inmediatamente o guardar como borrador
 - [x] 0 errores TypeScript
+
+## Bug: Lead no crea cliente automáticamente — v9.24
+
+- [x] Investigar caso "bollo polo" en BD (lead sin cliente)
+- [x] Auditar todos los puntos de entrada de leads (web, admin, createDirect, GHL webhook)
+- [x] Identificar por qué createLead no creó el cliente
+- [x] Solución robusta: upsert de cliente en TODOS los puntos de entrada
+- [x] Backfill: crear clientes para leads existentes sin cliente
+- [x] 0 errores TypeScript · 114 tests pasando

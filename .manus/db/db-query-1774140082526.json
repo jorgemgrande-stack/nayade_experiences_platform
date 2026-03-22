@@ -1,0 +1,16 @@
+{
+  "query": "\nINSERT INTO clients (leadId, source, name, email, phone, company, tags, isConverted, totalBookings, createdAt, updatedAt)\nSELECT id, 'lead', name, email, COALESCE(phone, ''), COALESCE(company, ''), '[]', 0, 0, NOW(), NOW()\nFROM leads\nWHERE id = 420004;\n\n-- Verificar\nSELECT id, name, email, leadId FROM clients WHERE email = 'maria.garcia.test@gmail.com';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nINSERT INTO clients (leadId, source, name, email, phone, company, tags, isConverted, totalBookings, createdAt, updatedAt)\nSELECT id, 'lead', name, email, COALESCE(phone, ''), COALESCE(company, ''), '[]', 0, 0, NOW(), NOW()\nFROM leads\nWHERE id = 420004;\n\n-- Verificar\nSELECT id, name, email, leadId FROM clients WHERE email = 'maria.garcia.test@gmail.com';\n",
+  "rows": [
+    {
+      "id": "5",
+      "name": "María García Test",
+      "email": "maria.garcia.test@gmail.com",
+      "leadId": "420004"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tleadId\n5\tMaría García Test\tmaria.garcia.test@gmail.com\t420004\n",
+  "stderr": "",
+  "execution_time_ms": 72
+}

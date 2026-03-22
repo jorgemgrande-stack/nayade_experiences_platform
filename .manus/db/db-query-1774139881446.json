@@ -1,0 +1,20 @@
+{
+  "query": "\nSELECT l.id, l.name, l.email, l.phone, l.source, l.status, l.opportunityStatus, l.createdAt\nFROM leads l\nWHERE LOWER(l.name) LIKE '%bollo%' OR LOWER(l.name) LIKE '%polo%'\nORDER BY l.createdAt DESC\nLIMIT 10;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT l.id, l.name, l.email, l.phone, l.source, l.status, l.opportunityStatus, l.createdAt\nFROM leads l\nWHERE LOWER(l.name) LIKE '%bollo%' OR LOWER(l.name) LIKE '%polo%'\nORDER BY l.createdAt DESC\nLIMIT 10;\n",
+  "rows": [
+    {
+      "id": "420007",
+      "name": "Bollo polo",
+      "email": "jgrande@skicenter.es",
+      "phone": "+34693026894",
+      "source": "landing_presupuesto",
+      "status": "contactado",
+      "opportunityStatus": "enviada",
+      "createdAt": "2026-03-22 00:28:55"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tphone\tsource\tstatus\topportunityStatus\tcreatedAt\n420007\tBollo polo\tjgrande@skicenter.es\t+34693026894\tlanding_presupuesto\tcontactado\tenviada\t2026-03-22 00:28:55\n",
+  "stderr": "",
+  "execution_time_ms": 89
+}

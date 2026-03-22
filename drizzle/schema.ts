@@ -828,7 +828,7 @@ export const clients = mysqlTable("clients", {
   source: varchar("source", { length: 64 }).default("lead").notNull(), // 'lead' | 'manual' | 'reservation'
   // Datos básicos (rellenados desde el lead)
   name: varchar("name", { length: 256 }).notNull(),
-  email: varchar("email", { length: 256 }).notNull(),
+  email: varchar("email", { length: 256 }).notNull().unique(),
   phone: varchar("phone", { length: 64 }).default(""),
   company: varchar("company", { length: 256 }).default(""),
   // Datos ampliados (se completan cuando el presupuesto se convierte en reserva)
