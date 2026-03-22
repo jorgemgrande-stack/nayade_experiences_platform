@@ -975,3 +975,19 @@
 - [x] Item "Clientes" en el submenu CRM del sidebar
 
 - [x] 0 errores TypeScript
+
+## Estandarización Plantillas Email — v9.22
+
+### Objetivo
+Unificar el estilo visual de todos los emails enviados por el sistema CRM al mismo estándar que el email de solicitud recibida: fondo blanco, logo Náyade centrado con borde naranja, gradiente azul marino, wave SVG, footer azul.
+
+### Backend — emailTemplates.ts
+- [x] Añadir `buildQuoteHtml()` (Plantilla 8): email de presupuesto enviado al cliente con estilo blanco/naranja
+- [x] Añadir `buildConfirmationHtml()` (Plantilla 9): email de confirmación de reserva con pago confirmado
+- [x] Añadir `buildQuotePdfHtml()` (Plantilla 10): HTML para generación de PDF de presupuesto con mismo estilo
+
+### Backend — crm.ts
+- [x] Reemplazar `sendQuoteEmail()`: eliminado HTML inline oscuro (#0a0f1e), ahora usa `buildQuoteHtml()` de emailTemplates.ts
+- [x] Reemplazar `sendConfirmationEmail()`: eliminado HTML inline oscuro, ahora usa `buildConfirmationHtml()` de emailTemplates.ts
+- [x] Reemplazar HTML inline del `generatePdf`: ahora usa `buildQuotePdfHtml()` de emailTemplates.ts
+- [x] 0 errores TypeScript

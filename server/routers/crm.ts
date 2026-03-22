@@ -19,6 +19,11 @@ import {
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import nodemailer from "nodemailer";
 import { storagePut } from "../storage";
+import {
+  buildQuoteHtml,
+  buildConfirmationHtml,
+  buildQuotePdfHtml,
+} from "../emailTemplates";
 
 // DB helper
 function getDb() {
@@ -257,87 +262,20 @@ async function sendQuoteEmail(quote: {
   conditions?: string | null;
   paymentLinkUrl?: string | null;
 }) {
-  const itemRows = quote.items
-    .map(
-      (item) =>
-        `<tr>
-          <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:14px;">${item.description}</td>
-          <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:center;font-size:14px;">${item.quantity}</td>
-          <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:14px;">${Number(item.unitPrice).toFixed(2)} €</td>
-          <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:14px;font-weight:600;color:#f97316;">${Number(item.total).toFixed(2)} €</td>
-        </tr>`
-    )
-    .join("");
-
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
-<body style="margin:0;padding:0;background:#0a0f1e;font-family:'Helvetica Neue',Arial,sans-serif;">
-  <div style="max-width:620px;margin:0 auto;background:#0d1526;">
-    <!-- Wave header -->
-    <div style="background:linear-gradient(135deg,#1a3a6b 0%,#0d1f3c 60%,#1a3a6b 100%);padding:40px 40px 0;position:relative;">
-      <div style="margin-bottom:24px;">
-        <div style="display:inline-block;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.3);border-radius:20px;padding:4px 14px;font-size:11px;color:#f97316;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;">Tu Propuesta Personalizada</div>
-        <h1 style="color:#ffffff;font-size:28px;font-weight:800;margin:0 0 8px;letter-spacing:-0.5px;">Hola, ${quote.clientName} 👋</h1>
-        <p style="color:rgba(255,255,255,0.7);font-size:15px;margin:0;">Hemos preparado tu propuesta <strong style="color:#f97316;">${quote.quoteNumber}</strong> con todo el detalle.</p>
-      </div>
-      <svg viewBox="0 0 620 40" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:-1px;"><path d="M0,20 C155,40 465,0 620,20 L620,40 L0,40 Z" fill="#0d1526"/></svg>
-    </div>
-
-    <!-- Body -->
-    <div style="padding:32px 40px;">
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:24px;">
-        <h2 style="color:#ffffff;font-size:18px;font-weight:700;margin:0 0 16px;">${quote.title}</h2>
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr style="background:rgba(249,115,22,0.1);">
-              <th style="padding:10px 16px;text-align:left;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Descripción</th>
-              <th style="padding:10px 16px;text-align:center;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Cant.</th>
-              <th style="padding:10px 16px;text-align:right;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Precio</th>
-              <th style="padding:10px 16px;text-align:right;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Total</th>
-            </tr>
-          </thead>
-          <tbody style="color:rgba(255,255,255,0.85);">${itemRows}</tbody>
-        </table>
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
-          ${Number(quote.discount) > 0 ? `<div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px;"><span>Descuento</span><span>-${Number(quote.discount).toFixed(2)} €</span></div>` : ""}
-          ${Number(quote.tax) > 0 ? `<div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px;"><span>IVA</span><span>${Number(quote.tax).toFixed(2)} €</span></div>` : ""}
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
-            <span style="color:#ffffff;font-size:16px;font-weight:700;">TOTAL</span>
-            <span style="color:#f97316;font-size:24px;font-weight:800;">${Number(quote.total).toFixed(2)} €</span>
-          </div>
-        </div>
-      </div>
-
-      ${quote.validUntil ? `<p style="color:rgba(255,255,255,0.5);font-size:13px;margin-bottom:24px;">⏳ Esta propuesta es válida hasta el <strong style="color:rgba(255,255,255,0.8);">${new Date(quote.validUntil).toLocaleDateString("es-ES")}</strong></p>` : ""}
-
-      ${quote.notes ? `<div style="background:rgba(255,255,255,0.04);border-left:3px solid #f97316;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:24px;"><p style="color:rgba(255,255,255,0.8);font-size:14px;margin:0;">${quote.notes}</p></div>` : ""}
-
-      ${
-        quote.paymentLinkUrl
-          ? `<div style="text-align:center;margin:32px 0;">
-          <a href="${quote.paymentLinkUrl}" style="display:inline-block;background:linear-gradient(135deg,#f97316,#ea580c);color:#ffffff;text-decoration:none;padding:16px 40px;border-radius:50px;font-size:16px;font-weight:700;letter-spacing:0.5px;box-shadow:0 8px 24px rgba(249,115,22,0.4);">
-            💳 Confirmar y Pagar Ahora
-          </a>
-          <p style="color:rgba(255,255,255,0.4);font-size:12px;margin-top:12px;">Pago 100% seguro · Redsys · SSL</p>
-        </div>`
-          : `<div style="text-align:center;margin:32px 0;padding:20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:12px;">
-          <p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;">Para confirmar tu reserva, contacta con nosotros:<br/><strong style="color:#f97316;">reservas@nayadeexperiences.es · +34 930 34 77 91</strong></p>
-        </div>`
-      }
-
-      ${quote.conditions ? `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;"><h4 style="color:rgba(255,255,255,0.6);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Condiciones</h4><p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;margin:0;">${quote.conditions}</p></div>` : ""}
-    </div>
-
-    <!-- Footer -->
-    <div style="background:#060c1a;padding:24px 40px;text-align:center;">
-      <svg viewBox="0 0 620 30" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:20px;margin-top:-1px;"><path d="M0,0 C155,30 465,0 620,15 L620,0 Z" fill="#0d1526"/></svg>
-      <p style="color:rgba(255,255,255,0.3);font-size:12px;margin:0 0 8px;">Náyade Experiences · Los Ángeles de San Rafael, Segovia</p>
-      <p style="color:rgba(255,255,255,0.2);font-size:11px;margin:0;">reservas@nayadeexperiences.es · +34 930 34 77 91</p>
-    </div>
-  </div>
-</body>
-</html>`;
+  const html = buildQuoteHtml({
+    quoteNumber: quote.quoteNumber,
+    title: quote.title,
+    clientName: quote.clientName,
+    items: quote.items,
+    subtotal: quote.subtotal,
+    discount: quote.discount,
+    tax: quote.tax,
+    total: quote.total,
+    validUntil: quote.validUntil ?? undefined,
+    notes: quote.notes ?? undefined,
+    conditions: quote.conditions ?? undefined,
+    paymentLinkUrl: quote.paymentLinkUrl ?? undefined,
+  });
 
   await sendEmail({
     to: quote.clientEmail,
@@ -355,59 +293,14 @@ async function sendConfirmationEmail(data: {
   total: string;
   invoiceUrl?: string | null;
 }) {
-  const itemRows = data.items
-    .map(
-      (item) =>
-        `<tr>
-          <td style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:14px;color:rgba(255,255,255,0.85);">${item.description}</td>
-          <td style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:14px;color:#f97316;font-weight:600;">${Number(item.total).toFixed(2)} €</td>
-        </tr>`
-    )
-    .join("");
-
-  const html = `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8"/></head>
-<body style="margin:0;padding:0;background:#0a0f1e;font-family:'Helvetica Neue',Arial,sans-serif;">
-  <div style="max-width:620px;margin:0 auto;background:#0d1526;">
-    <div style="background:linear-gradient(135deg,#1a3a6b 0%,#0d1f3c 60%,#1a3a6b 100%);padding:40px 40px 0;">
-      <div style="text-align:center;margin-bottom:24px;">
-        <div style="display:inline-block;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);border-radius:20px;padding:6px 18px;font-size:12px;color:#22c55e;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px;">✓ Reserva Confirmada</div>
-        <h1 style="color:#ffffff;font-size:26px;font-weight:800;margin:0 0 8px;">¡Tu aventura está confirmada!</h1>
-        <p style="color:rgba(255,255,255,0.7);font-size:15px;margin:0;">Hola <strong style="color:#f97316;">${data.clientName}</strong>, tu reserva <strong>${data.reservationRef}</strong> ha sido procesada con éxito.</p>
-      </div>
-      <svg viewBox="0 0 620 40" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:-1px;"><path d="M0,20 C155,40 465,0 620,20 L620,40 L0,40 Z" fill="#0d1526"/></svg>
-    </div>
-    <div style="padding:32px 40px;">
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:24px;">
-        <h3 style="color:#ffffff;font-size:16px;font-weight:700;margin:0 0 16px;">${data.quoteTitle}</h3>
-        <table style="width:100%;border-collapse:collapse;">${itemRows}</table>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
-          <span style="color:#ffffff;font-size:16px;font-weight:700;">Total pagado</span>
-          <span style="color:#22c55e;font-size:22px;font-weight:800;">${Number(data.total).toFixed(2)} €</span>
-        </div>
-      </div>
-      ${
-        data.invoiceUrl
-          ? `<div style="text-align:center;margin:24px 0;">
-          <a href="${data.invoiceUrl}" style="display:inline-block;background:rgba(255,255,255,0.08);color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:50px;font-size:14px;font-weight:600;border:1px solid rgba(255,255,255,0.15);">
-            📄 Descargar Factura
-          </a>
-        </div>`
-          : ""
-      }
-      <div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:12px;padding:20px;text-align:center;">
-        <p style="color:rgba(255,255,255,0.8);font-size:14px;margin:0 0 8px;">¿Tienes alguna pregunta? Estamos aquí para ayudarte.</p>
-        <p style="color:#f97316;font-size:14px;font-weight:600;margin:0;">reservas@nayadeexperiences.es · +34 930 34 77 91</p>
-      </div>
-    </div>
-    <div style="background:#060c1a;padding:24px 40px;text-align:center;">
-      <svg viewBox="0 0 620 30" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:20px;margin-top:-1px;"><path d="M0,0 C155,30 465,0 620,15 L620,0 Z" fill="#0d1526"/></svg>
-      <p style="color:rgba(255,255,255,0.3);font-size:12px;margin:0;">Náyade Experiences · reservas@nayadeexperiences.es · +34 930 34 77 91</p>
-    </div>
-  </div>
-</body>
-</html>`;
+  const html = buildConfirmationHtml({
+    clientName: data.clientName,
+    reservationRef: data.reservationRef,
+    quoteTitle: data.quoteTitle,
+    items: data.items,
+    total: data.total,
+    invoiceUrl: data.invoiceUrl ?? undefined,
+  });
 
   await sendEmail({
     to: data.clientEmail,
@@ -415,6 +308,7 @@ async function sendConfirmationEmail(data: {
     html,
   });
 }
+
 
 async function sendInternalNotification(data: {
   clientName: string;
@@ -1261,96 +1155,24 @@ export const crmRouter = router({
         const items: { description: string; quantity: number; unitPrice: number; total: number }[] =
           Array.isArray(quote.items) ? quote.items as { description: string; quantity: number; unitPrice: number; total: number }[] : JSON.parse((quote.items as unknown as string) ?? "[]");
 
-        const itemRows = items
-          .map(
-            (item) =>
-              `<tr>
-                <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);font-size:14px;color:rgba(255,255,255,0.85);">${item.description}</td>
-                <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:center;font-size:14px;color:rgba(255,255,255,0.85);">${item.quantity}</td>
-                <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:14px;color:rgba(255,255,255,0.85);">${Number(item.unitPrice).toFixed(2)} \u20ac</td>
-                <td style="padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:right;font-size:14px;font-weight:600;color:#f97316;">${Number(item.total).toFixed(2)} \u20ac</td>
-              </tr>`
-          )
-          .join("");
-
-        const html = `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<style>
-  @page { margin: 0; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #0a0f1e; color: #fff; }
-</style>
-</head>
-<body style="margin:0;padding:0;background:#0a0f1e;font-family:'Helvetica Neue',Arial,sans-serif;">
-  <div style="max-width:700px;margin:0 auto;background:#0d1526;min-height:100vh;">
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1a3a6b 0%,#0d1f3c 60%,#1a3a6b 100%);padding:40px 40px 0;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
-        <div>
-          <div style="font-size:22px;font-weight:800;color:#fff;letter-spacing:-0.5px;">N\u00c1YADE EXPERIENCES</div>
-          <div style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:4px;">Los \u00c1ngeles de San Rafael, Segovia</div>
-          <div style="color:rgba(255,255,255,0.4);font-size:11px;">reservas@nayadeexperiences.es \u00b7 +34 930 34 77 91</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="display:inline-block;background:rgba(249,115,22,0.15);border:1px solid rgba(249,115,22,0.3);border-radius:20px;padding:4px 14px;font-size:11px;color:#f97316;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;">Presupuesto</div>
-          <div style="font-size:20px;font-weight:800;color:#f97316;">${quote.quoteNumber}</div>
-          <div style="color:rgba(255,255,255,0.5);font-size:12px;margin-top:4px;">Fecha: ${new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
-          ${quote.validUntil ? `<div style="color:rgba(255,255,255,0.4);font-size:11px;">V\u00e1lido hasta: ${new Date(quote.validUntil).toLocaleDateString("es-ES")}</div>` : ""}
-        </div>
-      </div>
-      <!-- Client info -->
-      <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:16px 20px;margin-bottom:0;">
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:rgba(255,255,255,0.4);margin-bottom:8px;">Cliente</div>
-        <div style="font-size:16px;font-weight:700;color:#fff;">${quote.clientName ?? ""}</div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.6);margin-top:2px;">${quote.clientEmail ?? ""}${quote.clientPhone ? " \u00b7 " + quote.clientPhone : ""}${quote.clientCompany ? " \u00b7 " + quote.clientCompany : ""}</div>
-      </div>
-      <svg viewBox="0 0 700 40" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-top:16px;margin-bottom:-1px;"><path d="M0,20 C175,40 525,0 700,20 L700,40 L0,40 Z" fill="#0d1526"/></svg>
-    </div>
-
-    <!-- Body -->
-    <div style="padding:32px 40px;">
-      <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:24px;">
-        <h2 style="color:#ffffff;font-size:18px;font-weight:700;margin:0 0 16px;">${quote.title}</h2>
-        <table style="width:100%;border-collapse:collapse;">
-          <thead>
-            <tr style="background:rgba(249,115,22,0.1);">
-              <th style="padding:10px 16px;text-align:left;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Descripci\u00f3n</th>
-              <th style="padding:10px 16px;text-align:center;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Cant.</th>
-              <th style="padding:10px 16px;text-align:right;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Precio</th>
-              <th style="padding:10px 16px;text-align:right;font-size:12px;color:#f97316;text-transform:uppercase;letter-spacing:1px;">Total</th>
-            </tr>
-          </thead>
-          <tbody>${itemRows}</tbody>
-        </table>
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.1);">
-          ${Number(quote.discount) > 0 ? `<div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px;"><span>Descuento</span><span>-${Number(quote.discount).toFixed(2)} \u20ac</span></div>` : ""}
-          ${Number(quote.tax) > 0 ? `<div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:6px;"><span>IVA</span><span>${Number(quote.tax).toFixed(2)} \u20ac</span></div>` : ""}
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
-            <span style="color:#ffffff;font-size:16px;font-weight:700;">TOTAL</span>
-            <span style="color:#f97316;font-size:24px;font-weight:800;">${Number(quote.total).toFixed(2)} \u20ac</span>
-          </div>
-        </div>
-      </div>
-
-      ${quote.notes ? `<div style="background:rgba(255,255,255,0.04);border-left:3px solid #f97316;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:24px;"><p style="color:rgba(255,255,255,0.8);font-size:14px;margin:0;">${quote.notes}</p></div>` : ""}
-
-      ${quote.conditions ? `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:20px;"><h4 style="color:rgba(255,255,255,0.6);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Condiciones</h4><p style="color:rgba(255,255,255,0.5);font-size:13px;line-height:1.6;margin:0;">${quote.conditions}</p></div>` : ""}
-
-      ${quote.paymentLinkUrl ? `<div style="text-align:center;margin:32px 0;padding:20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:12px;"><p style="color:rgba(255,255,255,0.7);font-size:13px;margin:0 0 8px;">Enlace de pago:</p><p style="color:#f97316;font-size:13px;font-weight:600;word-break:break-all;margin:0;">${quote.paymentLinkUrl}</p></div>` : `<div style="text-align:center;margin:32px 0;padding:20px;background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.2);border-radius:12px;"><p style="color:rgba(255,255,255,0.7);font-size:14px;margin:0;">Para confirmar tu reserva, cont\u00e1ctanos:<br/><strong style="color:#f97316;">reservas@nayadeexperiences.es \u00b7 +34 930 34 77 91</strong></p></div>`}
-    </div>
-
-    <!-- Footer -->
-    <div style="background:#060c1a;padding:24px 40px;text-align:center;">
-      <svg viewBox="0 0 700 30" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:20px;margin-top:-1px;"><path d="M0,0 C175,30 525,0 700,15 L700,0 Z" fill="#0d1526"/></svg>
-      <p style="color:rgba(255,255,255,0.3);font-size:12px;margin:0 0 4px;">N\u00e1yade Experiences \u00b7 Los \u00c1ngeles de San Rafael, Segovia</p>
-      <p style="color:rgba(255,255,255,0.2);font-size:11px;margin:0;">reservas@nayadeexperiences.es \u00b7 +34 930 34 77 91</p>
-    </div>
-  </div>
-</body>
-</html>`;
+        const html = buildQuotePdfHtml({
+          quoteNumber: quote.quoteNumber,
+          title: quote.title,
+          clientName: quote.clientName ?? "",
+          clientEmail: quote.clientEmail ?? "",
+          clientPhone: quote.clientPhone,
+          clientCompany: quote.clientCompany,
+          items,
+          subtotal: quote.subtotal,
+          discount: quote.discount,
+          tax: quote.tax,
+          total: quote.total,
+          validUntil: quote.validUntil,
+          notes: quote.notes,
+          conditions: quote.conditions,
+          paymentLinkUrl: quote.paymentLinkUrl,
+          createdAt: quote.createdAt,
+        });
 
         // Generate PDF using manus-md-to-pdf (same as invoices)
         try {
