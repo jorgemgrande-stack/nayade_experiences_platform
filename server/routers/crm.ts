@@ -1936,6 +1936,8 @@ export const crmRouter = router({
         invoiceType: z.enum(["factura", "abono"]).optional(),
         paymentMethod: z.enum(["redsys", "transferencia", "efectivo", "otro"]).optional(),
         search: z.string().optional(),
+        dateFrom: z.string().optional(), // ISO date string YYYY-MM-DD
+        dateTo: z.string().optional(),   // ISO date string YYYY-MM-DD
         limit: z.number().default(50),
         offset: z.number().default(0),
       }))
@@ -1951,15 +1953,38 @@ export const crmRouter = router({
             like(invoices.clientEmail, `%${input.search}%`),
           ) as SQL);
         }
-        const [rows, [{ total }]] = await Promise.all([
+        if (input.dateFrom) {
+          const from = new Date(input.dateFrom);
+          from.setHours(0, 0, 0, 0);
+          conditions.push(gte(invoices.createdAt, from));
+        }
+        if (input.dateTo) {
+          const to = new Date(input.dateTo);
+          to.setHours(23, 59, 59, 999);
+          conditions.push(lte(invoices.createdAt, to));
+        }
+        const whereClause = conditions.length ? and(...conditions) : undefined;
+        const [rows, [{ total }], [{ subtotalSum, taxSum, grandTotal }]] = await Promise.all([
           db.select().from(invoices)
-            .where(conditions.length ? and(...conditions) : undefined)
+            .where(whereClause)
             .orderBy(desc(invoices.createdAt))
             .limit(input.limit).offset(input.offset),
-          db.select({ total: count() }).from(invoices)
-            .where(conditions.length ? and(...conditions) : undefined),
+          db.select({ total: count() }).from(invoices).where(whereClause),
+          db.select({
+            subtotalSum: sql<string>`COALESCE(SUM(subtotal), 0)`,
+            taxSum: sql<string>`COALESCE(SUM(tax_amount), 0)`,
+            grandTotal: sql<string>`COALESCE(SUM(total), 0)`,
+          }).from(invoices).where(whereClause),
         ]);
-        return { items: rows, total };
+        return {
+          items: rows,
+          total,
+          summary: {
+            subtotal: Number(subtotalSum),
+            tax: Number(taxSum),
+            grandTotal: Number(grandTotal),
+          },
+        };
       }),
 
     // ─── Confirmar pago manual (transferencia / efectivo) ──────────────────────

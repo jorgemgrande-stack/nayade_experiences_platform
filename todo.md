@@ -1218,3 +1218,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Reservas: botón descargar PDF de factura si existe
 - [x] Email confirmación manual: sendConfirmationEmail() también se llama desde confirmManualPayment
 - [x] 145 tests pasando · 0 errores TypeScript
+
+## Filtro por rango de fechas en Facturas — v9.46 [COMPLETADO]
+
+- [x] Procedimiento listAll ampliado con dateFrom y dateTo opcionales (gte/lte sobre createdAt)
+- [x] listAll ahora devuelve summary: { subtotal, tax, grandTotal } calculado en BD con SUM()
+- [x] UI: barra de filtros de fecha con inputs tipo date (color-scheme:dark para Chromium)
+- [x] Accesos rápidos: Hoy, Esta semana, Este mes, T1, T2, T3, T4, Este año
+- [x] Botón ✕ para limpiar el rango de fechas activo
+- [x] Panel de resumen del período: nº facturas, base imponible, total IVA incluido
+- [x] 145 tests pasando · 0 errores TypeScript

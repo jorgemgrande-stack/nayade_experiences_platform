@@ -26,6 +26,7 @@ import {
   User,
   FileText,
   CalendarCheck,
+  Calendar,
   TrendingUp,
   Search,
   Plus,
@@ -1833,6 +1834,8 @@ export default function CRMDashboard() {
 
   // ─── FACTURAS ────────────────────────────────────────────────────────────────────────────────
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<"all" | "generada" | "enviada" | "cobrada" | "anulada" | "abonada">("all");
+  const [invoiceDateFrom, setInvoiceDateFrom] = useState("");
+  const [invoiceDateTo, setInvoiceDateTo] = useState("");
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<"all" | "factura" | "abono">("all");
   const [invoiceSearch, setInvoiceSearch] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
@@ -1846,9 +1849,11 @@ export default function CRMDashboard() {
     status: invoiceStatusFilter !== "all" ? invoiceStatusFilter as "generada" | "enviada" | "cobrada" | "anulada" | "abonada" : undefined,
     invoiceType: invoiceTypeFilter !== "all" ? invoiceTypeFilter as "factura" | "abono" : undefined,
     search: invoiceSearch || undefined,
+    dateFrom: invoiceDateFrom || undefined,
+    dateTo: invoiceDateTo || undefined,
     limit: 50,
     offset: 0,
-  }), [invoiceStatusFilter, invoiceTypeFilter, invoiceSearch]);
+  }), [invoiceStatusFilter, invoiceTypeFilter, invoiceSearch, invoiceDateFrom, invoiceDateTo]);
 
   const { data: invoicesData, isLoading: invoicesLoading, refetch: refetchInvoices } = trpc.crm.invoices.listAll.useQuery(
     invoiceFilter,
@@ -2623,7 +2628,7 @@ export default function CRMDashboard() {
           {tab === "invoices" && (
             <div>
               {/* Filtros de facturas */}
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 mb-3">
                 {(["all", "generada", "enviada", "cobrada", "anulada", "abonada"] as const).map(s => (
                   <button
                     key={s}
@@ -2653,6 +2658,73 @@ export default function CRMDashboard() {
                   ))}
                 </div>
               </div>
+
+              {/* Filtro por rango de fechas + accesos rápidos */}
+              <div className="bg-white/3 border border-white/8 rounded-xl p-3 mb-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2 text-white/50 text-xs">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span className="font-medium">Período:</span>
+                  </div>
+                  {/* Accesos rápidos */}
+                  {([
+                    { label: "Hoy", fn: () => { const d = new Date().toISOString().slice(0,10); setInvoiceDateFrom(d); setInvoiceDateTo(d); } },
+                    { label: "Esta semana", fn: () => { const now = new Date(); const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1); const sun = new Date(mon); sun.setDate(mon.getDate() + 6); setInvoiceDateFrom(mon.toISOString().slice(0,10)); setInvoiceDateTo(sun.toISOString().slice(0,10)); } },
+                    { label: "Este mes", fn: () => { const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth(), 1); const last = new Date(now.getFullYear(), now.getMonth() + 1, 0); setInvoiceDateFrom(first.toISOString().slice(0,10)); setInvoiceDateTo(last.toISOString().slice(0,10)); } },
+                    { label: "T1", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-03-31`); } },
+                    { label: "T2", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-04-01`); setInvoiceDateTo(`${y}-06-30`); } },
+                    { label: "T3", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-07-01`); setInvoiceDateTo(`${y}-09-30`); } },
+                    { label: "T4", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-10-01`); setInvoiceDateTo(`${y}-12-31`); } },
+                    { label: "Este año", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-12-31`); } },
+                  ]).map(({ label, fn }) => (
+                    <button key={label} onClick={fn}
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white/5 text-white/60 border border-white/10 hover:bg-sky-600/30 hover:text-sky-300 hover:border-sky-500/40 transition-all">
+                      {label}
+                    </button>
+                  ))}
+                  {/* Inputs de fecha */}
+                  <div className="flex items-center gap-2 ml-auto">
+                    <input
+                      type="date"
+                      value={invoiceDateFrom}
+                      onChange={e => setInvoiceDateFrom(e.target.value)}
+                      className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white/70 focus:outline-none focus:border-sky-500/50 [color-scheme:dark]"
+                    />
+                    <span className="text-white/30 text-xs">→</span>
+                    <input
+                      type="date"
+                      value={invoiceDateTo}
+                      onChange={e => setInvoiceDateTo(e.target.value)}
+                      className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white/70 focus:outline-none focus:border-sky-500/50 [color-scheme:dark]"
+                    />
+                    {(invoiceDateFrom || invoiceDateTo) && (
+                      <button onClick={() => { setInvoiceDateFrom(""); setInvoiceDateTo(""); }}
+                        className="text-white/30 hover:text-white/60 transition-colors text-xs px-1.5 py-1 rounded hover:bg-white/5">
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Panel de resumen del período */}
+              {invoicesData?.summary && (
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
+                    <div className="text-xs text-white/40 mb-1">Facturas en período</div>
+                    <div className="text-lg font-bold text-white">{invoicesData.total}</div>
+                  </div>
+                  <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
+                    <div className="text-xs text-white/40 mb-1">Base imponible</div>
+                    <div className="text-lg font-bold text-sky-400">{invoicesData.summary.subtotal.toFixed(2)} €</div>
+                  </div>
+                  <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 text-center">
+                    <div className="text-xs text-orange-300/60 mb-1">Total (IVA incl.)</div>
+                    <div className="text-lg font-bold text-orange-400">{invoicesData.summary.grandTotal.toFixed(2)} €</div>
+                    <div className="text-xs text-white/30">IVA: {invoicesData.summary.tax.toFixed(2)} €</div>
+                  </div>
+                </div>
+              )}
 
               <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
                 <table className="w-full">
