@@ -25,6 +25,7 @@ import { storagePut } from "../storage";
 import {
   buildQuoteHtml,
   buildConfirmationHtml,
+  buildTransferConfirmationHtml,
   buildQuotePdfHtml,
 } from "../emailTemplates";
 
@@ -340,6 +341,44 @@ async function sendInternalNotification(data: {
   await sendEmail({
     to: "reservas@nayadeexperiences.es",
     subject: `💰 Compra efectuada "${data.clientName}" — ${data.reservationRef}`,
+    html,
+  });
+}
+
+// ─── Email: Confirmación de pago por transferencia bancaria (al cliente) ────
+async function sendTransferConfirmationEmail(data: {
+  clientName: string;
+  clientEmail: string;
+  invoiceNumber: string;
+  reservationRef: string;
+  quoteTitle: string;
+  quoteNumber?: string;
+  items: { description: string; quantity: number; unitPrice: number; total: number }[];
+  subtotal: string;
+  taxAmount: string;
+  total: string;
+  invoiceUrl?: string | null;
+  confirmedBy?: string;
+  confirmedAt?: Date;
+}) {
+  const html = buildTransferConfirmationHtml({
+    clientName: data.clientName,
+    invoiceNumber: data.invoiceNumber,
+    reservationRef: data.reservationRef,
+    quoteTitle: data.quoteTitle,
+    quoteNumber: data.quoteNumber,
+    items: data.items,
+    subtotal: data.subtotal,
+    taxAmount: data.taxAmount,
+    total: data.total,
+    invoiceUrl: data.invoiceUrl ?? undefined,
+    confirmedBy: data.confirmedBy,
+    confirmedAt: data.confirmedAt,
+  });
+
+  await sendEmail({
+    to: data.clientEmail,
+    subject: `🏦 Pago por transferencia confirmado — ${data.invoiceNumber} · Náyade Experiences`,
     html,
   });
 }
@@ -1420,16 +1459,22 @@ export const crmRouter = router({
         await logActivity("lead", quote.leadId, "opportunity_won", ctx.user.id, ctx.user.name, { quoteId: quote.id, method: "transferencia" });
         await logActivity("invoice", invoiceId, "invoice_generated", ctx.user.id, ctx.user.name, { pdfUrl });
         try {
-          await sendConfirmationEmail({
+          await sendTransferConfirmationEmail({
             clientName: lead.name,
             clientEmail: lead.email,
+            invoiceNumber,
             reservationRef,
             quoteTitle: quote.title,
+            quoteNumber: quote.quoteNumber ?? undefined,
             items,
+            subtotal: String(subtotal),
+            taxAmount: String(taxAmount),
             total: String(total),
-            invoiceUrl: pdfUrl,
+            invoiceUrl: pdfUrl ?? undefined,
+            confirmedBy: ctx.user.name ?? undefined,
+            confirmedAt: now,
           });
-        } catch (e) { console.error("Confirmation email failed:", e); }
+        } catch (e) { console.error("Transfer confirmation email failed:", e); }
         try {
           await sendInternalNotification({
             clientName: lead.name,

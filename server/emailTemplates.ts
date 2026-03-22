@@ -894,3 +894,117 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
 </body>
 </html>`;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLANTILLA 11: Confirmación de pago por transferencia bancaria (cliente)
+// ═══════════════════════════════════════════════════════════════════════════════
+export interface TransferConfirmationEmailData {
+  clientName: string;
+  invoiceNumber: string;       // FAC-2026-XXXX
+  reservationRef: string;      // RES-XXXXXX
+  quoteTitle: string;
+  quoteNumber?: string;
+  items: { description: string; quantity: number; unitPrice: number; total: number }[];
+  subtotal: string;
+  taxAmount: string;
+  total: string;
+  invoiceUrl?: string | null;  // URL del PDF de factura en S3
+  confirmedBy?: string;        // Nombre del agente que validó
+  confirmedAt?: Date;
+}
+
+export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData): string {
+  const confirmedDate = d.confirmedAt
+    ? d.confirmedAt.toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })
+    : new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
+
+  const itemRowsHtml = d.items
+    .map(
+      (item) =>
+        `<tr>
+          <td style="padding:10px 0;border-bottom:1px solid #e8eef7;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${item.description}</td>
+          <td style="padding:10px 0;border-bottom:1px solid #e8eef7;text-align:center;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${item.quantity}</td>
+          <td style="padding:10px 0;border-bottom:1px solid #e8eef7;text-align:right;color:${BRAND_ORANGE};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} €</td>
+        </tr>`
+    )
+    .join("");
+
+  const invoiceButtonBlock = d.invoiceUrl
+    ? `<tr><td style="padding:8px 40px;text-align:center;">
+        <a href="${d.invoiceUrl}"
+           style="display:inline-block;background:#f0f4f8;color:${BRAND_BLUE};border:1px solid #dce4f0;font-size:14px;font-weight:600;padding:12px 28px;border-radius:50px;text-decoration:none;font-family:Arial,sans-serif;">
+          📄 Descargar Factura
+        </a>
+      </td></tr>`
+    : "";
+
+  const quoteRefRow = d.quoteNumber
+    ? `<br/><span style="color:#9ca3af;font-size:12px;">Presupuesto original: <strong>${d.quoteNumber}</strong></span>`
+    : "";
+
+  const confirmedByRow = d.confirmedBy
+    ? `<br/><span style="color:#9ca3af;font-size:12px;">Validado por: <strong>${d.confirmedBy}</strong></span>`
+    : "";
+
+  const body = `
+    ${emailHeader("Pago Confirmado", "Tu transferencia ha sido validada")}
+    <tr><td style="padding:32px 40px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.clientName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 20px;line-height:1.7;font-family:Arial,sans-serif;">
+        Hemos recibido y <strong style="color:#166534;">validado correctamente</strong> tu pago por transferencia bancaria.
+        Tu reserva queda confirmada y ya puedes disfrutar de tu experiencia en Náyade.
+      </p>
+      <div style="background:#f0fdf4;border-left:4px solid #22c55e;border-radius:8px;padding:14px 18px;margin:0 0 20px;">
+        <p style="margin:0 0 5px;color:#166534;font-weight:700;font-size:14px;font-family:Arial,sans-serif;">
+          ${SVG.check}&nbsp;Transferencia bancaria validada
+        </p>
+        <p style="margin:0;color:#15803d;font-size:13px;line-height:1.6;font-family:Arial,sans-serif;">
+          Pago confirmado el <strong>${confirmedDate}</strong>. Tu factura está disponible para descargar.
+        </p>
+      </div>
+    </td></tr>
+    <tr><td style="padding:0 40px 8px;">
+      <div style="background:linear-gradient(135deg,#f0f4f8,#e8eef7);border-radius:12px;padding:20px 24px;border:1px solid #dce4f0;">
+        <p style="color:${BRAND_MID_BLUE};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">${d.quoteTitle}</p>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <thead>
+            <tr>
+              <th style="text-align:left;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;font-family:Arial,sans-serif;">Concepto</th>
+              <th style="text-align:center;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;font-family:Arial,sans-serif;">Uds.</th>
+              <th style="text-align:right;color:#9ca3af;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;padding:0 0 8px;font-family:Arial,sans-serif;">Importe</th>
+            </tr>
+          </thead>
+          <tbody>${itemRowsHtml}</tbody>
+        </table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;border-top:1px solid #dce4f0;">
+          <tr><td style="padding:6px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Subtotal</td><td style="padding:6px 0;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${Number(d.subtotal).toFixed(2)} €</td></tr>
+          <tr><td style="padding:6px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA (21%)</td><td style="padding:6px 0;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${Number(d.taxAmount).toFixed(2)} €</td></tr>
+          <tr style="background:${BRAND_BLUE};">
+            <td style="padding:10px 12px;color:#fff;font-size:15px;font-weight:700;font-family:Arial,sans-serif;">Total pagado</td>
+            <td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(d.total).toFixed(2)} €</td>
+          </tr>
+        </table>
+      </div>
+    </td></tr>
+    <tr><td style="padding:8px 40px;">
+      <div style="background:#f8fafc;border-left:4px solid ${BRAND_ORANGE};border-radius:6px;padding:14px 18px;">
+        <p style="color:#374151;font-size:13px;margin:0;line-height:1.8;font-family:Arial,sans-serif;">
+          ${SVG.ref}&nbsp;<strong>Número de factura:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.invoiceNumber}</span>
+          ${quoteRefRow}
+          ${confirmedByRow}<br/>
+          <span style="color:#9ca3af;font-size:12px;">Guarda este número para cualquier consulta.</span>
+        </p>
+      </div>
+    </td></tr>
+    ${invoiceButtonBlock}
+    <tr><td style="padding:8px 40px 32px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        ¿Tienes alguna pregunta sobre tu reserva? Escríbenos a
+        <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        o llámanos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+
+  return emailWrapper(`Pago confirmado — ${d.invoiceNumber} · Náyade Experiences`, body);
+}

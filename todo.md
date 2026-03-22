@@ -1254,3 +1254,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ## Badges de método de pago en facturas (v5.x)
 - [x] Badge visual de método de pago en lista de facturas (Redsys, Transferencia+justificante, Efectivo, Otro)
 - [x] Corregir paymentMethod en confirmTransfer: debe guardar "transferencia" en lugar de "redsys"
+
+## Email de confirmación de pago por transferencia (v5.1)
+- [x] Plantilla HTML del email de confirmación de transferencia bancaria al cliente
+- [x] Conectar el envío del email al procedimiento quotes.confirmTransfer
+- [x] Tests Vitest para el nuevo email de confirmación de transferencia
