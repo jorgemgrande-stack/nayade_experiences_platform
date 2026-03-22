@@ -207,6 +207,13 @@ export const leads = mysqlTable("leads", {
   source: varchar("source", { length: 128 }).default("web"),
   selectedCategory: varchar("selectedCategory", { length: 128 }),
   selectedProduct: varchar("selectedProduct", { length: 256 }),
+  activitiesJson: json("activitiesJson").$type<{
+    experienceId: number;
+    experienceTitle: string;
+    family: string;
+    participants: number;
+    details: Record<string, string | number>;
+  }[]>(),
   numberOfAdults: int("numberOfAdults"),
   numberOfChildren: int("numberOfChildren"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

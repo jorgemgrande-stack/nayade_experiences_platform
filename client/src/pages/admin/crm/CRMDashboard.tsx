@@ -354,6 +354,37 @@ function LeadDetailModal({
               </span>
             </div>
           )}
+          {/* Actividades enriquecidas desde el formulario multi-actividad */}
+          {lead.activitiesJson && (() => {
+            try {
+              const acts = JSON.parse(typeof lead.activitiesJson === 'string' ? lead.activitiesJson : JSON.stringify(lead.activitiesJson));
+              if (!Array.isArray(acts) || acts.length === 0) return null;
+              return (
+                <div className="pt-2 border-t border-white/10">
+                  <p className="text-xs text-white/40 uppercase tracking-wider mb-2">Actividades solicitadas</p>
+                  <div className="space-y-1.5">
+                    {acts.map((act: any, i: number) => (
+                      <div key={i} className="bg-white/[0.06] rounded-lg px-3 py-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-white">{act.experienceTitle}</span>
+                          <span className="text-xs text-orange-400 font-semibold">{act.participants} pax</span>
+                        </div>
+                        {act.details && Object.keys(act.details).length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {Object.entries(act.details).map(([k, v]) => (
+                              <span key={k} className="text-xs bg-white/10 text-white/50 rounded-full px-2 py-0.5">
+                                {String(k)}: {String(v)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            } catch { return null; }
+          })()}
           {lead.message && (
             <div className="pt-2 border-t border-white/10">
               <p className="text-sm text-white/60 italic">"{lead.message}"</p>

@@ -1100,3 +1100,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Estado vacío cuando no hay notificaciones
 - [x] Datos cargados bajo demanda (solo cuando el panel está abierto)
 - [x] 138 tests pasando · 0 errores TypeScript
+
+## Formulario leads multi-actividad con modales contextuales — v9.37 [COMPLETADO]
+- [x] Añadida columna activitiesJson (TEXT/JSON) a la tabla leads en BD
+- [x] Actualizado procedimiento submitBudget para aceptar y guardar activitiesJson
+- [x] Construido selector múltiple de experiencias reales (cargadas desde BD)
+- [x] Implementado ActivityModal genérico con 6 familias: tiempo/saltos/nivel/tipo/personas/libre
+- [x] Gestor de flujo: encadena modales por cada experiencia seleccionada
+- [x] Resumen visual de actividades seleccionadas antes de enviar
+- [x] Actualizado CRM para mostrar activitiesJson enriquecido en el detalle del lead
+- [x] Packs, Hotel, Restaurantes y SPA excluidos del flujo de enriquecimiento
+- [x] 138 tests pasando · 0 errores TypeScript

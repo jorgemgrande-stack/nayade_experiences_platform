@@ -1,14 +1,16 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Link } from "wouter";
 import {
   CheckCircle, Phone, Mail, Users, ChevronRight,
   Send, Star, Shield, Zap, ArrowRight, Waves,
-  Sparkles, Heart, TreePine, SunMedium
+  Sparkles, Heart, TreePine, SunMedium, Plus, X,
+  ChevronLeft, Clock, Minus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -16,9 +18,50 @@ import { toast } from "sonner";
 // ─── Assets ───────────────────────────────────────────────────────────────────
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1774088145054-jpwq7l.png";
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+interface ActivityEntry {
+  experienceId: number;
+  experienceTitle: string;
+  family: string;
+  participants: number;
+  details: Record<string, string | number>;
+}
+
+interface ModalState {
+  open: boolean;
+  experienceId: number;
+  experienceTitle: string;
+  family: string;
+  slug: string;
+}
+
+// ─── Familias de actividad ────────────────────────────────────────────────────
+// Mapeo de slug de experiencia → familia de preguntas
+const FAMILY_MAP: Record<string, string> = {
+  "blob-jump": "saltos",
+  "banana-ski": "remolcado",
+  "cableski": "cableski",
+  "canoas": "alquiler",
+  "paddle-surf": "alquiler",
+  "hidrobicis": "alquiler",
+  "minimotos": "alquiler",
+  "paseos-barco": "barco",
+  "aventura-hinchable": "alquiler",
+  "circuito-spa": "spa",
+  "donuts-ski": "remolcado",
+};
+
+// Obtiene la familia según el slug (búsqueda parcial)
+function getFamilyForSlug(slug: string): string {
+  for (const [key, fam] of Object.entries(FAMILY_MAP)) {
+    if (slug.includes(key)) return fam;
+  }
+  return "generico";
+}
+
 // ─── Categorías ───────────────────────────────────────────────────────────────
 const STATIC_CATEGORIES = [
-  { id: "Experiencias", label: "Acuáticas", icon: "🌊" },
+  { id: "Experiencias", label: "Experiencias", icon: "🌊" },
   { id: "Packs", label: "Packs", icon: "⭐" },
   { id: "Hotel", label: "Hotel", icon: "🏨" },
   { id: "Spa", label: "SPA", icon: "🧖" },
@@ -35,7 +78,7 @@ const STATIC_PRODUCTS: Record<string, string[]> = {
 
 const SPECIAL_OPTION = "__special__";
 
-// ─── Tipos de experiencia (chips decorativos) ─────────────────────────────────
+// ─── Chips decorativos ────────────────────────────────────────────────────────
 const EXP_CHIPS = [
   { icon: Waves, label: "Deportes acuáticos", color: "text-sky-300" },
   { icon: TreePine, label: "Aventura", color: "text-emerald-300" },
@@ -45,39 +88,306 @@ const EXP_CHIPS = [
   { icon: Sparkles, label: "Empresas", color: "text-orange-300" },
 ];
 
+// ─── Componente Modal de actividad ────────────────────────────────────────────
+function ActivityModal({
+  modal,
+  totalPersons,
+  onClose,
+  onConfirm,
+}: {
+  modal: ModalState;
+  totalPersons: number;
+  onClose: () => void;
+  onConfirm: (entry: ActivityEntry) => void;
+}) {
+  const [participants, setParticipants] = useState(totalPersons || 1);
+  const [details, setDetails] = useState<Record<string, string | number>>({});
+
+  const handleConfirm = () => {
+    const entry: ActivityEntry = {
+      experienceId: modal.experienceId,
+      experienceTitle: modal.experienceTitle,
+      family: modal.family,
+      participants,
+      details,
+    };
+    onConfirm(entry);
+  };
+
+  const setDetail = (key: string, value: string | number) => {
+    setDetails((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const renderFamilyFields = () => {
+    switch (modal.family) {
+      case "cableski":
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Duración preferida</Label>
+              <div className="flex flex-wrap gap-2">
+                {["30 minutos", "1 hora", "2 horas", "Día completo"].map((opt) => (
+                  <button key={opt} type="button"
+                    onClick={() => setDetail("duracion", opt)}
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                      details.duracion === opt
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                        : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-white/80 bg-white/[0.04]"
+                    }`}
+                  >{opt}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Nivel de experiencia</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Principiante", "Intermedio", "Avanzado"].map((opt) => (
+                  <button key={opt} type="button"
+                    onClick={() => setDetail("nivel", opt)}
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                      details.nivel === opt
+                        ? "bg-sky-500/20 text-sky-300 border-sky-500/50"
+                        : "border-white/15 text-white/50 hover:border-sky-500/30 hover:text-white/80 bg-white/[0.04]"
+                    }`}
+                  >{opt}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case "saltos":
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Número de saltos en total (grupo)</Label>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setDetail("saltos", Math.max(1, (Number(details.saltos) || 1) - 1))}
+                  className="w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-white hover:bg-white/20 transition-colors">
+                  <Minus className="w-3 h-3" />
+                </button>
+                <span className="text-white font-bold text-xl w-8 text-center">{details.saltos || 1}</span>
+                <button type="button" onClick={() => setDetail("saltos", (Number(details.saltos) || 1) + 1)}
+                  className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 hover:bg-amber-500/30 transition-colors">
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+              <p className="text-white/30 text-xs mt-2">Ej: si sois 5 y cada uno quiere 2 saltos → 10 saltos</p>
+            </div>
+          </div>
+        );
+
+      case "remolcado":
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Duración preferida</Label>
+              <div className="flex flex-wrap gap-2">
+                {["15 minutos", "30 minutos", "1 hora"].map((opt) => (
+                  <button key={opt} type="button"
+                    onClick={() => setDetail("duracion", opt)}
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                      details.duracion === opt
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                        : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-white/80 bg-white/[0.04]"
+                    }`}
+                  >{opt}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case "alquiler":
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Duración del alquiler</Label>
+              <div className="flex flex-wrap gap-2">
+                {["30 minutos", "1 hora", "2 horas", "Medio día", "Día completo"].map((opt) => (
+                  <button key={opt} type="button"
+                    onClick={() => setDetail("duracion", opt)}
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                      details.duracion === opt
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                        : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-white/80 bg-white/[0.04]"
+                    }`}
+                  >{opt}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case "barco":
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Tipo de embarcación</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Barco pequeño (hasta 8 pax)", "Barco grande (hasta 20 pax)"].map((opt) => (
+                  <button key={opt} type="button"
+                    onClick={() => setDetail("tipo", opt)}
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                      details.tipo === opt
+                        ? "bg-sky-500/20 text-sky-300 border-sky-500/50"
+                        : "border-white/15 text-white/50 hover:border-sky-500/30 hover:text-white/80 bg-white/[0.04]"
+                    }`}
+                  >{opt}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Duración</Label>
+              <div className="flex flex-wrap gap-2">
+                {["1 hora", "2 horas", "Medio día"].map((opt) => (
+                  <button key={opt} type="button"
+                    onClick={() => setDetail("duracion", opt)}
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                      details.duracion === opt
+                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                        : "border-white/15 text-white/50 hover:border-amber-500/30 hover:text-white/80 bg-white/[0.04]"
+                    }`}
+                  >{opt}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case "spa":
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Tipo de circuito</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Circuito básico (2h)", "Circuito premium (3h)", "Circuito pareja"].map((opt) => (
+                  <button key={opt} type="button"
+                    onClick={() => setDetail("tipo", opt)}
+                    className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                      details.tipo === opt
+                        ? "bg-violet-500/20 text-violet-300 border-violet-500/50"
+                        : "border-white/15 text-white/50 hover:border-violet-500/30 hover:text-white/80 bg-white/[0.04]"
+                    }`}
+                  >{opt}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      default:
+        return (
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block">Preferencias adicionales (opcional)</Label>
+            <Textarea
+              value={String(details.notas || "")}
+              onChange={(e) => setDetail("notas", e.target.value)}
+              className="bg-white/[0.07] border-white/10 text-white placeholder:text-white/20 rounded-xl text-sm resize-none"
+              rows={2}
+              placeholder="Cuéntanos qué tienes en mente…"
+            />
+          </div>
+        );
+    }
+  };
+
+  return (
+    <Dialog open={modal.open} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-md" style={{
+        background: "rgba(10, 20, 40, 0.95)",
+        backdropFilter: "blur(20px)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        color: "white",
+      }}>
+        <DialogHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
+              <Waves className="w-4 h-4 text-amber-400" />
+            </div>
+            <DialogTitle className="text-white text-base font-heading">{modal.experienceTitle}</DialogTitle>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-5 py-2">
+          {/* Participantes */}
+          <div>
+            <Label className="text-white/60 text-xs mb-2 block flex items-center gap-1">
+              <Users className="w-3 h-3" /> ¿Cuántas personas participan en esta actividad?
+            </Label>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => setParticipants(Math.max(1, participants - 1))}
+                className="w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-white hover:bg-white/20 transition-colors">
+                <Minus className="w-3 h-3" />
+              </button>
+              <span className="text-white font-bold text-xl w-8 text-center">{participants}</span>
+              <button type="button" onClick={() => setParticipants(participants + 1)}
+                className="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 hover:bg-amber-500/30 transition-colors">
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+            {participants < (totalPersons || 1) && (
+              <p className="text-amber-400/70 text-xs mt-1.5">
+                De {totalPersons} personas del grupo, {participants} participan en esta actividad
+              </p>
+            )}
+          </div>
+
+          {/* Campos específicos de la familia */}
+          {renderFamilyFields()}
+        </div>
+
+        <DialogFooter className="flex gap-2 pt-2">
+          <Button type="button" variant="outline" onClick={onClose}
+            className="flex-1 border-white/15 text-white/60 hover:text-white hover:border-white/30 bg-transparent">
+            <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Cancelar
+          </Button>
+          <Button type="button" onClick={handleConfirm}
+            className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white border-0">
+            Añadir actividad <ChevronRight className="w-3.5 h-3.5 ml-1" />
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
 export default function BudgetRequest() {
   const [submitted, setSubmitted] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedProduct, setSelectedProduct] = useState("");
+  const [selectedActivities, setSelectedActivities] = useState<ActivityEntry[]>([]);
+  const [modalState, setModalState] = useState<ModalState>({ open: false, experienceId: 0, experienceTitle: "", family: "", slug: "" });
   const [formData, setFormData] = useState({
     name: "", email: "", phone: "", arrivalDate: "",
     adults: "1", children: "0", comments: "", honeypot: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // ─── Cargar productos dinámicos ──────────────────────────────────────────
-  // getExperiences tiene max limit:50 en el router
+  const totalPersons = (parseInt(formData.adults) || 1) + (parseInt(formData.children) || 0);
+
+  // ─── Cargar experiencias y packs ──────────────────────────────────────────
   const { data: experiencesList } = trpc.public.getExperiences.useQuery(
     { limit: 50 },
     { enabled: selectedCategory === "Experiencias" }
   );
-  // packs.getByCategory acepta category opcional (sin filtro = todos)
   const { data: packsList } = trpc.packs.getByCategory.useQuery(
     {} as { category?: "dia" | "escolar" | "empresa" },
     { enabled: selectedCategory === "Packs" }
   );
 
   const products = useMemo(() => {
-    if (selectedCategory === "Experiencias" && experiencesList) return experiencesList.map((e: any) => e.title);
     if (selectedCategory === "Packs" && packsList) return packsList.map((p: any) => p.title);
     return STATIC_PRODUCTS[selectedCategory] ?? [];
-  }, [selectedCategory, experiencesList, packsList]);
+  }, [selectedCategory, packsList]);
 
   const submitBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setSubmitted(true),
     onError: () => toast.error("Error al enviar. Por favor, inténtalo de nuevo."),
   });
 
+  // ─── Validación ───────────────────────────────────────────────────────────
   const validate = () => {
     const e: Record<string, string> = {};
     if (!formData.name.trim() || formData.name.trim().length < 2) e.name = "Introduce tu nombre";
@@ -85,29 +395,70 @@ export default function BudgetRequest() {
     if (!formData.phone.trim() || formData.phone.trim().length < 6) e.phone = "Teléfono no válido";
     if (!formData.arrivalDate) e.arrivalDate = "Selecciona una fecha";
     if (!selectedCategory) e.category = "Selecciona una categoría";
-    if (!selectedProduct) e.product = "Selecciona una experiencia";
+    if (selectedCategory === "Experiencias") {
+      if (selectedActivities.length === 0) e.product = "Selecciona al menos una experiencia";
+    } else {
+      if (!selectedProduct) e.product = "Selecciona una opción";
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
+  // ─── Submit ───────────────────────────────────────────────────────────────
   const handleSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!validate()) return;
+
+    const productSummary = selectedCategory === "Experiencias"
+      ? selectedActivities.map((a) => a.experienceTitle).join(", ")
+      : (selectedProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : selectedProduct);
+
     await submitBudget.mutateAsync({
-      name: formData.name.trim(), email: formData.email.trim(), phone: formData.phone.trim(),
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
       arrivalDate: formData.arrivalDate,
-      adults: parseInt(formData.adults) || 1, children: parseInt(formData.children) || 0,
+      adults: parseInt(formData.adults) || 1,
+      children: parseInt(formData.children) || 0,
       selectedCategory,
-      selectedProduct: selectedProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : selectedProduct,
+      selectedProduct: productSummary,
+      activitiesJson: selectedCategory === "Experiencias" ? selectedActivities : undefined,
       comments: formData.comments.trim() || undefined,
       honeypot: formData.honeypot || undefined,
     });
   };
 
   const handleCategorySelect = (cat: string) => {
-    setSelectedCategory(cat); setSelectedProduct("");
+    setSelectedCategory(cat);
+    setSelectedProduct("");
+    setSelectedActivities([]);
     setErrors((p) => ({ ...p, category: "", product: "" }));
   };
+
+  // ─── Gestión de actividades ───────────────────────────────────────────────
+  const openActivityModal = useCallback((exp: { id: number; title: string; slug: string }) => {
+    const family = getFamilyForSlug(exp.slug);
+    setModalState({ open: true, experienceId: exp.id, experienceTitle: exp.title, family, slug: exp.slug });
+  }, []);
+
+  const handleModalConfirm = useCallback((entry: ActivityEntry) => {
+    setSelectedActivities((prev) => {
+      // Si ya existe la misma experiencia, la reemplaza
+      const exists = prev.findIndex((a) => a.experienceId === entry.experienceId);
+      if (exists >= 0) {
+        const updated = [...prev];
+        updated[exists] = entry;
+        return updated;
+      }
+      return [...prev, entry];
+    });
+    setModalState((s) => ({ ...s, open: false }));
+    setErrors((p) => ({ ...p, product: "" }));
+  }, []);
+
+  const removeActivity = useCallback((experienceId: number) => {
+    setSelectedActivities((prev) => prev.filter((a) => a.experienceId !== experienceId));
+  }, []);
 
   // ─── Pantalla de éxito ────────────────────────────────────────────────────
   if (submitted) {
@@ -126,6 +477,18 @@ export default function BudgetRequest() {
               Nuestro equipo te enviará una propuesta personalizada en
               <strong className="text-amber-400"> menos de 24 horas</strong>.
             </p>
+            {selectedActivities.length > 0 && (
+              <div className="bg-white/10 rounded-2xl p-4 mb-8 text-left border border-white/10">
+                <p className="text-white/50 text-xs mb-3 font-display uppercase tracking-wider">Actividades solicitadas</p>
+                {selectedActivities.map((a) => (
+                  <div key={a.experienceId} className="flex items-center gap-2 text-sm text-white/70 mb-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span>{a.experienceTitle}</span>
+                    <span className="text-white/35">· {a.participants} personas</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3 mb-10">
               {[{ icon: Zap, label: "Respuesta rápida" }, { icon: Star, label: "A tu medida" }, { icon: Shield, label: "Sin compromiso" }].map(({ icon: Icon, label }) => (
                 <div key={label} className="bg-white/10 rounded-2xl p-4 border border-white/10 text-center">
@@ -145,6 +508,16 @@ export default function BudgetRequest() {
 
   return (
     <PublicLayout>
+      {/* Modal de actividad */}
+      {modalState.open && (
+        <ActivityModal
+          modal={modalState}
+          totalPersons={totalPersons}
+          onClose={() => setModalState((s) => ({ ...s, open: false }))}
+          onConfirm={handleModalConfirm}
+        />
+      )}
+
       {/* ══════════════════════════════════════════════════════════════════════
           HERO SPLIT — Pantalla completa: claim izquierda + formulario derecha
       ══════════════════════════════════════════════════════════════════════ */}
@@ -321,12 +694,78 @@ export default function BudgetRequest() {
                     {errors.category && <p className="text-red-400 text-xs mt-1.5">{errors.category}</p>}
                   </div>
 
-                  {/* Selector de producto */}
-                  {selectedCategory && (
+                  {/* ── Selector de experiencias (múltiple) ─────────────────── */}
+                  {selectedCategory === "Experiencias" && (
+                    <div className="p-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl space-y-3">
+                      <p className="text-white/40 text-xs flex items-center gap-1">
+                        <ChevronRight className="w-3 h-3 text-amber-400" />
+                        Selecciona las actividades <span className="text-amber-400">*</span>
+                        <span className="text-white/25 ml-1">— puedes elegir varias</span>
+                      </p>
+
+                      {/* Lista de experiencias */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {(experiencesList ?? []).map((exp: any) => {
+                          const isSelected = selectedActivities.some((a) => a.experienceId === exp.id);
+                          return (
+                            <button key={exp.id} type="button"
+                              onClick={() => openActivityModal({ id: exp.id, title: exp.title, slug: exp.slug })}
+                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs border transition-all ${
+                                isSelected
+                                  ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                                  : "border-white/10 text-white/45 hover:border-sky-500/30 hover:text-white/75 bg-white/[0.03]"
+                              }`}
+                            >
+                              {isSelected ? (
+                                <><CheckCircle className="w-3 h-3" /> {exp.title}</>
+                              ) : (
+                                <><Plus className="w-3 h-3" /> {exp.title}</>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Resumen de actividades seleccionadas */}
+                      {selectedActivities.length > 0 && (
+                        <div className="mt-2 space-y-1.5 border-t border-white/[0.06] pt-2.5">
+                          <p className="text-white/30 text-xs mb-1.5">Actividades añadidas:</p>
+                          {selectedActivities.map((act) => (
+                            <div key={act.experienceId} className="flex items-center justify-between bg-white/[0.06] rounded-xl px-3 py-2">
+                              <div className="flex-1 min-w-0">
+                                <span className="text-white/80 text-xs font-medium truncate block">{act.experienceTitle}</span>
+                                <span className="text-white/35 text-xs">
+                                  {act.participants} persona{act.participants !== 1 ? "s" : ""}
+                                  {act.details.duracion ? ` · ${act.details.duracion}` : ""}
+                                  {act.details.saltos ? ` · ${act.details.saltos} salto${Number(act.details.saltos) !== 1 ? "s" : ""}` : ""}
+                                  {act.details.tipo ? ` · ${act.details.tipo}` : ""}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 ml-2 shrink-0">
+                                <button type="button"
+                                  onClick={() => openActivityModal({ id: act.experienceId, title: act.experienceTitle, slug: (experiencesList ?? []).find((e: any) => e.id === act.experienceId)?.slug ?? "" })}
+                                  className="text-white/30 hover:text-amber-400 transition-colors p-1">
+                                  <Clock className="w-3 h-3" />
+                                </button>
+                                <button type="button" onClick={() => removeActivity(act.experienceId)}
+                                  className="text-white/30 hover:text-red-400 transition-colors p-1">
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {errors.product && <p className="text-red-400 text-xs mt-1">{errors.product}</p>}
+                    </div>
+                  )}
+
+                  {/* ── Selector de producto (para no-Experiencias) ──────────── */}
+                  {selectedCategory && selectedCategory !== "Experiencias" && (
                     <div className="p-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl">
                       <p className="text-white/40 text-xs mb-2 flex items-center gap-1">
                         <ChevronRight className="w-3 h-3 text-amber-400" />
-                        Experiencia <span className="text-amber-400">*</span>
+                        Opción <span className="text-amber-400">*</span>
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {products.map((product: string) => (
@@ -409,7 +848,7 @@ export default function BudgetRequest() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          SECCIÓN LIGERA DE BENEFICIOS (debajo del hero, sin bloque oscuro)
+          SECCIÓN LIGERA DE BENEFICIOS
       ══════════════════════════════════════════════════════════════════════ */}
       <section className="py-14 bg-background border-t border-border/30">
         <div className="container">
@@ -431,14 +870,6 @@ export default function BudgetRequest() {
           </div>
         </div>
       </section>
-
-      {/* Animación zoom lento del hero */}
-      <style>{`
-        @keyframes slowZoom {
-          from { transform: scale(1.0); }
-          to   { transform: scale(1.08); }
-        }
-      `}</style>
     </PublicLayout>
   );
 }

@@ -150,6 +150,13 @@ export async function createLead(data: {
   source?: string;
   selectedCategory?: string;
   selectedProduct?: string;
+  activitiesJson?: {
+    experienceId: number;
+    experienceTitle: string;
+    family: string;
+    participants: number;
+    details: Record<string, string | number>;
+  }[] | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -172,6 +179,7 @@ export async function createLead(data: {
     source: data.source ?? "web",
     selectedCategory: data.selectedCategory ?? null,
     selectedProduct: data.selectedProduct ?? null,
+    activitiesJson: data.activitiesJson ?? null,
   });
   const leadId = Number(result[0].insertId);
 

@@ -232,6 +232,13 @@ export const appRouter = router({
         children: z.number().int().min(0).default(0),
         selectedCategory: z.string().min(1),
         selectedProduct: z.string().min(1),
+        activitiesJson: z.array(z.object({
+          experienceId: z.number(),
+          experienceTitle: z.string(),
+          family: z.string(),
+          participants: z.number(),
+          details: z.record(z.string(), z.union([z.string(), z.number()])),
+        })).optional(),
         comments: z.string().optional(),
         honeypot: z.string().optional(),
       }))
@@ -250,6 +257,7 @@ export const appRouter = router({
           numberOfPersons: input.adults + input.children,
           selectedCategory: input.selectedCategory,
           selectedProduct: input.selectedProduct,
+          activitiesJson: input.activitiesJson ?? null,
           source: "landing_presupuesto",
         });
 
