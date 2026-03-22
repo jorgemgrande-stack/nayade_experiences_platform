@@ -1034,3 +1034,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: botón "Aceptar y pagar" + botón "Rechazar" con formulario de motivo
 - [x] Frontend: estados visuales para presupuesto pagado, rechazado, expirado
 - [x] 126 tests pasando · 0 errores TypeScript
+
+## 3 Funcionalidades Imprescindibles — v9.28 [COMPLETADO]
+- [x] Email de confirmación al cliente con factura PDF tras pago del presupuesto (IPN Redsys)
+- [x] Badge "Visto" en la tabla de presupuestos del CRM con icono de ojo (azul) y timestamp
+- [x] Badge "No visto" en presupuestos enviados sin abrir
+- [x] Job programado de reenvío automático de presupuestos no abiertos en 48h (node-cron, cada hora)
+- [x] Máximo 2 reenvíos automáticos por presupuesto (campo reminderCount en BD)
+- [x] Notificación al agente en CRM cuando se reenvía automáticamente (notifyOwner)
+- [x] 126 tests pasando · 0 errores TypeScript

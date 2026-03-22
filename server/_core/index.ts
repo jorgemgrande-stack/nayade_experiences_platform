@@ -13,6 +13,7 @@ import { createPasswordResetRouter } from "../passwordReset";
 import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
+import { startQuoteReminderJob } from "../quoteReminderJob";
 import { serveStatic, setupVite } from "./vite";
 
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
@@ -165,4 +166,6 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+startServer()
+  .then(() => startQuoteReminderJob())
+  .catch(console.error);

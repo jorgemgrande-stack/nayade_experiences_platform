@@ -258,6 +258,8 @@ export const quotes = mysqlTable("quotes", {
   paymentLinkUrl: text("paymentLinkUrl"),
   paidAt: timestamp("paidAt"),
   notes: text("notes"),
+  reminderCount: int("reminderCount").default(0),
+  lastReminderAt: timestamp("lastReminderAt"),
   ghlOpportunityId: varchar("ghlOpportunityId", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

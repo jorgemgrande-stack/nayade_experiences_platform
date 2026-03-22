@@ -14,6 +14,8 @@ import { eq } from "drizzle-orm";
 import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
 import { getBookingByMerchantOrder, updateBooking, addBookingLog } from "./restaurantsDb";
 import { notifyOwner } from "./_core/notification";
+import { buildConfirmationHtml } from "./emailTemplates";
+import { createTransporter } from "./mailer";
 
 const redsysRouter = express.Router();
 
@@ -133,6 +135,34 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           }
 
           console.log(`[Redsys IPN] Presupuesto ${quote.quoteNumber} marcado como PAGADO. Factura: ${invoiceNumber}`);
+
+          // ── Enviar email de confirmación al cliente ──
+          const clientEmail = lead?.email ?? updatedReservation.customerEmail;
+          const clientName  = lead?.name  ?? updatedReservation.customerName;
+          if (clientEmail) {
+            try {
+              const transporter = createTransporter();
+              if (transporter) {
+                const html = buildConfirmationHtml({
+                  clientName,
+                  reservationRef: invoiceNumber,
+                  quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
+                  items,
+                  total: String(total),
+                });
+                await transporter.sendMail({
+                  from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+                  to: clientEmail,
+                  bcc: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+                  subject: `✅ Reserva confirmada — ${quote.quoteNumber} — Náyade Experiences`,
+                  html,
+                });
+                console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail}`);
+              }
+            } catch (emailErr) {
+              console.error("[Redsys IPN] Error al enviar email de confirmación:", emailErr);
+            }
+          }
         }
         await _pool.end();
       } catch (e) {

@@ -2152,6 +2152,21 @@ export default function CRMDashboard() {
                               Cobrado
                             </span>
                           )}
+                          {quote.viewedAt && !quote.paidAt && (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-medium text-sky-400 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded-full"
+                              title={`Visto por el cliente el ${new Date(quote.viewedAt).toLocaleString("es-ES")}`}
+                            >
+                              <Eye className="w-2.5 h-2.5" />
+                              Visto {new Date(quote.viewedAt).toLocaleDateString("es-ES")}
+                            </span>
+                          )}
+                          {quote.sentAt && !quote.viewedAt && !quote.paidAt && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-white/30 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full">
+                              <Eye className="w-2.5 h-2.5" />
+                              No visto
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
