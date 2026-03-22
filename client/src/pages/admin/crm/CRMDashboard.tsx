@@ -981,7 +981,7 @@ function QuoteBuilderModal({
       utils.crm.quotes.counters.invalidate();
       utils.crm.quotes.list.invalidate();
       if (sendAfterCreate) {
-        await sendQuote.mutateAsync({ id: data.quoteId });
+        await sendQuote.mutateAsync({ id: data.quoteId, origin: window.location.origin });
       }
       onClose();
     },
@@ -1548,7 +1548,7 @@ function QuoteDetailModal({
             <Button
               size="sm"
               className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
-              onClick={() => sendQuote.mutate({ id: quoteId, paymentLinkUrl: paymentLink || undefined })}
+              onClick={() => sendQuote.mutate({ id: quoteId, origin: window.location.origin })}
               disabled={sendQuote.isPending}
             >
               {sendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1" />}

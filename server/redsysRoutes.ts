@@ -7,6 +7,10 @@
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
 import { updateReservationPayment, getReservationByMerchantOrder } from "./db";
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
+import { quotes, leads, invoices, reservations } from "../drizzle/schema";
+import { eq } from "drizzle-orm";
 import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
 import { getBookingByMerchantOrder, updateBooking, addBookingLog } from "./restaurantsDb";
 import { notifyOwner } from "./_core/notification";
@@ -80,6 +84,61 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
 
     // Enviar notificaciones según el resultado del pago
     const updatedReservation = await getReservationByMerchantOrder(result.merchantOrder);
+
+    // ── Si la reserva viene de un presupuesto, marcar el presupuesto como pagado ──
+    if (result.isAuthorized && updatedReservation?.quoteSource === "presupuesto" && updatedReservation?.quoteId) {
+      try {
+        const _pool = mysql.createPool(process.env.DATABASE_URL!);
+        const _db = drizzle(_pool);
+        const [quote] = await _db.select().from(quotes).where(eq(quotes.id, updatedReservation.quoteId));
+        if (quote && !quote.paidAt) {
+          const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
+          const now = new Date();
+          const invoiceNumber = `FAC-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}-${Date.now().toString(36).toUpperCase()}`;
+          const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+          const total = Number(quote.total);
+          const subtotal = Number(quote.subtotal);
+          const taxAmount = subtotal * 0.21;
+
+          // Insert invoice
+          await _db.insert(invoices).values({
+            invoiceNumber,
+            quoteId: quote.id,
+            clientName: lead?.name ?? updatedReservation.customerName,
+            clientEmail: lead?.email ?? updatedReservation.customerEmail,
+            clientPhone: lead?.phone ?? updatedReservation.customerPhone,
+            itemsJson: items,
+            subtotal: String(subtotal),
+            taxRate: "21",
+            taxAmount: String(taxAmount),
+            total: String(total),
+            status: "generada",
+            issuedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+
+          // Update quote to paid
+          await _db.update(quotes).set({
+            status: "aceptado",
+            paidAt: now,
+            redsysOrderId: result.merchantOrder,
+            invoiceNumber,
+            updatedAt: now,
+          }).where(eq(quotes.id, quote.id));
+
+          // Update lead
+          if (lead) {
+            await _db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
+          }
+
+          console.log(`[Redsys IPN] Presupuesto ${quote.quoteNumber} marcado como PAGADO. Factura: ${invoiceNumber}`);
+        }
+        await _pool.end();
+      } catch (e) {
+        console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
+      }
+    }
     if (updatedReservation) {
       if (result.isAuthorized) {
         sendReservationPaidNotifications({

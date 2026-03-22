@@ -1019,3 +1019,18 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Limitar subida de archivos: 20 req/min por IP
 - [x] Test unitario que verifica configuración de rate limiters (12 tests)
 - [x] 126 tests pasando · 0 errores TypeScript
+
+## Aceptación de Presupuesto — v9.27 [COMPLETADO]
+- [x] Auditar schema quotes, quoteItems, estados actuales y checkout
+- [x] Reutilizar paymentLinkToken como token de aceptación (ya existe, 128 chars, único)
+- [x] Migración BD: nuevos estados (visualizado, convertido_carrito, rechazado), acceptedAt, redsysOrderId
+- [x] Backend: procedimiento quotes.getByToken (público, sin auth, marca visualizado)
+- [x] Backend: procedimiento quotes.payWithToken (genera form Redsys con precios congelados)
+- [x] Backend: procedimiento quotes.rejectByToken (rechaza con razón opcional)
+- [x] Backend: procedimiento quotes.send actualizado para generar token y URL automáticamente
+- [x] IPN Redsys: detecta pago de presupuesto y ejecuta confirmPayment automático
+- [x] Frontend: página /presupuesto/:token con diseño azul marino + naranja
+- [x] Frontend: precios congelados del presupuesto (no recalculados)
+- [x] Frontend: botón "Aceptar y pagar" + botón "Rechazar" con formulario de motivo
+- [x] Frontend: estados visuales para presupuesto pagado, rechazado, expirado
+- [x] 126 tests pasando · 0 errores TypeScript

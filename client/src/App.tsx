@@ -30,6 +30,7 @@ import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import DynamicPage from "./pages/DynamicPage";
+import QuoteAcceptance from "./pages/QuoteAcceptance";
 import HotelRoom from "./pages/HotelRoom";
 import SpaDetail from "./pages/SpaDetail";
 import RestaurantBooking from "./pages/RestaurantBooking";
@@ -97,6 +98,7 @@ function Router() {
       <Route path="/experiencias/:slug" component={ExperienceDetail} />
       <Route path="/galeria" component={Gallery} />
       <Route path="/presupuesto" component={BudgetRequest} />
+      <Route path="/presupuesto/:token" component={QuoteAcceptance} />
       <Route path="/contacto" component={Contact} />
       <Route path="/ubicaciones" component={Locations} />
       <Route path="/ubicaciones/:slug" component={Locations} />

@@ -1,7 +1,7 @@
 /**
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
- */import { router, protectedProcedure } from "../_core/trpc";
+ */import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { createLead } from "../db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import {
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
+import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut } from "../storage";
 import {
   buildQuoteHtml,
@@ -763,7 +764,8 @@ export const crmRouter = router({
       .input(
         z.object({
           id: z.number(),
-          paymentLinkUrl: z.string().optional(),
+          /** URL base del frontend (window.location.origin) para construir el enlace de aceptación */
+          origin: z.string().url().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -773,13 +775,20 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead asociado no encontrado" });
 
+        // Generar token único de aceptación si no existe ya
+        const { randomBytes } = await import("crypto");
+        const token = quote.paymentLinkToken ?? randomBytes(32).toString("hex");
+        const origin = input.origin ?? "https://skicenter.es";
+        const acceptUrl = `${origin}/presupuesto/${token}`;
+
         // Update quote
         await db
           .update(quotes)
           .set({
             status: "enviado",
             sentAt: new Date(),
-            paymentLinkUrl: input.paymentLinkUrl,
+            paymentLinkToken: token,
+            paymentLinkUrl: acceptUrl,
             updatedAt: new Date(),
           })
           .where(eq(quotes.id, input.id));
@@ -790,7 +799,7 @@ export const crmRouter = router({
           .set({ opportunityStatus: "enviada", status: "contactado", updatedAt: new Date() })
           .where(eq(leads.id, quote.leadId));
 
-        // Send email
+        // Send email con el enlace de aceptación
         await sendQuoteEmail({
           quoteNumber: quote.quoteNumber,
           title: quote.title,
@@ -804,13 +813,13 @@ export const crmRouter = router({
           validUntil: quote.validUntil,
           notes: quote.notes,
           conditions: quote.conditions,
-          paymentLinkUrl: input.paymentLinkUrl,
+          paymentLinkUrl: acceptUrl,
         });
 
-        await logActivity("quote", input.id, "quote_sent", ctx.user.id, ctx.user.name, { email: lead.email });
+        await logActivity("quote", input.id, "quote_sent", ctx.user.id, ctx.user.name, { email: lead.email, acceptUrl });
         await logActivity("lead", quote.leadId, "quote_sent_to_client", ctx.user.id, ctx.user.name, { quoteId: input.id });
 
-        return { success: true };
+        return { success: true, acceptUrl, token };
       }),
 
     resend: staff
@@ -1342,6 +1351,187 @@ export const crmRouter = router({
         }
 
         return { success: true, quoteId, quoteNumber, leadId, sent: input.sendNow };
+      }),
+
+    // ─── FLUJO PÚBLICO: Aceptación de presupuesto por token ─────────────────────
+
+    /**
+     * Carga un presupuesto por su paymentLinkToken.
+     * Endpoint público — no requiere autenticación.
+     * Registra viewedAt y actualiza status a 'visualizado' si era 'enviado'.
+     */
+    getByToken: publicProcedure
+      .input(z.object({ token: z.string().min(10) }))
+      .query(async ({ input }) => {
+        const [quote] = await db
+          .select()
+          .from(quotes)
+          .where(eq(quotes.paymentLinkToken, input.token))
+          .limit(1);
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado o enlace inválido" });
+
+        // Marcar como visualizado si llega por primera vez
+        if (quote.status === "enviado") {
+          await db
+            .update(quotes)
+            .set({ status: "visualizado", viewedAt: new Date(), updatedAt: new Date() })
+            .where(eq(quotes.id, quote.id));
+          await logActivity("quote", quote.id, "quote_viewed_by_client", null, null, { token: input.token });
+        }
+
+        // Obtener datos del lead/cliente
+        const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
+
+        // Verificar si ha expirado
+        const isExpired = quote.validUntil && new Date(quote.validUntil) < new Date();
+        const isPaid = !!quote.paidAt;
+        const isRejected = quote.status === "rechazado";
+
+        return {
+          id: quote.id,
+          quoteNumber: quote.quoteNumber,
+          title: quote.title,
+          items: (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [],
+          subtotal: quote.subtotal,
+          discount: quote.discount ?? "0",
+          tax: quote.tax ?? "0",
+          total: quote.total,
+          currency: quote.currency,
+          validUntil: quote.validUntil,
+          status: quote.status,
+          notes: quote.notes,
+          conditions: quote.conditions,
+          isExpired: !!isExpired,
+          isPaid,
+          isRejected,
+          clientName: lead?.name ?? "",
+          clientEmail: lead?.email ?? "",
+          clientPhone: lead?.phone ?? "",
+          invoicePdfUrl: quote.invoicePdfUrl,
+          invoiceNumber: quote.invoiceNumber,
+        };
+      }),
+
+    /**
+     * El cliente rechaza el presupuesto desde el enlace.
+     */
+    rejectByToken: publicProcedure
+      .input(z.object({ token: z.string().min(10), reason: z.string().max(500).optional() }))
+      .mutation(async ({ input }) => {
+        const [quote] = await db
+          .select()
+          .from(quotes)
+          .where(eq(quotes.paymentLinkToken, input.token))
+          .limit(1);
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
+        if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya ha sido pagado" });
+        if (quote.status === "rechazado") return { success: true };
+
+        await db
+          .update(quotes)
+          .set({ status: "rechazado", updatedAt: new Date() })
+          .where(eq(quotes.id, quote.id));
+        await db
+          .update(leads)
+          .set({ opportunityStatus: "perdida", updatedAt: new Date() })
+          .where(eq(leads.id, quote.leadId));
+        await logActivity("quote", quote.id, "quote_rejected_by_client", null, null, { reason: input.reason });
+        return { success: true };
+      }),
+
+    /**
+     * Inicia el pago Redsys para un presupuesto por token.
+     * Los precios están CONGELADOS — se usan los del presupuesto, nunca los del catálogo.
+     * Devuelve el formulario Redsys para que el frontend lo envíe.
+     */
+    payWithToken: publicProcedure
+      .input(z.object({
+        token: z.string().min(10),
+        origin: z.string().url(),
+        // El cliente puede ajustar datos de contacto antes de pagar
+        customerName: z.string().min(2).optional(),
+        customerEmail: z.string().email().optional(),
+        customerPhone: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const [quote] = await db
+          .select()
+          .from(quotes)
+          .where(eq(quotes.paymentLinkToken, input.token))
+          .limit(1);
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
+        if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ya ha sido pagado" });
+        if (quote.status === "rechazado") throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto fue rechazado" });
+        if (quote.validUntil && new Date(quote.validUntil) < new Date()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto ha expirado" });
+        }
+
+        const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Cliente no encontrado" });
+
+        // Precios CONGELADOS del presupuesto — nunca recalculados
+        const totalEuros = Number(quote.total);
+        const amountCents = Math.round(totalEuros * 100);
+
+        // Generar merchantOrder único para Redsys (máx 12 chars)
+        const merchantOrder = generateMerchantOrder();
+
+        // Guardar pre-reserva con estado pending_payment
+        const customerName = input.customerName ?? lead.name;
+        const customerEmail = input.customerEmail ?? lead.email;
+        const customerPhone = input.customerPhone ?? lead.phone ?? "";
+
+        const [resResult] = await db.insert(reservations).values({
+          productId: 0,
+          productName: quote.title,
+          bookingDate: new Date().toISOString().split("T")[0],
+          people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
+          amountTotal: amountCents,
+          amountPaid: 0,
+          status: "pending_payment",
+          customerName,
+          customerEmail,
+          customerPhone,
+          merchantOrder,
+          notes: `Pago desde enlace de presupuesto ${quote.quoteNumber}`,
+          quoteId: quote.id,
+          quoteSource: "presupuesto",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+        const reservationId = (resResult as { insertId: number }).insertId;
+
+        // Actualizar quote: estado convertido_carrito + merchantOrder de referencia
+        await db
+          .update(quotes)
+          .set({
+            status: "convertido_carrito",
+            acceptedAt: new Date(),
+            redsysOrderId: merchantOrder,
+            updatedAt: new Date(),
+          })
+          .where(eq(quotes.id, quote.id));
+
+        await logActivity("quote", quote.id, "payment_initiated", null, null, { merchantOrder, reservationId });
+
+        // Construir formulario Redsys
+        const redsysForm = buildRedsysForm({
+          amount: amountCents,
+          merchantOrder,
+          productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
+          notifyUrl: `${input.origin}/api/redsys/notification`,
+          okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+          holderName: customerName,
+        });
+
+        return {
+          merchantOrder,
+          amountCents,
+          amountEuros: totalEuros,
+          quoteTitle: quote.title,
+          redsysForm,
+        };
       }),
   }),
   // ─── RESERVATIONSS ──────────────────────────────────────────────────────────
