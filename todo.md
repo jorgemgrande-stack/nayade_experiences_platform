@@ -1111,3 +1111,15 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Actualizado CRM para mostrar activitiesJson enriquecido en el detalle del lead
 - [x] Packs, Hotel, Restaurantes y SPA excluidos del flujo de enriquecimiento
 - [x] 138 tests pasando · 0 errores TypeScript
+
+## Fix formulario Home.tsx multi-actividad — v9.38 [COMPLETADO]
+- [x] Detectado que Home.tsx tenía su propia implementación separada de BudgetRequest.tsx
+- [x] Añadidos imports: Dialog, Minus, Clock, CheckCircle, X, Plus, ActivityEntry, getHeroFamilyForSlug
+- [x] Añadido estado multi-actividad: heroSelectedActivities, heroModalState, heroModalParticipants, heroModalDetails
+- [x] Añadidos handlers: openHeroActivityModal, saveHeroActivity, removeHeroActivity
+- [x] Query heroExperiencesList cargada bajo demanda cuando heroCategory === "Experiencias"
+- [x] Selector múltiple de experiencias reales reemplaza los chips genéricos para "Acuáticas"
+- [x] Resumen visual de actividades seleccionadas con botón de eliminar
+- [x] Modal contextual completo con participantes, duración, saltos, notas según familia
+- [x] Validación y submit actualizados para enviar activitiesJson como array (no JSON.stringify)
+- [x] 138 tests pasando · 0 errores TypeScript

@@ -1,12 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
   Waves, MapPin, Star, Clock, Users, ChevronRight, ChevronLeft,
   ArrowRight, Phone, Mail, Anchor, Wind, Zap, Heart, Shield, Calendar,
-  Send, Sparkles
+  Send, Sparkles, Plus, X, CheckCircle, Minus
 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import PublicLayout from "@/components/PublicLayout";
 import BookingModal from "@/components/BookingModal";
 import HotelSearchBar, { type HotelSearchParams } from "@/components/HotelSearchBar";
@@ -14,6 +15,42 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+
+// ─── Tipos para multi-actividad ───────────────────────────────────────────────
+interface HeroActivityEntry {
+  experienceId: number;
+  experienceTitle: string;
+  family: string;
+  participants: number;
+  details: Record<string, string | number>;
+}
+interface HeroModalState {
+  open: boolean;
+  experienceId: number;
+  experienceTitle: string;
+  family: string;
+  slug: string;
+}
+// Mapeo slug → familia de preguntas
+const HERO_FAMILY_MAP: Record<string, string> = {
+  "blob-jump": "saltos",
+  "banana-ski": "remolcado",
+  "cableski": "cableski",
+  "canoas": "alquiler",
+  "paddle-surf": "alquiler",
+  "hidrobicis": "alquiler",
+  "minimotos": "alquiler",
+  "paseos-barco": "barco",
+  "aventura-hinchable": "alquiler",
+  "circuito-spa": "spa",
+  "donuts-ski": "remolcado",
+};
+function getHeroFamilyForSlug(slug: string): string {
+  for (const [key, fam] of Object.entries(HERO_FAMILY_MAP)) {
+    if (slug.includes(key)) return fam;
+  }
+  return "generico";
+}
 
 // CDN images
 const CDN = {
@@ -173,6 +210,40 @@ export default function Home() {
   const [heroForm, setHeroForm] = useState({ name: "", email: "", phone: "", arrivalDate: "", adults: "2", children: "0", comments: "", honeypot: "" });
   const [heroErrors, setHeroErrors] = useState<Record<string, string>>({});
 
+  // ─── Estado multi-actividad (solo para categoría Experiencias) ─────────────────────
+  const [heroSelectedActivities, setHeroSelectedActivities] = useState<HeroActivityEntry[]>([]);
+  const [heroModalState, setHeroModalState] = useState<HeroModalState>({ open: false, experienceId: 0, experienceTitle: "", family: "", slug: "" });
+  const [heroModalParticipants, setHeroModalParticipants] = useState(2);
+  const [heroModalDetails, setHeroModalDetails] = useState<Record<string, string | number>>({});
+
+  const openHeroActivityModal = useCallback((exp: { id: number; title: string; slug: string }) => {
+    const family = getHeroFamilyForSlug(exp.slug);
+    const existing = heroSelectedActivities.find((a) => a.experienceId === exp.id);
+    setHeroModalParticipants(existing?.participants ?? (parseInt(heroForm.adults) || 2));
+    setHeroModalDetails(existing?.details ?? {});
+    setHeroModalState({ open: true, experienceId: exp.id, experienceTitle: exp.title, family, slug: exp.slug });
+  }, [heroSelectedActivities, heroForm.adults]);
+
+  const saveHeroActivity = useCallback(() => {
+    const entry: HeroActivityEntry = {
+      experienceId: heroModalState.experienceId,
+      experienceTitle: heroModalState.experienceTitle,
+      family: heroModalState.family,
+      participants: heroModalParticipants,
+      details: heroModalDetails,
+    };
+    setHeroSelectedActivities((prev) => {
+      const filtered = prev.filter((a) => a.experienceId !== entry.experienceId);
+      return [...filtered, entry];
+    });
+    setHeroModalState((s) => ({ ...s, open: false }));
+    setHeroErrors((e) => ({ ...e, product: "" }));
+  }, [heroModalState, heroModalParticipants, heroModalDetails]);
+
+  const removeHeroActivity = useCallback((id: number) => {
+    setHeroSelectedActivities((prev) => prev.filter((a) => a.experienceId !== id));
+  }, []);
+
   const { data: heroExperiencesList } = trpc.public.getExperiences.useQuery(
     { limit: 50 }, { enabled: heroCategory === "Experiencias" }
   );
@@ -197,7 +268,11 @@ export default function Home() {
     if (!heroForm.phone.trim() || heroForm.phone.trim().length < 6) e.phone = "Teléfono no válido";
     if (!heroForm.arrivalDate) e.arrivalDate = "Selecciona una fecha";
     if (!heroCategory) e.category = "Selecciona una categoría";
-    if (!heroProduct) e.product = "Selecciona una experiencia";
+    if (heroCategory === "Experiencias") {
+      if (heroSelectedActivities.length === 0) e.product = "Selecciona al menos una actividad";
+    } else {
+      if (!heroProduct) e.product = "Selecciona una experiencia";
+    }
     setHeroErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -205,14 +280,21 @@ export default function Home() {
   const handleHeroSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!validateHeroForm()) return;
+    const selectedProduct = heroCategory === "Experiencias"
+      ? heroSelectedActivities.map((a) => a.experienceTitle).join(", ")
+      : (heroProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : heroProduct);
+    const activitiesJson = heroCategory === "Experiencias" && heroSelectedActivities.length > 0
+      ? heroSelectedActivities
+      : undefined;
     await submitHeroBudget.mutateAsync({
       name: heroForm.name.trim(), email: heroForm.email.trim(), phone: heroForm.phone.trim(),
       arrivalDate: heroForm.arrivalDate,
       adults: parseInt(heroForm.adults) || 1, children: parseInt(heroForm.children) || 0,
       selectedCategory: heroCategory,
-      selectedProduct: heroProduct === SPECIAL_OPTION ? "Petición especial / Propuesta personalizada" : heroProduct,
+      selectedProduct,
       comments: heroForm.comments.trim() || undefined,
       honeypot: heroForm.honeypot || undefined,
+      activitiesJson,
     });
   };
 
@@ -391,7 +473,7 @@ export default function Home() {
                       <div className="flex flex-wrap gap-1.5">
                         {HERO_CATEGORIES.map((cat) => (
                           <button key={cat.id} type="button"
-                            onClick={() => { setHeroCategory(cat.id); setHeroProduct(""); setHeroErrors({ ...heroErrors, category: "", product: "" }); }}
+                            onClick={() => { setHeroCategory(cat.id); setHeroProduct(""); setHeroSelectedActivities([]); setHeroErrors({ ...heroErrors, category: "", product: "" }); }}
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 ${
                               heroCategory === cat.id
                                 ? "bg-orange-500 text-white border-orange-500 shadow-md shadow-orange-500/20"
@@ -410,33 +492,87 @@ export default function Home() {
                       <div className="p-3 bg-white/[0.04] border border-white/[0.08] rounded-2xl">
                         <p className="text-white/40 text-xs mb-2 flex items-center gap-1">
                           <ChevronRight className="w-3 h-3 text-orange-400" />
-                          Experiencia <span className="text-orange-400">*</span>
+                          {heroCategory === "Experiencias" ? "Selecciona actividades" : "Experiencia"} <span className="text-orange-400">*</span>
                         </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {heroProducts.map((product: string) => (
-                            <button key={product} type="button"
-                              onClick={() => { setHeroProduct(product); setHeroErrors({ ...heroErrors, product: "" }); }}
-                              className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
-                                heroProduct === product
-                                  ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
-                                  : "border-white/10 text-white/45 hover:border-sky-500/30 hover:text-white/75 bg-white/[0.03]"
+
+                        {/* ── Selector múltiple de experiencias reales ── */}
+                        {heroCategory === "Experiencias" ? (
+                          <div className="space-y-2">
+                            {/* Grid de experiencias */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {heroExperiencesList ? heroExperiencesList.map((exp: any) => {
+                                const isSelected = heroSelectedActivities.some((a) => a.experienceId === exp.id);
+                                return (
+                                  <button key={exp.id} type="button"
+                                    onClick={() => openHeroActivityModal({ id: exp.id, title: exp.title, slug: exp.slug ?? "" })}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs border transition-all ${
+                                      isSelected
+                                        ? "bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-sm shadow-sky-500/10"
+                                        : "border-white/10 text-white/50 hover:border-sky-500/30 hover:text-white/80 bg-white/[0.03]"
+                                    }`}
+                                  >
+                                    {isSelected && <CheckCircle className="w-3 h-3 text-sky-400" />}
+                                    {!isSelected && <Plus className="w-3 h-3 opacity-50" />}
+                                    {exp.title}
+                                  </button>
+                                );
+                              }) : (
+                                <span className="text-white/30 text-xs">Cargando experiencias…</span>
+                              )}
+                            </div>
+                            {/* Resumen de actividades seleccionadas */}
+                            {heroSelectedActivities.length > 0 && (
+                              <div className="mt-2 space-y-1.5">
+                                <p className="text-white/40 text-xs">Actividades seleccionadas:</p>
+                                {heroSelectedActivities.map((act) => (
+                                  <div key={act.experienceId} className="flex items-center justify-between bg-sky-500/10 border border-sky-500/20 rounded-xl px-3 py-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <CheckCircle className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                                      <div>
+                                        <span className="text-white/85 text-xs font-medium">{act.experienceTitle}</span>
+                                        <span className="text-white/40 text-xs ml-2">{act.participants} pers.</span>
+                                        {act.details.duration && <span className="text-white/35 text-xs ml-1">· {act.details.duration}</span>}
+                                        {act.details.jumps && <span className="text-white/35 text-xs ml-1">· {act.details.jumps} saltos</span>}
+                                      </div>
+                                    </div>
+                                    <button type="button" onClick={() => removeHeroActivity(act.experienceId)}
+                                      className="text-white/30 hover:text-red-400 transition-colors ml-2">
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {heroErrors.product && <p className="text-red-400 text-xs mt-1">{heroErrors.product}</p>}
+                          </div>
+                        ) : (
+                          /* ── Selector simple para otras categorías ── */
+                          <div className="flex flex-wrap gap-1.5">
+                            {heroProducts.map((product: string) => (
+                              <button key={product} type="button"
+                                onClick={() => { setHeroProduct(product); setHeroErrors({ ...heroErrors, product: "" }); }}
+                                className={`px-2.5 py-1 rounded-full text-xs border transition-all ${
+                                  heroProduct === product
+                                    ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                                    : "border-white/10 text-white/45 hover:border-sky-500/30 hover:text-white/75 bg-white/[0.03]"
+                                }`}
+                              >
+                                {product}
+                              </button>
+                            ))}
+                            <button type="button"
+                              onClick={() => { setHeroProduct(SPECIAL_OPTION); setHeroErrors({ ...heroErrors, product: "" }); }}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-all ${
+                                heroProduct === SPECIAL_OPTION
+                                  ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                                  : "border-orange-500/20 text-orange-400/60 hover:border-orange-500/40 bg-white/[0.03]"
                               }`}
                             >
-                              {product}
+                              <Star className="w-2.5 h-2.5" /> Propuesta personalizada
                             </button>
-                          ))}
-                          <button type="button"
-                            onClick={() => { setHeroProduct(SPECIAL_OPTION); setHeroErrors({ ...heroErrors, product: "" }); }}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-all ${
-                              heroProduct === SPECIAL_OPTION
-                                ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
-                                : "border-orange-500/20 text-orange-400/60 hover:border-orange-500/40 bg-white/[0.03]"
-                            }`}
-                          >
-                            <Star className="w-2.5 h-2.5" /> Propuesta personalizada
-                          </button>
-                        </div>
-                        {heroErrors.product && <p className="text-red-400 text-xs mt-1.5">{heroErrors.product}</p>}
+                            {heroErrors.product && <p className="text-red-400 text-xs mt-1.5">{heroErrors.product}</p>}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1023,6 +1159,118 @@ export default function Home() {
           product={bookingProduct}
         />
       )}
+
+      {/* ── Modal contextual de actividad ── */}
+      <Dialog open={heroModalState.open} onOpenChange={(open) => setHeroModalState((s) => ({ ...s, open }))}>
+        <DialogContent className="bg-[#0d1b2e] border border-white/10 text-white max-w-sm rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-white text-base font-semibold">{heroModalState.experienceTitle}</DialogTitle>
+            <p className="text-white/40 text-xs mt-0.5">Configura esta actividad</p>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Participantes */}
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block flex items-center gap-1"><Users className="w-3.5 h-3.5" /> Participantes</Label>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setHeroModalParticipants((p) => Math.max(1, p - 1))}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-white font-semibold text-lg w-8 text-center">{heroModalParticipants}</span>
+                <button type="button" onClick={() => setHeroModalParticipants((p) => Math.min(200, p + 1))}
+                  className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Duración (Cable Ski, Paddle Surf, Canoas, Alquiler) */}
+            {(heroModalState.family === "cableski" || heroModalState.family === "alquiler") && (
+              <div>
+                <Label className="text-white/60 text-xs mb-2 block flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Duración</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(heroModalState.family === "cableski"
+                    ? ["30 minutos", "1 hora", "2 horas", "Media jornada", "Jornada completa"]
+                    : ["1 hora", "2 horas", "Media jornada", "Jornada completa"]
+                  ).map((d) => (
+                    <button key={d} type="button"
+                      onClick={() => setHeroModalDetails((prev) => ({ ...prev, duration: d }))}
+                      className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                        heroModalDetails.duration === d
+                          ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                          : "border-white/10 text-white/50 hover:border-sky-500/30 bg-white/[0.03]"
+                      }`}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Saltos (Blob Jump) */}
+            {heroModalState.family === "saltos" && (
+              <div>
+                <Label className="text-white/60 text-xs mb-2 block">Número de saltos (total del grupo)</Label>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => setHeroModalDetails((prev) => ({ ...prev, jumps: Math.max(1, ((prev.jumps as number) || 1) - 1) }))}
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-white font-semibold text-lg w-8 text-center">{(heroModalDetails.jumps as number) || 1}</span>
+                  <button type="button" onClick={() => setHeroModalDetails((prev) => ({ ...prev, jumps: ((prev.jumps as number) || 1) + 1 }))}
+                    className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/15 flex items-center justify-center transition-colors">
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Tipo remolcado (Banana, Donut) */}
+            {heroModalState.family === "remolcado" && (
+              <div>
+                <Label className="text-white/60 text-xs mb-2 block">Duración del paseo</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {["15 minutos", "30 minutos", "1 hora"].map((d) => (
+                    <button key={d} type="button"
+                      onClick={() => setHeroModalDetails((prev) => ({ ...prev, duration: d }))}
+                      className={`px-3 py-1.5 rounded-full text-xs border transition-all ${
+                        heroModalDetails.duration === d
+                          ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                          : "border-white/10 text-white/50 hover:border-sky-500/30 bg-white/[0.03]"
+                      }`}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Notas adicionales */}
+            <div>
+              <Label className="text-white/60 text-xs mb-2 block">Notas adicionales (opcional)</Label>
+              <Input
+                value={(heroModalDetails.notes as string) || ""}
+                onChange={(e) => setHeroModalDetails((prev) => ({ ...prev, notes: e.target.value }))}
+                className="h-9 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm"
+                placeholder="Nivel, preferencias, alergias…"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm"
+              onClick={() => setHeroModalState((s) => ({ ...s, open: false }))}
+              className="border-white/15 text-white/60 hover:text-white bg-transparent">
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={saveHeroActivity}
+              className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white border-0">
+              <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Añadir actividad
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PublicLayout>
   );
 }
