@@ -1322,9 +1322,3 @@ export async function savePageBlocks(pageSlug: string, blocks: { id?: number; bl
   return { success: true };
 }
 
-export async function deletePageBlock(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.delete(pageBlocks).where(eq(pageBlocks.id, id));
-  return { success: true };
-}

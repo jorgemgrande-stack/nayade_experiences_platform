@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -5,7 +6,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
-// Public pages
+// ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
 import Home from "./pages/Home";
 import Experiences from "./pages/Experiences";
 import ExperienceDetail from "./pages/ExperienceDetail";
@@ -29,59 +30,63 @@ import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import DynamicPage from "./pages/DynamicPage";
-
-// Admin pages
-import AdminDashboard from "./pages/admin/AdminDashboard";
-
-// CMS
-import SlideshowManager from "./pages/admin/cms/SlideshowManager";
-import MenusManager from "./pages/admin/cms/MenusManager";
-import PagesManager from "./pages/admin/cms/PagesManager";
-import MultimediaManager from "./pages/admin/cms/MultimediaManager";
-import HomeModulesManager from "./pages/admin/cms/HomeModulesManager";
-import GalleryManager from "./pages/admin/cms/GalleryManager";
-
-// Products
-import ExperiencesManager from "./pages/admin/products/ExperiencesManager";
-import PacksManager from "./pages/admin/products/PacksManager";
-import CategoriesManager from "./pages/admin/products/CategoriesManager";
-import LocationsManager from "./pages/admin/products/LocationsManager";
-import VariantsManager from "./pages/admin/products/VariantsManager";
-
-// Quotes & Leads
-import LeadsManager from "./pages/admin/quotes/LeadsManager";
-import QuotesList from "./pages/admin/quotes/QuotesList";
-import QuoteBuilder from "./pages/admin/quotes/QuoteBuilder";
-
-// Operations
-import CalendarView from "./pages/admin/operations/CalendarView";
-import BookingsList from "./pages/admin/operations/BookingsList";
-import DailyOrders from "./pages/admin/operations/DailyOrders";
-import ReservationsManager from "./pages/admin/operations/ReservationsManager";
-
-// Accounting
-import AccountingDashboard from "./pages/admin/accounting/AccountingDashboard";
-import TransactionsList from "./pages/admin/accounting/TransactionsList";
-
-// Hotel & SPA
-import HotelManager from "./pages/admin/hotel/HotelManager";
-import SpaManager from "./pages/admin/spa/SpaManager";
 import HotelRoom from "./pages/HotelRoom";
 import SpaDetail from "./pages/SpaDetail";
-import ReviewsManager from "./pages/admin/ReviewsManager";
 import RestaurantBooking from "./pages/RestaurantBooking";
 
+// ── ADMIN PAGES (lazy — solo se cargan cuando el usuario navega a /admin) ────
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+
+// CMS
+const SlideshowManager = lazy(() => import("./pages/admin/cms/SlideshowManager"));
+const MenusManager = lazy(() => import("./pages/admin/cms/MenusManager"));
+const PagesManager = lazy(() => import("./pages/admin/cms/PagesManager"));
+const MultimediaManager = lazy(() => import("./pages/admin/cms/MultimediaManager"));
+const HomeModulesManager = lazy(() => import("./pages/admin/cms/HomeModulesManager"));
+const GalleryManager = lazy(() => import("./pages/admin/cms/GalleryManager"));
+
+// Products
+const ExperiencesManager = lazy(() => import("./pages/admin/products/ExperiencesManager"));
+const PacksManager = lazy(() => import("./pages/admin/products/PacksManager"));
+const CategoriesManager = lazy(() => import("./pages/admin/products/CategoriesManager"));
+const LocationsManager = lazy(() => import("./pages/admin/products/LocationsManager"));
+const VariantsManager = lazy(() => import("./pages/admin/products/VariantsManager"));
+
+// Operations
+const CalendarView = lazy(() => import("./pages/admin/operations/CalendarView"));
+const BookingsList = lazy(() => import("./pages/admin/operations/BookingsList"));
+const DailyOrders = lazy(() => import("./pages/admin/operations/DailyOrders"));
+const ReservationsManager = lazy(() => import("./pages/admin/operations/ReservationsManager"));
+
+// Accounting
+const AccountingDashboard = lazy(() => import("./pages/admin/accounting/AccountingDashboard"));
+const TransactionsList = lazy(() => import("./pages/admin/accounting/TransactionsList"));
+
+// Hotel & SPA
+const HotelManager = lazy(() => import("./pages/admin/hotel/HotelManager"));
+const SpaManager = lazy(() => import("./pages/admin/spa/SpaManager"));
+const ReviewsManager = lazy(() => import("./pages/admin/ReviewsManager"));
+
 // Restaurants Admin
-import RestaurantsManager from "./pages/admin/restaurants/RestaurantsManager";
-import GlobalCalendar from "./pages/admin/restaurants/GlobalCalendar";
+const RestaurantsManager = lazy(() => import("./pages/admin/restaurants/RestaurantsManager"));
+const GlobalCalendar = lazy(() => import("./pages/admin/restaurants/GlobalCalendar"));
 
 // Users & Settings
-import UsersManager from "./pages/admin/users/UsersManager";
-import Settings from "./pages/admin/settings/Settings";
+const UsersManager = lazy(() => import("./pages/admin/users/UsersManager"));
+const Settings = lazy(() => import("./pages/admin/settings/Settings"));
 
 // CRM
-import CRMDashboard from "./pages/admin/crm/CRMDashboard";
-import ClientsManager from "./pages/admin/crm/ClientsManager";
+const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
+const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
+
+// Fallback de carga para páginas admin
+function AdminLoadingFallback() {
+  return (
+    <div className="min-h-screen bg-[#080e1c] flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function Router() {
   return (
@@ -118,25 +123,31 @@ function Router() {
       {/* ── DYNAMIC PAGES (CMS) ── */}
       <Route path="/pagina/:slug" component={DynamicPage} />
 
-      {/* ── ADMIN ROUTES ── */}
-      <Route path="/admin" component={AdminDashboard} />
+      {/* ── ADMIN ROUTES (lazy loaded) ── */}
+      <Route path="/admin">
+        {() => (
+          <Suspense fallback={<AdminLoadingFallback />}>
+            <AdminDashboard />
+          </Suspense>
+        )}
+      </Route>
 
       {/* CMS */}
-      <Route path="/admin/cms" component={SlideshowManager} />
-      <Route path="/admin/cms/slideshow" component={SlideshowManager} />
-      <Route path="/admin/cms/menus" component={MenusManager} />
-      <Route path="/admin/cms/paginas" component={PagesManager} />
-      <Route path="/admin/cms/multimedia" component={MultimediaManager} />
-      <Route path="/admin/cms/modulos-home" component={HomeModulesManager} />
-      <Route path="/admin/cms/galeria" component={GalleryManager} />
+      <Route path="/admin/cms">{() => <Suspense fallback={<AdminLoadingFallback />}><SlideshowManager /></Suspense>}</Route>
+      <Route path="/admin/cms/slideshow">{() => <Suspense fallback={<AdminLoadingFallback />}><SlideshowManager /></Suspense>}</Route>
+      <Route path="/admin/cms/menus">{() => <Suspense fallback={<AdminLoadingFallback />}><MenusManager /></Suspense>}</Route>
+      <Route path="/admin/cms/paginas">{() => <Suspense fallback={<AdminLoadingFallback />}><PagesManager /></Suspense>}</Route>
+      <Route path="/admin/cms/multimedia">{() => <Suspense fallback={<AdminLoadingFallback />}><MultimediaManager /></Suspense>}</Route>
+      <Route path="/admin/cms/modulos-home">{() => <Suspense fallback={<AdminLoadingFallback />}><HomeModulesManager /></Suspense>}</Route>
+      <Route path="/admin/cms/galeria">{() => <Suspense fallback={<AdminLoadingFallback />}><GalleryManager /></Suspense>}</Route>
 
       {/* Products */}
-      <Route path="/admin/productos" component={ExperiencesManager} />
-      <Route path="/admin/productos/experiencias" component={ExperiencesManager} />
-      <Route path="/admin/productos/packs" component={PacksManager} />
-      <Route path="/admin/productos/categorias" component={CategoriesManager} />
-      <Route path="/admin/productos/ubicaciones" component={LocationsManager} />
-      <Route path="/admin/productos/variantes" component={VariantsManager} />
+      <Route path="/admin/productos">{() => <Suspense fallback={<AdminLoadingFallback />}><ExperiencesManager /></Suspense>}</Route>
+      <Route path="/admin/productos/experiencias">{() => <Suspense fallback={<AdminLoadingFallback />}><ExperiencesManager /></Suspense>}</Route>
+      <Route path="/admin/productos/packs">{() => <Suspense fallback={<AdminLoadingFallback />}><PacksManager /></Suspense>}</Route>
+      <Route path="/admin/productos/categorias">{() => <Suspense fallback={<AdminLoadingFallback />}><CategoriesManager /></Suspense>}</Route>
+      <Route path="/admin/productos/ubicaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><LocationsManager /></Suspense>}</Route>
+      <Route path="/admin/productos/variantes">{() => <Suspense fallback={<AdminLoadingFallback />}><VariantsManager /></Suspense>}</Route>
 
       {/* Quotes & Leads — redirigido al nuevo CRM */}
       <Route path="/admin/presupuestos">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
@@ -145,40 +156,40 @@ function Router() {
       <Route path="/admin/presupuestos/nuevo">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
 
       {/* Operations */}
-      <Route path="/admin/operaciones" component={CalendarView} />
-      <Route path="/admin/operaciones/calendario" component={CalendarView} />
-      <Route path="/admin/operaciones/reservas" component={BookingsList} />
-      <Route path="/admin/operaciones/ordenes" component={DailyOrders} />
-      <Route path="/admin/operaciones/reservas-redsys" component={ReservationsManager} />
+      <Route path="/admin/operaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><CalendarView /></Suspense>}</Route>
+      <Route path="/admin/operaciones/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><CalendarView /></Suspense>}</Route>
+      <Route path="/admin/operaciones/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><BookingsList /></Suspense>}</Route>
+      <Route path="/admin/operaciones/ordenes">{() => <Suspense fallback={<AdminLoadingFallback />}><DailyOrders /></Suspense>}</Route>
+      <Route path="/admin/operaciones/reservas-redsys">{() => <Suspense fallback={<AdminLoadingFallback />}><ReservationsManager /></Suspense>}</Route>
 
       {/* Accounting */}
-      <Route path="/admin/contabilidad" component={AccountingDashboard} />
-      <Route path="/admin/contabilidad/dashboard" component={AccountingDashboard} />
-      <Route path="/admin/contabilidad/transacciones" component={TransactionsList} />
+      <Route path="/admin/contabilidad">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingDashboard /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/dashboard">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingDashboard /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/transacciones">{() => <Suspense fallback={<AdminLoadingFallback />}><TransactionsList /></Suspense>}</Route>
 
       {/* Hotel & SPA */}
-      <Route path="/admin/hotel" component={HotelManager} />
-      <Route path="/admin/spa" component={SpaManager} />
+      <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>
+      <Route path="/admin/spa">{() => <Suspense fallback={<AdminLoadingFallback />}><SpaManager /></Suspense>}</Route>
 
       {/* Reviews */}
-      <Route path="/admin/operaciones/resenas" component={ReviewsManager} />
+      <Route path="/admin/operaciones/resenas">{() => <Suspense fallback={<AdminLoadingFallback />}><ReviewsManager /></Suspense>}</Route>
 
       {/* Restaurants Admin */}
-      <Route path="/admin/restaurantes" component={RestaurantsManager} />
-      <Route path="/admin/restaurantes/reservas" component={RestaurantsManager} />
-      <Route path="/admin/restaurantes/calendario" component={GlobalCalendar} />
-      <Route path="/admin/restaurantes/configuracion" component={RestaurantsManager} />
+      <Route path="/admin/restaurantes">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantsManager /></Suspense>}</Route>
+      <Route path="/admin/restaurantes/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantsManager /></Suspense>}</Route>
+      <Route path="/admin/restaurantes/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><GlobalCalendar /></Suspense>}</Route>
+      <Route path="/admin/restaurantes/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantsManager /></Suspense>}</Route>
 
       {/* CRM */}
-      <Route path="/admin/crm" component={CRMDashboard} />
-      <Route path="/admin/crm/leads" component={CRMDashboard} />
-      <Route path="/admin/crm/presupuestos" component={CRMDashboard} />
-      <Route path="/admin/crm/reservas" component={CRMDashboard} />
-      <Route path="/admin/crm/clientes" component={ClientsManager} />
+      <Route path="/admin/crm">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
+      <Route path="/admin/crm/leads">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
+      <Route path="/admin/crm/presupuestos">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
+      <Route path="/admin/crm/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
+      <Route path="/admin/crm/clientes">{() => <Suspense fallback={<AdminLoadingFallback />}><ClientsManager /></Suspense>}</Route>
 
       {/* Users & Settings */}
-      <Route path="/admin/usuarios" component={UsersManager} />
-      <Route path="/admin/configuracion" component={Settings} />
+      <Route path="/admin/usuarios">{() => <Suspense fallback={<AdminLoadingFallback />}><UsersManager /></Suspense>}</Route>
+      <Route path="/admin/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
 
       {/* 404 */}
       <Route path="/404" component={NotFound} />

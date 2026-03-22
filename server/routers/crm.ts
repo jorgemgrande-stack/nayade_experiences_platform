@@ -17,7 +17,7 @@ import {
   experiences,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
-import nodemailer from "nodemailer";
+import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import {
   buildQuoteHtml,
@@ -25,29 +25,17 @@ import {
   buildQuotePdfHtml,
 } from "../emailTemplates";
 
-// DB helper
-function getDb() {
-  const pool = mysql.createPool(process.env.DATABASE_URL!);
-  return drizzle(pool);
-}
-const db = getDb();
+// DB helper — usa la misma pool que el resto del servidor
+const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const db = drizzle(_pool);
 
-// Email helper
+// Email helper — delega en el helper compartido mailer.ts
 const COPY_EMAIL = "reservas@nayadeexperiences.es";
 async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!host || !user || !pass) { console.warn("SMTP not configured, skipping email"); return; }
-  const transporter = nodemailer.createTransport({
-    host,
-    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-  });
-  // Siempre enviar copia a reservas@nayadeexperiences.es
-  await transporter.sendMail({ from: process.env.SMTP_FROM ?? user, to, bcc: COPY_EMAIL, subject, html });
+  const sent = await sharedSendEmail({ to, subject, html });
+  if (!sent) { console.warn("SMTP not configured, skipping email"); return; }
+  // Enviar copia BCC a reservas@nayadeexperiences.es
+  await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html });
 }
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 

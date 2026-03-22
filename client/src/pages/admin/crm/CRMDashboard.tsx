@@ -366,7 +366,7 @@ function LeadDetailModal({
           <div>
             <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Presupuestos asociados</h4>
             <div className="space-y-2">
-              {relatedQuotes.map((q) => (
+              {relatedQuotes.map((q: any) => (
                 <div key={q.id} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
                   <div>
                     <span className="text-sm font-medium text-white">{q.quoteNumber}</span>
@@ -620,7 +620,7 @@ function ProductSearchInput({
       />
       {open && products && products.length > 0 && (
         <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-          {products.map((p) => (
+          {products.map((p: any) => (
             <button
               key={p.id}
               type="button"
@@ -772,7 +772,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
             </div>
             {showClientSuggestions && (clientSuggestions?.items?.length ?? 0) > 0 && (
               <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/10 rounded-lg shadow-xl max-h-40 overflow-y-auto">
-                {clientSuggestions!.items.map((c) => (
+                {clientSuggestions!.items.map((c: any) => (
                   <button
                     key={c.id}
                     type="button"
@@ -1501,7 +1501,7 @@ function QuoteDetailModal({
         {relatedInvoices.length > 0 && (
           <div>
             <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Facturas generadas</h4>
-            {relatedInvoices.map((inv) => (
+            {relatedInvoices.map((inv: any) => (
               <div key={inv.id} className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
                 <div>
                   <span className="text-sm font-medium text-emerald-400">{inv.invoiceNumber}</span>
@@ -1657,9 +1657,9 @@ export default function CRMDashboard() {
     offset: 0,
   }), [filterStatus, search, tab]);
 
-  const { data: leadsData, isLoading: leadsLoading } = trpc.crm.leads.list.useQuery(leadsFilter);
-  const { data: quotesData, isLoading: quotesLoading } = trpc.crm.quotes.list.useQuery(quotesFilter);
-  const { data: resData, isLoading: resLoading } = trpc.crm.reservations.list.useQuery(resFilter);
+  const { data: leadsData, isLoading: leadsLoading } = trpc.crm.leads.list.useQuery(leadsFilter, { enabled: tab === "leads" });
+  const { data: quotesData, isLoading: quotesLoading } = trpc.crm.quotes.list.useQuery(quotesFilter, { enabled: tab === "quotes" });
+  const { data: resData, isLoading: resLoading } = trpc.crm.reservations.list.useQuery(resFilter, { enabled: tab === "reservations" });
 
   const utils = trpc.useUtils();
   const deleteLead = trpc.crm.leads.delete.useMutation({
@@ -2024,7 +2024,7 @@ export default function CRMDashboard() {
                     <tr><td colSpan={6} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !leadsData?.length ? (
                     <tr><td colSpan={6} className="text-center py-12 text-white/30 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
-                  ) : leadsData.map((lead) => (
+                  ) : leadsData.map((lead: any) => (
                     <tr key={lead.id} className={`border-t border-white/5 hover:bg-white/3 transition-colors ${!lead.seenAt ? "bg-blue-950/20" : ""}`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
@@ -2124,7 +2124,7 @@ export default function CRMDashboard() {
                     <tr><td colSpan={7} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !quotesData?.length ? (
                     <tr><td colSpan={7} className="text-center py-12 text-white/30 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
-                  ) : quotesData.map((quote) => (
+                  ) : quotesData.map((quote: any) => (
                     <tr key={quote.id} className="border-t border-white/5 hover:bg-white/3 transition-colors group">
                       <td className="px-4 py-3">
                         <div className="text-sm font-mono font-medium text-orange-400">{quote.quoteNumber}</div>
@@ -2248,7 +2248,7 @@ export default function CRMDashboard() {
                     <tr><td colSpan={5} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !resData?.length ? (
                     <tr><td colSpan={5} className="text-center py-12 text-white/30 text-sm">No hay reservas</td></tr>
-                  ) : resData.map((res) => (
+                  ) : resData.map((res: any) => (
                     <tr key={res.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
                       <td className="px-4 py-3">
                         <div className="text-sm font-medium text-white">{res.customerName}</div>
