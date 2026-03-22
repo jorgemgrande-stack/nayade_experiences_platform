@@ -15,12 +15,67 @@ import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
 import { serveStatic, setupVite } from "./vite";
 
+// ─── RATE LIMITERS ────────────────────────────────────────────────────────────
+
+/**
+ * Formularios públicos de lead/presupuesto: 10 req/min por IP.
+ * Protege submitLead y submitBudget contra spam y bots.
+ */
+const leadRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Demasiadas solicitudes. Por favor espera 1 minuto antes de volver a intentarlo.",
+    code: "RATE_LIMIT_EXCEEDED",
+  },
+});
+
+/**
+ * Autenticación local: 5 req/min por IP.
+ * Previene ataques de fuerza bruta en login y recuperación de contraseña.
+ */
 const authRateLimit = rateLimit({
-  windowMs: 60 * 1000, // 1 minuto
+  windowMs: 60 * 1000,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Demasiados intentos. Espera 1 minuto antes de volver a intentarlo." },
+  message: {
+    error: "Demasiados intentos. Espera 1 minuto antes de volver a intentarlo.",
+    code: "RATE_LIMIT_EXCEEDED",
+  },
+});
+
+/**
+ * Endpoints de pago Redsys (IPN): 30 req/min por IP.
+ * Las notificaciones IPN legítimas de Redsys son infrecuentes; este límite
+ * bloquea intentos de replay o fuzzing del endpoint de notificación.
+ */
+const redsysRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Demasiadas peticiones al endpoint de pago.",
+    code: "RATE_LIMIT_EXCEEDED",
+  },
+});
+
+/**
+ * Endpoint de subida de archivos: 20 req/min por IP.
+ * Previene abuso de almacenamiento S3.
+ */
+const uploadRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: "Demasiadas subidas. Espera 1 minuto.",
+    code: "RATE_LIMIT_EXCEEDED",
+  },
 });
 
 // Modo de autenticación: LOCAL_AUTH=true usa email+password local en lugar de Manus OAuth
@@ -63,6 +118,18 @@ async function startServer() {
     // Modo Manus: OAuth callback
     registerOAuthRoutes(app);
   }
+
+  // Rate limiting en formularios públicos de lead/presupuesto (10 req/min por IP)
+  app.use("/api/trpc/submitLead", leadRateLimit);
+  app.use("/api/trpc/submitBudget", leadRateLimit);
+
+  // Rate limiting en endpoints de pago Redsys (30 req/min por IP)
+  app.use("/api/redsys/notification", redsysRateLimit);
+  app.use("/api/redsys/restaurant-notification", redsysRateLimit);
+
+  // Rate limiting en endpoint de subida de archivos (20 req/min por IP)
+  app.use("/api/upload", uploadRateLimit);
+  app.use("/api/upload-media", uploadRateLimit);
 
   // Middleware de protección: bloquea rutas /api/trpc de procedimientos protegidos
   // si no hay sesión válida. Funciona en ambos modos (local y Manus OAuth).

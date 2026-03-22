@@ -1010,3 +1010,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Solución robusta: upsert de cliente en TODOS los puntos de entrada
 - [x] Backfill: crear clientes para leads existentes sin cliente
 - [x] 0 errores TypeScript · 114 tests pasando
+
+## Rate Limiting — v9.26
+- [x] Instalar express-rate-limit (ya estaba instalado v8.3.1)
+- [x] Limitar submitLead y submitBudget: 10 req/min por IP
+- [x] Limitar auth/login y forgot-password: 5 req/min por IP
+- [x] Limitar endpoints de pago Redsys: 30 req/min por IP
+- [x] Limitar subida de archivos: 20 req/min por IP
+- [x] Test unitario que verifica configuración de rate limiters (12 tests)
+- [x] 126 tests pasando · 0 errores TypeScript
