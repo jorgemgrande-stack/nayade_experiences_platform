@@ -1228,3 +1228,17 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Botón ✕ para limpiar el rango de fechas activo
 - [x] Panel de resumen del período: nº facturas, base imponible, total IVA incluido
 - [x] 145 tests pasando · 0 errores TypeScript
+
+## Rediseño Dashboard bienvenida con estilo oscuro CRM — v9.47 [COMPLETADO]
+
+- [x] Auditados tokens exactos del CRM: fondo #080e1c, gradientes from-*-950/90 via-*-900/40 to-[#080e1c]
+- [x] Auditado AdminDashboard.tsx: 267 líneas con bg-card (claro), badges de color plano, sin glows
+- [x] Header bienvenida: gradiente 135deg #0d1526 → #080e1c → #0d1a10, glows ambientales azul+verde, indicador de sistema activo
+- [x] KPI cards: mismo patrón CounterCard del CRM (gradientes, glow blob, número con count-up, barra inferior)
+- [x] 4 colores KPI: emerald (ingresos), blue (reservas), violet (leads), amber (presupuestos)
+- [x] Acciones rápidas: tarjetas con bg-*-500/10 border-*-500/30, hover con brillo, iconos de color
+- [x] Módulos del sistema: lista con dots de color, hover sutil, flechas de navegación
+- [x] Actividad reciente: iconos en tarjetas con border de color, timestamps en blanco/30
+- [x] Actividades de hoy: fondo bg-white/[0.03], hora en font-black, estado con dot de color
+- [x] Tipografía: font-black para títulos, uppercase tracking-widest para labels, tabular-nums para números
+- [x] 145 tests pasando · 0 errores TypeScript
