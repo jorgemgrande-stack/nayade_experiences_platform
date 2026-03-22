@@ -1352,40 +1352,50 @@ export const crmRouter = router({
 </body>
 </html>`;
 
-        // Generate PDF using chromium
+        // Generate PDF using manus-md-to-pdf (same as invoices)
         try {
           const { execSync } = await import("child_process");
           const { writeFileSync, readFileSync, unlinkSync } = await import("fs");
           const { tmpdir } = await import("os");
           const { join } = await import("path");
 
-          const tmpHtml = join(tmpdir(), `quote-${input.id}-${Date.now()}.html`);
-          const tmpPdf = join(tmpdir(), `quote-${input.id}-${Date.now()}.pdf`);
+          const ts = Date.now();
+          const tmpHtml = join(tmpdir(), `quote-${input.id}-${ts}.html`);
+          const tmpPdf = join(tmpdir(), `quote-${input.id}-${ts}.pdf`);
           writeFileSync(tmpHtml, html);
 
           try {
             execSync(
-              `chromium-browser --headless --no-sandbox --disable-gpu --disable-software-rasterizer --print-to-pdf="${tmpPdf}" "file://${tmpHtml}" 2>/dev/null`,
+              `manus-md-to-pdf ${tmpHtml} ${tmpPdf} 2>/dev/null || chromium-browser --headless --no-sandbox --disable-gpu --print-to-pdf=${tmpPdf} ${tmpHtml} 2>/dev/null`,
               { timeout: 20000 }
             );
             const pdfBuffer = readFileSync(tmpPdf);
             unlinkSync(tmpHtml);
             try { unlinkSync(tmpPdf); } catch { /* ignore */ }
 
-            // Return as base64 for direct download
+            // Upload to S3 and return URL for direct download
+            const key = `quotes/${quote.quoteNumber}-${ts}.pdf`;
+            const { url } = await storagePut(key, pdfBuffer, "application/pdf");
             return {
               success: true,
-              pdfBase64: pdfBuffer.toString("base64"),
+              pdfUrl: url,
               filename: `Presupuesto-${quote.quoteNumber}.pdf`,
             };
-          } catch (e) {
+          } catch {
             unlinkSync(tmpHtml);
             try { unlinkSync(tmpPdf); } catch { /* ignore */ }
-            throw e;
+            // Fallback: store HTML and return URL
+            const key = `quotes/${quote.quoteNumber}-${ts}.html`;
+            const { url } = await storagePut(key, Buffer.from(html), "text/html");
+            return {
+              success: true,
+              pdfUrl: url,
+              filename: `Presupuesto-${quote.quoteNumber}.html`,
+            };
           }
         } catch (err) {
           console.error("PDF generation failed:", err);
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo generar el PDF. Int\u00e9ntalo de nuevo." });
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo generar el PDF. Inténtalo de nuevo." });
         }
       }),
   }),

@@ -1100,6 +1100,18 @@ function QuoteDetailModal({
     },
   });
 
+  const convertToReservation = trpc.crm.quotes.convertToReservation.useMutation({
+    onSuccess: () => {
+      toast.success("Reserva creada · Pendiente de cobro");
+      utils.crm.quotes.get.invalidate({ id: quoteId });
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+      utils.crm.reservations.counters.invalidate();
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const generatePdf = trpc.crm.quotes.generatePdf.useMutation({
     onError: (e) => toast.error(e.message),
   });
@@ -1107,10 +1119,14 @@ function QuoteDetailModal({
   const downloadPdf = async () => {
     try {
       const result = await generatePdf.mutateAsync({ id: quoteId });
-      const link = document.createElement("a");
-      link.href = `data:application/pdf;base64,${result.pdfBase64}`;
-      link.download = `presupuesto-${quote.quoteNumber}.pdf`;
-      link.click();
+      const a = document.createElement("a");
+      a.href = result.pdfUrl;
+      a.download = result.filename;
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success("PDF generado correctamente");
     } catch (_) { /* error ya mostrado */ }
   };
 
@@ -1228,7 +1244,8 @@ function QuoteDetailModal({
         )}
       </div>
 
-      <DialogFooter className="flex gap-2 flex-wrap">
+      <DialogFooter className="flex gap-2 flex-wrap pt-2 border-t border-white/10">
+        {/* Enviar / Reenviar */}
         {quote.status === "borrador" && (
           <>
             <Button
@@ -1237,43 +1254,67 @@ function QuoteDetailModal({
               className="border-white/15 text-white/60 text-xs"
               onClick={() => setShowPaymentInput(!showPaymentInput)}
             >
-              <ArrowUpRight className="w-3.5 h-3.5 mr-1" /> {showPaymentInput ? "Sin link" : "Añadir link pago"}
+              <ArrowUpRight className="w-3.5 h-3.5 mr-1" /> {showPaymentInput ? "Sin link" : "+ Link pago"}
             </Button>
             <Button
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
               onClick={() => sendQuote.mutate({ id: quoteId, paymentLinkUrl: paymentLink || undefined })}
               disabled={sendQuote.isPending}
             >
-              <Send className="w-4 h-4 mr-1" /> Enviar al cliente
+              {sendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-1" />}
+              Enviar al cliente
             </Button>
           </>
         )}
         {quote.status === "enviado" && (
-          <>
-            <Button size="sm" variant="outline" className="border-white/15 text-white/60 text-xs" onClick={() => resendQuote.mutate({ id: quoteId })}>
-              <RefreshCw className="w-3.5 h-3.5 mr-1" /> Reenviar
-            </Button>
-            <Button
-              size="sm"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => confirmPayment.mutate({ quoteId })}
-              disabled={confirmPayment.isPending}
-            >
-              {confirmPayment.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-              Confirmar Pago
-            </Button>
-          </>
+          <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId })} disabled={resendQuote.isPending}>
+            {resendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+            Reenviar
+          </Button>
         )}
+
+        {/* Confirmar Pago */}
+        {(quote.status === "enviado" || quote.status === "borrador") && (
+          <Button
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+            onClick={() => confirmPayment.mutate({ quoteId })}
+            disabled={confirmPayment.isPending}
+          >
+            {confirmPayment.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+            Confirmar Pago
+          </Button>
+        )}
+
+        {/* Convertir a Reserva sin pago */}
+        {(quote.status === "enviado" || quote.status === "borrador") && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10 text-xs"
+            onClick={() => convertToReservation.mutate({ quoteId })}
+            disabled={convertToReservation.isPending}
+          >
+            {convertToReservation.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CalendarCheck className="w-3.5 h-3.5 mr-1" />}
+            Reserva s/pago
+          </Button>
+        )}
+
+        {/* Descargar PDF */}
         <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs" onClick={downloadPdf} disabled={generatePdf.isPending}>
           {generatePdf.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1" />}
           Descargar PDF
         </Button>
-        <Button size="sm" variant="ghost" className="text-white/40 hover:text-white text-xs" onClick={() => duplicate.mutate({ id: quoteId })}>
+
+        {/* Duplicar */}
+        <Button size="sm" variant="ghost" className="text-white/40 hover:text-white text-xs" onClick={() => duplicate.mutate({ id: quoteId })} disabled={duplicate.isPending}>
           <Copy className="w-3.5 h-3.5 mr-1" /> Duplicar
         </Button>
-        {quote.status !== "aceptado" && (
-          <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 text-xs" onClick={() => markLost.mutate({ id: quoteId })}>
+
+        {/* Marcar perdido */}
+        {quote.status !== "aceptado" && quote.status !== "perdido" && (
+          <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 text-xs" onClick={() => markLost.mutate({ id: quoteId })} disabled={markLost.isPending}>
             <XCircle className="w-3.5 h-3.5 mr-1" /> Perdido
           </Button>
         )}
@@ -1414,19 +1455,15 @@ export default function CRMDashboard() {
     const toastId = toast.loading(`Generando PDF ${quoteNumber}...`);
     try {
       const result = await generatePdfMutation.mutateAsync({ id: quoteId });
-      const byteChars = atob(result.pdfBase64);
-      const byteNums = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([new Uint8Array(byteNums)], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
+      // Open the S3 URL directly in a new tab for download
       const a = document.createElement("a");
-      a.href = url;
+      a.href = result.pdfUrl;
       a.download = result.filename;
+      a.target = "_blank";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success("PDF descargado", { id: toastId });
+      toast.success("PDF generado correctamente", { id: toastId });
     } catch {
       toast.error("Error al generar el PDF", { id: toastId });
     }
