@@ -1283,3 +1283,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Acciones rápidas con links funcionales a los flujos reales del sistema
 - [x] Auto-refresh cada 60 segundos
 - [x] 159 tests pasando · 0 errores TypeScript
+
+## Corrección diseño Dashboard (v5.3.1)
+- [x] Corregir fondo blanco del dashboard: usar bg-[#080e1c] igual que el resto del CRM
+- [x] Corregir textos invisibles: usar text-white con opacidades correctas (text-white/80, text-white/40, etc.)
+- [x] Tarjetas KPI: gradientes idénticos al CRM (from-*-950/80 via-*-900/30 to-[#080e1c])
+- [x] Paneles de sección: fondo rgba(255,255,255,0.03) con border-white/8 igual que CRM
+- [x] Acciones rápidas: botones con fondo oscuro y hover coherente con el sistema de diseño
+- [x] 0 errores TypeScript
