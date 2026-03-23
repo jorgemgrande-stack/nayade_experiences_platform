@@ -1967,6 +1967,285 @@ function QuoteDetailModal({
   );
 }
 
+// ─── RESERVATION DETAIL MODAL ───────────────────────────────────────────────
+
+function ReservationDetailModal({
+  reservationId,
+  onClose,
+  onEdit,
+}: {
+  reservationId: number;
+  onClose: () => void;
+  onEdit: (id: number, status: string) => void;
+}) {
+  const { data, isLoading } = trpc.crm.reservations.get.useQuery({ id: reservationId });
+
+  const ACTION_LABELS: Record<string, string> = {
+    reservation_created:   "Reserva creada",
+    reservation_updated:   "Reserva actualizada",
+    reservation_paid:      "Reserva pagada online",
+    reservation_cancelled: "Reserva cancelada",
+    payment_confirmed:     "Pago confirmado",
+    transfer_validated:    "Transferencia bancaria validada",
+    invoice_generated:     "Factura generada",
+    booking_created:       "Actividad programada",
+    booking_confirmed:     "Actividad confirmada",
+    booking_completed:     "Actividad completada",
+    email_sent:            "Email enviado al cliente",
+  };
+  const translateAction = (action: string) =>
+    ACTION_LABELS[action] ?? action.replace(/_/g, " ");
+
+  const getStatusBadge = (status: string) => {
+    const map: Record<string, { label: string; cls: string }> = {
+      paid:            { label: "✅ Confirmada",        cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+      pending_payment: { label: "⏳ Pendiente de pago", cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+      cancelled:       { label: "❌ Cancelada",          cls: "bg-red-500/15 text-red-400 border-red-500/30" },
+      failed:          { label: "⚠️ Fallida",            cls: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+      draft:           { label: "📝 Borrador",           cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
+      completed:       { label: "🏁 Completada",         cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+    };
+    const s = map[status] ?? { label: status, cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" };
+    return (
+      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${s.cls}`}>
+        {s.label}
+      </span>
+    );
+  };
+
+  const getPaymentBadge = (method: string | null) => {
+    if (!method) return <span className="text-white/20 text-xs">—</span>;
+    const map: Record<string, { label: string; cls: string; icon: string }> = {
+      redsys:        { label: "Tarjeta (Redsys)",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      transferencia: { label: "Transferencia",      cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
+      efectivo:      { label: "Efectivo",           cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
+      otro:          { label: "Otro",               cls: "bg-white/10 text-white/50 border-white/15",             icon: "❓" },
+    };
+    const s = map[method] ?? { label: method, cls: "bg-white/10 text-white/50 border-white/15", icon: "" };
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${s.cls}`}>
+        <span>{s.icon}</span>{s.label}
+      </span>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white">
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
+        </div>
+      </DialogContent>
+    );
+  }
+  if (!data) return null;
+  const { reservation: res, invoices: relatedInvoices, activity } = data;
+  const amountEur = ((res.amountPaid ?? res.amountTotal) / 100).toFixed(2);
+  const totalEur = (res.amountTotal / 100).toFixed(2);
+
+  return (
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
+      <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
+        <DialogHeader>
+          <DialogTitle className="text-white flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500/20 to-emerald-700/20 border border-emerald-500/30 flex items-center justify-center">
+              <CalendarCheck className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div>
+              <div className="font-bold">{res.customerName}</div>
+              <div className="text-sm text-white/50 font-normal">{res.merchantOrder}</div>
+            </div>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 mt-4">
+          {/* Estado y método de pago */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {getStatusBadge(res.status)}
+            {getPaymentBadge(res.paymentMethod)}
+            {res.channel && (
+              <span className="text-xs text-white/30 capitalize">
+                Canal: {res.channel === "web" ? "Web" : res.channel === "crm" ? "CRM" : res.channel}
+              </span>
+            )}
+          </div>
+
+          {/* Datos del cliente */}
+          <div className="bg-white/[0.04] border border-white/8 rounded-xl p-4">
+            <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Datos del cliente</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-white/40 mb-0.5">Nombre</div>
+                <div className="text-sm text-white font-medium">{res.customerName}</div>
+              </div>
+              <div>
+                <div className="text-xs text-white/40 mb-0.5">Email</div>
+                <a href={`mailto:${res.customerEmail}`} className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
+                  {res.customerEmail}
+                </a>
+              </div>
+              {res.customerPhone && (
+                <div>
+                  <div className="text-xs text-white/40 mb-0.5">Teléfono</div>
+                  <a href={`tel:${res.customerPhone}`} className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
+                    {res.customerPhone}
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Detalles de la reserva */}
+          <div className="bg-white/[0.04] border border-white/8 rounded-xl p-4">
+            <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Detalles de la reserva</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-white/50">Producto</span>
+                <span className="text-white font-medium text-right max-w-[60%]">{res.productName}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-white/50">Fecha de actividad</span>
+                <span className="text-white font-medium">{res.bookingDate || "—"}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-white/50">Personas</span>
+                <span className="text-white font-medium">{res.people} pax</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-white/50">Importe total</span>
+                <span className="text-orange-400 font-bold">{totalEur} €</span>
+              </div>
+              {res.amountPaid !== res.amountTotal && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/50">Importe cobrado</span>
+                  <span className="text-emerald-400 font-bold">{amountEur} €</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm">
+                <span className="text-white/50">Referencia</span>
+                <span className="font-mono text-white/60 text-xs">{res.merchantOrder}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-white/50">Creada el</span>
+                <span className="text-white/60">{new Date(res.createdAt).toLocaleString("es-ES")}</span>
+              </div>
+              {res.paidAt && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/50">Pagada el</span>
+                  <span className="text-emerald-400">{new Date(res.paidAt).toLocaleString("es-ES")}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Justificante de transferencia */}
+          {res.transferProofUrl && (
+            <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-sky-300 uppercase tracking-wider mb-2">Justificante de transferencia</h4>
+              <a
+                href={res.transferProofUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-sky-400 hover:text-sky-300 transition-colors"
+              >
+                <Paperclip className="w-4 h-4" />
+                Ver justificante adjunto
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+
+          {/* Notas internas */}
+          {res.notes && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">Notas internas</h4>
+              <p className="text-sm text-white/70">{res.notes}</p>
+            </div>
+          )}
+
+          {/* Facturas asociadas */}
+          {relatedInvoices.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Facturas asociadas</h4>
+              <div className="space-y-2">
+                {relatedInvoices.map((inv: any) => (
+                  <div key={inv.id} className="flex items-center justify-between bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+                    <div>
+                      <div className="text-sm font-mono font-bold text-white">{inv.invoiceNumber}</div>
+                      <div className="text-xs text-white/40 mt-0.5">
+                        {new Date(inv.createdAt).toLocaleDateString("es-ES")} · {inv.status}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold text-orange-400">{Number(inv.total).toFixed(2)} €</span>
+                      {inv.pdfUrl && (
+                        <a
+                          href={inv.pdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+                        >
+                          <FileDown className="w-3.5 h-3.5" /> PDF
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Historial de actividad */}
+          {activity.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Historial de actividad</h4>
+              <div className="space-y-1.5">
+                {activity.map((log: any) => (
+                  <div key={log.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 mt-2 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-white/70">{translateAction(log.action)}</div>
+                      {log.actorName && (
+                        <div className="text-xs text-white/30">{log.actorName}</div>
+                      )}
+                    </div>
+                    <div className="text-xs text-white/30 shrink-0">
+                      {new Date(log.createdAt).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <DialogFooter className="px-6 py-4 border-t border-white/8 flex gap-2 flex-wrap">
+        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
+          Cerrar
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+          onClick={() => { onClose(); onEdit(res.id, res.status); }}
+        >
+          <Pencil className="w-4 h-4 mr-1" /> Editar reserva
+        </Button>
+        {relatedInvoices[0]?.pdfUrl && (
+          <Button
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={() => window.open(relatedInvoices[0].pdfUrl ?? undefined, "_blank")}
+          >
+            <FileDown className="w-4 h-4 mr-1" /> Descargar factura PDF
+          </Button>
+        )}
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
 // ─── MAIN CRM DASHBOARD ───────────────────────────────────────────────────────
 
 export default function CRMDashboard() {
@@ -1995,13 +2274,13 @@ export default function CRMDashboard() {
   const [convertReservationId, setConvertReservationId] = useState<number | null>(null);
   const [markLostQuoteId, setMarkLostQuoteId] = useState<number | null>(null);
   const [showDirectQuoteModal, setShowDirectQuoteModal] = useState(false);
-  // ─── Estado dropdown acciones reservas ────────────────────────────────────
+  // ─── Estado dropdown acciones reservas ────────────────────────────────────────────────────
   const [resActionMenuId, setResActionMenuId] = useState<number | null>(null);
+  const [viewResId, setViewResId] = useState<number | null>(null);
   const [editResId, setEditResId] = useState<number | null>(null);
   const [deleteResId, setDeleteResId] = useState<number | null>(null);
   const [editResStatus, setEditResStatus] = useState<string>("");
   const [editResNotes, setEditResNotes] = useState<string>("");
-
   const { data: leadCounters } = trpc.crm.leads.counters.useQuery();
   const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery();
   const { data: resCounters } = trpc.crm.reservations.counters.useQuery();
@@ -2852,7 +3131,7 @@ export default function CRMDashboard() {
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver detalles */}
                           <Button size="sm" variant="ghost" className="text-white/40 hover:text-sky-300 h-7 w-7 p-0"
-                            onClick={() => toast.info("Detalle de reserva — próximamente")}
+                            onClick={() => setViewResId(res.id)}
                             title="Ver detalles">
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
@@ -3392,7 +3671,19 @@ export default function CRMDashboard() {
 
         </DialogContent>
       </Dialog>
-      {/* ─── EDITAR RESERVA ──────────────────────────────────────────────────── */}
+
+      {/* ─── VER DETALLE RESERVA ───────────────────────────────────────────────────────── */}
+      <Dialog open={viewResId !== null} onOpenChange={(o) => !o && setViewResId(null)}>
+        {viewResId !== null && (
+          <ReservationDetailModal
+            reservationId={viewResId}
+            onClose={() => setViewResId(null)}
+            onEdit={(id, status) => { setViewResId(null); setEditResStatus(status); setEditResNotes(""); setEditResId(id); }}
+          />
+        )}
+      </Dialog>
+
+      {/* ─── EDITAR RESERVA ────────────────────────────────────────────────────────── */}
       <Dialog open={editResId !== null} onOpenChange={(o) => !o && setEditResId(null)}>
         <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
           <DialogHeader>

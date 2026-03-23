@@ -1323,3 +1323,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Modal de edición de reserva con selector de estado y notas internas
 - [x] Modal de confirmación de eliminación
 - [x] 0 errores TypeScript
+
+## v5.4.2: Modal de detalle completo de reserva (botón Eye)
+- [x] Implementar modal/panel lateral de detalle de reserva con: datos del cliente, producto, método de pago, estado, historial de actividad, justificante de transferencia y enlace a factura
+- [x] Conectar el botón Eye al nuevo modal (reemplazar toast "próximamente")
