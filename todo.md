@@ -1436,3 +1436,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 
 ## v5.14.2: Rediseño DiscountRibbon
 - [x] Ribbon más grande (100×100), porcentaje con tipografía grande y llamativa (18px bold), color verde semáforo (#16a34a → #22c55e)
+
+## v5.14.3: Ribbon — fecha real de caducidad
+- [x] Texto del ribbon cambiado a "Hasta DD/MM" (fecha real de caducidad)
+- [x] Ribbon ampliado a 110×110px para que quepa el texto cómodamente
+- [x] Variante detail también actualizada: "Hasta DD/MM" o "¡Termina hoy!" si caduca hoy

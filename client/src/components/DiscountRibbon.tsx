@@ -22,6 +22,21 @@ function getDaysLeft(expiresAt: Date | string | null | undefined): number | null
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
 
+/** Formatea la fecha de caducidad como "DD/MM" o "DD/MM/YY" si el año es diferente */
+function formatExpiryDate(expiresAt: Date | string | null | undefined): string | null {
+  if (!expiresAt) return null;
+  const exp = expiresAt instanceof Date ? expiresAt : new Date(expiresAt);
+  if (isNaN(exp.getTime())) return null;
+  const day = String(exp.getDate()).padStart(2, "0");
+  const month = String(exp.getMonth() + 1).padStart(2, "0");
+  const currentYear = new Date().getFullYear();
+  if (exp.getFullYear() !== currentYear) {
+    const year = String(exp.getFullYear()).slice(2);
+    return `${day}/${month}/${year}`;
+  }
+  return `${day}/${month}`;
+}
+
 // Verde semáforo: #16a34a (green-600) con gradiente a #22c55e (green-500)
 const GREEN_GRADIENT = "#16a34a";
 const GREEN_LIGHT = "#22c55e";
@@ -34,14 +49,7 @@ export function DiscountRibbon({ discountPercent, discountExpiresAt, variant = "
   const daysLeft = getDaysLeft(discountExpiresAt);
   if (daysLeft !== null && daysLeft < 0) return null;
 
-  const daysLabel =
-    daysLeft === null
-      ? null
-      : daysLeft === 0
-      ? "Hoy"
-      : daysLeft === 1
-      ? "1 día"
-      : `${daysLeft} días`;
+  const expiryDate = formatExpiryDate(discountExpiresAt);
 
   if (variant === "detail") {
     return (
@@ -50,11 +58,11 @@ export function DiscountRibbon({ discountPercent, discountExpiresAt, variant = "
         style={{ background: `linear-gradient(135deg, ${GREEN_GRADIENT}, ${GREEN_LIGHT})` }}
       >
         <span className="text-xl font-black tracking-tight leading-none">-{Math.round(pct)}%</span>
-        {daysLabel && (
+        {expiryDate && (
           <>
             <span className="opacity-60 text-sm">·</span>
             <span className="text-sm font-semibold">
-              {daysLabel === "Hoy" ? "¡Oferta termina hoy!" : `Oferta: ${daysLabel}`}
+              {daysLeft === 0 ? "¡Termina hoy!" : `Hasta ${expiryDate}`}
             </span>
           </>
         )}
@@ -63,8 +71,8 @@ export function DiscountRibbon({ discountPercent, discountExpiresAt, variant = "
   }
 
   // variant === "card" — ribbon triangular en esquina superior derecha
-  // Tamaño aumentado: 100×100 para que el texto sea más visible
-  const SIZE = 100;
+  // Tamaño 110×110 para que quepa "Hasta DD/MM" cómodamente
+  const SIZE = 110;
   return (
     <div className="absolute top-0 right-0 z-20 overflow-hidden" style={{ width: SIZE, height: SIZE }}>
       {/* Triángulo de fondo verde semáforo */}
@@ -83,24 +91,25 @@ export function DiscountRibbon({ discountPercent, discountExpiresAt, variant = "
       <div
         className="absolute top-0 right-0 flex flex-col items-center justify-center text-white"
         style={{
-          width: 70,
-          height: 70,
-          transform: "translate(5px, -5px) rotate(45deg) translate(0, 16px)",
+          width: 78,
+          height: 78,
+          transform: "translate(5px, -5px) rotate(45deg) translate(0, 18px)",
         }}
       >
         {/* Porcentaje grande y llamativo */}
         <span
           className="font-black leading-none tracking-tight"
-          style={{ fontSize: 18, textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}
+          style={{ fontSize: 19, textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}
         >
           -{Math.round(pct)}%
         </span>
-        {daysLabel && (
+        {/* Fecha de caducidad: "Hasta DD/MM" */}
+        {expiryDate && (
           <span
-            className="font-semibold leading-none mt-0.5 opacity-95"
-            style={{ fontSize: 10, textShadow: "0 1px 1px rgba(0,0,0,0.3)" }}
+            className="font-semibold leading-none mt-0.5 opacity-95 whitespace-nowrap"
+            style={{ fontSize: 9, textShadow: "0 1px 1px rgba(0,0,0,0.3)" }}
           >
-            {daysLabel === "Hoy" ? "¡Hoy!" : daysLabel}
+            {daysLeft === 0 ? "¡Hoy!" : `Hasta ${expiryDate}`}
           </span>
         )}
       </div>
