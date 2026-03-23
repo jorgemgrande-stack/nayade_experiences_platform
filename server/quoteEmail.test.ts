@@ -77,7 +77,7 @@ describe("buildQuoteHtml — botón CTA de aceptación", () => {
       paymentLinkUrl: "https://example.com/presupuesto/token",
       validUntil: new Date("2026-04-06"),
     });
-    expect(html).toContain("válida hasta el");
+    expect(html).toContain("v&aacute;lida hasta el");
   });
 
   it("incluye el número de presupuesto en el asunto del email", () => {

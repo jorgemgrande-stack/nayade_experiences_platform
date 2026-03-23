@@ -6,10 +6,81 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Settings as SettingsIcon, Globe, Phone, Mail, Clock,
-  CreditCard, Loader2, CheckCircle2, Info,
+  CreditCard, Loader2, CheckCircle2, Info, Send,
 } from "lucide-react";
+
+const EMAIL_TEMPLATES = [
+  { id: "budget-user",       label: "Solicitud de presupuesto (al cliente)" },
+  { id: "budget-admin",      label: "Solicitud de presupuesto (al admin)" },
+  { id: "reservation-confirm", label: "Reserva confirmada (pago Redsys OK)" },
+  { id: "reservation-failed",  label: "Pago fallido (Redsys KO)" },
+  { id: "restaurant-confirm",  label: "Reserva de restaurante confirmada" },
+  { id: "restaurant-payment",  label: "Link de pago depósito restaurante" },
+  { id: "password-reset",      label: "Recuperar contraseña" },
+  { id: "quote",               label: "Presupuesto enviado al cliente" },
+  { id: "confirmation",        label: "Reserva confirmada (CRM admin)" },
+  { id: "transfer-confirm",    label: "Pago por transferencia validado" },
+];
+
+function EmailPreviewSection() {
+  const [templateId, setTemplateId] = useState("budget-user");
+  const [toEmail, setToEmail] = useState("reservas@nayadeexperiences.es");
+  const sendPreview = trpc.admin.sendEmailPreview.useMutation({
+    onSuccess: (data) => toast.success(`Email enviado a ${data.to}`),
+    onError: (err) => toast.error(`Error: ${err.message}`),
+  });
+  return (
+    <div className="bg-card border border-border/50 rounded-2xl p-6">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-8 h-8 rounded-xl bg-orange-500/10 flex items-center justify-center">
+          <Send className="w-4 h-4 text-orange-500" />
+        </div>
+        <h3 className="font-heading font-semibold text-foreground">Prueba de plantillas de email</h3>
+      </div>
+      <p className="text-sm font-display text-muted-foreground mb-4 ml-11">
+        Envía una muestra de cualquier plantilla de email a la dirección que elijas para verificar el diseño.
+      </p>
+      <div className="ml-11 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-display text-muted-foreground">Plantilla</Label>
+            <Select value={templateId} onValueChange={setTemplateId}>
+              <SelectTrigger className="font-display">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EMAIL_TEMPLATES.map(t => (
+                  <SelectItem key={t.id} value={t.id} className="font-display">{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-display text-muted-foreground">Enviar a</Label>
+            <Input
+              type="email"
+              value={toEmail}
+              onChange={e => setToEmail(e.target.value)}
+              placeholder="reservas@nayadeexperiences.es"
+              className="font-display"
+            />
+          </div>
+        </div>
+        <Button
+          onClick={() => sendPreview.mutate({ templateId, to: toEmail })}
+          disabled={sendPreview.isPending || !toEmail}
+          className="bg-orange-500 hover:bg-orange-600 text-white font-display"
+        >
+          {sendPreview.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+          Enviar email de prueba
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // ─── Sección reutilizable ─────────────────────────────────────────────────────
 function Section({
@@ -395,6 +466,10 @@ export default function Settings() {
             </Button>
           </div>
         </div>
+
+        {/* ── Prueba de plantillas de email ── */}
+        <EmailPreviewSection />
+
       </div>
     </AdminLayout>
   );

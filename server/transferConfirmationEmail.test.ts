@@ -85,7 +85,7 @@ describe("buildTransferConfirmationHtml", () => {
     const html = buildTransferConfirmationHtml(mockData);
     expect(html).toContain("<!DOCTYPE html");
     expect(html).toContain("</html>");
-    expect(html).toContain("NÁYADE");
+    expect(html).toContain("N&Aacute;YADE");
   });
 
   it("incluye los datos de contacto de Náyade Experiences", () => {

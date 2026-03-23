@@ -1327,3 +1327,27 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ## v5.4.2: Modal de detalle completo de reserva (botón Eye)
 - [x] Implementar modal/panel lateral de detalle de reserva con: datos del cliente, producto, método de pago, estado, historial de actividad, justificante de transferencia y enlace a factura
 - [x] Conectar el botón Eye al nuevo modal (reemplazar toast "próximamente")
+
+## v5.5: Rediseño visual global de plantillas de email (resort aventura premium)
+- [ ] Rediseñar cabecera hero: imagen aérea del lago en full-width, overlay azul oscuro, logo centrado, titular emocional
+- [ ] Rediseñar footer: fondo beige arena, datos de contacto, claim de marca
+- [ ] Rediseñar botón CTA: naranja degradado energético, ancho, centrado
+- [ ] Aplicar rediseño a TODAS las plantillas (11 en emailTemplates.ts + reservationEmails)
+- [ ] Enviar emails de prueba de todas las plantillas a reservas@hotelnayade.es
+
+## v5.5: Rediseño visual global de plantillas de email
+- [x] Auditar todas las plantillas de email existentes (10 plantillas identificadas)
+- [x] Diseñar sistema de componentes HTML reutilizables (emailHeader, statusBlock, detailsTable, itemsTable, ctaButton, footer)
+- [x] Rediseñar buildBudgetRequestUserHtml — solicitud de presupuesto al cliente
+- [x] Rediseñar buildBudgetRequestAdminHtml — solicitud de presupuesto al admin
+- [x] Rediseñar buildReservationConfirmHtml — reserva confirmada (Redsys OK)
+- [x] Rediseñar buildReservationFailedHtml — pago fallido (Redsys KO)
+- [x] Rediseñar buildRestaurantConfirmHtml — reserva de restaurante confirmada
+- [x] Rediseñar buildRestaurantPaymentLinkHtml — link de pago depósito restaurante
+- [x] Rediseñar buildPasswordResetHtml — recuperar contraseña
+- [x] Rediseñar buildQuoteHtml — presupuesto enviado al cliente
+- [x] Rediseñar buildConfirmationHtml — reserva confirmada (CRM admin)
+- [x] Rediseñar buildTransferConfirmationHtml — pago por transferencia validado
+- [x] Añadir procedimiento admin.sendEmailPreview al router del servidor
+- [x] Añadir sección "Prueba de plantillas de email" en el panel de Configuración
+- [x] Actualizar tests para entidades HTML del nuevo diseño (159/159 pasando)

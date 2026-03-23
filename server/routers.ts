@@ -107,7 +107,13 @@ import {
 } from "./redsys";
 import { sendInviteEmail } from "./inviteEmail";
 import nodemailer from "nodemailer";
-import { buildBudgetRequestUserHtml, buildBudgetRequestAdminHtml } from "./emailTemplates";
+import {
+  buildBudgetRequestUserHtml, buildBudgetRequestAdminHtml,
+  buildReservationConfirmHtml, buildReservationFailedHtml,
+  buildRestaurantConfirmHtml, buildRestaurantPaymentLinkHtml,
+  buildPasswordResetHtml, buildQuoteHtml, buildConfirmationHtml,
+  buildTransferConfirmationHtml,
+} from "./emailTemplates";
 import { getDb } from "./db";
 import { siteSettings } from "../drizzle/schema";
 import { hotelRouter } from "./routers/hotel";
@@ -882,6 +888,64 @@ export const appRouter = router({
     })).mutation(async ({ input, ctx }) => {
       if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes eliminarte a ti mismo" });
       return deleteUser(input.userId);
+    }),
+    sendEmailPreview: adminProcedure.input(z.object({
+      templateId: z.string(),
+      to: z.string().email(),
+    })).mutation(async ({ input }) => {
+      const smtpHost = process.env.SMTP_HOST;
+      const smtpUser = process.env.SMTP_USER;
+      const smtpPass = process.env.SMTP_PASS;
+      const smtpPort = parseInt(process.env.SMTP_PORT || "465", 10);
+      if (!smtpHost || !smtpUser || !smtpPass) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "SMTP no configurado" });
+      const transporter = nodemailer.createTransport({ host: smtpHost, port: smtpPort, secure: smtpPort === 465, auth: { user: smtpUser, pass: smtpPass }, tls: { rejectUnauthorized: false } });
+      const from = process.env.SMTP_FROM || `"Náyade Experiences" <${smtpUser}>`;
+      const TEMPLATES: Record<string, { subject: string; html: string }> = {
+        "budget-user": {
+          subject: "[PREVIEW] Solicitud de presupuesto recibida",
+          html: buildBudgetRequestUserHtml({ name: "Carlos Pedraza", email: input.to, phone: "+34 600 000 000", arrivalDate: "23 de marzo de 2026", adults: 5, children: 2, selectedCategory: "Packs de Experiencias", selectedProduct: "Pack Cable Ski Experience", comments: "Queremos hacer el pack completo para una despedida de soltero", submittedAt: new Date().toLocaleString("es-ES"), activitiesJson: [] }),
+        },
+        "budget-admin": {
+          subject: "[PREVIEW] Nueva solicitud de presupuesto — Admin",
+          html: buildBudgetRequestAdminHtml({ name: "Carlos Pedraza", email: input.to, phone: "+34 600 000 000", arrivalDate: "23 de marzo de 2026", adults: 5, children: 2, selectedCategory: "Packs de Experiencias", selectedProduct: "Pack Cable Ski Experience", comments: "Queremos hacer el pack completo para una despedida de soltero", submittedAt: new Date().toLocaleString("es-ES"), activitiesJson: [] }),
+        },
+        "reservation-confirm": {
+          subject: "[PREVIEW] Reserva Confirmada — Náyade Experiences",
+          html: buildReservationConfirmHtml({ merchantOrder: "NE20260323001", productName: "Pack Cable Ski Experience", customerName: "Carlos Pedraza", date: "23 de marzo de 2026", people: 5, amount: "175,00 €", extras: "Alquiler de neopreno x5" }),
+        },
+        "reservation-failed": {
+          subject: "[PREVIEW] Pago No Completado — Náyade Experiences",
+          html: buildReservationFailedHtml({ merchantOrder: "NE20260323001", productName: "Pack Cable Ski Experience", customerName: "Carlos Pedraza", responseCode: "0190" }),
+        },
+        "restaurant-confirm": {
+          subject: "[PREVIEW] Reserva en Restaurante — Náyade Experiences",
+          html: buildRestaurantConfirmHtml({ guestName: "Carlos Pedraza", restaurantName: "Restaurante Náyade", date: "23 de marzo de 2026", time: "14:00", guests: 8, locator: "REST-2026-001", depositAmount: "80", requiresPayment: false }),
+        },
+        "restaurant-payment": {
+          subject: "[PREVIEW] Confirma tu reserva de restaurante",
+          html: buildRestaurantPaymentLinkHtml({ guestName: "Carlos Pedraza", guestEmail: input.to, restaurantName: "Restaurante Náyade", date: "23 de marzo de 2026", time: "14:00", guests: 8, locator: "REST-2026-001", depositAmount: "80", redsysUrl: "https://sis.redsys.es/sis/realizarPago", merchantParams: "BASE64PARAMS", signatureVersion: "HMAC_SHA256_V1", signature: "SIGNATURE" }),
+        },
+        "password-reset": {
+          subject: "[PREVIEW] Recuperar contraseña — Náyade Experiences",
+          html: buildPasswordResetHtml({ name: "Carlos Pedraza", resetUrl: "https://nayadeexperiences.es/reset?token=abc123", expiryMinutes: 30 }),
+        },
+        "quote": {
+          subject: "[PREVIEW] Presupuesto PRE-2026-001 — Náyade Experiences",
+          html: buildQuoteHtml({ quoteNumber: "PRE-2026-001", title: "Pack Cable Ski Experience + Restaurante", clientName: "Carlos Pedraza", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", discount: "0", tax: "83.79", total: "482.79", validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), notes: "Precio especial por grupo. Incluye alquiler de neopreno.", conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.", paymentLinkUrl: "https://nayadeexperiences.es/pago/PRE-2026-001" }),
+        },
+        "confirmation": {
+          subject: "[PREVIEW] Reserva Confirmada FAC-2026-001 — Náyade Experiences",
+          html: buildConfirmationHtml({ clientName: "Carlos Pedraza", reservationRef: "FAC-2026-001", quoteNumber: "PRE-2026-001", quoteTitle: "Pack Cable Ski Experience + Restaurante", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://cdn.nayadeexperiences.es/facturas/FAC-2026-001.pdf", bookingDate: "23 de marzo de 2026" }),
+        },
+        "transfer-confirm": {
+          subject: "[PREVIEW] Pago por transferencia confirmado — Náyade Experiences",
+          html: buildTransferConfirmationHtml({ clientName: "Carlos Pedraza", invoiceNumber: "FAC-2026-001", reservationRef: "RES-2026-001", quoteTitle: "Pack Cable Ski Experience + Restaurante", quoteNumber: "PRE-2026-001", items: [{ description: "Pack Cable Ski Experience (5 pax)", quantity: 5, unitPrice: 35, total: 175 }, { description: "Menú Náyade (8 pax)", quantity: 8, unitPrice: 28, total: 224 }], subtotal: "399", taxAmount: "83.79", total: "482.79", invoiceUrl: "https://cdn.nayadeexperiences.es/facturas/FAC-2026-001.pdf", confirmedBy: "Admin Náyade", confirmedAt: new Date() }),
+        },
+      };
+      const tpl = TEMPLATES[input.templateId];
+      if (!tpl) throw new TRPCError({ code: "BAD_REQUEST", message: `Plantilla desconocida: ${input.templateId}` });
+      await transporter.sendMail({ from, to: input.to, subject: tpl.subject, html: tpl.html });
+      return { success: true, templateId: input.templateId, to: input.to };
     }),
   }),
   // ─── HOME MODULES ─────────────────────────────────────────────────────
