@@ -2848,66 +2848,43 @@ export default function CRMDashboard() {
                           <div className="text-xs text-white/25">✈️ {new Date(res.arrivalDate).toLocaleDateString("es-ES")}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="relative flex items-center justify-end">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setResActionMenuId(resActionMenuId === res.id ? null : res.id); }}
-                            className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-colors"
-                            title="Acciones">
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                          {resActionMenuId === res.id && (
-                            <div
-                              className="absolute right-0 top-8 z-50 w-52 rounded-xl border border-white/10 bg-[#0d1526] shadow-2xl py-1"
-                              onClick={(e) => e.stopPropagation()}>
-                              {/* Ver detalles */}
-                              <button
-                                onClick={() => { setResActionMenuId(null); toast.info("Detalle de reserva — próximamente"); }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white transition-colors">
-                                <Eye className="w-4 h-4 text-sky-400" /> Ver detalles
-                              </button>
-                              {/* Editar */}
-                              <button
-                                onClick={() => {
-                                  setResActionMenuId(null);
-                                  setEditResStatus(res.status);
-                                  setEditResNotes("");
-                                  setEditResId(res.id);
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white transition-colors">
-                                <Pencil className="w-4 h-4 text-amber-400" /> Editar
-                              </button>
-                              {/* Reenviar al cliente */}
-                              <button
-                                onClick={() => { setResActionMenuId(null); resendResMutation.mutate({ id: res.id }); }}
-                                disabled={resendResMutation.isPending}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white transition-colors disabled:opacity-40">
-                                {resendResMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin text-blue-400" /> : <Send className="w-4 h-4 text-blue-400" />}
-                                Reenviar al cliente
-                              </button>
-                              {/* Descargar reserva en PDF */}
-                              {res.invoicePdfUrl ? (
-                                <button
-                                  onClick={() => { setResActionMenuId(null); window.open(res.invoicePdfUrl, "_blank"); }}
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white transition-colors">
-                                  <FileDown className="w-4 h-4 text-emerald-400" /> Descargar reserva en PDF
-                                </button>
-                              ) : (
-                                <button
-                                  disabled
-                                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-white/30 cursor-not-allowed">
-                                  <FileDown className="w-4 h-4" /> Descargar reserva en PDF
-                                </button>
-                              )}
-                              <div className="my-1 border-t border-white/8" />
-                              {/* Eliminar */}
-                              <button
-                                onClick={() => { setResActionMenuId(null); setDeleteResId(res.id); }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors">
-                                <Trash2 className="w-4 h-4" /> Eliminar
-                              </button>
-                            </div>
-                          )}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-0.5">
+                          {/* Ver detalles */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-sky-300 h-7 w-7 p-0"
+                            onClick={() => toast.info("Detalle de reserva — próximamente")}
+                            title="Ver detalles">
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          {/* Editar */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-amber-300 h-7 w-7 p-0"
+                            onClick={() => { setEditResStatus(res.status); setEditResNotes(""); setEditResId(res.id); }}
+                            title="Editar reserva">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          {/* Reenviar al cliente */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-blue-300 h-7 w-7 p-0"
+                            onClick={() => resendResMutation.mutate({ id: res.id })}
+                            disabled={resendResMutation.isPending}
+                            title="Reenviar confirmación al cliente">
+                            {resendResMutation.isPending
+                              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              : <Send className="w-3.5 h-3.5" />}
+                          </Button>
+                          {/* Descargar PDF */}
+                          <Button size="sm" variant="ghost"
+                            className={`h-7 w-7 p-0 ${res.invoicePdfUrl ? "text-white/40 hover:text-emerald-300" : "text-white/15 cursor-not-allowed"}`}
+                            onClick={() => res.invoicePdfUrl && window.open(res.invoicePdfUrl, "_blank")}
+                            disabled={!res.invoicePdfUrl}
+                            title={res.invoicePdfUrl ? "Descargar reserva en PDF" : "Sin PDF disponible"}>
+                            <FileDown className="w-3.5 h-3.5" />
+                          </Button>
+                          {/* Eliminar */}
+                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-red-400 h-7 w-7 p-0"
+                            onClick={() => setDeleteResId(res.id)}
+                            title="Eliminar reserva">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
