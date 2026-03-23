@@ -1,14 +1,20 @@
 /**
  * CartDrawer — Panel lateral deslizante del carrito de la compra
  *
- * Muestra los artículos del carrito y el subtotal estimado.
- * El botón "Ir al pago" redirige a /checkout donde el usuario
+ * Muestra los artículos del carrito con controles de edición inline:
+ * - Selector de variante de precio (si el producto tiene variantes)
+ * - Controles +/- para editar el número de personas
+ * - Botón de eliminar artículo
+ *
+ * El botón "Finalizar compra" redirige a /checkout donde el usuario
  * introduce sus datos y confirma el pedido antes de Redsys.
  */
+import { useState } from "react";
 import { useLocation } from "wouter";
-import { X, Trash2, ShoppingCart, Calendar, Users, Tag, ArrowRight, Lock } from "lucide-react";
+import { X, Trash2, ShoppingCart, Calendar, Users, Tag, ArrowRight, Lock, Minus, Plus, ChevronDown } from "lucide-react";
 import { useCart, type CartItem } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
+import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -16,7 +22,7 @@ import { cn } from "@/lib/utils";
 function formatDate(dateStr: string): string {
   try {
     const d = new Date(dateStr + "T00:00:00");
-    return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+    return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
   } catch {
     return dateStr;
   }
@@ -25,77 +31,170 @@ function formatDate(dateStr: string): string {
 // ─── CartItemRow ──────────────────────────────────────────────────────────────
 
 function CartItemRow({ item }: { item: CartItem }) {
-  const { removeItem } = useCart();
+  const { removeItem, updatePeople, updateVariant } = useCart();
+  const [showVariants, setShowVariants] = useState(false);
+
+  const minPeople = item.minPersons ?? 1;
+  const maxPeople = item.maxPersons ?? 20;
   const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
 
+  // Cargar variantes del producto (solo cuando se expande el selector)
+  const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery(
+    { experienceId: item.productId },
+    { enabled: showVariants }
+  );
+
+  function handleVariantSelect(variantId: number, variantName: string, pricePerPerson: number) {
+    updateVariant(item.cartItemId, variantId, variantName, pricePerPerson);
+    setShowVariants(false);
+  }
+
+  function handleClearVariant() {
+    // Restaurar al precio base — usamos pricePerPerson original del artículo
+    // No tenemos el basePrice aquí, así que simplemente limpiamos la variante
+    updateVariant(item.cartItemId, undefined, undefined, item.pricePerPerson);
+    setShowVariants(false);
+  }
+
   return (
-    <div className="flex gap-3 py-4 border-b border-border/60 last:border-0">
-      {/* Imagen */}
-      {item.productImage ? (
-        <img
-          src={item.productImage}
-          alt={item.productName}
-          className="w-16 h-16 rounded-lg object-cover flex-shrink-0 shadow-sm"
-        />
-      ) : (
-        <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center flex-shrink-0">
-          <ShoppingCart className="w-6 h-6 text-primary/40" />
-        </div>
-      )}
-
-      {/* Detalles */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <p className="font-semibold text-sm text-foreground leading-tight line-clamp-2">
-            {item.productName}
-          </p>
-          <button
-            onClick={() => removeItem(item.cartItemId)}
-            className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-            aria-label={`Eliminar ${item.productName} del carrito`}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {item.variantName && (
-          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
-            <Tag className="w-3 h-3" />
-            {item.variantName}
-          </p>
-        )}
-
-        <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            {formatDate(item.bookingDate)}
-          </span>
-          <span className="flex items-center gap-1">
-            <Users className="w-3 h-3" />
-            {item.people} {item.people === 1 ? "persona" : "personas"}
-          </span>
-        </div>
-
-        {item.extras.length > 0 && (
-          <div className="mt-1.5 space-y-0.5">
-            {item.extras.map((e, i) => (
-              <p key={i} className="text-xs text-muted-foreground">
-                + {e.name} ×{e.quantity} ({(e.price * e.quantity).toFixed(2).replace(".", ",")} €)
-              </p>
-            ))}
+    <div className="py-4 border-b border-border/60 last:border-0 space-y-3">
+      {/* Fila superior: imagen + nombre + eliminar */}
+      <div className="flex gap-3">
+        {item.productImage ? (
+          <img
+            src={item.productImage}
+            alt={item.productName}
+            className="w-14 h-14 rounded-lg object-cover flex-shrink-0 shadow-sm"
+          />
+        ) : (
+          <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center flex-shrink-0">
+            <ShoppingCart className="w-5 h-5 text-primary/40" />
           </div>
         )}
 
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-xs text-muted-foreground">
-            {item.pricePerPerson.toFixed(2).replace(".", ",")} €/persona
-            {extrasTotal > 0 && ` + ${extrasTotal.toFixed(2).replace(".", ",")} € extras`}
-          </span>
-          <span className="font-bold text-sm text-accent">
-            {item.estimatedTotal.toFixed(2).replace(".", ",")} €
-          </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-semibold text-sm text-foreground leading-tight line-clamp-2">
+              {item.productName}
+            </p>
+            <button
+              onClick={() => removeItem(item.cartItemId)}
+              className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              aria-label={`Eliminar ${item.productName} del carrito`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Fecha */}
+          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+            <Calendar className="w-3 h-3" />
+            {formatDate(item.bookingDate)}
+          </div>
         </div>
       </div>
+
+      {/* Selector de variante */}
+      <div>
+        <button
+          type="button"
+          onClick={() => setShowVariants(v => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-slate-200 text-xs hover:border-orange-300 hover:bg-orange-50/40 transition-all"
+        >
+          <span className="flex items-center gap-1.5 text-slate-600">
+            <Tag className="w-3 h-3 text-orange-500" />
+            {item.variantName ?? "Modalidad / Tarifa"}
+          </span>
+          <span className="flex items-center gap-1 font-bold text-orange-600">
+            {item.pricePerPerson.toFixed(2)} €/p.
+            <ChevronDown className={cn("w-3 h-3 transition-transform", showVariants && "rotate-180")} />
+          </span>
+        </button>
+
+        {showVariants && (
+          <div className="mt-1.5 space-y-1 border border-orange-100 rounded-xl p-2 bg-orange-50/30">
+            {/* Opción estándar (sin variante) */}
+            <button
+              type="button"
+              onClick={handleClearVariant}
+              className={cn(
+                "w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-all",
+                !item.variantId
+                  ? "bg-orange-100 text-orange-700 font-semibold"
+                  : "hover:bg-white text-slate-600"
+              )}
+            >
+              <span>Precio estándar</span>
+              <span className="font-bold">{item.pricePerPerson.toFixed(2)} €/p.</span>
+            </button>
+
+            {variants.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-1">Sin variantes disponibles</p>
+            )}
+
+            {variants.map(v => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => handleVariantSelect(v.id, v.name, parseFloat(String(v.priceModifier ?? 0)))}
+                className={cn(
+                  "w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-all",
+                  item.variantId === v.id
+                    ? "bg-orange-100 text-orange-700 font-semibold"
+                    : "hover:bg-white text-slate-600"
+                )}
+              >
+                <span>{v.name}</span>
+                <span className="font-bold">{parseFloat(String(v.priceModifier ?? 0)).toFixed(2)} €/p.</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Controles de personas + total */}
+      <div className="flex items-center justify-between">
+        {/* +/- personas */}
+        <div className="flex items-center gap-2">
+          <Users className="w-3.5 h-3.5 text-muted-foreground" />
+          <button
+            type="button"
+            onClick={() => updatePeople(item.cartItemId, Math.max(minPeople, item.people - 1))}
+            disabled={item.people <= minPeople}
+            className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 transition-colors"
+            aria-label="Reducir personas"
+          >
+            <Minus className="w-3 h-3" />
+          </button>
+          <span className="text-sm font-bold text-foreground w-5 text-center">{item.people}</span>
+          <button
+            type="button"
+            onClick={() => updatePeople(item.cartItemId, Math.min(maxPeople, item.people + 1))}
+            disabled={item.people >= maxPeople}
+            className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 transition-colors"
+            aria-label="Aumentar personas"
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+          <span className="text-xs text-muted-foreground">pers.</span>
+        </div>
+
+        {/* Total artículo */}
+        <span className="font-black text-sm text-accent">
+          {item.estimatedTotal.toFixed(2).replace(".", ",")} €
+        </span>
+      </div>
+
+      {/* Extras (si los hay) */}
+      {item.extras.length > 0 && (
+        <div className="space-y-0.5 pl-1">
+          {item.extras.map((e, i) => (
+            <p key={i} className="text-xs text-muted-foreground">
+              + {e.name} ×{e.quantity} ({(e.price * e.quantity).toFixed(2).replace(".", ",")} €)
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

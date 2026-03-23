@@ -1386,3 +1386,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Módulo "Packs de Día Completo" en Home: botón "Añadir al carrito" con AddToCartModal (eliminar botón "Reservar" estático)
 - [x] Array packs actualizado con IDs y precios reales de BD (45€–150€)
 - [x] Tarjeta de pack: "Ver detalles" navega a la ficha, botón naranja abre AddToCartModal
+
+## v5.10: Controles de edición en el carrito (personas + variantes)
+- [x] CartDrawer: controles +/- para editar número de personas por artículo
+- [x] CartDrawer: selector de variante de precio por artículo (adulto, niño, grupo, etc.)
+- [x] AddToCartModal: mostrar selector de variantes disponibles antes de añadir
+- [x] CartContext: función updatePeople y recalcular estimatedTotal al cambiar personas/variante
+- [x] tRPC: procedimiento para obtener variantes por productId (ya existía: trpc.public.getVariantsByExperience)

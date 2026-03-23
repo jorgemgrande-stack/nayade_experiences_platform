@@ -1,0 +1,120 @@
+{
+  "query": "SELECT id, experienceId, name, priceModifier, priceType, isRequired, description FROM experience_variants ORDER BY experienceId, sortOrder LIMIT 30;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, experienceId, name, priceModifier, priceType, isRequired, description FROM experience_variants ORDER BY experienceId, sortOrder LIMIT 30;",
+  "rows": [
+    {
+      "id": "1",
+      "experienceId": "30001",
+      "name": "Bono 3 Saltos",
+      "priceModifier": "20.00",
+      "priceType": "per_person",
+      "isRequired": "1",
+      "description": "El Blob Jump es pura adrenalina. Salta desde la"
+    },
+    {
+      "id": "2",
+      "experienceId": "30001",
+      "name": "Bono 5 Saltos",
+      "priceModifier": "29.90",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "El Blob Jump es pura adrenalina. Salta desde la plataforma 5 veces"
+    },
+    {
+      "id": "30002",
+      "experienceId": "30002",
+      "name": "Viaje Completo solo Banana 5 pax",
+      "priceModifier": "55.00",
+      "priceType": "fixed",
+      "isRequired": "0",
+      "description": "Viaje Completo solo Banana para 5 personas"
+    },
+    {
+      "id": "90001",
+      "experienceId": "30003",
+      "name": "Dia completo de 10:00 am a 20:pm",
+      "priceModifier": "45.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Disfruta de un dia completo de Cableski"
+    },
+    {
+      "id": "30001",
+      "experienceId": "30003",
+      "name": "1/2 Dia de 10:00 am a 15:00 Pm",
+      "priceModifier": "35.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Disfruta de 1/2 dia en el Cables de los Angeles de San Rafael"
+    },
+    {
+      "id": "150001",
+      "experienceId": "30003",
+      "name": "Ticket de 100 Vueltas",
+      "priceModifier": "135.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Disfruta de 100 vueltas en el Cableski"
+    },
+    {
+      "id": "150002",
+      "experienceId": "30003",
+      "name": "Ticket de 50 vueltas",
+      "priceModifier": "95.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Disfruta de 50 vueltas en el Cableski"
+    },
+    {
+      "id": "150003",
+      "experienceId": "30003",
+      "name": "Ticket de 20 vueltas",
+      "priceModifier": "50.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Disfruta de 20 vueltas en el Cableski"
+    },
+    {
+      "id": "150004",
+      "experienceId": "30003",
+      "name": "Ticket de 10 vueltas",
+      "priceModifier": "30.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Disfruta de 10 vueltas en el cableski"
+    },
+    {
+      "id": "150005",
+      "experienceId": "30003",
+      "name": "Ticket de 5 vueltas",
+      "priceModifier": "15.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Disfruta de 5 vueltas en el cableski"
+    },
+    {
+      "id": "120001",
+      "experienceId": "150001",
+      "name": "Adulto",
+      "priceModifier": "7.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Entrada Adulto desde 6 años"
+    },
+    {
+      "id": "120002",
+      "experienceId": "150001",
+      "name": "Entrada Niños ( Hasta 7 años)",
+      "priceModifier": "5.00",
+      "priceType": "per_person",
+      "isRequired": "0",
+      "description": "Entrada niños hasta 7 años"
+    }
+  ],
+  "messages": [
+    "plataforma 3 veces"
+  ],
+  "stdout": "id\texperienceId\tname\tpriceModifier\tpriceType\tisRequired\tdescription\n1\t30001\tBono 3 Saltos\t20.00\tper_person\t1\tEl Blob Jump es pura adrenalina. Salta desde la\nplataforma 3 veces\n2\t30001\tBono 5 Saltos\t29.90\tper_person\t0\tEl Blob Jump es pura adrenalina. Salta desde la plataforma 5 veces\n30002\t30002\tViaje Completo solo Banana 5 pax\t55.00\tfixed\t0\tViaje Completo solo Banana para 5 personas\n90001\t30003\tDia completo de 10:00 am a 20:pm\t45.00\tper_person\t0\tDisfruta de un dia completo de Cableski\n30001\t30003\t1/2 Dia de 10:00 am a 15:00 Pm\t35.00\tper_person\t0\tDisfruta de 1/2 dia en el Cables de los Angeles de San Rafael\n150001\t30003\tTicket de 100 Vueltas\t135.00\tper_person\t0\tDisfruta de 100 vueltas en el Cableski\n150002\t30003\tTicket de 50 vueltas\t95.00\tper_person\t0\tDisfruta de 50 vueltas en el Cableski\n150003\t30003\tTicket de 20 vueltas\t50.00\tper_person\t0\tDisfruta de 20 vueltas en el Cableski\n150004\t30003\tTicket de 10 vueltas\t30.00\tper_person\t0\tDisfruta de 10 vueltas en el cableski\n150005\t30003\tTicket de 5 vueltas\t15.00\tper_person\t0\tDisfruta de 5 vueltas en el cableski\n120001\t150001\tAdulto\t7.00\tper_person\t0\tEntrada Adulto desde 6 años\n120002\t150001\tEntrada Niños ( Hasta 7 años)\t5.00\tper_person\t0\tEntrada niños hasta 7 años\n",
+  "stderr": "",
+  "execution_time_ms": 63
+}

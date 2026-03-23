@@ -2,8 +2,8 @@
  * CartContext — Carrito de la compra multi-experiencia
  *
  * Persiste en localStorage. Cada artículo representa una experiencia/producto
- * con su fecha, personas, extras y precio calculado en frontend (estimado).
- * El precio real se calcula siempre en backend al hacer checkout.
+ * con su fecha, personas, variante seleccionada, extras y precio calculado en
+ * frontend (estimado). El precio real se calcula siempre en backend al hacer checkout.
  */
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 
@@ -30,6 +30,10 @@ export interface CartItem {
   bookingDate: string;
   /** Número de personas */
   people: number;
+  /** Mínimo de personas permitido */
+  minPersons?: number;
+  /** Máximo de personas permitido */
+  maxPersons?: number;
   /** ID de variante seleccionada (opcional) */
   variantId?: number;
   /** Nombre de la variante (para mostrar) */
@@ -50,6 +54,10 @@ interface CartContextValue {
   addItem: (item: Omit<CartItem, "cartItemId">) => void;
   removeItem: (cartItemId: string) => void;
   updateItem: (cartItemId: string, updates: Partial<Omit<CartItem, "cartItemId">>) => void;
+  /** Actualiza el número de personas y recalcula el total estimado */
+  updatePeople: (cartItemId: string, people: number) => void;
+  /** Actualiza la variante seleccionada y recalcula el total estimado */
+  updateVariant: (cartItemId: string, variantId: number | undefined, variantName: string | undefined, pricePerPerson: number) => void;
   clearCart: () => void;
   openCart: () => void;
   closeCart: () => void;
@@ -109,6 +117,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems(prev => prev.map(i => i.cartItemId === cartItemId ? { ...i, ...updates } : i));
   }, []);
 
+  /** Cambia el número de personas y recalcula el total estimado */
+  const updatePeople = useCallback((cartItemId: string, people: number) => {
+    setItems(prev => prev.map(i => {
+      if (i.cartItemId !== cartItemId) return i;
+      const extrasTotal = i.extras.reduce((s, e) => s + e.price * e.quantity, 0);
+      const estimatedTotal = i.pricePerPerson * people + extrasTotal;
+      return { ...i, people, estimatedTotal };
+    }));
+  }, []);
+
+  /** Cambia la variante y recalcula el total estimado */
+  const updateVariant = useCallback((
+    cartItemId: string,
+    variantId: number | undefined,
+    variantName: string | undefined,
+    pricePerPerson: number
+  ) => {
+    setItems(prev => prev.map(i => {
+      if (i.cartItemId !== cartItemId) return i;
+      const extrasTotal = i.extras.reduce((s, e) => s + e.price * e.quantity, 0);
+      const estimatedTotal = pricePerPerson * i.people + extrasTotal;
+      return { ...i, variantId, variantName, pricePerPerson, estimatedTotal };
+    }));
+  }, []);
+
   const clearCart = useCallback(() => {
     setItems([]);
     setIsOpen(false);
@@ -118,7 +151,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const closeCart = useCallback(() => setIsOpen(false), []);
   const toggleCart = useCallback(() => setIsOpen(prev => !prev), []);
 
-  const totalItems = items.reduce((sum, i) => sum + 1, 0);
+  const totalItems = items.reduce((sum) => sum + 1, 0);
   const totalEstimated = items.reduce((sum, i) => sum + i.estimatedTotal, 0);
 
   return (
@@ -130,6 +163,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       addItem,
       removeItem,
       updateItem,
+      updatePeople,
+      updateVariant,
       clearCart,
       openCart,
       closeCart,
