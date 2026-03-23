@@ -1413,3 +1413,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] handleSubmit: envía includes/excludes al procedimiento tRPC
 - [x] UI: listas editables con botón + y X por item en el modal de experiencias
 - [x] PacksManager: revisado (packs no tienen campos includes/excludes en BD, se puede añadir en el futuro)
+
+## v5.13.1: Bug fix — includes/excludes no se guardan en BD
+- [x] Diagnosticado: el schema Zod de products.update no incluía los campos includes/excludes (los descartaba)
+- [x] Corregido: añadidos includes, excludes, slug, minPersons y maxPersons al schema Zod de products.update en routers.ts

@@ -549,6 +549,7 @@ export const appRouter = router({
     update: adminProcedure
       .input(z.object({
         id: z.number(),
+        slug: z.string().optional(),
         title: z.string().optional(),
         shortDescription: z.string().optional(),
         description: z.string().optional(),
@@ -563,6 +564,10 @@ export const appRouter = router({
         difficulty: z.enum(["facil", "moderado", "dificil", "experto"]).optional(),
         categoryId: z.number().optional(),
         locationId: z.number().optional(),
+        minPersons: z.number().optional(),
+        maxPersons: z.number().optional(),
+        includes: z.array(z.string()).optional(),
+        excludes: z.array(z.string()).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
