@@ -1399,7 +1399,7 @@ export async function getDashboardOverview() {
       reservationsPaidThisMonth: 0,
     },
     funnel: { leads: 0, quotes: 0, reservations: 0, invoices: 0 },
-    recentActivity: [] as { id: number; entityType: string; action: string; actorName: string | null; createdAt: Date }[],
+    recentActivity: [] as { id: number; entityType: string; action: string; actorName: string | null; entityId: number; details: Record<string, unknown> | null; createdAt: Date }[],
     todayBookings: [] as { id: number; bookingNumber: string; clientName: string; scheduledDate: Date; numberOfPersons: number; status: string; experienceName: string }[],
     upcomingBookings: [] as { id: number; bookingNumber: string; clientName: string; scheduledDate: Date; numberOfPersons: number; status: string; experienceName: string }[],
     topExperiences: [] as { experienceId: number; experienceName: string; count: number; revenue: number }[],
@@ -1420,15 +1420,17 @@ export async function getDashboardOverview() {
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // ── KPIs ──────────────────────────────────────────────────────────────────
+    // ── KPIs: Ingresos desde invoices (status=cobrada, campo issuedAt es timestamp) ──
     const [revTotal] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
-      .from(invoices).where(sql`status IN ('cobrada') AND issuedAt >= ${startOfMonth}`);
+      .from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfMonth}`);
     const [revLastMonth] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
-      .from(invoices).where(sql`status IN ('cobrada') AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`);
+      .from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`);
     const [revAllTime] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
-      .from(invoices).where(sql`status IN ('cobrada')`);
+      .from(invoices).where(sql`status = 'cobrada'`);
 
+    // ── KPIs: Bookings desde tabla bookings (scheduledDate es timestamp) ──
     const [bookingsThisMonth] = await db.select({ count: sql<number>`count(*)` })
       .from(bookings).where(sql`createdAt >= ${startOfMonth}`);
     const [bookingsPending] = await db.select({ count: sql<number>`count(*)` })
@@ -1436,41 +1438,52 @@ export async function getDashboardOverview() {
     const [bookingsConfirmed] = await db.select({ count: sql<number>`count(*)` })
       .from(bookings).where(eq(bookings.status, "confirmado"));
 
+    // ── KPIs: Leads (createdAt es timestamp) ──
     const [leadsNew] = await db.select({ count: sql<number>`count(*)` })
       .from(leads).where(sql`createdAt >= ${startOfMonth}`);
     const [leadsTotal] = await db.select({ count: sql<number>`count(*)` }).from(leads);
 
+    // ── KPIs: Presupuestos enviados pendientes de respuesta ──
     const [quotesEnviados] = await db.select({ count: sql<number>`count(*)` })
       .from(quotes).where(sql`status IN ('enviado', 'visualizado')`);
     const [quotesPendingAmt] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
       .from(quotes).where(sql`status IN ('enviado', 'visualizado')`);
 
+    // ── KPIs: Facturas pendientes de cobro ──
     const [invoicesPendingCount] = await db.select({ count: sql<number>`count(*)` })
       .from(invoices).where(sql`status IN ('generada', 'enviada')`);
     const [invoicesPendingAmt] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
       .from(invoices).where(sql`status IN ('generada', 'enviada')`);
 
+    // ── KPIs: Reservas online pagadas este mes (created_at es bigint Unix ms) ──
+    const startOfMonthMs = startOfMonth.getTime();
     const [resPaidThisMonth] = await db.select({ count: sql<number>`count(*)` })
-      .from(reservations).where(sql`status = 'paid' AND createdAt >= ${startOfMonth}`);
+      .from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`);
 
-    // ── FUNNEL ────────────────────────────────────────────────────────────────
+    // ── FUNNEL: Embudo de ventas CRM ──
     const [fLeads] = await db.select({ count: sql<number>`count(*)` }).from(leads);
     const [fQuotes] = await db.select({ count: sql<number>`count(*)` }).from(quotes);
-    const [fReservations] = await db.select({ count: sql<number>`count(*)` }).from(reservations).where(eq(reservations.status, "paid"));
+    // Reservas pagadas = reservations paid + bookings completados
+    const [fReservationsPaid] = await db.select({ count: sql<number>`count(*)` })
+      .from(reservations).where(eq(reservations.status, "paid"));
+    const [fBookingsCompleted] = await db.select({ count: sql<number>`count(*)` })
+      .from(bookings).where(eq(bookings.status, "completado"));
     const [fInvoices] = await db.select({ count: sql<number>`count(*)` }).from(invoices);
 
-    // ── RECENT ACTIVITY ───────────────────────────────────────────────────────
+    // ── RECENT ACTIVITY desde crmActivityLog (createdAt es timestamp) ──
     const recentActivity = await db.select({
       id: crmActivityLog.id,
       entityType: crmActivityLog.entityType,
       action: crmActivityLog.action,
       actorName: crmActivityLog.actorName,
+      entityId: crmActivityLog.entityId,
+      details: crmActivityLog.details,
       createdAt: crmActivityLog.createdAt,
     }).from(crmActivityLog)
       .orderBy(desc(crmActivityLog.createdAt))
-      .limit(8);
+      .limit(10);
 
-    // ── TODAY'S BOOKINGS ──────────────────────────────────────────────────────
+    // ── TODAY'S BOOKINGS (scheduledDate es timestamp) ──
     const todayBookingsRaw = await db.select({
       id: bookings.id,
       bookingNumber: bookings.bookingNumber,
@@ -1484,7 +1497,7 @@ export async function getDashboardOverview() {
       .orderBy(bookings.scheduledDate)
       .limit(10);
 
-    // ── UPCOMING BOOKINGS (next 7 days, excluding today) ──────────────────────
+    // ── UPCOMING BOOKINGS (próximos 7 días, excluyendo hoy) ──
     const upcomingRaw = await db.select({
       id: bookings.id,
       bookingNumber: bookings.bookingNumber,
@@ -1498,7 +1511,7 @@ export async function getDashboardOverview() {
       .orderBy(bookings.scheduledDate)
       .limit(5);
 
-    // Enrich with experience names
+    // Enriquecer con nombres de experiencias
     const allExpIds = Array.from(new Set([...todayBookingsRaw, ...upcomingRaw].map(b => b.experienceId)));
     let expMap: Record<number, string> = {};
     if (allExpIds.length > 0) {
@@ -1510,38 +1523,36 @@ export async function getDashboardOverview() {
     const todayBookings = todayBookingsRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId] ?? "Actividad" }));
     const upcomingBookings = upcomingRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId] ?? "Actividad" }));
 
-    // ── TOP EXPERIENCES (this month) ──────────────────────────────────────────
+    // ── TOP EXPERIENCIAS: desde reservations pagadas (amountTotal en céntimos) ──
+    // Como bookings puede estar vacío, usamos reservations como fuente principal
     const topRaw = await db.select({
-      experienceId: bookings.experienceId,
+      productId: reservations.productId,
+      productName: reservations.productName,
       count: sql<number>`count(*)`,
-      revenue: sql<string>`COALESCE(SUM(totalAmount), 0)`,
-    }).from(bookings)
-      .where(sql`createdAt >= ${startOfMonth} AND status NOT IN ('cancelado')`)
-      .groupBy(bookings.experienceId)
+      revenue: sql<string>`COALESCE(SUM(amount_total), 0)`,
+    }).from(reservations)
+      .where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`)
+      .groupBy(reservations.productId, reservations.productName)
       .orderBy(sql`count(*) DESC`)
       .limit(5);
 
-    const topExpIds = topRaw.map(r => r.experienceId);
-    let topExpMap: Record<number, string> = {};
-    if (topExpIds.length > 0) {
-      const exps = await db.select({ id: experiences.id, title: experiences.title })
-        .from(experiences).where(inArray(experiences.id, topExpIds));
-      topExpMap = Object.fromEntries(exps.map(e => [e.id, e.title]));
-    }
     const topExperiences = topRaw.map(r => ({
-      experienceId: r.experienceId,
-      experienceName: topExpMap[r.experienceId] ?? "Actividad",
+      experienceId: r.productId,
+      experienceName: r.productName,
       count: Number(r.count),
-      revenue: parseFloat(r.revenue ?? "0"),
+      revenue: Math.round(parseFloat(r.revenue ?? "0")) / 100, // céntimos → euros
     }));
 
-    // ── PENDING ALERTS ────────────────────────────────────────────────────────
+    // ── ALERTAS PENDIENTES ────────────────────────────────────────────────────
+    // Transferencias pendientes de validar: reservations con paymentMethod=transferencia y status=pending_payment
     const [transfersToValidate] = await db.select({ count: sql<number>`count(*)` })
-      .from(quotes).where(sql`payment_method = 'transferencia' AND status NOT IN ('convertido_reserva', 'facturado', 'pagado', 'perdido', 'rechazado')`);
+      .from(reservations).where(sql`paymentMethod = 'transferencia' AND status = 'pending_payment'`);
+    // Presupuestos enviados que vencen en 7 días
     const [quotesExpiring] = await db.select({ count: sql<number>`count(*)` })
       .from(quotes).where(sql`validUntil IS NOT NULL AND validUntil <= ${in7Days} AND validUntil >= ${now} AND status IN ('enviado', 'visualizado')`);
+    // Facturas emitidas hace más de 30 días sin cobrar
     const [invoicesOverdue] = await db.select({ count: sql<number>`count(*)` })
-      .from(invoices).where(sql`status IN ('generada', 'enviada') AND issuedAt <= ${new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)}`);
+      .from(invoices).where(sql`status IN ('generada', 'enviada') AND issuedAt <= ${thirtyDaysAgo}`);
 
     return {
       kpis: {
@@ -1562,7 +1573,7 @@ export async function getDashboardOverview() {
       funnel: {
         leads: Number(fLeads?.count ?? 0),
         quotes: Number(fQuotes?.count ?? 0),
-        reservations: Number(fReservations?.count ?? 0),
+        reservations: Number(fReservationsPaid?.count ?? 0) + Number(fBookingsCompleted?.count ?? 0),
         invoices: Number(fInvoices?.count ?? 0),
       },
       recentActivity,

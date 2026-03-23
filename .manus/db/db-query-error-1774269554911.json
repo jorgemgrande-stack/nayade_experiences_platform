@@ -1,0 +1,11 @@
+{
+  "query": "\nSELECT id, status, amount_total, customer_name, created_at FROM reservations ORDER BY created_at DESC LIMIT 5;\nSELECT id, invoice_number, status, total, payment_method, created_at FROM invoices ORDER BY created_at DESC LIMIT 5;\nSELECT id, entity_type, action, actor_name, created_at FROM crm_activity_log ORDER BY created_at DESC LIMIT 8;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, status, amount_total, customer_name, created_at FROM reservations ORDER BY created_at DESC LIMIT 5;\nSELECT id, invoice_number, status, total, payment_method, created_at FROM invoices ORDER BY created_at DESC LIMIT 5;\nSELECT id, entity_type, action, actor_name, created_at FROM crm_activity_log ORDER BY created_at DESC LIMIT 8;\n",
+  "returncode": 1,
+  "logs": [
+    "id\tstatus\tamount_total\tcustomer_name\tcreated_at",
+    "120002\tpaid\t14339\tEva Longoria\t1774219247547",
+    "120001\tpending_payment\t21780\tJacinto Benavente\t1774216996367",
+    "ERROR 1054 (42S22) at line 3: Unknown column 'invoice_number' in 'field list'"
+  ]
+}

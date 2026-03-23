@@ -1,0 +1,50 @@
+{
+  "query": "\nSELECT DISTINCT action, entityType, COUNT(*) as total FROM crm_activity_log GROUP BY action, entityType ORDER BY total DESC LIMIT 20;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT DISTINCT action, entityType, COUNT(*) as total FROM crm_activity_log GROUP BY action, entityType ORDER BY total DESC LIMIT 20;\n",
+  "rows": [
+    {
+      "action": "lead_deleted",
+      "entityType": "lead",
+      "total": "45"
+    },
+    {
+      "action": "invoice_generated",
+      "entityType": "invoice",
+      "total": "2"
+    },
+    {
+      "action": "quote_sent",
+      "entityType": "quote",
+      "total": "1"
+    },
+    {
+      "action": "quote_created",
+      "entityType": "quote",
+      "total": "1"
+    },
+    {
+      "action": "payment_confirmed",
+      "entityType": "quote",
+      "total": "1"
+    },
+    {
+      "action": "converted_to_quote",
+      "entityType": "lead",
+      "total": "1"
+    },
+    {
+      "action": "quote_sent_to_client",
+      "entityType": "lead",
+      "total": "1"
+    },
+    {
+      "action": "opportunity_won",
+      "entityType": "lead",
+      "total": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "action\tentityType\ttotal\nlead_deleted\tlead\t45\ninvoice_generated\tinvoice\t2\nquote_sent\tquote\t1\nquote_created\tquote\t1\npayment_confirmed\tquote\t1\nconverted_to_quote\tlead\t1\nquote_sent_to_client\tlead\t1\nopportunity_won\tlead\t1\n",
+  "stderr": "",
+  "execution_time_ms": 107
+}

@@ -1,0 +1,40 @@
+{
+  "query": "\nSELECT id, name, status, createdAt FROM leads ORDER BY createdAt DESC LIMIT 5;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, name, status, createdAt FROM leads ORDER BY createdAt DESC LIMIT 5;\n",
+  "rows": [
+    {
+      "id": "600003",
+      "name": "Test User",
+      "status": "nuevo",
+      "createdAt": "2026-03-23 12:19:36"
+    },
+    {
+      "id": "600002",
+      "name": "Test User",
+      "status": "nuevo",
+      "createdAt": "2026-03-23 11:15:13"
+    },
+    {
+      "id": "600001",
+      "name": "pablo ibañez",
+      "status": "nuevo",
+      "createdAt": "2026-03-23 10:16:28"
+    },
+    {
+      "id": "570014",
+      "name": "Test User",
+      "status": "nuevo",
+      "createdAt": "2026-03-22 23:02:39"
+    },
+    {
+      "id": "570013",
+      "name": "Eva Longoria",
+      "status": "convertido",
+      "createdAt": "2026-03-22 22:39:28"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tstatus\tcreatedAt\n600003\tTest User\tnuevo\t2026-03-23 12:19:36\n600002\tTest User\tnuevo\t2026-03-23 11:15:13\n600001\tpablo ibañez\tnuevo\t2026-03-23 10:16:28\n570014\tTest User\tnuevo\t2026-03-22 23:02:39\n570013\tEva Longoria\tconvertido\t2026-03-22 22:39:28\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

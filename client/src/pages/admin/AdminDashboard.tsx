@@ -106,6 +106,39 @@ function BookingBadge({ status }: { status: string }) {
   return <span className={cn("text-[10px] px-2 py-0.5 rounded-full border font-medium", map[status] ?? "bg-slate-500/15 text-slate-300")}>{labels[status] ?? status}</span>;
 }
 
+// ─── Activity label ──────────────────────────────────────────────────────────
+function activityLabel(action: string, details: Record<string, unknown> | null): string {
+  const d = details ?? {};
+  const map: Record<string, string> = {
+    lead_created:         "Nuevo lead recibido",
+    lead_updated:         "Lead actualizado",
+    lead_deleted:         "Lead eliminado",
+    converted_to_quote:   `Lead convertido en presupuesto${d.quoteNumber ? ` ${d.quoteNumber}` : ""}`,
+    quote_created:        "Presupuesto creado",
+    quote_sent:           "Presupuesto enviado al cliente",
+    quote_sent_to_client: "Presupuesto enviado al cliente",
+    quote_accepted:       "Presupuesto aceptado por el cliente",
+    quote_rejected:       "Presupuesto rechazado",
+    quote_expired:        "Presupuesto expirado",
+    payment_confirmed:    `Pago confirmado${d.invoiceId ? ` · Factura #${d.invoiceId}` : ""}`,
+    payment_link_sent:    "Enlace de pago enviado",
+    transfer_validated:   "Transferencia bancaria validada",
+    invoice_generated:    "Factura generada",
+    invoice_sent:         "Factura enviada al cliente",
+    invoice_paid:         "Factura cobrada",
+    invoice_cancelled:    "Factura anulada",
+    opportunity_won:      "Oportunidad ganada",
+    opportunity_lost:     "Oportunidad perdida",
+    reservation_created:  "Reserva creada",
+    reservation_paid:     "Reserva pagada online",
+    reservation_cancelled:"Reserva cancelada",
+    booking_created:      "Actividad programada",
+    booking_confirmed:    "Actividad confirmada",
+    booking_completed:    "Actividad completada",
+  };
+  return map[action] ?? action.replace(/_/g, " ");
+}
+
 // ─── Activity icon ─────────────────────────────────────────────────────────────
 function ActivityIcon({ type }: { type: string }) {
   const cfg: Record<string, { bg: string; text: string; letter: string }> = {
@@ -462,11 +495,13 @@ export default function AdminDashboard() {
                   <p className="text-xs text-white/30 text-center py-4">Sin actividad reciente</p>
                 ) : (
                   <div className="space-y-2.5">
-                    {overview?.recentActivity?.map(a => (
+                    {overview?.recentActivity
+                      ?.filter(a => a.action !== "lead_deleted")
+                      ?.map(a => (
                       <div key={a.id} className="flex items-start gap-2.5">
                         <ActivityIcon type={a.entityType} />
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs text-white/80 leading-snug">{a.action}</p>
+                          <p className="text-xs text-white/80 leading-snug">{activityLabel(a.action, a.details)}</p>
                           {a.actorName && <p className="text-[10px] text-white/30">{a.actorName}</p>}
                         </div>
                         <span className="text-[10px] text-white/25 shrink-0 whitespace-nowrap">{timeAgo(a.createdAt)}</span>

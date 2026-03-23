@@ -1,0 +1,38 @@
+{
+  "query": "\nSELECT 'leads' as tabla, COUNT(*) as total FROM leads\nUNION ALL SELECT 'quotes', COUNT(*) FROM quotes\nUNION ALL SELECT 'bookings', COUNT(*) FROM bookings\nUNION ALL SELECT 'reservations', COUNT(*) FROM reservations\nUNION ALL SELECT 'invoices', COUNT(*) FROM invoices\nUNION ALL SELECT 'crm_activity_log', COUNT(*) FROM crm_activity_log\nUNION ALL SELECT 'experiences', COUNT(*) FROM experiences;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT 'leads' as tabla, COUNT(*) as total FROM leads\nUNION ALL SELECT 'quotes', COUNT(*) FROM quotes\nUNION ALL SELECT 'bookings', COUNT(*) FROM bookings\nUNION ALL SELECT 'reservations', COUNT(*) FROM reservations\nUNION ALL SELECT 'invoices', COUNT(*) FROM invoices\nUNION ALL SELECT 'crm_activity_log', COUNT(*) FROM crm_activity_log\nUNION ALL SELECT 'experiences', COUNT(*) FROM experiences;\n",
+  "rows": [
+    {
+      "tabla": "leads",
+      "total": "5"
+    },
+    {
+      "tabla": "reservations",
+      "total": "2"
+    },
+    {
+      "tabla": "invoices",
+      "total": "1"
+    },
+    {
+      "tabla": "quotes",
+      "total": "1"
+    },
+    {
+      "tabla": "bookings",
+      "total": "0"
+    },
+    {
+      "tabla": "experiences",
+      "total": "11"
+    },
+    {
+      "tabla": "crm_activity_log",
+      "total": "53"
+    }
+  ],
+  "messages": [],
+  "stdout": "tabla\ttotal\nleads\t5\nreservations\t2\ninvoices\t1\nquotes\t1\nbookings\t0\nexperiences\t11\ncrm_activity_log\t53\n",
+  "stderr": "",
+  "execution_time_ms": 120
+}

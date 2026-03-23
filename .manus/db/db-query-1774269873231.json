@@ -1,0 +1,74 @@
+{
+  "query": "\nSELECT id, entityType, action, actorName, details, createdAt FROM crm_activity_log WHERE action != 'lead_deleted' ORDER BY createdAt DESC LIMIT 8;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, entityType, action, actorName, details, createdAt FROM crm_activity_log WHERE action != 'lead_deleted' ORDER BY createdAt DESC LIMIT 8;\n",
+  "rows": [
+    {
+      "id": "90061",
+      "entityType": "lead",
+      "action": "opportunity_won",
+      "actorName": "Jorge Grande",
+      "details": "{\"quoteId\": 120004}",
+      "createdAt": "2026-03-22 22:40:48"
+    },
+    {
+      "id": "90060",
+      "entityType": "quote",
+      "action": "payment_confirmed",
+      "actorName": "Jorge Grande",
+      "details": "{\"invoiceId\": 30001, \"reservationId\": 120002}",
+      "createdAt": "2026-03-22 22:40:48"
+    },
+    {
+      "id": "90062",
+      "entityType": "invoice",
+      "action": "invoice_generated",
+      "actorName": "Jorge Grande",
+      "details": "{\"pdfUrl\": \"https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/invoices/FAC-2026-0001-1774219247347.html\"}",
+      "createdAt": "2026-03-22 22:40:48"
+    },
+    {
+      "id": "90058",
+      "entityType": "quote",
+      "action": "quote_sent",
+      "actorName": "Jorge Grande",
+      "details": "{\"acceptUrl\": \"https://nayade-shop-av298fs8.manus.space/presupuesto/ee0dd9ae07533db6a67601ec71fe0d336df268ddeea6404f376fe4783215fec5\", \"email\": \"jorgemgrande@gmail.com\"}",
+      "createdAt": "2026-03-22 22:40:29"
+    },
+    {
+      "id": "90059",
+      "entityType": "lead",
+      "action": "quote_sent_to_client",
+      "actorName": "Jorge Grande",
+      "details": "{\"quoteId\": 120004}",
+      "createdAt": "2026-03-22 22:40:29"
+    },
+    {
+      "id": "90056",
+      "entityType": "lead",
+      "action": "converted_to_quote",
+      "actorName": "Jorge Grande",
+      "details": "{\"quoteId\": 120004, \"quoteNumber\": \"PRE-2026-0001\"}",
+      "createdAt": "2026-03-22 22:40:27"
+    },
+    {
+      "id": "90057",
+      "entityType": "quote",
+      "action": "quote_created",
+      "actorName": "Jorge Grande",
+      "details": "{\"fromLead\": 570013}",
+      "createdAt": "2026-03-22 22:40:27"
+    },
+    {
+      "id": "13",
+      "entityType": "invoice",
+      "action": "invoice_generated",
+      "actorName": "Jorge Grande",
+      "details": "{\"pdfUrl\": \"https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/invoices/FAC-2026-0001-1774131127685.html\"}",
+      "createdAt": "2026-03-21 22:12:08"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tentityType\taction\tactorName\tdetails\tcreatedAt\n90061\tlead\topportunity_won\tJorge Grande\t{\"quoteId\": 120004}\t2026-03-22 22:40:48\n90060\tquote\tpayment_confirmed\tJorge Grande\t{\"invoiceId\": 30001, \"reservationId\": 120002}\t2026-03-22 22:40:48\n90062\tinvoice\tinvoice_generated\tJorge Grande\t{\"pdfUrl\": \"https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/invoices/FAC-2026-0001-1774219247347.html\"}\t2026-03-22 22:40:48\n90058\tquote\tquote_sent\tJorge Grande\t{\"acceptUrl\": \"https://nayade-shop-av298fs8.manus.space/presupuesto/ee0dd9ae07533db6a67601ec71fe0d336df268ddeea6404f376fe4783215fec5\", \"email\": \"jorgemgrande@gmail.com\"}\t2026-03-22 22:40:29\n90059\tlead\tquote_sent_to_client\tJorge Grande\t{\"quoteId\": 120004}\t2026-03-22 22:40:29\n90056\tlead\tconverted_to_quote\tJorge Grande\t{\"quoteId\": 120004, \"quoteNumber\": \"PRE-2026-0001\"}\t2026-03-22 22:40:27\n90057\tquote\tquote_created\tJorge Grande\t{\"fromLead\": 570013}\t2026-03-22 22:40:27\n13\tinvoice\tinvoice_generated\tJorge Grande\t{\"pdfUrl\": \"https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/invoices/FAC-2026-0001-1774131127685.html\"}\t2026-03-21 22:12:08\n",
+  "stderr": "",
+  "execution_time_ms": 69
+}

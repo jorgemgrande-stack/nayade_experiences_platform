@@ -1,0 +1,80 @@
+{
+  "query": "\nSELECT id, status, amount_total, customer_name, created_at FROM reservations ORDER BY created_at DESC LIMIT 3;\nSELECT id, invoiceNumber, status, total, createdAt FROM invoices ORDER BY createdAt DESC LIMIT 3;\nSELECT id, entityType, action, actorName, createdAt FROM crm_activity_log ORDER BY createdAt DESC LIMIT 5;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, status, amount_total, customer_name, created_at FROM reservations ORDER BY created_at DESC LIMIT 3;\nSELECT id, invoiceNumber, status, total, createdAt FROM invoices ORDER BY createdAt DESC LIMIT 3;\nSELECT id, entityType, action, actorName, createdAt FROM crm_activity_log ORDER BY createdAt DESC LIMIT 5;\n",
+  "rows": [
+    {
+      "id": "120002",
+      "status": "paid",
+      "amount_total": "14339",
+      "customer_name": "Eva Longoria",
+      "created_at": "1774219247547"
+    },
+    {
+      "id": "120001",
+      "status": "pending_payment",
+      "amount_total": "21780",
+      "customer_name": "Jacinto Benavente",
+      "created_at": "1774216996367"
+    },
+    {
+      "id": "id",
+      "status": "invoiceNumber",
+      "amount_total": "status",
+      "customer_name": "total",
+      "created_at": "createdAt"
+    },
+    {
+      "id": "30001",
+      "status": "FAC-2026-0001",
+      "amount_total": "cobrada",
+      "customer_name": "143.39",
+      "created_at": "2026-03-22 22:40:47"
+    },
+    {
+      "id": "id",
+      "status": "entityType",
+      "amount_total": "action",
+      "customer_name": "actorName",
+      "created_at": "createdAt"
+    },
+    {
+      "id": "90062",
+      "status": "invoice",
+      "amount_total": "invoice_generated",
+      "customer_name": "Jorge Grande",
+      "created_at": "2026-03-22 22:40:48"
+    },
+    {
+      "id": "90060",
+      "status": "quote",
+      "amount_total": "payment_confirmed",
+      "customer_name": "Jorge Grande",
+      "created_at": "2026-03-22 22:40:48"
+    },
+    {
+      "id": "90061",
+      "status": "lead",
+      "amount_total": "opportunity_won",
+      "customer_name": "Jorge Grande",
+      "created_at": "2026-03-22 22:40:48"
+    },
+    {
+      "id": "90058",
+      "status": "quote",
+      "amount_total": "quote_sent",
+      "customer_name": "Jorge Grande",
+      "created_at": "2026-03-22 22:40:29"
+    },
+    {
+      "id": "90059",
+      "status": "lead",
+      "amount_total": "quote_sent_to_client",
+      "customer_name": "Jorge Grande",
+      "created_at": "2026-03-22 22:40:29"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tstatus\tamount_total\tcustomer_name\tcreated_at\n120002\tpaid\t14339\tEva Longoria\t1774219247547\n120001\tpending_payment\t21780\tJacinto Benavente\t1774216996367\nid\tinvoiceNumber\tstatus\ttotal\tcreatedAt\n30001\tFAC-2026-0001\tcobrada\t143.39\t2026-03-22 22:40:47\nid\tentityType\taction\tactorName\tcreatedAt\n90062\tinvoice\tinvoice_generated\tJorge Grande\t2026-03-22 22:40:48\n90060\tquote\tpayment_confirmed\tJorge Grande\t2026-03-22 22:40:48\n90061\tlead\topportunity_won\tJorge Grande\t2026-03-22 22:40:48\n90058\tquote\tquote_sent\tJorge Grande\t2026-03-22 22:40:29\n90059\tlead\tquote_sent_to_client\tJorge Grande\t2026-03-22 22:40:29\n",
+  "stderr": "",
+  "execution_time_ms": 77
+}

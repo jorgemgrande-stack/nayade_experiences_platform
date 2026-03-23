@@ -1,0 +1,17 @@
+{
+  "query": "\nSELECT id, quoteNumber, status, total, createdAt FROM quotes ORDER BY createdAt DESC LIMIT 3;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, quoteNumber, status, total, createdAt FROM quotes ORDER BY createdAt DESC LIMIT 3;\n",
+  "rows": [
+    {
+      "id": "120004",
+      "quoteNumber": "PRE-2026-0001",
+      "status": "aceptado",
+      "total": "143.39",
+      "createdAt": "2026-03-22 22:40:27"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tquoteNumber\tstatus\ttotal\tcreatedAt\n120004\tPRE-2026-0001\taceptado\t143.39\t2026-03-22 22:40:27\n",
+  "stderr": "",
+  "execution_time_ms": 66
+}

@@ -1291,3 +1291,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Paneles de sección: fondo rgba(255,255,255,0.03) con border-white/8 igual que CRM
 - [x] Acciones rápidas: botones con fondo oscuro y hover coherente con el sistema de diseño
 - [x] 0 errores TypeScript
+
+## Dashboard — Datos reales desde BD (v5.3.2)
+- [x] Auditar BD: 53 entradas en crmActivityLog, 1 factura cobrada, 1 reserva paid, 4 leads, 1 presupuesto
+- [x] Corregir getDashboardOverview: timestamps bigint (reservations.created_at) vs timestamp (invoices.issuedAt)
+- [x] Corregir topExperiences: usar reservations.paid como fuente (bookings vacío), amountTotal ÷ 100
+- [x] Corregir transferencias pendientes: buscar en reservations.paymentMethod='transferencia' AND status='pending_payment'
+- [x] Corregir funnel: reservations.paid + bookings.completado
+- [x] Corregir actividad reciente: usar campo details (no description que no existe)
+- [x] Traducir códigos de action a texto legible en español en el frontend
+- [x] Filtrar lead_deleted del panel de actividad reciente (45 entradas de prueba)
+- [x] 0 errores TypeScript · servidor limpio sin errores

@@ -1,0 +1,109 @@
+{
+  "query": "\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'invoices' ORDER BY ORDINAL_POSITION;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'invoices' ORDER BY ORDINAL_POSITION;\n",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "invoiceNumber"
+    },
+    {
+      "COLUMN_NAME": "quoteId"
+    },
+    {
+      "COLUMN_NAME": "reservationId"
+    },
+    {
+      "COLUMN_NAME": "clientName"
+    },
+    {
+      "COLUMN_NAME": "clientEmail"
+    },
+    {
+      "COLUMN_NAME": "clientPhone"
+    },
+    {
+      "COLUMN_NAME": "clientNif"
+    },
+    {
+      "COLUMN_NAME": "clientAddress"
+    },
+    {
+      "COLUMN_NAME": "itemsJson"
+    },
+    {
+      "COLUMN_NAME": "subtotal"
+    },
+    {
+      "COLUMN_NAME": "taxRate"
+    },
+    {
+      "COLUMN_NAME": "taxAmount"
+    },
+    {
+      "COLUMN_NAME": "total"
+    },
+    {
+      "COLUMN_NAME": "currency"
+    },
+    {
+      "COLUMN_NAME": "pdfUrl"
+    },
+    {
+      "COLUMN_NAME": "pdfKey"
+    },
+    {
+      "COLUMN_NAME": "status"
+    },
+    {
+      "COLUMN_NAME": "issuedAt"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "updatedAt"
+    },
+    {
+      "COLUMN_NAME": "invoiceType"
+    },
+    {
+      "COLUMN_NAME": "paymentMethod"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedBy"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedAt"
+    },
+    {
+      "COLUMN_NAME": "transferProofUrl"
+    },
+    {
+      "COLUMN_NAME": "transferProofKey"
+    },
+    {
+      "COLUMN_NAME": "isAutomatic"
+    },
+    {
+      "COLUMN_NAME": "creditNoteForId"
+    },
+    {
+      "COLUMN_NAME": "creditNoteReason"
+    },
+    {
+      "COLUMN_NAME": "sentAt"
+    },
+    {
+      "COLUMN_NAME": "lastSentAt"
+    },
+    {
+      "COLUMN_NAME": "sentCount"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\ninvoiceNumber\nquoteId\nreservationId\nclientName\nclientEmail\nclientPhone\nclientNif\nclientAddress\nitemsJson\nsubtotal\ntaxRate\ntaxAmount\ntotal\ncurrency\npdfUrl\npdfKey\nstatus\nissuedAt\ncreatedAt\nupdatedAt\ninvoiceType\npaymentMethod\npaymentValidatedBy\npaymentValidatedAt\ntransferProofUrl\ntransferProofKey\nisAutomatic\ncreditNoteForId\ncreditNoteReason\nsentAt\nlastSentAt\nsentCount\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}
