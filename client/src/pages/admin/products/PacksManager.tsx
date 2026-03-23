@@ -57,6 +57,8 @@ type PackForm = {
   isFeatured: boolean;
   isActive: boolean;
   sortOrder: string;
+  discountPercent: string;
+  discountExpiresAt: string;
 };
 
 const emptyForm: PackForm = {
@@ -65,6 +67,7 @@ const emptyForm: PackForm = {
   basePrice: "", priceLabel: "/persona", duration: "", minPersons: "1",
   maxPersons: "", targetAudience: "", badge: "", schedule: "", note: "",
   hasStay: false, isOnlinePurchase: true, isFeatured: false, isActive: true, sortOrder: "0",
+  discountPercent: "", discountExpiresAt: "",
 };
 
 // ── Zona de upload de imagen ─────────────────────────────────────────────────
@@ -206,6 +209,10 @@ export default function PacksManager() {
       isFeatured: Boolean(pack.isFeatured),
       isActive: Boolean(pack.isActive),
       sortOrder: String(pack.sortOrder ?? "0"),
+      discountPercent: pack.discountPercent != null ? String(pack.discountPercent) : "",
+      discountExpiresAt: pack.discountExpiresAt
+        ? new Date(pack.discountExpiresAt as string | number | Date).toISOString().slice(0, 10)
+        : "",
     });
     setShowModal(true);
   };
@@ -240,6 +247,8 @@ export default function PacksManager() {
       isFeatured: form.isFeatured,
       isActive: form.isActive,
       sortOrder: parseInt(form.sortOrder) || 0,
+      discountPercent: form.discountPercent ? form.discountPercent : undefined,
+      discountExpiresAt: form.discountExpiresAt ? form.discountExpiresAt : undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -579,6 +588,44 @@ export default function PacksManager() {
                 </div>
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm(f => ({ ...f, isActive: v }))} />
               </div>
+            </div>
+
+            {/* Descuento */}
+            <div className="border border-amber-200 bg-amber-50/60 rounded-xl p-4">
+              <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5 mb-3">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">%</span>
+                Descuento promocional
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground">Descuento (%)</label>
+                  <div className="relative mt-1">
+                    <input
+                      type="number" min="0" max="100" step="0.5"
+                      value={form.discountPercent}
+                      onChange={(e) => setForm(f => ({ ...f, discountPercent: e.target.value }))}
+                      placeholder="Ej: 10"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Válido hasta</label>
+                  <input
+                    type="date"
+                    value={form.discountExpiresAt}
+                    onChange={(e) => setForm(f => ({ ...f, discountExpiresAt: e.target.value }))}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm mt-1"
+                  />
+                </div>
+              </div>
+              {form.discountPercent && (
+                <p className="text-xs text-amber-600 mt-2">
+                  El precio con descuento se calculará automáticamente y se mostrará en la ficha pública.
+                  {!form.discountExpiresAt && " Sin fecha de caducidad: el descuento estará activo indefinidamente."}
+                </p>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 pt-2">

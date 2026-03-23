@@ -1417,3 +1417,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ## v5.13.1: Bug fix — includes/excludes no se guardan en BD
 - [x] Diagnosticado: el schema Zod de products.update no incluía los campos includes/excludes (los descartaba)
 - [x] Corregido: añadidos includes, excludes, slug, minPersons y maxPersons al schema Zod de products.update en routers.ts
+
+## v5.14: Sistema de descuentos en productos
+- [x] Migración BD: columnas discountPercent (decimal) y discountExpiresAt (timestamp) en experiences y packs
+- [x] Drizzle schema: actualizar experiences y packs con los nuevos campos
+- [x] ExperiencesManager: campos % descuento y fecha caducidad en el formulario
+- [x] PacksManager: mismos campos de descuento
+- [x] Schema Zod products.update y packs.update: añadir discountPercent y discountExpiresAt
+- [x] db.ts: incluir discountPercent y discountExpiresAt en createExperience y updateExperience
+- [x] Ribbon de promo en ExperienceDetail (ficha), Experiences (listado), PackDetail (ficha), PacksList (listado), Home (módulos)
+- [x] Ribbon muestra: "X% dto · N días" o "X% dto · Hoy" si queda menos de 1 día
+- [x] Precio tachado (precio original) + precio con descuento en ficha y listado

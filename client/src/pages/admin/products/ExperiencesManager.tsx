@@ -35,6 +35,7 @@ type ExpForm = {
   basePrice: string; duration: string; minPersons: string; maxPersons: string;
   difficulty: string; isFeatured: boolean; isActive: boolean;
   includes: string[]; excludes: string[];
+  discountPercent: string; discountExpiresAt: string;
 };
 
 const emptyForm: ExpForm = {
@@ -44,6 +45,7 @@ const emptyForm: ExpForm = {
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
   difficulty: "facil", isFeatured: false, isActive: true,
   includes: [], excludes: [],
+  discountPercent: "", discountExpiresAt: "",
 };
 
 // ── Componente de zona de upload de imagen ──────────────────────────────────
@@ -188,6 +190,10 @@ export default function ExperiencesManager() {
       isActive: Boolean(exp.isActive),
       includes: Array.isArray(exp.includes) ? (exp.includes as string[]) : [],
       excludes: Array.isArray(exp.excludes) ? (exp.excludes as string[]) : [],
+      discountPercent: exp.discountPercent != null ? String(exp.discountPercent) : "",
+      discountExpiresAt: exp.discountExpiresAt
+        ? new Date(exp.discountExpiresAt as string | number | Date).toISOString().slice(0, 10)
+        : "",
     });
     setShowModal(true);
   };
@@ -217,6 +223,8 @@ export default function ExperiencesManager() {
       isActive: form.isActive,
       includes: form.includes.filter(s => s.trim() !== ""),
       excludes: form.excludes.filter(s => s.trim() !== ""),
+      discountPercent: form.discountPercent ? form.discountPercent : undefined,
+      discountExpiresAt: form.discountExpiresAt ? form.discountExpiresAt : undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -477,6 +485,51 @@ export default function ExperiencesManager() {
               <div className="flex items-center gap-3">
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
                 <Label>Activo</Label>
+              </div>
+
+              {/* Descuento */}
+              <div className="col-span-2">
+                <div className="border border-amber-200 bg-amber-50/60 rounded-xl p-4">
+                  <Label className="text-sm font-semibold text-amber-700 flex items-center gap-1.5 mb-3">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">%</span>
+                    Descuento promocional
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="discountPercent" className="text-xs text-muted-foreground">Descuento (%)</Label>
+                      <div className="relative mt-1">
+                        <Input
+                          id="discountPercent"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          value={form.discountPercent}
+                          onChange={(e) => setForm({ ...form, discountPercent: e.target.value })}
+                          placeholder="Ej: 10"
+                          className="pr-8"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="discountExpiresAt" className="text-xs text-muted-foreground">Válido hasta</Label>
+                      <Input
+                        id="discountExpiresAt"
+                        type="date"
+                        value={form.discountExpiresAt}
+                        onChange={(e) => setForm({ ...form, discountExpiresAt: e.target.value })}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  {form.discountPercent && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      El precio con descuento se calculará automáticamente y se mostrará en la ficha pública.
+                      {!form.discountExpiresAt && " Sin fecha de caducidad: el descuento estará activo indefinidamente."}
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* Incluye */}

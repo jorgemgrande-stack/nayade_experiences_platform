@@ -568,6 +568,8 @@ export const appRouter = router({
         maxPersons: z.number().optional(),
         includes: z.array(z.string()).optional(),
         excludes: z.array(z.string()).optional(),
+        discountPercent: z.string().optional(),
+        discountExpiresAt: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -1290,6 +1292,8 @@ export const appRouter = router({
         isFeatured: z.boolean().optional(),
         isActive: z.boolean().optional(),
         sortOrder: z.number().optional(),
+        discountPercent: z.string().optional(),
+        discountExpiresAt: z.string().optional(),
       }))
       .mutation(async ({ input }) => { const { id, ...data } = input; return updatePack(id, data as any); }),
 

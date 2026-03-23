@@ -22,6 +22,7 @@ import {
   Building2,
 } from "lucide-react";
 import AddToCartModal from "@/components/AddToCartModal";
+import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon";
 
 // ── Category metadata ──────────────────────────────────────────────────────────
 const CATEGORY_META: Record<string, {
@@ -257,15 +258,39 @@ export default function PacksList() {
                             </Badge>
                           )}
                         </div>
-                        {/* Precio superpuesto (igual que en Experiences) */}
-                        <div className="absolute bottom-3 right-3 bg-white/95 rounded-lg px-3 py-1.5 shadow-md">
-                          <span className="text-orange-600 font-black text-lg leading-none">
-                            {parseFloat(pack.basePrice).toFixed(0)}€
-                          </span>
-                          <span className="text-muted-foreground text-xs ml-1">
-                            {pack.priceLabel?.includes("alumno") ? "/alumno" : "/persona"}
-                          </span>
-                        </div>
+                        {/* Ribbon de descuento */}
+                        <DiscountRibbon
+                          discountPercent={(pack as any).discountPercent}
+                          discountExpiresAt={(pack as any).discountExpiresAt}
+                          variant="card"
+                        />
+                        {/* Precio superpuesto */}
+                        {(() => {
+                          const discounted = getDiscountedPrice(
+                            pack.basePrice,
+                            (pack as any).discountPercent,
+                            (pack as any).discountExpiresAt
+                          );
+                          return (
+                            <div className="absolute bottom-3 right-3 bg-white/95 rounded-lg px-3 py-1.5 shadow-md">
+                              {discounted ? (
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-orange-500 font-black text-lg leading-none">{discounted.toFixed(0)}€</span>
+                                  <span className="text-muted-foreground text-xs line-through">{parseFloat(pack.basePrice).toFixed(0)}€</span>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="text-orange-600 font-black text-lg leading-none">
+                                    {parseFloat(pack.basePrice).toFixed(0)}€
+                                  </span>
+                                  <span className="text-muted-foreground text-xs ml-1">
+                                    {pack.priceLabel?.includes("alumno") ? "/alumno" : "/persona"}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </Link>
 

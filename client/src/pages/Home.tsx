@@ -10,6 +10,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import PublicLayout from "@/components/PublicLayout";
 import AddToCartModal from "@/components/AddToCartModal";
+import { DiscountRibbon } from "@/components/DiscountRibbon";
 import HotelSearchBar, { type HotelSearchParams } from "@/components/HotelSearchBar";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -951,6 +952,12 @@ export default function Home() {
                       ★ Más Popular
                     </div>
                   )}
+                  {/* Ribbon de descuento (si el pack tiene descuento activo en BD) */}
+                  <DiscountRibbon
+                    discountPercent={(pack as any).discountPercent}
+                    discountExpiresAt={(pack as any).discountExpiresAt}
+                    variant="card"
+                  />
                   <div className="relative z-10 flex flex-col justify-end h-full p-6" style={{ minHeight: 400 }}>
                     <div className="mb-3">
                       <div className="flex items-baseline gap-1 mb-1">

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import AddToCartModal from "@/components/AddToCartModal";
 import { useCart } from "@/contexts/CartContext";
+import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon";
 import {
   Check, X, Clock, Users, Star, Bed, ShoppingCart,
   MessageCircle, Phone, Calendar, Info, ArrowRight,
@@ -80,6 +81,13 @@ export default function PackDetail() {
   const packDisplayFromPrice = Math.min(minPackVariantPrice, basePrice);
 
   const totalEstimado = effectivePackPrice * people;
+
+  // Descuento activo en el pack
+  const packDiscountedFromPrice = getDiscountedPrice(
+    packDisplayFromPrice,
+    (pack as any)?.discountPercent as string | number | null,
+    (pack as any)?.discountExpiresAt as string | null
+  );
 
   if (isLoading) {
     return (
@@ -244,19 +252,43 @@ export default function PackDetail() {
 
           {/* Widget de precio */}
           <div className="sticky top-28">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6 relative overflow-hidden">
+                {/* Ribbon de descuento */}
+                <DiscountRibbon
+                  discountPercent={(pack as any)?.discountPercent}
+                  discountExpiresAt={(pack as any)?.discountExpiresAt}
+                  variant="card"
+                />
+
               {/* Precio desde */}
-              <div className="mb-5">
+              <div className="mb-4">
                 <p className="text-sm text-slate-500 mb-1">
                   {pack.priceLabel || "Precio por persona desde"}
                 </p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black text-slate-900">{packDisplayFromPrice.toFixed(0)}€</span>
-                  <span className="text-slate-500 text-sm">
-                    {pack.priceLabel?.includes("alumno") ? "/alumno" : "/persona"}
-                  </span>
-                </div>
+                {packDiscountedFromPrice ? (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-black text-orange-500">{packDiscountedFromPrice.toFixed(0)}€</span>
+                    <span className="text-lg text-slate-400 line-through">{packDisplayFromPrice.toFixed(0)}€</span>
+                  </div>
+                ) : (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-black text-slate-900">{packDisplayFromPrice.toFixed(0)}€</span>
+                    <span className="text-slate-500 text-sm">
+                      {pack.priceLabel?.includes("alumno") ? "/alumno" : "/persona"}
+                    </span>
+                  </div>
+                )}
               </div>
+              {/* Badge de oferta */}
+              {packDiscountedFromPrice && (
+                <div className="mb-4">
+                  <DiscountRibbon
+                    discountPercent={(pack as any)?.discountPercent}
+                    discountExpiresAt={(pack as any)?.discountExpiresAt}
+                    variant="detail"
+                  />
+                </div>
+              )}
 
               {/* Lista informativa de variantes (si existen) */}
               {packVariants.length > 0 && (

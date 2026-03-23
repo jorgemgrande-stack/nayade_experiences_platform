@@ -6,6 +6,7 @@ import {
   ShoppingCart, Tag, ChevronDown,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -120,6 +121,13 @@ export default function ExperienceDetail() {
   const includes = (exp.includes as string[]) ?? staticExperience.includes;
   const excludes = (exp.excludes as string[]) ?? staticExperience.excludes;
   const totalPrice = effectivePricePerPerson * persons;
+
+  // Descuento activo en la experiencia
+  const discountedFromPrice = getDiscountedPrice(
+    displayFromPrice,
+    (exp as Record<string, unknown>).discountPercent as string | number | null,
+    (exp as Record<string, unknown>).discountExpiresAt as string | null
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -288,17 +296,41 @@ export default function ExperienceDetail() {
           {/* Right: Booking Card */}
           <div className="lg:col-span-1">
             <div className="sticky top-28">
-              <div className="bg-card rounded-2xl border border-border/50 shadow-lg p-6">
+              <div className="bg-card rounded-2xl border border-border/50 shadow-lg p-6 relative overflow-hidden">
+                {/* Ribbon de descuento */}
+                <DiscountRibbon
+                  discountPercent={(exp as Record<string, unknown>).discountPercent as number | null}
+                  discountExpiresAt={(exp as Record<string, unknown>).discountExpiresAt as string | null}
+                  variant="card"
+                />
+
                 {/* Precio desde */}
-                <div className="mb-5">
+                <div className="mb-4">
                   <span className="text-sm text-muted-foreground">Precio por persona desde</span>
-                  <div className="flex items-baseline gap-1.5 mt-1">
-                    <span className="text-4xl font-display font-bold text-foreground">{displayFromPrice.toFixed(0)}€</span>
-                    {variants.length > 0 && (
-                      <span className="text-xs text-muted-foreground">/ persona</span>
-                    )}
-                  </div>
+                  {discountedFromPrice ? (
+                    <div className="flex items-baseline gap-2 mt-1">
+                      <span className="text-4xl font-display font-bold text-orange-500">{discountedFromPrice.toFixed(0)}€</span>
+                      <span className="text-lg text-muted-foreground line-through">{displayFromPrice.toFixed(0)}€</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline gap-1.5 mt-1">
+                      <span className="text-4xl font-display font-bold text-foreground">{displayFromPrice.toFixed(0)}€</span>
+                      {variants.length > 0 && (
+                        <span className="text-xs text-muted-foreground">/ persona</span>
+                      )}
+                    </div>
+                  )}
                 </div>
+                {/* Badge de oferta */}
+                {discountedFromPrice && (
+                  <div className="mb-4">
+                    <DiscountRibbon
+                      discountPercent={(exp as Record<string, unknown>).discountPercent as number | null}
+                      discountExpiresAt={(exp as Record<string, unknown>).discountExpiresAt as string | null}
+                      variant="detail"
+                    />
+                  </div>
+                )}
 
                 {/* Lista informativa de variantes */}
                 {variants.length > 0 && (

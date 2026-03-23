@@ -8,6 +8,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import AddToCartModal from "@/components/AddToCartModal";
+import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon";
 
 const difficultyColors: Record<string, string> = {
   facil: "bg-emerald-100 text-emerald-700",
@@ -185,6 +186,11 @@ export default function Experiences() {
                           <Badge className="bg-amber-500 text-white text-xs">★ Destacado</Badge>
                         )}
                       </div>
+                      <DiscountRibbon
+                        discountPercent={(exp as any).discountPercent}
+                        discountExpiresAt={(exp as any).discountExpiresAt}
+                        variant="card"
+                      />
                     </div>
                   </Link>
 
@@ -214,10 +220,29 @@ export default function Experiences() {
                     <div className="mt-auto">
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <span className="text-xs text-muted-foreground">Desde</span>
-                          <div className="text-2xl font-display font-bold text-foreground">
-                            {parseFloat(exp.basePrice).toFixed(0)}€
-                          </div>
+                          {(() => {
+                            const discounted = getDiscountedPrice(
+                              exp.basePrice,
+                              (exp as any).discountPercent,
+                              (exp as any).discountExpiresAt
+                            );
+                            return discounted ? (
+                              <>
+                                <span className="text-xs text-muted-foreground">Desde</span>
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className="text-2xl font-display font-bold text-orange-500">{discounted.toFixed(0)}€</span>
+                                  <span className="text-sm text-muted-foreground line-through">{parseFloat(exp.basePrice).toFixed(0)}€</span>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-xs text-muted-foreground">Desde</span>
+                                <div className="text-2xl font-display font-bold text-foreground">
+                                  {parseFloat(exp.basePrice).toFixed(0)}€
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                         <Link href={`/experiencias/${exp.slug}`}>
                           <Button size="sm" variant="outline" className="text-xs">
