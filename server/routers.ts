@@ -39,6 +39,7 @@ import {
   updateBookingStatus,
   getAllTransactions,
   getDashboardMetrics,
+  getDashboardOverview,
   getAllSlideshowItems,
   createSlideshowItem,
   updateSlideshowItem,
@@ -819,6 +820,9 @@ export const appRouter = router({
 
     getDashboardMetrics: adminProcedure.query(async () => {
       return getDashboardMetrics();
+    }),
+    getOverview: adminProcedure.query(async () => {
+      return getDashboardOverview();
     }),
   }),
 

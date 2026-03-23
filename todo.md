@@ -1270,3 +1270,16 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Actualizar links del sidebar CRM para usar ?tab= query params
 - [x] Añadir columna Origen en BookingsList con badge de canal de pago y enlace al CRM
 - [x] 159 tests pasando · 0 errores TypeScript
+
+## Dashboard de Administración — Datos reales y visión global (v5.3)
+- [x] Auditar datos hardcodeados en AdminDashboard.tsx
+- [x] Crear procedimiento tRPC accounting.getOverview con todos los datos del dashboard en una sola llamada
+- [x] KPIs reales: ingresos del mes vs mes anterior, actividades, leads nuevos, facturas pendientes
+- [x] Panel de actividades de hoy y próximas 7 días (datos reales de bookings)
+- [x] Embudo de ventas CRM con tasas de conversión (leads → presupuestos → reservas → facturas)
+- [x] Top experiencias del mes con nº reservas e ingresos
+- [x] Actividad reciente real (crmActivityLog con iconos por tipo)
+- [x] Alertas urgentes: transferencias sin validar, presupuestos por vencer, facturas vencidas +30d
+- [x] Acciones rápidas con links funcionales a los flujos reales del sistema
+- [x] Auto-refresh cada 60 segundos
+- [x] 159 tests pasando · 0 errores TypeScript

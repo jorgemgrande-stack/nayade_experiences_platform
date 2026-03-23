@@ -13,6 +13,9 @@ import {
   pageBlocks,
   staticPages,
   clients, Client, InsertClient,
+  invoices,
+  crmActivityLog,
+  reservations,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -717,9 +720,6 @@ export async function setHomeModuleItems(moduleKey: string, experienceIds: numbe
 }
 
 // ─── RESERVATIONS (Redsys) ────────────────────────────────────────────────────
-
-import { reservations } from "../drizzle/schema";
-
 export async function createReservation(data: {
   productId: number;
   productName: string;
@@ -1378,3 +1378,205 @@ export async function savePageBlocks(pageSlug: string, blocks: { id?: number; bl
   return { success: true };
 }
 
+
+// ─── DASHBOARD OVERVIEW ───────────────────────────────────────────────────────
+export async function getDashboardOverview() {
+  const db = await getDb();
+  const empty = {
+    kpis: {
+      revenueThisMonth: 0,
+      revenueLastMonth: 0,
+      revenueTotal: 0,
+      bookingsThisMonth: 0,
+      bookingsPending: 0,
+      bookingsConfirmed: 0,
+      leadsNew: 0,
+      leadsTotal: 0,
+      quotesEnviados: 0,
+      quotesPendingAmount: 0,
+      invoicesPendingCount: 0,
+      invoicesPendingAmount: 0,
+      reservationsPaidThisMonth: 0,
+    },
+    funnel: { leads: 0, quotes: 0, reservations: 0, invoices: 0 },
+    recentActivity: [] as { id: number; entityType: string; action: string; actorName: string | null; createdAt: Date }[],
+    todayBookings: [] as { id: number; bookingNumber: string; clientName: string; scheduledDate: Date; numberOfPersons: number; status: string; experienceName: string }[],
+    upcomingBookings: [] as { id: number; bookingNumber: string; clientName: string; scheduledDate: Date; numberOfPersons: number; status: string; experienceName: string }[],
+    topExperiences: [] as { experienceId: number; experienceName: string; count: number; revenue: number }[],
+    pendingAlerts: {
+      transfersToValidate: 0,
+      quotesExpiringSoon: 0,
+      invoicesOverdue: 0,
+    },
+  };
+
+  if (!db) return empty;
+
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    // ── KPIs ──────────────────────────────────────────────────────────────────
+    const [revTotal] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
+      .from(invoices).where(sql`status IN ('cobrada') AND issuedAt >= ${startOfMonth}`);
+    const [revLastMonth] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
+      .from(invoices).where(sql`status IN ('cobrada') AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`);
+    const [revAllTime] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
+      .from(invoices).where(sql`status IN ('cobrada')`);
+
+    const [bookingsThisMonth] = await db.select({ count: sql<number>`count(*)` })
+      .from(bookings).where(sql`createdAt >= ${startOfMonth}`);
+    const [bookingsPending] = await db.select({ count: sql<number>`count(*)` })
+      .from(bookings).where(eq(bookings.status, "pendiente"));
+    const [bookingsConfirmed] = await db.select({ count: sql<number>`count(*)` })
+      .from(bookings).where(eq(bookings.status, "confirmado"));
+
+    const [leadsNew] = await db.select({ count: sql<number>`count(*)` })
+      .from(leads).where(sql`createdAt >= ${startOfMonth}`);
+    const [leadsTotal] = await db.select({ count: sql<number>`count(*)` }).from(leads);
+
+    const [quotesEnviados] = await db.select({ count: sql<number>`count(*)` })
+      .from(quotes).where(sql`status IN ('enviado', 'visualizado')`);
+    const [quotesPendingAmt] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
+      .from(quotes).where(sql`status IN ('enviado', 'visualizado')`);
+
+    const [invoicesPendingCount] = await db.select({ count: sql<number>`count(*)` })
+      .from(invoices).where(sql`status IN ('generada', 'enviada')`);
+    const [invoicesPendingAmt] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
+      .from(invoices).where(sql`status IN ('generada', 'enviada')`);
+
+    const [resPaidThisMonth] = await db.select({ count: sql<number>`count(*)` })
+      .from(reservations).where(sql`status = 'paid' AND createdAt >= ${startOfMonth}`);
+
+    // ── FUNNEL ────────────────────────────────────────────────────────────────
+    const [fLeads] = await db.select({ count: sql<number>`count(*)` }).from(leads);
+    const [fQuotes] = await db.select({ count: sql<number>`count(*)` }).from(quotes);
+    const [fReservations] = await db.select({ count: sql<number>`count(*)` }).from(reservations).where(eq(reservations.status, "paid"));
+    const [fInvoices] = await db.select({ count: sql<number>`count(*)` }).from(invoices);
+
+    // ── RECENT ACTIVITY ───────────────────────────────────────────────────────
+    const recentActivity = await db.select({
+      id: crmActivityLog.id,
+      entityType: crmActivityLog.entityType,
+      action: crmActivityLog.action,
+      actorName: crmActivityLog.actorName,
+      createdAt: crmActivityLog.createdAt,
+    }).from(crmActivityLog)
+      .orderBy(desc(crmActivityLog.createdAt))
+      .limit(8);
+
+    // ── TODAY'S BOOKINGS ──────────────────────────────────────────────────────
+    const todayBookingsRaw = await db.select({
+      id: bookings.id,
+      bookingNumber: bookings.bookingNumber,
+      clientName: bookings.clientName,
+      scheduledDate: bookings.scheduledDate,
+      numberOfPersons: bookings.numberOfPersons,
+      status: bookings.status,
+      experienceId: bookings.experienceId,
+    }).from(bookings)
+      .where(sql`scheduledDate >= ${startOfToday} AND scheduledDate <= ${endOfToday} AND status NOT IN ('cancelado')`)
+      .orderBy(bookings.scheduledDate)
+      .limit(10);
+
+    // ── UPCOMING BOOKINGS (next 7 days, excluding today) ──────────────────────
+    const upcomingRaw = await db.select({
+      id: bookings.id,
+      bookingNumber: bookings.bookingNumber,
+      clientName: bookings.clientName,
+      scheduledDate: bookings.scheduledDate,
+      numberOfPersons: bookings.numberOfPersons,
+      status: bookings.status,
+      experienceId: bookings.experienceId,
+    }).from(bookings)
+      .where(sql`scheduledDate > ${endOfToday} AND scheduledDate <= ${in7Days} AND status NOT IN ('cancelado')`)
+      .orderBy(bookings.scheduledDate)
+      .limit(5);
+
+    // Enrich with experience names
+    const allExpIds = Array.from(new Set([...todayBookingsRaw, ...upcomingRaw].map(b => b.experienceId)));
+    let expMap: Record<number, string> = {};
+    if (allExpIds.length > 0) {
+      const exps = await db.select({ id: experiences.id, title: experiences.title })
+        .from(experiences).where(inArray(experiences.id, allExpIds));
+      expMap = Object.fromEntries(exps.map(e => [e.id, e.title]));
+    }
+
+    const todayBookings = todayBookingsRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId] ?? "Actividad" }));
+    const upcomingBookings = upcomingRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId] ?? "Actividad" }));
+
+    // ── TOP EXPERIENCES (this month) ──────────────────────────────────────────
+    const topRaw = await db.select({
+      experienceId: bookings.experienceId,
+      count: sql<number>`count(*)`,
+      revenue: sql<string>`COALESCE(SUM(totalAmount), 0)`,
+    }).from(bookings)
+      .where(sql`createdAt >= ${startOfMonth} AND status NOT IN ('cancelado')`)
+      .groupBy(bookings.experienceId)
+      .orderBy(sql`count(*) DESC`)
+      .limit(5);
+
+    const topExpIds = topRaw.map(r => r.experienceId);
+    let topExpMap: Record<number, string> = {};
+    if (topExpIds.length > 0) {
+      const exps = await db.select({ id: experiences.id, title: experiences.title })
+        .from(experiences).where(inArray(experiences.id, topExpIds));
+      topExpMap = Object.fromEntries(exps.map(e => [e.id, e.title]));
+    }
+    const topExperiences = topRaw.map(r => ({
+      experienceId: r.experienceId,
+      experienceName: topExpMap[r.experienceId] ?? "Actividad",
+      count: Number(r.count),
+      revenue: parseFloat(r.revenue ?? "0"),
+    }));
+
+    // ── PENDING ALERTS ────────────────────────────────────────────────────────
+    const [transfersToValidate] = await db.select({ count: sql<number>`count(*)` })
+      .from(quotes).where(sql`payment_method = 'transferencia' AND status NOT IN ('convertido_reserva', 'facturado', 'pagado', 'perdido', 'rechazado')`);
+    const [quotesExpiring] = await db.select({ count: sql<number>`count(*)` })
+      .from(quotes).where(sql`validUntil IS NOT NULL AND validUntil <= ${in7Days} AND validUntil >= ${now} AND status IN ('enviado', 'visualizado')`);
+    const [invoicesOverdue] = await db.select({ count: sql<number>`count(*)` })
+      .from(invoices).where(sql`status IN ('generada', 'enviada') AND issuedAt <= ${new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)}`);
+
+    return {
+      kpis: {
+        revenueThisMonth: parseFloat(revTotal?.total ?? "0"),
+        revenueLastMonth: parseFloat(revLastMonth?.total ?? "0"),
+        revenueTotal: parseFloat(revAllTime?.total ?? "0"),
+        bookingsThisMonth: Number(bookingsThisMonth?.count ?? 0),
+        bookingsPending: Number(bookingsPending?.count ?? 0),
+        bookingsConfirmed: Number(bookingsConfirmed?.count ?? 0),
+        leadsNew: Number(leadsNew?.count ?? 0),
+        leadsTotal: Number(leadsTotal?.count ?? 0),
+        quotesEnviados: Number(quotesEnviados?.count ?? 0),
+        quotesPendingAmount: parseFloat(quotesPendingAmt?.total ?? "0"),
+        invoicesPendingCount: Number(invoicesPendingCount?.count ?? 0),
+        invoicesPendingAmount: parseFloat(invoicesPendingAmt?.total ?? "0"),
+        reservationsPaidThisMonth: Number(resPaidThisMonth?.count ?? 0),
+      },
+      funnel: {
+        leads: Number(fLeads?.count ?? 0),
+        quotes: Number(fQuotes?.count ?? 0),
+        reservations: Number(fReservations?.count ?? 0),
+        invoices: Number(fInvoices?.count ?? 0),
+      },
+      recentActivity,
+      todayBookings,
+      upcomingBookings,
+      topExperiences,
+      pendingAlerts: {
+        transfersToValidate: Number(transfersToValidate?.count ?? 0),
+        quotesExpiringSoon: Number(quotesExpiring?.count ?? 0),
+        invoicesOverdue: Number(invoicesOverdue?.count ?? 0),
+      },
+    };
+  } catch (err) {
+    console.error("[getDashboardOverview] Error:", err);
+    return empty;
+  }
+}
