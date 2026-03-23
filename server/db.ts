@@ -325,6 +325,54 @@ export async function createBooking(data: {
   return { id: Number(result[0].insertId), bookingNumber, success: true };
 }
 
+/**
+ * Crea automáticamente un booking operativo a partir de una reserva pagada.
+ * Se llama desde el callback de Redsys, confirmTransfer y confirmManualPayment.
+ * Idempotente: si ya existe un booking con el mismo reservationId, no crea otro.
+ */
+export async function createBookingFromReservation(data: {
+  reservationId: number;
+  productId: number;
+  productName: string;
+  bookingDate: string; // YYYY-MM-DD
+  people: number;
+  amountCents: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string | null;
+  quoteId?: number | null;
+  notes?: string | null;
+  sourceChannel: "redsys" | "transferencia" | "efectivo" | "otro";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Idempotency: skip if booking already exists for this reservation
+  const existing = await db.select({ id: bookings.id })
+    .from(bookings)
+    .where(eq(bookings.reservationId, data.reservationId))
+    .limit(1);
+  if (existing.length > 0) return { id: existing[0].id, bookingNumber: null, alreadyExisted: true };
+  const bookingNumber = `BK-${Date.now()}-${nanoid(4).toUpperCase()}`;
+  const totalAmount = (data.amountCents / 100).toFixed(2);
+  const scheduledDate = new Date(data.bookingDate + "T10:00:00Z");
+  const result = await db.insert(bookings).values({
+    bookingNumber,
+    experienceId: data.productId,
+    quoteId: data.quoteId ?? null,
+    clientName: data.customerName,
+    clientEmail: data.customerEmail,
+    clientPhone: data.customerPhone ?? null,
+    scheduledDate,
+    numberOfPersons: data.people,
+    totalAmount,
+    status: "confirmado",
+    notes: data.notes ?? `Reserva automática desde ${data.sourceChannel} — ${data.productName}`,
+    reservationId: data.reservationId,
+    sourceChannel: data.sourceChannel,
+  });
+  return { id: Number(result[0].insertId), bookingNumber, alreadyExisted: false };
+}
+
 export async function getAllBookings(params: { status?: string; from?: string; to?: string; limit?: number; offset?: number }) {
   const db = await getDb();
   if (!db) return [];

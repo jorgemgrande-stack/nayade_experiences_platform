@@ -1968,7 +1968,16 @@ function QuoteDetailModal({
 // ─── MAIN CRM DASHBOARD ───────────────────────────────────────────────────────
 
 export default function CRMDashboard() {
-  const [tab, setTab] = useState<Tab>("leads");
+  // Leer el tab inicial desde la URL (?tab=leads|quotes|reservations|invoices)
+  const initialTab = (): Tab => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get("tab");
+      if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices") return t;
+    } catch { /* ignore */ }
+    return "leads";
+  };
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);

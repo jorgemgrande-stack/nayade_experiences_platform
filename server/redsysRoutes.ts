@@ -6,7 +6,7 @@
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
-import { updateReservationPayment, getReservationByMerchantOrder } from "./db";
+import { updateReservationPayment, getReservationByMerchantOrder, createBookingFromReservation } from "./db";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { quotes, leads, invoices, reservations } from "../drizzle/schema";
@@ -176,6 +176,30 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
       }
     }
+    // ── Puente automático reservations → bookings ──────────────────────────────
+    // Cuando el pago es autorizado, crear un booking operativo para que Operaciones
+    // vea la actividad en su panel sin intervención manual.
+    if (result.isAuthorized && updatedReservation) {
+      try {
+        await createBookingFromReservation({
+          reservationId: updatedReservation.id,
+          productId: updatedReservation.productId,
+          productName: updatedReservation.productName,
+          bookingDate: updatedReservation.bookingDate ?? new Date().toISOString().split("T")[0],
+          people: updatedReservation.people,
+          amountCents: updatedReservation.amountPaid ?? updatedReservation.amountTotal,
+          customerName: updatedReservation.customerName,
+          customerEmail: updatedReservation.customerEmail,
+          customerPhone: updatedReservation.customerPhone,
+          quoteId: updatedReservation.quoteId ?? null,
+          sourceChannel: "redsys",
+        });
+        console.log(`[Redsys IPN] Booking operativo creado para reserva ${updatedReservation.id}`);
+      } catch (bookingErr) {
+        console.error("[Redsys IPN] Error al crear booking operativo:", bookingErr);
+      }
+    }
+
     // Solo enviar el email estándar de reserva para reservas directas.
     // Las reservas de presupuesto ya reciben el email de confirmación de presupuesto arriba.
     const isQuoteReservation = updatedReservation?.quoteSource === "presupuesto" && !!updatedReservation?.quoteId;

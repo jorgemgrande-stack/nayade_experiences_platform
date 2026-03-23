@@ -54,9 +54,10 @@ const navItems = [
     icon: FileText,
     roles: ["admin", "agente"],
     children: [
-      { label: "Leads", href: "/admin/crm", key: "crm-leads" },
-      { label: "Presupuestos", href: "/admin/crm", key: "crm-presupuestos" },
-      { label: "Reservas", href: "/admin/crm", key: "crm-reservas" },
+      { label: "Leads", href: "/admin/crm?tab=leads", key: "crm-leads" },
+      { label: "Presupuestos", href: "/admin/crm?tab=quotes", key: "crm-presupuestos" },
+      { label: "Reservas", href: "/admin/crm?tab=reservations", key: "crm-reservas" },
+      { label: "Facturas", href: "/admin/crm?tab=invoices", key: "crm-facturas" },
       { label: "Clientes", href: "/admin/crm/clientes", key: "crm-clientes" },
     ],
   },
@@ -67,8 +68,7 @@ const navItems = [
     roles: ["admin", "agente", "monitor"],
     children: [
       { label: "Calendario", href: "/admin/operaciones/calendario" },
-      { label: "Reservas", href: "/admin/operaciones/reservas" },
-      { label: "Reservas Redsys", href: "/admin/operaciones/reservas-redsys" },
+      { label: "Actividades", href: "/admin/operaciones/reservas" },
       { label: "Órdenes del Día", href: "/admin/operaciones/ordenes" },
       { label: "Monitores", href: "/admin/operaciones/monitores" },
       { label: "Reseñas", href: "/admin/operaciones/resenas" },

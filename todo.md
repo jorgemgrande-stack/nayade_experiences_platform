@@ -1259,3 +1259,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Plantilla HTML del email de confirmación de transferencia bancaria al cliente
 - [x] Conectar el envío del email al procedimiento quotes.confirmTransfer
 - [x] Tests Vitest para el nuevo email de confirmación de transferencia
+
+## Interconexión y limpieza de módulos de reservas (v5.2)
+- [x] Auditoría completa de flujos y dependencias entre módulos
+- [x] Puente automático reservations→bookings al confirmar pago (Redsys + transferencia + efectivo)
+- [x] Eliminar módulo redundante "Reservas Redsys" de Operaciones (redirige a CRM → Reservas)
+- [x] Renombrar "Reservas" a "Actividades" en Operaciones y reconectar navegación
+- [x] Añadir campos reservationId y sourceChannel a tabla bookings (migración aplicada)
+- [x] Añadir invoiceNumber al filtro de búsqueda de crm.reservations.list
+- [x] Actualizar links del sidebar CRM para usar ?tab= query params
+- [x] Añadir columna Origen en BookingsList con badge de canal de pago y enlace al CRM
+- [x] 159 tests pasando · 0 errores TypeScript

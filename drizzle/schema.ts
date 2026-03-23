@@ -352,6 +352,9 @@ export const bookings = mysqlTable("bookings", {
   status: mysqlEnum("status", ["pendiente", "confirmado", "en_curso", "completado", "cancelado"]).default("pendiente").notNull(),
   notes: text("notes"),
   internalNotes: text("internalNotes"),
+  // Link to source reservation (when auto-created from a paid reservation)
+  reservationId: int("reservationId"),
+  sourceChannel: mysqlEnum("sourceChannel", ["manual", "redsys", "transferencia", "efectivo", "otro"]).default("manual"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
