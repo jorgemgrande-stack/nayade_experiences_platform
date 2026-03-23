@@ -22,6 +22,7 @@ import {
   Building2,
 } from "lucide-react";
 import BookingModal from "@/components/BookingModal";
+import AddToCartModal from "@/components/AddToCartModal";
 
 // ── Category metadata ──────────────────────────────────────────────────────────
 const CATEGORY_META: Record<string, {
@@ -78,6 +79,10 @@ export default function PacksList() {
   const [bookingPack, setBookingPack] = useState<{
     id: number; title: string; basePrice: string;
     duration?: string | null; minPersons?: number | null; maxPersons?: number | null; image1?: string | null;
+  } | null>(null);
+  const [cartPack, setCartPack] = useState<{
+    id: number; title: string; basePrice: string;
+    duration?: string | null; minPersons?: number | null; maxPersons?: number | null; image1?: string | null; slug?: string | null;
   } | null>(null);
 
   const meta = CATEGORY_META[category ?? ""] ?? CATEGORY_META["dia"];
@@ -320,12 +325,12 @@ export default function PacksList() {
                         </ul>
                       )}
 
-                      {/* CTAs — mismo estilo doble que Experiences */}
+                      {/* CTAs */}
                       <div className="mt-auto">
                         <div className="flex gap-2">
                           {pack.isOnlinePurchase ? (
                             <button
-                              onClick={() => setBookingPack({
+                              onClick={() => setCartPack({
                                 id: pack.id,
                                 title: pack.title,
                                 basePrice: pack.basePrice,
@@ -333,6 +338,7 @@ export default function PacksList() {
                                 minPersons: pack.minPersons,
                                 maxPersons: pack.maxPersons,
                                 image1: pack.image1,
+                                slug: pack.slug,
                               })}
                               style={{
                                 flex: 1, padding: "0.6rem 0.75rem",
@@ -342,7 +348,7 @@ export default function PacksList() {
                                 cursor: "pointer", boxShadow: "0 3px 8px rgba(249,115,22,0.35)",
                               }}
                             >
-                              🎟️ Reservar ahora
+                              🛒 Añadir al carrito
                             </button>
                           ) : (
                             <Link href="/contacto" style={{ flex: 1 }}>
@@ -407,7 +413,24 @@ export default function PacksList() {
         </div>
       </section>
 
-      {/* BookingModal */}
+      {/* AddToCartModal */}
+      {cartPack && (
+        <AddToCartModal
+          isOpen={!!cartPack}
+          onClose={() => setCartPack(null)}
+          product={{
+            id: cartPack.id,
+            title: cartPack.title,
+            basePrice: cartPack.basePrice,
+            image1: cartPack.image1 ?? undefined,
+            slug: cartPack.slug ?? undefined,
+            minPersons: cartPack.minPersons ?? 1,
+            maxPersons: cartPack.maxPersons ?? 100,
+          }}
+          onBuyNow={() => setBookingPack(cartPack)}
+        />
+      )}
+      {/* BookingModal (flujo Comprar ahora) */}
       {bookingPack && (
         <BookingModal
           product={{

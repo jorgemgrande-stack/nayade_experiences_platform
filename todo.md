@@ -1359,3 +1359,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Integrar CartProvider en main.tsx y CartIcon en el navbar
 - [x] Procedimiento cart.checkout en servidor (crea reservas + genera pago Redsys unificado)
 - [x] Conectar botones "Añadir al carrito" en páginas de producto/experiencia
+
+## v5.7: Integración carrito en todos los puntos de compra
+- [x] Listado /experiencias: botón "Añadir al carrito" con mini-modal fecha+personas + botón secundario "Comprar ahora"
+- [x] Ficha /experiencias/[slug]: ya implementado (v5.6) — verificado correcto
+- [x] Listado /packs: botón "Añadir al carrito" + botón secundario "Comprar ahora"
+- [x] Ficha /packs/[slug]: botón principal "Añadir al carrito" + botón secundario "Comprar ahora"
+- [x] Crear componente AddToCartModal reutilizable (mini-modal fecha+personas)
+- [x] Hotel, SPA, Restaurantes: sin cambios

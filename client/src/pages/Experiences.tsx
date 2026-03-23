@@ -8,6 +8,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import BookingModal from "@/components/BookingModal";
+import AddToCartModal from "@/components/AddToCartModal";
 
 const difficultyColors: Record<string, string> = {
   facil: "bg-emerald-100 text-emerald-700",
@@ -46,6 +47,7 @@ export default function Experiences() {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
   const [bookingProduct, setBookingProduct] = useState<(typeof staticExperiences)[0] | null>(null);
+  const [cartProduct, setCartProduct] = useState<(typeof staticExperiences)[0] | null>(null);
 
   const { data: dbExperiences } = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0 });
   const { data: dbCategories } = trpc.public.getCategories.useQuery();
@@ -226,10 +228,10 @@ export default function Experiences() {
                           </Button>
                         </Link>
                       </div>
-                      {/* Doble CTA */}
+                      {/* CTAs */}
                       <div className="flex gap-2">
                         <button
-                          onClick={() => setBookingProduct(exp as any)}
+                          onClick={() => setCartProduct(exp as any)}
                           style={{
                             flex: 1, padding: "0.6rem 0.75rem",
                             background: "linear-gradient(135deg, #f97316, #ea580c)",
@@ -238,7 +240,7 @@ export default function Experiences() {
                             cursor: "pointer", boxShadow: "0 3px 8px rgba(249,115,22,0.35)",
                           }}
                         >
-                          🎟️ Reservar ahora
+                          🛒 Añadir al carrito
                         </button>
                         <Link href="/contacto">
                           <button
@@ -262,7 +264,24 @@ export default function Experiences() {
           )}
         </div>
       </section>
-      {/* BookingModal */}
+      {/* AddToCartModal */}
+      {cartProduct && (
+        <AddToCartModal
+          isOpen={!!cartProduct}
+          onClose={() => setCartProduct(null)}
+          product={{
+            id: cartProduct.id,
+            title: cartProduct.title,
+            basePrice: cartProduct.basePrice,
+            image1: (cartProduct as any).image1 ?? cartProduct.coverImageUrl,
+            slug: cartProduct.slug,
+            minPersons: cartProduct.minPersons ?? 1,
+            maxPersons: cartProduct.maxPersons ?? 100,
+          }}
+          onBuyNow={() => setBookingProduct(cartProduct)}
+        />
+      )}
+      {/* BookingModal (flujo Comprar ahora) */}
       {bookingProduct && (
         <BookingModal
           isOpen={!!bookingProduct}
