@@ -575,7 +575,20 @@ export const appRouter = router({
         const { id, ...data } = input;
         // Sync coverImageUrl with image1
         if (data.image1 !== undefined) (data as Record<string, unknown>).coverImageUrl = data.image1;
-        return updateExperience(id, data);
+        // Convert discountExpiresAt string to Date for Drizzle timestamp column
+        const processedData: Record<string, unknown> = { ...data };
+        if (processedData.discountExpiresAt && typeof processedData.discountExpiresAt === "string") {
+          processedData.discountExpiresAt = processedData.discountExpiresAt
+            ? new Date(processedData.discountExpiresAt as string)
+            : null;
+        }
+        // Convert discountPercent string to number for Drizzle decimal column
+        if (processedData.discountPercent !== undefined && processedData.discountPercent !== null && processedData.discountPercent !== "") {
+          processedData.discountPercent = parseFloat(processedData.discountPercent as string);
+        } else if (processedData.discountPercent === "") {
+          processedData.discountPercent = null;
+        }
+        return updateExperience(id, processedData);
       }),
 
     delete: adminProcedure
@@ -1295,8 +1308,23 @@ export const appRouter = router({
         discountPercent: z.string().optional(),
         discountExpiresAt: z.string().optional(),
       }))
-      .mutation(async ({ input }) => { const { id, ...data } = input; return updatePack(id, data as any); }),
-
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        // Convert discountExpiresAt string to Date for Drizzle timestamp column
+        const processedData: Record<string, unknown> = { ...data };
+        if (processedData.discountExpiresAt && typeof processedData.discountExpiresAt === "string") {
+          processedData.discountExpiresAt = new Date(processedData.discountExpiresAt as string);
+        } else if (processedData.discountExpiresAt === "") {
+          processedData.discountExpiresAt = null;
+        }
+        // Convert discountPercent string to number for Drizzle decimal column
+        if (processedData.discountPercent !== undefined && processedData.discountPercent !== null && processedData.discountPercent !== "") {
+          processedData.discountPercent = parseFloat(processedData.discountPercent as string);
+        } else if (processedData.discountPercent === "") {
+          processedData.discountPercent = null;
+        }
+        return updatePack(id, processedData as any);
+      }),
     /** Toggle activo/inactivo */
     toggle: adminProcedure
       .input(z.object({ id: z.number() }))

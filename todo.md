@@ -1428,3 +1428,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Ribbon de promo en ExperienceDetail (ficha), Experiences (listado), PackDetail (ficha), PacksList (listado), Home (módulos)
 - [x] Ribbon muestra: "X% dto · N días" o "X% dto · Hoy" si queda menos de 1 día
 - [x] Precio tachado (precio original) + precio con descuento en ficha y listado
+
+## v5.14.1: Bug fix — discountExpiresAt toISOString error
+- [x] Diagnosticado: Drizzle espera Date para columna timestamp, pero el input date HTML envía string
+- [x] Corregido: conversión new Date(string) en products.update y packs.update antes de llamar a updateExperience/updatePack
+- [x] Corregido también discountPercent: parseFloat() para columna decimal
