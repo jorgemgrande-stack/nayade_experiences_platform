@@ -5,8 +5,8 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import BookingModal from "@/components/BookingModal";
 import AddToCartModal from "@/components/AddToCartModal";
+import { useCart } from "@/contexts/CartContext";
 import {
   Check, X, Clock, Users, Star, Bed, ShoppingCart,
   MessageCircle, Phone, Calendar, Info, ArrowRight,
@@ -41,8 +41,7 @@ const CATEGORY_META: Record<string, {
 export default function PackDetail() {
   const { category, slug } = useParams<{ category: string; slug: string }>();
   const [people, setPeople] = useState(1);
-  const [bookingOpen, setBookingOpen] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
+  const { addItem, openCart } = useCart();
 
   const { data: pack, isLoading } = trpc.packs.getBySlug.useQuery(
     { slug: slug ?? "" },
@@ -269,24 +268,27 @@ export default function PackDetail() {
               )}
 
               {pack.isOnlinePurchase ? (
-                <div className="flex gap-2 mb-3">
-                  <Button
-                    size="lg"
-                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-black text-base"
-                    onClick={() => setCartOpen(true)}
-                  >
-                    <ShoppingCart className="w-5 h-5 mr-2" /> Añadir al carrito
-                  </Button>
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="px-4 font-semibold text-sm border-orange-300 text-orange-600 hover:bg-orange-50"
-                    onClick={() => setBookingOpen(true)}
-                    title="Comprar ahora (pago directo)"
-                  >
-                    Comprar ya
-                  </Button>
-                </div>
+                <Button
+                  size="lg"
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base mb-3"
+                  onClick={() => {
+                    const price = parseFloat(String(pack.basePrice ?? 0));
+                    addItem({
+                      productId: pack.id,
+                      productName: pack.title,
+                      productSlug: pack.slug ?? "",
+                      productImage: pack.image1 ?? "",
+                      bookingDate: "",
+                      people,
+                      pricePerPerson: price,
+                      estimatedTotal: price * people,
+                      extras: [],
+                    });
+                    openCart();
+                  }}
+                >
+                  <ShoppingCart className="w-5 h-5 mr-2" /> Añadir al carrito
+                </Button>
               ) : null}
 
               <Link href="/contacto">
@@ -333,37 +335,7 @@ export default function PackDetail() {
         </section>
       )}
 
-      {/* AddToCartModal */}
-      {cartOpen && (
-        <AddToCartModal
-          isOpen={cartOpen}
-          onClose={() => setCartOpen(false)}
-          product={{
-            id: pack.id,
-            title: pack.title,
-            basePrice: pack.basePrice,
-            image1: pack.image1 ?? undefined,
-            slug: pack.slug ?? undefined,
-            minPersons: pack.minPersons ?? 1,
-            maxPersons: pack.maxPersons ?? 100,
-          }}
-          onBuyNow={() => setBookingOpen(true)}
-        />
-      )}
-      {/* BookingModal (flujo Comprar ahora) */}
-      {bookingOpen && (
-        <BookingModal
-          product={{
-            id: pack.id,
-            title: pack.title,
-            basePrice: pack.basePrice,
-            minPersons: pack.minPersons ?? 1,
-            maxPersons: pack.maxPersons ?? undefined,
-          }}
-          isOpen={bookingOpen}
-          onClose={() => setBookingOpen(false)}
-        />
-      )}
+
     </PublicLayout>
   );
 }

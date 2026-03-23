@@ -2,15 +2,15 @@
  * AddToCartModal — Mini-modal reutilizable para añadir un producto al carrito.
  *
  * Muestra solo los campos esenciales: fecha y número de personas.
- * No hace ningún pago — simplemente añade el artículo al CartContext.
- * El botón "Comprar ahora" delega en el BookingModal de Redsys (flujo existente).
+ * Al confirmar, añade el artículo al CartContext y abre el drawer automáticamente.
+ * Un único flujo de compra: carrito → /checkout → Redsys.
  */
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ShoppingCart, Zap, Calendar, Users, Minus, Plus } from "lucide-react";
+import { ShoppingCart, Calendar, Users, Minus, Plus } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { toast } from "sonner";
 
@@ -28,11 +28,9 @@ interface AddToCartModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: AddToCartProduct;
-  /** Callback para abrir el BookingModal de Redsys (flujo "Comprar ahora") */
-  onBuyNow?: () => void;
 }
 
-export default function AddToCartModal({ isOpen, onClose, product, onBuyNow }: AddToCartModalProps) {
+export default function AddToCartModal({ isOpen, onClose, product }: AddToCartModalProps) {
   const { addItem, openCart } = useCart();
 
   const today = new Date().toISOString().split("T")[0];
@@ -60,20 +58,8 @@ export default function AddToCartModal({ isOpen, onClose, product, onBuyNow }: A
       estimatedTotal,
       extras: [],
     });
-    toast.success(`"${product.title}" añadido al carrito`, {
-      description: `${bookingDate} · ${people} persona${people !== 1 ? "s" : ""} · ${estimatedTotal.toFixed(2)} €`,
-      action: {
-        label: "Ver carrito",
-        onClick: () => openCart(),
-      },
-    });
     onClose();
     openCart();
-  }
-
-  function handleBuyNow() {
-    onClose();
-    onBuyNow?.();
   }
 
   return (
@@ -151,24 +137,15 @@ export default function AddToCartModal({ isOpen, onClose, product, onBuyNow }: A
               <span className="text-lg font-black text-orange-600">{estimatedTotal.toFixed(2)} €</span>
             </div>
 
-            {/* Botones */}
-            <div className="flex gap-2 pt-1">
+            {/* Botón único */}
+            <div className="pt-1">
               <Button
                 onClick={handleAddToCart}
-                className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-semibold h-11"
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold h-11"
               >
                 <ShoppingCart className="w-4 h-4 mr-2" />
                 Añadir al carrito
               </Button>
-              {onBuyNow && (
-                <Button
-                  onClick={handleBuyNow}
-                  className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold h-11"
-                >
-                  <Zap className="w-4 h-4 mr-2" />
-                  Comprar ya
-                </Button>
-              )}
             </div>
             <p className="text-xs text-slate-400 text-center">
               El precio final se confirma al completar el pago

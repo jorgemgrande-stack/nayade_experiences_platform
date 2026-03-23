@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import BookingModal from "@/components/BookingModal";
 import AddToCartModal from "@/components/AddToCartModal";
 
 const difficultyColors: Record<string, string> = {
@@ -46,7 +45,6 @@ export default function Experiences() {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
-  const [bookingProduct, setBookingProduct] = useState<(typeof staticExperiences)[0] | null>(null);
   const [cartProduct, setCartProduct] = useState<(typeof staticExperiences)[0] | null>(null);
 
   const { data: dbExperiences } = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0 });
@@ -277,23 +275,6 @@ export default function Experiences() {
             slug: cartProduct.slug,
             minPersons: cartProduct.minPersons ?? 1,
             maxPersons: cartProduct.maxPersons ?? 100,
-          }}
-          onBuyNow={() => setBookingProduct(cartProduct)}
-        />
-      )}
-      {/* BookingModal (flujo Comprar ahora) */}
-      {bookingProduct && (
-        <BookingModal
-          isOpen={!!bookingProduct}
-          onClose={() => setBookingProduct(null)}
-          product={{
-            id: bookingProduct.id,
-            title: bookingProduct.title,
-            basePrice: bookingProduct.basePrice,
-            duration: bookingProduct.duration,
-            minPersons: bookingProduct.minPersons ?? 1,
-            maxPersons: bookingProduct.maxPersons ?? 100,
-            image1: (bookingProduct as any).image1 ?? bookingProduct.coverImageUrl,
           }}
         />
       )}

@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
-import BookingModal from "@/components/BookingModal";
+
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -65,10 +65,9 @@ export default function ExperienceDetail() {
   const { slug } = useParams<{ slug: string }>();
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [showBookingModal, setShowBookingModal] = useState(false); // lead modal
-  const [showRedsysModal, setShowRedsysModal] = useState(false);   // Redsys payment modal
   const [persons, setPersons] = useState(2);
   const [selectedDate, setSelectedDate] = useState("");
-  const { addItem } = useCart();
+  const { addItem, openCart } = useCart();
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", date: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -323,19 +322,9 @@ export default function ExperienceDetail() {
                     className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
-                 {/* CTA principal: Reservar Ahora con pago Redsys (solo si tiene precio fijo) */}
+                {/* CTA principal: Añadir al carrito (único botón de compra) */}
                 {exp.basePrice && parseFloat(String(exp.basePrice)) > 0 ? (
-                  <>
                   <Button
-                    onClick={() => setShowRedsysModal(true)}
-                    className="w-full font-semibold h-12 text-base mb-2"
-                    style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)', color: '#fff' }}
-                  >
-                    Reservar Ahora
-                    <ArrowRight className="ml-2 w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
                     onClick={() => {
                       if (!selectedDate) {
                         toast.info("Selecciona una fecha antes de añadir al carrito");
@@ -353,14 +342,14 @@ export default function ExperienceDetail() {
                         estimatedTotal: price * persons,
                         extras: [],
                       });
-                      toast.success(`"​${exp.title}" añadido al carrito`);
+                      openCart();
                     }}
-                    className="w-full h-11 mb-2 border-primary text-primary hover:bg-primary/5"
+                    className="w-full font-semibold h-12 text-base mb-2"
+                    style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)', color: '#fff' }}
                   >
                     <ShoppingCart className="mr-2 w-4 h-4" />
                     Añadir al carrito
                   </Button>
-                  </>
                 ) : null}
                 {/* CTA secundario: Solicitar Presupuesto (lead) */}
                 <Button
@@ -471,20 +460,7 @@ export default function ExperienceDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* BookingModal Redsys — Reservar Ahora con pago */}
-      <BookingModal
-        isOpen={showRedsysModal}
-        onClose={() => setShowRedsysModal(false)}
-        product={{
-          id: exp.id,
-          title: exp.title,
-          basePrice: exp.basePrice,
-          duration: exp.duration ?? undefined,
-          minPersons: exp.minPersons ?? undefined,
-          maxPersons: exp.maxPersons ?? undefined,
-          image1: (exp as Record<string, unknown>).image1 as string | undefined,
-        }}
-      />
+
     </PublicLayout>
   );
 }

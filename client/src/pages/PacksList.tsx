@@ -21,7 +21,6 @@ import {
   GraduationCap,
   Building2,
 } from "lucide-react";
-import BookingModal from "@/components/BookingModal";
 import AddToCartModal from "@/components/AddToCartModal";
 
 // ── Category metadata ──────────────────────────────────────────────────────────
@@ -76,10 +75,6 @@ export default function PacksList() {
   const [search, setSearch] = useState("");
   const [selectedBadge, setSelectedBadge] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<string | null>(null); // "online" | "presupuesto"
-  const [bookingPack, setBookingPack] = useState<{
-    id: number; title: string; basePrice: string;
-    duration?: string | null; minPersons?: number | null; maxPersons?: number | null; image1?: string | null;
-  } | null>(null);
   const [cartPack, setCartPack] = useState<{
     id: number; title: string; basePrice: string;
     duration?: string | null; minPersons?: number | null; maxPersons?: number | null; image1?: string | null; slug?: string | null;
@@ -427,23 +422,6 @@ export default function PacksList() {
             minPersons: cartPack.minPersons ?? 1,
             maxPersons: cartPack.maxPersons ?? 100,
           }}
-          onBuyNow={() => setBookingPack(cartPack)}
-        />
-      )}
-      {/* BookingModal (flujo Comprar ahora) */}
-      {bookingPack && (
-        <BookingModal
-          product={{
-            id: bookingPack.id,
-            title: bookingPack.title,
-            basePrice: bookingPack.basePrice,
-            duration: bookingPack.duration ?? undefined,
-            minPersons: bookingPack.minPersons ?? 1,
-            maxPersons: bookingPack.maxPersons ?? 100,
-            image1: bookingPack.image1 ?? undefined,
-          }}
-          isOpen={!!bookingPack}
-          onClose={() => setBookingPack(null)}
         />
       )}
     </PublicLayout>

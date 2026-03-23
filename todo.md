@@ -1372,3 +1372,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Página /checkout con resumen de pedido, formulario de datos del cliente y botón pago Redsys
 - [x] CartDrawer simplificado: botón "Finalizar compra" redirige a /checkout
 - [x] Módulo de actividades de la Home: botón "Añadir" (carrito) + botón "Ya" (compra directa)
+
+## v5.9: Flujo de compra unificado — un solo camino por el carrito
+- [x] ExperienceDetail: eliminar botón "Reservar Ahora", dejar solo "Añadir al carrito" que abre el drawer
+- [x] PackDetail: eliminar botón "Reservar Ahora", dejar solo "Añadir al carrito" que abre el drawer
+- [x] Experiences (listado): eliminar botón "Ya", dejar solo "Añadir al carrito"
+- [x] PacksList (listado): eliminar botón "Ya", dejar solo "Añadir al carrito"
+- [x] Home (módulo actividades): eliminar botón "Ya", dejar solo "Añadir al carrito"
+- [ ] CartDrawer: permitir editar número de personas de cada artículo desde el drawer
+- [x] Eliminar BookingModal de todos los puntos de entrada (ya no se usa para compra directa)

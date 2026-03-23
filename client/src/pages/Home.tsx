@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import PublicLayout from "@/components/PublicLayout";
-import BookingModal from "@/components/BookingModal";
 import AddToCartModal from "@/components/AddToCartModal";
 import HotelSearchBar, { type HotelSearchParams } from "@/components/HotelSearchBar";
 import { Input } from "@/components/ui/input";
@@ -321,7 +320,6 @@ function HeroActivityModal({
 export default function Home() {
   const [, navigate] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [bookingProduct, setBookingProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string } | null>(null);
   const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string } | null>(null);
 
   function todayStr() { return new Date().toISOString().split("T")[0]; }
@@ -888,17 +886,10 @@ export default function Home() {
                     {act.basePrice && (
                       <div className="ml-auto flex items-center gap-2">
                         <button
-                          onClick={() => setBookingProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1 })}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-display font-medium border border-orange-300 text-orange-600 hover:bg-orange-50 transition-colors"
-                          title="Comprar ahora"
-                        >
-                          <Calendar className="w-3 h-3" /> Ya
-                        </button>
-                        <button
                           onClick={() => setAddToCartProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1 })}
                           className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-display font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
                         >
-                          <ShoppingCartIcon className="w-3.5 h-3.5" /> Añadir
+                          <ShoppingCartIcon className="w-3.5 h-3.5" /> Añadir al carrito
                         </button>
                       </div>
                     )}
@@ -1357,15 +1348,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* BookingModal — compra directa */}
-      {bookingProduct && (
-        <BookingModal
-          isOpen={!!bookingProduct}
-          onClose={() => setBookingProduct(null)}
-          product={bookingProduct}
-        />
-      )}
 
       {/* AddToCartModal — añadir al carrito */}
       {addToCartProduct && (
