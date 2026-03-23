@@ -1302,3 +1302,24 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Traducir códigos de action a texto legible en español en el frontend
 - [x] Filtrar lead_deleted del panel de actividad reciente (45 entradas de prueba)
 - [x] 0 errores TypeScript · servidor limpio sin errores
+
+## Menú de acciones en filas de Reservas CRM (v5.4)
+- [ ] Añadir columna Acciones con dropdown en tabla de Reservas del CRM
+- [ ] Acción "Ver detalles": abrir modal de detalle de reserva
+- [ ] Acción "Editar": modal de edición de reserva (estado, notas, fecha)
+- [ ] Acción "Reenviar al cliente": reenviar email de confirmación al email del cliente
+- [ ] Acción "Descargar reserva en PDF": generar y descargar PDF de la reserva
+- [ ] Acción "Eliminar": confirmación y eliminación de la reserva
+- [ ] Procedimiento tRPC crm.reservations.resendConfirmation
+- [ ] Procedimiento tRPC crm.reservations.delete
+- [ ] Procedimiento tRPC crm.reservations.update (editar estado/notas)
+- [ ] Generación de PDF de reserva en el servidor
+
+## Menú de acciones en filas de Reservas del CRM (v5.4)
+- [x] Dropdown con 5 acciones: Ver detalles, Editar, Reenviar al cliente, Descargar PDF, Eliminar
+- [x] Procedimiento crm.reservations.update (editar estado y notas)
+- [x] Procedimiento crm.reservations.resendConfirmation (reenviar email al cliente)
+- [x] Procedimiento crm.reservations.delete (eliminar reserva)
+- [x] Modal de edición de reserva con selector de estado y notas internas
+- [x] Modal de confirmación de eliminación
+- [x] 0 errores TypeScript

@@ -2175,6 +2175,106 @@ export const crmRouter = router({
 
         return { reservation, invoices: relatedInvoices, activity };
       }),
+
+    // ─── Actualizar estado/notas de una reserva ─────────────────────────────
+    update: staff
+      .input(z.object({
+        id: z.number(),
+        status: z.enum(["draft", "pending_payment", "paid", "failed", "cancelled"]).optional(),
+        notes: z.string().optional(),
+        bookingDate: z.string().optional(),
+        people: z.number().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const { id, ...fields } = input;
+        const updateData: Record<string, unknown> = { updatedAt: Date.now() };
+        if (fields.status !== undefined) updateData.status = fields.status;
+        if (fields.notes !== undefined) updateData.notes = fields.notes;
+        if (fields.bookingDate !== undefined) updateData.bookingDate = fields.bookingDate;
+        if (fields.people !== undefined) updateData.people = fields.people;
+        await db.update(reservations).set(updateData).where(eq(reservations.id, id));
+        await db.insert(crmActivityLog).values({
+          entityType: "reservation",
+          entityId: id,
+          action: "reservation_updated",
+          actorId: ctx.user.id,
+          actorName: ctx.user.name ?? null,
+          details: { fields: Object.keys(fields) },
+          createdAt: new Date(),
+        });
+        return { ok: true };
+      }),
+
+    // ─── Reenviar email de confirmación al cliente ──────────────────────────
+    resendConfirmation: staff
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const [res] = await db.select().from(reservations).where(eq(reservations.id, input.id));
+        if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+        const isTransfer = res.paymentMethod === "transferencia";
+        let html: string;
+        let subject: string;
+        if (isTransfer) {
+          const amountEur = (res.amountPaid ?? res.amountTotal) / 100;
+          html = buildTransferConfirmationHtml({
+            clientName: res.customerName,
+            invoiceNumber: res.invoiceNumber ?? res.merchantOrder,
+            reservationRef: res.merchantOrder,
+            quoteTitle: res.productName,
+            items: [{
+              description: res.productName,
+              quantity: res.people,
+              unitPrice: amountEur / res.people,
+              total: amountEur,
+            }],
+            subtotal: amountEur.toFixed(2),
+            taxAmount: "0.00",
+            total: amountEur.toFixed(2),
+            invoiceUrl: null,
+          });
+          subject = `🏦 Confirmación de reserva — ${res.productName} · Náyade Experiences`;
+        } else {
+          html = buildConfirmationHtml({
+            clientName: res.customerName,
+            reservationRef: res.merchantOrder,
+            quoteTitle: res.productName,
+            items: [{
+              description: res.productName,
+              quantity: res.people,
+              unitPrice: (res.amountTotal / res.people) / 100,
+              total: res.amountTotal / 100,
+            }],
+            total: `${(res.amountTotal / 100).toFixed(2)} €`,
+            bookingDate: res.bookingDate,
+            contactEmail: "reservas@nayadeexperiences.es",
+            contactPhone: "+34 930 34 77 91",
+          });
+          subject = `✅ Confirmación de reserva — ${res.productName} · Náyade Experiences`;
+        }
+        await sendEmail({ to: res.customerEmail, subject, html });
+        await db.insert(crmActivityLog).values({
+          entityType: "reservation",
+          entityId: input.id,
+          action: "email_resent",
+          actorId: ctx.user.id,
+          actorName: ctx.user.name ?? null,
+          details: { to: res.customerEmail, subject },
+          createdAt: new Date(),
+        });
+        return { ok: true, sentTo: res.customerEmail };
+      }),
+
+    // ─── Eliminar reserva ───────────────────────────────────────────────────
+    delete: staff
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const [res] = await db.select({ id: reservations.id, status: reservations.status }).from(reservations).where(eq(reservations.id, input.id));
+        if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+        if (res.status === "paid") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se puede eliminar una reserva pagada. Cancélala primero desde Editar." });
+        await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "reservation"), eq(crmActivityLog.entityId, input.id)));
+        await db.delete(reservations).where(eq(reservations.id, input.id));
+        return { ok: true };
+      }),
   }),
 
   // ─── INVOICES ──────────────────────────────────────────────────────────────
