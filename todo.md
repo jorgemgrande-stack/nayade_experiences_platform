@@ -1367,3 +1367,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Ficha /packs/[slug]: botón principal "Añadir al carrito" + botón secundario "Comprar ahora"
 - [x] Crear componente AddToCartModal reutilizable (mini-modal fecha+personas)
 - [x] Hotel, SPA, Restaurantes: sin cambios
+
+## v5.8: Página de checkout dedicada + Home con carrito
+- [x] Página /checkout con resumen de pedido, formulario de datos del cliente y botón pago Redsys
+- [x] CartDrawer simplificado: botón "Finalizar compra" redirige a /checkout
+- [x] Módulo de actividades de la Home: botón "Añadir" (carrito) + botón "Ya" (compra directa)

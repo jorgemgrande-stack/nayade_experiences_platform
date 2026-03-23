@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import {
   Waves, MapPin, Star, Clock, Users, ChevronRight, ChevronLeft,
   ArrowRight, Phone, Mail, Anchor, Wind, Zap, Heart, Shield, Calendar,
-  Send, Sparkles, Plus, X, CheckCircle, Minus
+  Send, Sparkles, Plus, X, CheckCircle, Minus, ShoppingCart as ShoppingCartIcon
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import PublicLayout from "@/components/PublicLayout";
 import BookingModal from "@/components/BookingModal";
+import AddToCartModal from "@/components/AddToCartModal";
 import HotelSearchBar, { type HotelSearchParams } from "@/components/HotelSearchBar";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -321,6 +322,7 @@ export default function Home() {
   const [, navigate] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [bookingProduct, setBookingProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string } | null>(null);
+  const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string } | null>(null);
 
   function todayStr() { return new Date().toISOString().split("T")[0]; }
   function tomorrowStr() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; }
@@ -884,12 +886,21 @@ export default function Home() {
                       </span>
                     </Link>
                     {act.basePrice && (
-                      <button
-                        onClick={() => setBookingProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1 })}
-                        className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-display font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
-                      >
-                        <Calendar className="w-3.5 h-3.5" /> Reservar
-                      </button>
+                      <div className="ml-auto flex items-center gap-2">
+                        <button
+                          onClick={() => setBookingProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1 })}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-display font-medium border border-orange-300 text-orange-600 hover:bg-orange-50 transition-colors"
+                          title="Comprar ahora"
+                        >
+                          <Calendar className="w-3 h-3" /> Ya
+                        </button>
+                        <button
+                          onClick={() => setAddToCartProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1 })}
+                          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-display font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+                        >
+                          <ShoppingCartIcon className="w-3.5 h-3.5" /> Añadir
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1347,12 +1358,21 @@ export default function Home() {
         </div>
       </section>
 
-      {/* BookingModal */}
+      {/* BookingModal — compra directa */}
       {bookingProduct && (
         <BookingModal
           isOpen={!!bookingProduct}
           onClose={() => setBookingProduct(null)}
           product={bookingProduct}
+        />
+      )}
+
+      {/* AddToCartModal — añadir al carrito */}
+      {addToCartProduct && (
+        <AddToCartModal
+          isOpen={!!addToCartProduct}
+          onClose={() => setAddToCartProduct(null)}
+          product={addToCartProduct}
         />
       )}
 

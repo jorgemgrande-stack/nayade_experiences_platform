@@ -34,6 +34,7 @@ import QuoteAcceptance from "./pages/QuoteAcceptance";
 import HotelRoom from "./pages/HotelRoom";
 import SpaDetail from "./pages/SpaDetail";
 import RestaurantBooking from "./pages/RestaurantBooking";
+import Checkout from "./pages/Checkout";
 
 // ── ADMIN PAGES (lazy — solo se cargan cuando el usuario navega a /admin) ────
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -113,6 +114,8 @@ function Router() {
       <Route path="/restaurantes/reserva-ko" component={RestauranteReservaKo} />
       <Route path="/restaurantes/:slug" component={RestauranteDetail} />
       <Route path="/restaurantes/:slug/reservar" component={RestaurantBooking} />
+      {/* ── CHECKOUT ROUTE ── */}
+      <Route path="/checkout" component={Checkout} />
       {/* ── RESERVA ROUTES ── */}
       <Route path="/reserva/ok" component={ReservaOk} />
       <Route path="/reserva/error" component={ReservaError} />
