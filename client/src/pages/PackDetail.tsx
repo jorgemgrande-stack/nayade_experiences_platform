@@ -10,8 +10,10 @@ import { useCart } from "@/contexts/CartContext";
 import {
   Check, X, Clock, Users, Star, Bed, ShoppingCart,
   MessageCircle, Phone, Calendar, Info, ArrowRight,
-  Sun, GraduationCap, Building2,
+  Sun, GraduationCap, Building2, Tag,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const CATEGORY_META: Record<string, {
   label: string; href: string; gradient: string;
@@ -41,11 +43,18 @@ const CATEGORY_META: Record<string, {
 export default function PackDetail() {
   const { category, slug } = useParams<{ category: string; slug: string }>();
   const [people, setPeople] = useState(1);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
   const { addItem, openCart } = useCart();
 
   const { data: pack, isLoading } = trpc.packs.getBySlug.useQuery(
     { slug: slug ?? "" },
     { enabled: !!slug }
+  );
+
+  // Cargar variantes del pack (por ahora los packs usan experienceId = pack.id en la tabla experience_variants)
+  const { data: packVariants = [] } = trpc.public.getVariantsByExperience.useQuery(
+    { experienceId: pack?.id ?? 0 },
+    { enabled: !!pack?.id }
   );
 
   const catKey = category ?? pack?.category ?? "dia";
@@ -57,7 +66,20 @@ export default function PackDetail() {
   const crossSells: any[] = (pack as any)?.crossSells ?? [];
 
   const basePrice = pack ? parseFloat(pack.basePrice) : 0;
-  const totalEstimado = basePrice * people;
+
+  // Precio efectivo según variante seleccionada
+  const selectedPackVariant = packVariants.find(v => v.id === selectedVariantId);
+  const effectivePackPrice = selectedPackVariant
+    ? parseFloat(String(selectedPackVariant.priceModifier ?? basePrice))
+    : basePrice;
+
+  // Precio "desde": mínimo de variantes o basePrice
+  const minPackVariantPrice = packVariants.length > 0
+    ? Math.min(...packVariants.map(v => parseFloat(String(v.priceModifier ?? basePrice))))
+    : basePrice;
+  const packDisplayFromPrice = Math.min(minPackVariantPrice, basePrice);
+
+  const totalEstimado = effectivePackPrice * people;
 
   if (isLoading) {
     return (
@@ -222,18 +244,64 @@ export default function PackDetail() {
 
           {/* Widget de precio */}
           <div className="sticky top-28">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6">
+              {/* Precio desde */}
               <div className="mb-5">
                 <p className="text-sm text-slate-500 mb-1">
                   {pack.priceLabel || "Precio por persona desde"}
                 </p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black text-slate-900">{basePrice.toFixed(0)}€</span>
+                  <span className="text-4xl font-black text-slate-900">{packDisplayFromPrice.toFixed(0)}€</span>
                   <span className="text-slate-500 text-sm">
                     {pack.priceLabel?.includes("alumno") ? "/alumno" : "/persona"}
                   </span>
                 </div>
               </div>
+
+              {/* Lista informativa de variantes (si existen) */}
+              {packVariants.length > 0 && (
+                <div className="mb-5">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+                    <Tag className="w-3 h-3 text-orange-500" /> Modalidades disponibles
+                  </p>
+                  <div className="space-y-1.5">
+                    {!packVariants.some(v => v.isRequired) && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedVariantId(undefined)}
+                        className={cn(
+                          "w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-all",
+                          selectedVariantId === undefined
+                            ? "border-orange-400 bg-orange-50 text-orange-700 font-semibold"
+                            : "border-slate-200 text-slate-600 hover:border-orange-200 hover:bg-orange-50/40"
+                        )}
+                      >
+                        <span>Estándar</span>
+                        <span className="font-bold">{basePrice.toFixed(0)}€/p.</span>
+                      </button>
+                    )}
+                    {packVariants.map(v => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setSelectedVariantId(v.id)}
+                        className={cn(
+                          "w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-all",
+                          selectedVariantId === v.id
+                            ? "border-orange-400 bg-orange-50 text-orange-700 font-semibold"
+                            : "border-slate-200 text-slate-600 hover:border-orange-200 hover:bg-orange-50/40"
+                        )}
+                      >
+                        <span className="text-left leading-tight">{v.name}</span>
+                        <span className="font-bold ml-2 shrink-0">{parseFloat(String(v.priceModifier ?? 0)).toFixed(0)}€/p.</span>
+                      </button>
+                    ))}
+                  </div>
+                  {packVariants.some(v => v.isRequired) && selectedVariantId === undefined && (
+                    <p className="text-xs text-orange-600 mt-1.5">Selecciona una modalidad para continuar</p>
+                  )}
+                </div>
+              )}
 
               {pack.isOnlinePurchase && (
                 <div className="mb-4">
@@ -257,7 +325,10 @@ export default function PackDetail() {
               {pack.isOnlinePurchase && (
                 <div className="bg-slate-50 rounded-xl p-3 mb-5 text-sm">
                   <div className="flex justify-between text-slate-600 mb-1">
-                    <span>{basePrice.toFixed(0)}€ × {people} personas</span>
+                    <span>
+                      {effectivePackPrice.toFixed(0)}€ × {people} personas
+                      {selectedPackVariant && <span className="block text-xs text-orange-600">{selectedPackVariant.name}</span>}
+                    </span>
                     <span>{totalEstimado.toFixed(0)}€</span>
                   </div>
                   <div className="flex justify-between font-black text-slate-900 text-base border-t border-slate-200 pt-2 mt-2">
@@ -272,7 +343,10 @@ export default function PackDetail() {
                   size="lg"
                   className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base mb-3"
                   onClick={() => {
-                    const price = parseFloat(String(pack.basePrice ?? 0));
+                    if (packVariants.some(v => v.isRequired) && selectedVariantId === undefined) {
+                      toast.info("Selecciona una modalidad antes de añadir al carrito");
+                      return;
+                    }
                     addItem({
                       productId: pack.id,
                       productName: pack.title,
@@ -280,8 +354,12 @@ export default function PackDetail() {
                       productImage: pack.image1 ?? "",
                       bookingDate: "",
                       people,
-                      pricePerPerson: price,
-                      estimatedTotal: price * people,
+                      minPersons: pack.minPersons ?? 1,
+                      maxPersons: pack.maxPersons ?? 50,
+                      variantId: selectedPackVariant?.id,
+                      variantName: selectedPackVariant?.name,
+                      pricePerPerson: effectivePackPrice,
+                      estimatedTotal: effectivePackPrice * people,
                       extras: [],
                     });
                     openCart();

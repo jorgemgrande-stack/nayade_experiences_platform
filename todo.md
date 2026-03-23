@@ -1393,3 +1393,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] AddToCartModal: mostrar selector de variantes disponibles antes de añadir
 - [x] CartContext: función updatePeople y recalcular estimatedTotal al cambiar personas/variante
 - [x] tRPC: procedimiento para obtener variantes por productId (ya existía: trpc.public.getVariantsByExperience)
+
+## v5.11: Variantes en ficha de producto (precio desde + lista informativa + selector)
+- [x] ExperienceDetail: precio "desde" = mínimo de priceModifier entre variantes (si existen)
+- [x] ExperienceDetail: lista informativa de variantes con precios dentro de la caja lateral
+- [x] ExperienceDetail: selector de variante activo que actualiza el precio y el total estimado
+- [x] PackDetail: misma lógica si el pack tiene variantes en BD

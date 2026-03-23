@@ -3,7 +3,7 @@ import { Link, useParams } from "wouter";
 import {
   ChevronRight, Star, Clock, Users, MapPin, Shield, CheckCircle,
   XCircle, Calendar, Phone, Mail, ArrowRight, ChevronLeft, ChevronRight as ChevronRightIcon,
-  ShoppingCart,
+  ShoppingCart, Tag, ChevronDown,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
@@ -70,10 +70,16 @@ export default function ExperienceDetail() {
   const { addItem, openCart } = useCart();
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", date: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
 
   const { data: dbExp } = trpc.public.getExperienceBySlug.useQuery(
     { slug: slug ?? "" },
     { enabled: !!slug, retry: false }
+  );
+
+  const { data: variants = [] } = trpc.public.getVariantsByExperience.useQuery(
+    { experienceId: dbExp?.id ?? 0 },
+    { enabled: !!dbExp?.id }
   );
 
   const submitLead = trpc.public.submitLead.useMutation({
@@ -88,6 +94,19 @@ export default function ExperienceDetail() {
   });
 
   const exp = dbExp ?? staticExperience;
+
+  // Precio efectivo: variante seleccionada > precio base
+  const selectedVariant = variants.find(v => v.id === selectedVariantId);
+  const effectivePricePerPerson = selectedVariant
+    ? parseFloat(String(selectedVariant.priceModifier ?? exp.basePrice))
+    : parseFloat(String(exp.basePrice));
+
+  // Precio "desde": mínimo de todas las variantes (o basePrice si no hay variantes)
+  const minVariantPrice = variants.length > 0
+    ? Math.min(...variants.map(v => parseFloat(String(v.priceModifier ?? exp.basePrice))))
+    : parseFloat(String(exp.basePrice));
+  const displayFromPrice = Math.min(minVariantPrice, parseFloat(String(exp.basePrice)));
+
   // Construir galería desde image1..4 (BD) o gallery (legacy) o fallback estático
   const dbGallery = [
     (exp as Record<string, unknown>).image1,
@@ -100,7 +119,7 @@ export default function ExperienceDetail() {
     : ((exp as Record<string, unknown>).gallery as string[] | undefined) ?? staticExperience.gallery;
   const includes = (exp.includes as string[]) ?? staticExperience.includes;
   const excludes = (exp.excludes as string[]) ?? staticExperience.excludes;
-  const totalPrice = parseFloat(exp.basePrice) * persons;
+  const totalPrice = effectivePricePerPerson * persons;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,12 +289,62 @@ export default function ExperienceDetail() {
           <div className="lg:col-span-1">
             <div className="sticky top-28">
               <div className="bg-card rounded-2xl border border-border/50 shadow-lg p-6">
+                {/* Precio desde */}
                 <div className="mb-5">
                   <span className="text-sm text-muted-foreground">Precio por persona desde</span>
-                  <div className="text-4xl font-display font-bold text-foreground mt-1">
-                    {parseFloat(exp.basePrice).toFixed(0)}€
+                  <div className="flex items-baseline gap-1.5 mt-1">
+                    <span className="text-4xl font-display font-bold text-foreground">{displayFromPrice.toFixed(0)}€</span>
+                    {variants.length > 0 && (
+                      <span className="text-xs text-muted-foreground">/ persona</span>
+                    )}
                   </div>
                 </div>
+
+                {/* Lista informativa de variantes */}
+                {variants.length > 0 && (
+                  <div className="mb-5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                      <Tag className="w-3 h-3 text-orange-500" /> Modalidades disponibles
+                    </p>
+                    <div className="space-y-1.5">
+                      {/* Opción estándar (precio base) si no hay variante requerida */}
+                      {!variants.some(v => v.isRequired) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVariantId(undefined)}
+                          className={cn(
+                            "w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-all",
+                            selectedVariantId === undefined
+                              ? "border-orange-400 bg-orange-50 text-orange-700 font-semibold"
+                              : "border-border text-muted-foreground hover:border-orange-200 hover:bg-orange-50/40"
+                          )}
+                        >
+                          <span>Estándar</span>
+                          <span className="font-bold">{parseFloat(String(exp.basePrice)).toFixed(0)}€/p.</span>
+                        </button>
+                      )}
+                      {variants.map(v => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => setSelectedVariantId(v.id)}
+                          className={cn(
+                            "w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-all",
+                            selectedVariantId === v.id
+                              ? "border-orange-400 bg-orange-50 text-orange-700 font-semibold"
+                              : "border-border text-muted-foreground hover:border-orange-200 hover:bg-orange-50/40"
+                          )}
+                        >
+                          <span className="text-left leading-tight">{v.name}</span>
+                          <span className="font-bold ml-2 shrink-0">{parseFloat(String(v.priceModifier ?? 0)).toFixed(0)}€/p.</span>
+                        </button>
+                      ))}
+                    </div>
+                    {variants.some(v => v.isRequired) && selectedVariantId === undefined && (
+                      <p className="text-xs text-orange-600 mt-1.5">Selecciona una modalidad para continuar</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Persons Selector */}
                 <div className="mb-5">
@@ -302,7 +371,10 @@ export default function ExperienceDetail() {
                 {/* Total */}
                 <div className="bg-muted/50 rounded-xl p-4 mb-5">
                   <div className="flex items-center justify-between text-sm text-muted-foreground mb-1">
-                    <span>{parseFloat(exp.basePrice).toFixed(0)}€ × {persons} personas</span>
+                    <span>
+                      {effectivePricePerPerson.toFixed(0)}€ × {persons} personas
+                      {selectedVariant && <span className="block text-xs text-orange-600">{selectedVariant.name}</span>}
+                    </span>
                     <span>{totalPrice.toFixed(0)}€</span>
                   </div>
                   <div className="flex items-center justify-between font-display font-bold text-foreground">
@@ -330,7 +402,10 @@ export default function ExperienceDetail() {
                         toast.info("Selecciona una fecha antes de añadir al carrito");
                         return;
                       }
-                      const price = parseFloat(String(exp.basePrice));
+                      if (variants.some(v => v.isRequired) && selectedVariantId === undefined) {
+                        toast.info("Selecciona una modalidad antes de añadir al carrito");
+                        return;
+                      }
                       addItem({
                         productId: exp.id,
                         productName: exp.title,
@@ -338,8 +413,12 @@ export default function ExperienceDetail() {
                         productImage: ((exp as Record<string, unknown>).coverImageUrl as string) ?? "",
                         bookingDate: selectedDate,
                         people: persons,
-                        pricePerPerson: price,
-                        estimatedTotal: price * persons,
+                        minPersons: exp.minPersons ?? 1,
+                        maxPersons: exp.maxPersons ?? 20,
+                        variantId: selectedVariant?.id,
+                        variantName: selectedVariant?.name,
+                        pricePerPerson: effectivePricePerPerson,
+                        estimatedTotal: effectivePricePerPerson * persons,
                         extras: [],
                       });
                       openCart();
