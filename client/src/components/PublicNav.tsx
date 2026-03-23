@@ -4,6 +4,8 @@ import { Menu, X, ChevronDown, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import CartIcon from "@/components/CartIcon";
+import CartDrawer from "@/components/CartDrawer";
 
 // Fallback estático por si la BD no responde aún
 const FALLBACK_NAV = [
@@ -165,6 +167,7 @@ export default function PublicNav() {
   };
 
   return (
+    <>
     <header className="fixed top-0 left-0 right-0 z-50 bg-white shadow-md border-b border-border/50">
       {/* ── Barra superior de información ─────────────────────────── */}
       <div className="hidden lg:block border-b border-border/40 bg-primary/5">
@@ -241,8 +244,8 @@ export default function PublicNav() {
                 Solicitar Presupuesto
               </Button>
             </Link>
+            <CartIcon />
           </div>
-
           {/* Botón hamburguesa mobile */}
           <button
             onClick={() => setIsOpen(!isOpen)}
@@ -308,5 +311,8 @@ export default function PublicNav() {
         </div>
       </div>
     </header>
+    {/* CartDrawer: fuera del header para no quedar cortado por overflow:hidden */}
+    <CartDrawer />
+    </>
   );
 }

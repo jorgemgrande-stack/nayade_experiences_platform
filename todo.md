@@ -1351,3 +1351,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir procedimiento admin.sendEmailPreview al router del servidor
 - [x] Añadir sección "Prueba de plantillas de email" en el panel de Configuración
 - [x] Actualizar tests para entidades HTML del nuevo diseño (159/159 pasando)
+
+## v5.6: Carrito de la compra multi-experiencia
+- [x] CartContext con persistencia en localStorage y lógica multi-experiencia
+- [x] CartDrawer (panel lateral deslizante con lista de artículos, subtotal y botón pago)
+- [x] CartIcon con badge numérico en el navbar público (zona superior derecha)
+- [x] Integrar CartProvider en main.tsx y CartIcon en el navbar
+- [x] Procedimiento cart.checkout en servidor (crea reservas + genera pago Redsys unificado)
+- [x] Conectar botones "Añadir al carrito" en páginas de producto/experiencia

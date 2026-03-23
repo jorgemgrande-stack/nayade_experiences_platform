@@ -3,7 +3,9 @@ import { Link, useParams } from "wouter";
 import {
   ChevronRight, Star, Clock, Users, MapPin, Shield, CheckCircle,
   XCircle, Calendar, Phone, Mail, ArrowRight, ChevronLeft, ChevronRight as ChevronRightIcon,
+  ShoppingCart,
 } from "lucide-react";
+import { useCart } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -65,6 +67,8 @@ export default function ExperienceDetail() {
   const [showBookingModal, setShowBookingModal] = useState(false); // lead modal
   const [showRedsysModal, setShowRedsysModal] = useState(false);   // Redsys payment modal
   const [persons, setPersons] = useState(2);
+  const [selectedDate, setSelectedDate] = useState("");
+  const { addItem } = useCart();
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", date: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -308,16 +312,55 @@ export default function ExperienceDetail() {
                   </div>
                 </div>
 
+                {/* Selector de fecha para el carrito */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">Fecha preferida</label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full border border-border rounded-lg px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
                  {/* CTA principal: Reservar Ahora con pago Redsys (solo si tiene precio fijo) */}
                 {exp.basePrice && parseFloat(String(exp.basePrice)) > 0 ? (
+                  <>
                   <Button
                     onClick={() => setShowRedsysModal(true)}
-                    className="w-full bg-gold-gradient text-white hover:opacity-90 font-semibold h-12 text-base mb-3"
+                    className="w-full font-semibold h-12 text-base mb-2"
                     style={{ background: 'linear-gradient(135deg, #f97316, #f59e0b)', color: '#fff' }}
                   >
                     Reservar Ahora
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (!selectedDate) {
+                        toast.info("Selecciona una fecha antes de añadir al carrito");
+                        return;
+                      }
+                      const price = parseFloat(String(exp.basePrice));
+                      addItem({
+                        productId: exp.id,
+                        productName: exp.title,
+                        productSlug: exp.slug,
+                        productImage: ((exp as Record<string, unknown>).coverImageUrl as string) ?? "",
+                        bookingDate: selectedDate,
+                        people: persons,
+                        pricePerPerson: price,
+                        estimatedTotal: price * persons,
+                        extras: [],
+                      });
+                      toast.success(`"​${exp.title}" añadido al carrito`);
+                    }}
+                    className="w-full h-11 mb-2 border-primary text-primary hover:bg-primary/5"
+                  >
+                    <ShoppingCart className="mr-2 w-4 h-4" />
+                    Añadir al carrito
+                  </Button>
+                  </>
                 ) : null}
                 {/* CTA secundario: Solicitar Presupuesto (lead) */}
                 <Button

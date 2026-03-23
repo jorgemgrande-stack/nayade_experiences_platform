@@ -1099,6 +1099,106 @@ export const appRouter = router({
         if (!r) throw new TRPCError({ code: "NOT_FOUND" });
         return r;
       }),
+    /**
+     * Checkout multi-artículo del carrito.
+     * Crea una reserva por cada artículo con el mismo merchantOrder de grupo.
+     * Devuelve el formulario Redsys para el pago unificado.
+     */
+    cartCheckout: publicProcedure
+      .input(z.object({
+        items: z.array(z.object({
+          productId: z.number(),
+          bookingDate: z.string(),
+          people: z.number().min(1).max(100),
+          variantId: z.number().optional(),
+          extras: z.array(z.object({
+            name: z.string(),
+            price: z.number(),
+            quantity: z.number(),
+          })).default([]),
+        })).min(1).max(20),
+        customerName: z.string().min(2),
+        customerEmail: z.string().email(),
+        customerPhone: z.string().optional(),
+        origin: z.string().url(),
+      }))
+      .mutation(async ({ input }) => {
+        const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
+        // 1. Calcular el importe total de todos los artículos en backend
+        let totalAmountCents = 0;
+        const itemsWithPrices: Array<{
+          productId: number;
+          productName: string;
+          bookingDate: string;
+          people: number;
+          extrasJson: string;
+          amountTotal: number;
+        }> = [];
+        const productNames: string[] = [];
+        for (const item of input.items) {
+          const product = await getExpById(item.productId);
+          if (!product) throw new TRPCError({ code: "NOT_FOUND", message: `Producto ${item.productId} no encontrado` });
+          if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
+          const basePrice = parseFloat(String(product.basePrice));
+          let pricePerPerson = basePrice;
+          if (item.variantId) {
+            const variants = await getVariants(item.productId);
+            const variant = variants.find(v => v.id === item.variantId);
+            if (variant) {
+              const mod = parseFloat(String(variant.priceModifier ?? 0));
+              pricePerPerson = variant.priceType === "percentage"
+                ? basePrice + (basePrice * mod / 100)
+                : mod;
+            }
+          }
+          const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
+          const itemTotalEuros = pricePerPerson * item.people + extrasTotal;
+          const itemAmountCents = Math.round(itemTotalEuros * 100);
+          totalAmountCents += itemAmountCents;
+          itemsWithPrices.push({
+            productId: item.productId,
+            productName: product.title,
+            bookingDate: item.bookingDate,
+            people: item.people,
+            extrasJson: JSON.stringify(item.extras),
+            amountTotal: itemAmountCents,
+          });
+          productNames.push(product.title);
+        }
+        // 2. Generar un merchantOrder único para todo el carrito
+        const merchantOrder = generateMerchantOrder();
+        // 3. Crear una reserva por cada artículo, todas con el mismo merchantOrder
+        for (const item of itemsWithPrices) {
+          await createReservation({
+            ...item,
+            customerName: input.customerName,
+            customerEmail: input.customerEmail,
+            customerPhone: input.customerPhone,
+            merchantOrder,
+            notes: `Carrito: ${productNames.join(", ")}`,
+          });
+        }
+        // 4. Construir el formulario Redsys con el importe total
+        const description = productNames.length === 1
+          ? productNames[0]
+          : `${productNames.length} experiencias — Náyade`;
+        const redsysForm = buildRedsysForm({
+          amount: totalAmountCents,
+          merchantOrder,
+          productDescription: description.slice(0, 125),
+          notifyUrl: `${input.origin}/api/redsys/notification`,
+          okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+          holderName: input.customerName,
+        });
+        return {
+          merchantOrder,
+          totalAmountCents,
+          totalAmountEuros: totalAmountCents / 100,
+          itemCount: input.items.length,
+          redsysForm,
+        };
+      }),
   }),
 
   // ─── PACKS ───────────────────────────────────────────────────────────────────
