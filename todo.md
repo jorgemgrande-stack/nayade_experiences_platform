@@ -1406,3 +1406,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Experiences (listado): botón "Presupuesto" → /presupuesto (antes apuntaba a /contacto)
 - [x] Reemplazar +34 000 000 000 por +34 930 34 77 91 en ExperienceDetail y Contact.tsx
 - [x] Verificar que el topbar, footer, Home, BudgetRequest, Locations y servidor usan los datos reales
+
+## v5.13: Gestión de Incluye/No incluye en admin de experiencias
+- [x] ExpForm: añadidos campos includes y excludes (string[])
+- [x] openEdit: mapea includes/excludes de BD al formulario al editar
+- [x] handleSubmit: envía includes/excludes al procedimiento tRPC
+- [x] UI: listas editables con botón + y X por item en el modal de experiencias
+- [x] PacksManager: revisado (packs no tienen campos includes/excludes en BD, se puede añadir en el futuro)

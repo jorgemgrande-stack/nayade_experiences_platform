@@ -34,6 +34,7 @@ type ExpForm = {
   image1: string; image2: string; image3: string; image4: string;
   basePrice: string; duration: string; minPersons: string; maxPersons: string;
   difficulty: string; isFeatured: boolean; isActive: boolean;
+  includes: string[]; excludes: string[];
 };
 
 const emptyForm: ExpForm = {
@@ -42,6 +43,7 @@ const emptyForm: ExpForm = {
   image1: "", image2: "", image3: "", image4: "",
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
   difficulty: "facil", isFeatured: false, isActive: true,
+  includes: [], excludes: [],
 };
 
 // ── Componente de zona de upload de imagen ──────────────────────────────────
@@ -184,6 +186,8 @@ export default function ExperiencesManager() {
       difficulty: String(exp.difficulty ?? "facil"),
       isFeatured: Boolean(exp.isFeatured),
       isActive: Boolean(exp.isActive),
+      includes: Array.isArray(exp.includes) ? (exp.includes as string[]) : [],
+      excludes: Array.isArray(exp.excludes) ? (exp.excludes as string[]) : [],
     });
     setShowModal(true);
   };
@@ -211,6 +215,8 @@ export default function ExperiencesManager() {
       difficulty: form.difficulty as "facil" | "moderado" | "dificil" | "experto",
       isFeatured: form.isFeatured,
       isActive: form.isActive,
+      includes: form.includes.filter(s => s.trim() !== ""),
+      excludes: form.excludes.filter(s => s.trim() !== ""),
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -471,6 +477,90 @@ export default function ExperiencesManager() {
               <div className="flex items-center gap-3">
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
                 <Label>Activo</Label>
+              </div>
+
+              {/* Incluye */}
+              <div className="col-span-2">
+                <Label className="text-sm font-semibold text-emerald-700 flex items-center gap-1.5 mb-2">
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 text-xs">✓</span>
+                  Incluye
+                </Label>
+                <div className="space-y-2">
+                  {form.includes.map((item, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        value={item}
+                        onChange={(e) => {
+                          const next = [...form.includes];
+                          next[i] = e.target.value;
+                          setForm(f => ({ ...f, includes: next }));
+                        }}
+                        placeholder={`Item ${i + 1}`}
+                        className="flex-1 text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => setForm(f => ({ ...f, includes: f.includes.filter((_, idx) => idx !== i) }))}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-dashed border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400"
+                    onClick={() => setForm(f => ({ ...f, includes: [...f.includes, ""] }))}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir item
+                  </Button>
+                </div>
+              </div>
+
+              {/* No incluye */}
+              <div className="col-span-2">
+                <Label className="text-sm font-semibold text-red-600 flex items-center gap-1.5 mb-2">
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-500 text-xs">✕</span>
+                  No incluye
+                </Label>
+                <div className="space-y-2">
+                  {form.excludes.map((item, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        value={item}
+                        onChange={(e) => {
+                          const next = [...form.excludes];
+                          next[i] = e.target.value;
+                          setForm(f => ({ ...f, excludes: next }));
+                        }}
+                        placeholder={`Item ${i + 1}`}
+                        className="flex-1 text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => setForm(f => ({ ...f, excludes: f.excludes.filter((_, idx) => idx !== i) }))}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-dashed border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+                    onClick={() => setForm(f => ({ ...f, excludes: [...f.excludes, ""] }))}
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir item
+                  </Button>
+                </div>
               </div>
             </div>
             <div className="flex gap-3 pt-2">

@@ -1,0 +1,18 @@
+{
+  "query": "SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'experiences' AND COLUMN_NAME IN ('includes', 'excludes', 'notIncludes', 'not_includes', 'highlights', 'extras', 'featured', 'isOnlinePurchase') ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'experiences' AND COLUMN_NAME IN ('includes', 'excludes', 'notIncludes', 'not_includes', 'highlights', 'extras', 'featured', 'isOnlinePurchase') ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "includes",
+      "COLUMN_TYPE": "json"
+    },
+    {
+      "COLUMN_NAME": "excludes",
+      "COLUMN_TYPE": "json"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\tCOLUMN_TYPE\nincludes\tjson\nexcludes\tjson\n",
+  "stderr": "",
+  "execution_time_ms": 68
+}

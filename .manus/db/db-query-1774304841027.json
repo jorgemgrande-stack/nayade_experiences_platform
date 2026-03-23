@@ -1,0 +1,9 @@
+{
+  "query": "SELECT id, title, includes, excludes FROM experiences WHERE includes IS NOT NULL LIMIT 3;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, title, includes, excludes FROM experiences WHERE includes IS NOT NULL LIMIT 3;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 61
+}
