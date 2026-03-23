@@ -89,12 +89,12 @@ const actividades = [
 ];
 
 const packs = [
-  { name: "Day Pass Náyade", price: "19€", unit: "por persona", items: ["Acceso a piscinas del club", "Zona de playa del lago", "Hamacas y chill out", "Acceso a bares y restaurantes"], slug: "day-pass-nayade", highlight: false },
-  { name: "Pack Discovery", price: "39€", unit: "por persona", items: ["Ruta en canoas o paddle surf (1h)", "Banana Ski (20 min)", "Castillos hinchables acuáticos", "Acceso a piscina"], slug: "pack-discovery", highlight: false },
-  { name: "Pack Aventura ★", price: "55€", unit: "por persona", items: ["Todo lo del Pack Discovery", "Blob Jump — 5 saltos", "Acceso a piscina todo el día", "Descuento 10% reserva online"], slug: "pack-aventura", highlight: true },
-  { name: "Pack Adrenalina", price: "69€", unit: "por persona", items: ["Canoas + Banana Ski + Blob Jump", "Sesión de Cableski", "Castillos hinchables", "Acceso a piscina"], slug: "pack-adrenalina", highlight: false },
-  { name: "Pack Lago Gourmet", price: "79€", unit: "por persona", items: ["Actividades acuáticas completas", "Blob Jump 5 saltos", "Paella en Arrocería La Cabaña", "Acceso a piscina"], slug: "pack-lago-gourmet", highlight: false },
-  { name: "Pack Cableski Experience", price: "89€", unit: "por persona", items: ["Cableski jornada completa", "Equipamiento completo incluido", "Paella en Arrocería La Cabaña", "Zona de descanso junto al lago"], slug: "pack-cableski-experience", highlight: false },
+  { id: 1,  name: "Day Pass Náyade",         price: "45€",  basePrice: 45,  unit: "por persona", items: ["Acceso a piscinas del club", "Zona de playa del lago", "Hamacas y chill out", "Acceso a bares y restaurantes"], slug: "day-pass-nayade",          highlight: false, minPersons: 2, maxPersons: 20 },
+  { id: 2,  name: "Pack Discovery",            price: "65€",  basePrice: 65,  unit: "por persona", items: ["Ruta en canoas o paddle surf (1h)", "Banana Ski (20 min)", "Castillos hinchables acuáticos", "Acceso a piscina"], slug: "pack-discovery",           highlight: false, minPersons: 2, maxPersons: 20 },
+  { id: 3,  name: "Pack Aventura ★",           price: "85€",  basePrice: 85,  unit: "por persona", items: ["Todo lo del Pack Discovery", "Blob Jump — 5 saltos", "Acceso a piscina todo el día", "Descuento 10% reserva online"], slug: "pack-aventura",            highlight: true,  minPersons: 2, maxPersons: 20 },
+  { id: 4,  name: "Pack Adrenalina",            price: "120€", basePrice: 120, unit: "por persona", items: ["Canoas + Banana Ski + Blob Jump", "Sesión de Cableski", "Castillos hinchables", "Acceso a piscina"], slug: "pack-adrenalina",           highlight: false, minPersons: 2, maxPersons: 20 },
+  { id: 5,  name: "Pack Lago Gourmet",          price: "150€", basePrice: 150, unit: "por persona", items: ["Actividades acuáticas completas", "Blob Jump 5 saltos", "Paella en Arrocería La Cabaña", "Acceso a piscina"], slug: "pack-lago-gourmet",         highlight: false, minPersons: 2, maxPersons: 20 },
+  { id: 6,  name: "Pack CableSki Experience",   price: "95€",  basePrice: 95,  unit: "por persona", items: ["Cableski jornada completa", "Equipamiento completo incluido", "Paella en Arrocería La Cabaña", "Zona de descanso junto al lago"], slug: "pack-cableski-experience", highlight: false, minPersons: 1, maxPersons: 20 },
 ];
 
 const habitaciones = [
@@ -321,6 +321,7 @@ export default function Home() {
   const [, navigate] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string } | null>(null);
+  const [addToCartPack, setAddToCartPack] = useState<{ id: number; title: string; basePrice: number; slug: string; minPersons: number; maxPersons: number } | null>(null);
 
   function todayStr() { return new Date().toISOString().split("T")[0]; }
   function tomorrowStr() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; }
@@ -942,40 +943,43 @@ export default function Home() {
               const packImgs = [CDN.wakeboard, CDN.kayak2, CDN.hinchable, CDN.tubing, CDN.barco, CDN.banana];
               const bg = packImgs[idx % packImgs.length];
               return (
-                <Link key={pack.slug} href={`/packs/${pack.slug}`}>
-                  <div className={`group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${pack.highlight ? "ring-2 ring-orange-400 shadow-orange-500/20 shadow-xl" : "shadow-lg"}`} style={{ minHeight: 400 }}>
-                    <img src={bg} alt={pack.name} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                    <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(5,15,35,0.96) 45%, rgba(5,15,35,0.20) 100%)" }} />
-                    {pack.highlight && (
-                      <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-orange-500 text-white text-xs font-display font-bold uppercase tracking-widest whitespace-nowrap">
-                        ★ Más Popular
+                <div key={pack.slug} className={`group relative rounded-3xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${pack.highlight ? "ring-2 ring-orange-400 shadow-orange-500/20 shadow-xl" : "shadow-lg"}`} style={{ minHeight: 400 }}>
+                  <img src={bg} alt={pack.name} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                  <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(5,15,35,0.96) 45%, rgba(5,15,35,0.20) 100%)" }} />
+                  {pack.highlight && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-orange-500 text-white text-xs font-display font-bold uppercase tracking-widest whitespace-nowrap">
+                      ★ Más Popular
+                    </div>
+                  )}
+                  <div className="relative z-10 flex flex-col justify-end h-full p-6" style={{ minHeight: 400 }}>
+                    <div className="mb-3">
+                      <div className="flex items-baseline gap-1 mb-1">
+                        <span className="text-4xl font-display font-extrabold text-white">{pack.price}</span>
+                        <span className="text-white/60 text-sm">{pack.unit}</span>
                       </div>
-                    )}
-                    <div className="relative z-10 flex flex-col justify-end h-full p-6" style={{ minHeight: 400 }}>
-                      <div className="mb-3">
-                        <div className="flex items-baseline gap-1 mb-1">
-                          <span className="text-4xl font-display font-extrabold text-white">{pack.price}</span>
-                          <span className="text-white/60 text-sm">{pack.unit}</span>
-                        </div>
-                        <h3 className="font-heading font-bold text-xl text-white mb-3">{pack.name}</h3>
-                      </div>
-                      <ul className="space-y-1.5 mb-5">
-                        {pack.items.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-white/75">
-                            <span className="text-orange-400 mt-0.5 flex-shrink-0">✓</span>
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="flex items-center justify-between pt-4 border-t border-white/15">
-                        <span className="font-display font-semibold text-sm text-white/70">Ver detalles</span>
-                        <span className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-orange-500 text-white text-xs font-display font-bold transition-all group-hover:gap-2.5">
-                          Reservar <ArrowRight className="w-3.5 h-3.5" />
-                        </span>
-                      </div>
+                      <h3 className="font-heading font-bold text-xl text-white mb-3">{pack.name}</h3>
+                    </div>
+                    <ul className="space-y-1.5 mb-5">
+                      {pack.items.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm text-white/75">
+                          <span className="text-orange-400 mt-0.5 flex-shrink-0">✓</span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex items-center justify-between pt-4 border-t border-white/15">
+                      <Link href={`/packs/${pack.slug}`}>
+                        <span className="font-display font-semibold text-sm text-white/70 hover:text-white transition-colors cursor-pointer">Ver detalles</span>
+                      </Link>
+                      <button
+                        onClick={() => setAddToCartPack({ id: pack.id, title: pack.name, basePrice: pack.basePrice, slug: pack.slug, minPersons: pack.minPersons, maxPersons: pack.maxPersons })}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-display font-bold transition-all"
+                      >
+                        <ShoppingCartIcon className="w-3.5 h-3.5" /> Añadir al carrito
+                      </button>
                     </div>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -1349,12 +1353,28 @@ export default function Home() {
         </div>
       </section>
 
-      {/* AddToCartModal — añadir al carrito */}
+      {/* AddToCartModal — actividades */}
       {addToCartProduct && (
         <AddToCartModal
           isOpen={!!addToCartProduct}
           onClose={() => setAddToCartProduct(null)}
           product={addToCartProduct}
+        />
+      )}
+
+      {/* AddToCartModal — packs de día */}
+      {addToCartPack && (
+        <AddToCartModal
+          isOpen={!!addToCartPack}
+          onClose={() => setAddToCartPack(null)}
+          product={{
+            id: addToCartPack.id,
+            title: addToCartPack.title,
+            basePrice: addToCartPack.basePrice,
+            slug: addToCartPack.slug,
+            minPersons: addToCartPack.minPersons,
+            maxPersons: addToCartPack.maxPersons,
+          }}
         />
       )}
 

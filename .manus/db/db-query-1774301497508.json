@@ -1,0 +1,58 @@
+{
+  "query": "SELECT id, title, basePrice, slug, minPersons, maxPersons FROM packs WHERE category = 'dia' ORDER BY id LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, title, basePrice, slug, minPersons, maxPersons FROM packs WHERE category = 'dia' ORDER BY id LIMIT 10;",
+  "rows": [
+    {
+      "id": "1",
+      "title": "Day Pass Náyade",
+      "basePrice": "45.00",
+      "slug": "day-pass-nayade",
+      "minPersons": "2",
+      "maxPersons": "NULL"
+    },
+    {
+      "id": "2",
+      "title": "Pack Discovery",
+      "basePrice": "65.00",
+      "slug": "pack-discovery",
+      "minPersons": "2",
+      "maxPersons": "NULL"
+    },
+    {
+      "id": "3",
+      "title": "Pack Aventura",
+      "basePrice": "85.00",
+      "slug": "pack-aventura",
+      "minPersons": "2",
+      "maxPersons": "NULL"
+    },
+    {
+      "id": "4",
+      "title": "Pack Adrenalina",
+      "basePrice": "120.00",
+      "slug": "pack-adrenalina",
+      "minPersons": "2",
+      "maxPersons": "NULL"
+    },
+    {
+      "id": "5",
+      "title": "Pack Lago Gourmet",
+      "basePrice": "150.00",
+      "slug": "pack-lago-gourmet",
+      "minPersons": "2",
+      "maxPersons": "20"
+    },
+    {
+      "id": "6",
+      "title": "Pack CableSki Experience",
+      "basePrice": "95.00",
+      "slug": "pack-cableski-experience",
+      "minPersons": "1",
+      "maxPersons": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttitle\tbasePrice\tslug\tminPersons\tmaxPersons\n1\tDay Pass Náyade\t45.00\tday-pass-nayade\t2\tNULL\n2\tPack Discovery\t65.00\tpack-discovery\t2\tNULL\n3\tPack Aventura\t85.00\tpack-aventura\t2\tNULL\n4\tPack Adrenalina\t120.00\tpack-adrenalina\t2\tNULL\n5\tPack Lago Gourmet\t150.00\tpack-lago-gourmet\t2\t20\n6\tPack CableSki Experience\t95.00\tpack-cableski-experience\t1\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 125
+}

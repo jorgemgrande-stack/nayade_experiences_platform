@@ -1381,3 +1381,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Home (módulo actividades): eliminar botón "Ya", dejar solo "Añadir al carrito"
 - [ ] CartDrawer: permitir editar número de personas de cada artículo desde el drawer
 - [x] Eliminar BookingModal de todos los puntos de entrada (ya no se usa para compra directa)
+
+## v5.9.1: Módulo Packs de Día Completo conectado al carrito
+- [x] Módulo "Packs de Día Completo" en Home: botón "Añadir al carrito" con AddToCartModal (eliminar botón "Reservar" estático)
+- [x] Array packs actualizado con IDs y precios reales de BD (45€–150€)
+- [x] Tarjeta de pack: "Ver detalles" navega a la ficha, botón naranja abre AddToCartModal
