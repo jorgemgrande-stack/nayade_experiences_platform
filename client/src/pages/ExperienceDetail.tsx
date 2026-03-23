@@ -430,23 +430,24 @@ export default function ExperienceDetail() {
                     Añadir al carrito
                   </Button>
                 ) : null}
-                {/* CTA secundario: Solicitar Presupuesto (lead) */}
-                <Button
-                  onClick={() => setShowBookingModal(true)}
-                  variant="outline"
-                  className="w-full h-12 mb-0"
-                >
-                  Solicitar Presupuesto
-                </Button>
+                {/* CTA secundario: Solicitar Presupuesto → /presupuesto */}
+                <Link href={`/presupuesto?exp=${exp.slug}`}>
+                  <Button
+                    variant="outline"
+                    className="w-full h-12 mb-0"
+                  >
+                    Solicitar Presupuesto
+                  </Button>
+                </Link>
 
                 <div className="mt-5 pt-5 border-t border-border space-y-3">
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Phone className="w-4 h-4 text-accent shrink-0" />
-                    <span>+34 000 000 000</span>
+                    <a href="tel:+34930347791" className="hover:text-accent transition-colors">+34 930 34 77 91</a>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Mail className="w-4 h-4 text-accent shrink-0" />
-                    <span>reservas@nayadeexperiences.es</span>
+                    <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-accent transition-colors">reservas@nayadeexperiences.es</a>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Shield className="w-4 h-4 text-accent shrink-0" />

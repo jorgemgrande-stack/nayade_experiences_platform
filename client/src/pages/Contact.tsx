@@ -94,9 +94,9 @@ export default function Contact() {
             {/* Contact Info */}
             <div className="space-y-5">
               {[
-                { icon: Phone, title: "Teléfono", lines: ["+34 000 000 000", "Lun-Vie: 9:00 - 19:00"] },
-                { icon: Mail, title: "Email", lines: ["reservas@nayadeexperiences.es", "reservas@nayadeexperiences.es"] },
-                { icon: MapPin, title: "Ubicación", lines: ["Nayade Experiences", "España"] },
+                { icon: Phone, title: "Teléfono", lines: ["+34 930 34 77 91", "Lun-Vie: 9:00 - 19:00"] },
+                { icon: Mail, title: "Email", lines: ["reservas@nayadeexperiences.es", "Respuesta en menos de 24h"] },
+                { icon: MapPin, title: "Ubicación", lines: ["Los Ángeles de San Rafael, Segovia", "A 45 min de Madrid"] },
                 { icon: Clock, title: "Horario", lines: ["Lunes a Viernes: 9:00 - 19:00", "Sábados: 10:00 - 14:00"] },
               ].map((item) => (
                 <div key={item.title} className="bg-card rounded-2xl border border-border/50 p-5 flex gap-4">

@@ -1399,3 +1399,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] ExperienceDetail: lista informativa de variantes con precios dentro de la caja lateral
 - [x] ExperienceDetail: selector de variante activo que actualiza el precio y el total estimado
 - [x] PackDetail: misma lógica si el pack tiene variantes en BD
+
+## v5.12: Datos de contacto reales + botón Solicitar Presupuesto → /presupuesto
+- [x] ExperienceDetail: botón "Solicitar Presupuesto" → /presupuesto (en lugar de abrir modal)
+- [x] PackDetail: botón "Solicitar Presupuesto" → /presupuesto
+- [x] Experiences (listado): botón "Presupuesto" → /presupuesto (antes apuntaba a /contacto)
+- [x] Reemplazar +34 000 000 000 por +34 930 34 77 91 en ExperienceDetail y Contact.tsx
+- [x] Verificar que el topbar, footer, Home, BudgetRequest, Locations y servidor usan los datos reales

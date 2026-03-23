@@ -369,7 +369,7 @@ export default function PackDetail() {
                 </Button>
               ) : null}
 
-              <Link href="/contacto">
+              <Link href={`/presupuesto?pack=${pack.slug ?? ""}`}>
                 <Button variant="outline" size="lg" className="w-full font-semibold mb-4">
                   <MessageCircle className="w-4 h-4 mr-2" /> Solicitar Presupuesto
                 </Button>

@@ -240,7 +240,7 @@ export default function Experiences() {
                         >
                           🛒 Añadir al carrito
                         </button>
-                        <Link href="/contacto">
+                        <Link href="/presupuesto">
                           <button
                             style={{
                               flex: 1, padding: "0.6rem 0.75rem",
