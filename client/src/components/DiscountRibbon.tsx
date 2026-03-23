@@ -22,6 +22,10 @@ function getDaysLeft(expiresAt: Date | string | null | undefined): number | null
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 }
 
+// Verde semáforo: #16a34a (green-600) con gradiente a #22c55e (green-500)
+const GREEN_GRADIENT = "#16a34a";
+const GREEN_LIGHT = "#22c55e";
+
 export function DiscountRibbon({ discountPercent, discountExpiresAt, variant = "card" }: DiscountRibbonProps) {
   const pct = discountPercent != null ? parseFloat(String(discountPercent)) : null;
   if (!pct || pct <= 0) return null;
@@ -41,12 +45,15 @@ export function DiscountRibbon({ discountPercent, discountExpiresAt, variant = "
 
   if (variant === "detail") {
     return (
-      <div className="inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-400 text-white rounded-full px-4 py-1.5 shadow-md">
-        <span className="text-base font-bold">-{Math.round(pct)}%</span>
+      <div
+        className="inline-flex items-center gap-2 text-white rounded-full px-4 py-2 shadow-lg"
+        style={{ background: `linear-gradient(135deg, ${GREEN_GRADIENT}, ${GREEN_LIGHT})` }}
+      >
+        <span className="text-xl font-black tracking-tight leading-none">-{Math.round(pct)}%</span>
         {daysLabel && (
           <>
-            <span className="opacity-70 text-xs">·</span>
-            <span className="text-xs font-medium">
+            <span className="opacity-60 text-sm">·</span>
+            <span className="text-sm font-semibold">
               {daysLabel === "Hoy" ? "¡Oferta termina hoy!" : `Oferta: ${daysLabel}`}
             </span>
           </>
@@ -55,29 +62,44 @@ export function DiscountRibbon({ discountPercent, discountExpiresAt, variant = "
     );
   }
 
-  // variant === "card" — ribbon en esquina superior derecha
+  // variant === "card" — ribbon triangular en esquina superior derecha
+  // Tamaño aumentado: 100×100 para que el texto sea más visible
+  const SIZE = 100;
   return (
-    <div className="absolute top-0 right-0 z-20 overflow-hidden" style={{ width: 80, height: 80 }}>
-      {/* Triángulo de fondo */}
+    <div className="absolute top-0 right-0 z-20 overflow-hidden" style={{ width: SIZE, height: SIZE }}>
+      {/* Triángulo de fondo verde semáforo */}
       <div
         className="absolute top-0 right-0"
         style={{
           width: 0,
           height: 0,
           borderStyle: "solid",
-          borderWidth: "0 80px 80px 0",
-          borderColor: "transparent #f97316 transparent transparent",
-          filter: "drop-shadow(-1px 1px 2px rgba(0,0,0,0.25))",
+          borderWidth: `0 ${SIZE}px ${SIZE}px 0`,
+          borderColor: `transparent ${GREEN_GRADIENT} transparent transparent`,
+          filter: "drop-shadow(-1px 2px 3px rgba(0,0,0,0.30))",
         }}
       />
-      {/* Texto del ribbon */}
+      {/* Texto del ribbon rotado 45° */}
       <div
         className="absolute top-0 right-0 flex flex-col items-center justify-center text-white"
-        style={{ width: 56, height: 56, transform: "translate(4px, -4px) rotate(45deg) translate(0, 12px)" }}
+        style={{
+          width: 70,
+          height: 70,
+          transform: "translate(5px, -5px) rotate(45deg) translate(0, 16px)",
+        }}
       >
-        <span className="text-xs font-extrabold leading-none">-{Math.round(pct)}%</span>
+        {/* Porcentaje grande y llamativo */}
+        <span
+          className="font-black leading-none tracking-tight"
+          style={{ fontSize: 18, textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}
+        >
+          -{Math.round(pct)}%
+        </span>
         {daysLabel && (
-          <span className="text-[9px] font-semibold leading-none mt-0.5 opacity-90">
+          <span
+            className="font-semibold leading-none mt-0.5 opacity-95"
+            style={{ fontSize: 10, textShadow: "0 1px 1px rgba(0,0,0,0.3)" }}
+          >
             {daysLabel === "Hoy" ? "¡Hoy!" : daysLabel}
           </span>
         )}

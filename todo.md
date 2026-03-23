@@ -1433,3 +1433,6 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Diagnosticado: Drizzle espera Date para columna timestamp, pero el input date HTML envía string
 - [x] Corregido: conversión new Date(string) en products.update y packs.update antes de llamar a updateExperience/updatePack
 - [x] Corregido también discountPercent: parseFloat() para columna decimal
+
+## v5.14.2: Rediseño DiscountRibbon
+- [x] Ribbon más grande (100×100), porcentaje con tipografía grande y llamativa (18px bold), color verde semáforo (#16a34a → #22c55e)
