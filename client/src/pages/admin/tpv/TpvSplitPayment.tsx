@@ -78,7 +78,15 @@ export default function TpvSplitPayment({
   const createSaleMut = trpc.tpv.createSale.useMutation({
     onSuccess: (data) => {
       toast.success(`Venta ${data.sale.ticketNumber} completada`);
-      onCompleted(data);
+      // Normalize: TpvTicket expects { sale: { ...saleFields, items, payments } }
+      const normalized = {
+        sale: {
+          ...data.sale,
+          items: data.items ?? [],
+          payments: data.payments ?? [],
+        },
+      };
+      onCompleted(normalized);
     },
     onError: (err) => toast.error(err.message),
   });

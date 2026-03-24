@@ -133,7 +133,15 @@ export default function TpvScreen() {
   // Create sale mutation
   const createSaleMut = trpc.tpv.createSale.useMutation({
     onSuccess: (data) => {
-      setLastSale(data);
+      // Normalize: TpvTicket expects { sale: { ...saleFields, items, payments } }
+      const normalized = {
+        sale: {
+          ...data.sale,
+          items: data.items ?? [],
+          payments: data.payments ?? [],
+        },
+      };
+      setLastSale(normalized);
       setShowTicket(true);
       setCart([]);
       setCustomerName("");

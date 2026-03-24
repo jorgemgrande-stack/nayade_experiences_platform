@@ -1686,3 +1686,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Historial de aperturas y cierres con resumen económico
 - [x] Ventas y movimientos por sesión
 - [x] Ítems TPV en sidebar AdminLayout (icono Monitor)
+
+## v8.1: Fix crash TPV al confirmar venta
+- [x] Corregir TypeError en TpvScreen al hacer .map() sobre resultado de createSale
+- [x] Corregir TpvSplitPayment: misma normalización para pago mixto/dividido
+- [x] Verificado: 0 errores TypeScript, 172/172 tests pasando
