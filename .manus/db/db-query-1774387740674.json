@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Renombrar columnas en tpv_sale_items para que coincidan con el schema (_tsi suffix)\nALTER TABLE tpv_sale_items\n  CHANGE COLUMN `fiscalRegime` `fiscalRegime_tsi` ENUM('reav','general_21','mixed') DEFAULT 'general_21',\n  CHANGE COLUMN `taxBase`      `taxBase_tsi`      DECIMAL(10,2) DEFAULT 0,\n  CHANGE COLUMN `taxAmount`    `taxAmount_tsi`    DECIMAL(10,2) DEFAULT 0,\n  CHANGE COLUMN `taxRate`      `taxRate_tsi`      DECIMAL(5,2)  DEFAULT 21,\n  CHANGE COLUMN `reavCost`     `reavCost_tsi`     DECIMAL(10,2) DEFAULT 0,\n  CHANGE COLUMN `reavMargin`   `reavMargin_tsi`   DECIMAL(10,2) DEFAULT 0,\n  CHANGE COLUMN `reavTax`      `reavTax_tsi`      DECIMAL(10,2) DEFAULT 0;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Renombrar columnas en tpv_sale_items para que coincidan con el schema (_tsi suffix)\nALTER TABLE tpv_sale_items\n  CHANGE COLUMN `fiscalRegime` `fiscalRegime_tsi` ENUM('reav','general_21','mixed') DEFAULT 'general_21',\n  CHANGE COLUMN `taxBase`      `taxBase_tsi`      DECIMAL(10,2) DEFAULT 0,\n  CHANGE COLUMN `taxAmount`    `taxAmount_tsi`    DECIMAL(10,2) DEFAULT 0,\n  CHANGE COLUMN `taxRate`      `taxRate_tsi`      DECIMAL(5,2)  DEFAULT 21,\n  CHANGE COLUMN `reavCost`     `reavCost_tsi`     DECIMAL(10,2) DEFAULT 0,\n  CHANGE COLUMN `reavMargin`   `reavMargin_tsi`   DECIMAL(10,2) DEFAULT 0,\n  CHANGE COLUMN `reavTax`      `reavTax_tsi`      DECIMAL(10,2) DEFAULT 0;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 263
+}

@@ -1,0 +1,91 @@
+{
+  "query": "\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS \nWHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tpv_sales'\nORDER BY ORDINAL_POSITION;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS \nWHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tpv_sales'\nORDER BY ORDINAL_POSITION;\n",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "ticketNumber"
+    },
+    {
+      "COLUMN_NAME": "sessionId"
+    },
+    {
+      "COLUMN_NAME": "reservationId"
+    },
+    {
+      "COLUMN_NAME": "invoiceId"
+    },
+    {
+      "COLUMN_NAME": "customerName"
+    },
+    {
+      "COLUMN_NAME": "customerEmail"
+    },
+    {
+      "COLUMN_NAME": "customerPhone"
+    },
+    {
+      "COLUMN_NAME": "subtotal"
+    },
+    {
+      "COLUMN_NAME": "discountAmount"
+    },
+    {
+      "COLUMN_NAME": "discountReason"
+    },
+    {
+      "COLUMN_NAME": "total"
+    },
+    {
+      "COLUMN_NAME": "status_ts"
+    },
+    {
+      "COLUMN_NAME": "notes"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "paidAt"
+    },
+    {
+      "COLUMN_NAME": "taxBase"
+    },
+    {
+      "COLUMN_NAME": "taxAmount"
+    },
+    {
+      "COLUMN_NAME": "taxRate"
+    },
+    {
+      "COLUMN_NAME": "reavMargin"
+    },
+    {
+      "COLUMN_NAME": "reavCost"
+    },
+    {
+      "COLUMN_NAME": "reavTax"
+    },
+    {
+      "COLUMN_NAME": "fiscalSummary"
+    },
+    {
+      "COLUMN_NAME": "saleChannel"
+    },
+    {
+      "COLUMN_NAME": "sellerUserId"
+    },
+    {
+      "COLUMN_NAME": "sellerName"
+    },
+    {
+      "COLUMN_NAME": "operativeCenter"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\nticketNumber\nsessionId\nreservationId\ninvoiceId\ncustomerName\ncustomerEmail\ncustomerPhone\nsubtotal\ndiscountAmount\ndiscountReason\ntotal\nstatus_ts\nnotes\ncreatedAt\npaidAt\ntaxBase\ntaxAmount\ntaxRate\nreavMargin\nreavCost\nreavTax\nfiscalSummary\nsaleChannel\nsellerUserId\nsellerName\noperativeCenter\n",
+  "stderr": "",
+  "execution_time_ms": 68
+}

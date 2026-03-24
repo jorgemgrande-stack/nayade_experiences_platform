@@ -1,0 +1,70 @@
+{
+  "query": "\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS \nWHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tpv_sale_items'\nORDER BY ORDINAL_POSITION;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS \nWHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tpv_sale_items'\nORDER BY ORDINAL_POSITION;\n",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "saleId"
+    },
+    {
+      "COLUMN_NAME": "productType_tsi"
+    },
+    {
+      "COLUMN_NAME": "productId"
+    },
+    {
+      "COLUMN_NAME": "productName"
+    },
+    {
+      "COLUMN_NAME": "quantity"
+    },
+    {
+      "COLUMN_NAME": "unitPrice"
+    },
+    {
+      "COLUMN_NAME": "discountPercent_tsi"
+    },
+    {
+      "COLUMN_NAME": "subtotal_tsi"
+    },
+    {
+      "COLUMN_NAME": "eventDate"
+    },
+    {
+      "COLUMN_NAME": "eventTime"
+    },
+    {
+      "COLUMN_NAME": "participants"
+    },
+    {
+      "COLUMN_NAME": "notes_tsi"
+    },
+    {
+      "COLUMN_NAME": "fiscalRegime"
+    },
+    {
+      "COLUMN_NAME": "taxBase"
+    },
+    {
+      "COLUMN_NAME": "taxAmount"
+    },
+    {
+      "COLUMN_NAME": "taxRate"
+    },
+    {
+      "COLUMN_NAME": "reavCost"
+    },
+    {
+      "COLUMN_NAME": "reavMargin"
+    },
+    {
+      "COLUMN_NAME": "reavTax"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\nsaleId\nproductType_tsi\nproductId\nproductName\nquantity\nunitPrice\ndiscountPercent_tsi\nsubtotal_tsi\neventDate\neventTime\nparticipants\nnotes_tsi\nfiscalRegime\ntaxBase\ntaxAmount\ntaxRate\nreavCost\nreavMargin\nreavTax\n",
+  "stderr": "",
+  "execution_time_ms": 417
+}
