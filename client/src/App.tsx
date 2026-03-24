@@ -87,6 +87,10 @@ const ReavManager = lazy(() => import("./pages/admin/fiscal/ReavManager"));
 const SuppliersManager = lazy(() => import("./pages/admin/suppliers/SuppliersManager"));
 const SettlementsManager = lazy(() => import("./pages/admin/suppliers/SettlementsManager"));
 
+// TPV
+const TpvScreen = lazy(() => import("./pages/admin/tpv/TpvScreen"));
+const TpvBackoffice = lazy(() => import("./pages/admin/tpv/TpvBackoffice"));
+
 // Fallback de carga para páginas admin
 function AdminLoadingFallback() {
   return (
@@ -185,6 +189,10 @@ function Router() {
       {/* Suppliers & Settlements */}
       <Route path="/admin/suppliers">{() => <Suspense fallback={<AdminLoadingFallback />}><SuppliersManager /></Suspense>}</Route>
       <Route path="/admin/settlements">{() => <Suspense fallback={<AdminLoadingFallback />}><SettlementsManager /></Suspense>}</Route>
+
+      {/* TPV */}
+      <Route path="/admin/tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvScreen /></Suspense>}</Route>
+      <Route path="/admin/tpv/cajas">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvBackoffice /></Suspense>}</Route>
 
       {/* Hotel & SPA */}
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>

@@ -1227,3 +1227,106 @@ export const settlementStatusLog = mysqlTable("settlement_status_log", {
 });
 export type SettlementStatusLog = typeof settlementStatusLog.$inferSelect;
 export type InsertSettlementStatusLog = typeof settlementStatusLog.$inferInsert;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TPV — TERMINAL PUNTO DE VENTA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── CASH REGISTERS (Cajas físicas) ──────────────────────────────────────────
+export const cashRegisters = mysqlTable("cash_registers", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  location: varchar("location", { length: 200 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
+});
+export type CashRegister = typeof cashRegisters.$inferSelect;
+
+// ─── CASH SESSIONS (Turnos de caja) ──────────────────────────────────────────
+export const cashSessions = mysqlTable("cash_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  registerId: int("registerId").notNull(),
+  cashierUserId: int("cashierUserId").notNull(),
+  cashierName: varchar("cashierName", { length: 200 }).notNull(),
+  openingAmount: decimal("openingAmount", { precision: 10, scale: 2 }).notNull().default("0"),
+  closingAmount: decimal("closingAmount", { precision: 10, scale: 2 }),
+  countedCash: decimal("countedCash", { precision: 10, scale: 2 }),
+  cashDifference: decimal("cashDifference", { precision: 10, scale: 2 }),
+  totalCash: decimal("totalCash", { precision: 10, scale: 2 }).default("0"),
+  totalCard: decimal("totalCard", { precision: 10, scale: 2 }).default("0"),
+  totalBizum: decimal("totalBizum", { precision: 10, scale: 2 }).default("0"),
+  totalMixed: decimal("totalMixed", { precision: 10, scale: 2 }).default("0"),
+  totalManualOut: decimal("totalManualOut", { precision: 10, scale: 2 }).default("0"),
+  totalManualIn: decimal("totalManualIn", { precision: 10, scale: 2 }).default("0"),
+  status: mysqlEnum("status_cs", ["open", "closed"]).default("open").notNull(),
+  notes: text("notes"),
+  openedAt: bigint("openedAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
+  closedAt: bigint("closedAt", { mode: "number" }),
+});
+export type CashSession = typeof cashSessions.$inferSelect;
+
+// ─── CASH MOVEMENTS (Movimientos manuales) ───────────────────────────────────
+export const cashMovements = mysqlTable("cash_movements", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull(),
+  type: mysqlEnum("type_cm", ["out", "in"]).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  reason: varchar("reason", { length: 300 }).notNull(),
+  cashierName: varchar("cashierName", { length: 200 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
+});
+export type CashMovement = typeof cashMovements.$inferSelect;
+
+// ─── TPV SALES (Ventas TPV) ───────────────────────────────────────────────────
+export const tpvSales = mysqlTable("tpv_sales", {
+  id: int("id").autoincrement().primaryKey(),
+  ticketNumber: varchar("ticketNumber", { length: 50 }).notNull().unique(),
+  sessionId: int("sessionId").notNull(),
+  reservationId: int("reservationId"),
+  invoiceId: int("invoiceId"),
+  customerName: varchar("customerName", { length: 200 }),
+  customerEmail: varchar("customerEmail", { length: 200 }),
+  customerPhone: varchar("customerPhone", { length: 50 }),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull().default("0"),
+  discountAmount: decimal("discountAmount", { precision: 10, scale: 2 }).default("0"),
+  discountReason: varchar("discountReason", { length: 200 }),
+  total: decimal("total", { precision: 10, scale: 2 }).notNull().default("0"),
+  status: mysqlEnum("status_ts", ["pending", "paid", "cancelled", "refunded"]).default("pending").notNull(),
+  notes: text("notes"),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
+  paidAt: bigint("paidAt", { mode: "number" }),
+});
+export type TpvSale = typeof tpvSales.$inferSelect;
+
+// ─── TPV SALE ITEMS (Líneas de venta) ────────────────────────────────────────
+export const tpvSaleItems = mysqlTable("tpv_sale_items", {
+  id: int("id").autoincrement().primaryKey(),
+  saleId: int("saleId").notNull(),
+  productType: mysqlEnum("productType_tsi", ["experience", "pack", "spa", "hotel", "restaurant", "extra"]).notNull(),
+  productId: int("productId").notNull(),
+  productName: varchar("productName", { length: 300 }).notNull(),
+  quantity: int("quantity").notNull().default(1),
+  unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
+  discountPercent: decimal("discountPercent_tsi", { precision: 5, scale: 2 }).default("0"),
+  subtotal: decimal("subtotal_tsi", { precision: 10, scale: 2 }).notNull(),
+  eventDate: varchar("eventDate", { length: 10 }),
+  eventTime: varchar("eventTime", { length: 10 }),
+  participants: int("participants").default(1),
+  notes: varchar("notes_tsi", { length: 500 }),
+});
+export type TpvSaleItem = typeof tpvSaleItems.$inferSelect;
+
+// ─── TPV SALE PAYMENTS (Subpagos) ────────────────────────────────────────────
+export const tpvSalePayments = mysqlTable("tpv_sale_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  saleId: int("saleId").notNull(),
+  payerName: varchar("payerName", { length: 200 }),
+  method: mysqlEnum("method_tsp", ["cash", "card", "bizum", "other"]).notNull(),
+  amount: decimal("amount_tsp", { precision: 10, scale: 2 }).notNull(),
+  amountTendered: decimal("amountTendered", { precision: 10, scale: 2 }),
+  changeGiven: decimal("changeGiven", { precision: 10, scale: 2 }).default("0"),
+  status: mysqlEnum("status_tsp", ["pending", "completed", "failed", "refunded"]).default("pending").notNull(),
+  reference: varchar("reference", { length: 200 }),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
+});
+export type TpvSalePayment = typeof tpvSalePayments.$inferSelect;

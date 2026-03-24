@@ -1634,3 +1634,55 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] HotelManager: añadir bloques Descuento, Régimen Fiscal y Proveedor al formulario de tipología
 - [x] SpaManager: añadir bloques Descuento, Régimen Fiscal y Proveedor al formulario de tratamiento
 - [x] SupplierSelect: actualizar para aceptar number|null|string y devolver number|null
+
+## v8.0: Módulo TPV Presencial (Terminal Punto de Venta)
+
+### BD — Nuevas tablas
+- [ ] cash_registers: cajas físicas (nombre, ubicación, activa)
+- [ ] cash_sessions: turnos de caja (apertura, cierre, fondo inicial, cajero, estado)
+- [ ] cash_movements: movimientos de caja (venta, salida manual, entrada manual)
+- [ ] tpv_sales: ventas TPV (sesión, reserva vinculada, total, estado, cliente opcional)
+- [ ] tpv_sale_items: líneas de venta (producto, cantidad, precio, subtotal)
+- [ ] tpv_sale_payments: subpagos (venta, método, importe, pagador, estado)
+- [ ] Campo isPresentialSale en products/room_types/spa_treatments (toggle vendible en TPV)
+
+### Backend — Router tpv
+- [ ] tpv.getCatalog: productos activos + vendibles presencial (experiencias, packs, spa, hotel, extras)
+- [x] tpv.openSession: apertura de caja con fondo inicial
+- [x] tpv.closeSession: cierre con arqueo y cálculo de descuadre
+- [x] tpv.addCashMovement: salida/entrada manual de efectivo
+- [x] tpv.createSale: confirmar venta → crear reserva + movimiento caja
+- [x] tpv.getSessionSummary: resumen de sesión activa
+- [x] tpv.getBackoffice: historial cajas, ventas por sesión
+- [x] tpv.sendTicketEmail: envío de ticket por email
+
+### Frontend — Pantalla TPV Kiosk
+- [x] Ruta /admin/tpv con pantalla kiosk de fondo negro
+- [x] Diseño negro premium resort (fondo oscuro, violeta para CTAs)
+- [x] Zona 1: Catálogo gráfico con grid de productos (foto, nombre, precio, color por tipo)
+- [x] Filtros rápidos: Todos / Experiencias / Packs / SPA / Hotel
+- [x] Zona 2: Carrito TPV (lista productos, cantidades +/-, subtotal, total grande)
+- [x] Zona 3: Botones de pago grandes (Tarjeta / Efectivo / Bizum / Mixto)
+- [x] Botón "Confirmar venta" prominente
+
+### Frontend — Gestión de Caja
+- [x] Modal apertura de caja (TpvOpenSession)
+- [x] Modal cierre de caja con arqueo (TpvCloseSession)
+- [x] Modal salida/entrada manual de efectivo (TpvCashMovement)
+
+### Frontend — División de Cuenta
+- [x] Modal dividir en partes iguales (TpvSplitPayment)
+- [x] Modal dividir por importes libres
+- [x] Pago mixto: cada parte con su método de pago
+
+### Frontend — Ticket Térmico 80mm
+- [x] Componente TpvTicket optimizado para 80mm (CSS @media print)
+- [x] Cabecera: logo Nayade, datos fiscales, punto de venta
+- [x] Cuerpo: líneas de venta, descuentos, totales, desglose de pagos
+- [x] Opciones post-venta: Imprimir ticket / Enviar email
+
+### Frontend — Backoffice Cajas TPV
+- [x] Ruta /admin/tpv/cajas con historial de sesiones
+- [x] Historial de aperturas y cierres con resumen económico
+- [x] Ventas y movimientos por sesión
+- [x] Ítems TPV en sidebar AdminLayout (icono Monitor)

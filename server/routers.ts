@@ -132,6 +132,7 @@ import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
+import { tpvRouter } from "./routers/tpv";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -1408,6 +1409,7 @@ export const appRouter = router({
   restaurants: restaurantsRouter,
   crm: crmRouter,
   suppliers: suppliersRouter,
+  tpv: tpvRouter,
   settlements: settlementsRouter,
   reav: router({
     // Expedientes
