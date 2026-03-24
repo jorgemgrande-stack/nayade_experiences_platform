@@ -195,6 +195,7 @@ function Router() {
       {/* TPV */}
       <Route path="/admin/tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvScreen /></Suspense>}</Route>
       <Route path="/admin/tpv/cajas">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvBackoffice /></Suspense>}</Route>
+      <Route path="/admin/tpv/backoffice">{() => <Suspense fallback={<AdminLoadingFallback />}><TpvBackoffice /></Suspense>}</Route>
 
       {/* Hotel & SPA */}
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>
