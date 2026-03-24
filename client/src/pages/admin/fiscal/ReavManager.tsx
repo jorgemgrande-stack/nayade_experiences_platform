@@ -97,14 +97,14 @@ const DOC_TYPES_PROVIDER = [
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ReavManager() {
-  const [filterFiscal, setFilterFiscal] = useState<string>("");
-  const [filterOperative, setFilterOperative] = useState<string>("");
+  const [filterFiscal, setFilterFiscal] = useState<string>("all");
+  const [filterOperative, setFilterOperative] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const { data: expedients, refetch } = trpc.reav.list.useQuery({
-    fiscalStatus: filterFiscal || undefined,
-    operativeStatus: filterOperative || undefined,
+    fiscalStatus: filterFiscal === "all" ? undefined : filterFiscal || undefined,
+    operativeStatus: filterOperative === "all" ? undefined : filterOperative || undefined,
   });
 
   const { data: selected, refetch: refetchSelected } = trpc.reav.get.useQuery(
@@ -170,7 +170,7 @@ export default function ReavManager() {
                 <SelectValue placeholder="Estado fiscal..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
                 {Object.entries(FISCAL_STATUS_LABELS).map(([v, l]) => (
                   <SelectItem key={v} value={v}>{l}</SelectItem>
                 ))}
@@ -181,7 +181,7 @@ export default function ReavManager() {
                 <SelectValue placeholder="Estado operativo..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos</SelectItem>
+                <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="abierto">Abierto</SelectItem>
                 <SelectItem value="en_proceso">En Proceso</SelectItem>
                 <SelectItem value="cerrado">Cerrado</SelectItem>
