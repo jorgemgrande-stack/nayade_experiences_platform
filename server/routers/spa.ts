@@ -129,13 +129,36 @@ export const spaRouter = router({
       price: z.string(),
       maxPersons: z.number().int().min(1).default(1),
       cabinRequired: z.boolean().default(true),
+      // Descuento promocional
+      discountPercent: z.string().optional(),
+      discountLabel: z.string().optional(),
+      discountExpiresAt: z.string().optional(),
+      // Régimen fiscal
+      fiscalRegime: z.enum(["reav", "general_21", "mixed"]).default("general_21"),
+      productType: z.enum(["own", "semi_own", "third_party"]).default("own"),
+      providerPercent: z.string().optional(),
+      agencyMarginPercent: z.string().optional(),
+      // Proveedor y liquidaciones
+      supplierId: z.number().int().nullable().optional(),
+      supplierCommissionPercent: z.string().optional(),
+      supplierCostType: z.enum(["comision_sobre_venta", "coste_fijo", "porcentaje_margen", "hibrido"]).optional(),
+      settlementFrequency: z.enum(["semanal", "quincenal", "mensual", "manual"]).optional(),
+      isSettlable: z.boolean().default(false),
       isFeatured: z.boolean().default(false),
       isActive: z.boolean().default(true),
       sortOrder: z.number().int().default(0),
       metaTitle: z.string().optional(),
       metaDescription: z.string().optional(),
     }))
-    .mutation(({ input }) => createSpaTreatment(input)),
+    .mutation(({ input }) => {
+      const data: Record<string, unknown> = { ...input };
+      if (data.discountExpiresAt && typeof data.discountExpiresAt === "string") {
+        data.discountExpiresAt = new Date(data.discountExpiresAt as string);
+      } else if (data.discountExpiresAt === "") {
+        data.discountExpiresAt = null;
+      }
+      return createSpaTreatment(data as Parameters<typeof createSpaTreatment>[0]);
+    }),
 
   adminUpdateTreatment: adminProcedure
     .input(z.object({
@@ -154,6 +177,21 @@ export const spaRouter = router({
       price: z.string().optional(),
       maxPersons: z.number().int().optional(),
       cabinRequired: z.boolean().optional(),
+      // Descuento promocional
+      discountPercent: z.string().nullable().optional(),
+      discountLabel: z.string().nullable().optional(),
+      discountExpiresAt: z.string().nullable().optional(),
+      // Régimen fiscal
+      fiscalRegime: z.enum(["reav", "general_21", "mixed"]).optional(),
+      productType: z.enum(["own", "semi_own", "third_party"]).optional(),
+      providerPercent: z.string().nullable().optional(),
+      agencyMarginPercent: z.string().nullable().optional(),
+      // Proveedor y liquidaciones
+      supplierId: z.number().int().nullable().optional(),
+      supplierCommissionPercent: z.string().nullable().optional(),
+      supplierCostType: z.enum(["comision_sobre_venta", "coste_fijo", "porcentaje_margen", "hibrido"]).nullable().optional(),
+      settlementFrequency: z.enum(["semanal", "quincenal", "mensual", "manual"]).nullable().optional(),
+      isSettlable: z.boolean().optional(),
       isFeatured: z.boolean().optional(),
       isActive: z.boolean().optional(),
       sortOrder: z.number().int().optional(),
@@ -161,8 +199,14 @@ export const spaRouter = router({
       metaDescription: z.string().optional(),
     }))
     .mutation(({ input }) => {
-      const { id, ...data } = input;
-      return updateSpaTreatment(id, data);
+      const { id, ...rest } = input;
+      const data: Record<string, unknown> = { ...rest };
+      if (data.discountExpiresAt && typeof data.discountExpiresAt === "string") {
+        data.discountExpiresAt = new Date(data.discountExpiresAt as string);
+      } else if (data.discountExpiresAt === "" || data.discountExpiresAt === null) {
+        data.discountExpiresAt = null;
+      }
+      return updateSpaTreatment(id, data as Parameters<typeof updateSpaTreatment>[1]);
     }),
 
   adminDeleteTreatment: adminProcedure

@@ -18,6 +18,8 @@ import {
   Sparkles, Plus, Pencil, Trash2, Eye, EyeOff, Star,
   Clock, Users, ChevronLeft, ChevronRight, RefreshCw, Zap,
 } from "lucide-react";
+import SupplierSelect from "@/components/SupplierSelect";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function slugify(s: string) {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -29,11 +31,19 @@ interface TreatmentFormData {
   name: string; slug: string; shortDescription: string; description: string;
   price: string; durationMinutes: number; maxPersons: number;
   categoryId: string; coverImageUrl: string; isFeatured: boolean; isActive: boolean;
+  discountPercent: string; discountLabel: string; discountExpiresAt: string;
+  fiscalRegime: string; productType: string; providerPercent: string; agencyMarginPercent: string;
+  supplierId: number | null; supplierCommissionPercent: string;
+  supplierCostType: string; settlementFrequency: string; isSettlable: boolean;
 }
 const EMPTY_TREATMENT: TreatmentFormData = {
   name: "", slug: "", shortDescription: "", description: "",
   price: "", durationMinutes: 60, maxPersons: 2,
   categoryId: "", coverImageUrl: "", isFeatured: false, isActive: true,
+  discountPercent: "", discountLabel: "", discountExpiresAt: "",
+  fiscalRegime: "general_21", productType: "own", providerPercent: "", agencyMarginPercent: "",
+  supplierId: null, supplierCommissionPercent: "", supplierCostType: "comision_sobre_venta",
+  settlementFrequency: "manual", isSettlable: false,
 };
 
 function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
@@ -50,6 +60,18 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
       categoryId: editTreatment.categoryId != null ? String(editTreatment.categoryId) : "",
       coverImageUrl: editTreatment.coverImageUrl ?? "",
       isFeatured: editTreatment.isFeatured ?? false, isActive: editTreatment.isActive ?? true,
+      discountPercent: editTreatment.discountPercent != null ? String(editTreatment.discountPercent) : "",
+      discountLabel: editTreatment.discountLabel ?? "",
+      discountExpiresAt: editTreatment.discountExpiresAt ? new Date(editTreatment.discountExpiresAt).toISOString().slice(0, 10) : "",
+      fiscalRegime: editTreatment.fiscalRegime ?? "general_21",
+      productType: editTreatment.productType ?? "own",
+      providerPercent: editTreatment.providerPercent != null ? String(editTreatment.providerPercent) : "",
+      agencyMarginPercent: editTreatment.agencyMarginPercent != null ? String(editTreatment.agencyMarginPercent) : "",
+      supplierId: editTreatment.supplierId ?? null,
+      supplierCommissionPercent: editTreatment.supplierCommissionPercent != null ? String(editTreatment.supplierCommissionPercent) : "",
+      supplierCostType: editTreatment.supplierCostType ?? "comision_sobre_venta",
+      settlementFrequency: editTreatment.settlementFrequency ?? "manual",
+      isSettlable: editTreatment.isSettlable ?? false,
     } : { ...EMPTY_TREATMENT }
   );
 
@@ -71,6 +93,18 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
       categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
       coverImageUrl: form.coverImageUrl || undefined,
       isFeatured: form.isFeatured, isActive: form.isActive,
+      discountPercent: form.discountPercent || undefined,
+      discountLabel: form.discountLabel || undefined,
+      discountExpiresAt: form.discountExpiresAt || undefined,
+      fiscalRegime: form.fiscalRegime as "reav" | "general_21" | "mixed",
+      productType: form.productType as "own" | "semi_own" | "third_party",
+      providerPercent: form.providerPercent || undefined,
+      agencyMarginPercent: form.agencyMarginPercent || undefined,
+      supplierId: form.supplierId ?? undefined,
+      supplierCommissionPercent: form.supplierCommissionPercent || undefined,
+      supplierCostType: form.supplierCostType as "comision_sobre_venta" | "coste_fijo" | "porcentaje_margen" | "hibrido",
+      settlementFrequency: form.settlementFrequency as "semanal" | "quincenal" | "mensual" | "manual",
+      isSettlable: form.isSettlable,
     };
     if (editTreatment) updateMut.mutate({ id: editTreatment.id, ...payload });
     else createMut.mutate(payload);
@@ -131,6 +165,108 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
           <div>
             <Label>Imagen de portada</Label>
             <ImageUploader value={form.coverImageUrl} onChange={url => setForm(f => ({ ...f, coverImageUrl: url }))} />
+          </div>
+          {/* Descuento promocional */}
+          <div className="border rounded-lg p-4 space-y-3 bg-amber-50 dark:bg-amber-950/20">
+            <h4 className="font-semibold text-sm text-amber-700 dark:text-amber-400">Descuento promocional</h4>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Descuento (%)</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={form.discountPercent}
+                  onChange={e => setForm(f => ({ ...f, discountPercent: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <Label>Etiqueta</Label>
+                <Input value={form.discountLabel} onChange={e => setForm(f => ({ ...f, discountLabel: e.target.value }))}
+                  placeholder="Oferta primavera" />
+              </div>
+              <div>
+                <Label>Expira el</Label>
+                <Input type="date" value={form.discountExpiresAt}
+                  onChange={e => setForm(f => ({ ...f, discountExpiresAt: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+          {/* Régimen fiscal */}
+          <div className="border rounded-lg p-4 space-y-3 bg-blue-50 dark:bg-blue-950/20">
+            <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-400">Régimen fiscal</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Régimen</Label>
+                <Select value={form.fiscalRegime} onValueChange={v => setForm(f => ({ ...f, fiscalRegime: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general_21">General 21%</SelectItem>
+                    <SelectItem value="reav">REAV (agencia viajes)</SelectItem>
+                    <SelectItem value="mixed">Mixto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo de producto</Label>
+                <Select value={form.productType} onValueChange={v => setForm(f => ({ ...f, productType: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="own">Propio</SelectItem>
+                    <SelectItem value="semi_own">Semi-propio</SelectItem>
+                    <SelectItem value="third_party">Tercero</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>% Proveedor</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={form.providerPercent}
+                  onChange={e => setForm(f => ({ ...f, providerPercent: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <Label>% Margen agencia</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={form.agencyMarginPercent}
+                  onChange={e => setForm(f => ({ ...f, agencyMarginPercent: e.target.value }))} placeholder="0" />
+              </div>
+            </div>
+          </div>
+          {/* Proveedor y liquidaciones */}
+          <div className="border rounded-lg p-4 space-y-3 bg-violet-50 dark:bg-violet-950/20">
+            <h4 className="font-semibold text-sm text-violet-700 dark:text-violet-400">Proveedor y liquidaciones</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label>Proveedor</Label>
+                <SupplierSelect value={form.supplierId} onChange={v => setForm(f => ({ ...f, supplierId: v }))} />
+              </div>
+              <div>
+                <Label>Comisión proveedor (%)</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={form.supplierCommissionPercent}
+                  onChange={e => setForm(f => ({ ...f, supplierCommissionPercent: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <Label>Tipo de coste</Label>
+                <Select value={form.supplierCostType} onValueChange={v => setForm(f => ({ ...f, supplierCostType: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="comision_sobre_venta">Comisión sobre venta</SelectItem>
+                    <SelectItem value="coste_fijo">Coste fijo</SelectItem>
+                    <SelectItem value="porcentaje_margen">% Margen</SelectItem>
+                    <SelectItem value="hibrido">Híbrido</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Frecuencia de liquidación</Label>
+                <Select value={form.settlementFrequency} onValueChange={v => setForm(f => ({ ...f, settlementFrequency: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="semanal">Semanal</SelectItem>
+                    <SelectItem value="quincenal">Quincenal</SelectItem>
+                    <SelectItem value="mensual">Mensual</SelectItem>
+                    <SelectItem value="manual">Manual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 pt-5">
+                <Switch checked={form.isSettlable} onCheckedChange={v => setForm(f => ({ ...f, isSettlable: v }))} />
+                <Label>Liquidable con proveedor</Label>
+              </div>
+            </div>
           </div>
           <div className="flex gap-6">
             <div className="flex items-center gap-2">

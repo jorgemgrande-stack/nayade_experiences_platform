@@ -18,6 +18,8 @@ import {
   BedDouble, Plus, Pencil, Trash2, Eye, EyeOff, Star,
   Users, Baby, Maximize2, ChevronLeft, ChevronRight, RefreshCw,
 } from "lucide-react";
+import SupplierSelect from "@/components/SupplierSelect";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function slugify(s: string) {
@@ -31,12 +33,20 @@ interface RoomFormData {
   basePrice: string; maxAdults: number; maxChildren: number; surfaceM2: string;
   totalUnits: number; coverImageUrl: string; image1: string; image2: string;
   image3: string; amenities: string; isFeatured: boolean; isActive: boolean;
+  discountPercent: string; discountLabel: string; discountExpiresAt: string;
+  fiscalRegime: string; productType: string; providerPercent: string; agencyMarginPercent: string;
+  supplierId: number | null; supplierCommissionPercent: string;
+  supplierCostType: string; settlementFrequency: string; isSettlable: boolean;
 }
 const EMPTY_ROOM: RoomFormData = {
   name: "", slug: "", shortDescription: "", description: "", basePrice: "",
   maxAdults: 2, maxChildren: 2, surfaceM2: "", totalUnits: 1,
   coverImageUrl: "", image1: "", image2: "", image3: "",
   amenities: "", isFeatured: false, isActive: true,
+  discountPercent: "", discountLabel: "", discountExpiresAt: "",
+  fiscalRegime: "general_21", productType: "own", providerPercent: "", agencyMarginPercent: "",
+  supplierId: null, supplierCommissionPercent: "", supplierCostType: "comision_sobre_venta",
+  settlementFrequency: "manual", isSettlable: false,
 };
 
 function RoomFormDialog({ open, onClose, editRoom }: {
@@ -54,6 +64,18 @@ function RoomFormDialog({ open, onClose, editRoom }: {
       image1: editRoom.image1 ?? "", image2: editRoom.image2 ?? "", image3: editRoom.image3 ?? "",
       amenities: Array.isArray(editRoom.amenities) ? editRoom.amenities.join(", ") : "",
       isFeatured: editRoom.isFeatured ?? false, isActive: editRoom.isActive ?? true,
+      discountPercent: editRoom.discountPercent != null ? String(editRoom.discountPercent) : "",
+      discountLabel: editRoom.discountLabel ?? "",
+      discountExpiresAt: editRoom.discountExpiresAt ? new Date(editRoom.discountExpiresAt).toISOString().slice(0, 10) : "",
+      fiscalRegime: editRoom.fiscalRegime ?? "general_21",
+      productType: editRoom.productType ?? "own",
+      providerPercent: editRoom.providerPercent != null ? String(editRoom.providerPercent) : "",
+      agencyMarginPercent: editRoom.agencyMarginPercent != null ? String(editRoom.agencyMarginPercent) : "",
+      supplierId: editRoom.supplierId ?? null,
+      supplierCommissionPercent: editRoom.supplierCommissionPercent != null ? String(editRoom.supplierCommissionPercent) : "",
+      supplierCostType: editRoom.supplierCostType ?? "comision_sobre_venta",
+      settlementFrequency: editRoom.settlementFrequency ?? "manual",
+      isSettlable: editRoom.isSettlable ?? false,
     } : { ...EMPTY_ROOM }
   );
 
@@ -78,6 +100,18 @@ function RoomFormDialog({ open, onClose, editRoom }: {
       image1: form.image1 || undefined, image2: form.image2 || undefined, image3: form.image3 || undefined,
       amenities: form.amenities ? form.amenities.split(",").map(s => s.trim()).filter(Boolean) : [],
       isFeatured: form.isFeatured, isActive: form.isActive,
+      discountPercent: form.discountPercent || undefined,
+      discountLabel: form.discountLabel || undefined,
+      discountExpiresAt: form.discountExpiresAt || undefined,
+      fiscalRegime: form.fiscalRegime as "reav" | "general_21" | "mixed",
+      productType: form.productType as "own" | "semi_own" | "third_party",
+      providerPercent: form.providerPercent || undefined,
+      agencyMarginPercent: form.agencyMarginPercent || undefined,
+      supplierId: form.supplierId ?? undefined,
+      supplierCommissionPercent: form.supplierCommissionPercent || undefined,
+      supplierCostType: form.supplierCostType as "comision_sobre_venta" | "coste_fijo" | "porcentaje_margen" | "hibrido",
+      settlementFrequency: form.settlementFrequency as "semanal" | "quincenal" | "mensual" | "manual",
+      isSettlable: form.isSettlable,
     };
   }
 
@@ -149,6 +183,108 @@ function RoomFormDialog({ open, onClose, editRoom }: {
           <div>
             <Label>Servicios incluidos (separados por coma)</Label>
             <Input value={form.amenities} onChange={e => setForm(f => ({ ...f, amenities: e.target.value }))} placeholder="WiFi, Desayuno, TV, Minibar..." />
+          </div>
+          {/* Descuento promocional */}
+          <div className="border rounded-lg p-4 space-y-3 bg-amber-50 dark:bg-amber-950/20">
+            <h4 className="font-semibold text-sm text-amber-700 dark:text-amber-400">Descuento promocional</h4>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label>Descuento (%)</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={form.discountPercent}
+                  onChange={e => setForm(f => ({ ...f, discountPercent: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <Label>Etiqueta</Label>
+                <Input value={form.discountLabel} onChange={e => setForm(f => ({ ...f, discountLabel: e.target.value }))}
+                  placeholder="Oferta primavera" />
+              </div>
+              <div>
+                <Label>Expira el</Label>
+                <Input type="date" value={form.discountExpiresAt}
+                  onChange={e => setForm(f => ({ ...f, discountExpiresAt: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+          {/* Régimen fiscal */}
+          <div className="border rounded-lg p-4 space-y-3 bg-blue-50 dark:bg-blue-950/20">
+            <h4 className="font-semibold text-sm text-blue-700 dark:text-blue-400">Régimen fiscal</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Régimen</Label>
+                <Select value={form.fiscalRegime} onValueChange={v => setForm(f => ({ ...f, fiscalRegime: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general_21">General 21%</SelectItem>
+                    <SelectItem value="reav">REAV (agencia viajes)</SelectItem>
+                    <SelectItem value="mixed">Mixto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo de producto</Label>
+                <Select value={form.productType} onValueChange={v => setForm(f => ({ ...f, productType: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="own">Propio</SelectItem>
+                    <SelectItem value="semi_own">Semi-propio</SelectItem>
+                    <SelectItem value="third_party">Tercero</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>% Proveedor</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={form.providerPercent}
+                  onChange={e => setForm(f => ({ ...f, providerPercent: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <Label>% Margen agencia</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={form.agencyMarginPercent}
+                  onChange={e => setForm(f => ({ ...f, agencyMarginPercent: e.target.value }))} placeholder="0" />
+              </div>
+            </div>
+          </div>
+          {/* Proveedor y liquidaciones */}
+          <div className="border rounded-lg p-4 space-y-3 bg-violet-50 dark:bg-violet-950/20">
+            <h4 className="font-semibold text-sm text-violet-700 dark:text-violet-400">Proveedor y liquidaciones</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label>Proveedor</Label>
+                <SupplierSelect value={form.supplierId} onChange={v => setForm(f => ({ ...f, supplierId: v }))} />
+              </div>
+              <div>
+                <Label>Comisión proveedor (%)</Label>
+                <Input type="number" min={0} max={100} step={0.01} value={form.supplierCommissionPercent}
+                  onChange={e => setForm(f => ({ ...f, supplierCommissionPercent: e.target.value }))} placeholder="0" />
+              </div>
+              <div>
+                <Label>Tipo de coste</Label>
+                <Select value={form.supplierCostType} onValueChange={v => setForm(f => ({ ...f, supplierCostType: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="comision_sobre_venta">Comisión sobre venta</SelectItem>
+                    <SelectItem value="coste_fijo">Coste fijo</SelectItem>
+                    <SelectItem value="porcentaje_margen">% Margen</SelectItem>
+                    <SelectItem value="hibrido">Híbrido</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Frecuencia de liquidación</Label>
+                <Select value={form.settlementFrequency} onValueChange={v => setForm(f => ({ ...f, settlementFrequency: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="semanal">Semanal</SelectItem>
+                    <SelectItem value="quincenal">Quincenal</SelectItem>
+                    <SelectItem value="mensual">Mensual</SelectItem>
+                    <SelectItem value="manual">Manual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 pt-5">
+                <Switch checked={form.isSettlable} onCheckedChange={v => setForm(f => ({ ...f, isSettlable: v }))} />
+                <Label>Liquidable con proveedor</Label>
+              </div>
+            </div>
           </div>
           <div className="flex gap-6">
             <div className="flex items-center gap-2">

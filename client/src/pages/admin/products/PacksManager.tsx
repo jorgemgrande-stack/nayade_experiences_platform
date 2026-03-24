@@ -738,7 +738,7 @@ export default function PacksManager() {
                   <label className="text-xs text-muted-foreground block mb-1">Proveedor</label>
                   <SupplierSelect
                     value={form.supplierId}
-                    onChange={(v) => setForm(f => ({ ...f, supplierId: v }))}
+                    onChange={(v) => setForm(f => ({ ...f, supplierId: v != null ? String(v) : "" }))}
                   />
                 </div>
                 <div>

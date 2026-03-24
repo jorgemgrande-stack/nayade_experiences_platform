@@ -638,7 +638,7 @@ export default function ExperiencesManager() {
                     <Label className="text-xs text-muted-foreground">Proveedor</Label>
                     <SupplierSelect
                       value={form.supplierId}
-                      onChange={(v) => setForm({ ...form, supplierId: v })}
+                      onChange={(v) => setForm({ ...form, supplierId: v != null ? String(v) : "" })}
                     />
                   </div>
                   <div>

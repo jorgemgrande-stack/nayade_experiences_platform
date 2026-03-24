@@ -1625,3 +1625,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Verificar AdminLayout: ítems Proveedores y Liquidaciones bajo Contabilidad
 - [x] Añadir sección "Proveedores" con icono Truck en el sidebar (entre Contabilidad y Fiscal REAV)
 - [x] Añadir rutas /admin/suppliers y /admin/settlements en App.tsx con lazy imports
+
+## v7.3: Hotel y SPA — Descuento, Régimen Fiscal y Proveedor
+- [x] Auditar schema DB: campos actuales de hotel_rooms y spa_services
+- [x] Migración DB: añadir discountPercent, discountLabel, fiscalRegime, supplierId, supplierCommissionPercent, supplierCostType, settlementFrequency, isSettlable a room_types y spa_treatments
+- [x] Backend hotel: actualizar schemas Zod y procedimientos create/update en hotel.ts
+- [x] Backend spa: actualizar schemas Zod y procedimientos create/update en spa.ts
+- [x] HotelManager: añadir bloques Descuento, Régimen Fiscal y Proveedor al formulario de tipología
+- [x] SpaManager: añadir bloques Descuento, Régimen Fiscal y Proveedor al formulario de tratamiento
+- [x] SupplierSelect: actualizar para aceptar number|null|string y devolver number|null

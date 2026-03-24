@@ -587,6 +587,21 @@ export const roomTypes = mysqlTable("room_types", {
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
   totalUnits: int("totalUnits").default(1).notNull(),
   internalTags: json("internalTags").$type<string[]>().default([]),
+  // Descuento promocional
+  discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
+  discountLabel: varchar("discountLabel", { length: 128 }),
+  discountExpiresAt: timestamp("discountExpiresAt"),
+  // Régimen fiscal
+  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
+  productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
+  providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
+  agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
+  // Proveedor y liquidaciones
+  supplierId: int("supplierId"),
+  supplierCommissionPercent: decimal("supplierCommissionPercent", { precision: 5, scale: 2 }).default("0.00"),
+  supplierCostType: mysqlEnum("supplierCostType", ["comision_sobre_venta", "coste_fijo", "porcentaje_margen", "hibrido"]).default("comision_sobre_venta"),
+  settlementFrequency: mysqlEnum("settlementFrequency", ["semanal", "quincenal", "mensual", "manual"]).default("manual"),
+  isSettlable: boolean("isSettlable").default(false).notNull(),
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
@@ -673,6 +688,21 @@ export const spaTreatments = mysqlTable("spa_treatments", {
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
   maxPersons: int("maxPersons").default(1).notNull(),
   cabinRequired: boolean("cabinRequired").default(true).notNull(),
+  // Descuento promocional
+  discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
+  discountLabel: varchar("discountLabel", { length: 128 }),
+  discountExpiresAt: timestamp("discountExpiresAt"),
+  // Régimen fiscal
+  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
+  productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
+  providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
+  agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
+  // Proveedor y liquidaciones
+  supplierId: int("supplierId"),
+  supplierCommissionPercent: decimal("supplierCommissionPercent", { precision: 5, scale: 2 }).default("0.00"),
+  supplierCostType: mysqlEnum("supplierCostType", ["comision_sobre_venta", "coste_fijo", "porcentaje_margen", "hibrido"]).default("comision_sobre_venta"),
+  settlementFrequency: mysqlEnum("settlementFrequency", ["semanal", "quincenal", "mensual", "manual"]).default("manual"),
+  isSettlable: boolean("isSettlable").default(false).notNull(),
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),

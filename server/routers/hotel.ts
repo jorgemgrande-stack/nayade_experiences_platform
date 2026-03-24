@@ -88,13 +88,36 @@ export const hotelRouter = router({
       amenities: z.array(z.string()).optional(),
       basePrice: z.string(),
       totalUnits: z.number().int().min(1).default(1),
+      // Descuento promocional
+      discountPercent: z.string().optional(),
+      discountLabel: z.string().optional(),
+      discountExpiresAt: z.string().optional(),
+      // Régimen fiscal
+      fiscalRegime: z.enum(["reav", "general_21", "mixed"]).default("general_21"),
+      productType: z.enum(["own", "semi_own", "third_party"]).default("own"),
+      providerPercent: z.string().optional(),
+      agencyMarginPercent: z.string().optional(),
+      // Proveedor y liquidaciones
+      supplierId: z.number().int().nullable().optional(),
+      supplierCommissionPercent: z.string().optional(),
+      supplierCostType: z.enum(["comision_sobre_venta", "coste_fijo", "porcentaje_margen", "hibrido"]).optional(),
+      settlementFrequency: z.enum(["semanal", "quincenal", "mensual", "manual"]).optional(),
+      isSettlable: z.boolean().default(false),
       isFeatured: z.boolean().default(false),
       isActive: z.boolean().default(true),
       sortOrder: z.number().int().default(0),
       metaTitle: z.string().optional(),
       metaDescription: z.string().optional(),
     }))
-    .mutation(({ input }) => createRoomType(input)),
+    .mutation(({ input }) => {
+      const data: Record<string, unknown> = { ...input };
+      if (data.discountExpiresAt && typeof data.discountExpiresAt === "string") {
+        data.discountExpiresAt = new Date(data.discountExpiresAt as string);
+      } else if (data.discountExpiresAt === "") {
+        data.discountExpiresAt = null;
+      }
+      return createRoomType(data as Parameters<typeof createRoomType>[0]);
+    }),
 
   adminUpdateRoomType: adminProcedure
     .input(z.object({
@@ -116,6 +139,21 @@ export const hotelRouter = router({
       amenities: z.array(z.string()).optional(),
       basePrice: z.string().optional(),
       totalUnits: z.number().int().min(1).optional(),
+      // Descuento promocional
+      discountPercent: z.string().nullable().optional(),
+      discountLabel: z.string().nullable().optional(),
+      discountExpiresAt: z.string().nullable().optional(),
+      // Régimen fiscal
+      fiscalRegime: z.enum(["reav", "general_21", "mixed"]).optional(),
+      productType: z.enum(["own", "semi_own", "third_party"]).optional(),
+      providerPercent: z.string().nullable().optional(),
+      agencyMarginPercent: z.string().nullable().optional(),
+      // Proveedor y liquidaciones
+      supplierId: z.number().int().nullable().optional(),
+      supplierCommissionPercent: z.string().nullable().optional(),
+      supplierCostType: z.enum(["comision_sobre_venta", "coste_fijo", "porcentaje_margen", "hibrido"]).nullable().optional(),
+      settlementFrequency: z.enum(["semanal", "quincenal", "mensual", "manual"]).nullable().optional(),
+      isSettlable: z.boolean().optional(),
       isFeatured: z.boolean().optional(),
       isActive: z.boolean().optional(),
       sortOrder: z.number().int().optional(),
@@ -123,8 +161,14 @@ export const hotelRouter = router({
       metaDescription: z.string().optional(),
     }))
     .mutation(({ input }) => {
-      const { id, ...data } = input;
-      return updateRoomType(id, data);
+      const { id, ...rest } = input;
+      const data: Record<string, unknown> = { ...rest };
+      if (data.discountExpiresAt && typeof data.discountExpiresAt === "string") {
+        data.discountExpiresAt = new Date(data.discountExpiresAt as string);
+      } else if (data.discountExpiresAt === "" || data.discountExpiresAt === null) {
+        data.discountExpiresAt = null;
+      }
+      return updateRoomType(id, data as Parameters<typeof updateRoomType>[1]);
     }),
 
   adminDeleteRoomType: adminProcedure
