@@ -33,6 +33,16 @@ interface Sale {
   total: string | number;
   items: SaleItem[];
   payments: SalePayment[];
+  // Campos fiscales (opcionales para compatibilidad)
+  taxBase?: string | number | null;
+  taxAmount?: string | number | null;
+  taxRate?: string | number | null;
+  reavMargin?: string | number | null;
+  reavCost?: string | number | null;
+  reavTax?: string | number | null;
+  fiscalSummary?: string | null;
+  sellerName?: string | null;
+  reservationId?: number | null;
 }
 
 interface Props {
@@ -162,10 +172,37 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
                 <span>-{parseFloat(String(s.discountAmount)).toFixed(2)}€</span>
               </div>
             )}
+            <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row total">
               <span>TOTAL</span>
               <span>{parseFloat(String(s.total)).toFixed(2)}€</span>
             </div>
+            {/* Desglose fiscal */}
+            {(s.taxBase || s.reavMargin) && (
+              <>
+                <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
+                <div style={{ fontSize: "8px", color: "#555" }}>
+                  {s.fiscalSummary !== "reav_only" && s.taxBase && parseFloat(String(s.taxBase)) > 0 && (
+                    <div className="row">
+                      <span>Base imponible IVA {s.taxRate ?? 21}%</span>
+                      <span>{parseFloat(String(s.taxBase)).toFixed(2)}€</span>
+                    </div>
+                  )}
+                  {s.fiscalSummary !== "reav_only" && s.taxAmount && parseFloat(String(s.taxAmount)) > 0 && (
+                    <div className="row">
+                      <span>IVA {s.taxRate ?? 21}%</span>
+                      <span>{parseFloat(String(s.taxAmount)).toFixed(2)}€</span>
+                    </div>
+                  )}
+                  {(s.fiscalSummary === "reav_only" || s.fiscalSummary === "mixed") && s.reavMargin && parseFloat(String(s.reavMargin)) > 0 && (
+                    <div className="row">
+                      <span>Margen REAV (Rég. Especial Ag.)</span>
+                      <span>{parseFloat(String(s.reavMargin)).toFixed(2)}€</span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
             <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             {salePayments.map((p: any, i: number) => (
               <div key={i} className="row">

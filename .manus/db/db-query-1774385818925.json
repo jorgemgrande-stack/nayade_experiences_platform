@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE transactions \n  ADD COLUMN IF NOT EXISTS `fiscalRegime_tx` ENUM('reav','general_21','mixed') DEFAULT 'general_21',\n  ADD COLUMN IF NOT EXISTS `reservationId_tx` INT DEFAULT NULL;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nALTER TABLE transactions \n  ADD COLUMN IF NOT EXISTS `fiscalRegime_tx` ENUM('reav','general_21','mixed') DEFAULT 'general_21',\n  ADD COLUMN IF NOT EXISTS `reservationId_tx` INT DEFAULT NULL;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 581
+}

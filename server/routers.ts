@@ -38,6 +38,9 @@ import {
   createBooking,
   updateBookingStatus,
   getAllTransactions,
+  getTransactionsCount,
+  getAccountingReports,
+  getTpvReservationsToday,
   getDashboardMetrics,
   getDashboardOverview,
   getAllSlideshowItems,
@@ -880,12 +883,42 @@ export const appRouter = router({
         status: z.string().optional(),
         from: z.string().optional(),
         to: z.string().optional(),
-        limit: z.number().default(20),
+        saleChannel: z.string().optional(),
+        fiscalRegime: z.string().optional(),
+        search: z.string().optional(),
+        limit: z.number().default(50),
         offset: z.number().default(0),
       }))
       .query(async ({ input }) => {
         return getAllTransactions(input);
       }),
+
+    getTransactionsCount: adminProcedure
+      .input(z.object({
+        type: z.string().optional(),
+        status: z.string().optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+        saleChannel: z.string().optional(),
+        fiscalRegime: z.string().optional(),
+        search: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return getTransactionsCount(input);
+      }),
+
+    getReports: adminProcedure
+      .input(z.object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return getAccountingReports(input);
+      }),
+
+    getTpvReservationsToday: adminProcedure.query(async () => {
+      return getTpvReservationsToday();
+    }),
 
     getDashboardMetrics: adminProcedure.query(async () => {
       return getDashboardMetrics();

@@ -417,6 +417,24 @@ export const transactions = mysqlTable("transactions", {
   processedAt: timestamp("processedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  // Libro maestro ampliado
+  clientName:      varchar("clientName",      { length: 200 }),
+  clientEmail:     varchar("clientEmail",     { length: 200 }),
+  clientPhone:     varchar("clientPhone",     { length: 50 }),
+  productName:     varchar("productName",     { length: 300 }),
+  operativeCenter: varchar("operativeCenter", { length: 100 }),
+  sellerUserId:    int("sellerUserId"),
+  sellerName:      varchar("sellerName",      { length: 200 }),
+  saleChannel:     mysqlEnum("saleChannel", ["tpv", "online", "crm", "admin", "delegado"]).default("admin"),
+  taxBase:         decimal("taxBase",         { precision: 10, scale: 2 }).default("0"),
+  taxAmount:       decimal("taxAmount",       { precision: 10, scale: 2 }).default("0"),
+  reavMargin:      decimal("reavMargin",      { precision: 10, scale: 2 }).default("0"),
+  fiscalRegime:    mysqlEnum("fiscalRegime_tx", ["reav", "general_21", "mixed"]).default("general_21"),
+  tpvSaleId:       int("tpvSaleId"),
+  reservationId:   int("reservationId_tx"),
+  invoiceNumber:   varchar("invoiceNumber",   { length: 32 }),
+  reservationRef:  varchar("reservationRef",  { length: 32 }),
+  operationStatus: mysqlEnum("operationStatus", ["confirmada", "anulada", "reembolsada"]).default("confirmada"),
 });
 
 // ─── GHL INTEGRATION ─────────────────────────────────────────────────────────
@@ -1299,6 +1317,19 @@ export const tpvSales = mysqlTable("tpv_sales", {
   notes: text("notes"),
   createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
   paidAt: bigint("paidAt", { mode: "number" }),
+  // Fiscalidad
+  taxBase:        decimal("taxBase",        { precision: 10, scale: 2 }).default("0"),
+  taxAmount:      decimal("taxAmount",      { precision: 10, scale: 2 }).default("0"),
+  taxRate:        decimal("taxRate",        { precision: 5,  scale: 2 }).default("21"),
+  reavMargin:     decimal("reavMargin",     { precision: 10, scale: 2 }).default("0"),
+  reavCost:       decimal("reavCost",       { precision: 10, scale: 2 }).default("0"),
+  reavTax:        decimal("reavTax",        { precision: 10, scale: 2 }).default("0"),
+  fiscalSummary:  varchar("fiscalSummary",  { length: 20 }).default("mixed"),
+  // Canal y vendedor
+  saleChannel:    varchar("saleChannel",    { length: 20 }).default("tpv"),
+  sellerUserId:   int("sellerUserId"),
+  sellerName:     varchar("sellerName",     { length: 200 }),
+  operativeCenter:varchar("operativeCenter",{ length: 100 }),
 });
 export type TpvSale = typeof tpvSales.$inferSelect;
 
@@ -1317,6 +1348,14 @@ export const tpvSaleItems = mysqlTable("tpv_sale_items", {
   eventTime: varchar("eventTime", { length: 10 }),
   participants: int("participants").default(1),
   notes: varchar("notes_tsi", { length: 500 }),
+  // Fiscalidad por línea
+  fiscalRegime: mysqlEnum("fiscalRegime_tsi", ["reav", "general_21", "mixed"]).default("general_21"),
+  taxBase:      decimal("taxBase_tsi",   { precision: 10, scale: 2 }).default("0"),
+  taxAmount:    decimal("taxAmount_tsi", { precision: 10, scale: 2 }).default("0"),
+  taxRate:      decimal("taxRate_tsi",   { precision: 5,  scale: 2 }).default("21"),
+  reavCost:     decimal("reavCost_tsi",  { precision: 10, scale: 2 }).default("0"),
+  reavMargin:   decimal("reavMargin_tsi",{ precision: 10, scale: 2 }).default("0"),
+  reavTax:      decimal("reavTax_tsi",   { precision: 10, scale: 2 }).default("0"),
 });
 export type TpvSaleItem = typeof tpvSaleItems.$inferSelect;
 

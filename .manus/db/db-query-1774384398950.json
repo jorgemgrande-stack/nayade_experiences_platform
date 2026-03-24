@@ -1,0 +1,30 @@
+{
+  "query": "\nSELECT 'experiences' as tabla, COUNT(*) as total, SUM(isPresentialSale) as en_tpv FROM experiences\nUNION ALL\nSELECT 'packs', COUNT(*), SUM(isPresentialSale) FROM packs\nUNION ALL\nSELECT 'room_types', COUNT(*), SUM(isPresentialSale) FROM room_types\nUNION ALL\nSELECT 'spa_treatments', COUNT(*), SUM(isPresentialSale) FROM spa_treatments;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT 'experiences' as tabla, COUNT(*) as total, SUM(isPresentialSale) as en_tpv FROM experiences\nUNION ALL\nSELECT 'packs', COUNT(*), SUM(isPresentialSale) FROM packs\nUNION ALL\nSELECT 'room_types', COUNT(*), SUM(isPresentialSale) FROM room_types\nUNION ALL\nSELECT 'spa_treatments', COUNT(*), SUM(isPresentialSale) FROM spa_treatments;\n",
+  "rows": [
+    {
+      "tabla": "packs",
+      "total": "13",
+      "en_tpv": "13"
+    },
+    {
+      "tabla": "experiences",
+      "total": "12",
+      "en_tpv": "12"
+    },
+    {
+      "tabla": "room_types",
+      "total": "8",
+      "en_tpv": "8"
+    },
+    {
+      "tabla": "spa_treatments",
+      "total": "10",
+      "en_tpv": "10"
+    }
+  ],
+  "messages": [],
+  "stdout": "tabla\ttotal\ten_tpv\npacks\t13\t13\nexperiences\t12\t12\nroom_types\t8\t8\nspa_treatments\t10\t10\n",
+  "stderr": "",
+  "execution_time_ms": 64
+}

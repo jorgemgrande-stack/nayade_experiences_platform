@@ -15,7 +15,8 @@ import { Link } from "wouter";
 import {
   Receipt, TrendingUp, CreditCard, Banknote, Smartphone,
   Calendar, Clock, User, ChevronRight, ExternalLink, Search,
-  ArrowUpRight, ArrowDownLeft, CheckCircle, XCircle,
+  ArrowUpRight, ArrowDownLeft, CheckCircle, XCircle, BookOpen,
+  Phone, Mail, FileText,
 } from "lucide-react";
 
 const METHOD_ICONS: Record<string, React.ReactNode> = {
@@ -191,6 +192,7 @@ export default function TpvBackoffice() {
                   <TabsList className="bg-gray-800 border border-gray-700">
                     <TabsTrigger value="sales" className="text-xs">Ventas ({sessionDetail.sales?.length ?? 0})</TabsTrigger>
                     <TabsTrigger value="movements" className="text-xs">Movimientos ({sessionDetail.movements?.length ?? 0})</TabsTrigger>
+                    <TabsTrigger value="reservations" className="text-xs flex items-center gap-1"><BookOpen className="w-3 h-3" />Reservas hoy</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="sales">
@@ -256,6 +258,10 @@ export default function TpvBackoffice() {
                       </div>
                     </ScrollArea>
                   </TabsContent>
+
+                  <TabsContent value="reservations">
+                    <TpvReservationsToday />
+                  </TabsContent>
                 </Tabs>
               </div>
             ) : (
@@ -270,5 +276,71 @@ export default function TpvBackoffice() {
         </div>
       </div>
     </AdminLayout>
+  );
+}
+
+// ─── Componente: Reservas TPV del día ────────────────────────────────────────
+function TpvReservationsToday() {
+  const { data: reservations, isLoading } = trpc.accounting.getTpvReservationsToday.useQuery();
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2 py-4">
+        {[1,2,3].map(i => (
+          <div key={i} className="h-16 bg-gray-800 rounded-lg animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!reservations || reservations.length === 0) {
+    return (
+      <div className="text-center py-10 text-gray-600">
+        <BookOpen className="w-10 h-10 mx-auto mb-2 opacity-30" />
+        <p className="text-sm">No hay reservas TPV generadas hoy</p>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="h-80">
+      <div className="space-y-2 pr-2">
+        {reservations.map((res: any) => (
+          <div key={res.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-mono font-bold text-emerald-400">
+                {res.merchantOrder}
+              </span>
+              <Badge variant="outline" className="text-xs border-emerald-800 text-emerald-400">
+                {(res.amountTotal / 100).toFixed(2)}€
+              </Badge>
+            </div>
+            <p className="text-xs font-medium text-white truncate">{res.productName}</p>
+            <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+              {res.customerName && (
+                <span className="flex items-center gap-1">
+                  <User className="w-3 h-3" />{res.customerName}
+                </span>
+              )}
+              {res.customerEmail && (
+                <span className="flex items-center gap-1">
+                  <Mail className="w-3 h-3" />{res.customerEmail}
+                </span>
+              )}
+              {res.customerPhone && (
+                <span className="flex items-center gap-1">
+                  <Phone className="w-3 h-3" />{res.customerPhone}
+                </span>
+              )}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
+              <Clock className="w-3 h-3 inline mr-1" />
+              {new Date(res.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+              {res.bookingDate && <span className="ml-2">Fecha: {res.bookingDate}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </ScrollArea>
   );
 }

@@ -1,0 +1,9 @@
+{
+  "query": "\nUPDATE experiences SET isPresentialSale = 1;\nUPDATE packs SET isPresentialSale = 1;\nUPDATE room_types SET isPresentialSale = 1;\nUPDATE spa_treatments SET isPresentialSale = 1;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nUPDATE experiences SET isPresentialSale = 1;\nUPDATE packs SET isPresentialSale = 1;\nUPDATE room_types SET isPresentialSale = 1;\nUPDATE spa_treatments SET isPresentialSale = 1;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 117
+}

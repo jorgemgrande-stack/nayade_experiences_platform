@@ -1,0 +1,37 @@
+{
+  "query": "\nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS \nWHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'transactions'\nAND COLUMN_NAME IN ('sellerName','saleChannel','taxBase','taxAmount','reavMargin','fiscalRegime_tx','tpvSaleId','reservationId_tx','invoiceNumber','reservationRef','operationStatus');\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS \nWHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'transactions'\nAND COLUMN_NAME IN ('sellerName','saleChannel','taxBase','taxAmount','reavMargin','fiscalRegime_tx','tpvSaleId','reservationId_tx','invoiceNumber','reservationRef','operationStatus');\n",
+  "rows": [
+    {
+      "COLUMN_NAME": "sellerName"
+    },
+    {
+      "COLUMN_NAME": "saleChannel"
+    },
+    {
+      "COLUMN_NAME": "taxBase"
+    },
+    {
+      "COLUMN_NAME": "taxAmount"
+    },
+    {
+      "COLUMN_NAME": "reavMargin"
+    },
+    {
+      "COLUMN_NAME": "tpvSaleId"
+    },
+    {
+      "COLUMN_NAME": "invoiceNumber"
+    },
+    {
+      "COLUMN_NAME": "reservationRef"
+    },
+    {
+      "COLUMN_NAME": "operationStatus"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nsellerName\nsaleChannel\ntaxBase\ntaxAmount\nreavMargin\ntpvSaleId\ninvoiceNumber\nreservationRef\noperationStatus\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

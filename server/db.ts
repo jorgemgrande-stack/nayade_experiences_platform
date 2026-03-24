@@ -398,15 +398,143 @@ export async function updateBookingStatus(id: number, status: string, internalNo
   return { success: true };
 }
 
-// ─── TRANSACTIONS ─────────────────────────────────────────────────────────────
+// ──// ─── TRANSACTIONS ─────────────────────────────────────────────────────
 
-export async function getAllTransactions(params: { type?: string; status?: string; from?: string; to?: string; limit?: number; offset?: number }) {
+type TxFilters = {
+  type?: string; status?: string;
+  from?: string; to?: string;
+  saleChannel?: string; fiscalRegime?: string;
+  search?: string;
+  limit?: number; offset?: number;
+};
+
+function buildTxWhere(db: any, params: TxFilters) {
+  const conditions: any[] = [];
+  if (params.type)        conditions.push(eq(transactions.type, params.type as any));
+  if (params.status)      conditions.push(eq(transactions.status, params.status as any));
+  if (params.saleChannel) conditions.push(eq((transactions as any).saleChannel, params.saleChannel as any));
+  if (params.fiscalRegime)conditions.push(eq((transactions as any).fiscalRegime, params.fiscalRegime as any));
+  if (params.from) {
+    const fromDate = new Date(params.from);
+    conditions.push(sql`${transactions.createdAt} >= ${fromDate}`);
+  }
+  if (params.to) {
+    const toDate = new Date(params.to);
+    toDate.setHours(23, 59, 59, 999);
+    conditions.push(sql`${transactions.createdAt} <= ${toDate}`);
+  }
+  if (params.search) {
+    const s = `%${params.search}%`;
+    conditions.push(sql`(
+      ${transactions.transactionNumber} LIKE ${s} OR
+      ${transactions.description} LIKE ${s} OR
+      ${(transactions as any).clientName} LIKE ${s} OR
+      ${(transactions as any).clientEmail} LIKE ${s} OR
+      ${(transactions as any).productName} LIKE ${s}
+    )`);
+  }
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+export async function getAllTransactions(params: TxFilters) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(transactions)
-    .orderBy(desc(transactions.createdAt))
-    .limit(params.limit ?? 20)
-    .offset(params.offset ?? 0);
+  const where = buildTxWhere(db, params);
+  const q = db.select().from(transactions).orderBy(desc(transactions.createdAt))
+    .limit(params.limit ?? 50).offset(params.offset ?? 0);
+  return where ? q.where(where) : q;
+}
+
+export async function getTransactionsCount(params: TxFilters) {
+  const db = await getDb();
+  if (!db) return { total: 0 };
+  const where = buildTxWhere(db, params);
+  const q = db.select({ total: sql<number>`COUNT(*)` }).from(transactions);
+  const [row] = await (where ? q.where(where) : q);
+  return { total: Number(row?.total ?? 0) };
+}
+
+export async function getAccountingReports(params: { from?: string; to?: string }) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const conditions: any[] = [eq(transactions.status, "completado")];
+  if (params.from) conditions.push(sql`${transactions.createdAt} >= ${new Date(params.from)}`);
+  if (params.to) {
+    const d = new Date(params.to); d.setHours(23, 59, 59, 999);
+    conditions.push(sql`${transactions.createdAt} <= ${d}`);
+  }
+  const where = and(...conditions);
+
+  // Totales globales
+  const [totals] = await db.select({
+    totalRevenue:  sql<string>`COALESCE(SUM(amount), 0)`,
+    totalTaxBase:  sql<string>`COALESCE(SUM(taxBase), 0)`,
+    totalTaxAmount:sql<string>`COALESCE(SUM(taxAmount), 0)`,
+    totalReavMargin:sql<string>`COALESCE(SUM(reavMargin), 0)`,
+    count:         sql<number>`COUNT(*)`,
+  }).from(transactions).where(where);
+
+  // Por canal de venta
+  const byChannel = await db.select({
+    channel: (transactions as any).saleChannel,
+    total:   sql<string>`COALESCE(SUM(amount), 0)`,
+    count:   sql<number>`COUNT(*)`,
+  }).from(transactions).where(where).groupBy((transactions as any).saleChannel);
+
+  // Por método de pago
+  const byMethod = await db.select({
+    method: transactions.paymentMethod,
+    total:  sql<string>`COALESCE(SUM(amount), 0)`,
+    count:  sql<number>`COUNT(*)`,
+  }).from(transactions).where(where).groupBy(transactions.paymentMethod);
+
+  // Por régimen fiscal
+  const byFiscal = await db.select({
+    regime: (transactions as any).fiscalRegime,
+    total:  sql<string>`COALESCE(SUM(amount), 0)`,
+    taxBase:sql<string>`COALESCE(SUM(taxBase), 0)`,
+    iva:    sql<string>`COALESCE(SUM(taxAmount), 0)`,
+    reav:   sql<string>`COALESCE(SUM(reavMargin), 0)`,
+    count:  sql<number>`COUNT(*)`,
+  }).from(transactions).where(where).groupBy((transactions as any).fiscalRegime);
+
+  // Ventas por día (para gráfica)
+  const byDay = await db.select({
+    day:   sql<string>`DATE(createdAt)`,
+    total: sql<string>`COALESCE(SUM(amount), 0)`,
+    count: sql<number>`COUNT(*)`,
+  }).from(transactions).where(where).groupBy(sql`DATE(createdAt)`).orderBy(sql`DATE(createdAt)`);
+
+  return {
+    totals: {
+      revenue:     parseFloat(totals?.totalRevenue ?? "0"),
+      taxBase:     parseFloat(totals?.totalTaxBase ?? "0"),
+      taxAmount:   parseFloat(totals?.totalTaxAmount ?? "0"),
+      reavMargin:  parseFloat(totals?.totalReavMargin ?? "0"),
+      count:       Number(totals?.count ?? 0),
+    },
+    byChannel: byChannel.map(r => ({ channel: r.channel ?? "admin", total: parseFloat(String(r.total)), count: Number(r.count) })),
+    byMethod:  byMethod.map(r => ({ method: r.method ?? "otro", total: parseFloat(String(r.total)), count: Number(r.count) })),
+    byFiscal:  byFiscal.map(r => ({
+      regime: r.regime ?? "general_21",
+      total:  parseFloat(String(r.total)),
+      taxBase:parseFloat(String(r.taxBase)),
+      iva:    parseFloat(String(r.iva)),
+      reav:   parseFloat(String(r.reav)),
+      count:  Number(r.count),
+    })),
+    byDay: byDay.map(r => ({ day: r.day, total: parseFloat(String(r.total)), count: Number(r.count) })),
+  };
+}
+
+export async function getTpvReservationsToday() {
+  const db = await getDb();
+  if (!db) return [];
+  const todayStr = new Date().toISOString().slice(0, 10);
+  return db.select().from(reservations)
+    .where(sql`notes LIKE '%[ORIGEN_TPV]%' AND DATE(FROM_UNIXTIME(created_at / 1000)) = ${todayStr}`)
+    .orderBy(desc(reservations.createdAt));
 }
 
 export async function getDashboardMetrics() {

@@ -14,8 +14,10 @@ import {
   packs,
   spaTreatments,
   roomTypes,
+  reservations,
+  transactions,
 } from "../../drizzle/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -28,6 +30,69 @@ function generateTicketNumber(): string {
   const date = now.toISOString().slice(0, 10).replace(/-/g, "");
   const rand = Math.floor(Math.random() * 9000) + 1000;
   return `TPV-${date}-${rand}`;
+}
+
+function generateReservationRef(): string {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const rand = Math.floor(Math.random() * 90000) + 10000;
+  return `TPV-RES-${date}-${rand}`;
+}
+
+function generateTransactionNumber(): string {
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const rand = Math.floor(Math.random() * 90000) + 10000;
+  return `TXN-${date}-${rand}`;
+}
+
+/**
+ * Obtiene el régimen fiscal de un producto consultando la BD.
+ * Devuelve 'general_21' | 'reav' | 'mixed'
+ */
+async function getProductFiscalRegime(
+  productType: string,
+  productId: number
+): Promise<"reav" | "general_21" | "mixed"> {
+  try {
+    if (productType === "experience") {
+      const [row] = await db.select({ fiscalRegime: experiences.fiscalRegime }).from(experiences).where(eq(experiences.id, productId));
+      return (row?.fiscalRegime as "reav" | "general_21" | "mixed") ?? "general_21";
+    } else if (productType === "pack") {
+      const [row] = await db.select({ fiscalRegime: packs.fiscalRegime }).from(packs).where(eq(packs.id, productId));
+      return (row?.fiscalRegime as "reav" | "general_21" | "mixed") ?? "general_21";
+    } else if (productType === "spa") {
+      const [row] = await db.select({ fiscalRegime: spaTreatments.fiscalRegime }).from(spaTreatments).where(eq(spaTreatments.id, productId));
+      return (row?.fiscalRegime as "reav" | "general_21" | "mixed") ?? "general_21";
+    } else if (productType === "hotel") {
+      const [row] = await db.select({ fiscalRegime: roomTypes.fiscalRegime }).from(roomTypes).where(eq(roomTypes.id, productId));
+      return (row?.fiscalRegime as "reav" | "general_21" | "mixed") ?? "general_21";
+    }
+  } catch { /* fallback */ }
+  return "general_21";
+}
+
+/**
+ * Calcula la fiscalidad de una línea de venta.
+ * Para IVA general_21: base = precio / 1.21, iva = precio - base
+ * Para REAV: margen = precio - coste (coste estimado al 60% si no se conoce), impuesto = margen * 0.21
+ */
+function calcLineFiscal(
+  lineTotal: number,
+  fiscalRegime: "reav" | "general_21" | "mixed",
+  reavCostHint?: number // coste real del proveedor si se conoce
+): { taxBase: number; taxAmount: number; taxRate: number; reavCost: number; reavMargin: number; reavTax: number } {
+  if (fiscalRegime === "reav") {
+    const cost = reavCostHint ?? lineTotal * 0.6; // estimación 60% si no hay coste real
+    const margin = Math.max(0, lineTotal - cost);
+    const reavTax = margin * 0.21;
+    return { taxBase: 0, taxAmount: 0, taxRate: 0, reavCost: cost, reavMargin: margin, reavTax };
+  } else {
+    // IVA 21% incluido en el precio
+    const taxBase = lineTotal / 1.21;
+    const taxAmount = lineTotal - taxBase;
+    return { taxBase, taxAmount, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 };
+  }
 }
 
 // ─── ROUTER ──────────────────────────────────────────────────────────────────
@@ -295,8 +360,8 @@ export const tpvRouter = router({
         ).min(1),
       })
     )
-    .mutation(async ({ input }) => {
-      // Calculate totals
+    .mutation(async ({ input, ctx }) => {
+      // ── 1. Calcular totales básicos ────────────────────────────────────────
       const subtotal = input.items.reduce((acc, item) => {
         const lineTotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
         return acc + lineTotal;
@@ -312,9 +377,36 @@ export const tpvRouter = router({
         });
       }
 
-      const ticketNumber = generateTicketNumber();
+      // ── 2. Calcular fiscalidad por línea ────────────────────────────────────
+      const linesFiscal: Array<{
+        fiscalRegime: "reav" | "general_21" | "mixed";
+        taxBase: number; taxAmount: number; taxRate: number;
+        reavCost: number; reavMargin: number; reavTax: number;
+        lineSubtotal: number;
+      }> = [];
 
-      // Insert sale
+      for (const item of input.items) {
+        const lineSubtotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
+        const regime = await getProductFiscalRegime(item.productType, item.productId);
+        const fiscal = calcLineFiscal(lineSubtotal, regime);
+        linesFiscal.push({ fiscalRegime: regime, ...fiscal, lineSubtotal });
+      }
+
+      // Totales fiscales agregados
+      const totalTaxBase   = linesFiscal.reduce((s, l) => s + l.taxBase,   0);
+      const totalTaxAmount = linesFiscal.reduce((s, l) => s + l.taxAmount, 0);
+      const totalReavMargin= linesFiscal.reduce((s, l) => s + l.reavMargin,0);
+      const totalReavCost  = linesFiscal.reduce((s, l) => s + l.reavCost,  0);
+      const totalReavTax   = linesFiscal.reduce((s, l) => s + l.reavTax,   0);
+      const hasReav = linesFiscal.some(l => l.fiscalRegime === "reav");
+      const hasIva  = linesFiscal.some(l => l.fiscalRegime === "general_21");
+      const fiscalSummary = hasReav && hasIva ? "mixed" : hasReav ? "reav_only" : "iva_only";
+
+      const ticketNumber = generateTicketNumber();
+      const sellerName = (ctx as any).user?.name ?? null;
+      const sellerUserId = (ctx as any).user?.id ?? null;
+
+      // ── 3. Insertar venta con datos fiscales ─────────────────────────────────
       const [saleResult] = await db.insert(tpvSales).values({
         ticketNumber,
         sessionId: input.sessionId,
@@ -329,12 +421,23 @@ export const tpvRouter = router({
         notes: input.notes,
         createdAt: Date.now(),
         paidAt: Date.now(),
-      });
+        taxBase:        String(totalTaxBase.toFixed(2)),
+        taxAmount:      String(totalTaxAmount.toFixed(2)),
+        taxRate:        "21",
+        reavMargin:     String(totalReavMargin.toFixed(2)),
+        reavCost:       String(totalReavCost.toFixed(2)),
+        reavTax:        String(totalReavTax.toFixed(2)),
+        fiscalSummary,
+        saleChannel:    "tpv",
+        sellerUserId,
+        sellerName,
+      } as any);
       const saleId = (saleResult as any).insertId as number;
 
-      // Insert items
-      for (const item of input.items) {
-        const lineSubtotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
+      // ── 4. Insertar líneas con fiscalidad ───────────────────────────────────
+      for (let i = 0; i < input.items.length; i++) {
+        const item = input.items[i];
+        const lf   = linesFiscal[i];
         await db.insert(tpvSaleItems).values({
           saleId,
           productType: item.productType,
@@ -343,15 +446,23 @@ export const tpvRouter = router({
           quantity: item.quantity,
           unitPrice: String(item.unitPrice.toFixed(2)),
           discountPercent: String(item.discountPercent.toFixed(2)),
-          subtotal: String(lineSubtotal.toFixed(2)),
+          subtotal: String(lf.lineSubtotal.toFixed(2)),
           eventDate: item.eventDate,
           eventTime: item.eventTime,
           participants: item.participants,
           notes: item.notes,
-        });
+          fiscalRegime: lf.fiscalRegime,
+          taxBase:    String(lf.taxBase.toFixed(2)),
+          taxAmount:  String(lf.taxAmount.toFixed(2)),
+          taxRate:    String(lf.taxRate.toFixed(2)),
+          reavCost:   String(lf.reavCost.toFixed(2)),
+          reavMargin: String(lf.reavMargin.toFixed(2)),
+          reavTax:    String(lf.reavTax.toFixed(2)),
+        } as any);
       }
 
-      // Insert payments
+      // ── 5. Insertar pagos ────────────────────────────────────────────────────
+      const primaryPaymentMethod = input.payments[0]?.method ?? "other";
       for (const payment of input.payments) {
         const changeGiven = payment.method === "cash" && payment.amountTendered
           ? Math.max(0, payment.amountTendered - payment.amount)
@@ -368,12 +479,83 @@ export const tpvRouter = router({
         });
       }
 
-      // Return full sale with items and payments
+      // ── 6. Generar reserva automática si hay cliente y producto principal ────
+      let reservationId: number | null = null;
+      const mainItem = input.items[0];
+      if (input.customerName && mainItem) {
+        try {
+          const merchantOrder = generateReservationRef();
+          const amountCents = Math.round(total * 100);
+          const [resResult] = await db.insert(reservations).values({
+            productId: mainItem.productId,
+            productName: mainItem.productName,
+            bookingDate: mainItem.eventDate ?? new Date().toISOString().slice(0, 10),
+            people: mainItem.participants ?? 1,
+            amountTotal: amountCents,
+            amountPaid: amountCents,
+            status: "paid",
+            customerName: input.customerName,
+            customerEmail: input.customerEmail ?? "",
+            customerPhone: input.customerPhone ?? "",
+            merchantOrder,
+            notes: `[ORIGEN_TPV] Ticket: ${ticketNumber}`,
+            paymentMethod: primaryPaymentMethod === "card" ? "redsys" :
+                           primaryPaymentMethod === "cash" ? "efectivo" : "otro",
+            channel: "otro",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            paidAt: Date.now(),
+          } as any);
+          reservationId = (resResult as any).insertId as number;
+          // Actualizar la venta con el ID de reserva
+          await db.update(tpvSales).set({ reservationId } as any).where(eq(tpvSales.id, saleId));
+        } catch (e) {
+          console.error("[TPV] Error creando reserva automática:", e);
+        }
+      }
+
+      // ── 7. Registrar transacción unificada en el libro maestro ───────────────
+      try {
+        const methodMap: Record<string, string> = {
+          cash: "efectivo", card: "tarjeta", bizum: "otro", other: "otro"
+        };
+        const txMethod = methodMap[primaryPaymentMethod] ?? "otro";
+        const txNumber = generateTransactionNumber();
+        await db.insert(transactions).values({
+          transactionNumber: txNumber,
+          type: "ingreso",
+          amount: String(total.toFixed(2)),
+          currency: "EUR",
+          paymentMethod: txMethod as any,
+          status: "completado",
+          description: `Venta TPV ${ticketNumber}${mainItem ? ` — ${mainItem.productName}` : ""}`,
+          processedAt: new Date(),
+          clientName: input.customerName ?? null,
+          clientEmail: input.customerEmail ?? null,
+          clientPhone: input.customerPhone ?? null,
+          productName: mainItem?.productName ?? null,
+          saleChannel: "tpv",
+          sellerUserId,
+          sellerName,
+          taxBase:    String(totalTaxBase.toFixed(2)),
+          taxAmount:  String(totalTaxAmount.toFixed(2)),
+          reavMargin: String(totalReavMargin.toFixed(2)),
+          fiscalRegime: (fiscalSummary === "iva_only" ? "general_21" : fiscalSummary === "reav_only" ? "reav" : "mixed") as any,
+          tpvSaleId: saleId,
+          reservationId: reservationId ?? undefined,
+          reservationRef: reservationId ? `TPV-RES-${saleId}` : undefined,
+          operationStatus: "confirmada",
+        } as any);
+      } catch (e) {
+        console.error("[TPV] Error registrando transacción:", e);
+      }
+
+      // ── 8. Devolver venta completa ───────────────────────────────────────────
       const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
       const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, saleId));
       const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, saleId));
 
-      return { sale, items, payments };
+      return { sale, items, payments, reservationId };
     }),
 
   getSale: protectedProcedure

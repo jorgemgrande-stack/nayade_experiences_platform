@@ -1722,3 +1722,16 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Vincular datos de empresa facturadora al PDF de facturas (cabecera emisor)
 - [x] Vincular datos de empresa facturadora al ticket TPV (cabecera)
 - [x] Vincular datos de empresa facturadora al PDF de presupuestos (cabecera emisor)
+
+## Evolución Estructural TPV v10.0
+- [x] Migrar BD: campos fiscales en tpv_sales y tpv_sale_items (fiscalRegime, taxBase, taxAmount, reavMargin, reavCost, reavTax)
+- [x] Migrar BD: ampliar tabla transactions (canal, vendedor, estación, fiscalidad, refs TPV/reserva/factura)
+- [x] Backend: generar reserva automática (channel=tpv) al crear venta TPV
+- [x] Backend: cálculo fiscal IVA/REAV en createSale TPV
+- [x] Backend: registrar transacción unificada al crear venta TPV
+- [x] Backend: nuevos procedimientos getTransactions con filtros avanzados y getReports BI
+- [x] Frontend TPV: pestaña "Reservas TPV del día"
+- [x] Frontend: botón "Emitir factura" en ficha de reserva TPV
+- [x] Frontend: nuevo ticket 80mm con desglose fiscal y QR
+- [x] Frontend: módulo Transacciones rediseñado con tabla completa y buscador avanzado
+- [x] Frontend: módulo Informes BI con gráficas operativas

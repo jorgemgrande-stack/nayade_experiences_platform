@@ -62,6 +62,7 @@ const DailyOrders = lazy(() => import("./pages/admin/operations/DailyOrders"));
 // Accounting
 const AccountingDashboard = lazy(() => import("./pages/admin/accounting/AccountingDashboard"));
 const TransactionsList = lazy(() => import("./pages/admin/accounting/TransactionsList"));
+const AccountingReports = lazy(() => import("./pages/admin/accounting/AccountingReports"));
 
 // Hotel & SPA
 const HotelManager = lazy(() => import("./pages/admin/hotel/HotelManager"));
@@ -181,6 +182,7 @@ function Router() {
       <Route path="/admin/contabilidad">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingDashboard /></Suspense>}</Route>
       <Route path="/admin/contabilidad/dashboard">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingDashboard /></Suspense>}</Route>
       <Route path="/admin/contabilidad/transacciones">{() => <Suspense fallback={<AdminLoadingFallback />}><TransactionsList /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/informes">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingReports /></Suspense>}</Route>
 
       {/* Fiscal REAV */}
       <Route path="/admin/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
