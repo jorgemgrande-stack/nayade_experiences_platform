@@ -496,8 +496,8 @@ export const tpvRouter = router({
             amountPaid: amountCents,
             status: "paid",
             customerName: input.customerName || "Cliente TPV",
-            customerEmail: input.customerEmail ?? "",
-            customerPhone: input.customerPhone ?? "",
+            customerEmail: input.customerEmail || null,
+            customerPhone: input.customerPhone || null,
             merchantOrder,
             notes: `[ORIGEN_TPV] Ticket: ${ticketNumber}${input.customerName ? ` · ${input.customerName}` : ""}`,
             paymentMethod: primaryPaymentMethod === "card" ? "redsys" :

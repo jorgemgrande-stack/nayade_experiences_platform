@@ -1,0 +1,22 @@
+{
+  "query": "\nSELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT \nFROM INFORMATION_SCHEMA.COLUMNS \nWHERE TABLE_NAME = 'reservations' \n  AND COLUMN_NAME IN ('channel', 'customer_email')\nORDER BY COLUMN_NAME;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT \nFROM INFORMATION_SCHEMA.COLUMNS \nWHERE TABLE_NAME = 'reservations' \n  AND COLUMN_NAME IN ('channel', 'customer_email')\nORDER BY COLUMN_NAME;\n",
+  "rows": [
+    {
+      "COLUMN_NAME": "channel",
+      "COLUMN_TYPE": "enum('web','crm','telefono','email','otro','tpv')",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "web"
+    },
+    {
+      "COLUMN_NAME": "customer_email",
+      "COLUMN_TYPE": "varchar(255)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\tCOLUMN_TYPE\tIS_NULLABLE\tCOLUMN_DEFAULT\nchannel\tenum('web','crm','telefono','email','otro','tpv')\tYES\tweb\ncustomer_email\tvarchar(255)\tYES\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 65
+}

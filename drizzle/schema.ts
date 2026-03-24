@@ -469,7 +469,7 @@ export const reservations = mysqlTable("reservations", {
   amountPaid: int("amount_paid").default(0),
   status: mysqlEnum("status", ["draft", "pending_payment", "paid", "failed", "cancelled"]).default("draft").notNull(),
   customerName: varchar("customer_name", { length: 255 }).notNull(),
-  customerEmail: varchar("customer_email", { length: 255 }).notNull(),
+  customerEmail: varchar("customer_email", { length: 255 }),
   customerPhone: varchar("customer_phone", { length: 50 }),
   merchantOrder: varchar("merchant_order", { length: 12 }).notNull().unique(),
   redsysResponse: text("redsys_response"),
@@ -486,7 +486,7 @@ export const reservations = mysqlTable("reservations", {
   paymentValidatedAt: bigint("paymentValidatedAt", { mode: "number" }),
   transferProofUrl: text("transferProofUrl"),
   // Channel & metadata
-  channel: mysqlEnum("channel", ["web", "crm", "telefono", "email", "otro"]).default("web"),
+  channel: mysqlEnum("channel", ["web", "crm", "telefono", "email", "otro", "tpv"]).default("web"),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   paidAt: bigint("paid_at", { mode: "number" }),

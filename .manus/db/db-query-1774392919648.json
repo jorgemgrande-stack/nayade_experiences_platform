@@ -1,0 +1,9 @@
+{
+  "query": "\n-- 1. Ampliar el enum channel para incluir 'tpv'\nALTER TABLE reservations \n  MODIFY COLUMN channel ENUM('web','crm','telefono','email','otro','tpv') DEFAULT 'web';\n\n-- 2. Hacer customerEmail nullable (ventas TPV sin email de cliente)\nALTER TABLE reservations \n  MODIFY COLUMN customer_email VARCHAR(255) NULL;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- 1. Ampliar el enum channel para incluir 'tpv'\nALTER TABLE reservations \n  MODIFY COLUMN channel ENUM('web','crm','telefono','email','otro','tpv') DEFAULT 'web';\n\n-- 2. Hacer customerEmail nullable (ventas TPV sin email de cliente)\nALTER TABLE reservations \n  MODIFY COLUMN customer_email VARCHAR(255) NULL;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 246
+}
