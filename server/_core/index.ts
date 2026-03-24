@@ -13,6 +13,7 @@ import { createPasswordResetRouter } from "../passwordReset";
 import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
+import settlementExportRouter from "../settlementExportRoutes";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { serveStatic, setupVite } from "./vite";
 
@@ -139,6 +140,8 @@ async function startServer() {
   app.use(uploadRouter);
   // Redsys IPN notification endpoint
   app.use(redsysRouter);
+  // Settlement Excel export endpoint
+  app.use(settlementExportRouter);
   // tRPC API
   app.use(
     "/api/trpc",

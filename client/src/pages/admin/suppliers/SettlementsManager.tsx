@@ -13,7 +13,8 @@ import { toast } from "sonner";
 import {
   FileText, Plus, Search, ChevronRight, Calendar, Euro, CheckCircle2,
   Clock, AlertTriangle, XCircle, RefreshCw, Send, Trash2, ExternalLink,
-  Download, Upload, FileCheck, History, Building2, Calculator, Paperclip
+  Download, Upload, FileCheck, History, Building2, Calculator, Paperclip,
+  FileSpreadsheet
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -380,6 +381,16 @@ export default function SettlementsManager() {
                   <Button variant="outline" size="sm" asChild>
                     <a href={detail.pdfUrl} target="_blank" rel="noopener noreferrer">
                       <Download className="w-3 h-3 mr-1" />Descargar PDF
+                    </a>
+                  </Button>
+                )}
+                {selected && (
+                  <Button variant="outline" size="sm" asChild className="text-emerald-700 border-emerald-200 hover:bg-emerald-50">
+                    <a
+                      href={`/api/settlements/${selected.id}/export-excel`}
+                      download
+                    >
+                      <FileSpreadsheet className="w-3 h-3 mr-1" />Exportar Excel
                     </a>
                   </Button>
                 )}

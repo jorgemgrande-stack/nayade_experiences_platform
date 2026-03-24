@@ -1613,3 +1613,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ### Sidebar AdminLayout
 - [x] Ítem "Proveedores" bajo Contabilidad
 - [x] Ítem "Liquidaciones" bajo Contabilidad
+
+## v7.1: Exportación Excel de Liquidaciones
+- [x] Instalar dependencia xlsx en el servidor
+- [x] Endpoint REST GET /api/settlements/:id/export-excel en settlementExportRoutes.ts
+- [x] Generar XLSX con hoja de cabecera y hoja de líneas de liquidación
+- [x] Botón "Exportar Excel" en SettlementsManager con descarga directa
+- [x] Tests del generador XLSX (13 tests pasando)
