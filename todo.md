@@ -1493,3 +1493,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Admin CRMDashboard CreateDirectQuoteModal: selector régimen fiscal por línea, recalcular IVA
 - [x] Admin CRMDashboard QuoteBuilderModal: selector régimen fiscal por línea, recalcular IVA
 - [x] Admin CRMDashboard QuoteEditModal: selector régimen fiscal por línea, recalcular IVA
+
+## v6.3: Automatizaciones REAV (Fase 5)
+- [ ] Backend confirmPayment: crear expediente REAV automáticamente si hay líneas reav en la factura
+- [ ] Backend confirmTransfer: crear expediente REAV automáticamente si hay líneas reav en la factura
+- [ ] Semáforo visual en listado de expedientes REAV (verde/amarillo/rojo según estado documentación)
+- [ ] Exportación ZIP del expediente REAV con todos los documentos adjuntos desde ReavManager
+
+## v6.3: Sidebar AdminLayout — Fiscal REAV
+- [x] AdminLayout.tsx: añadir ítem "Fiscal REAV" (con icono Receipt) entre Contabilidad y Hotel en el sidebar con grupos colapsables

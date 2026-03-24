@@ -41,6 +41,36 @@ const OPERATIVE_STATUS_COLORS: Record<OperativeStatus, string> = {
   anulado: "bg-red-100 text-red-800",
 };
 
+// ─── Semáforo visual ──────────────────────────────────────────────────────────────────────────────────────
+
+type TrafficLight = "red" | "yellow" | "green" | "grey";
+
+function getTrafficLight(fiscalStatus: string, operativeStatus: string): TrafficLight {
+  if (operativeStatus === "anulado" || fiscalStatus === "anulado") return "grey";
+  if (fiscalStatus === "cerrado" && operativeStatus === "cerrado") return "green";
+  if (fiscalStatus === "documentacion_completa" || fiscalStatus === "en_revision") return "yellow";
+  if (fiscalStatus === "pendiente_documentacion") return "red";
+  return "yellow";
+}
+
+const TRAFFIC_LIGHT_CONFIG: Record<TrafficLight, { bg: string; ring: string; label: string; pulse: boolean }> = {
+  red:    { bg: "bg-red-500",    ring: "ring-red-300",    label: "Pendiente documentación", pulse: true },
+  yellow: { bg: "bg-amber-400",  ring: "ring-amber-200",  label: "En proceso",               pulse: false },
+  green:  { bg: "bg-emerald-500",ring: "ring-emerald-300",label: "Cerrado y validado",       pulse: false },
+  grey:   { bg: "bg-slate-400",  ring: "ring-slate-200",  label: "Anulado",                  pulse: false },
+};
+
+function TrafficLightDot({ fiscalStatus, operativeStatus }: { fiscalStatus: string; operativeStatus: string }) {
+  const light = getTrafficLight(fiscalStatus, operativeStatus);
+  const cfg = TRAFFIC_LIGHT_CONFIG[light];
+  return (
+    <span
+      title={cfg.label}
+      className={`inline-block w-3 h-3 rounded-full ring-2 shrink-0 ${cfg.bg} ${cfg.ring} ${cfg.pulse ? "animate-pulse" : ""}`}
+    />
+  );
+}
+
 const COST_CATEGORIES = [
   { value: "transporte", label: "Transporte" },
   { value: "alojamiento", label: "Alojamiento" },
@@ -128,6 +158,12 @@ export default function ReavManager() {
               <Plus className="w-4 h-4 mr-1" /> Nuevo
             </Button>
           </div>
+          {/* Leyenda del semáforo */}
+          <div className="flex items-center gap-3 text-xs text-slate-500 mb-2">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse ring-1 ring-red-300" />Pendiente</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-1 ring-amber-200" />En proceso</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-1 ring-emerald-300" />Cerrado</span>
+          </div>
           <div className="space-y-2">
             <Select value={filterFiscal} onValueChange={setFilterFiscal}>
               <SelectTrigger className="h-8 text-xs">
@@ -169,10 +205,13 @@ export default function ReavManager() {
               className={`w-full text-left p-4 border-b border-slate-100 hover:bg-slate-50 transition-colors ${selectedId === exp.id ? "bg-orange-50 border-l-4 border-l-orange-500" : ""}`}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-mono text-xs text-slate-500 mb-1">{exp.expedientNumber}</p>
-                  <p className="text-sm font-medium text-slate-800 truncate">{exp.serviceDescription || "Sin descripción"}</p>
-                  <p className="text-xs text-slate-500 mt-1">{exp.destination || "—"} · {exp.numberOfPax} pax</p>
+                <div className="flex items-start gap-2 min-w-0">
+                  <TrafficLightDot fiscalStatus={exp.fiscalStatus} operativeStatus={exp.operativeStatus} />
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-slate-500 mb-1">{exp.expedientNumber}</p>
+                    <p className="text-sm font-medium text-slate-800 truncate">{exp.serviceDescription || "Sin descripción"}</p>
+                    <p className="text-xs text-slate-500 mt-1">{exp.destination || "—"} · {exp.numberOfPax} pax</p>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 items-end shrink-0">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${FISCAL_STATUS_COLORS[exp.fiscalStatus as FiscalStatus]}`}>

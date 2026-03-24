@@ -2,7 +2,7 @@
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
-import { createLead, createBookingFromReservation } from "../db";
+import { createLead, createBookingFromReservation, createReavExpedient } from "../db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -16,6 +16,7 @@ import {
   clients,
   experiences,
   experienceVariants,
+  reavExpedients,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -1293,7 +1294,31 @@ export const crmRouter = router({
           console.error("Internal notification failed:", e);
         }
 
-        return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl };
+        // ── Crear expediente REAV automáticamente si hay líneas REAV ─────────────
+        const reavLines = items.filter(i => i.fiscalRegime === "reav");
+        let reavExpedientId: number | undefined;
+        let reavExpedientNumber: string | undefined;
+        if (reavLines.length > 0) {
+          try {
+            const reavSaleAmount = reavLines.reduce((s, i) => s + i.total, 0);
+            const reavResult = await createReavExpedient({
+              invoiceId,
+              reservationId,
+              serviceDescription: reavLines.map(i => i.description).join(" | "),
+              serviceDate: now.toISOString().split("T")[0],
+              numberOfPax: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
+              saleAmountTotal: String(reavSaleAmount),
+              internalNotes: `Expediente creado automáticamente al confirmar pago del presupuesto ${quote.quoteNumber ?? quote.id}`,
+            });
+            reavExpedientId = reavResult.id;
+            reavExpedientNumber = reavResult.expedientNumber;
+            await logActivity("invoice", invoiceId, "reav_expedient_created", ctx.user.id, ctx.user.name, { expedientId: reavExpedientId, expedientNumber: reavExpedientNumber });
+          } catch (e) {
+            console.error("[confirmPayment] Error al crear expediente REAV:", e);
+          }
+        }
+
+        return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl, reavExpedientId, reavExpedientNumber };
       }),
 
     // ─── ESCENARIO B: Convertir a reserva SIN pago previo (admin manual) ──────
@@ -1528,7 +1553,32 @@ export const crmRouter = router({
             reservationId,
           });
         } catch (e) { console.error("Internal notification failed:", e); }
-        return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl };
+
+        // ── Crear expediente REAV automáticamente si hay líneas REAV ─────────────
+        const reavLinesTransfer = items.filter(i => i.fiscalRegime === "reav");
+        let reavExpedientIdT: number | undefined;
+        let reavExpedientNumberT: string | undefined;
+        if (reavLinesTransfer.length > 0) {
+          try {
+            const reavSaleAmountT = reavLinesTransfer.reduce((s, i) => s + i.total, 0);
+            const reavResultT = await createReavExpedient({
+              invoiceId,
+              reservationId,
+              serviceDescription: reavLinesTransfer.map(i => i.description).join(" | "),
+              serviceDate: now.toISOString().split("T")[0],
+              numberOfPax: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
+              saleAmountTotal: String(reavSaleAmountT),
+              internalNotes: `Expediente creado automáticamente al confirmar transferencia del presupuesto ${quote.quoteNumber ?? quote.id}`,
+            });
+            reavExpedientIdT = reavResultT.id;
+            reavExpedientNumberT = reavResultT.expedientNumber;
+            await logActivity("invoice", invoiceId, "reav_expedient_created", ctx.user.id, ctx.user.name, { expedientId: reavExpedientIdT, expedientNumber: reavExpedientNumberT });
+          } catch (e) {
+            console.error("[confirmTransfer] Error al crear expediente REAV:", e);
+          }
+        }
+
+        return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl, reavExpedientId: reavExpedientIdT, reavExpedientNumber: reavExpedientNumberT };
       }),
 
 
