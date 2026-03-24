@@ -88,6 +88,9 @@ const ReavManager = lazy(() => import("./pages/admin/fiscal/ReavManager"));
 const SuppliersManager = lazy(() => import("./pages/admin/suppliers/SuppliersManager"));
 const SettlementsManager = lazy(() => import("./pages/admin/suppliers/SettlementsManager"));
 
+// Marketing
+const DiscountCodesManager = lazy(() => import("./pages/DiscountCodesManager"));
+
 // TPV
 const TpvScreen = lazy(() => import("./pages/admin/tpv/TpvScreen"));
 const TpvBackoffice = lazy(() => import("./pages/admin/tpv/TpvBackoffice"));
@@ -187,6 +190,10 @@ function Router() {
       {/* Fiscal REAV */}
       <Route path="/admin/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
       <Route path="/admin/fiscal/reav">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
+
+      {/* Marketing */}
+      <Route path="/admin/marketing">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
+      <Route path="/admin/marketing/codigos-descuento">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
 
       {/* Suppliers & Settlements */}
       <Route path="/admin/suppliers">{() => <Suspense fallback={<AdminLoadingFallback />}><SuppliersManager /></Suspense>}</Route>

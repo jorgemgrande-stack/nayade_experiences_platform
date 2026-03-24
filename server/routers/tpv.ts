@@ -336,6 +336,7 @@ export const tpvRouter = router({
         customerPhone: z.string().optional(),
         discountAmount: z.number().min(0).default(0),
         discountReason: z.string().optional(),
+        discountCodeId: z.number().optional(),
         notes: z.string().optional(),
         items: z.array(
           z.object({
@@ -417,6 +418,7 @@ export const tpvRouter = router({
         subtotal: String(subtotal.toFixed(2)),
         discountAmount: String(input.discountAmount.toFixed(2)),
         discountReason: input.discountReason,
+        discountCodeId: input.discountCodeId ?? null,
         total: String(total.toFixed(2)),
         status: "paid",
         notes: input.notes,

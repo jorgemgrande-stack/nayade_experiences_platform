@@ -736,11 +736,21 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const [taxRate, setTaxRate] = useState(21);
   const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
+  // Promo code
+  const [promoInput, setPromoInput] = useState("");
+  const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
+  const validatePromo = trpc.discounts.validate.useMutation({
+    onSuccess: (d) => setPromoData({ id: d.id, code: d.code, discountPercent: d.discountPercent }),
+    onError: (e) => { toast.error(e.message); setPromoData(null); },
+  });
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-  const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
-  const total = parseFloat((subtotal + taxAmount).toFixed(2));
+  const promoDiscount = promoData ? parseFloat((subtotal * promoData.discountPercent / 100).toFixed(2)) : 0;
+  const discountedSubtotal = Math.max(0, subtotal - promoDiscount);
+  const discountedGeneral = Math.max(0, generalSubtotal - (promoData ? parseFloat((generalSubtotal * promoData.discountPercent / 100).toFixed(2)) : 0));
+  const taxAmount = parseFloat((discountedGeneral * (taxRate / 100)).toFixed(2));
+  const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
 
   // Búsqueda de clientes existentes
   const { data: clientSuggestions } = trpc.crm.clients.list.useQuery(
@@ -794,11 +804,11 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       title,
       items,
       subtotal,
-      discount: 0,
+      discount: promoDiscount,
       taxRate,
       total,
       validUntil,
-      notes: notes || undefined,
+      notes: promoData ? `Código ${promoData.code} (-${promoData.discountPercent}%)${notes ? "\n" + notes : ""}` : notes || undefined,
       conditions,
       sendNow: andSend,
       origin: window.location.origin,
@@ -1053,6 +1063,13 @@ function QuoteBuilderModal({
   ]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
+  // Promo code
+  const [promoInput, setPromoInput] = useState("");
+  const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
+  const validatePromo = trpc.discounts.validate.useMutation({
+    onSuccess: (d) => setPromoData({ id: d.id, code: d.code, discountPercent: d.discountPercent }),
+    onError: (e) => { toast.error(e.message); setPromoData(null); },
+  });
   const previewQuery = trpc.crm.leads.previewFromLead.useQuery(
     { leadId },
     { enabled: false }
@@ -1070,8 +1087,11 @@ function QuoteBuilderModal({
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const generalSubtotalBuilder = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-  const taxAmount = parseFloat((generalSubtotalBuilder * (taxRate / 100)).toFixed(2));
-  const total = parseFloat((subtotal + taxAmount).toFixed(2));
+  const promoDiscount = promoData ? parseFloat((subtotal * promoData.discountPercent / 100).toFixed(2)) : 0;
+  const discountedSubtotal = Math.max(0, subtotal - promoDiscount);
+  const discountedGeneral = Math.max(0, generalSubtotalBuilder - (promoData ? parseFloat((generalSubtotalBuilder * promoData.discountPercent / 100).toFixed(2)) : 0));
+  const taxAmount = parseFloat((discountedGeneral * (taxRate / 100)).toFixed(2));
+  const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) =>
@@ -1117,7 +1137,7 @@ function QuoteBuilderModal({
       description,
       items,
       subtotal,
-      discount: 0,
+      discount: promoDiscount,
       taxRate,
       total,
       validUntil,
@@ -1268,6 +1288,30 @@ function QuoteBuilderModal({
           </div>
         </div>
 
+        {/* Código promocional */}
+        <div className="bg-white/5 rounded-xl p-3">
+          <Label className="text-white/60 text-xs mb-1.5 block">Código de descuento (opcional)</Label>
+          {promoData ? (
+            <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded-lg px-3 py-2">
+              <span className="font-mono font-bold text-green-400 text-sm">{promoData.code} — -{promoData.discountPercent}%</span>
+              <button onClick={() => { setPromoData(null); setPromoInput(""); }} className="text-white/40 hover:text-red-400 text-xs ml-2">× Quitar</button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm font-mono uppercase"
+                placeholder="VERANO25"
+                value={promoInput}
+                onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === "Enter" && validatePromo.mutate({ code: promoInput })}
+              />
+              <Button size="sm" className="bg-orange-600 hover:bg-orange-700 text-white shrink-0" onClick={() => validatePromo.mutate({ code: promoInput })} disabled={validatePromo.isPending || !promoInput.trim()}>
+                {validatePromo.isPending ? "..." : "Aplicar"}
+              </Button>
+            </div>
+          )}
+        </div>
+
         {/* Totals */}
         <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
@@ -1278,6 +1322,9 @@ function QuoteBuilderModal({
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
             <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+          )}
+          {promoDiscount > 0 && (
+            <div className="flex justify-between text-sm text-green-400"><span>Descuento {promoData?.code}</span><span>-{promoDiscount.toFixed(2)} €</span></div>
           )}
           {generalSubtotalBuilder > 0 && (
             <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>

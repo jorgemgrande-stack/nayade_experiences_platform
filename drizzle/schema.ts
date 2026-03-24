@@ -1373,3 +1373,38 @@ export const tpvSalePayments = mysqlTable("tpv_sale_payments", {
   createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
 });
 export type TpvSalePayment = typeof tpvSalePayments.$inferSelect;
+
+// ─── DISCOUNT CODES ──────────────────────────────────────────────────────────
+export const discountCodes = mysqlTable("discount_codes", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  discountPercent: decimal("discount_percent", { precision: 5, scale: 2 }).notNull(),
+  expiresAt: timestamp("expires_at"),
+  status: mysqlEnum("status_dc", ["active", "inactive", "expired"]).default("active").notNull(),
+  maxUses: int("max_uses"),
+  currentUses: int("current_uses").default(0).notNull(),
+  observations: text("observations"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type DiscountCode = typeof discountCodes.$inferSelect;
+export type InsertDiscountCode = typeof discountCodes.$inferInsert;
+
+// ─── DISCOUNT CODE USES (Trazabilidad) ───────────────────────────────────────
+export const discountCodeUses = mysqlTable("discount_code_uses", {
+  id: int("id").autoincrement().primaryKey(),
+  discountCodeId: int("discount_code_id").notNull(),
+  code: varchar("code_use", { length: 50 }).notNull(),
+  discountPercent: decimal("discount_percent_use", { precision: 5, scale: 2 }).notNull(),
+  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).notNull(),
+  originalAmount: decimal("original_amount_use", { precision: 10, scale: 2 }).notNull(),
+  finalAmount: decimal("final_amount", { precision: 10, scale: 2 }).notNull(),
+  channel: mysqlEnum("channel_dcu", ["tpv", "online", "crm", "delegated"]).notNull(),
+  reservationId: int("reservation_id"),
+  tpvSaleId: int("tpv_sale_id"),
+  appliedByUserId: varchar("applied_by_user_id", { length: 100 }),
+  appliedAt: timestamp("applied_at").defaultNow().notNull(),
+});
+export type DiscountCodeUse = typeof discountCodeUses.$inferSelect;

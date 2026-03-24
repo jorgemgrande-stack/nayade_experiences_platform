@@ -105,6 +105,11 @@ export default function TpvScreen() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [discountAmount, setDiscountAmount] = useState(0);
   const [discountReason, setDiscountReason] = useState("");
+  // Promo code
+  const [promoCode, setPromoCode] = useState("");
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [promoCodeData, setPromoCodeData] = useState<{ id: number; discountPercent: number; code: string } | null>(null);
+  const [promoCodeLoading, setPromoCodeLoading] = useState(false);
   const [showOpenSession, setShowOpenSession] = useState(false);
   const [showCloseSession, setShowCloseSession] = useState(false);
   const [showCashMovement, setShowCashMovement] = useState<"in" | "out" | null>(null);
@@ -150,6 +155,9 @@ export default function TpvScreen() {
       setCustomerPhone("");
       setDiscountAmount(0);
       setDiscountReason("");
+      setPromoCode("");
+      setPromoCodeInput("");
+      setPromoCodeData(null);
       toast.success(`Venta ${data.sale.ticketNumber} completada`);
     },
     onError: (err) => toast.error(err.message),
@@ -212,7 +220,35 @@ export default function TpvScreen() {
   const cartSubtotal = cart.reduce((acc, item) => {
     return acc + item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
   }, 0);
-  const cartTotal = Math.max(0, cartSubtotal - discountAmount);
+  // Promo code discount applied on subtotal
+  const promoDiscount = promoCodeData ? Math.round(cartSubtotal * promoCodeData.discountPercent) / 100 : 0;
+  const cartTotal = Math.max(0, cartSubtotal - discountAmount - promoDiscount);
+
+  // ── Promo code validation ────────────────────────────────────────────────────
+  const validatePromoMut = trpc.discounts.validate.useMutation({
+    onSuccess: (data) => {
+      setPromoCodeData({ id: data.id, discountPercent: data.discountPercent, code: data.code });
+      setPromoCode(data.code);
+      toast.success(`Código ${data.code} aplicado: -${data.discountPercent}%`);
+      setPromoCodeLoading(false);
+    },
+    onError: (err) => {
+      toast.error(err.message);
+      setPromoCodeLoading(false);
+    },
+  });
+
+  const applyPromoCode = () => {
+    if (!promoCodeInput.trim()) return;
+    setPromoCodeLoading(true);
+    validatePromoMut.mutate({ code: promoCodeInput.trim(), amount: cartSubtotal });
+  };
+
+  const removePromoCode = () => {
+    setPromoCode("");
+    setPromoCodeInput("");
+    setPromoCodeData(null);
+  };
 
   // ── Payment ─────────────────────────────────────────────────────────────────
   const handleQuickPay = (method: PaymentMethod) => {
@@ -224,8 +260,9 @@ export default function TpvScreen() {
       customerName: customerName || undefined,
       customerEmail: customerEmail || undefined,
       customerPhone: customerPhone || undefined,
-      discountAmount,
-      discountReason: discountReason || undefined,
+      discountAmount: discountAmount + promoDiscount,
+      discountReason: promoCodeData ? `Código ${promoCodeData.code} (-${promoCodeData.discountPercent}%)${discountReason ? ` + ${discountReason}` : ""}` : discountReason || undefined,
+      discountCodeId: promoCodeData?.id ?? undefined,
       items: cart.map((item) => ({
         productType: item.product.productType,
         productId: item.product.id,
@@ -554,6 +591,37 @@ export default function TpvScreen() {
             </div>
           </ScrollArea>
 
+          {/* Código promocional */}
+          {cart.length > 0 && (
+            <div className="px-3 pb-2 space-y-1 border-t border-gray-800 pt-2">
+              {promoCodeData ? (
+                <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded px-2 py-1">
+                  <span className="text-xs text-green-400 font-mono font-bold">{promoCodeData.code}</span>
+                  <span className="text-xs text-green-400">-{promoCodeData.discountPercent}% (-{promoDiscount.toFixed(2)}€)</span>
+                  <button onClick={removePromoCode} className="text-gray-500 hover:text-red-400 ml-1"><X className="w-3 h-3" /></button>
+                </div>
+              ) : (
+                <div className="flex gap-1">
+                  <Input
+                    placeholder="Código promo"
+                    value={promoCodeInput}
+                    onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => e.key === "Enter" && applyPromoCode()}
+                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white font-mono uppercase"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 text-xs bg-violet-700 hover:bg-violet-600 text-white"
+                    onClick={applyPromoCode}
+                    disabled={promoCodeLoading || !promoCodeInput.trim()}
+                  >
+                    {promoCodeLoading ? "..." : "OK"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Descuento manual */}
           {cart.length > 0 && (
             <div className="px-3 pb-2 space-y-1 border-t border-gray-800 pt-2">
@@ -593,9 +661,15 @@ export default function TpvScreen() {
               <span>Subtotal</span>
               <span>{cartSubtotal.toFixed(2)}€</span>
             </div>
+            {promoDiscount > 0 && (
+              <div className="flex justify-between text-xs text-green-400">
+                <span>Promo {promoCodeData?.code}</span>
+                <span>-{promoDiscount.toFixed(2)}€</span>
+              </div>
+            )}
             {discountAmount > 0 && (
               <div className="flex justify-between text-xs text-green-400">
-                <span>Descuento</span>
+                <span>Descuento manual</span>
                 <span>-{discountAmount.toFixed(2)}€</span>
               </div>
             )}

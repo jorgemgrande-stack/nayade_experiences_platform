@@ -136,6 +136,7 @@ import { restaurantsRouter } from "./routers/restaurants";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 import { tpvRouter } from "./routers/tpv";
+import { discountsRouter } from "./routers/discounts";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -1217,6 +1218,8 @@ export const appRouter = router({
         customerEmail: z.string().email(),
         customerPhone: z.string().optional(),
         origin: z.string().url(),
+        discountCodeId: z.number().optional(),
+        discountPercent: z.number().min(0).max(100).optional(),
       }))
       .mutation(async ({ input }) => {
         const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
@@ -1274,12 +1277,18 @@ export const appRouter = router({
             notes: `Carrito: ${productNames.join(", ")}`,
           });
         }
+        // 3b. Aplicar descuento por código si se proporcionó
+        let finalAmountCents = totalAmountCents;
+        if (input.discountPercent && input.discountPercent > 0) {
+          const discountCents = Math.round(totalAmountCents * input.discountPercent / 100);
+          finalAmountCents = Math.max(0, totalAmountCents - discountCents);
+        }
         // 4. Construir el formulario Redsys con el importe total
         const description = productNames.length === 1
           ? productNames[0]
           : `${productNames.length} experiencias — Náyade`;
         const redsysForm = buildRedsysForm({
-          amount: totalAmountCents,
+          amount: finalAmountCents,
           merchantOrder,
           productDescription: description.slice(0, 125),
           notifyUrl: `${input.origin}/api/redsys/notification`,
@@ -1447,6 +1456,7 @@ export const appRouter = router({
   crm: crmRouter,
   suppliers: suppliersRouter,
   tpv: tpvRouter,
+  discounts: discountsRouter,
   settlements: settlementsRouter,
   reav: router({
     // Expedientes

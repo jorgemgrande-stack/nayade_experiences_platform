@@ -1742,3 +1742,31 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [ ] CRM Reservas: mostrar reservas canal TPV con etiqueta visual "TPV"
 - [ ] Restaurar pestaña "Ventas TPV del día" en backoffice + enlace rápido desde TPV frontend
 - [ ] Email post-venta TPV: enviar a cliente (si hay email) y siempre a reservas@nayadeexperiences.es
+
+## Módulo Códigos de Descuento (v12.0)
+- [ ] BD: tabla discount_codes (código, descripción, porcentaje, caducidad, estado, usos, límite, observaciones)
+- [ ] BD: campos discountCode, discountPercent, discountAmount, originalAmount en tpv_sales y reservations
+- [ ] Backend: CRUD códigos (crear, editar, activar/desactivar, duplicar)
+- [ ] Backend: procedimiento validateDiscountCode (validar código, retornar porcentaje)
+- [ ] Backend: registro de uso en discount_code_uses (trazabilidad completa)
+- [ ] Back office: módulo /admin/marketing/codigos-descuento con listado, filtros y formulario
+- [ ] TPV: campo "Código promocional" con validación, desglose en ticket y registro
+- [ ] Carrito online: campo de código de descuento en checkout con validación visual
+- [ ] Venta delegada CRM: campo de código en presupuestos/reservas manuales
+- [ ] Transacciones: columnas discountCode, discountPercent, discountAmount, originalAmount
+- [ ] Ticket TPV: mostrar subtotal original, código, descuento y total final
+
+## Módulo Códigos de Descuento (v5.x)
+- [x] Migrar BD: tabla discount_codes (código, tipo, porcentaje, límites, expiración, contadores)
+- [x] Migrar BD: tabla discount_code_uses (trazabilidad de usos por contexto)
+- [x] Backend: procedimientos CRUD (list, get, create, update, toggle, delete)
+- [x] Backend: procedimiento validate (mutation) con validación completa
+- [x] Back office: página Gestión de Códigos de Descuento (/admin/marketing/descuentos)
+- [x] Back office: sección "Marketing" en sidebar con enlace a Códigos de Descuento
+- [x] TPV: campo "Código promocional" con validación, desglose y registro en transacción
+- [x] Carrito online (Checkout): campo de código de descuento con validación visual
+- [x] CRM (QuoteBuilderModal): campo de código de descuento en presupuestos desde lead
+- [x] CRM (DirectQuoteModal): campo de código de descuento en presupuestos directos
+- [x] cartCheckout backend: aplica descuento al total Redsys cuando se proporciona código
+- [x] Tests Vitest: 19 tests para lógica de descuento (cálculo, expiración, límites, validación)
+- [x] 191 tests pasando en total (sin regresiones)

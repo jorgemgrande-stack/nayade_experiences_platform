@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, FileText, Calendar, BarChart3,
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
-  UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor,
+  UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -135,6 +135,15 @@ const navItems = [
       { label: "Reservas", href: "/admin/restaurantes/reservas" },
       { label: "Calendario Global", href: "/admin/restaurantes/calendario" },
       { label: "Configuración", href: "/admin/restaurantes/configuracion" },
+    ],
+  },
+  {
+    label: "Marketing",
+    href: "/admin/marketing",
+    icon: Tag,
+    roles: ["admin"],
+    children: [
+      { label: "Códigos de descuento", href: "/admin/marketing/codigos-descuento" },
     ],
   },
   {

@@ -39,6 +39,20 @@ export default function Checkout() {
   const [comments, setComments] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Promo code
+  const [promoInput, setPromoInput] = useState("");
+  const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
+  const validatePromo = trpc.discounts.validate.useMutation({
+    onSuccess: (data) => {
+      setPromoData({ id: data.id, code: data.code, discountPercent: data.discountPercent });
+    },
+    onError: (e) => {
+      setPromoData(null);
+      setErrors(p => ({ ...p, promo: e.message }));
+    },
+  });
+  const promoDiscount = promoData ? Math.round(totalEstimated * promoData.discountPercent) / 100 : 0;
+  const finalTotal = Math.max(0, totalEstimated - promoDiscount);
 
   const cartCheckout = trpc.reservations.cartCheckout.useMutation();
 
@@ -75,6 +89,8 @@ export default function Checkout() {
         customerEmail: email.trim(),
         customerPhone: phone.trim() || undefined,
         origin: window.location.origin,
+        discountCodeId: promoData?.id,
+        discountPercent: promoData?.discountPercent,
       });
 
       // Vaciar carrito antes de redirigir
@@ -242,15 +258,61 @@ export default function Checkout() {
                   })}
                 </div>
 
+                {/* Código promocional */}
+                <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
+                    <Tag className="w-3 h-3 text-orange-500" /> Código promocional
+                  </label>
+                  {promoData ? (
+                    <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2">
+                      <div>
+                        <span className="font-mono font-bold text-green-700 text-sm">{promoData.code}</span>
+                        <span className="text-xs text-green-600 ml-2">-{promoData.discountPercent}% aplicado</span>
+                      </div>
+                      <button
+                        onClick={() => { setPromoData(null); setPromoInput(""); }}
+                        className="text-slate-400 hover:text-red-500 transition-colors ml-2"
+                      >
+                        <span className="text-xs">× Quitar</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={promoInput}
+                        onChange={e => { setPromoInput(e.target.value.toUpperCase()); setErrors(p => ({ ...p, promo: "" })); }}
+                        onKeyDown={e => e.key === "Enter" && validatePromo.mutate({ code: promoInput, amount: totalEstimated })}
+                        placeholder="VERANO25"
+                        className={`flex-1 px-3 py-2 text-sm border rounded-xl font-mono uppercase focus:outline-none focus:ring-2 focus:ring-orange-300 ${errors.promo ? "border-red-400 bg-red-50" : "border-slate-300"}`}
+                      />
+                      <button
+                        onClick={() => validatePromo.mutate({ code: promoInput, amount: totalEstimated })}
+                        disabled={validatePromo.isPending || !promoInput.trim()}
+                        className="px-3 py-2 text-sm font-semibold bg-orange-500 hover:bg-orange-600 text-white rounded-xl disabled:opacity-50 transition-colors"
+                      >
+                        {validatePromo.isPending ? "..." : "Aplicar"}
+                      </button>
+                    </div>
+                  )}
+                  {errors.promo && <p className="text-xs text-red-500 mt-1">{errors.promo}</p>}
+                </div>
+
                 {/* Subtotal */}
                 <div className="px-5 py-4 bg-slate-50 border-t border-slate-100">
                   <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
                     <span>Subtotal ({totalItems} {totalItems === 1 ? "artículo" : "artículos"})</span>
                     <span>{totalEstimated.toFixed(2).replace(".", ",")} €</span>
                   </div>
+                  {promoDiscount > 0 && (
+                    <div className="flex items-center justify-between text-sm text-green-600 mb-1">
+                      <span>Descuento {promoData?.code}</span>
+                      <span>-{promoDiscount.toFixed(2).replace(".", ",")} €</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between font-black text-lg text-slate-900 border-t border-slate-200 pt-2 mt-2">
                     <span>Total</span>
-                    <span className="text-orange-600">{totalEstimated.toFixed(2).replace(".", ",")} €</span>
+                    <span className="text-orange-600">{finalTotal.toFixed(2).replace(".", ",")} €</span>
                   </div>
                   <p className="text-xs text-slate-400 mt-1.5">* El precio final se calculará en el servidor antes del pago.</p>
                 </div>
@@ -365,7 +427,7 @@ export default function Checkout() {
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-sm font-semibold text-slate-700">Total a pagar</span>
                       <span className="text-2xl font-black text-orange-600">
-                        {totalEstimated.toFixed(2).replace(".", ",")} €
+                        {finalTotal.toFixed(2).replace(".", ",")} €
                       </span>
                     </div>
 
