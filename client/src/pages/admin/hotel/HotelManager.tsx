@@ -32,7 +32,7 @@ interface RoomFormData {
   name: string; slug: string; shortDescription: string; description: string;
   basePrice: string; maxAdults: number; maxChildren: number; surfaceM2: string;
   totalUnits: number; coverImageUrl: string; image1: string; image2: string;
-  image3: string; amenities: string; isFeatured: boolean; isActive: boolean;
+  image3: string; amenities: string; isFeatured: boolean; isActive: boolean; isPresentialSale: boolean;
   discountPercent: string; discountLabel: string; discountExpiresAt: string;
   fiscalRegime: string; productType: string; providerPercent: string; agencyMarginPercent: string;
   supplierId: number | null; supplierCommissionPercent: string;
@@ -42,7 +42,7 @@ const EMPTY_ROOM: RoomFormData = {
   name: "", slug: "", shortDescription: "", description: "", basePrice: "",
   maxAdults: 2, maxChildren: 2, surfaceM2: "", totalUnits: 1,
   coverImageUrl: "", image1: "", image2: "", image3: "",
-  amenities: "", isFeatured: false, isActive: true,
+  amenities: "", isFeatured: false, isActive: true, isPresentialSale: false,
   discountPercent: "", discountLabel: "", discountExpiresAt: "",
   fiscalRegime: "general_21", productType: "own", providerPercent: "", agencyMarginPercent: "",
   supplierId: null, supplierCommissionPercent: "", supplierCostType: "comision_sobre_venta",
@@ -63,7 +63,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
       totalUnits: editRoom.totalUnits ?? 1, coverImageUrl: editRoom.coverImageUrl ?? "",
       image1: editRoom.image1 ?? "", image2: editRoom.image2 ?? "", image3: editRoom.image3 ?? "",
       amenities: Array.isArray(editRoom.amenities) ? editRoom.amenities.join(", ") : "",
-      isFeatured: editRoom.isFeatured ?? false, isActive: editRoom.isActive ?? true,
+      isFeatured: editRoom.isFeatured ?? false, isActive: editRoom.isActive ?? true, isPresentialSale: Boolean(editRoom.isPresentialSale),
       discountPercent: editRoom.discountPercent != null ? String(editRoom.discountPercent) : "",
       discountLabel: editRoom.discountLabel ?? "",
       discountExpiresAt: editRoom.discountExpiresAt ? new Date(editRoom.discountExpiresAt).toISOString().slice(0, 10) : "",
@@ -99,7 +99,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
       coverImageUrl: form.coverImageUrl || undefined,
       image1: form.image1 || undefined, image2: form.image2 || undefined, image3: form.image3 || undefined,
       amenities: form.amenities ? form.amenities.split(",").map(s => s.trim()).filter(Boolean) : [],
-      isFeatured: form.isFeatured, isActive: form.isActive,
+      isFeatured: form.isFeatured, isActive: form.isActive, isPresentialSale: form.isPresentialSale,
       discountPercent: form.discountPercent || undefined,
       discountLabel: form.discountLabel || undefined,
       discountExpiresAt: form.discountExpiresAt || undefined,
@@ -286,7 +286,7 @@ function RoomFormDialog({ open, onClose, editRoom }: {
               </div>
             </div>
           </div>
-          <div className="flex gap-6">
+          <div className="flex gap-6 flex-wrap">
             <div className="flex items-center gap-2">
               <Switch checked={form.isFeatured} onCheckedChange={v => setForm(f => ({ ...f, isFeatured: v }))} />
               <Label>Destacado</Label>
@@ -294,6 +294,10 @@ function RoomFormDialog({ open, onClose, editRoom }: {
             <div className="flex items-center gap-2">
               <Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} />
               <Label>Activo</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.isPresentialSale} onCheckedChange={v => setForm(f => ({ ...f, isPresentialSale: v }))} />
+              <Label className="text-violet-700 font-medium">Vendible en TPV</Label>
             </div>
           </div>
         </div>

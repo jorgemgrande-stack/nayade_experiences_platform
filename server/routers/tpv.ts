@@ -222,7 +222,7 @@ export const tpvRouter = router({
         discountPercent: experiences.discountPercent,
         categoryId: experiences.categoryId,
         isActive: experiences.isActive,
-      }).from(experiences).where(eq(experiences.isActive, true)),
+      }).from(experiences).where(and(eq(experiences.isActive, true), eq(experiences.isPresentialSale, true))),
 
       db.select({
         id: packs.id,
@@ -231,7 +231,7 @@ export const tpvRouter = router({
         coverImageUrl: packs.image1,
         discountPercent: packs.discountPercent,
         isActive: packs.isActive,
-      }).from(packs).where(eq(packs.isActive, true)),
+      }).from(packs).where(and(eq(packs.isActive, true), eq(packs.isPresentialSale, true))),
 
       db.select({
         id: spaTreatments.id,
@@ -240,7 +240,7 @@ export const tpvRouter = router({
         coverImageUrl: spaTreatments.coverImageUrl,
         discountPercent: spaTreatments.discountPercent,
         isActive: spaTreatments.isActive,
-      }).from(spaTreatments).where(eq(spaTreatments.isActive, true)),
+      }).from(spaTreatments).where(and(eq(spaTreatments.isActive, true), eq(spaTreatments.isPresentialSale, true))),
 
       db.select({
         id: roomTypes.id,
@@ -249,7 +249,7 @@ export const tpvRouter = router({
         coverImageUrl: roomTypes.coverImageUrl,
         discountPercent: roomTypes.discountPercent,
         isActive: roomTypes.isActive,
-      }).from(roomTypes).where(eq(roomTypes.isActive, true)),
+      }).from(roomTypes).where(and(eq(roomTypes.isActive, true), eq(roomTypes.isPresentialSale, true))),
     ]);
 
     return {

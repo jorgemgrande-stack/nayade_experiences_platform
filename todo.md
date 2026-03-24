@@ -1696,3 +1696,15 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Endurecer allProducts: usar catalog?.experiences ?? [] en lugar de catalog ? [...catalog.experiences] : []
 - [x] TpvTicket: proteger s.items y s.payments con ?? [] antes de .map()
 - [x] Verificado: 0 errores TypeScript, 172/172 tests pasando
+
+## v8.3: Toggle "Vendible en TPV" (isPresentialSale)
+- [x] Migrar BD: añadir isPresentialSale (boolean, default false) a experiences, packs, room_types, spa_treatments
+- [x] Actualizar schema Drizzle: 4 tablas
+- [x] Backend routers.ts: añadir isPresentialSale a schemas Zod create/update de experiences y packs
+- [x] Backend hotel.ts: añadir isPresentialSale a schemas Zod create/update
+- [x] Backend spa.ts: añadir isPresentialSale a schemas Zod create/update
+- [x] ExperiencesManager: toggle "Vendible en TPV" (violeta) junto a Destacado y Activo
+- [x] PacksManager: toggle "Vendible en TPV" (violeta) junto a Destacado y Activo
+- [x] HotelManager: toggle "Vendible en TPV" (violeta) junto a Destacado y Activo
+- [x] SpaManager: toggle "Vendible en TPV" (violeta) junto a Destacado y Activo
+- [x] tpv.getCatalog: filtrar por isPresentialSale = true (y isActive = true)

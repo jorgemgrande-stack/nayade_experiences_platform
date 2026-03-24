@@ -34,7 +34,7 @@ type ExpForm = {
   categoryId: string; locationId: string;
   image1: string; image2: string; image3: string; image4: string;
   basePrice: string; duration: string; minPersons: string; maxPersons: string;
-  difficulty: string; isFeatured: boolean; isActive: boolean;
+  difficulty: string; isFeatured: boolean; isActive: boolean; isPresentialSale: boolean;
   includes: string[]; excludes: string[];
   discountPercent: string; discountExpiresAt: string;
   fiscalRegime: string; productType: string;
@@ -51,7 +51,7 @@ const emptyForm: ExpForm = {
   categoryId: "", locationId: "",
   image1: "", image2: "", image3: "", image4: "",
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
-  difficulty: "facil", isFeatured: false, isActive: true,
+  difficulty: "facil", isFeatured: false, isActive: true, isPresentialSale: false,
   includes: [], excludes: [],
   discountPercent: "", discountExpiresAt: "",
   fiscalRegime: "general", productType: "actividad",
@@ -216,6 +216,7 @@ export default function ExperiencesManager() {
       supplierCostType: String(exp.supplierCostType ?? "comision_sobre_venta"),
       settlementFrequency: String(exp.settlementFrequency ?? "mensual"),
       isSettlable: Boolean(exp.isSettlable),
+      isPresentialSale: Boolean((exp as Record<string,unknown>).isPresentialSale),
     });
     setShowModal(true);
   };
@@ -256,6 +257,7 @@ export default function ExperiencesManager() {
       supplierCostType: form.supplierCostType || undefined,
       settlementFrequency: form.settlementFrequency || undefined,
       isSettlable: form.isSettlable,
+      isPresentialSale: form.isPresentialSale,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -516,6 +518,10 @@ export default function ExperiencesManager() {
               <div className="flex items-center gap-3">
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
                 <Label>Activo</Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch checked={form.isPresentialSale} onCheckedChange={(v) => setForm({ ...form, isPresentialSale: v })} />
+                <Label className="flex items-center gap-1.5"><span className="text-violet-600 font-bold">&#9679;</span> Vendible en TPV</Label>
               </div>
 
               {/* Descuento */}

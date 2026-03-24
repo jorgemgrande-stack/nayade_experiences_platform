@@ -553,6 +553,7 @@ export const appRouter = router({
         difficulty: z.enum(["facil", "moderado", "dificil", "experto"]).optional(),
         isFeatured: z.boolean().default(false),
         isActive: z.boolean().default(true),
+        isPresentialSale: z.boolean().default(false),
         supplierId: z.number().optional(),
         supplierCommissionPercent: z.string().optional(),
         supplierCostType: z.string().optional(),
@@ -600,6 +601,7 @@ export const appRouter = router({
         supplierCostType: z.string().optional(),
         settlementFrequency: z.string().optional(),
         isSettlable: z.boolean().optional(),
+        isPresentialSale: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -1312,6 +1314,7 @@ export const appRouter = router({
         isOnlinePurchase: z.boolean().default(false),
         isFeatured: z.boolean().default(false),
         isActive: z.boolean().default(true),
+        isPresentialSale: z.boolean().default(false),
         sortOrder: z.number().default(0),
         fiscalRegime: z.enum(["general", "reav"]).default("general"),
         productType: z.string().optional(),
@@ -1366,6 +1369,7 @@ export const appRouter = router({
         supplierCostType: z.string().optional(),
         settlementFrequency: z.string().optional(),
         isSettlable: z.boolean().optional(),
+        isPresentialSale: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;

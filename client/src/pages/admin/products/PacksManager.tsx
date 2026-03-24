@@ -57,6 +57,7 @@ type PackForm = {
   isOnlinePurchase: boolean;
   isFeatured: boolean;
   isActive: boolean;
+  isPresentialSale: boolean;
   sortOrder: string;
   discountPercent: string;
   discountExpiresAt: string;
@@ -76,7 +77,7 @@ const emptyForm: PackForm = {
   description: "", image1: "", image2: "", image3: "", image4: "",
   basePrice: "", priceLabel: "/persona", duration: "", minPersons: "1",
   maxPersons: "", targetAudience: "", badge: "", schedule: "", note: "",
-  hasStay: false, isOnlinePurchase: true, isFeatured: false, isActive: true, sortOrder: "0",
+  hasStay: false, isOnlinePurchase: true, isFeatured: false, isActive: true, isPresentialSale: false, sortOrder: "0",
   discountPercent: "", discountExpiresAt: "",
   fiscalRegime: "general", productType: "pack",
   providerPercent: "", agencyMarginPercent: "",
@@ -237,6 +238,7 @@ export default function PacksManager() {
       supplierCostType: String(pack.supplierCostType ?? "comision_sobre_venta"),
       settlementFrequency: String(pack.settlementFrequency ?? "mensual"),
       isSettlable: Boolean(pack.isSettlable),
+      isPresentialSale: Boolean((pack as Record<string,unknown>).isPresentialSale),
     });
     setShowModal(true);
   };
@@ -282,6 +284,7 @@ export default function PacksManager() {
       supplierCostType: form.supplierCostType || undefined,
       settlementFrequency: form.settlementFrequency || undefined,
       isSettlable: form.isSettlable,
+      isPresentialSale: form.isPresentialSale,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -614,15 +617,21 @@ export default function PacksManager() {
                 </div>
                 <Switch checked={form.isFeatured} onCheckedChange={(v) => setForm(f => ({ ...f, isFeatured: v }))} />
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/20">
+               <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/20">
                 <div>
                   <p className="text-sm font-medium">Activo</p>
                   <p className="text-xs text-muted-foreground">Visible en el sitio web</p>
                 </div>
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm(f => ({ ...f, isActive: v }))} />
               </div>
+              <div className="flex items-center justify-between p-3 rounded-xl border border-violet-200 bg-violet-50/40">
+                <div>
+                  <p className="text-sm font-medium text-violet-700">Vendible en TPV</p>
+                  <p className="text-xs text-muted-foreground">Aparece en el catálogo del TPV presencial</p>
+                </div>
+                <Switch checked={form.isPresentialSale} onCheckedChange={(v) => setForm(f => ({ ...f, isPresentialSale: v }))} />
+              </div>
             </div>
-
             {/* Descuento */}
             <div className="border border-amber-200 bg-amber-50/60 rounded-xl p-4">
               <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5 mb-3">

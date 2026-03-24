@@ -30,7 +30,7 @@ function slugify(s: string) {
 interface TreatmentFormData {
   name: string; slug: string; shortDescription: string; description: string;
   price: string; durationMinutes: number; maxPersons: number;
-  categoryId: string; coverImageUrl: string; isFeatured: boolean; isActive: boolean;
+  categoryId: string; coverImageUrl: string; isFeatured: boolean; isActive: boolean; isPresentialSale: boolean;
   discountPercent: string; discountLabel: string; discountExpiresAt: string;
   fiscalRegime: string; productType: string; providerPercent: string; agencyMarginPercent: string;
   supplierId: number | null; supplierCommissionPercent: string;
@@ -39,7 +39,7 @@ interface TreatmentFormData {
 const EMPTY_TREATMENT: TreatmentFormData = {
   name: "", slug: "", shortDescription: "", description: "",
   price: "", durationMinutes: 60, maxPersons: 2,
-  categoryId: "", coverImageUrl: "", isFeatured: false, isActive: true,
+  categoryId: "", coverImageUrl: "", isFeatured: false, isActive: true, isPresentialSale: false,
   discountPercent: "", discountLabel: "", discountExpiresAt: "",
   fiscalRegime: "general_21", productType: "own", providerPercent: "", agencyMarginPercent: "",
   supplierId: null, supplierCommissionPercent: "", supplierCostType: "comision_sobre_venta",
@@ -59,7 +59,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
       maxPersons: editTreatment.maxPersons ?? 2,
       categoryId: editTreatment.categoryId != null ? String(editTreatment.categoryId) : "",
       coverImageUrl: editTreatment.coverImageUrl ?? "",
-      isFeatured: editTreatment.isFeatured ?? false, isActive: editTreatment.isActive ?? true,
+      isFeatured: editTreatment.isFeatured ?? false, isActive: editTreatment.isActive ?? true, isPresentialSale: Boolean(editTreatment.isPresentialSale),
       discountPercent: editTreatment.discountPercent != null ? String(editTreatment.discountPercent) : "",
       discountLabel: editTreatment.discountLabel ?? "",
       discountExpiresAt: editTreatment.discountExpiresAt ? new Date(editTreatment.discountExpiresAt).toISOString().slice(0, 10) : "",
@@ -92,7 +92,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
       price: form.price, durationMinutes: form.durationMinutes, maxPersons: form.maxPersons,
       categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
       coverImageUrl: form.coverImageUrl || undefined,
-      isFeatured: form.isFeatured, isActive: form.isActive,
+      isFeatured: form.isFeatured, isActive: form.isActive, isPresentialSale: form.isPresentialSale,
       discountPercent: form.discountPercent || undefined,
       discountLabel: form.discountLabel || undefined,
       discountExpiresAt: form.discountExpiresAt || undefined,
@@ -268,7 +268,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
               </div>
             </div>
           </div>
-          <div className="flex gap-6">
+          <div className="flex gap-6 flex-wrap">
             <div className="flex items-center gap-2">
               <Switch checked={form.isFeatured} onCheckedChange={v => setForm(f => ({ ...f, isFeatured: v }))} />
               <Label>Destacado</Label>
@@ -276,6 +276,10 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             <div className="flex items-center gap-2">
               <Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} />
               <Label>Activo</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch checked={form.isPresentialSale} onCheckedChange={v => setForm(f => ({ ...f, isPresentialSale: v }))} />
+              <Label className="text-violet-700 font-medium">Vendible en TPV</Label>
             </div>
           </div>
         </div>
