@@ -59,6 +59,10 @@ type PackForm = {
   sortOrder: string;
   discountPercent: string;
   discountExpiresAt: string;
+  fiscalRegime: "general" | "reav";
+  productType: string;
+  providerPercent: string;
+  agencyMarginPercent: string;
 };
 
 const emptyForm: PackForm = {
@@ -68,6 +72,8 @@ const emptyForm: PackForm = {
   maxPersons: "", targetAudience: "", badge: "", schedule: "", note: "",
   hasStay: false, isOnlinePurchase: true, isFeatured: false, isActive: true, sortOrder: "0",
   discountPercent: "", discountExpiresAt: "",
+  fiscalRegime: "general", productType: "pack",
+  providerPercent: "", agencyMarginPercent: "",
 };
 
 // ── Zona de upload de imagen ─────────────────────────────────────────────────
@@ -213,6 +219,10 @@ export default function PacksManager() {
       discountExpiresAt: pack.discountExpiresAt
         ? new Date(pack.discountExpiresAt as string | number | Date).toISOString().slice(0, 10)
         : "",
+      fiscalRegime: (pack.fiscalRegime === "reav" ? "reav" : "general") as "general" | "reav",
+      productType: String(pack.productType ?? "pack"),
+      providerPercent: pack.providerPercent != null ? String(pack.providerPercent) : "",
+      agencyMarginPercent: pack.agencyMarginPercent != null ? String(pack.agencyMarginPercent) : "",
     });
     setShowModal(true);
   };
@@ -249,6 +259,10 @@ export default function PacksManager() {
       sortOrder: parseInt(form.sortOrder) || 0,
       discountPercent: form.discountPercent ? form.discountPercent : undefined,
       discountExpiresAt: form.discountExpiresAt ? form.discountExpiresAt : undefined,
+      fiscalRegime: form.fiscalRegime || "general",
+      productType: form.productType || "pack",
+      providerPercent: form.providerPercent ? parseFloat(form.providerPercent) : undefined,
+      agencyMarginPercent: form.agencyMarginPercent ? parseFloat(form.agencyMarginPercent) : undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -624,6 +638,72 @@ export default function PacksManager() {
                 <p className="text-xs text-amber-600 mt-2">
                   El precio con descuento se calculará automáticamente y se mostrará en la ficha pública.
                   {!form.discountExpiresAt && " Sin fecha de caducidad: el descuento estará activo indefinidamente."}
+                </p>
+              )}
+            </div>
+
+            {/* Régimen fiscal */}
+            <div className="border border-blue-200 bg-blue-50/60 rounded-xl p-4">
+              <p className="text-sm font-semibold text-blue-700 flex items-center gap-1.5 mb-3">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">€</span>
+                Régimen fiscal
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground">Régimen IVA</label>
+                  <select
+                    value={form.fiscalRegime}
+                    onChange={(e) => setForm(f => ({ ...f, fiscalRegime: e.target.value as "general" | "reav" }))}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm mt-1"
+                  >
+                    <option value="general">Régimen General (IVA 21%)</option>
+                    <option value="reav">REAV — Agencias de Viaje</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground">Tipo de producto</label>
+                  <input
+                    type="text"
+                    value={form.productType}
+                    onChange={(e) => setForm(f => ({ ...f, productType: e.target.value }))}
+                    placeholder="Ej: pack_aventura"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm mt-1"
+                  />
+                </div>
+              </div>
+              {form.fiscalRegime === "reav" && (
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">% Coste proveedor</label>
+                    <div className="relative mt-1">
+                      <input
+                        type="number" min="0" max="100" step="0.5"
+                        value={form.providerPercent}
+                        onChange={(e) => setForm(f => ({ ...f, providerPercent: e.target.value }))}
+                        placeholder="Ej: 70"
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">% Margen agencia</label>
+                    <div className="relative mt-1">
+                      <input
+                        type="number" min="0" max="100" step="0.5"
+                        value={form.agencyMarginPercent}
+                        onChange={(e) => setForm(f => ({ ...f, agencyMarginPercent: e.target.value }))}
+                        placeholder="Ej: 30"
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {form.fiscalRegime === "reav" && (
+                <p className="text-xs text-blue-600 mt-2">
+                  Régimen Especial de Agencias de Viaje (REAV): el IVA se aplica solo sobre el margen de la agencia, no sobre el precio total.
                 </p>
               )}
             </div>

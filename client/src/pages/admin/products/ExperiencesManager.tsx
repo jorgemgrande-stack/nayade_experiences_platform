@@ -36,6 +36,8 @@ type ExpForm = {
   difficulty: string; isFeatured: boolean; isActive: boolean;
   includes: string[]; excludes: string[];
   discountPercent: string; discountExpiresAt: string;
+  fiscalRegime: string; productType: string;
+  providerPercent: string; agencyMarginPercent: string;
 };
 
 const emptyForm: ExpForm = {
@@ -46,6 +48,8 @@ const emptyForm: ExpForm = {
   difficulty: "facil", isFeatured: false, isActive: true,
   includes: [], excludes: [],
   discountPercent: "", discountExpiresAt: "",
+  fiscalRegime: "general", productType: "actividad",
+  providerPercent: "", agencyMarginPercent: "",
 };
 
 // ── Componente de zona de upload de imagen ──────────────────────────────────
@@ -194,6 +198,10 @@ export default function ExperiencesManager() {
       discountExpiresAt: exp.discountExpiresAt
         ? new Date(exp.discountExpiresAt as string | number | Date).toISOString().slice(0, 10)
         : "",
+      fiscalRegime: String(exp.fiscalRegime ?? "general"),
+      productType: String(exp.productType ?? "actividad"),
+      providerPercent: exp.providerPercent != null ? String(exp.providerPercent) : "",
+      agencyMarginPercent: exp.agencyMarginPercent != null ? String(exp.agencyMarginPercent) : "",
     });
     setShowModal(true);
   };
@@ -225,6 +233,10 @@ export default function ExperiencesManager() {
       excludes: form.excludes.filter(s => s.trim() !== ""),
       discountPercent: form.discountPercent ? form.discountPercent : undefined,
       discountExpiresAt: form.discountExpiresAt ? form.discountExpiresAt : undefined,
+      fiscalRegime: form.fiscalRegime as "general" | "reav",
+      productType: form.productType,
+      providerPercent: form.providerPercent ? form.providerPercent : undefined,
+      agencyMarginPercent: form.agencyMarginPercent ? form.agencyMarginPercent : undefined,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -530,6 +542,70 @@ export default function ExperiencesManager() {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* Régimen Fiscal */}
+              <div className="col-span-2">
+                <Label className="text-sm font-semibold text-blue-700 flex items-center gap-1.5 mb-3">
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-xs">💶</span>
+                  Régimen Fiscal
+                </Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Régimen</Label>
+                    <select
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background"
+                      value={form.fiscalRegime}
+                      onChange={(e) => setForm({ ...form, fiscalRegime: e.target.value })}
+                    >
+                      <option value="general">Régimen General (IVA)</option>
+                      <option value="reav">REAV — Régimen Especial Agencias de Viaje</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Tipo de producto</Label>
+                    <select
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background"
+                      value={form.productType}
+                      onChange={(e) => setForm({ ...form, productType: e.target.value })}
+                    >
+                      <option value="actividad">Actividad / Experiencia</option>
+                      <option value="alojamiento">Alojamiento</option>
+                      <option value="restauracion">Restauración</option>
+                      <option value="transporte">Transporte</option>
+                      <option value="pack">Pack combinado</option>
+                    </select>
+                  </div>
+                </div>
+                {form.fiscalRegime === "reav" && (
+                  <div className="grid grid-cols-2 gap-4 mt-3">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Coste proveedor (% sobre PVP)</Label>
+                      <Input
+                        type="number" min="0" max="100" step="0.01"
+                        placeholder="Ej: 70"
+                        value={form.providerPercent}
+                        onChange={(e) => setForm({ ...form, providerPercent: e.target.value })}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Margen agencia (% sobre PVP)</Label>
+                      <Input
+                        type="number" min="0" max="100" step="0.01"
+                        placeholder="Ej: 30"
+                        value={form.agencyMarginPercent}
+                        onChange={(e) => setForm({ ...form, agencyMarginPercent: e.target.value })}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                )}
+                {form.fiscalRegime === "reav" && (
+                  <p className="text-xs text-blue-600 mt-2 bg-blue-50 rounded-lg px-3 py-2">
+                    ⚠️ Este producto tributa bajo REAV. La factura no mostrará IVA al cliente. Se generará un expediente REAV automáticamente al facturar.
+                  </p>
+                )}
               </div>
 
               {/* Incluye */}

@@ -300,6 +300,8 @@ export default function Experiences() {
             slug: cartProduct.slug,
             minPersons: cartProduct.minPersons ?? 1,
             maxPersons: cartProduct.maxPersons ?? 100,
+            discountPercent: (cartProduct as any).discountPercent,
+            discountExpiresAt: (cartProduct as any).discountExpiresAt,
           }}
         />
       )}

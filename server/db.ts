@@ -16,6 +16,9 @@ import {
   invoices,
   crmActivityLog,
   reservations,
+  reavExpedients,
+  reavDocuments,
+  reavCosts,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1590,4 +1593,164 @@ export async function getDashboardOverview() {
     console.error("[getDashboardOverview] Error:", err);
     return empty;
   }
+}
+
+// ─── REAV MODULE ─────────────────────────────────────────────────────────────
+
+export async function generateExpedientNumber(): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const year = new Date().getFullYear();
+  const prefix = `EXP-REAV-${year}-`;
+  const last = await db
+    .select({ num: reavExpedients.expedientNumber })
+    .from(reavExpedients)
+    .where(like(reavExpedients.expedientNumber, `${prefix}%`))
+    .orderBy(desc(reavExpedients.id))
+    .limit(1);
+  const seq = last.length > 0
+    ? parseInt(last[0].num.split("-").pop() ?? "0") + 1
+    : 1;
+  return `${prefix}${String(seq).padStart(4, "0")}`;
+}
+
+export async function createReavExpedient(data: {
+  invoiceId?: number;
+  reservationId?: number;
+  clientId?: number;
+  agentId?: number;
+  serviceDescription?: string;
+  serviceDate?: string;
+  serviceEndDate?: string;
+  destination?: string;
+  numberOfPax?: number;
+  saleAmountTotal?: string;
+  providerCostEstimated?: string;
+  agencyMarginEstimated?: string;
+  internalNotes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const expedientNumber = await generateExpedientNumber();
+  const [result] = await db.insert(reavExpedients).values({
+    ...data,
+    expedientNumber,
+    fiscalStatus: "pendiente_documentacion",
+    operativeStatus: "abierto",
+  });
+  return { id: (result as any).insertId, expedientNumber };
+}
+
+export async function listReavExpedients(filters?: {
+  fiscalStatus?: string;
+  operativeStatus?: string;
+  agentId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters?.fiscalStatus) conditions.push(eq(reavExpedients.fiscalStatus, filters.fiscalStatus as any));
+  if (filters?.operativeStatus) conditions.push(eq(reavExpedients.operativeStatus, filters.operativeStatus as any));
+  if (filters?.agentId) conditions.push(eq(reavExpedients.agentId, filters.agentId));
+  const query = conditions.length > 0
+    ? db.select().from(reavExpedients).where(and(...conditions))
+    : db.select().from(reavExpedients);
+  return query.orderBy(desc(reavExpedients.createdAt));
+}
+
+export async function getReavExpedientById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [exp] = await db.select().from(reavExpedients).where(eq(reavExpedients.id, id));
+  if (!exp) return null;
+  const documents = await db.select().from(reavDocuments).where(eq(reavDocuments.expedientId, id));
+  const costs = await db.select().from(reavCosts).where(eq(reavCosts.expedientId, id));
+  return { ...exp, documents, costs };
+}
+
+export async function updateReavExpedient(id: number, data: Record<string, unknown>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(reavExpedients).set(data as any).where(eq(reavExpedients.id, id));
+  return getReavExpedientById(id);
+}
+
+export async function recalculateReavMargins(expedientId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const exp = await getReavExpedientById(expedientId);
+  if (!exp) return null;
+  const totalCosts = exp.costs.reduce((sum, c) => sum + parseFloat(c.amount as string), 0);
+  const sale = parseFloat(exp.saleAmountTotal as string ?? "0");
+  const marginReal = sale - totalCosts;
+  const taxBase = Math.max(0, marginReal);
+  const taxAmount = taxBase * 0.21;
+  await db.update(reavExpedients).set({
+    providerCostReal: String(totalCosts.toFixed(2)),
+    agencyMarginReal: String(marginReal.toFixed(2)),
+    reavTaxBase: String(taxBase.toFixed(2)),
+    reavTaxAmount: String(taxAmount.toFixed(2)),
+  }).where(eq(reavExpedients.id, expedientId));
+  return getReavExpedientById(expedientId);
+}
+
+export async function addReavDocument(data: {
+  expedientId: number;
+  side: "client" | "provider";
+  docType: string;
+  title: string;
+  fileUrl?: string;
+  fileKey?: string;
+  mimeType?: string;
+  fileSize?: number;
+  notes?: string;
+  uploadedBy?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(reavDocuments).values(data as any);
+  return { id: (result as any).insertId };
+}
+
+export async function deleteReavDocument(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(reavDocuments).where(eq(reavDocuments.id, id));
+}
+
+export async function addReavCost(data: {
+  expedientId: number;
+  description: string;
+  providerName?: string;
+  providerNif?: string;
+  invoiceRef?: string;
+  invoiceDate?: string;
+  amount: string;
+  currency?: string;
+  category?: string;
+  isPaid?: boolean;
+  notes?: string;
+  createdBy?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(reavCosts).values(data as any);
+  await recalculateReavMargins(data.expedientId);
+  return { id: (result as any).insertId };
+}
+
+export async function updateReavCost(id: number, data: Record<string, unknown>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(reavCosts).set(data as any).where(eq(reavCosts.id, id));
+  const [cost] = await db.select().from(reavCosts).where(eq(reavCosts.id, id));
+  if (cost) await recalculateReavMargins(cost.expedientId);
+}
+
+export async function deleteReavCost(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [cost] = await db.select().from(reavCosts).where(eq(reavCosts.id, id));
+  await db.delete(reavCosts).where(eq(reavCosts.id, id));
+  if (cost) await recalculateReavMargins(cost.expedientId);
 }

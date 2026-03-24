@@ -160,6 +160,11 @@ export const experiences = mysqlTable("experiences", {
   requirements: text("requirements"),
   discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
   discountExpiresAt: timestamp("discountExpiresAt"),
+  // Fiscal regime (REAV module)
+  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
+  productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
+  providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
+  agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
@@ -487,8 +492,13 @@ export const packs = mysqlTable("packs", {
   badge: varchar("badge", { length: 64 }),
   hasStay: boolean("hasStay").default(false).notNull(),
   isOnlinePurchase: boolean("isOnlinePurchase").default(false).notNull(),
-  discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
+   discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
   discountExpiresAt: timestamp("discountExpiresAt"),
+  // Fiscal regime (REAV module)
+  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
+  productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
+  providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
+  agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
@@ -497,7 +507,6 @@ export const packs = mysqlTable("packs", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
-
 export const packCrossSells = mysqlTable("pack_cross_sells", {
   id: int("id").autoincrement().primaryKey(),
   packId: int("packId").notNull(),
@@ -914,3 +923,121 @@ export const clients = mysqlTable("clients", {
 });
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = typeof clients.$inferInsert;
+
+// ─── REAV MODULE ─────────────────────────────────────────────────────────────
+
+/**
+ * Expediente REAV: se crea automáticamente cuando se emite una factura con
+ * al menos una línea en régimen REAV. Agrupa toda la documentación fiscal,
+ * los costes internos y el estado del expediente.
+ */
+export const reavExpedients = mysqlTable("reav_expedients", {
+  id: int("id").autoincrement().primaryKey(),
+  expedientNumber: varchar("expedientNumber", { length: 32 }).notNull().unique(), // EXP-REAV-2026-0001
+  // Relaciones
+  invoiceId: int("invoiceId"),          // Factura que originó el expediente
+  reservationId: int("reservationId"),  // Reserva asociada (si existe)
+  clientId: int("clientId"),            // Cliente
+  agentId: int("agentId"),              // Agente responsable
+  // Datos del servicio
+  serviceDescription: text("serviceDescription"),
+  serviceDate: varchar("serviceDate", { length: 10 }),   // YYYY-MM-DD
+  serviceEndDate: varchar("serviceEndDate", { length: 10 }),
+  destination: varchar("destination", { length: 256 }),
+  numberOfPax: int("numberOfPax").default(1),
+  // Importes (calculados al crear / recalculados al introducir costes reales)
+  saleAmountTotal: decimal("saleAmountTotal", { precision: 10, scale: 2 }).default("0"),
+  providerCostEstimated: decimal("providerCostEstimated", { precision: 10, scale: 2 }).default("0"),
+  providerCostReal: decimal("providerCostReal", { precision: 10, scale: 2 }).default("0"),
+  agencyMarginEstimated: decimal("agencyMarginEstimated", { precision: 10, scale: 2 }).default("0"),
+  agencyMarginReal: decimal("agencyMarginReal", { precision: 10, scale: 2 }).default("0"),
+  reavTaxBase: decimal("reavTaxBase", { precision: 10, scale: 2 }).default("0"),    // margen bruto tributable
+  reavTaxAmount: decimal("reavTaxAmount", { precision: 10, scale: 2 }).default("0"), // 21% sobre margen
+  // Estado fiscal
+  fiscalStatus: mysqlEnum("fiscalStatus", [
+    "pendiente_documentacion",
+    "documentacion_completa",
+    "en_revision",
+    "cerrado",
+    "anulado",
+  ]).default("pendiente_documentacion").notNull(),
+  // Estado operativo
+  operativeStatus: mysqlEnum("operativeStatus", [
+    "abierto",
+    "en_proceso",
+    "cerrado",
+    "anulado",
+  ]).default("abierto").notNull(),
+  // Notas internas
+  internalNotes: text("internalNotes"),
+  closedAt: timestamp("closedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ReavExpedient = typeof reavExpedients.$inferSelect;
+export type InsertReavExpedient = typeof reavExpedients.$inferInsert;
+
+/**
+ * Documentos del expediente REAV.
+ * Bloque 2: documentos del cliente (facturas emitidas, contratos, vouchers)
+ * Bloque 3: documentos del proveedor (facturas recibidas, confirmaciones)
+ */
+export const reavDocuments = mysqlTable("reav_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  expedientId: int("expedientId").notNull(),
+  side: mysqlEnum("side", ["client", "provider"]).notNull(), // Bloque 2 o Bloque 3
+  docType: mysqlEnum("docType", [
+    "factura_emitida",
+    "factura_recibida",
+    "contrato",
+    "voucher",
+    "confirmacion_proveedor",
+    "otro",
+  ]).default("otro").notNull(),
+  title: varchar("title", { length: 256 }).notNull(),
+  fileUrl: text("fileUrl"),
+  fileKey: text("fileKey"),
+  mimeType: varchar("mimeType", { length: 128 }),
+  fileSize: int("fileSize"),
+  notes: text("notes"),
+  uploadedBy: int("uploadedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ReavDocument = typeof reavDocuments.$inferSelect;
+export type InsertReavDocument = typeof reavDocuments.$inferInsert;
+
+/**
+ * Costes internos del expediente REAV (Bloque 4: panel económico).
+ * Cada línea representa un coste real de proveedor.
+ */
+export const reavCosts = mysqlTable("reav_costs", {
+  id: int("id").autoincrement().primaryKey(),
+  expedientId: int("expedientId").notNull(),
+  description: varchar("description", { length: 256 }).notNull(),
+  providerName: varchar("providerName", { length: 256 }),
+  providerNif: varchar("providerNif", { length: 64 }),
+  invoiceRef: varchar("invoiceRef", { length: 128 }),
+  invoiceDate: varchar("invoiceDate", { length: 10 }), // YYYY-MM-DD
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  category: mysqlEnum("category", [
+    "transporte",
+    "alojamiento",
+    "actividad",
+    "restauracion",
+    "guia",
+    "seguro",
+    "otros",
+  ]).default("otros").notNull(),
+  isPaid: boolean("isPaid").default(false).notNull(),
+  paidAt: timestamp("paidAt"),
+  notes: text("notes"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ReavCost = typeof reavCosts.$inferSelect;
+export type InsertReavCost = typeof reavCosts.$inferInsert;

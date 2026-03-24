@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `experiences` ADD `fiscalRegime` enum('reav','general_21','mixed') DEFAULT 'general_21' NOT NULL;\nALTER TABLE `experiences` ADD `productType` enum('own','semi_own','third_party') DEFAULT 'own' NOT NULL;\nALTER TABLE `experiences` ADD `providerPercent` decimal(5,2) DEFAULT '0';\nALTER TABLE `experiences` ADD `agencyMarginPercent` decimal(5,2) DEFAULT '0';\nALTER TABLE `packs` ADD `fiscalRegime` enum('reav','general_21','mixed') DEFAULT 'general_21' NOT NULL;\nALTER TABLE `packs` ADD `productType` enum('own','semi_own','third_party') DEFAULT 'own' NOT NULL;\nALTER TABLE `packs` ADD `providerPercent` decimal(5,2) DEFAULT '0';\nALTER TABLE `packs` ADD `agencyMarginPercent` decimal(5,2) DEFAULT '0';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute ALTER TABLE `experiences` ADD `fiscalRegime` enum('reav','general_21','mixed') DEFAULT 'general_21' NOT NULL;\nALTER TABLE `experiences` ADD `productType` enum('own','semi_own','third_party') DEFAULT 'own' NOT NULL;\nALTER TABLE `experiences` ADD `providerPercent` decimal(5,2) DEFAULT '0';\nALTER TABLE `experiences` ADD `agencyMarginPercent` decimal(5,2) DEFAULT '0';\nALTER TABLE `packs` ADD `fiscalRegime` enum('reav','general_21','mixed') DEFAULT 'general_21' NOT NULL;\nALTER TABLE `packs` ADD `productType` enum('own','semi_own','third_party') DEFAULT 'own' NOT NULL;\nALTER TABLE `packs` ADD `providerPercent` decimal(5,2) DEFAULT '0';\nALTER TABLE `packs` ADD `agencyMarginPercent` decimal(5,2) DEFAULT '0';",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 10057
+}

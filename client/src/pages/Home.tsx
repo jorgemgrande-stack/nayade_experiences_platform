@@ -321,7 +321,7 @@ function HeroActivityModal({
 export default function Home() {
   const [, navigate] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string } | null>(null);
+  const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string; discountPercent?: number | null; discountExpiresAt?: string | Date | null } | null>(null);
   const [addToCartPack, setAddToCartPack] = useState<{ id: number; title: string; basePrice: number; slug: string; minPersons: number; maxPersons: number } | null>(null);
 
   function todayStr() { return new Date().toISOString().split("T")[0]; }
@@ -888,7 +888,7 @@ export default function Home() {
                     {act.basePrice && (
                       <div className="ml-auto flex items-center gap-2">
                         <button
-                          onClick={() => setAddToCartProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1 })}
+                          onClick={() => setAddToCartProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1, discountPercent: (act as any).discountPercent, discountExpiresAt: (act as any).discountExpiresAt })}
                           className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-display font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
                         >
                           <ShoppingCartIcon className="w-3.5 h-3.5" /> Añadir al carrito

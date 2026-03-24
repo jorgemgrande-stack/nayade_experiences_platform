@@ -180,9 +180,21 @@ function CartItemRow({ item }: { item: CartItem }) {
         </div>
 
         {/* Total artículo */}
-        <span className="font-black text-sm text-accent">
-          {item.estimatedTotal.toFixed(2).replace(".", ",")} €
-        </span>
+        <div className="flex flex-col items-end">
+          {item.discountPercent && item.originalPricePerPerson && (
+            <span className="text-xs text-muted-foreground line-through">
+              {(item.originalPricePerPerson * item.people).toFixed(2).replace(".", ",")} €
+            </span>
+          )}
+          <div className="flex items-center gap-1.5">
+            {item.discountPercent && (
+              <span className="text-xs bg-green-500 text-white px-1.5 py-0.5 rounded-full font-semibold">-{item.discountPercent}%</span>
+            )}
+            <span className="font-black text-sm text-accent">
+              {item.estimatedTotal.toFixed(2).replace(".", ",")} €
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Extras (si los hay) */}

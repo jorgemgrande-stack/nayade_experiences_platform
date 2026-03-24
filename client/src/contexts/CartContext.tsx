@@ -42,6 +42,10 @@ export interface CartItem {
   extras: CartExtra[];
   /** Precio por persona (estimado, calculado en frontend) */
   pricePerPerson: number;
+  /** Precio por persona original antes de descuento (si hay descuento activo) */
+  originalPricePerPerson?: number;
+  /** Porcentaje de descuento aplicado (0-100) */
+  discountPercent?: number;
   /** Total estimado del artículo (sin servidor) */
   estimatedTotal: number;
 }

@@ -120,6 +120,20 @@
       "when": 1774306401977,
       "tag": "0016_hesitant_blue_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1774309571682,
+      "tag": "0017_flowery_tusk",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1774309641039,
+      "tag": "0018_round_midnight",
+      "breakpoints": true
     }
   ]
 }

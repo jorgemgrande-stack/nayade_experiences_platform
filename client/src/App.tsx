@@ -80,6 +80,9 @@ const Settings = lazy(() => import("./pages/admin/settings/Settings"));
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
 const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
 
+// Fiscal REAV
+const ReavManager = lazy(() => import("./pages/admin/fiscal/ReavManager"));
+
 // Fallback de carga para páginas admin
 function AdminLoadingFallback() {
   return (
@@ -170,6 +173,10 @@ function Router() {
       <Route path="/admin/contabilidad">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingDashboard /></Suspense>}</Route>
       <Route path="/admin/contabilidad/dashboard">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingDashboard /></Suspense>}</Route>
       <Route path="/admin/contabilidad/transacciones">{() => <Suspense fallback={<AdminLoadingFallback />}><TransactionsList /></Suspense>}</Route>
+
+      {/* Fiscal REAV */}
+      <Route path="/admin/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
+      <Route path="/admin/fiscal/reav">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
 
       {/* Hotel & SPA */}
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>

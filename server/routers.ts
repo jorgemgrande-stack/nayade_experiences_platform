@@ -99,6 +99,16 @@ import {
   upsertPage,
   getPageBlocks,
   savePageBlocks,
+  createReavExpedient,
+  listReavExpedients,
+  getReavExpedientById,
+  updateReavExpedient,
+  recalculateReavMargins,
+  addReavDocument,
+  deleteReavDocument,
+  addReavCost,
+  updateReavCost,
+  deleteReavCost,
 } from "./db";
 import {
   buildRedsysForm,
@@ -570,6 +580,10 @@ export const appRouter = router({
         excludes: z.array(z.string()).optional(),
         discountPercent: z.string().optional(),
         discountExpiresAt: z.string().optional(),
+        fiscalRegime: z.enum(["general", "reav"]).optional(),
+        productType: z.string().optional(),
+        providerPercent: z.string().optional(),
+        agencyMarginPercent: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -587,6 +601,17 @@ export const appRouter = router({
           processedData.discountPercent = parseFloat(processedData.discountPercent as string);
         } else if (processedData.discountPercent === "") {
           processedData.discountPercent = null;
+        }
+        // Convert providerPercent and agencyMarginPercent to numbers
+        if (processedData.providerPercent !== undefined && processedData.providerPercent !== "") {
+          processedData.providerPercent = parseFloat(processedData.providerPercent as string);
+        } else if (processedData.providerPercent === "") {
+          processedData.providerPercent = null;
+        }
+        if (processedData.agencyMarginPercent !== undefined && processedData.agencyMarginPercent !== "") {
+          processedData.agencyMarginPercent = parseFloat(processedData.agencyMarginPercent as string);
+        } else if (processedData.agencyMarginPercent === "") {
+          processedData.agencyMarginPercent = null;
         }
         return updateExperience(id, processedData);
       }),
@@ -1272,6 +1297,10 @@ export const appRouter = router({
         isFeatured: z.boolean().default(false),
         isActive: z.boolean().default(true),
         sortOrder: z.number().default(0),
+        fiscalRegime: z.enum(["general", "reav"]).default("general"),
+        productType: z.string().optional(),
+        providerPercent: z.number().optional(),
+        agencyMarginPercent: z.number().optional(),
       }))
       .mutation(async ({ input }) => createPack(input as any)),
 
@@ -1307,6 +1336,10 @@ export const appRouter = router({
         sortOrder: z.number().optional(),
         discountPercent: z.string().optional(),
         discountExpiresAt: z.string().optional(),
+        fiscalRegime: z.enum(["general", "reav"]).optional(),
+        productType: z.string().optional(),
+        providerPercent: z.number().optional(),
+        agencyMarginPercent: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -1325,21 +1358,21 @@ export const appRouter = router({
         }
         return updatePack(id, processedData as any);
       }),
-    /** Toggle activo/inactivo */
+    // Toggle activo/inactivo
     toggle: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => togglePackActive(input.id)),
 
-    /** Borrar definitivamente */
+    // Borrar definitivamente
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => hardDeletePack(input.id)),
 
-    /** Clonar */
+    // Clonar
     clone: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => clonePack(input.id)),
-    /** Reordenar */
+    // Reordenar
     reorder: adminProcedure
       .input(z.object({ items: z.array(z.object({ id: z.number(), sortOrder: z.number() })) }))
       .mutation(async ({ input }) => reorderPacks(input.items)),
@@ -1349,6 +1382,114 @@ export const appRouter = router({
   reviews: reviewsRouter,
   restaurants: restaurantsRouter,
   crm: crmRouter,
+  reav: router({
+    // Expedientes
+    list: adminProcedure
+      .input(z.object({
+        fiscalStatus: z.string().optional(),
+        operativeStatus: z.string().optional(),
+        agentId: z.number().optional(),
+      }))
+      .query(async ({ input }) => listReavExpedients(input)),
+
+    get: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => getReavExpedientById(input.id)),
+
+    create: adminProcedure
+      .input(z.object({
+        invoiceId: z.number().optional(),
+        reservationId: z.number().optional(),
+        clientId: z.number().optional(),
+        agentId: z.number().optional(),
+        serviceDescription: z.string().optional(),
+        serviceDate: z.string().optional(),
+        serviceEndDate: z.string().optional(),
+        destination: z.string().optional(),
+        numberOfPax: z.number().optional(),
+        saleAmountTotal: z.string().optional(),
+        providerCostEstimated: z.string().optional(),
+        agencyMarginEstimated: z.string().optional(),
+        internalNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => createReavExpedient(input)),
+
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        serviceDescription: z.string().optional(),
+        serviceDate: z.string().optional(),
+        serviceEndDate: z.string().optional(),
+        destination: z.string().optional(),
+        numberOfPax: z.number().optional(),
+        saleAmountTotal: z.string().optional(),
+        providerCostEstimated: z.string().optional(),
+        agencyMarginEstimated: z.string().optional(),
+        fiscalStatus: z.enum(["pendiente_documentacion","documentacion_completa","en_revision","cerrado","anulado"]).optional(),
+        operativeStatus: z.enum(["abierto","en_proceso","cerrado","anulado"]).optional(),
+        internalNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        return updateReavExpedient(id, data);
+      }),
+
+    recalculate: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => recalculateReavMargins(input.id)),
+
+    // Documentos
+    addDocument: adminProcedure
+      .input(z.object({
+        expedientId: z.number(),
+        side: z.enum(["client","provider"]),
+        docType: z.enum(["factura_emitida","factura_recibida","contrato","voucher","confirmacion_proveedor","otro"]),
+        title: z.string(),
+        fileUrl: z.string().optional(),
+        fileKey: z.string().optional(),
+        mimeType: z.string().optional(),
+        fileSize: z.number().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => addReavDocument({ ...input, uploadedBy: ctx.user.id })),
+
+    deleteDocument: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteReavDocument(input.id); return { success: true }; }),
+
+    // Costes
+    addCost: adminProcedure
+      .input(z.object({
+        expedientId: z.number(),
+        description: z.string(),
+        providerName: z.string().optional(),
+        providerNif: z.string().optional(),
+        invoiceRef: z.string().optional(),
+        invoiceDate: z.string().optional(),
+        amount: z.string(),
+        currency: z.string().default("EUR"),
+        category: z.enum(["transporte","alojamiento","actividad","restauracion","guia","seguro","otros"]).default("otros"),
+        isPaid: z.boolean().default(false),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => addReavCost({ ...input, createdBy: ctx.user.id })),
+
+    updateCost: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        description: z.string().optional(),
+        providerName: z.string().optional(),
+        amount: z.string().optional(),
+        isPaid: z.boolean().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => { const { id, ...data } = input; await updateReavCost(id, data); return { success: true }; }),
+
+    deleteCost: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => { await deleteReavCost(input.id); return { success: true }; }),
+  }),
+
   gallery: router({
     /** Público: obtener fotos activas */
     getItems: publicProcedure

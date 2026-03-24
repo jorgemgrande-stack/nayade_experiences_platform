@@ -1441,3 +1441,45 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Texto del ribbon cambiado a "Hasta DD/MM" (fecha real de caducidad)
 - [x] Ribbon ampliado a 110×110px para que quepa el texto cómodamente
 - [x] Variante detail también actualizada: "Hasta DD/MM" o "¡Termina hoy!" si caduca hoy
+
+## v6.0: Módulo Fiscal REAV
+
+### Fase 1 — Estructura de datos
+- [x] Campo fiscalRegime (reav | general) en tabla experiences y packs
+- [x] Campo providerPercent, agencyMarginPercent, productType en experiences y packs
+- [x] Tabla reav_expedients: nº expediente, reservaId, facturaId, clienteId, estado fiscal, márgenes
+- [x] Tabla reav_documents: expedientId, tipo (cliente | proveedor), nombre, url S3
+- [x] Tabla reav_costs: expedientId, tipo coste, proveedor, importe, pagado
+- [ ] Campo fiscalRegime heredado en invoice_lines (herencia silenciosa desde producto)
+- [x] Migración SQL aplicada
+
+### Fase 2 — Herencia fiscal silenciosa
+- [ ] Al crear presupuesto/reserva: heredar fiscalRegime del producto internamente (sin cambiar UX)
+- [ ] Al crear línea de factura: heredar fiscalRegime desde producto → invoice_line.fiscalRegime
+- [x] Admin ExperiencesManager/PacksManager: campo régimen fiscal + modelo económico en ficha
+
+### Fase 3 — Facturación mixta por líneas
+- [ ] InvoiceDetail: calcular IVA solo en líneas régimen general (21%)
+- [ ] Líneas REAV: mostrar sin IVA, con nota "REAV - Margen no sujeto a IVA"
+- [ ] Totales separados: subtotal REAV + subtotal general + IVA general + total factura
+- [ ] Al generar factura con líneas REAV → crear expediente REAV automáticamente
+
+### Fase 4 — Expediente REAV (6 bloques)
+- [x] Bloque 1: info general del expediente (nº, reserva, factura, cliente, productos REAV, márgenes)
+- [x] Bloque 2: documentación cliente (historial, URL, eliminar)
+- [x] Bloque 3: documentación proveedor (historial, URL, eliminar)
+- [x] Bloque 4: control económico interno (costes previstos/reales, recalcular márgenes)
+- [x] Bloque 5: estado fiscal (REAV provisional/definitivo, expediente completo)
+- [x] Bloque 6: acciones admin (ZIP, exportar, abrir reserva/factura, cerrar expediente)
+
+### Fase 5 — Automatizaciones
+- [ ] Crear expediente REAV automáticamente al generar factura con líneas REAV
+- [x] Recalcular márgenes al introducir costes reales
+- [ ] Semáforo visual: verde/amarillo/rojo según estado del expediente
+- [ ] Permitir cierre fiscal solo cuando expediente esté completo y validado
+
+## v6.1: Descuentos en carrito
+- [x] CartItem: campos originalPricePerPerson y discountPercent
+- [x] AddToCartModal: calcular precio con descuento activo, mostrar precio tachado + badge -%
+- [x] CartDrawer: mostrar precio original tachado + badge descuento por artículo
+- [x] Home.tsx y Experiences.tsx: pasar discountPercent/discountExpiresAt al AddToCartModal

@@ -23,6 +23,8 @@ export interface AddToCartProduct {
   slug?: string | null;
   minPersons?: number | null;
   maxPersons?: number | null;
+  discountPercent?: number | null;
+  discountExpiresAt?: string | Date | null;
 }
 
 interface AddToCartModalProps {
@@ -51,9 +53,15 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
 
   // Precio efectivo según variante seleccionada
   const selectedVariant = variants.find(v => v.id === selectedVariantId);
-  const effectivePrice = selectedVariant
+  const rawPrice = selectedVariant
     ? parseFloat(String(selectedVariant.priceModifier ?? basePrice))
     : basePrice;
+
+  // Calcular descuento activo
+  const discountPct = product.discountPercent ?? 0;
+  const discountExpiry = product.discountExpiresAt ? new Date(product.discountExpiresAt as string) : null;
+  const isDiscountActive = discountPct > 0 && (!discountExpiry || discountExpiry >= new Date());
+  const effectivePrice = isDiscountActive ? rawPrice * (1 - discountPct / 100) : rawPrice;
 
   const estimatedTotal = effectivePrice * people;
 
@@ -71,6 +79,8 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
       variantName: selectedVariant?.name,
       extras: [],
       pricePerPerson: effectivePrice,
+      originalPricePerPerson: isDiscountActive ? rawPrice : undefined,
+      discountPercent: isDiscountActive ? discountPct : undefined,
       estimatedTotal,
     });
     onClose();
@@ -91,9 +101,15 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
             <div className="absolute bottom-3 left-4 right-4">
               <p className="text-white font-bold text-base leading-tight line-clamp-2">{product.title}</p>
-              <p className="text-orange-300 text-sm font-semibold mt-0.5">
-                {effectivePrice.toFixed(2)} € / persona
-              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                {isDiscountActive && (
+                  <span className="text-white/60 text-sm line-through">{rawPrice.toFixed(2)} €</span>
+                )}
+                <p className="text-orange-300 text-sm font-semibold">
+                  {effectivePrice.toFixed(2)} € / persona
+                  {isDiscountActive && <span className="ml-1 text-xs bg-green-500 text-white px-1.5 py-0.5 rounded-full">-{discountPct}%</span>}
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -102,7 +118,15 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
           {!product.image1 && (
             <DialogHeader className="mb-4">
               <DialogTitle className="font-display text-lg">{product.title}</DialogTitle>
-              <p className="text-orange-600 font-semibold text-sm">{effectivePrice.toFixed(2)} € / persona</p>
+              <div className="flex items-center gap-2">
+            {isDiscountActive && (
+              <span className="text-slate-400 text-sm line-through">{rawPrice.toFixed(2)} €</span>
+            )}
+            <p className="text-orange-600 font-semibold text-sm">
+              {effectivePrice.toFixed(2)} € / persona
+              {isDiscountActive && <span className="ml-1 text-xs bg-green-500 text-white px-1.5 py-0.5 rounded-full">-{discountPct}%</span>}
+            </p>
+          </div>
             </DialogHeader>
           )}
 

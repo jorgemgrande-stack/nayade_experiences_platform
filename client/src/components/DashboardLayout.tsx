@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Package, FileText, Calendar, BarChart3, Settings, Users, Image, BedDouble, Sparkles, UtensilsCrossed } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, Package, FileText, Calendar, BarChart3, Settings, Users, Image, BedDouble, Sparkles, UtensilsCrossed, Receipt } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -34,6 +34,7 @@ const menuItems = [
   { icon: FileText,        label: "CRM",        path: "/admin/crm" },
   { icon: Calendar,        label: "Operaciones",path: "/admin/operaciones" },
   { icon: BarChart3,       label: "Contabilidad",path: "/admin/contabilidad" },
+  { icon: Receipt,          label: "Fiscal REAV", path: "/admin/fiscal/reav" },
   { icon: BedDouble,       label: "Hotel",      path: "/admin/hotel" },
   { icon: Sparkles,        label: "SPA",        path: "/admin/spa" },
   { icon: UtensilsCrossed, label: "Restaurantes",path: "/admin/restaurantes" },
