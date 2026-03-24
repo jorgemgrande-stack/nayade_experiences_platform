@@ -155,14 +155,12 @@ export default function TpvScreen() {
   });
 
   // ── Catalog products flat list ──────────────────────────────────────────────
-  const allProducts: CatalogProduct[] = catalog
-    ? [
-        ...catalog.experiences,
-        ...catalog.packs,
-        ...catalog.spa,
-        ...catalog.hotel,
-      ]
-    : [];
+  const allProducts: CatalogProduct[] = [
+    ...(catalog?.experiences ?? []),
+    ...(catalog?.packs ?? []),
+    ...(catalog?.spa ?? []),
+    ...(catalog?.hotel ?? []),
+  ];
 
   const filteredProducts = allProducts.filter((p) => {
     const matchesFilter = filter === "all" || p.productType === filter;

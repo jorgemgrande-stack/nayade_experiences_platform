@@ -1691,3 +1691,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregir TypeError en TpvScreen al hacer .map() sobre resultado de createSale
 - [x] Corregir TpvSplitPayment: misma normalización para pago mixto/dividido
 - [x] Verificado: 0 errores TypeScript, 172/172 tests pasando
+
+## v8.2: Fix crash TPV — .map() inseguro en render
+- [x] Endurecer allProducts: usar catalog?.experiences ?? [] en lugar de catalog ? [...catalog.experiences] : []
+- [x] TpvTicket: proteger s.items y s.payments con ?? [] antes de .map()
+- [x] Verificado: 0 errores TypeScript, 172/172 tests pasando

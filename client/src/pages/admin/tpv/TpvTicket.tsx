@@ -59,6 +59,9 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
   });
 
   const s = sale.sale;
+  // Ensure arrays are always defined to prevent .map() crashes
+  const saleItems = (s as any).items ?? [];
+  const salePayments = (s as any).payments ?? [];
   const date = new Date(s.createdAt);
   const dateStr = date.toLocaleDateString("es-ES", {
     day: "2-digit", month: "2-digit", year: "numeric",
@@ -130,7 +133,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
               <div>Cliente: {s.customerName}</div>
             )}
             <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-            {s.items.map((item, i) => (
+            {saleItems.map((item: any, i: number) => (
               <div key={i}>
                 <div className="bold">{item.productName}</div>
                 <div className="row">
@@ -160,7 +163,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
               <span>{parseFloat(String(s.total)).toFixed(2)}€</span>
             </div>
             <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-            {s.payments.map((p, i) => (
+            {salePayments.map((p: any, i: number) => (
               <div key={i} className="row">
                 <span>{METHOD_LABELS[p.method] ?? p.method}{p.payerName ? ` (${p.payerName})` : ""}</span>
                 <span>{parseFloat(String(p.amount)).toFixed(2)}€</span>
