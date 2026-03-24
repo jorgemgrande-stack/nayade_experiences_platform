@@ -1735,3 +1735,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: nuevo ticket 80mm con desglose fiscal y QR
 - [x] Frontend: módulo Transacciones rediseñado con tabla completa y buscador avanzado
 - [x] Frontend: módulo Informes BI con gráficas operativas
+
+## Mejoras TPV v11.0
+- [ ] TPV: formulario de cliente (nombre, email, teléfono) al iniciar nueva venta
+- [ ] createSale: pasar datos de cliente a la reserva generada en CRM
+- [ ] CRM Reservas: mostrar reservas canal TPV con etiqueta visual "TPV"
+- [ ] Restaurar pestaña "Ventas TPV del día" en backoffice + enlace rápido desde TPV frontend
+- [ ] Email post-venta TPV: enviar a cliente (si hay email) y siempre a reservas@nayadeexperiences.es

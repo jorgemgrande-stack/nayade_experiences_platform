@@ -3,6 +3,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
+import { buildReservationConfirmHtml } from "../emailTemplates";
 import {
   cashRegisters,
   cashSessions,
@@ -479,10 +480,10 @@ export const tpvRouter = router({
         });
       }
 
-      // ── 6. Generar reserva automática si hay cliente y producto principal ────
+      // ── 6. Generar reserva automática siempre que haya producto principal ────
       let reservationId: number | null = null;
       const mainItem = input.items[0];
-      if (input.customerName && mainItem) {
+      if (mainItem) {
         try {
           const merchantOrder = generateReservationRef();
           const amountCents = Math.round(total * 100);
@@ -494,14 +495,14 @@ export const tpvRouter = router({
             amountTotal: amountCents,
             amountPaid: amountCents,
             status: "paid",
-            customerName: input.customerName,
+            customerName: input.customerName || "Cliente TPV",
             customerEmail: input.customerEmail ?? "",
             customerPhone: input.customerPhone ?? "",
             merchantOrder,
-            notes: `[ORIGEN_TPV] Ticket: ${ticketNumber}`,
+            notes: `[ORIGEN_TPV] Ticket: ${ticketNumber}${input.customerName ? ` · ${input.customerName}` : ""}`,
             paymentMethod: primaryPaymentMethod === "card" ? "redsys" :
                            primaryPaymentMethod === "cash" ? "efectivo" : "otro",
-            channel: "otro",
+            channel: "tpv",
             createdAt: Date.now(),
             updatedAt: Date.now(),
             paidAt: Date.now(),
@@ -550,12 +551,48 @@ export const tpvRouter = router({
         console.error("[TPV] Error registrando transacción:", e);
       }
 
-      // ── 8. Devolver venta completa ───────────────────────────────────────────
+      // ── 8. Email de confirmación (cliente si hay email + siempre a reservas@) ─
+      try {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT ?? "587"),
+          secure: process.env.SMTP_SECURE === "true",
+          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        });
+        const emailHtml = buildReservationConfirmHtml({
+          merchantOrder: ticketNumber,
+          productName: mainItem?.productName ?? input.items.map(i => i.productName).join(", "),
+          customerName: input.customerName || "Cliente TPV",
+          date: new Date().toLocaleDateString("es-ES"),
+          people: mainItem?.participants ?? 1,
+          amount: `${total.toFixed(2)} €`,
+        });
+        const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
+        // Siempre a reservas@
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM ?? "noreply@nayadeexperiences.com",
+          to: "reservas@nayadeexperiences.es",
+          subject,
+          html: emailHtml,
+        });
+        // Al cliente si proporcionó email
+        if (input.customerEmail) {
+          await transporter.sendMail({
+            from: process.env.SMTP_FROM ?? "noreply@nayadeexperiences.com",
+            to: input.customerEmail,
+            subject,
+            html: emailHtml,
+          });
+        }
+      } catch (e) {
+        console.error("[TPV] Error enviando email de confirmación:", e);
+      }
+
+      // ── 9. Devolver venta completa ───────────────────────────────────────────
       const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
       const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, saleId));
       const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, saleId));
-
-      return { sale, items, payments, reservationId };
+      return { sale, items, payments, reservationId };;
     }),
 
   getSale: protectedProcedure

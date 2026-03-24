@@ -3209,16 +3209,23 @@ export default function CRMDashboard() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
-                          res.status === "paid" || res.status === "confirmed" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
-                          res.status === "pending_payment" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
-                          res.status === "cancelled" ? "bg-red-500/15 text-red-400 border-red-500/30" :
-                          "bg-slate-500/15 text-slate-400 border-slate-500/30"
-                        }`}>
-                          {res.status === "paid" || res.status === "confirmed" ? "✅ Confirmada" :
-                           res.status === "pending_payment" ? "⏳ Pendiente" :
-                           res.status === "cancelled" ? "❌ Cancelada" : res.status}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
+                            res.status === "paid" || res.status === "confirmed" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                            res.status === "pending_payment" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                            res.status === "cancelled" ? "bg-red-500/15 text-red-400 border-red-500/30" :
+                            "bg-slate-500/15 text-slate-400 border-slate-500/30"
+                          }`}>
+                            {res.status === "paid" || res.status === "confirmed" ? "✅ Confirmada" :
+                             res.status === "pending_payment" ? "⏳ Pendiente" :
+                             res.status === "cancelled" ? "❌ Cancelada" : res.status}
+                          </span>
+                          {res.channel === "tpv" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-1.5 py-0.5 rounded-full">
+                              🖥️ TPV
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
                         {res.invoiceNumber ? (

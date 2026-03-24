@@ -19,6 +19,7 @@ import {
   Zap, Waves, Baby, Sparkles, Star, Sun, Filter, LogOut, Settings,
   Receipt, ArrowLeft, SplitSquareHorizontal,
 } from "lucide-react";
+import { Link } from "wouter";
 import TpvOpenSession from "./TpvOpenSession";
 import TpvCloseSession from "./TpvCloseSession";
 import TpvCashMovement from "./TpvCashMovement";
@@ -300,6 +301,17 @@ export default function TpvScreen() {
 
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">{user?.name}</span>
+          <Link href="/admin/tpv/backoffice">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-violet-400 hover:text-violet-300 h-8 px-2 text-xs gap-1"
+              title="Historial de ventas y reservas del día"
+            >
+              <Settings className="w-3 h-3" />
+              Backoffice
+            </Button>
+          </Link>
           <Button
             size="sm"
             variant="ghost"
@@ -456,6 +468,38 @@ export default function TpvScreen() {
             )}
           </div>
 
+          {/* ── Datos del cliente (siempre visible) ── */}
+          <div className="px-3 py-2 border-b border-gray-800 bg-gray-900/80">
+            <div className="flex items-center gap-1.5 mb-2">
+              <User className="w-3.5 h-3.5 text-violet-400" />
+              <span className="text-xs font-semibold text-gray-300">Datos del cliente</span>
+              <span className="text-[10px] text-gray-600 ml-1">(opcional)</span>
+            </div>
+            <div className="space-y-1.5">
+              <Input
+                placeholder="Nombre"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="h-7 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+              />
+              <div className="grid grid-cols-2 gap-1.5">
+                <Input
+                  placeholder="Email"
+                  type="email"
+                  value={customerEmail}
+                  onChange={(e) => setCustomerEmail(e.target.value)}
+                  className="h-7 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                />
+                <Input
+                  placeholder="Teléfono"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  className="h-7 text-xs bg-gray-800 border-gray-700 text-white placeholder:text-gray-600"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Cart items */}
           <ScrollArea className="flex-1">
             <div className="p-3 space-y-2">
@@ -510,41 +554,9 @@ export default function TpvScreen() {
             </div>
           </ScrollArea>
 
-          {/* Customer + Discount */}
+          {/* Descuento manual */}
           {cart.length > 0 && (
             <div className="px-3 pb-2 space-y-1 border-t border-gray-800 pt-2">
-              <button
-                className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-white py-1"
-                onClick={() => setShowCustomerForm(!showCustomerForm)}
-              >
-                <span className="flex items-center gap-1">
-                  <User className="w-3 h-3" />
-                  {customerName || "Añadir cliente"}
-                </span>
-                {showCustomerForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              </button>
-              {showCustomerForm && (
-                <div className="space-y-1 pb-1">
-                  <Input
-                    placeholder="Nombre"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
-                  />
-                  <Input
-                    placeholder="Email"
-                    value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
-                  />
-                  <Input
-                    placeholder="Teléfono"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
-                  />
-                </div>
-              )}
               <button
                 className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-white py-1"
                 onClick={() => setShowDiscountForm(!showDiscountForm)}
