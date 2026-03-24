@@ -1620,3 +1620,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Generar XLSX con hoja de cabecera y hoja de líneas de liquidación
 - [x] Botón "Exportar Excel" en SettlementsManager con descarga directa
 - [x] Tests del generador XLSX (13 tests pasando)
+
+## v7.2: Corrección Sidebar — Proveedores y Liquidaciones
+- [x] Verificar AdminLayout: ítems Proveedores y Liquidaciones bajo Contabilidad
+- [x] Añadir sección "Proveedores" con icono Truck en el sidebar (entre Contabilidad y Fiscal REAV)
+- [x] Añadir rutas /admin/suppliers y /admin/settlements en App.tsx con lazy imports

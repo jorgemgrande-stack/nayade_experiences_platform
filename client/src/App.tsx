@@ -83,6 +83,10 @@ const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
 // Fiscal REAV
 const ReavManager = lazy(() => import("./pages/admin/fiscal/ReavManager"));
 
+// Suppliers & Settlements
+const SuppliersManager = lazy(() => import("./pages/admin/suppliers/SuppliersManager"));
+const SettlementsManager = lazy(() => import("./pages/admin/suppliers/SettlementsManager"));
+
 // Fallback de carga para páginas admin
 function AdminLoadingFallback() {
   return (
@@ -177,6 +181,10 @@ function Router() {
       {/* Fiscal REAV */}
       <Route path="/admin/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
       <Route path="/admin/fiscal/reav">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
+
+      {/* Suppliers & Settlements */}
+      <Route path="/admin/suppliers">{() => <Suspense fallback={<AdminLoadingFallback />}><SuppliersManager /></Suspense>}</Route>
+      <Route path="/admin/settlements">{() => <Suspense fallback={<AdminLoadingFallback />}><SettlementsManager /></Suspense>}</Route>
 
       {/* Hotel & SPA */}
       <Route path="/admin/hotel">{() => <Suspense fallback={<AdminLoadingFallback />}><HotelManager /></Suspense>}</Route>

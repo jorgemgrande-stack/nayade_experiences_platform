@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, FileText, Calendar, BarChart3,
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
-  UserPlus, FileCheck, ChevronRight, Receipt,
+  UserPlus, FileCheck, ChevronRight, Receipt, Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -83,6 +83,16 @@ const navItems = [
       { label: "Dashboard", href: "/admin/contabilidad/dashboard" },
       { label: "Transacciones", href: "/admin/contabilidad/transacciones" },
       { label: "Informes", href: "/admin/contabilidad/informes" },
+    ],
+  },
+  {
+    label: "Proveedores",
+    href: "/admin/suppliers",
+    icon: Truck,
+    roles: ["admin"],
+    children: [
+      { label: "Gestión de proveedores", href: "/admin/suppliers" },
+      { label: "Liquidaciones", href: "/admin/settlements" },
     ],
   },
   {
