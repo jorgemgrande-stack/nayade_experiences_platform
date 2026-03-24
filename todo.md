@@ -1459,9 +1459,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Admin ExperiencesManager/PacksManager: campo régimen fiscal + modelo económico en ficha
 
 ### Fase 3 — Facturación mixta por líneas
-- [ ] InvoiceDetail: calcular IVA solo en líneas régimen general (21%)
-- [ ] Líneas REAV: mostrar sin IVA, con nota "REAV - Margen no sujeto a IVA"
-- [ ] Totales separados: subtotal REAV + subtotal general + IVA general + total factura
+- [x] InvoiceDetail: calcular IVA solo en líneas régimen general (21%)
+- [x] Líneas REAV: mostrar sin IVA, con nota "REAV - Margen no sujeto a IVA"
+- [x] Totales separados: subtotal REAV + subtotal general + IVA general + total factura
 - [ ] Al generar factura con líneas REAV → crear expediente REAV automáticamente
 
 ### Fase 4 — Expediente REAV (6 bloques)
@@ -1483,3 +1483,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] AddToCartModal: calcular precio con descuento activo, mostrar precio tachado + badge -%
 - [x] CartDrawer: mostrar precio original tachado + badge descuento por artículo
 - [x] Home.tsx y Experiences.tsx: pasar discountPercent/discountExpiresAt al AddToCartModal
+
+## v6.2: Facturación mixta REAV (Fase 3)
+- [x] Campo fiscalRegime en tipo JSON de items (quotes e invoices) — sin migración BD necesaria
+- [x] Backend generateFromLead/previewFromLead: heredar fiscalRegime del producto al construir items
+- [x] Backend confirmPayment/confirmTransfer: calcular IVA solo sobre líneas general_21
+- [x] generateInvoicePdf: separar líneas REAV/general, subtotales separados, nota REAV
+- [x] Admin CRMDashboard QuoteDetail: badge REAV por línea, subtotales separados
+- [x] Admin CRMDashboard CreateDirectQuoteModal: selector régimen fiscal por línea, recalcular IVA
+- [x] Admin CRMDashboard QuoteBuilderModal: selector régimen fiscal por línea, recalcular IVA
+- [x] Admin CRMDashboard QuoteEditModal: selector régimen fiscal por línea, recalcular IVA

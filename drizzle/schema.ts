@@ -239,6 +239,8 @@ export const quotes = mysqlTable("quotes", {
     quantity: number;
     unitPrice: number;
     total: number;
+    fiscalRegime?: "reav" | "general_21";
+    productId?: number;
   }[]>().default([]),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
@@ -311,7 +313,7 @@ export const invoices = mysqlTable("invoices", {
   clientPhone: varchar("clientPhone", { length: 32 }),
   clientNif: varchar("clientNif", { length: 32 }),
   clientAddress: text("clientAddress"),
-  itemsJson: json("itemsJson").$type<{ description: string; quantity: number; unitPrice: number; total: number }[]>().default([]),
+  itemsJson: json("itemsJson").$type<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[]>().default([]),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
   taxRate: decimal("taxRate", { precision: 5, scale: 2 }).default("21"),
   taxAmount: decimal("taxAmount", { precision: 10, scale: 2 }).default("0"),

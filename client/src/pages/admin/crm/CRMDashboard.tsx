@@ -734,12 +734,13 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   });
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
-  const [items, setItems] = useState([{ description: "", quantity: 1, unitPrice: 0, total: 0 }]);
+  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
-  const taxAmount = subtotal * (taxRate / 100);
-  const total = subtotal + taxAmount;
+  const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+  const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
+  const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
   // Búsqueda de clientes existentes
   const { data: clientSuggestions } = trpc.crm.clients.list.useQuery(
@@ -927,7 +928,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
             </Button>
           </div>
           <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mb-1">
-            <span className="col-span-5">Descripción</span>
+            <span className="col-span-4">Descripción</span>
+            <span className="col-span-2 text-center">Régimen</span>
             <span className="col-span-2 text-center">Cant.</span>
             <span className="col-span-2 text-right">P.Unit.</span>
             <span className="col-span-2 text-right">Total</span>
@@ -935,7 +937,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
           <div className="space-y-2">
             {items.map((item, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                <div className="col-span-5">
+                <div className="col-span-4">
                   <ProductSearchInput
                     value={item.description}
                     onChange={(v) => updateItem(idx, "description", v)}
@@ -943,16 +945,25 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                       setItems((prev) => prev.map((it, i) => {
                         if (i !== idx) return it;
                         const unitPrice = Number(p.basePrice);
-                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity };
+                        const fr = (p as any).fiscalRegime === "reav" ? "reav" : "general_21";
+                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr };
                       }));
                     }}
                   />
                 </div>
+                <select
+                  className="col-span-2 bg-white/5 border border-white/10 text-white text-xs rounded-md px-1 py-1.5 h-9"
+                  value={item.fiscalRegime ?? "general_21"}
+                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
+                >
+                  <option value="general_21" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="reav" className="bg-[#0d1526]">REAV</option>
+                </select>
                 <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
-                <div className="col-span-2 text-right text-sm font-semibold text-orange-400">{item.total.toFixed(2)} €</div>
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{item.total.toFixed(2)} €</div>
                 <Button size="sm" variant="ghost" className="col-span-1 text-white/30 hover:text-red-400 p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
@@ -964,8 +975,21 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
 
         {/* Totales */}
         <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
-          <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
-          <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+          {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
+            <>
+              <div className="flex justify-between text-sm text-white/60"><span>Subtotal rég. general</span><span>{generalSubtotal.toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotal).toFixed(2)} €</span></div>
+            </>
+          )}
+          {!items.some(i => i.fiscalRegime === "reav") && (
+            <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+          )}
+          {generalSubtotal > 0 && (
+            <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+          )}
+          {items.every(i => i.fiscalRegime === "reav") && (
+            <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
+          )}
           <div className="flex justify-between text-base font-bold text-white border-t border-white/10 pt-2 mt-2">
             <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
           </div>
@@ -1024,8 +1048,8 @@ function QuoteBuilderModal({
   });
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
-  const [items, setItems] = useState([
-    { description: "", quantity: 1, unitPrice: 0, total: 0 },
+  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([
+    { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" },
   ]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
@@ -1036,7 +1060,7 @@ function QuoteBuilderModal({
   const handleAutoFill = async () => {
     const result = await previewQuery.refetch();
     if (result.data?.hasActivities && result.data.items.length > 0) {
-      setItems(result.data.items);
+      setItems(result.data.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]);
       setAutoFilled(true);
       toast.success(`Lineas generadas automaticamente (${result.data.items.length})`);
     } else {
@@ -1045,8 +1069,9 @@ function QuoteBuilderModal({
   };
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
-  const taxAmount = subtotal * (taxRate / 100);
-  const total = subtotal + taxAmount;
+  const generalSubtotalBuilder = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+  const taxAmount = parseFloat((generalSubtotalBuilder * (taxRate / 100)).toFixed(2));
+  const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) =>
@@ -1174,13 +1199,14 @@ function QuoteBuilderModal({
               size="sm"
               variant="ghost"
               className="text-orange-400 hover:text-orange-300 text-xs h-6"
-              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0 }])}
+              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }])}
             >
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
           <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mb-1">
-            <span className="col-span-5">Descripción</span>
+            <span className="col-span-4">Descripción</span>
+            <span className="col-span-2 text-center">Régimen</span>
             <span className="col-span-2 text-center">Cant.</span>
             <span className="col-span-2 text-right">P.Unit.</span>
             <span className="col-span-2 text-right">Total</span>
@@ -1188,7 +1214,7 @@ function QuoteBuilderModal({
           <div className="space-y-2">
             {items.map((item, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                <div className="col-span-5">
+                <div className="col-span-4">
                   <ProductSearchInput
                     value={item.description}
                     onChange={(v) => updateItem(idx, "description", v)}
@@ -1196,11 +1222,20 @@ function QuoteBuilderModal({
                       setItems((prev) => prev.map((it, i) => {
                         if (i !== idx) return it;
                         const unitPrice = Number(p.basePrice);
-                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity };
+                        const fr = (p as any).fiscalRegime === "reav" ? "reav" : "general_21";
+                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr };
                       }));
                     }}
                   />
                 </div>
+                <select
+                  className="col-span-2 bg-white/5 border border-white/10 text-white text-xs rounded-md px-1 py-1.5 h-9"
+                  value={item.fiscalRegime ?? "general_21"}
+                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
+                >
+                  <option value="general_21" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="reav" className="bg-[#0d1526]">REAV</option>
+                </select>
                 <Input
                   className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center"
                   type="number"
@@ -1216,7 +1251,7 @@ function QuoteBuilderModal({
                   value={item.unitPrice}
                   onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))}
                 />
-                <div className="col-span-2 text-right text-sm font-semibold text-orange-400">
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>
                   {item.total.toFixed(2)} €
                 </div>
                 <Button
@@ -1235,12 +1270,21 @@ function QuoteBuilderModal({
 
         {/* Totals */}
         <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
-          <div className="flex justify-between text-sm text-white/60">
-            <span>Subtotal</span><span>{subtotal.toFixed(2)} €</span>
-          </div>
-          <div className="flex justify-between text-sm text-white/60">
-            <span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span>
-          </div>
+          {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
+            <>
+              <div className="flex justify-between text-sm text-white/60"><span>Subtotal rég. general</span><span>{generalSubtotalBuilder.toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotalBuilder).toFixed(2)} €</span></div>
+            </>
+          )}
+          {!items.some(i => i.fiscalRegime === "reav") && (
+            <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+          )}
+          {generalSubtotalBuilder > 0 && (
+            <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+          )}
+          {items.every(i => i.fiscalRegime === "reav") && (
+            <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
+          )}
           <div className="flex justify-between text-base font-bold text-white border-t border-white/10 pt-2 mt-2">
             <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
           </div>
@@ -1308,7 +1352,7 @@ function QuoteEditModal({
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
   const [validUntil, setValidUntil] = useState("");
-  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number }[]>([]);
+  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([]);
   const [initialized, setInitialized] = useState(false);
 
   if (data && !initialized) {
@@ -1318,14 +1362,15 @@ function QuoteEditModal({
     setNotes(q.notes ?? "");
     setTaxRate(q.tax ? parseFloat(String(q.tax)) : 21);
     setValidUntil(q.validUntil ? new Date(q.validUntil).toISOString().split("T")[0] : "");
-    const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
-    setItems(rawItems.length > 0 ? rawItems : [{ description: "", quantity: 1, unitPrice: 0, total: 0 }]);
+    const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
+    setItems(rawItems.length > 0 ? rawItems : [{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }]);
     setInitialized(true);
   }
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
-  const taxAmount = subtotal * (taxRate / 100);
-  const total = subtotal + taxAmount;
+  const generalSubtotalEdit = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+  const taxAmount = parseFloat((generalSubtotalEdit * (taxRate / 100)).toFixed(2));
+  const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) => prev.map((item, i) => {
@@ -1389,20 +1434,35 @@ function QuoteEditModal({
           <div className="flex items-center justify-between mb-2">
             <Label className="text-white/60 text-xs">Conceptos *</Label>
             <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
-              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0 }])}>
+              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }])}>
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
+          </div>
+          <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mb-1">
+            <span className="col-span-4">Descripción</span>
+            <span className="col-span-2 text-center">Régimen</span>
+            <span className="col-span-2 text-center">Cant.</span>
+            <span className="col-span-2 text-right">P.Unit.</span>
+            <span className="col-span-2 text-right">Total</span>
           </div>
           <div className="space-y-2">
             {items.map((item, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                <Input className="col-span-5 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm" placeholder="Descripción"
+                <Input className="col-span-4 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm" placeholder="Descripción"
                   value={item.description} onChange={(e) => updateItem(idx, "description", e.target.value)} />
+                <select
+                  className="col-span-2 bg-white/5 border border-white/10 text-white text-xs rounded-md px-1 py-1.5 h-9"
+                  value={item.fiscalRegime ?? "general_21"}
+                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
+                >
+                  <option value="general_21" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="reav" className="bg-[#0d1526]">REAV</option>
+                </select>
                 <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
-                <div className="col-span-2 text-right text-sm font-semibold text-orange-400">{item.total.toFixed(2)} €</div>
+                <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{item.total.toFixed(2)} €</div>
                 <Button size="sm" variant="ghost" className="col-span-1 text-white/30 hover:text-red-400 p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
@@ -1412,8 +1472,21 @@ function QuoteEditModal({
           </div>
         </div>
         <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
-          <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
-          <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+          {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
+            <>
+              <div className="flex justify-between text-sm text-white/60"><span>Subtotal rég. general</span><span>{generalSubtotalEdit.toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotalEdit).toFixed(2)} €</span></div>
+            </>
+          )}
+          {!items.some(i => i.fiscalRegime === "reav") && (
+            <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+          )}
+          {generalSubtotalEdit > 0 && (
+            <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+          )}
+          {items.every(i => i.fiscalRegime === "reav") && (
+            <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
+          )}
           <div className="flex justify-between text-base font-bold text-white border-t border-white/10 pt-2">
             <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
           </div>
@@ -1669,7 +1742,11 @@ function QuoteDetailModal({
 
   if (!data) return null;
   const { quote, lead, invoices: relatedInvoices } = data;
-  const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+  const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
+  const reavItems = items.filter(i => i.fiscalRegime === "reav");
+  const generalItems = items.filter(i => i.fiscalRegime !== "reav");
+  const hasReav = reavItems.length > 0;
+  const hasGeneral = generalItems.length > 0;
 
   return (
     <>
@@ -1718,7 +1795,12 @@ function QuoteDetailModal({
               </tr>
             </thead>
             <tbody>
-              {items.map((item, i) => (
+              {hasGeneral && hasReav && (
+                <tr className="border-t border-white/5 bg-blue-500/5">
+                  <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-blue-300 uppercase tracking-wider">Régimen General (IVA 21%)</td>
+                </tr>
+              )}
+              {(hasGeneral && hasReav ? generalItems : items).map((item, i) => (
                 <tr key={i} className="border-t border-white/5">
                   <td className="px-4 py-2.5 text-sm text-white/80">{item.description}</td>
                   <td className="px-4 py-2.5 text-sm text-white/60 text-center">{item.quantity}</td>
@@ -1726,6 +1808,24 @@ function QuoteDetailModal({
                   <td className="px-4 py-2.5 text-sm font-semibold text-orange-400 text-right">{Number(item.total).toFixed(2)} €</td>
                 </tr>
               ))}
+              {hasReav && (
+                <>
+                  <tr className="border-t border-white/5 bg-amber-500/5">
+                    <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-amber-300 uppercase tracking-wider">REAV — Sin IVA (Régimen Especial Agencias de Viaje)</td>
+                  </tr>
+                  {reavItems.map((item, i) => (
+                    <tr key={`reav-${i}`} className="border-t border-white/5">
+                      <td className="px-4 py-2.5 text-sm text-white/80">
+                        {item.description}
+                        <span className="ml-1.5 text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">REAV</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm text-white/60 text-center">{item.quantity}</td>
+                      <td className="px-4 py-2.5 text-sm text-white/60 text-right">{Number(item.unitPrice).toFixed(2)} €</td>
+                      <td className="px-4 py-2.5 text-sm font-semibold text-amber-400 text-right">{Number(item.total).toFixed(2)} €</td>
+                    </tr>
+                  ))}
+                </>
+              )}
             </tbody>
           </table>
           <div className="px-4 py-3 border-t border-white/10 space-y-1">
@@ -1734,10 +1834,23 @@ function QuoteDetailModal({
                 <span>Descuento</span><span>-{Number(quote.discount).toFixed(2)} €</span>
               </div>
             )}
+            {hasGeneral && hasReav && (
+              <>
+                <div className="flex justify-between text-sm text-white/50">
+                  <span>Subtotal rég. general</span><span>{generalItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</span>
+                </div>
+                <div className="flex justify-between text-sm text-amber-400/70">
+                  <span>Subtotal REAV (sin IVA)</span><span>{reavItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</span>
+                </div>
+              </>
+            )}
             {Number(quote.tax) > 0 && (
               <div className="flex justify-between text-sm text-white/50">
-                <span>IVA</span><span>{Number(quote.tax).toFixed(2)} €</span>
+                <span>IVA (21%)</span><span>{Number(quote.tax).toFixed(2)} €</span>
               </div>
+            )}
+            {hasReav && !hasGeneral && (
+              <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
             )}
             <div className="flex justify-between items-center pt-1">
               <span className="font-bold text-white">TOTAL</span>

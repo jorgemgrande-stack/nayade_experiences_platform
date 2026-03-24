@@ -101,25 +101,39 @@ async function generateInvoicePdf(invoice: {
   clientPhone?: string | null;
   clientNif?: string | null;
   clientAddress?: string | null;
-  itemsJson: { description: string; quantity: number; unitPrice: number; total: number }[];
+  itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[];
   subtotal: string;
   taxRate: string;
   taxAmount: string;
   total: string;
   issuedAt: Date;
 }): Promise<{ url: string; key: string }> {
+  // Separar líneas REAV y régimen general
+  const reavItems = invoice.itemsJson.filter(i => i.fiscalRegime === "reav");
+  const generalItems = invoice.itemsJson.filter(i => i.fiscalRegime !== "reav");
+  const hasReav = reavItems.length > 0;
+  const hasGeneral = generalItems.length > 0;
+
   // Build HTML invoice
-  const itemRows = invoice.itemsJson
-    .map(
-      (item) =>
-        `<tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${item.description}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${item.quantity}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(item.unitPrice).toFixed(2)} €</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(item.total).toFixed(2)} €</td>
-        </tr>`
-    )
-    .join("");
+  const buildItemRows = (items: typeof invoice.itemsJson, isReav: boolean) =>
+    items.map((item) =>
+      `<tr${isReav ? ' class="reav-row"' : ''}>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;">${item.description}${isReav ? ' <span style="font-size:10px;color:#6b7280;font-style:italic;">(REAV)</span>' : ''}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${item.quantity}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(item.unitPrice).toFixed(2)} €</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;text-align:right;">${Number(item.total).toFixed(2)} €</td>
+      </tr>`
+    ).join("");
+
+  // Combinar: primero líneas generales, luego REAV (con separador visual si hay ambas)
+  let itemRows = "";
+  if (hasGeneral && hasReav) {
+    itemRows = buildItemRows(generalItems, false);
+    itemRows += `<tr><td colspan="4" style="padding:6px 12px;background:#f0f4ff;font-size:11px;font-weight:600;color:#1a3a6b;letter-spacing:0.5px;">RÉGIMEN ESPECIAL AGENCIAS DE VIAJE (REAV) — Operaciones no sujetas a IVA</td></tr>`;
+    itemRows += buildItemRows(reavItems, true);
+  } else {
+    itemRows = buildItemRows(invoice.itemsJson, hasReav && !hasGeneral);
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -193,8 +207,12 @@ async function generateInvoicePdf(invoice: {
   </table>
 
   <table class="totals">
-    <tr><td>Subtotal</td><td>${Number(invoice.subtotal).toFixed(2)} €</td></tr>
-    <tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>
+    ${hasGeneral && hasReav ? `
+    <tr><td style="color:#6b7280;font-size:13px;">Subtotal rég. general</td><td>${generalItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
+    <tr><td style="color:#6b7280;font-size:13px;">Subtotal REAV (sin IVA)</td><td>${reavItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
+    ` : `<tr><td>Subtotal</td><td>${Number(invoice.subtotal).toFixed(2)} €</td></tr>`}
+    ${hasGeneral ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>` : ''}
+    ${hasReav && !hasGeneral ? `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">Operación sujeta al Régimen Especial de Agencias de Viaje (REAV). No procede repercusión de IVA al cliente.</td></tr>` : ''}
     <tr class="total-row"><td>TOTAL</td><td>${Number(invoice.total).toFixed(2)} €</td></tr>
   </table>
 
@@ -563,6 +581,8 @@ export const crmRouter = router({
               quantity: z.number(),
               unitPrice: z.number(),
               total: z.number(),
+              fiscalRegime: z.enum(["reav", "general_21"]).optional(),
+              productId: z.number().optional(),
             })
           ),
           subtotal: z.number(),
@@ -641,7 +661,7 @@ export const crmRouter = router({
         }
 
         // 2. Resolver precios para cada actividad
-        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number }[] = [];
+        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[] = [];
 
         for (const act of activities) {
           // Cargar experiencia base
@@ -687,16 +707,16 @@ export const crmRouter = router({
           if (act.details?.notes) detailParts.push(String(act.details.notes));
           if (detailParts.length > 0) description += ` • ${detailParts.join(" · ")}`;
 
-          const quantity = act.participants;
+           const quantity = act.participants;
           const total = parseFloat((unitPrice * quantity).toFixed(2));
-
-          quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total });
+          const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general_21";
+          quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, productId: act.experienceId });
         }
-
-        // 3. Calcular totales
+        // 3. Calcular totales — solo líneas general_21 llevan IVA
         const subtotal = parseFloat(quoteItems.reduce((s, i) => s + i.total, 0).toFixed(2));
-        const taxAmount = parseFloat((subtotal * (input.taxRate / 100)).toFixed(2));
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        const generalSubtotal = parseFloat(quoteItems.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0).toFixed(2));
+        const taxAmount = parseFloat((generalSubtotal * (input.taxRate / 100)).toFixed(2));
+        const total = parseFloat((subtotal + taxAmount).toFixed(2));;
 
         // 4. Crear el presupuesto en borrador
         const quoteNumber = await generateQuoteNumber();
@@ -747,7 +767,7 @@ export const crmRouter = router({
           details: Record<string, string | number>;
         }[] | null) ?? [];
         if (activities.length === 0) return { items: [], hasActivities: false };
-        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number }[] = [];
+        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[] = [];
         for (const act of activities) {
           const [exp] = await db.select().from(experiences).where(eq(experiences.id, act.experienceId));
           const basePrice = exp ? parseFloat(String(exp.basePrice)) : 0;
@@ -780,7 +800,8 @@ export const crmRouter = router({
           if (detailParts.length > 0) description += ` • ${detailParts.join(" · ")}`;
           const quantity = act.participants;
           const total = parseFloat((unitPrice * quantity).toFixed(2));
-          quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total });
+          const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general_21";
+          quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, productId: act.experienceId });
         }
         return { items: quoteItems, hasActivities: true };
       }),
@@ -938,6 +959,8 @@ export const crmRouter = router({
                 quantity: z.number(),
                 unitPrice: z.number(),
                 total: z.number(),
+                fiscalRegime: z.enum(["reav", "general_21"]).optional(),
+                productId: z.number().optional(),
               })
             )
             .optional(),
@@ -1144,13 +1167,14 @@ export const crmRouter = router({
         const now = new Date();
 
         // Generate invoice
-        const invoiceNumber = await generateInvoiceNumber();
-        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+         const invoiceNumber = await generateInvoiceNumber();
+        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
         const taxRate = 21;
         const subtotal = Number(quote.subtotal);
-        const taxAmount = subtotal * (taxRate / 100);
-        const total = Number(quote.total);
-
+        // Solo líneas general_21 llevan IVA
+        const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+        const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
+        const total = parseFloat((subtotal + taxAmount).toFixed(2));
         // Generate PDF
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
@@ -1172,7 +1196,6 @@ export const crmRouter = router({
         } catch (e) {
           console.error("PDF generation failed:", e);
         }
-
         // Insert invoice record
         const [invResult] = await db.insert(invoices).values({
           invoiceNumber,
@@ -1375,11 +1398,13 @@ export const crmRouter = router({
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber();
-        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
         const taxRate = 21;
         const subtotal = Number(quote.subtotal);
-        const taxAmount = subtotal * (taxRate / 100);
-        const total = Number(quote.total);
+        // Solo líneas general_21 llevan IVA
+        const generalSubtotalTransfer = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+        const taxAmount = parseFloat((generalSubtotalTransfer * (taxRate / 100)).toFixed(2));
+        const total = parseFloat((subtotal + taxAmount).toFixed(2));
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
         try {
@@ -1645,6 +1670,8 @@ export const crmRouter = router({
               quantity: z.number(),
               unitPrice: z.number(),
               total: z.number(),
+              fiscalRegime: z.enum(["reav", "general_21"]).optional(),
+              productId: z.number().optional(),
             })
           ),
           subtotal: z.number(),
