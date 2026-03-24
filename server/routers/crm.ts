@@ -2008,7 +2008,7 @@ export const crmRouter = router({
 
         // Guardar pre-reserva con estado pending_payment
         const customerName = input.customerName ?? lead.name;
-        const customerEmail = input.customerEmail ?? lead.email;
+        const customerEmail = input.customerEmail ?? lead.email ?? "";
         const customerPhone = input.customerPhone ?? lead.phone ?? "";
 
         const [resResult] = await db.insert(reservations).values({
@@ -2358,17 +2358,17 @@ export const crmRouter = router({
           });
           subject = `✅ Confirmación de reserva — ${res.productName} · Náyade Experiences`;
         }
-        await sendEmail({ to: res.customerEmail, subject, html });
+        await sendEmail({ to: res.customerEmail ?? "", subject, html });
         await db.insert(crmActivityLog).values({
           entityType: "reservation",
           entityId: input.id,
           action: "email_resent",
           actorId: ctx.user.id,
           actorName: ctx.user.name ?? null,
-          details: { to: res.customerEmail, subject },
+          details: { to: res.customerEmail ?? "", subject },
           createdAt: new Date(),
         });
-        return { ok: true, sentTo: res.customerEmail };
+        return { ok: true, sentTo: res.customerEmail ?? "" };
       }),
 
     // ─── Eliminar reserva ───────────────────────────────────────────────────
@@ -2555,7 +2555,7 @@ export const crmRouter = router({
                 people: res.people,
                 amountCents: res.amountPaid ?? res.amountTotal,
                 customerName: res.customerName,
-                customerEmail: res.customerEmail,
+                customerEmail: res.customerEmail ?? "",
                 customerPhone: res.customerPhone,
                 quoteId: invoice.quoteId ?? null,
                 sourceChannel: input.paymentMethod as "transferencia" | "efectivo" | "otro",
