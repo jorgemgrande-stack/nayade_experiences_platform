@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AdminLayout from "@/components/AdminLayout";
+import SupplierSelect from "@/components/SupplierSelect";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,11 @@ type ExpForm = {
   discountPercent: string; discountExpiresAt: string;
   fiscalRegime: string; productType: string;
   providerPercent: string; agencyMarginPercent: string;
+  supplierId: string;
+  supplierCommissionPercent: string;
+  supplierCostType: string;
+  settlementFrequency: string;
+  isSettlable: boolean;
 };
 
 const emptyForm: ExpForm = {
@@ -50,6 +56,9 @@ const emptyForm: ExpForm = {
   discountPercent: "", discountExpiresAt: "",
   fiscalRegime: "general", productType: "actividad",
   providerPercent: "", agencyMarginPercent: "",
+  supplierId: "", supplierCommissionPercent: "",
+  supplierCostType: "comision_sobre_venta", settlementFrequency: "mensual",
+  isSettlable: false,
 };
 
 // ── Componente de zona de upload de imagen ──────────────────────────────────
@@ -202,6 +211,11 @@ export default function ExperiencesManager() {
       productType: String(exp.productType ?? "actividad"),
       providerPercent: exp.providerPercent != null ? String(exp.providerPercent) : "",
       agencyMarginPercent: exp.agencyMarginPercent != null ? String(exp.agencyMarginPercent) : "",
+      supplierId: exp.supplierId != null ? String(exp.supplierId) : "",
+      supplierCommissionPercent: exp.supplierCommissionPercent != null ? String(exp.supplierCommissionPercent) : "",
+      supplierCostType: String(exp.supplierCostType ?? "comision_sobre_venta"),
+      settlementFrequency: String(exp.settlementFrequency ?? "mensual"),
+      isSettlable: Boolean(exp.isSettlable),
     });
     setShowModal(true);
   };
@@ -237,6 +251,11 @@ export default function ExperiencesManager() {
       productType: form.productType,
       providerPercent: form.providerPercent ? form.providerPercent : undefined,
       agencyMarginPercent: form.agencyMarginPercent ? form.agencyMarginPercent : undefined,
+      supplierId: form.supplierId ? parseInt(form.supplierId) : undefined,
+      supplierCommissionPercent: form.supplierCommissionPercent ? form.supplierCommissionPercent : undefined,
+      supplierCostType: form.supplierCostType || undefined,
+      settlementFrequency: form.settlementFrequency || undefined,
+      isSettlable: form.isSettlable,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -606,6 +625,66 @@ export default function ExperiencesManager() {
                     ⚠️ Este producto tributa bajo REAV. La factura no mostrará IVA al cliente. Se generará un expediente REAV automáticamente al facturar.
                   </p>
                 )}
+              </div>
+
+              {/* Proveedor y Liquidaciones */}
+              <div className="col-span-2">
+                <Label className="text-sm font-semibold text-violet-700 flex items-center gap-1.5 mb-3">
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-violet-100 text-violet-600 text-xs">🏢</span>
+                  Proveedor y Liquidaciones
+                </Label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Proveedor</Label>
+                    <SupplierSelect
+                      value={form.supplierId}
+                      onChange={(v) => setForm({ ...form, supplierId: v })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Tipo de coste</Label>
+                    <select
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background"
+                      value={form.supplierCostType}
+                      onChange={(e) => setForm({ ...form, supplierCostType: e.target.value })}
+                    >
+                      <option value="comision_sobre_venta">Comisión sobre venta (%)</option>
+                      <option value="precio_neto">Precio neto fijo</option>
+                      <option value="precio_neto_variable">Precio neto variable</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Comisión / margen (%)</Label>
+                    <Input
+                      type="number" min="0" max="100" step="0.01"
+                      placeholder="Ej: 20"
+                      value={form.supplierCommissionPercent}
+                      onChange={(e) => setForm({ ...form, supplierCommissionPercent: e.target.value })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Frecuencia de liquidación</Label>
+                    <select
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background"
+                      value={form.settlementFrequency}
+                      onChange={(e) => setForm({ ...form, settlementFrequency: e.target.value })}
+                    >
+                      <option value="mensual">Mensual</option>
+                      <option value="quincenal">Quincenal</option>
+                      <option value="semanal">Semanal</option>
+                      <option value="por_reserva">Por reserva</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 mt-3">
+                  <Switch
+                    checked={form.isSettlable}
+                    onCheckedChange={(v) => setForm({ ...form, isSettlable: v })}
+                  />
+                  <Label className="text-sm text-slate-600">Incluir en liquidaciones automáticas</Label>
+                </div>
               </div>
 
               {/* Incluye */}

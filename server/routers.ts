@@ -131,6 +131,7 @@ import { spaRouter } from "./routers/spa";
 import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
 import { crmRouter } from "./routers/crm";
+import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -551,9 +552,18 @@ export const appRouter = router({
         difficulty: z.enum(["facil", "moderado", "dificil", "experto"]).optional(),
         isFeatured: z.boolean().default(false),
         isActive: z.boolean().default(true),
+        supplierId: z.number().optional(),
+        supplierCommissionPercent: z.string().optional(),
+        supplierCostType: z.string().optional(),
+        settlementFrequency: z.string().optional(),
+        isSettlable: z.boolean().optional(),
+        fiscalRegime: z.enum(["general", "reav"]).default("general"),
+        productType: z.string().optional(),
+        providerPercent: z.string().optional(),
+        agencyMarginPercent: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        return createExperience(input);
+        return createExperience(input as any);
       }),
 
     update: adminProcedure
@@ -584,6 +594,11 @@ export const appRouter = router({
         productType: z.string().optional(),
         providerPercent: z.string().optional(),
         agencyMarginPercent: z.string().optional(),
+        supplierId: z.number().optional(),
+        supplierCommissionPercent: z.string().optional(),
+        supplierCostType: z.string().optional(),
+        settlementFrequency: z.string().optional(),
+        isSettlable: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -1301,6 +1316,11 @@ export const appRouter = router({
         productType: z.string().optional(),
         providerPercent: z.number().optional(),
         agencyMarginPercent: z.number().optional(),
+        supplierId: z.number().optional(),
+        supplierCommissionPercent: z.string().optional(),
+        supplierCostType: z.string().optional(),
+        settlementFrequency: z.string().optional(),
+        isSettlable: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => createPack(input as any)),
 
@@ -1340,6 +1360,11 @@ export const appRouter = router({
         productType: z.string().optional(),
         providerPercent: z.number().optional(),
         agencyMarginPercent: z.number().optional(),
+        supplierId: z.number().optional(),
+        supplierCommissionPercent: z.string().optional(),
+        supplierCostType: z.string().optional(),
+        settlementFrequency: z.string().optional(),
+        isSettlable: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -1382,6 +1407,8 @@ export const appRouter = router({
   reviews: reviewsRouter,
   restaurants: restaurantsRouter,
   crm: crmRouter,
+  suppliers: suppliersRouter,
+  settlements: settlementsRouter,
   reav: router({
     // Expedientes
     list: adminProcedure

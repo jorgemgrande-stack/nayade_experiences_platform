@@ -1502,3 +1502,114 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 
 ## v6.3: Sidebar AdminLayout — Fiscal REAV
 - [x] AdminLayout.tsx: añadir ítem "Fiscal REAV" (con icono Receipt) entre Contabilidad y Hotel en el sidebar con grupos colapsables
+
+## v7.0: Módulo Liquidaciones Proveedores
+
+### BD — Tablas nuevas
+- [ ] Tabla `suppliers`: datos fiscales, comerciales, IBAN, forma de pago, estado (activo/inactivo/bloqueado)
+- [ ] Tabla `supplier_settlements`: número único, proveedor, periodo, estado workflow, totales
+- [ ] Tabla `settlement_lines`: reserva, producto, importe cobrado, comisión, importe neto proveedor
+- [ ] Tabla `settlement_documents`: adjuntos de la liquidación (facturas recibidas, contratos, justificantes)
+- [ ] Tabla `settlement_status_log`: historial de cambios de estado con usuario y fecha
+- [ ] Columnas en `experiences` y `packs`: supplierId, commissionPercent, costType, settlementFrequency, isSettlable
+- [ ] Migración SQL aplicada
+
+### Backend — Router suppliers
+- [ ] suppliers.list (con filtros estado, búsqueda)
+- [ ] suppliers.get (ficha completa)
+- [ ] suppliers.create
+- [ ] suppliers.update
+- [ ] suppliers.delete (soft delete)
+
+### Backend — Router settlements
+- [ ] settlements.list (filtros: proveedor, producto, estado, fechas)
+- [ ] settlements.get (con líneas, documentos, log)
+- [ ] settlements.calculate (motor: reservas facturadas+cobradas → líneas de liquidación)
+- [ ] settlements.create (genera liquidación desde líneas calculadas)
+- [ ] settlements.updateStatus (workflow: emitida → pendiente_abono → abonada → incidencia → recalculada)
+- [ ] settlements.addDocument / deleteDocument
+- [ ] settlements.generatePdf (HTML → PDF, subido a S3)
+- [ ] settlements.sendEmail (envío automático al proveedor)
+- [ ] settlements.exportExcel (XLSX con líneas de liquidación)
+
+### UI — SuppliersManager
+- [ ] Listado de proveedores con búsqueda, filtro estado, badges de color
+- [ ] Ficha completa: datos fiscales, operativos, IBAN, forma de pago, observaciones
+- [ ] Crear / editar / desactivar proveedor
+
+### UI — SettlementsManager
+- [ ] Panel filtrado avanzado (proveedor, producto, estado, fechas, toggle pendientes)
+- [ ] Tabla de reservas liquidables con selección múltiple (acciones masivas)
+- [ ] Motor de cálculo: botón "Calcular liquidación" → preview de importes
+- [ ] Botón "Generar liquidación proveedor" → crea documento con número único
+- [ ] Vista detalle liquidación: líneas, totales, workflow de estados, documentos adjuntos
+- [ ] Acciones: descargar PDF, descargar Excel, enviar por email
+
+### UI — Dashboard financiero Liquidaciones
+- [ ] KPI: total pendiente proveedores, total liquidado mes, margen bruto generado
+- [ ] Ranking proveedores por coste
+- [ ] Gráfico evolución mensual (Chart.js)
+
+### Productos — Bloque proveedor
+- [ ] ExperiencesManager: bloque "Datos proveedor producto" con selector, comisión, tipo coste, frecuencia, toggle liquidable
+- [ ] PacksManager: mismo bloque
+
+### Sidebar AdminLayout
+- [ ] Ítem "Proveedores" bajo Contabilidad
+- [ ] Ítem "Liquidaciones" bajo Contabilidad
+
+## v7.0: Módulo Liquidaciones Proveedores — COMPLETADO
+
+### BD — Tablas nuevas
+- [x] Tabla `suppliers`: datos fiscales, comerciales, IBAN, forma de pago, estado (activo/inactivo/bloqueado)
+- [x] Tabla `supplier_settlements`: número único, proveedor, periodo, estado workflow, totales
+- [x] Tabla `settlement_lines`: reserva, producto, importe cobrado, comisión, importe neto proveedor
+- [x] Tabla `settlement_documents`: adjuntos de la liquidación (facturas recibidas, contratos, justificantes)
+- [x] Tabla `settlement_status_log`: historial de cambios de estado con usuario y fecha
+- [x] Columnas en `experiences` y `packs`: supplierId, commissionPercent, costType, settlementFrequency, isSettlable
+- [x] Migración SQL aplicada
+
+### Backend — Router suppliers
+- [x] suppliers.list (con filtros estado, búsqueda)
+- [x] suppliers.get (ficha completa)
+- [x] suppliers.create
+- [x] suppliers.update
+- [x] suppliers.delete (soft delete)
+
+### Backend — Router settlements
+- [x] settlements.list (filtros: proveedor, producto, estado, fechas)
+- [x] settlements.get (con líneas, documentos, log)
+- [x] settlements.calculate (motor: reservas facturadas+cobradas → líneas de liquidación)
+- [x] settlements.create (genera liquidación desde líneas calculadas)
+- [x] settlements.updateStatus (workflow: emitida → pendiente_abono → abonada → incidencia → recalculada)
+- [x] settlements.addDocument / deleteDocument
+- [x] settlements.generatePdf (HTML → PDF, subido a S3)
+- [x] settlements.sendEmail (envío automático al proveedor)
+- [ ] settlements.exportExcel (XLSX con líneas de liquidación) — pendiente
+
+### UI — SuppliersManager
+- [x] Listado de proveedores con búsqueda, filtro estado, badges de color
+- [x] Ficha completa: datos fiscales, operativos, IBAN, forma de pago, observaciones
+- [x] Crear / editar / desactivar proveedor
+
+### UI — SettlementsManager
+- [x] Panel filtrado avanzado (proveedor, producto, estado, fechas, toggle pendientes)
+- [x] Motor de cálculo: botón "Calcular liquidación" → preview de importes
+- [x] Botón "Generar liquidación proveedor" → crea documento con número único
+- [x] Vista detalle liquidación: líneas, totales, workflow de estados, documentos adjuntos
+- [x] Botón "Generar PDF" → genera HTML/PDF y lo sube a S3, abre en nueva pestaña
+- [x] Botón "Descargar PDF" → descarga el PDF ya generado
+- [x] Botón "Enviar email" → envía liquidación al proveedor con enlace al PDF
+
+### UI — Dashboard financiero Liquidaciones
+- [x] KPI: total pendiente proveedores, total liquidado mes, margen bruto generado
+- [x] Ranking proveedores por coste
+- [x] Gráfico evolución mensual (Chart.js)
+
+### Productos — Bloque proveedor
+- [x] ExperiencesManager: bloque "Proveedor y Liquidaciones" con selector, comisión, tipo coste, frecuencia, toggle liquidable
+- [x] PacksManager: mismo bloque "Proveedor y Liquidaciones"
+
+### Sidebar AdminLayout
+- [x] Ítem "Proveedores" bajo Contabilidad
+- [x] Ítem "Liquidaciones" bajo Contabilidad

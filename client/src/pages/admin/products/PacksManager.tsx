@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AdminLayout from "@/components/AdminLayout";
+import SupplierSelect from "@/components/SupplierSelect";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,11 @@ type PackForm = {
   productType: string;
   providerPercent: string;
   agencyMarginPercent: string;
+  supplierId: string;
+  supplierCommissionPercent: string;
+  supplierCostType: string;
+  settlementFrequency: string;
+  isSettlable: boolean;
 };
 
 const emptyForm: PackForm = {
@@ -74,6 +80,9 @@ const emptyForm: PackForm = {
   discountPercent: "", discountExpiresAt: "",
   fiscalRegime: "general", productType: "pack",
   providerPercent: "", agencyMarginPercent: "",
+  supplierId: "", supplierCommissionPercent: "",
+  supplierCostType: "comision_sobre_venta", settlementFrequency: "mensual",
+  isSettlable: false,
 };
 
 // ── Zona de upload de imagen ─────────────────────────────────────────────────
@@ -223,6 +232,11 @@ export default function PacksManager() {
       productType: String(pack.productType ?? "pack"),
       providerPercent: pack.providerPercent != null ? String(pack.providerPercent) : "",
       agencyMarginPercent: pack.agencyMarginPercent != null ? String(pack.agencyMarginPercent) : "",
+      supplierId: pack.supplierId != null ? String(pack.supplierId) : "",
+      supplierCommissionPercent: pack.supplierCommissionPercent != null ? String(pack.supplierCommissionPercent) : "",
+      supplierCostType: String(pack.supplierCostType ?? "comision_sobre_venta"),
+      settlementFrequency: String(pack.settlementFrequency ?? "mensual"),
+      isSettlable: Boolean(pack.isSettlable),
     });
     setShowModal(true);
   };
@@ -263,6 +277,11 @@ export default function PacksManager() {
       productType: form.productType || "pack",
       providerPercent: form.providerPercent ? parseFloat(form.providerPercent) : undefined,
       agencyMarginPercent: form.agencyMarginPercent ? parseFloat(form.agencyMarginPercent) : undefined,
+      supplierId: form.supplierId ? parseInt(form.supplierId) : undefined,
+      supplierCommissionPercent: form.supplierCommissionPercent || undefined,
+      supplierCostType: form.supplierCostType || undefined,
+      settlementFrequency: form.settlementFrequency || undefined,
+      isSettlable: form.isSettlable,
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -706,6 +725,66 @@ export default function PacksManager() {
                   Régimen Especial de Agencias de Viaje (REAV): el IVA se aplica solo sobre el margen de la agencia, no sobre el precio total.
                 </p>
               )}
+            </div>
+
+            {/* Proveedor y Liquidaciones */}
+            <div>
+              <p className="text-sm font-semibold text-violet-700 flex items-center gap-1.5 mb-3">
+                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-violet-100 text-violet-600 text-xs">🏢</span>
+                Proveedor y Liquidaciones
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Proveedor</label>
+                  <SupplierSelect
+                    value={form.supplierId}
+                    onChange={(v) => setForm(f => ({ ...f, supplierId: v }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Tipo de coste</label>
+                  <select
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+                    value={form.supplierCostType}
+                    onChange={(e) => setForm(f => ({ ...f, supplierCostType: e.target.value }))}
+                  >
+                    <option value="comision_sobre_venta">Comisión sobre venta (%)</option>
+                    <option value="precio_neto">Precio neto fijo</option>
+                    <option value="precio_neto_variable">Precio neto variable</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Comisión / margen (%)</label>
+                  <input
+                    type="number" min="0" max="100" step="0.01"
+                    placeholder="Ej: 20"
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+                    value={form.supplierCommissionPercent}
+                    onChange={(e) => setForm(f => ({ ...f, supplierCommissionPercent: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">Frecuencia de liquidación</label>
+                  <select
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+                    value={form.settlementFrequency}
+                    onChange={(e) => setForm(f => ({ ...f, settlementFrequency: e.target.value }))}
+                  >
+                    <option value="mensual">Mensual</option>
+                    <option value="quincenal">Quincenal</option>
+                    <option value="semanal">Semanal</option>
+                    <option value="por_reserva">Por reserva</option>
+                    <option value="manual">Manual</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mt-3">
+                <Switch
+                  checked={form.isSettlable}
+                  onCheckedChange={(v) => setForm(f => ({ ...f, isSettlable: v }))}
+                />
+                <label className="text-sm text-slate-600">Incluir en liquidaciones automáticas</label>
+              </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-2">

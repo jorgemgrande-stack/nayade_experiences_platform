@@ -134,6 +134,13 @@
       "when": 1774309641039,
       "tag": "0018_round_midnight",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1774353707196,
+      "tag": "0019_silky_dagger",
+      "breakpoints": true
     }
   ]
 }

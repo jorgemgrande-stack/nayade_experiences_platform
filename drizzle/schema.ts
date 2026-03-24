@@ -165,6 +165,12 @@ export const experiences = mysqlTable("experiences", {
   productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
+  // Supplier / Liquidaciones module
+  supplierId: int("supplierId"),
+  supplierCommissionPercent: decimal("supplierCommissionPercent", { precision: 5, scale: 2 }).default("0.00"),
+  supplierCostType: mysqlEnum("supplierCostType", ["comision_sobre_venta", "coste_fijo", "porcentaje_margen", "hibrido"]).default("comision_sobre_venta"),
+  settlementFrequency: mysqlEnum("settlementFrequency", ["semanal", "quincenal", "mensual", "manual"]).default("manual"),
+  isSettlable: boolean("isSettlable").default(false).notNull(),
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
@@ -501,6 +507,12 @@ export const packs = mysqlTable("packs", {
   productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
+  // Supplier / Liquidaciones module
+  supplierId: int("supplierId"),
+  supplierCommissionPercent: decimal("supplierCommissionPercent", { precision: 5, scale: 2 }).default("0.00"),
+  supplierCostType: mysqlEnum("supplierCostType", ["comision_sobre_venta", "coste_fijo", "porcentaje_margen", "hibrido"]).default("comision_sobre_venta"),
+  settlementFrequency: mysqlEnum("settlementFrequency", ["semanal", "quincenal", "mensual", "manual"]).default("manual"),
+  isSettlable: boolean("isSettlable").default(false).notNull(),
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
@@ -1043,3 +1055,145 @@ export const reavCosts = mysqlTable("reav_costs", {
 
 export type ReavCost = typeof reavCosts.$inferSelect;
 export type InsertReavCost = typeof reavCosts.$inferInsert;
+
+// ─── SUPPLIERS (Proveedores) ──────────────────────────────────────────────────
+
+/**
+ * Tabla de proveedores del sistema.
+ * Contiene datos fiscales, comerciales, bancarios y operativos.
+ */
+export const suppliers = mysqlTable("suppliers", {
+  id: int("id").autoincrement().primaryKey(),
+  // Datos fiscales
+  fiscalName: varchar("fiscalName", { length: 256 }).notNull(),
+  commercialName: varchar("commercialName", { length: 256 }),
+  nif: varchar("nif", { length: 32 }),
+  fiscalAddress: text("fiscalAddress"),
+  // Datos de contacto
+  adminEmail: varchar("adminEmail", { length: 320 }),
+  phone: varchar("phone", { length: 32 }),
+  contactPerson: varchar("contactPerson", { length: 256 }),
+  // Datos bancarios
+  iban: varchar("iban", { length: 64 }),
+  paymentMethod: mysqlEnum("paymentMethod", [
+    "transferencia",
+    "confirming",
+    "efectivo",
+    "compensacion",
+  ]).default("transferencia").notNull(),
+  // Datos operativos
+  standardCommissionPercent: decimal("standardCommissionPercent", { precision: 5, scale: 2 }).default("0.00"),
+  internalNotes: text("internalNotes"),
+  status: mysqlEnum("status", ["activo", "inactivo", "bloqueado"]).default("activo").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Supplier = typeof suppliers.$inferSelect;
+export type InsertSupplier = typeof suppliers.$inferInsert;
+
+// ─── SUPPLIER SETTLEMENTS (Liquidaciones) ────────────────────────────────────
+
+/**
+ * Cabecera de cada liquidación generada para un proveedor.
+ */
+export const supplierSettlements = mysqlTable("supplier_settlements", {
+  id: int("id").autoincrement().primaryKey(),
+  settlementNumber: varchar("settlementNumber", { length: 64 }).notNull().unique(),
+  supplierId: int("supplierId").notNull(),
+  // Periodo liquidado
+  periodFrom: varchar("periodFrom", { length: 10 }).notNull(), // YYYY-MM-DD
+  periodTo: varchar("periodTo", { length: 10 }).notNull(),     // YYYY-MM-DD
+  // Totales calculados
+  grossAmount: decimal("grossAmount", { precision: 12, scale: 2 }).default("0.00").notNull(),
+  commissionAmount: decimal("commissionAmount", { precision: 12, scale: 2 }).default("0.00").notNull(),
+  netAmountProvider: decimal("netAmountProvider", { precision: 12, scale: 2 }).default("0.00").notNull(),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  // Workflow de estados
+  status: mysqlEnum("status", [
+    "emitida",
+    "pendiente_abono",
+    "abonada",
+    "incidencia",
+    "recalculada",
+  ]).default("emitida").notNull(),
+  // Trazabilidad
+  pdfUrl: text("pdfUrl"),
+  pdfKey: text("pdfKey"),
+  sentAt: timestamp("sentAt"),
+  paidAt: timestamp("paidAt"),
+  internalNotes: text("internalNotes"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type SupplierSettlement = typeof supplierSettlements.$inferSelect;
+export type InsertSupplierSettlement = typeof supplierSettlements.$inferInsert;
+
+// ─── SETTLEMENT LINES (Líneas de liquidación) ────────────────────────────────
+
+/**
+ * Cada línea representa una reserva/servicio incluido en la liquidación.
+ */
+export const settlementLines = mysqlTable("settlement_lines", {
+  id: int("id").autoincrement().primaryKey(),
+  settlementId: int("settlementId").notNull(),
+  reservationId: int("reservationId"),
+  invoiceId: int("invoiceId"),
+  productId: int("productId"),
+  productName: varchar("productName", { length: 256 }),
+  serviceDate: varchar("serviceDate", { length: 10 }), // YYYY-MM-DD
+  paxCount: int("paxCount").default(1).notNull(),
+  // Importes
+  saleAmount: decimal("saleAmount", { precision: 12, scale: 2 }).notNull(),       // Importe cobrado al cliente
+  commissionPercent: decimal("commissionPercent", { precision: 5, scale: 2 }).notNull(), // % comisión Nayade
+  commissionAmount: decimal("commissionAmount", { precision: 12, scale: 2 }).notNull(),  // Importe comisión
+  netAmountProvider: decimal("netAmountProvider", { precision: 12, scale: 2 }).notNull(), // Neto proveedor
+  costType: mysqlEnum("costType", [
+    "comision_sobre_venta",
+    "coste_fijo",
+    "porcentaje_margen",
+    "hibrido",
+  ]).default("comision_sobre_venta").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type SettlementLine = typeof settlementLines.$inferSelect;
+export type InsertSettlementLine = typeof settlementLines.$inferInsert;
+
+// ─── SETTLEMENT DOCUMENTS (Documentos adjuntos) ──────────────────────────────
+
+export const settlementDocuments = mysqlTable("settlement_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  settlementId: int("settlementId").notNull(),
+  docType: mysqlEnum("docType", [
+    "factura_recibida",
+    "contrato",
+    "justificante_pago",
+    "email",
+    "acuerdo_comision",
+    "otro",
+  ]).default("otro").notNull(),
+  title: varchar("title", { length: 256 }).notNull(),
+  fileUrl: text("fileUrl"),
+  fileKey: text("fileKey"),
+  notes: text("notes"),
+  uploadedBy: int("uploadedBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type SettlementDocument = typeof settlementDocuments.$inferSelect;
+export type InsertSettlementDocument = typeof settlementDocuments.$inferInsert;
+
+// ─── SETTLEMENT STATUS LOG (Historial de estados) ────────────────────────────
+
+export const settlementStatusLog = mysqlTable("settlement_status_log", {
+  id: int("id").autoincrement().primaryKey(),
+  settlementId: int("settlementId").notNull(),
+  fromStatus: varchar("fromStatus", { length: 64 }),
+  toStatus: varchar("toStatus", { length: 64 }).notNull(),
+  changedBy: int("changedBy"),
+  changedByName: varchar("changedByName", { length: 256 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type SettlementStatusLog = typeof settlementStatusLog.$inferSelect;
+export type InsertSettlementStatusLog = typeof settlementStatusLog.$inferInsert;
