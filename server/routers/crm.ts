@@ -17,6 +17,7 @@ import {
   experiences,
   experienceVariants,
   reavExpedients,
+  siteSettings,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -93,8 +94,28 @@ async function generateQuoteNumber(): Promise<string> {
   return `PRE-${year}-${String(n).padStart(4, "0")}`;
 }
 
-// ─── INVOICE PDF GENERATION ──────────────────────────────────────────────────
+// ─── LEGAL COMPANY SETTINGS ─────────────────────────────────────────────────
+async function getLegalCompanySettings(): Promise<{
+  name: string; cif: string; address: string; city: string;
+  zip: string; province: string; email: string; phone: string; iban: string;
+}> {
+  const rows = await db.select().from(siteSettings)
+    .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyCity','legalCompanyZip','legalCompanyProvince','legalCompanyEmail','legalCompanyPhone','legalCompanyIban')`);
+  const s: Record<string, string> = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+  return {
+    name:     s.legalCompanyName     || "NEXTAIR, S.L.",
+    cif:      s.legalCompanyCif      || "B16408031",
+    address:  s.legalCompanyAddress  || "C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM",
+    city:     s.legalCompanyCity     || "GRANADA",
+    zip:      s.legalCompanyZip      || "18006",
+    province: s.legalCompanyProvince || "Granada",
+    email:    s.legalCompanyEmail    || "",
+    phone:    s.legalCompanyPhone    || "",
+    iban:     s.legalCompanyIban     || "",
+  };
+}
 
+// ─── INVOICE PDF GENERATION ──────────────────────────────────────────────────
 async function generateInvoicePdf(invoice: {
   invoiceNumber: string;
   clientName: string;
@@ -109,6 +130,9 @@ async function generateInvoicePdf(invoice: {
   total: string;
   issuedAt: Date;
 }): Promise<{ url: string; key: string }> {
+  // Obtener datos de empresa facturadora desde BD
+  const legal = await getLegalCompanySettings();
+  const legalAddressFull = `${legal.address}, ${legal.zip} ${legal.city} (${legal.province})`;
   // Separar líneas REAV y régimen general
   const reavItems = invoice.itemsJson.filter(i => i.fiscalRegime === "reav");
   const generalItems = invoice.itemsJson.filter(i => i.fiscalRegime !== "reav");
@@ -168,9 +192,9 @@ async function generateInvoicePdf(invoice: {
 <body>
   <div class="header">
     <div class="logo-area">
-      <h1>NÁYADE EXPERIENCES</h1>
-      <p>Los Ángeles de San Rafael, Segovia · reservas@nayadeexperiences.es</p>
-      <p>CIF: [CIF_EMPRESA] · Tel: +34 930 34 77 91</p>
+      <h1>${legal.name.toUpperCase()}</h1>
+      <p>${legalAddressFull}</p>
+      <p>CIF: ${legal.cif}${legal.phone ? ` &middot; Tel: ${legal.phone}` : ""}${legal.email ? ` &middot; ${legal.email}` : ""}</p>
     </div>
     <div class="invoice-meta">
       <div class="invoice-num">${invoice.invoiceNumber}</div>
@@ -181,9 +205,9 @@ async function generateInvoicePdf(invoice: {
   <div class="parties">
     <div class="party">
       <h3>Emisor</h3>
-      <p><strong>Náyade Experiences S.L.</strong><br/>
-      Los Ángeles de San Rafael, Segovia<br/>
-      CIF: [CIF_EMPRESA]</p>
+      <p><strong>${legal.name}</strong><br/>
+      ${legalAddressFull}<br/>
+      CIF: ${legal.cif}${legal.iban ? `<br/>IBAN: ${legal.iban}` : ""}</p>
     </div>
     <div class="party">
       <h3>Cliente</h3>
@@ -218,8 +242,8 @@ async function generateInvoicePdf(invoice: {
   </table>
 
   <div class="footer">
-    <p>Gracias por confiar en Náyade Experiences · www.nayadeexperiences.es</p>
-    <p>Este documento es una factura oficial emitida por Náyade Experiences S.L.</p>
+    <p>Gracias por confiar en Náyade Experiences &middot; www.nayadeexperiences.es</p>
+    <p>Documento emitido por <strong>${legal.name}</strong> &mdash; CIF: ${legal.cif} &mdash; ${legalAddressFull}</p>
   </div>
 </body>
 </html>`;
@@ -1636,6 +1660,9 @@ export const crmRouter = router({
         const items: { description: string; quantity: number; unitPrice: number; total: number }[] =
           Array.isArray(quote.items) ? quote.items as { description: string; quantity: number; unitPrice: number; total: number }[] : JSON.parse((quote.items as unknown as string) ?? "[]");
 
+        // Obtener datos de empresa facturadora
+        const legalQ = await getLegalCompanySettings();
+
         const html = buildQuotePdfHtml({
           quoteNumber: quote.quoteNumber,
           title: quote.title,
@@ -1653,6 +1680,9 @@ export const crmRouter = router({
           conditions: quote.conditions,
           paymentLinkUrl: quote.paymentLinkUrl,
           createdAt: quote.createdAt,
+          issuerName: legalQ.name,
+          issuerCif: legalQ.cif,
+          issuerAddress: `${legalQ.address}, ${legalQ.zip} ${legalQ.city} (${legalQ.province})`,
         });
 
         // Generate PDF using manus-md-to-pdf (same as invoices)

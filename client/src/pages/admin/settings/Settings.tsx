@@ -9,7 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Settings as SettingsIcon, Globe, Phone, Mail, Clock,
-  CreditCard, Loader2, CheckCircle2, Info, Send,
+  CreditCard, Loader2, CheckCircle2, Info, Send, Building2,
 } from "lucide-react";
 
 const EMAIL_TEMPLATES = [
@@ -181,6 +181,18 @@ export default function Settings() {
     notifSmsEnabled: "false",
   });
 
+  const [legalCompany, setLegalCompany] = useState({
+    legalCompanyName:     "NEXTAIR, S.L.",
+    legalCompanyCif:      "B16408031",
+    legalCompanyAddress:  "C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM",
+    legalCompanyCity:     "GRANADA",
+    legalCompanyZip:      "18006",
+    legalCompanyProvince: "Granada",
+    legalCompanyEmail:    "",
+    legalCompanyPhone:    "",
+    legalCompanyIban:     "",
+  });
+
   const [savingSection, setSavingSection] = useState<string | null>(null);
 
   // ── Cargar datos de la BD ─────────────────────────────────────────────────
@@ -212,6 +224,17 @@ export default function Settings() {
       notifEmailBooking:    s.notifEmailBooking    ?? prev.notifEmailBooking,
       notifEmailRestaurant: s.notifEmailRestaurant ?? prev.notifEmailRestaurant,
       notifSmsEnabled:      s.notifSmsEnabled      ?? prev.notifSmsEnabled,
+    }));
+    setLegalCompany(prev => ({
+      legalCompanyName:     s.legalCompanyName     ?? prev.legalCompanyName,
+      legalCompanyCif:      s.legalCompanyCif      ?? prev.legalCompanyCif,
+      legalCompanyAddress:  s.legalCompanyAddress  ?? prev.legalCompanyAddress,
+      legalCompanyCity:     s.legalCompanyCity     ?? prev.legalCompanyCity,
+      legalCompanyZip:      s.legalCompanyZip      ?? prev.legalCompanyZip,
+      legalCompanyProvince: s.legalCompanyProvince ?? prev.legalCompanyProvince,
+      legalCompanyEmail:    s.legalCompanyEmail    ?? prev.legalCompanyEmail,
+      legalCompanyPhone:    s.legalCompanyPhone    ?? prev.legalCompanyPhone,
+      legalCompanyIban:     s.legalCompanyIban     ?? prev.legalCompanyIban,
     }));
   }, [rawSettings]);
 
@@ -395,6 +418,90 @@ export default function Settings() {
                 step="0.5"
                 value={payments.paymentDepositRestaurant}
                 onChange={e => setPayments(p => ({ ...p, paymentDepositRestaurant: e.target.value }))}
+              />
+            </Field>
+          </div>
+        </Section>
+
+        {/* ── Empresa Facturadora ── */}
+        <Section
+          icon={Building2}
+          title="Empresa Facturadora / Datos Fiscales"
+          description="Razón social, CIF y domicilio fiscal que aparecen en facturas, presupuestos y tickets TPV."
+          onSave={() => saveSection("legalCompany", legalCompany)}
+          saving={savingSection === "legalCompany"}
+        >
+          {/* Aviso legal */}
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2">
+            <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+            <p className="text-xs text-amber-800 font-display">
+              Estos datos aparecen como <strong>emisor</strong> en todas las facturas y presupuestos generados por la plataforma, y en la cabecera de los tickets del TPV. Asegúrate de que coinciden exactamente con los datos registrados en la Agencia Tributaria.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Razón Social" col2>
+              <Input
+                value={legalCompany.legalCompanyName}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyName: e.target.value }))}
+                placeholder="NEXTAIR, S.L."
+              />
+            </Field>
+            <Field label="CIF / NIF">
+              <Input
+                value={legalCompany.legalCompanyCif}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCif: e.target.value }))}
+                placeholder="B16408031"
+              />
+            </Field>
+            <Field label="Teléfono fiscal">
+              <Input
+                value={legalCompany.legalCompanyPhone}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyPhone: e.target.value }))}
+                placeholder="+34 958 000 000"
+              />
+            </Field>
+            <Field label="Domicilio fiscal" col2>
+              <Input
+                value={legalCompany.legalCompanyAddress}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyAddress: e.target.value }))}
+                placeholder="C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM"
+              />
+            </Field>
+            <Field label="Código Postal">
+              <Input
+                value={legalCompany.legalCompanyZip}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyZip: e.target.value }))}
+                placeholder="18006"
+              />
+            </Field>
+            <Field label="Municipio">
+              <Input
+                value={legalCompany.legalCompanyCity}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCity: e.target.value }))}
+                placeholder="GRANADA"
+              />
+            </Field>
+            <Field label="Provincia" col2>
+              <Input
+                value={legalCompany.legalCompanyProvince}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyProvince: e.target.value }))}
+                placeholder="Granada"
+              />
+            </Field>
+            <Field label="Email fiscal" col2>
+              <Input
+                type="email"
+                value={legalCompany.legalCompanyEmail}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyEmail: e.target.value }))}
+                placeholder="administracion@nextair.es"
+              />
+            </Field>
+            <Field label="IBAN (para liquidaciones)" col2
+              hint="Número de cuenta bancaria que aparece en los documentos de liquidación a proveedores">
+              <Input
+                value={legalCompany.legalCompanyIban}
+                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyIban: e.target.value }))}
+                placeholder="ES00 0000 0000 0000 0000 0000"
               />
             </Field>
           </div>

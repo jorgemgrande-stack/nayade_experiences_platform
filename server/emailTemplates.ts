@@ -928,6 +928,10 @@ export interface QuotePdfData {
   conditions?: string | null;
   paymentLinkUrl?: string | null;
   createdAt: Date;
+  // Datos de empresa facturadora (opcionales para compatibilidad)
+  issuerName?: string;
+  issuerCif?: string;
+  issuerAddress?: string;
 }
 
 export function buildQuotePdfHtml(d: QuotePdfData): string {
@@ -1012,6 +1016,17 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
     ${d.notes ? `<div style="padding:0 40px 16px;"><div style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;padding:14px 18px;"><p style="color:#374151;font-size:13px;margin:0;line-height:1.6;">${d.notes}</p></div></div>` : ""}
     ${d.conditions ? `<div style="padding:0 40px 16px;"><div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:18px 22px;"><p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;">Condiciones</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0;">${d.conditions}</p></div></div>` : ""}
     ${d.paymentLinkUrl ? `<div style="padding:0 40px 16px;text-align:center;"><div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;"><p style="color:#374151;font-size:13px;margin:0 0 6px;">Enlace de pago:</p><p style="color:${BRAND_ORANGE};font-size:13px;font-weight:600;word-break:break-all;margin:0;">${d.paymentLinkUrl}</p></div></div>` : ""}
+
+    <!-- Bloque emisor legal -->
+    ${d.issuerName ? `
+    <div style="padding:0 40px 16px;">
+      <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px;">
+        <p style="color:#9ca3af;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 6px;font-family:Arial,sans-serif;">Documento emitido por</p>
+        <p style="color:#374151;font-size:12px;margin:0;line-height:1.7;font-family:Arial,sans-serif;">
+          <strong>${d.issuerName}</strong> &nbsp;&middot;&nbsp; CIF: ${d.issuerCif ?? ""}<br/>${d.issuerAddress ?? ""}
+        </p>
+      </div>
+    </div>` : ""}
 
     <!-- Footer beige arena -->
     <div style="padding:0;">

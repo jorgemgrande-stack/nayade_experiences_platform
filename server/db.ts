@@ -1424,97 +1424,64 @@ export async function getDashboardOverview() {
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
     const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    // ── KPIs: Ingresos desde invoices (status=cobrada, campo issuedAt es timestamp) ──
-    const [revTotal] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
-      .from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfMonth}`);
-    const [revLastMonth] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
-      .from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`);
-    const [revAllTime] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
-      .from(invoices).where(sql`status = 'cobrada'`);
-
-    // ── KPIs: Bookings desde tabla bookings (scheduledDate es timestamp) ──
-    const [bookingsThisMonth] = await db.select({ count: sql<number>`count(*)` })
-      .from(bookings).where(sql`createdAt >= ${startOfMonth}`);
-    const [bookingsPending] = await db.select({ count: sql<number>`count(*)` })
-      .from(bookings).where(eq(bookings.status, "pendiente"));
-    const [bookingsConfirmed] = await db.select({ count: sql<number>`count(*)` })
-      .from(bookings).where(eq(bookings.status, "confirmado"));
-
-    // ── KPIs: Leads (createdAt es timestamp) ──
-    const [leadsNew] = await db.select({ count: sql<number>`count(*)` })
-      .from(leads).where(sql`createdAt >= ${startOfMonth}`);
-    const [leadsTotal] = await db.select({ count: sql<number>`count(*)` }).from(leads);
-
-    // ── KPIs: Presupuestos enviados pendientes de respuesta ──
-    const [quotesEnviados] = await db.select({ count: sql<number>`count(*)` })
-      .from(quotes).where(sql`status IN ('enviado', 'visualizado')`);
-    const [quotesPendingAmt] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
-      .from(quotes).where(sql`status IN ('enviado', 'visualizado')`);
-
-    // ── KPIs: Facturas pendientes de cobro ──
-    const [invoicesPendingCount] = await db.select({ count: sql<number>`count(*)` })
-      .from(invoices).where(sql`status IN ('generada', 'enviada')`);
-    const [invoicesPendingAmt] = await db.select({ total: sql<string>`COALESCE(SUM(total), 0)` })
-      .from(invoices).where(sql`status IN ('generada', 'enviada')`);
-
-    // ── KPIs: Reservas online pagadas este mes (created_at es bigint Unix ms) ──
     const startOfMonthMs = startOfMonth.getTime();
-    const [resPaidThisMonth] = await db.select({ count: sql<number>`count(*)` })
-      .from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`);
 
-    // ── FUNNEL: Embudo de ventas CRM ──
-    const [fLeads] = await db.select({ count: sql<number>`count(*)` }).from(leads);
-    const [fQuotes] = await db.select({ count: sql<number>`count(*)` }).from(quotes);
-    // Reservas pagadas = reservations paid + bookings completados
-    const [fReservationsPaid] = await db.select({ count: sql<number>`count(*)` })
-      .from(reservations).where(eq(reservations.status, "paid"));
-    const [fBookingsCompleted] = await db.select({ count: sql<number>`count(*)` })
-      .from(bookings).where(eq(bookings.status, "completado"));
-    const [fInvoices] = await db.select({ count: sql<number>`count(*)` }).from(invoices);
+    // ── Ejecutar TODAS las queries en paralelo con Promise.all ──────────────
+    // Antes: 26 queries secuenciales (~2-4s). Ahora: 1 ronda paralela (~200-400ms)
+    const [
+      [revTotal], [revLastMonth], [revAllTime],
+      [bookingsThisMonth], [bookingsPending], [bookingsConfirmed],
+      [leadsNew], [leadsTotal],
+      [quotesEnviados], [quotesPendingAmt],
+      [invoicesPendingCount], [invoicesPendingAmt],
+      [resPaidThisMonth],
+      [fLeads], [fQuotes], [fReservationsPaid], [fBookingsCompleted], [fInvoices],
+      recentActivity,
+      todayBookingsRaw,
+      upcomingRaw,
+      topRaw,
+      [transfersToValidate], [quotesExpiring], [invoicesOverdue],
+    ] = await Promise.all([
+      // KPIs: Ingresos
+      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfMonth}`),
+      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`),
+      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada'`),
+      // KPIs: Bookings
+      db.select({ count: sql<number>`count(*)` }).from(bookings).where(sql`createdAt >= ${startOfMonth}`),
+      db.select({ count: sql<number>`count(*)` }).from(bookings).where(eq(bookings.status, "pendiente")),
+      db.select({ count: sql<number>`count(*)` }).from(bookings).where(eq(bookings.status, "confirmado")),
+      // KPIs: Leads
+      db.select({ count: sql<number>`count(*)` }).from(leads).where(sql`createdAt >= ${startOfMonth}`),
+      db.select({ count: sql<number>`count(*)` }).from(leads),
+      // KPIs: Presupuestos
+      db.select({ count: sql<number>`count(*)` }).from(quotes).where(sql`status IN ('enviado', 'visualizado')`),
+      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(quotes).where(sql`status IN ('enviado', 'visualizado')`),
+      // KPIs: Facturas
+      db.select({ count: sql<number>`count(*)` }).from(invoices).where(sql`status IN ('generada', 'enviada')`),
+      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status IN ('generada', 'enviada')`),
+      // KPIs: Reservas online
+      db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`),
+      // Funnel
+      db.select({ count: sql<number>`count(*)` }).from(leads),
+      db.select({ count: sql<number>`count(*)` }).from(quotes),
+      db.select({ count: sql<number>`count(*)` }).from(reservations).where(eq(reservations.status, "paid")),
+      db.select({ count: sql<number>`count(*)` }).from(bookings).where(eq(bookings.status, "completado")),
+      db.select({ count: sql<number>`count(*)` }).from(invoices),
+      // Recent activity
+      db.select({ id: crmActivityLog.id, entityType: crmActivityLog.entityType, action: crmActivityLog.action, actorName: crmActivityLog.actorName, entityId: crmActivityLog.entityId, details: crmActivityLog.details, createdAt: crmActivityLog.createdAt }).from(crmActivityLog).orderBy(desc(crmActivityLog.createdAt)).limit(10),
+      // Today's bookings
+      db.select({ id: bookings.id, bookingNumber: bookings.bookingNumber, clientName: bookings.clientName, scheduledDate: bookings.scheduledDate, numberOfPersons: bookings.numberOfPersons, status: bookings.status, experienceId: bookings.experienceId }).from(bookings).where(sql`scheduledDate >= ${startOfToday} AND scheduledDate <= ${endOfToday} AND status NOT IN ('cancelado')`).orderBy(bookings.scheduledDate).limit(10),
+      // Upcoming bookings
+      db.select({ id: bookings.id, bookingNumber: bookings.bookingNumber, clientName: bookings.clientName, scheduledDate: bookings.scheduledDate, numberOfPersons: bookings.numberOfPersons, status: bookings.status, experienceId: bookings.experienceId }).from(bookings).where(sql`scheduledDate > ${endOfToday} AND scheduledDate <= ${in7Days} AND status NOT IN ('cancelado')`).orderBy(bookings.scheduledDate).limit(5),
+      // Top experiencias
+      db.select({ productId: reservations.productId, productName: reservations.productName, count: sql<number>`count(*)`, revenue: sql<string>`COALESCE(SUM(amount_total), 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`).groupBy(reservations.productId, reservations.productName).orderBy(sql`count(*) DESC`).limit(5),
+      // Alertas
+      db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`paymentMethod = 'transferencia' AND status = 'pending_payment'`),
+      db.select({ count: sql<number>`count(*)` }).from(quotes).where(sql`validUntil IS NOT NULL AND validUntil <= ${in7Days} AND validUntil >= ${now} AND status IN ('enviado', 'visualizado')`),
+      db.select({ count: sql<number>`count(*)` }).from(invoices).where(sql`status IN ('generada', 'enviada') AND issuedAt <= ${thirtyDaysAgo}`),
+    ]);
 
-    // ── RECENT ACTIVITY desde crmActivityLog (createdAt es timestamp) ──
-    const recentActivity = await db.select({
-      id: crmActivityLog.id,
-      entityType: crmActivityLog.entityType,
-      action: crmActivityLog.action,
-      actorName: crmActivityLog.actorName,
-      entityId: crmActivityLog.entityId,
-      details: crmActivityLog.details,
-      createdAt: crmActivityLog.createdAt,
-    }).from(crmActivityLog)
-      .orderBy(desc(crmActivityLog.createdAt))
-      .limit(10);
-
-    // ── TODAY'S BOOKINGS (scheduledDate es timestamp) ──
-    const todayBookingsRaw = await db.select({
-      id: bookings.id,
-      bookingNumber: bookings.bookingNumber,
-      clientName: bookings.clientName,
-      scheduledDate: bookings.scheduledDate,
-      numberOfPersons: bookings.numberOfPersons,
-      status: bookings.status,
-      experienceId: bookings.experienceId,
-    }).from(bookings)
-      .where(sql`scheduledDate >= ${startOfToday} AND scheduledDate <= ${endOfToday} AND status NOT IN ('cancelado')`)
-      .orderBy(bookings.scheduledDate)
-      .limit(10);
-
-    // ── UPCOMING BOOKINGS (próximos 7 días, excluyendo hoy) ──
-    const upcomingRaw = await db.select({
-      id: bookings.id,
-      bookingNumber: bookings.bookingNumber,
-      clientName: bookings.clientName,
-      scheduledDate: bookings.scheduledDate,
-      numberOfPersons: bookings.numberOfPersons,
-      status: bookings.status,
-      experienceId: bookings.experienceId,
-    }).from(bookings)
-      .where(sql`scheduledDate > ${endOfToday} AND scheduledDate <= ${in7Days} AND status NOT IN ('cancelado')`)
-      .orderBy(bookings.scheduledDate)
-      .limit(5);
-
-    // Enriquecer con nombres de experiencias
+    // Enriquecer bookings con nombres de experiencias
     const allExpIds = Array.from(new Set([...todayBookingsRaw, ...upcomingRaw].map(b => b.experienceId)));
     let expMap: Record<number, string> = {};
     if (allExpIds.length > 0) {
@@ -1522,40 +1489,9 @@ export async function getDashboardOverview() {
         .from(experiences).where(inArray(experiences.id, allExpIds));
       expMap = Object.fromEntries(exps.map(e => [e.id, e.title]));
     }
-
     const todayBookings = todayBookingsRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId] ?? "Actividad" }));
     const upcomingBookings = upcomingRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId] ?? "Actividad" }));
-
-    // ── TOP EXPERIENCIAS: desde reservations pagadas (amountTotal en céntimos) ──
-    // Como bookings puede estar vacío, usamos reservations como fuente principal
-    const topRaw = await db.select({
-      productId: reservations.productId,
-      productName: reservations.productName,
-      count: sql<number>`count(*)`,
-      revenue: sql<string>`COALESCE(SUM(amount_total), 0)`,
-    }).from(reservations)
-      .where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`)
-      .groupBy(reservations.productId, reservations.productName)
-      .orderBy(sql`count(*) DESC`)
-      .limit(5);
-
-    const topExperiences = topRaw.map(r => ({
-      experienceId: r.productId,
-      experienceName: r.productName,
-      count: Number(r.count),
-      revenue: Math.round(parseFloat(r.revenue ?? "0")) / 100, // céntimos → euros
-    }));
-
-    // ── ALERTAS PENDIENTES ────────────────────────────────────────────────────
-    // Transferencias pendientes de validar: reservations con paymentMethod=transferencia y status=pending_payment
-    const [transfersToValidate] = await db.select({ count: sql<number>`count(*)` })
-      .from(reservations).where(sql`paymentMethod = 'transferencia' AND status = 'pending_payment'`);
-    // Presupuestos enviados que vencen en 7 días
-    const [quotesExpiring] = await db.select({ count: sql<number>`count(*)` })
-      .from(quotes).where(sql`validUntil IS NOT NULL AND validUntil <= ${in7Days} AND validUntil >= ${now} AND status IN ('enviado', 'visualizado')`);
-    // Facturas emitidas hace más de 30 días sin cobrar
-    const [invoicesOverdue] = await db.select({ count: sql<number>`count(*)` })
-      .from(invoices).where(sql`status IN ('generada', 'enviada') AND issuedAt <= ${thirtyDaysAgo}`);
+    const topExperiences = topRaw.map(r => ({ experienceId: r.productId, experienceName: r.productName, count: Number(r.count), revenue: Math.round(parseFloat(r.revenue ?? "0")) / 100 }));
 
     return {
       kpis: {

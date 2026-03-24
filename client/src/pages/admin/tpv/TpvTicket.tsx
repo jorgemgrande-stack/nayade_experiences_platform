@@ -125,6 +125,10 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
             <div className="center bold text-sm">NÁYADE EXPERIENCES</div>
             <div className="center text-xs">Skicenter · Sierra Nevada</div>
             <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
+            <div className="center" style={{ fontSize: "9px", color: "#555" }}>NEXTAIR, S.L. · CIF: B16408031</div>
+            <div className="center" style={{ fontSize: "9px", color: "#555" }}>C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D</div>
+            <div className="center" style={{ fontSize: "9px", color: "#555" }}>EDIFICIO FORUM · 18006 GRANADA</div>
+            <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row">
               <span>{dateStr} {timeStr}</span>
               <span className="bold">{s.ticketNumber}</span>

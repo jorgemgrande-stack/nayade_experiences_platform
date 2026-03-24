@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Índice para reservations.product_id\nCREATE INDEX IF NOT EXISTS idx_reservations_product_id ON reservations(product_id);\n\n-- Índices para products con nombres reales de columnas (camelCase)\nCREATE INDEX IF NOT EXISTS idx_experiences_active_presential ON experiences(isActive, isPresentialSale);\nCREATE INDEX IF NOT EXISTS idx_packs_active_presential ON packs(isActive, isPresentialSale);\nCREATE INDEX IF NOT EXISTS idx_spa_treatments_active_presential ON spa_treatments(isActive, isPresentialSale);\nCREATE INDEX IF NOT EXISTS idx_room_types_active_presential ON room_types(isActive, isPresentialSale);\n\n-- Índice para crmActivityLog\nCREATE INDEX IF NOT EXISTS idx_crm_activity_log_created_at ON crm_activity_log(createdAt);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Índice para reservations.product_id\nCREATE INDEX IF NOT EXISTS idx_reservations_product_id ON reservations(product_id);\n\n-- Índices para products con nombres reales de columnas (camelCase)\nCREATE INDEX IF NOT EXISTS idx_experiences_active_presential ON experiences(isActive, isPresentialSale);\nCREATE INDEX IF NOT EXISTS idx_packs_active_presential ON packs(isActive, isPresentialSale);\nCREATE INDEX IF NOT EXISTS idx_spa_treatments_active_presential ON spa_treatments(isActive, isPresentialSale);\nCREATE INDEX IF NOT EXISTS idx_room_types_active_presential ON room_types(isActive, isPresentialSale);\n\n-- Índice para crmActivityLog\nCREATE INDEX IF NOT EXISTS idx_crm_activity_log_created_at ON crm_activity_log(createdAt);\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2497
+}

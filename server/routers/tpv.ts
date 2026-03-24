@@ -487,6 +487,8 @@ export const tpvRouter = router({
       const html = `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;">
           <h2 style="color:#7c3aed;">Náyade Experiences — Ticket ${sale.ticketNumber}</h2>
+          <p style="color:#555;font-size:11px;margin:0 0 2px;">NEXTAIR, S.L. &middot; CIF: B16408031</p>
+          <p style="color:#777;font-size:11px;margin:0 0 10px;">C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM &middot; 18006 GRANADA</p>
           <p style="color:#666;">Fecha: ${new Date(Number(sale.createdAt)).toLocaleString("es-ES")}</p>
           ${sale.customerName ? `<p>Cliente: <strong>${sale.customerName}</strong></p>` : ""}
           <table style="width:100%;border-collapse:collapse;margin:16px 0;">

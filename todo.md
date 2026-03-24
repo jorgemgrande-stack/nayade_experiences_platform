@@ -1708,3 +1708,17 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] HotelManager: toggle "Vendible en TPV" (violeta) junto a Destacado y Activo
 - [x] SpaManager: toggle "Vendible en TPV" (violeta) junto a Destacado y Activo
 - [x] tpv.getCatalog: filtrar por isPresentialSale = true (y isActive = true)
+
+## v8.4: Optimización de Rendimiento — TPV, Transacciones y Admin
+- [ ] Diagnosticar queries lentas en TPV y Transacciones
+- [ ] Añadir índices DB en tablas más consultadas
+- [ ] Optimizar queries backend: paginación, límites y selects selectivos
+- [ ] Añadir skeletons de carga inmediatos en TPV y Transacciones
+- [ ] Lazy loading mejorado en AdminLayout
+
+## Empresa Facturadora NEXTAIR S.L. (v9.0)
+- [x] Insertar en BD los campos de empresa facturadora como claves en siteSettings
+- [x] Añadir bloque "Empresa Facturadora / Datos Fiscales" en Settings.tsx con todos los campos
+- [x] Vincular datos de empresa facturadora al PDF de facturas (cabecera emisor)
+- [x] Vincular datos de empresa facturadora al ticket TPV (cabecera)
+- [x] Vincular datos de empresa facturadora al PDF de presupuestos (cabecera emisor)
