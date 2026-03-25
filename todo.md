@@ -1775,3 +1775,15 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Analizar flujo createSale en tpv.ts y creación de expedientes REAV en fiscal.ts
 - [x] Corregir: al finalizar una venta TPV con productos de régimen REAV, crear automáticamente expediente REAV
 - [x] Tests y checkpoint
+
+## Enriquecimiento Automático de Expedientes REAV
+- [x] Auditar schema reavExpedients y createReavExpedient para identificar campos faltantes
+- [x] Migrar BD: añadir campos clientName, clientEmail, clientPhone, clientDni, clientAddress, channel, sourceRef a reav_expedients
+- [x] Actualizar createReavExpedient en db.ts para aceptar y persistir todos los nuevos campos
+- [x] Añadir helper attachReavDocument en db.ts para adjuntar documentos al expediente
+- [x] TPV: pasar nombre, email, teléfono del cliente y adjuntar ticket como documento al crear expediente REAV
+- [x] CRM (pago Redsys): pasar datos del cliente (nombre, email, teléfono, DNI) y adjuntar factura+presupuesto PDF al crear expediente REAV
+- [x] CRM (transferencia): igual que pago Redsys, con datos completos del cliente y documentos
+- [x] Checkout online (IPN Redsys): crear expediente REAV con datos del cliente y adjuntar confirmación
+- [x] Vista expediente REAV: bloque "Datos del Cliente", badge de canal de origen, notas en documentos auto-adjuntados
+- [x] 196 tests pasando (sin regresiones)

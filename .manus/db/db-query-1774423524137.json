@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `reav_expedients` ADD `clientName` varchar(256);\nALTER TABLE `reav_expedients` ADD `clientEmail` varchar(256);\nALTER TABLE `reav_expedients` ADD `clientPhone` varchar(64);\nALTER TABLE `reav_expedients` ADD `clientDni` varchar(64);\nALTER TABLE `reav_expedients` ADD `clientAddress` varchar(512);\nALTER TABLE `reav_expedients` ADD `channel` enum('tpv','online','crm','manual') DEFAULT 'manual';\nALTER TABLE `reav_expedients` ADD `sourceRef` varchar(128);\nALTER TABLE `reav_expedients` ADD `tpvSaleId` int;\nALTER TABLE `reav_expedients` ADD `quoteId` int;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute ALTER TABLE `reav_expedients` ADD `clientName` varchar(256);\nALTER TABLE `reav_expedients` ADD `clientEmail` varchar(256);\nALTER TABLE `reav_expedients` ADD `clientPhone` varchar(64);\nALTER TABLE `reav_expedients` ADD `clientDni` varchar(64);\nALTER TABLE `reav_expedients` ADD `clientAddress` varchar(512);\nALTER TABLE `reav_expedients` ADD `channel` enum('tpv','online','crm','manual') DEFAULT 'manual';\nALTER TABLE `reav_expedients` ADD `sourceRef` varchar(128);\nALTER TABLE `reav_expedients` ADD `tpvSaleId` int;\nALTER TABLE `reav_expedients` ADD `quoteId` int;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2166
+}

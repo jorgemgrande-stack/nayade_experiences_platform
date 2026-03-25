@@ -2,7 +2,7 @@
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
-import { createLead, createBookingFromReservation, createReavExpedient } from "../db";
+import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument } from "../db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -1325,17 +1325,70 @@ export const crmRouter = router({
         if (reavLines.length > 0) {
           try {
             const reavSaleAmount = reavLines.reduce((s, i) => s + i.total, 0);
+            // Obtener datos del cliente del lead
+            const clientName = lead.name ?? undefined;
+            const clientEmail = lead.email ?? undefined;
+            const clientPhone = lead.phone ?? undefined;
+            const clientDni = (lead as any).dni ?? undefined;
+            const clientAddress = (lead as any).address ?? undefined;
             const reavResult = await createReavExpedient({
               invoiceId,
               reservationId,
+              quoteId: quote.id,
               serviceDescription: reavLines.map(i => i.description).join(" | "),
               serviceDate: now.toISOString().split("T")[0],
               numberOfPax: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
               saleAmountTotal: String(reavSaleAmount),
-              internalNotes: `Expediente creado automáticamente al confirmar pago del presupuesto ${quote.quoteNumber ?? quote.id}`,
+              providerCostEstimated: String((reavSaleAmount * 0.6).toFixed(2)),
+              agencyMarginEstimated: String((reavSaleAmount * 0.4).toFixed(2)),
+              // Datos del cliente
+              clientName,
+              clientEmail,
+              clientPhone,
+              clientDni,
+              clientAddress,
+              // Canal y referencia
+              channel: "crm",
+              sourceRef: invoiceNumber,
+              internalNotes: [
+                `Expediente creado automáticamente al confirmar pago del presupuesto ${quote.quoteNumber ?? quote.id}.`,
+                clientName ? `Cliente: ${clientName}` : null,
+                clientEmail ? `Email: ${clientEmail}` : null,
+                clientPhone ? `Teléfono: ${clientPhone}` : null,
+                clientDni ? `DNI/NIF: ${clientDni}` : null,
+                `Factura: ${invoiceNumber}`,
+                `Importe REAV: ${reavSaleAmount.toFixed(2)}€`,
+                `Agente: ${ctx.user.name ?? ctx.user.email}`,
+              ].filter(Boolean).join(" · "),
             });
             reavExpedientId = reavResult.id;
             reavExpedientNumber = reavResult.expedientNumber;
+            // Adjuntar la factura PDF al expediente (documento del cliente)
+            if (pdfUrl && reavExpedientId) {
+              await attachReavDocument({
+                expedientId: reavExpedientId,
+                side: "client",
+                docType: "factura_emitida",
+                title: `Factura ${invoiceNumber}`,
+                fileUrl: pdfUrl,
+                mimeType: "application/pdf",
+                notes: `Factura generada automáticamente al confirmar pago. Presupuesto: ${quote.quoteNumber ?? quote.id}.`,
+                uploadedBy: ctx.user.id,
+              });
+            }
+            // Adjuntar el presupuesto PDF al expediente (documento del cliente)
+            if ((quote as any).pdfUrl && reavExpedientId) {
+              await attachReavDocument({
+                expedientId: reavExpedientId,
+                side: "client",
+                docType: "otro",
+                title: `Presupuesto ${quote.quoteNumber ?? quote.id}`,
+                fileUrl: (quote as any).pdfUrl,
+                mimeType: "application/pdf",
+                notes: `Presupuesto original aceptado por el cliente.`,
+                uploadedBy: ctx.user.id,
+              });
+            }
             await logActivity("invoice", invoiceId, "reav_expedient_created", ctx.user.id, ctx.user.name, { expedientId: reavExpedientId, expedientNumber: reavExpedientNumber });
           } catch (e) {
             console.error("[confirmPayment] Error al crear expediente REAV:", e);
@@ -1585,17 +1638,66 @@ export const crmRouter = router({
         if (reavLinesTransfer.length > 0) {
           try {
             const reavSaleAmountT = reavLinesTransfer.reduce((s, i) => s + i.total, 0);
+            const clientNameT = lead.name ?? undefined;
+            const clientEmailT = lead.email ?? undefined;
+            const clientPhoneT = lead.phone ?? undefined;
+            const clientDniT = (lead as any).dni ?? undefined;
+            const clientAddressT = (lead as any).address ?? undefined;
             const reavResultT = await createReavExpedient({
               invoiceId,
               reservationId,
+              quoteId: quote.id,
               serviceDescription: reavLinesTransfer.map(i => i.description).join(" | "),
               serviceDate: now.toISOString().split("T")[0],
               numberOfPax: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
               saleAmountTotal: String(reavSaleAmountT),
-              internalNotes: `Expediente creado automáticamente al confirmar transferencia del presupuesto ${quote.quoteNumber ?? quote.id}`,
+              providerCostEstimated: String((reavSaleAmountT * 0.6).toFixed(2)),
+              agencyMarginEstimated: String((reavSaleAmountT * 0.4).toFixed(2)),
+              clientName: clientNameT,
+              clientEmail: clientEmailT,
+              clientPhone: clientPhoneT,
+              clientDni: clientDniT,
+              clientAddress: clientAddressT,
+              channel: "crm",
+              sourceRef: invoiceNumber,
+              internalNotes: [
+                `Expediente creado automáticamente al confirmar transferencia del presupuesto ${quote.quoteNumber ?? quote.id}.`,
+                clientNameT ? `Cliente: ${clientNameT}` : null,
+                clientEmailT ? `Email: ${clientEmailT}` : null,
+                clientPhoneT ? `Teléfono: ${clientPhoneT}` : null,
+                clientDniT ? `DNI/NIF: ${clientDniT}` : null,
+                `Factura: ${invoiceNumber}`,
+                `Importe REAV: ${reavSaleAmountT.toFixed(2)}€`,
+                `Agente: ${ctx.user.name ?? ctx.user.email}`,
+              ].filter(Boolean).join(" · "),
             });
             reavExpedientIdT = reavResultT.id;
             reavExpedientNumberT = reavResultT.expedientNumber;
+            // Adjuntar la factura PDF al expediente
+            if (pdfUrl && reavExpedientIdT) {
+              await attachReavDocument({
+                expedientId: reavExpedientIdT,
+                side: "client",
+                docType: "factura_emitida",
+                title: `Factura ${invoiceNumber}`,
+                fileUrl: pdfUrl,
+                mimeType: "application/pdf",
+                notes: `Factura generada al confirmar transferencia. Presupuesto: ${quote.quoteNumber ?? quote.id}.`,
+                uploadedBy: ctx.user.id,
+              });
+            }
+            if ((quote as any).pdfUrl && reavExpedientIdT) {
+              await attachReavDocument({
+                expedientId: reavExpedientIdT,
+                side: "client",
+                docType: "otro",
+                title: `Presupuesto ${quote.quoteNumber ?? quote.id}`,
+                fileUrl: (quote as any).pdfUrl,
+                mimeType: "application/pdf",
+                notes: `Presupuesto original aceptado por el cliente (pago por transferencia).`,
+                uploadedBy: ctx.user.id,
+              });
+            }
             await logActivity("invoice", invoiceId, "reav_expedient_created", ctx.user.id, ctx.user.name, { expedientId: reavExpedientIdT, expedientNumber: reavExpedientNumberT });
           } catch (e) {
             console.error("[confirmTransfer] Error al crear expediente REAV:", e);

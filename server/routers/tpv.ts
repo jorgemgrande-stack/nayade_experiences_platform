@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
 import { buildReservationConfirmHtml } from "../emailTemplates";
-import { createReavExpedient } from "../db";
+import { createReavExpedient, attachReavDocument } from "../db";
 import {
   cashRegisters,
   cashSessions,
@@ -563,6 +563,7 @@ export const tpvRouter = router({
           const reavSaleAmount = reavLines.reduce((s, l) => s + l.lineSubtotal, 0);
           const reavResult = await createReavExpedient({
             reservationId: reservationId ?? undefined,
+            tpvSaleId: saleId,
             serviceDescription: input.items
               .filter((_, idx) => linesFiscal[idx]?.fiscalRegime === "reav")
               .map(i => i.productName)
@@ -572,12 +573,39 @@ export const tpvRouter = router({
             saleAmountTotal: String(reavSaleAmount.toFixed(2)),
             providerCostEstimated: String((reavSaleAmount * 0.6).toFixed(2)),
             agencyMarginEstimated: String((reavSaleAmount * 0.4).toFixed(2)),
-            internalNotes: `Expediente creado automáticamente desde TPV. Ticket: ${ticketNumber}${input.customerName ? ` · Cliente: ${input.customerName}` : ""}`,
+            // Datos del cliente
+            clientName: input.customerName ?? undefined,
+            clientEmail: input.customerEmail ?? undefined,
+            clientPhone: input.customerPhone ?? undefined,
+            // Canal y referencia
+            channel: "tpv",
+            sourceRef: ticketNumber,
+            internalNotes: [
+              `Expediente creado automáticamente desde TPV.`,
+              `Ticket: ${ticketNumber}`,
+              input.customerName ? `Cliente: ${input.customerName}` : null,
+              input.customerEmail ? `Email: ${input.customerEmail}` : null,
+              input.customerPhone ? `Teléfono: ${input.customerPhone}` : null,
+              `Importe REAV: ${reavSaleAmount.toFixed(2)}€`,
+              `Cajero: ${sellerName}`,
+            ].filter(Boolean).join(" · "),
           });
           reavExpedientId = reavResult.id;
           reavExpedientNumber = reavResult.expedientNumber;
           // Vincular el expediente a la venta TPV
           await db.update(tpvSales).set({ reavExpedientId } as any).where(eq(tpvSales.id, saleId));
+          // Adjuntar el ticket como documento del cliente en el expediente
+          // El ticket PDF se genera en el frontend; guardamos la URL de acceso al ticket
+          const ticketViewUrl = `/admin/tpv/ticket/${saleId}`;
+          await attachReavDocument({
+            expedientId: reavExpedientId!,
+            side: "client",
+            docType: "otro",
+            title: `Ticket TPV ${ticketNumber}`,
+            fileUrl: ticketViewUrl,
+            mimeType: "text/html",
+            notes: `Ticket de venta TPV generado automáticamente. Fecha: ${new Date().toLocaleDateString("es-ES")}. Cajero: ${sellerName}.`,
+          });
           console.log(`[TPV] Expediente REAV ${reavExpedientNumber} creado para venta ${ticketNumber}`);
         } catch (e) {
           console.error("[TPV] Error creando expediente REAV:", e);

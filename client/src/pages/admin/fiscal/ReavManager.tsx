@@ -10,7 +10,8 @@ import { toast } from "sonner";
 import {
   Plus, FileText, Euro, CheckCircle2, AlertCircle, Clock,
   ChevronRight, Trash2, Upload, RefreshCw, X, Building2,
-  Receipt, Package, TrendingUp, FolderOpen, Lock
+  Receipt, Package, TrendingUp, FolderOpen, Lock,
+  User, Mail, Phone, CreditCard, MapPin, Monitor, ShoppingCart, Store
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -319,6 +320,15 @@ function ExpedientDetail({
           <p className="font-mono text-sm text-slate-500">{exp.expedientNumber}</p>
           <h1 className="text-2xl font-bold text-slate-900 mt-1">{exp.serviceDescription || "Expediente REAV"}</h1>
           <p className="text-slate-500 text-sm mt-1">{exp.destination || "Sin destino"} · {exp.numberOfPax} pax · {exp.serviceDate || "Sin fecha"}</p>
+          {/* Canal de origen */}
+          {exp.channel && (
+            <div className="flex items-center gap-1.5 mt-2">
+              {exp.channel === "tpv" && <><Store className="w-3.5 h-3.5 text-blue-500" /><span className="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">TPV Presencial</span></>}
+              {exp.channel === "online" && <><Monitor className="w-3.5 h-3.5 text-emerald-500" /><span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">Venta Online</span></>}
+              {exp.channel === "crm" && <><ShoppingCart className="w-3.5 h-3.5 text-purple-500" /><span className="text-xs font-medium text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">CRM / Delegada</span></>}
+              {exp.sourceRef && <span className="text-xs text-slate-400 ml-1">Ref: {exp.sourceRef}</span>}
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <span className={`text-sm px-3 py-1 rounded-full font-medium ${FISCAL_STATUS_COLORS[exp.fiscalStatus as FiscalStatus]}`}>
@@ -329,6 +339,62 @@ function ExpedientDetail({
           </span>
         </div>
       </div>
+
+      {/* ── BLOQUE 0: Datos del Cliente ── */}
+      {(exp.clientName || exp.clientEmail || exp.clientPhone || exp.clientDni || exp.clientAddress) && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+            <User className="w-5 h-5 text-orange-500" /> Datos del Cliente
+          </h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            {exp.clientName && (
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-xs text-slate-500">Nombre</p>
+                  <p className="font-medium text-slate-800">{exp.clientName}</p>
+                </div>
+              </div>
+            )}
+            {exp.clientEmail && (
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-xs text-slate-500">Email</p>
+                  <a href={`mailto:${exp.clientEmail}`} className="font-medium text-blue-600 hover:underline">{exp.clientEmail}</a>
+                </div>
+              </div>
+            )}
+            {exp.clientPhone && (
+              <div className="flex items-center gap-2">
+                <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-xs text-slate-500">Teléfono</p>
+                  <a href={`tel:${exp.clientPhone}`} className="font-medium text-slate-800 hover:underline">{exp.clientPhone}</a>
+                </div>
+              </div>
+            )}
+            {exp.clientDni && (
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-xs text-slate-500">DNI / NIF</p>
+                  <p className="font-medium text-slate-800">{exp.clientDni}</p>
+                </div>
+              </div>
+            )}
+            {exp.clientAddress && (
+              <div className="flex items-center gap-2 col-span-2">
+                <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                <div>
+                  <p className="text-xs text-slate-500">Dirección</p>
+                  <p className="font-medium text-slate-800">{exp.clientAddress}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── BLOQUE 1: Información General ── */}
       <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -636,12 +702,18 @@ function DocBlock({
         <p className="text-sm text-slate-400 mb-4">Sin documentos</p>
       )}
       {docs.map((doc: any) => (
-        <div key={doc.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm mb-2">
-          <div>
-            <p className="font-medium text-slate-800">{doc.title}</p>
+        <div key={doc.id} className="flex items-start justify-between bg-slate-50 rounded-lg px-3 py-2 text-sm mb-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="font-medium text-slate-800">{doc.title}</p>
+              {doc.notes?.includes("automáticamente") && (
+                <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded font-medium">Auto</span>
+              )}
+            </div>
             <p className="text-xs text-slate-500">{docTypes.find(d => d.value === doc.docType)?.label ?? doc.docType}</p>
+            {doc.notes && <p className="text-xs text-slate-400 mt-0.5 truncate" title={doc.notes}>{doc.notes}</p>}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-2 shrink-0">
             {doc.fileUrl && (
               <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-700 text-xs underline">Ver</a>
             )}

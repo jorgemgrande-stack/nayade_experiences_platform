@@ -6,7 +6,7 @@
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
-import { updateReservationPayment, getReservationByMerchantOrder, createBookingFromReservation } from "./db";
+import { updateReservationPayment, getReservationByMerchantOrder, createBookingFromReservation, createReavExpedient, attachReavDocument } from "./db";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { quotes, leads, invoices, reservations } from "../drizzle/schema";
@@ -197,6 +197,61 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         console.log(`[Redsys IPN] Booking operativo creado para reserva ${updatedReservation.id}`);
       } catch (bookingErr) {
         console.error("[Redsys IPN] Error al crear booking operativo:", bookingErr);
+      }
+    }
+
+    // ── Crear expediente REAV automáticamente para reservas online directas ──────
+    // Solo para reservas directas (no de presupuesto) con régimen REAV
+    if (result.isAuthorized && updatedReservation && !updatedReservation.quoteId) {
+      try {
+        // Obtener el producto para verificar su régimen fiscal
+        const { getExperienceById: getExpById } = await import("./db");
+        const product = await getExpById(updatedReservation.productId);
+        if (product && (product as any).fiscalRegime === "reav") {
+          const amountEuros = (updatedReservation.amountPaid ?? updatedReservation.amountTotal) / 100;
+          const reavResult = await createReavExpedient({
+            reservationId: updatedReservation.id,
+            serviceDescription: updatedReservation.productName,
+            serviceDate: updatedReservation.bookingDate ?? new Date().toISOString().split("T")[0],
+            numberOfPax: updatedReservation.people,
+            saleAmountTotal: String(amountEuros.toFixed(2)),
+            providerCostEstimated: String((amountEuros * 0.6).toFixed(2)),
+            agencyMarginEstimated: String((amountEuros * 0.4).toFixed(2)),
+            // Datos del cliente
+            clientName: updatedReservation.customerName ?? undefined,
+            clientEmail: updatedReservation.customerEmail ?? undefined,
+            clientPhone: updatedReservation.customerPhone ?? undefined,
+            // Canal y referencia
+            channel: "online",
+            sourceRef: updatedReservation.merchantOrder,
+            internalNotes: [
+              `Expediente creado automáticamente tras pago online Redsys.`,
+              `Reserva: ${updatedReservation.merchantOrder}`,
+              updatedReservation.customerName ? `Cliente: ${updatedReservation.customerName}` : null,
+              updatedReservation.customerEmail ? `Email: ${updatedReservation.customerEmail}` : null,
+              updatedReservation.customerPhone ? `Teléfono: ${updatedReservation.customerPhone}` : null,
+              `Importe: ${amountEuros.toFixed(2)}€`,
+            ].filter(Boolean).join(" · "),
+          });
+          // Actualizar la reserva con el ID del expediente REAV
+          const _pool2 = mysql.createPool(process.env.DATABASE_URL!);
+          const _db2 = drizzle(_pool2);
+          await _db2.update(reservations).set({ reavExpedientId: reavResult.id } as any).where(eq(reservations.id, updatedReservation.id));
+          await _pool2.end();
+          // Adjuntar confirmación de reserva como documento del cliente
+          await attachReavDocument({
+            expedientId: reavResult.id,
+            side: "client",
+            docType: "otro",
+            title: `Confirmación de reserva ${updatedReservation.merchantOrder}`,
+            fileUrl: `/reserva/ok?order=${updatedReservation.merchantOrder}`,
+            mimeType: "text/html",
+            notes: `Confirmación de pago online generada automáticamente. Producto: ${updatedReservation.productName}.`,
+          });
+          console.log(`[Redsys IPN] Expediente REAV ${reavResult.expedientNumber} creado para reserva online ${updatedReservation.merchantOrder}`);
+        }
+      } catch (reavErr) {
+        console.error("[Redsys IPN] Error al crear expediente REAV para reserva online:", reavErr);
       }
     }
 

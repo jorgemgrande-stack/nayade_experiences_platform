@@ -103,6 +103,7 @@ import {
   getPageBlocks,
   savePageBlocks,
   createReavExpedient,
+  attachReavDocument,
   listReavExpedients,
   getReavExpedientById,
   updateReavExpedient,

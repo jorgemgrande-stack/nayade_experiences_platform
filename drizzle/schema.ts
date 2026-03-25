@@ -1034,6 +1034,17 @@ export const reavExpedients = mysqlTable("reav_expedients", {
     "cerrado",
     "anulado",
   ]).default("abierto").notNull(),
+  // Datos del cliente (copiados en el momento de creación para trazabilidad)
+  clientName: varchar("clientName", { length: 256 }),
+  clientEmail: varchar("clientEmail", { length: 256 }),
+  clientPhone: varchar("clientPhone", { length: 64 }),
+  clientDni: varchar("clientDni", { length: 64 }),
+  clientAddress: varchar("clientAddress", { length: 512 }),
+  // Canal de origen y referencia
+  channel: mysqlEnum("channel", ["tpv", "online", "crm", "manual"]).default("manual"),
+  sourceRef: varchar("sourceRef", { length: 128 }), // Nº ticket, factura, presupuesto...
+  tpvSaleId: int("tpvSaleId"),
+  quoteId: int("quoteId"),
   // Notas internas
   internalNotes: text("internalNotes"),
   closedAt: timestamp("closedAt"),

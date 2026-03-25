@@ -1692,6 +1692,17 @@ export async function createReavExpedient(data: {
   providerCostEstimated?: string;
   agencyMarginEstimated?: string;
   internalNotes?: string;
+  // Datos del cliente
+  clientName?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  clientDni?: string;
+  clientAddress?: string;
+  // Canal y referencia
+  channel?: "tpv" | "online" | "crm" | "manual";
+  sourceRef?: string;
+  tpvSaleId?: number;
+  quoteId?: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1703,6 +1714,37 @@ export async function createReavExpedient(data: {
     operativeStatus: "abierto",
   });
   return { id: (result as any).insertId, expedientNumber };
+}
+
+/**
+ * Adjunta un documento (PDF, URL) a un expediente REAV.
+ * Usado por TPV (ticket), CRM (factura/presupuesto) y online (confirmación).
+ */
+export async function attachReavDocument(data: {
+  expedientId: number;
+  side: "client" | "provider";
+  docType: "factura_emitida" | "factura_recibida" | "contrato" | "voucher" | "confirmacion_proveedor" | "otro";
+  title: string;
+  fileUrl?: string;
+  fileKey?: string;
+  mimeType?: string;
+  notes?: string;
+  uploadedBy?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(reavDocuments).values({
+    expedientId: data.expedientId,
+    side: data.side,
+    docType: data.docType,
+    title: data.title,
+    fileUrl: data.fileUrl,
+    fileKey: data.fileKey,
+    mimeType: data.mimeType ?? "application/pdf",
+    notes: data.notes,
+    uploadedBy: data.uploadedBy,
+  });
+  return { id: (result as any).insertId };
 }
 
 export async function listReavExpedients(filters?: {
