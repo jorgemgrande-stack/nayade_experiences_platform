@@ -75,7 +75,8 @@ type Settlement = {
 };
 
 type PreviewLine = {
-  invoiceId: number;
+  reservationId?: number;
+  invoiceId?: number;
   productId: number;
   productName: string;
   serviceDate: string;
@@ -85,6 +86,7 @@ type PreviewLine = {
   commissionAmount: number;
   netAmountProvider: number;
   costType: string;
+  source?: "invoice" | "tpv_reservation";
 };
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -204,6 +206,15 @@ export default function SettlementsManager() {
     },
     onError: (e) => toast.error(`Error al generar PDF: ${e.message}`),
   });
+  const recalculateMutation = trpc.settlements.recalculate.useMutation({
+    onSuccess: (data) => {
+      utils.settlements.list.invalidate();
+      refetchDetail();
+      toast.success(`Liquidación recalculada: ${data.linesCount} líneas · ${data.grossAmount.toFixed(2)}€ bruto`);
+    },
+    onError: (e) => toast.error(`Error al recalcular: ${e.message}`),
+  });
+
   const sendEmailMutation = trpc.settlements.sendEmail.useMutation({
     onSuccess: () => {
       refetchDetail();
@@ -227,6 +238,7 @@ export default function SettlementsManager() {
 
   function handleCreate() {
     const autoLines = (preview?.lines ?? []).map((l: PreviewLine) => ({
+      reservationId: l.reservationId,
       invoiceId: l.invoiceId,
       productId: l.productId,
       productName: l.productName,
@@ -362,6 +374,16 @@ export default function SettlementsManager() {
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap justify-end">
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => selected && recalculateMutation.mutate({ id: selected.id })}
+                  disabled={recalculateMutation.isPending}
+                  className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                  title="Regenerar líneas desde reservas TPV y facturas del periodo"
+                >
+                  <RefreshCw className={`w-3 h-3 mr-1 ${recalculateMutation.isPending ? 'animate-spin' : ''}`} />
+                  {recalculateMutation.isPending ? "Recalculando..." : "Recalcular"}
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => setShowStatusChange(true)}>
                   <RefreshCw className="w-3 h-3 mr-1" />Estado
                 </Button>

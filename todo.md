@@ -1810,3 +1810,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Diagnosticar error INSERT en tabla discount_codes (columna faltante o tipo incorrecto)
 - [x] Corregir el procedimiento de creación de descuentos en el backend (schema Drizzle: status_dc → status)
 - [x] Verificar que la creación funciona correctamente (202 tests pasando)
+
+## Bug: Liquidaciones de proveedor sin líneas (v17.0)
+- [x] Auditar lógica de generación de líneas en el backend (settlements)
+- [x] Identificar por qué las reservas facturadas del periodo no se vinculan al proveedor (solo buscaba en invoices, no en reservations TPV)
+- [x] Corregir el filtrado/join: preview y recalculate ahora incluyen reservas TPV pagadas con productos del proveedor
+- [x] Añadir procedimiento recalculate + botón Recalcular en UI
+- [x] Verificar con datos reales en BD y checkpoint (202 tests pasando)
