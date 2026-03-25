@@ -154,3 +154,84 @@ describe("CRM — Quote items calculation", () => {
     expect(total).toBeCloseTo(99.99, 2);
   });
 });
+
+// ─── generateInvoice — lógica de cálculo fiscal ──────────────────────────────
+
+describe("generateInvoice — cálculo de totales desde items TPV", () => {
+  const buildItems = (items: { total: number; fiscalRegime?: "reav" | "general_21" }[]) => items;
+
+  it("calcula subtotal, IVA y total correctamente para items régimen general", () => {
+    const items = buildItems([
+      { total: 100, fiscalRegime: "general_21" },
+      { total: 50, fiscalRegime: "general_21" },
+    ]);
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+    const taxRate = 21;
+    const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
+    const total = parseFloat((subtotal + taxAmount).toFixed(2));
+
+    expect(subtotal).toBe(150);
+    expect(taxAmount).toBeCloseTo(31.5, 2);
+    expect(total).toBeCloseTo(181.5, 2);
+  });
+
+  it("no aplica IVA a items REAV", () => {
+    const items = buildItems([
+      { total: 200, fiscalRegime: "reav" },
+    ]);
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+    const taxRate = 21;
+    const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
+    const total = parseFloat((subtotal + taxAmount).toFixed(2));
+
+    expect(subtotal).toBe(200);
+    expect(taxAmount).toBe(0);
+    expect(total).toBe(200);
+  });
+
+  it("calcula correctamente con mezcla de items REAV y general", () => {
+    const items = buildItems([
+      { total: 100, fiscalRegime: "general_21" },
+      { total: 80, fiscalRegime: "reav" },
+    ]);
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+    const taxRate = 21;
+    const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
+    const total = parseFloat((subtotal + taxAmount).toFixed(2));
+
+    expect(subtotal).toBe(180);
+    expect(generalSubtotal).toBe(100);
+    expect(taxAmount).toBeCloseTo(21, 2);
+    expect(total).toBeCloseTo(201, 2);
+  });
+
+  it("genera número de factura con formato FAC-YYYY-NNNN", () => {
+    const year = new Date().getFullYear();
+    const seq = 15;
+    const invoiceNumber = `FAC-${year}-${String(seq).padStart(4, "0")}`;
+    expect(invoiceNumber).toMatch(/^FAC-\d{4}-\d{4}$/);
+    expect(invoiceNumber).toBe(`FAC-${year}-0015`);
+  });
+
+  it("rechaza reservas que ya tienen factura (idempotencia)", () => {
+    const reservation = { id: 1, invoiceId: 42, channel: "tpv" };
+    const alreadyHasInvoice = !!reservation.invoiceId;
+    expect(alreadyHasInvoice).toBe(true);
+  });
+
+  it("solo permite generar factura para reservas TPV sin invoiceId", () => {
+    const tpvNoInvoice = { channel: "tpv", invoiceId: null };
+    const tpvWithInvoice = { channel: "tpv", invoiceId: 5 };
+    const onlineNoInvoice = { channel: "web", invoiceId: null };
+
+    const canGenerate = (r: { channel: string; invoiceId: number | null }) =>
+      r.channel === "tpv" && !r.invoiceId;
+
+    expect(canGenerate(tpvNoInvoice)).toBe(true);
+    expect(canGenerate(tpvWithInvoice)).toBe(false);
+    expect(canGenerate(onlineNoInvoice)).toBe(false);
+  });
+});

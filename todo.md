@@ -1799,3 +1799,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 
 ## Bug: TPV carrito sin scroll (v14.0)
 - [x] Panel carrito TPV: lista de ítems con scroll interno, total y botón cobrar siempre visibles
+
+## Generar factura desde reserva TPV (v15.0)
+- [x] Auditar esquema invoices y procedimiento de generación existente
+- [x] Crear procedimiento crm.reservations.generateInvoice: genera factura desde reserva TPV, adjunta al REAV existente sin duplicar
+- [x] Botón "Generar factura" en acciones del listado de Reservas CRM para reservas TPV sin invoiceId
+- [x] Tests y checkpoint (202 tests pasando)

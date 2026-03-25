@@ -18,6 +18,8 @@ import {
   experienceVariants,
   reavExpedients,
   siteSettings,
+  tpvSales,
+  tpvSaleItems,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -1235,6 +1237,7 @@ export const crmRouter = router({
           total: String(total),
           pdfUrl,
           pdfKey,
+          isAutomatic: false,
           status: "generada",
           issuedAt: now,
           createdAt: now,
@@ -2473,6 +2476,140 @@ export const crmRouter = router({
           createdAt: new Date(),
         });
         return { ok: true, sentTo: res.customerEmail ?? "" };
+      }),
+
+    // ─── Generar factura desde reserva TPV ────────────────────────────────
+    generateInvoice: staff
+      .input(z.object({
+        reservationId: z.number(),
+        clientNif: z.string().optional(),
+        clientAddress: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        // 1. Load reservation
+        const [res] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId));
+        if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+        if (res.invoiceId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Esta reserva ya tiene factura generada" });
+
+        // 2. Load TPV sale and items if available
+        const tpvSaleRows = await db.select().from(tpvSales).where(eq(tpvSales.reservationId, input.reservationId));
+        const tpvSale = tpvSaleRows[0] ?? null;
+        let items: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[] = [];
+
+        if (tpvSale) {
+          const saleItems = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, tpvSale.id));
+          items = saleItems.map(i => ({
+            description: i.productName,
+            quantity: i.quantity,
+            unitPrice: parseFloat(String(i.unitPrice)),
+            total: parseFloat(String(i.subtotal)),
+            fiscalRegime: (i.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+          }));
+        } else {
+          // Fallback: single line from reservation data
+          const amountEur = (res.amountPaid ?? res.amountTotal) / 100;
+          items = [{ description: res.productName, quantity: res.people, unitPrice: amountEur / res.people, total: amountEur }];
+        }
+
+        const now = new Date();
+        const invoiceNumber = await generateInvoiceNumber();
+        const subtotal = items.reduce((s, i) => s + i.total, 0);
+        const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+        const taxRate = 21;
+        const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
+        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+
+        // 3. Generate PDF
+        let pdfUrl: string | null = null;
+        let pdfKey: string | null = null;
+        try {
+          const pdf = await generateInvoicePdf({
+            invoiceNumber,
+            clientName: res.customerName,
+            clientEmail: res.customerEmail ?? "",
+            clientPhone: res.customerPhone,
+            clientNif: input.clientNif,
+            clientAddress: input.clientAddress,
+            itemsJson: items,
+            subtotal: String(subtotal.toFixed(2)),
+            taxRate: String(taxRate),
+            taxAmount: String(taxAmount),
+            total: String(total.toFixed(2)),
+            issuedAt: now,
+          });
+          pdfUrl = pdf.url;
+          pdfKey = pdf.key;
+        } catch (e) {
+          console.error("Invoice PDF generation failed:", e);
+        }
+
+        // 4. Insert invoice record
+        const [invResult] = await db.insert(invoices).values({
+          invoiceNumber,
+          reservationId: input.reservationId,
+          clientName: res.customerName,
+          clientEmail: res.customerEmail ?? "",
+          clientPhone: res.customerPhone,
+          itemsJson: items,
+          subtotal: String(subtotal.toFixed(2)),
+          taxRate: String(taxRate),
+          taxAmount: String(taxAmount),
+          total: String(total.toFixed(2)),
+          pdfUrl,
+          pdfKey,
+          clientNif: input.clientNif ?? null,
+          clientAddress: input.clientAddress ?? null,
+          isAutomatic: false,
+          status: "generada",
+          issuedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        const invoiceId = (invResult as { insertId: number }).insertId;
+
+        // 5. Update reservation with invoiceId and invoiceNumber
+        await db.update(reservations).set({
+          invoiceId,
+          invoiceNumber,
+          updatedAt: Date.now(),
+        }).where(eq(reservations.id, input.reservationId));
+
+        // 6. Update tpvSale with invoiceId if applicable (no new REAV expedient)
+        if (tpvSale) {
+          await db.update(tpvSales).set({ invoiceId }).where(eq(tpvSales.id, tpvSale.id));
+        }
+
+        // 7. Attach invoice PDF to existing REAV expedient (if any) — NO new expedient created
+        if (pdfUrl) {
+          const reavRows = await db.select({ id: reavExpedients.id })
+            .from(reavExpedients)
+            .where(eq(reavExpedients.sourceRef, tpvSale?.ticketNumber ?? res.merchantOrder ?? ""))
+            .limit(1);
+          const reavId = reavRows[0]?.id ?? null;
+          if (reavId) {
+            await attachReavDocument({
+              expedientId: reavId,
+              side: "client",
+              docType: "factura_emitida",
+              title: `Factura ${invoiceNumber}`,
+              fileUrl: pdfUrl,
+              notes: `Factura generada desde reserva TPV ${res.merchantOrder}`,
+            });
+          }
+        }
+
+        // 8. Log activity
+        await db.insert(crmActivityLog).values({
+          entityType: "reservation",
+          entityId: input.reservationId,
+          action: "invoice_generated",
+          actorId: ctx.user.id,
+          actorName: ctx.user.name ?? null,
+          details: { invoiceId, invoiceNumber, pdfUrl },
+          createdAt: new Date(),
+        });
+
+        return { ok: true, invoiceId, invoiceNumber, pdfUrl };
       }),
 
     // ─── Eliminar reserva ───────────────────────────────────────────────────

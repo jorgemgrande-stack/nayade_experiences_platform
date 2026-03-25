@@ -59,6 +59,7 @@ import {
   Paperclip,
   MoreVertical,
   ExternalLink,
+  FilePlus,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -2630,6 +2631,22 @@ export default function CRMDashboard() {
     onError: (e) => toast.error(e.message),
   });
 
+  // ─── Generar factura desde reserva TPV ─────────────────────────────────────
+  const [genInvoiceResId, setGenInvoiceResId] = useState<number | null>(null);
+  const [genInvoiceNif, setGenInvoiceNif] = useState("");
+  const [genInvoiceAddress, setGenInvoiceAddress] = useState("");
+  const generateInvoiceMutation = trpc.crm.reservations.generateInvoice.useMutation({
+    onSuccess: (data) => {
+      toast.success(`✅ Factura ${data.invoiceNumber} generada correctamente`);
+      setGenInvoiceResId(null);
+      setGenInvoiceNif("");
+      setGenInvoiceAddress("");
+      utils.crm.reservations.list.invalidate();
+      utils.crm.invoices.listAll.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const downloadQuotePdf = async (quoteId: number, quoteNumber: string) => {
     const toastId = toast.loading(`Generando PDF ${quoteNumber}...`);
     try {
@@ -3382,6 +3399,14 @@ export default function CRMDashboard() {
                             title={res.invoicePdfUrl ? "Descargar reserva en PDF" : "Sin PDF disponible"}>
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
+                          {/* Generar factura — solo para TPV sin factura */}
+                          {res.channel === "tpv" && !res.invoiceId && (
+                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-violet-300 h-7 w-7 p-0"
+                              onClick={() => setGenInvoiceResId(res.id)}
+                              title="Generar factura desde ticket TPV">
+                              <FilePlus className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                           {/* Eliminar */}
                           <Button size="sm" variant="ghost" className="text-white/40 hover:text-red-400 h-7 w-7 p-0"
                             onClick={() => setDeleteResId(res.id)}
@@ -3970,6 +3995,53 @@ export default function CRMDashboard() {
               className="bg-red-600 hover:bg-red-700 text-white">
               {deleteResMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
               Eliminar reserva
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Diálogo: Generar Factura desde TPV ───────────────────────────────── */}
+      <Dialog open={genInvoiceResId !== null} onOpenChange={(o) => { if (!o) { setGenInvoiceResId(null); setGenInvoiceNif(""); setGenInvoiceAddress(""); } }}>
+        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <FilePlus className="w-5 h-5 text-violet-400" /> Generar Factura desde TPV
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-white/60">Se generará una factura formal a partir de los datos del ticket TPV. No se creará un nuevo expediente REAV; la factura se adjuntará al expediente existente.</p>
+            <div className="space-y-2">
+              <Label className="text-white/70 text-xs">NIF / DNI del cliente (opcional)</Label>
+              <Input
+                value={genInvoiceNif}
+                onChange={(e) => setGenInvoiceNif(e.target.value)}
+                placeholder="12345678A"
+                className="bg-white/5 border-white/15 text-white text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-white/70 text-xs">Dirección de facturación (opcional)</Label>
+              <Input
+                value={genInvoiceAddress}
+                onChange={(e) => setGenInvoiceAddress(e.target.value)}
+                placeholder="Calle, número, CP, ciudad"
+                className="bg-white/5 border-white/15 text-white text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => { setGenInvoiceResId(null); setGenInvoiceNif(""); setGenInvoiceAddress(""); }} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => genInvoiceResId !== null && generateInvoiceMutation.mutate({
+                reservationId: genInvoiceResId,
+                clientNif: genInvoiceNif || undefined,
+                clientAddress: genInvoiceAddress || undefined,
+              })}
+              disabled={generateInvoiceMutation.isPending}
+              className="bg-violet-600 hover:bg-violet-700 text-white">
+              {generateInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FilePlus className="w-4 h-4 mr-1" />}
+              Generar factura
             </Button>
           </DialogFooter>
         </DialogContent>
