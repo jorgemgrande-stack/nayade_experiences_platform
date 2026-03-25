@@ -1,0 +1,42 @@
+{
+  "query": "SELECT tsi.productId, tsi.productName, tsi.quantity, tsi.unitPrice, tsi.participants, tsi.eventDate FROM tpv_sale_items tsi WHERE tsi.saleId = 120004;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT tsi.productId, tsi.productName, tsi.quantity, tsi.unitPrice, tsi.participants, tsi.eventDate FROM tpv_sale_items tsi WHERE tsi.saleId = 120004;",
+  "rows": [
+    {
+      "productId": "150001",
+      "productName": "Entrada General Piscina Club Nautico",
+      "quantity": "1",
+      "unitPrice": "7.00",
+      "participants": "1",
+      "eventDate": "NULL"
+    },
+    {
+      "productId": "30007",
+      "productName": "Minimotos Eléctricas Acuáticas",
+      "quantity": "1",
+      "unitPrice": "25.00",
+      "participants": "1",
+      "eventDate": "NULL"
+    },
+    {
+      "productId": "30002",
+      "productName": "Banana Ski",
+      "quantity": "1",
+      "unitPrice": "15.00",
+      "participants": "1",
+      "eventDate": "NULL"
+    },
+    {
+      "productId": "30004",
+      "productName": "Canoas & Kayaks",
+      "quantity": "1",
+      "unitPrice": "12.43",
+      "participants": "1",
+      "eventDate": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "productId\tproductName\tquantity\tunitPrice\tparticipants\teventDate\n150001\tEntrada General Piscina Club Nautico\t1\t7.00\t1\tNULL\n30007\tMinimotos Eléctricas Acuáticas\t1\t25.00\t1\tNULL\n30002\tBanana Ski\t1\t15.00\t1\tNULL\n30004\tCanoas & Kayaks\t1\t12.43\t1\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

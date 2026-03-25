@@ -471,7 +471,7 @@ export const reservations = mysqlTable("reservations", {
   customerName: varchar("customer_name", { length: 255 }).notNull(),
   customerEmail: varchar("customer_email", { length: 255 }),
   customerPhone: varchar("customer_phone", { length: 50 }),
-  merchantOrder: varchar("merchant_order", { length: 12 }).notNull().unique(),
+  merchantOrder: varchar("merchant_order", { length: 30 }).notNull().unique(),
   redsysResponse: text("redsys_response"),
   redsysDsResponse: varchar("redsys_ds_response", { length: 10 }),
   notes: text("notes"),

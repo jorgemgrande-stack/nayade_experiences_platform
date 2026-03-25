@@ -1,0 +1,14 @@
+{
+  "query": "SELECT total, paidAt FROM tpv_sales WHERE id = 120002;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT total, paidAt FROM tpv_sales WHERE id = 120002;",
+  "rows": [
+    {
+      "total": "51.00",
+      "paidAt": "1774456399957"
+    }
+  ],
+  "messages": [],
+  "stdout": "total\tpaidAt\n51.00\t1774456399957\n",
+  "stderr": "",
+  "execution_time_ms": 62
+}

@@ -1,0 +1,49 @@
+{
+  "query": "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_NAME = 'reservations' AND ORDINAL_POSITION > 20 ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_NAME = 'reservations' AND ORDINAL_POSITION > 20 ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "quote_id"
+    },
+    {
+      "COLUMN_NAME": "quoteId"
+    },
+    {
+      "COLUMN_NAME": "invoiceId"
+    },
+    {
+      "COLUMN_NAME": "invoiceNumber"
+    },
+    {
+      "COLUMN_NAME": "paymentMethod"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedBy"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedAt"
+    },
+    {
+      "COLUMN_NAME": "transferProofUrl"
+    },
+    {
+      "COLUMN_NAME": "channel"
+    },
+    {
+      "COLUMN_NAME": "discount_code"
+    },
+    {
+      "COLUMN_NAME": "discount_percent"
+    },
+    {
+      "COLUMN_NAME": "discount_amount"
+    },
+    {
+      "COLUMN_NAME": "original_amount"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nquote_id\nquoteId\ninvoiceId\ninvoiceNumber\npaymentMethod\npaymentValidatedBy\npaymentValidatedAt\ntransferProofUrl\nchannel\ndiscount_code\ndiscount_percent\ndiscount_amount\noriginal_amount\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

@@ -1,0 +1,8 @@
+{
+  "query": "SELECT ts.id, ts.ticket_number, ts.customer_name, ts.customer_email, ts.reservation_id, ts.created_at FROM tpv_sales ts WHERE ts.ticket_number = 'TPV-20260325-2402' OR ts.customer_name LIKE '%Faustino%' OR ts.customer_email LIKE '%faustino%' ORDER BY ts.created_at DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT ts.id, ts.ticket_number, ts.customer_name, ts.customer_email, ts.reservation_id, ts.created_at FROM tpv_sales ts WHERE ts.ticket_number = 'TPV-20260325-2402' OR ts.customer_name LIKE '%Faustino%' OR ts.customer_email LIKE '%faustino%' ORDER BY ts.created_at DESC LIMIT 5;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'ts.created_at' in 'order clause'"
+  ]
+}

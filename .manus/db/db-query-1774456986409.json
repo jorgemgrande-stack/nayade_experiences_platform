@@ -1,0 +1,9 @@
+{
+  "query": "\nUPDATE tpv_sales \nSET reservationId = (SELECT id FROM reservations WHERE merchant_order = 'TPV2402T0325' LIMIT 1)\nWHERE id = 120002;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nUPDATE tpv_sales \nSET reservationId = (SELECT id FROM reservations WHERE merchant_order = 'TPV2402T0325' LIMIT 1)\nWHERE id = 120002;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 72
+}

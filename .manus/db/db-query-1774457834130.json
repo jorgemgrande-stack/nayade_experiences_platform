@@ -1,0 +1,18 @@
+{
+  "query": "SELECT id, ticketNumber, customerName, customerEmail, reservationId, status_ts FROM tpv_sales WHERE ticketNumber = 'TPV-20260325-8579' OR customerName LIKE '%Caridad%' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, ticketNumber, customerName, customerEmail, reservationId, status_ts FROM tpv_sales WHERE ticketNumber = 'TPV-20260325-8579' OR customerName LIKE '%Caridad%' LIMIT 5;",
+  "rows": [
+    {
+      "id": "120004",
+      "ticketNumber": "TPV-20260325-8579",
+      "customerName": "Caridad martinez",
+      "customerEmail": "canales@severalenergy.com",
+      "reservationId": "NULL",
+      "status_ts": "paid"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tticketNumber\tcustomerName\tcustomerEmail\treservationId\tstatus_ts\n120004\tTPV-20260325-8579\tCaridad martinez\tcanales@severalenergy.com\tNULL\tpaid\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}

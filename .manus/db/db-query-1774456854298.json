@@ -1,0 +1,258 @@
+{
+  "query": "DESCRIBE tpv_sales;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute DESCRIBE tpv_sales;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "ticketNumber",
+      "Type": "varchar(50)",
+      "Null": "NO",
+      "Key": "UNI",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "sessionId",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "reservationId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "invoiceId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customerName",
+      "Type": "varchar(200)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customerEmail",
+      "Type": "varchar(200)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customerPhone",
+      "Type": "varchar(50)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "subtotal",
+      "Type": "decimal(10,2)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "discountAmount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "discountReason",
+      "Type": "varchar(200)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "total",
+      "Type": "decimal(10,2)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "status_ts",
+      "Type": "enum('pending','paid','cancelled','refunded')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "pending",
+      "Extra": ""
+    },
+    {
+      "Field": "notes",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "createdAt",
+      "Type": "bigint",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "paidAt",
+      "Type": "bigint",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "taxBase",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "taxAmount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "taxRate",
+      "Type": "decimal(5,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "21",
+      "Extra": ""
+    },
+    {
+      "Field": "reavMargin",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "reavCost",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "reavTax",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "fiscalSummary",
+      "Type": "varchar(20)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "mixed",
+      "Extra": ""
+    },
+    {
+      "Field": "saleChannel",
+      "Type": "varchar(20)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "tpv",
+      "Extra": ""
+    },
+    {
+      "Field": "sellerUserId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "sellerName",
+      "Type": "varchar(200)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "operativeCenter",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_code",
+      "Type": "varchar(50)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_percent",
+      "Type": "decimal(5,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_amount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "original_total",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\nticketNumber\tvarchar(50)\tNO\tUNI\tNULL\t\nsessionId\tint\tNO\t\tNULL\t\nreservationId\tint\tYES\t\tNULL\t\ninvoiceId\tint\tYES\t\tNULL\t\ncustomerName\tvarchar(200)\tYES\t\tNULL\t\ncustomerEmail\tvarchar(200)\tYES\t\tNULL\t\ncustomerPhone\tvarchar(50)\tYES\t\tNULL\t\nsubtotal\tdecimal(10,2)\tNO\t\t0\t\ndiscountAmount\tdecimal(10,2)\tYES\t\t0\t\ndiscountReason\tvarchar(200)\tYES\t\tNULL\t\ntotal\tdecimal(10,2)\tNO\t\t0\t\nstatus_ts\tenum('pending','paid','cancelled','refunded')\tNO\t\tpending\t\nnotes\ttext\tYES\t\tNULL\t\ncreatedAt\tbigint\tNO\t\tNULL\t\npaidAt\tbigint\tYES\t\tNULL\t\ntaxBase\tdecimal(10,2)\tYES\t\t0\t\ntaxAmount\tdecimal(10,2)\tYES\t\t0\t\ntaxRate\tdecimal(5,2)\tYES\t\t21\t\nreavMargin\tdecimal(10,2)\tYES\t\t0\t\nreavCost\tdecimal(10,2)\tYES\t\t0\t\nreavTax\tdecimal(10,2)\tYES\t\t0\t\nfiscalSummary\tvarchar(20)\tYES\t\tmixed\t\nsaleChannel\tvarchar(20)\tYES\t\ttpv\t\nsellerUserId\tint\tYES\t\tNULL\t\nsellerName\tvarchar(200)\tYES\t\tNULL\t\noperativeCenter\tvarchar(100)\tYES\t\tNULL\t\ndiscount_code\tvarchar(50)\tYES\t\tNULL\t\ndiscount_percent\tdecimal(5,2)\tYES\t\t0\t\ndiscount_amount\tdecimal(10,2)\tYES\t\t0\t\noriginal_total\tdecimal(10,2)\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 63
+}

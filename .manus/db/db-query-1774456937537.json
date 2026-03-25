@@ -1,0 +1,13 @@
+{
+  "query": "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_NAME = 'reservations' AND COLUMN_NAME IN ('channel', 'payment_method', 'invoice_number', 'invoice_id');",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_NAME = 'reservations' AND COLUMN_NAME IN ('channel', 'payment_method', 'invoice_number', 'invoice_id');",
+  "rows": [
+    {
+      "COLUMN_NAME": "channel"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nchannel\n",
+  "stderr": "",
+  "execution_time_ms": 56
+}
