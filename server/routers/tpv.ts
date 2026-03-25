@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
 import { buildReservationConfirmHtml } from "../emailTemplates";
+import { createReavExpedient } from "../db";
 import {
   cashRegisters,
   cashSessions,
@@ -553,7 +554,37 @@ export const tpvRouter = router({
         console.error("[TPV] Error registrando transacción:", e);
       }
 
-      // ── 8. Email de confirmación (cliente si hay email + siempre a reservas@) ─
+      // ── 8. Crear expediente REAV automáticamente si hay líneas REAV ──────────
+      let reavExpedientId: number | undefined;
+      let reavExpedientNumber: string | undefined;
+      if (hasReav) {
+        try {
+          const reavLines = linesFiscal.filter(l => l.fiscalRegime === "reav");
+          const reavSaleAmount = reavLines.reduce((s, l) => s + l.lineSubtotal, 0);
+          const reavResult = await createReavExpedient({
+            reservationId: reservationId ?? undefined,
+            serviceDescription: input.items
+              .filter((_, idx) => linesFiscal[idx]?.fiscalRegime === "reav")
+              .map(i => i.productName)
+              .join(" | "),
+            serviceDate: mainItem?.eventDate ?? new Date().toISOString().split("T")[0],
+            numberOfPax: mainItem?.participants ?? 1,
+            saleAmountTotal: String(reavSaleAmount.toFixed(2)),
+            providerCostEstimated: String((reavSaleAmount * 0.6).toFixed(2)),
+            agencyMarginEstimated: String((reavSaleAmount * 0.4).toFixed(2)),
+            internalNotes: `Expediente creado automáticamente desde TPV. Ticket: ${ticketNumber}${input.customerName ? ` · Cliente: ${input.customerName}` : ""}`,
+          });
+          reavExpedientId = reavResult.id;
+          reavExpedientNumber = reavResult.expedientNumber;
+          // Vincular el expediente a la venta TPV
+          await db.update(tpvSales).set({ reavExpedientId } as any).where(eq(tpvSales.id, saleId));
+          console.log(`[TPV] Expediente REAV ${reavExpedientNumber} creado para venta ${ticketNumber}`);
+        } catch (e) {
+          console.error("[TPV] Error creando expediente REAV:", e);
+        }
+      }
+
+      // ── 9. Email de confirmación (cliente si hay email + siempre a reservas@) ─
       try {
         const transporter = nodemailer.createTransport({
           host: process.env.SMTP_HOST,
@@ -594,7 +625,7 @@ export const tpvRouter = router({
       const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
       const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, saleId));
       const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, saleId));
-      return { sale, items, payments, reservationId };;
+      return { sale, items, payments, reservationId, reavExpedientId, reavExpedientNumber };
     }),
 
   getSale: protectedProcedure

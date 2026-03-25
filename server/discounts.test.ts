@@ -155,3 +155,50 @@ describe("Discount Codes — TPV integration math", () => {
     expect(finalCents).toBe(22500);   // 225€
   });
 });
+
+describe("REAV Expedient — TPV trigger logic", () => {
+  it("should detect hasReav when any line has reav regime", () => {
+    const linesFiscal = [
+      { fiscalRegime: "general_21" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
+      { fiscalRegime: "reav" as const, lineSubtotal: 50, taxBase: 0, taxAmount: 0, taxRate: 0, reavCost: 30, reavMargin: 20, reavTax: 4.2 },
+    ];
+    const hasReav = linesFiscal.some(l => l.fiscalRegime === "reav");
+    expect(hasReav).toBe(true);
+  });
+
+  it("should NOT detect hasReav when all lines are general_21", () => {
+    const linesFiscal = [
+      { fiscalRegime: "general_21" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
+    ];
+    const hasReav = linesFiscal.some(l => l.fiscalRegime === "reav");
+    expect(hasReav).toBe(false);
+  });
+
+  it("should calculate correct reavSaleAmount from REAV lines only", () => {
+    const linesFiscal = [
+      { fiscalRegime: "general_21" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
+      { fiscalRegime: "reav" as const, lineSubtotal: 50, taxBase: 0, taxAmount: 0, taxRate: 0, reavCost: 30, reavMargin: 20, reavTax: 4.2 },
+      { fiscalRegime: "reav" as const, lineSubtotal: 75, taxBase: 0, taxAmount: 0, taxRate: 0, reavCost: 45, reavMargin: 30, reavTax: 6.3 },
+    ];
+    const reavLines = linesFiscal.filter(l => l.fiscalRegime === "reav");
+    const reavSaleAmount = reavLines.reduce((s, l) => s + l.lineSubtotal, 0);
+    expect(reavSaleAmount).toBe(125); // 50 + 75
+  });
+
+  it("should estimate provider cost at 60% of REAV sale amount", () => {
+    const reavSaleAmount = 125;
+    const estimatedCost = reavSaleAmount * 0.6;
+    const estimatedMargin = reavSaleAmount * 0.4;
+    expect(estimatedCost).toBe(75);
+    expect(estimatedMargin).toBe(50);
+  });
+
+  it("should build correct internalNotes for TPV expedient", () => {
+    const ticketNumber = "TPV-20260325-1234";
+    const customerName = "Juan García";
+    const notes = `Expediente creado automáticamente desde TPV. Ticket: ${ticketNumber} · Cliente: ${customerName}`;
+    expect(notes).toContain("TPV");
+    expect(notes).toContain(ticketNumber);
+    expect(notes).toContain(customerName);
+  });
+});

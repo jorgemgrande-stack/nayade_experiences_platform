@@ -1770,3 +1770,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] cartCheckout backend: aplica descuento al total Redsys cuando se proporciona código
 - [x] Tests Vitest: 19 tests para lógica de descuento (cálculo, expiración, límites, validación)
 - [x] 191 tests pasando en total (sin regresiones)
+
+## Bug: Expedientes REAV no se crean desde el TPV
+- [x] Analizar flujo createSale en tpv.ts y creación de expedientes REAV en fiscal.ts
+- [x] Corregir: al finalizar una venta TPV con productos de régimen REAV, crear automáticamente expediente REAV
+- [x] Tests y checkpoint

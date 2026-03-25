@@ -158,7 +158,11 @@ export default function TpvScreen() {
       setPromoCode("");
       setPromoCodeInput("");
       setPromoCodeData(null);
-      toast.success(`Venta ${data.sale.ticketNumber} completada`);
+      if (data.reavExpedientNumber) {
+        toast.success(`Venta ${data.sale.ticketNumber} completada · Expediente REAV ${data.reavExpedientNumber} creado`, { duration: 6000 });
+      } else {
+        toast.success(`Venta ${data.sale.ticketNumber} completada`);
+      }
     },
     onError: (err) => toast.error(err.message),
   });
