@@ -490,11 +490,26 @@ export const tpvRouter = router({
         try {
           const merchantOrder = generateReservationRef();
           const amountCents = Math.round(total * 100);
+          // Construir resumen de todos los ítems del ticket para extrasJson
+          const extrasForReservation = input.items.map(it => ({
+            productId: it.productId,
+            productName: it.productName,
+            productType: it.productType,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            participants: it.participants,
+            eventDate: it.eventDate,
+            eventTime: it.eventTime,
+          }));
+          const productSummary = input.items.length > 1
+            ? `${mainItem.productName} (+${input.items.length - 1} más)`
+            : mainItem.productName;
           const [resResult] = await db.insert(reservations).values({
             productId: mainItem.productId,
-            productName: mainItem.productName,
+            productName: productSummary,
             bookingDate: mainItem.eventDate ?? new Date().toISOString().slice(0, 10),
-            people: mainItem.participants ?? 1,
+            people: input.items.reduce((sum, it) => sum + (it.participants ?? 1), 0),
+            extrasJson: JSON.stringify(extrasForReservation),
             amountTotal: amountCents,
             amountPaid: amountCents,
             status: "paid",
@@ -502,7 +517,14 @@ export const tpvRouter = router({
             customerEmail: input.customerEmail || null,
             customerPhone: input.customerPhone || null,
             merchantOrder,
-            notes: `[ORIGEN_TPV] Ticket: ${ticketNumber}${input.customerName ? ` · ${input.customerName}` : ""}`,
+            notes: [
+              `[ORIGEN_TPV] Ticket: ${ticketNumber}`,
+              input.customerName ? `Cliente: ${input.customerName}` : null,
+              input.customerEmail ? `Email: ${input.customerEmail}` : null,
+              input.customerPhone ? `Teléfono: ${input.customerPhone}` : null,
+              input.items.length > 1 ? `Productos: ${input.items.map(i => i.productName).join(', ')}` : null,
+              input.notes ? `Notas: ${input.notes}` : null,
+            ].filter(Boolean).join(' · '),
             paymentMethod: primaryPaymentMethod === "card" ? "redsys" :
                            primaryPaymentMethod === "cash" ? "efectivo" : "otro",
             channel: "tpv",

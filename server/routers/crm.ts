@@ -2313,6 +2313,7 @@ export const crmRouter = router({
       .input(
         z.object({
           status: z.string().optional(),
+          channel: z.string().optional(),
           search: z.string().optional(),
           from: z.string().optional(),
           to: z.string().optional(),
@@ -2323,6 +2324,7 @@ export const crmRouter = router({
       .query(async ({ input }) => {
         const conditions = [];
         if (input.status) conditions.push(eq(reservations.status, input.status as "draft" | "pending_payment" | "paid" | "failed" | "cancelled"));
+        if (input.channel) conditions.push(eq(reservations.channel, input.channel as "web" | "crm" | "telefono" | "email" | "otro" | "tpv"));
         if (input.search) {
           conditions.push(
             or(

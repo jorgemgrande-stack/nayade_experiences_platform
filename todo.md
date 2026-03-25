@@ -1787,3 +1787,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Checkout online (IPN Redsys): crear expediente REAV con datos del cliente y adjuntar confirmación
 - [x] Vista expediente REAV: bloque "Datos del Cliente", badge de canal de origen, notas en documentos auto-adjuntados
 - [x] 196 tests pasando (sin regresiones)
+
+## Ventas TPV visibles en CRM Reservas (v13.0)
+- [x] Auditar tabla reservations y createSale TPV: campo channel ya existe, reserva ya se crea con channel='tpv'
+- [x] Enriquecer reserva TPV: extrasJson con todos los ítems, people suma todos los participantes, notes con ticket, cliente y productos
+- [x] CRM Reservas: badges de canal para todos los canales (TPV Presencial, CRM Delegado, Online, Teléfono)
+- [x] CRM Reservas: filtro por canal en la barra de búsqueda (selector dropdown)
+- [x] CRM Reservas: bloque info TPV en el detalle de la reserva (número de ticket, datos del cliente)
+- [x] Backend: añadir parámetro channel al procedimiento crm.reservations.list
+- [x] 196 tests pasando (sin regresiones)

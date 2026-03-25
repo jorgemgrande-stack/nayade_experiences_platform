@@ -2219,16 +2219,40 @@ function ReservationDetailModal({
         </DialogHeader>
 
         <div className="space-y-5 mt-4">
-          {/* Estado y método de pago */}
+          {/* Estado, método de pago y canal */}
           <div className="flex items-center gap-3 flex-wrap">
             {getStatusBadge(res.status)}
             {getPaymentBadge(res.paymentMethod)}
-            {res.channel && (
-              <span className="text-xs text-white/30 capitalize">
-                Canal: {res.channel === "web" ? "Web" : res.channel === "crm" ? "CRM" : res.channel}
+            {res.channel === "tpv" && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 rounded-full">
+                🖥️ TPV Presencial
+              </span>
+            )}
+            {res.channel === "crm" && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full">
+                💼 CRM Delegado
+              </span>
+            )}
+            {(res.channel === "web" || !res.channel) && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 rounded-full">
+                🌐 Online
+              </span>
+            )}
+            {res.channel === "telefono" && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                📞 Teléfono
               </span>
             )}
           </div>
+          {/* Info de ticket TPV si aplica */}
+          {res.channel === "tpv" && res.notes?.includes("[ORIGEN_TPV]") && (
+            <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
+              <div className="text-xs font-semibold text-violet-300 mb-1">🖥️ Venta TPV</div>
+              <div className="text-xs text-violet-200/70">
+                {res.notes.replace("[ORIGEN_TPV] ", "")}
+              </div>
+            </div>
+          )}
 
           {/* Datos del cliente */}
           <div className="bg-white/[0.04] border border-white/8 rounded-xl p-4">
@@ -2435,6 +2459,7 @@ export default function CRMDashboard() {
   const [markLostQuoteId, setMarkLostQuoteId] = useState<number | null>(null);
   const [showDirectQuoteModal, setShowDirectQuoteModal] = useState(false);
   // ─── Estado dropdown acciones reservas ────────────────────────────────────────────────────
+  const [resChannelFilter, setResChannelFilter] = useState<string>("all");
   const [resActionMenuId, setResActionMenuId] = useState<number | null>(null);
   const [viewResId, setViewResId] = useState<number | null>(null);
   const [editResId, setEditResId] = useState<number | null>(null);
@@ -2461,10 +2486,11 @@ export default function CRMDashboard() {
 
   const resFilter = useMemo(() => ({
     status: filterStatus !== "all" && tab === "reservations" ? filterStatus : undefined,
+    channel: resChannelFilter !== "all" ? resChannelFilter : undefined,
     search: search || undefined,
     limit: 50,
     offset: 0,
-  }), [filterStatus, search, tab]);
+  }), [filterStatus, resChannelFilter, search, tab]);
 
   const { data: leadsData, isLoading: leadsLoading } = trpc.crm.leads.list.useQuery(leadsFilter, { enabled: tab === "leads" });
   const { data: quotesData, isLoading: quotesLoading } = trpc.crm.quotes.list.useQuery(quotesFilter, { enabled: tab === "quotes" });
@@ -2946,6 +2972,22 @@ export default function CRMDashboard() {
               <Filter className="w-3.5 h-3.5 mr-1" /> Limpiar filtro
             </Button>
           )}
+          {/* Filtro por canal — visible solo en el tab de reservas */}
+          {tab === "reservations" && (
+            <Select value={resChannelFilter} onValueChange={setResChannelFilter}>
+              <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white text-xs h-9">
+                <SelectValue placeholder="Canal" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0d1520] border-white/10">
+                <SelectItem value="all" className="text-white/70 text-xs">📊 Todos los canales</SelectItem>
+                <SelectItem value="tpv" className="text-violet-300 text-xs">🖥️ TPV Presencial</SelectItem>
+                <SelectItem value="web" className="text-sky-300 text-xs">🌐 Online</SelectItem>
+                <SelectItem value="crm" className="text-purple-300 text-xs">💼 CRM Delegado</SelectItem>
+                <SelectItem value="telefono" className="text-amber-300 text-xs">📞 Teléfono</SelectItem>
+                <SelectItem value="otro" className="text-white/50 text-xs">❓ Otro</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           {/* Botón Nuevo Presupuesto — visible solo en el tab de presupuestos */}
           {tab === "quotes" && (
             <Button
@@ -3269,7 +3311,22 @@ export default function CRMDashboard() {
                           </span>
                           {res.channel === "tpv" && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-1.5 py-0.5 rounded-full">
-                              🖥️ TPV
+                              🖥️ TPV Presencial
+                            </span>
+                          )}
+                          {res.channel === "crm" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 rounded-full">
+                              💼 CRM Delegado
+                            </span>
+                          )}
+                          {(res.channel === "web" || !res.channel) && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 rounded-full">
+                              🌐 Online
+                            </span>
+                          )}
+                          {res.channel === "telefono" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full">
+                              📞 Teléfono
                             </span>
                           )}
                         </div>
