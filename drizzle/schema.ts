@@ -1393,7 +1393,7 @@ export const discountCodes = mysqlTable("discount_codes", {
   description: text("description"),
   discountPercent: decimal("discount_percent", { precision: 5, scale: 2 }).notNull(),
   expiresAt: timestamp("expires_at"),
-  status: mysqlEnum("status_dc", ["active", "inactive", "expired"]).default("active").notNull(),
+  status: mysqlEnum("status", ["active", "inactive", "expired"]).default("active").notNull(),
   maxUses: int("max_uses"),
   currentUses: int("current_uses").default(0).notNull(),
   observations: text("observations"),

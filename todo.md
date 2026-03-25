@@ -1805,3 +1805,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Crear procedimiento crm.reservations.generateInvoice: genera factura desde reserva TPV, adjunta al REAV existente sin duplicar
 - [x] Botón "Generar factura" en acciones del listado de Reservas CRM para reservas TPV sin invoiceId
 - [x] Tests y checkpoint (202 tests pasando)
+
+## Bug: Error al crear código de descuento (v16.0)
+- [x] Diagnosticar error INSERT en tabla discount_codes (columna faltante o tipo incorrecto)
+- [x] Corregir el procedimiento de creación de descuentos en el backend (schema Drizzle: status_dc → status)
+- [x] Verificar que la creación funciona correctamente (202 tests pasando)
