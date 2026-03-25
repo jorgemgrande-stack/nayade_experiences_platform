@@ -487,7 +487,7 @@ export default function TpvScreen() {
         </div>
 
         {/* ── Cart + Payment ── */}
-        <div className="w-80 xl:w-96 flex flex-col bg-gray-900 shrink-0">
+        <div className="w-80 xl:w-96 flex flex-col bg-gray-900 shrink-0 overflow-hidden">
           {/* Cart header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
             <div className="flex items-center gap-2">
@@ -541,8 +541,8 @@ export default function TpvScreen() {
             </div>
           </div>
 
-          {/* Cart items */}
-          <ScrollArea className="flex-1">
+          {/* Cart items + promo + discount (scrollable) */}
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-3 space-y-2">
               {cart.length === 0 ? (
                 <div className="text-center py-12 text-gray-600">
@@ -593,73 +593,73 @@ export default function TpvScreen() {
                 })
               )}
             </div>
+
+            {/* Código promocional (dentro del scroll) */}
+            {cart.length > 0 && (
+              <div className="px-0 pb-2 space-y-1 border-t border-gray-800 pt-2">
+                {promoCodeData ? (
+                  <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded px-2 py-1">
+                    <span className="text-xs text-green-400 font-mono font-bold">{promoCodeData.code}</span>
+                    <span className="text-xs text-green-400">-{promoCodeData.discountPercent}% (-{promoDiscount.toFixed(2)}€)</span>
+                    <button onClick={removePromoCode} className="text-gray-500 hover:text-red-400 ml-1"><X className="w-3 h-3" /></button>
+                  </div>
+                ) : (
+                  <div className="flex gap-1">
+                    <Input
+                      placeholder="Código promo"
+                      value={promoCodeInput}
+                      onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => e.key === "Enter" && applyPromoCode()}
+                      className="h-7 text-xs bg-gray-800 border-gray-700 text-white font-mono uppercase"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-7 px-2 text-xs bg-violet-700 hover:bg-violet-600 text-white"
+                      onClick={applyPromoCode}
+                      disabled={promoCodeLoading || !promoCodeInput.trim()}
+                    >
+                      {promoCodeLoading ? "..." : "OK"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Descuento manual (dentro del scroll) */}
+            {cart.length > 0 && (
+              <div className="pb-2 space-y-1 border-t border-gray-800 pt-2">
+                <button
+                  className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-white py-1"
+                  onClick={() => setShowDiscountForm(!showDiscountForm)}
+                >
+                  <span className="flex items-center gap-1">
+                    <Tag className="w-3 h-3" />
+                    {discountAmount > 0 ? `-${discountAmount.toFixed(2)}€` : "Descuento manual"}
+                  </span>
+                  {showDiscountForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+                {showDiscountForm && (
+                  <div className="space-y-1 pb-1">
+                    <Input
+                      type="number"
+                      placeholder="Importe descuento (€)"
+                      value={discountAmount || ""}
+                      onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                      className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
+                    />
+                    <Input
+                      placeholder="Motivo"
+                      value={discountReason}
+                      onChange={(e) => setDiscountReason(e.target.value)}
+                      className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </ScrollArea>
 
-          {/* Código promocional */}
-          {cart.length > 0 && (
-            <div className="px-3 pb-2 space-y-1 border-t border-gray-800 pt-2">
-              {promoCodeData ? (
-                <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded px-2 py-1">
-                  <span className="text-xs text-green-400 font-mono font-bold">{promoCodeData.code}</span>
-                  <span className="text-xs text-green-400">-{promoCodeData.discountPercent}% (-{promoDiscount.toFixed(2)}€)</span>
-                  <button onClick={removePromoCode} className="text-gray-500 hover:text-red-400 ml-1"><X className="w-3 h-3" /></button>
-                </div>
-              ) : (
-                <div className="flex gap-1">
-                  <Input
-                    placeholder="Código promo"
-                    value={promoCodeInput}
-                    onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => e.key === "Enter" && applyPromoCode()}
-                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white font-mono uppercase"
-                  />
-                  <Button
-                    size="sm"
-                    className="h-7 px-2 text-xs bg-violet-700 hover:bg-violet-600 text-white"
-                    onClick={applyPromoCode}
-                    disabled={promoCodeLoading || !promoCodeInput.trim()}
-                  >
-                    {promoCodeLoading ? "..." : "OK"}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Descuento manual */}
-          {cart.length > 0 && (
-            <div className="px-3 pb-2 space-y-1 border-t border-gray-800 pt-2">
-              <button
-                className="w-full flex items-center justify-between text-xs text-gray-400 hover:text-white py-1"
-                onClick={() => setShowDiscountForm(!showDiscountForm)}
-              >
-                <span className="flex items-center gap-1">
-                  <Tag className="w-3 h-3" />
-                  {discountAmount > 0 ? `-${discountAmount.toFixed(2)}€` : "Descuento manual"}
-                </span>
-                {showDiscountForm ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              </button>
-              {showDiscountForm && (
-                <div className="space-y-1 pb-1">
-                  <Input
-                    type="number"
-                    placeholder="Importe descuento (€)"
-                    value={discountAmount || ""}
-                    onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
-                  />
-                  <Input
-                    placeholder="Motivo"
-                    value={discountReason}
-                    onChange={(e) => setDiscountReason(e.target.value)}
-                    className="h-7 text-xs bg-gray-800 border-gray-700 text-white"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Totals */}
+          {/* Totals — siempre visible */}
           <div className="px-4 py-3 border-t border-gray-800 space-y-1">
             <div className="flex justify-between text-xs text-gray-400">
               <span>Subtotal</span>

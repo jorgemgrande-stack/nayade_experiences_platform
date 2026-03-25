@@ -1796,3 +1796,6 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] CRM Reservas: bloque info TPV en el detalle de la reserva (número de ticket, datos del cliente)
 - [x] Backend: añadir parámetro channel al procedimiento crm.reservations.list
 - [x] 196 tests pasando (sin regresiones)
+
+## Bug: TPV carrito sin scroll (v14.0)
+- [x] Panel carrito TPV: lista de ítems con scroll interno, total y botón cobrar siempre visibles
