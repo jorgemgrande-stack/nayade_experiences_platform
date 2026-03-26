@@ -1,0 +1,244 @@
+{
+  "query": "SELECT id, label, url, parentId, sortOrder, isActive, menuZone FROM menu_items ORDER BY menuZone, sortOrder LIMIT 60;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, label, url, parentId, sortOrder, isActive, menuZone FROM menu_items ORDER BY menuZone, sortOrder LIMIT 60;",
+  "rows": [
+    {
+      "id": "90001",
+      "label": "Arrocería La Cabaña",
+      "url": "/restaurantes/arroceria-la-cabana",
+      "parentId": "5",
+      "sortOrder": "4",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "20",
+      "label": "El Galeón",
+      "url": "/restaurantes/el-galeon",
+      "parentId": "5",
+      "sortOrder": "10",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "120001",
+      "label": "Acceso Piscina",
+      "url": "/experiencias/entrada-general-piscina-club-nautico",
+      "parentId": "1",
+      "sortOrder": "10",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "1",
+      "label": "Experiencias",
+      "url": "/experiencias",
+      "parentId": "NULL",
+      "sortOrder": "10",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "17",
+      "label": "Packs de Día",
+      "url": "/packs/dia",
+      "parentId": "2",
+      "sortOrder": "10",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "10",
+      "label": "Cableski & Wakeboard",
+      "url": "/experiencias/cableski-wakeboard",
+      "parentId": "1",
+      "sortOrder": "20",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "2",
+      "label": "Packs",
+      "url": "/packs",
+      "parentId": "NULL",
+      "sortOrder": "20",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "18",
+      "label": "Packs Escolares",
+      "url": "/packs/escolar",
+      "parentId": "2",
+      "sortOrder": "20",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "21",
+      "label": "La Cabaña del Lago",
+      "url": "/restaurantes/la-cabana-del-lago",
+      "parentId": "5",
+      "sortOrder": "20",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "19",
+      "label": "Team Building Empresas",
+      "url": "/packs/empresa",
+      "parentId": "2",
+      "sortOrder": "30",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "3",
+      "label": "Hotel",
+      "url": "/hotel",
+      "parentId": "NULL",
+      "sortOrder": "30",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "22",
+      "label": "Nassau Bar & Music",
+      "url": "/restaurantes/nassau-bar",
+      "parentId": "5",
+      "sortOrder": "30",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "8",
+      "label": "Blob Jump",
+      "url": "/experiencias/blob-jump",
+      "parentId": "1",
+      "sortOrder": "30",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "4",
+      "label": "SPA",
+      "url": "/spa",
+      "parentId": "NULL",
+      "sortOrder": "40",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "11",
+      "label": "Canoas & Kayaks",
+      "url": "/experiencias/canoas-kayaks",
+      "parentId": "1",
+      "sortOrder": "40",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "5",
+      "label": "Restaurantes",
+      "url": "/restaurantes",
+      "parentId": "NULL",
+      "sortOrder": "50",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "9",
+      "label": "Banana Ski & Donuts",
+      "url": "/experiencias/banana-ski-donuts",
+      "parentId": "1",
+      "sortOrder": "50",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "12",
+      "label": "Paddle Surf",
+      "url": "/experiencias/paddle-surf",
+      "parentId": "1",
+      "sortOrder": "60",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "6",
+      "label": "Galería",
+      "url": "/galeria",
+      "parentId": "NULL",
+      "sortOrder": "60",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "13",
+      "label": "Hidropedales",
+      "url": "/experiencias/hidropedales",
+      "parentId": "1",
+      "sortOrder": "70",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "7",
+      "label": "Ubicación",
+      "url": "/ubicaciones",
+      "parentId": "NULL",
+      "sortOrder": "70",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "14",
+      "label": "Minimotos Eléctricas",
+      "url": "/experiencias/minimotos-electricas",
+      "parentId": "1",
+      "sortOrder": "80",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "15",
+      "label": "Paseos en Barco",
+      "url": "/experiencias/paseos-en-barco",
+      "parentId": "1",
+      "sortOrder": "90",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "16",
+      "label": "Aventura Hinchable",
+      "url": "/experiencias/aventura-hinchable",
+      "parentId": "1",
+      "sortOrder": "100",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "30001",
+      "label": "Donuts &ski",
+      "url": "/experiencias/banana-ski-donuts-copia-dRMV",
+      "parentId": "1",
+      "sortOrder": "110",
+      "isActive": "1",
+      "menuZone": "header"
+    },
+    {
+      "id": "30002",
+      "label": "Circuito SPA Hidrotermal",
+      "url": "/experiencias/circuito-spa",
+      "parentId": "1",
+      "sortOrder": "120",
+      "isActive": "1",
+      "menuZone": "header"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tlabel\turl\tparentId\tsortOrder\tisActive\tmenuZone\n90001\tArrocería La Cabaña\t/restaurantes/arroceria-la-cabana\t5\t4\t1\theader\n20\tEl Galeón\t/restaurantes/el-galeon\t5\t10\t1\theader\n120001\tAcceso Piscina\t/experiencias/entrada-general-piscina-club-nautico\t1\t10\t1\theader\n1\tExperiencias\t/experiencias\tNULL\t10\t1\theader\n17\tPacks de Día\t/packs/dia\t2\t10\t1\theader\n10\tCableski & Wakeboard\t/experiencias/cableski-wakeboard\t1\t20\t1\theader\n2\tPacks\t/packs\tNULL\t20\t1\theader\n18\tPacks Escolares\t/packs/escolar\t2\t20\t1\theader\n21\tLa Cabaña del Lago\t/restaurantes/la-cabana-del-lago\t5\t20\t1\theader\n19\tTeam Building Empresas\t/packs/empresa\t2\t30\t1\theader\n3\tHotel\t/hotel\tNULL\t30\t1\theader\n22\tNassau Bar & Music\t/restaurantes/nassau-bar\t5\t30\t1\theader\n8\tBlob Jump\t/experiencias/blob-jump\t1\t30\t1\theader\n4\tSPA\t/spa\tNULL\t40\t1\theader\n11\tCanoas & Kayaks\t/experiencias/canoas-kayaks\t1\t40\t1\theader\n5\tRestaurantes\t/restaurantes\tNULL\t50\t1\theader\n9\tBanana Ski & Donuts\t/experiencias/banana-ski-donuts\t1\t50\t1\theader\n12\tPaddle Surf\t/experiencias/paddle-surf\t1\t60\t1\theader\n6\tGalería\t/galeria\tNULL\t60\t1\theader\n13\tHidropedales\t/experiencias/hidropedales\t1\t70\t1\theader\n7\tUbicación\t/ubicaciones\tNULL\t70\t1\theader\n14\tMinimotos Eléctricas\t/experiencias/minimotos-electricas\t1\t80\t1\theader\n15\tPaseos en Barco\t/experiencias/paseos-en-barco\t1\t90\t1\theader\n16\tAventura Hinchable\t/experiencias/aventura-hinchable\t1\t100\t1\theader\n30001\tDonuts &ski\t/experiencias/banana-ski-donuts-copia-dRMV\t1\t110\t1\theader\n30002\tCircuito SPA Hidrotermal\t/experiencias/circuito-spa\t1\t120\t1\theader\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

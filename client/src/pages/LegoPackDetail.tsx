@@ -1,43 +1,109 @@
+import { useParams, Link } from "wouter";
 import { useState } from "react";
-import { Link, useParams } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCart } from "@/contexts/CartContext";
+import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon";
 import {
-  ChevronRight,
-  Layers,
-  Check,
-  MessageCircle,
-  Star,
-  ShoppingCart,
-  ChevronLeft,
-  ChevronRight as ChevronRightIcon,
-  Package,
-  Users,
-  Clock,
+  Check, Clock, Users, Star, ShoppingCart,
+  MessageCircle, Phone, Calendar, Info,
+  Sun, GraduationCap, Building2, Layers, Package,
 } from "lucide-react";
+import { toast } from "sonner";
+
+const CATEGORY_META: Record<string, {
+  label: string; href: string; gradient: string;
+  text: string; bg: string; border: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = {
+  dia: {
+    label: "Lego Packs de Día", href: "/lego-packs/dia",
+    gradient: "from-sky-600 to-blue-800",
+    text: "text-sky-700", bg: "bg-sky-50", border: "border-sky-200",
+    icon: Sun,
+  },
+  escolar: {
+    label: "Lego Packs Escolares", href: "/lego-packs/escolar",
+    gradient: "from-emerald-600 to-teal-800",
+    text: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200",
+    icon: GraduationCap,
+  },
+  empresa: {
+    label: "Lego Packs Empresas", href: "/lego-packs/empresa",
+    gradient: "from-violet-600 to-purple-800",
+    text: "text-violet-700", bg: "bg-violet-50", border: "border-violet-200",
+    icon: Building2,
+  },
+};
 
 export default function LegoPackDetail() {
-  const { slug } = useParams<{ slug: string }>();
-  const [activeImage, setActiveImage] = useState(0);
+  const { category, slug } = useParams<{ category: string; slug: string }>();
+  const [people, setPeople] = useState(1);
+  const { addItem, openCart } = useCart();
 
   const { data: pack, isLoading } = trpc.legoPacks.getBySlug.useQuery(
     { slug: slug ?? "" },
     { enabled: !!slug }
   );
 
-  const { data: pricing } = trpc.legoPacks.calculatePrice.useQuery(
-    { legoPackId: pack?.id ?? 0 },
-    { enabled: !!pack?.id }
-  );
+  const catKey = category ?? pack?.category ?? "dia";
+  const meta = CATEGORY_META[catKey] ?? CATEGORY_META["dia"];
+
+  // pricing viene del backend: { lines, totalOriginal, totalDiscount, totalFinal }
+  const pricing = pack?.pricing as {
+    lines: Array<{
+      lineId: number;
+      sourceName: string;
+      internalName?: string | null;
+      groupLabel?: string | null;
+      isOptional: boolean;
+      isClientVisible: boolean;
+      isActiveInOperation: boolean;
+      quantity: number;
+      basePrice: number;
+      discountAmount: number;
+      finalPrice: number;
+    }>;
+    totalOriginal: number;
+    totalDiscount: number;
+    totalFinal: number;
+  } | undefined;
+
+  // Precio base: total calculado de las líneas
+  const basePrice = pricing?.totalFinal ?? 0;
+
+  // Descuento activo a nivel de pack
+  const discountedPrice = pack
+    ? getDiscountedPrice(
+        basePrice,
+        (pack as any)?.discountPercent as string | number | null,
+        (pack as any)?.discountExpiresAt as string | null
+      )
+    : null;
+
+  const effectivePrice = discountedPrice ?? basePrice;
+  const totalEstimado = effectivePrice * people;
+
+  // Líneas visibles del pack (para "Qué incluye")
+  const visibleLines = (pricing?.lines ?? []).filter((l) => l.isClientVisible);
+
+  // Imagen principal
+  const heroImage = pack?.image1 ?? (pack?.gallery?.[0] ?? null);
 
   if (isLoading) {
     return (
       <PublicLayout>
-        <div className="container py-24 text-center">
-          <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-muted-foreground">Cargando Lego Pack...</p>
+        <div className="container max-w-6xl py-12 grid lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-4">
+            <Skeleton className="h-72 w-full rounded-2xl" />
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+          <div><Skeleton className="h-80 w-full rounded-2xl" /></div>
         </div>
       </PublicLayout>
     );
@@ -46,333 +112,334 @@ export default function LegoPackDetail() {
   if (!pack) {
     return (
       <PublicLayout>
-        <div className="container py-24 text-center">
-          <Layers className="w-16 h-16 mx-auto text-muted-foreground/30 mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Lego Pack no encontrado</h1>
-          <p className="text-muted-foreground mb-6">
-            El Lego Pack que buscas no existe o no está disponible.
-          </p>
+        <div className="container py-20 text-center text-slate-500">
+          <p className="text-lg">Lego Pack no encontrado.</p>
           <Link href="/lego-packs">
-            <Button variant="outline">Ver todos los Lego Packs</Button>
+            <Button className="mt-4">Volver a Lego Packs</Button>
           </Link>
         </div>
       </PublicLayout>
     );
   }
 
-  const images = [pack.image1, pack.image2, pack.image3, pack.image4]
-    .filter(Boolean) as string[];
-  if (pack.coverImageUrl && !images.includes(pack.coverImageUrl)) {
-    images.unshift(pack.coverImageUrl);
-  }
-
-  const discountPct = pack.discountPercent ? parseFloat(String(pack.discountPercent)) : null;
-  const isDiscountActive = discountPct && discountPct > 0 &&
-    (!pack.discountExpiresAt || new Date(pack.discountExpiresAt) > new Date());
-
-  const categoryHref = `/lego-packs/${pack.category}`;
-  const categoryLabel = pack.category === "dia" ? "Lego Packs de Día"
-    : pack.category === "escolar" ? "Lego Packs Escolares"
-    : "Lego Packs Empresas";
-
   return (
     <PublicLayout>
-      {/* ── Breadcrumb ─────────────────────────────────────────────────────────── */}
-      <div className="bg-slate-50 border-b border-border/50">
-        <div className="container py-3">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Link href="/" className="hover:text-primary transition-colors">Inicio</Link>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <Link href="/lego-packs" className="hover:text-primary transition-colors">Lego Packs</Link>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <Link href={categoryHref} className="hover:text-primary transition-colors">{categoryLabel}</Link>
-            <ChevronRight className="w-3.5 h-3.5" />
-            <span className="text-foreground font-medium truncate max-w-[200px]">{pack.title}</span>
-          </div>
+      {/* Hero — foto de fondo como en PackDetail */}
+      <section className="relative text-white overflow-hidden" style={{ minHeight: '420px' }}>
+        <div className="absolute inset-0">
+          {heroImage ? (
+            <img src={heroImage} alt={pack.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className={`w-full h-full bg-gradient-to-br ${meta.gradient}`} />
+          )}
+          {/* Overlay oscuro para legibilidad */}
+          <div className="absolute inset-0 bg-black/50" />
+          {/* Banda de color de categoría en la parte inferior */}
+          <div className={`absolute bottom-0 left-0 right-0 h-1.5 bg-gradient-to-r ${meta.gradient}`} />
         </div>
-      </div>
+        <div className="relative container max-w-6xl pt-8 pb-36">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-2 text-sm text-white/70 mb-8 flex-wrap">
+            <Link href="/" className="hover:text-white transition-colors">Inicio</Link>
+            <span>/</span>
+            <Link href="/lego-packs" className="hover:text-white transition-colors">Lego Packs</Link>
+            <span>/</span>
+            <Link href={meta.href} className="hover:text-white transition-colors">{meta.label}</Link>
+            <span>/</span>
+            <span className="text-white font-medium">{pack.title}</span>
+          </nav>
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {pack.badge && (
+              <Badge className="bg-orange-500 text-white border-0 text-sm px-3 py-1">{pack.badge}</Badge>
+            )}
+            {pack.isFeatured && (
+              <Badge className="bg-yellow-400 text-yellow-900 border-0 flex items-center gap-1">
+                <Star className="w-3 h-3" /> Destacado
+              </Badge>
+            )}
+            <Badge className="bg-white/20 text-white border-0 flex items-center gap-1">
+              <Layers className="w-3 h-3" /> Lego Pack
+            </Badge>
+          </div>
+          <h1 className="text-4xl lg:text-5xl font-black mb-3 drop-shadow-lg">{pack.title}</h1>
+          {pack.subtitle && <p className="text-xl text-white/90 drop-shadow">{pack.subtitle}</p>}
+        </div>
+      </section>
 
-      {/* ── Main content ─────────────────────────────────────────────────────── */}
-      <section className="py-12">
-        <div className="container">
-          <div className="grid lg:grid-cols-2 gap-12 items-start">
-            {/* ── Galería ─────────────────────────────────────────────────────── */}
-            <div className="space-y-4">
-              {/* Imagen principal */}
-              <div className="relative aspect-[4/3] rounded-2xl overflow-hidden bg-muted">
-                {images.length > 0 ? (
-                  <img
-                    src={images[activeImage]}
-                    alt={pack.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-indigo-600 to-purple-800 flex items-center justify-center">
-                    <Layers className="w-24 h-24 text-white/30" />
+      {/* Contenido principal */}
+      <section className="relative -mt-20 pb-16">
+        <div className="container max-w-6xl grid lg:grid-cols-3 gap-8 items-start">
+          {/* Columna izquierda */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Descripción */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+              <h2 className="text-xl font-black text-slate-900 mb-3">Descripción</h2>
+              <p className="text-slate-600 leading-relaxed">
+                {pack.description || pack.shortDescription}
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-5 pt-5 border-t border-slate-100">
+                {(pack as any).duration && (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Clock className={`w-4 h-4 ${meta.text}`} />
+                    <span>{(pack as any).duration}</span>
                   </div>
                 )}
-                {isDiscountActive && (
-                  <div className="absolute top-4 right-4">
-                    <Badge className="bg-red-500 text-white border-0 text-sm font-bold px-3 py-1">
-                      -{discountPct}% DESCUENTO
-                    </Badge>
+                {(pack as any).minPersons && (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Users className={`w-4 h-4 ${meta.text}`} />
+                    <span>
+                      {(pack as any).maxPersons
+                        ? `${(pack as any).minPersons}–${(pack as any).maxPersons} personas`
+                        : `Mín. ${(pack as any).minPersons} personas`}
+                    </span>
                   </div>
                 )}
-                {pack.badge && (
-                  <div className="absolute top-4 left-4">
-                    <Badge className="bg-orange-500 text-white border-0 text-sm font-bold">
-                      {pack.badge}
-                    </Badge>
+                {pack.targetAudience && (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <Star className={`w-4 h-4 ${meta.text}`} />
+                    <span>{pack.targetAudience}</span>
                   </div>
-                )}
-                {/* Navegación galería */}
-                {images.length > 1 && (
-                  <>
-                    <button
-                      onClick={() => setActiveImage((i) => (i - 1 + images.length) % images.length)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => setActiveImage((i) => (i + 1) % images.length)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors"
-                    >
-                      <ChevronRightIcon className="w-5 h-5" />
-                    </button>
-                  </>
                 )}
               </div>
+            </div>
 
-              {/* Miniaturas */}
-              {images.length > 1 && (
-                <div className="flex gap-2">
-                  {images.map((img, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setActiveImage(i)}
-                      className={`w-20 h-16 rounded-lg overflow-hidden border-2 transition-all ${
-                        i === activeImage ? "border-indigo-500 opacity-100" : "border-transparent opacity-60 hover:opacity-80"
+            {/* Qué incluye — líneas del Lego Pack */}
+            {visibleLines.length > 0 && (
+              <div className={`${meta.bg} border ${meta.border} rounded-2xl p-5`}>
+                <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2">
+                  <Check className={`w-5 h-5 ${meta.text}`} /> Qué incluye este Lego Pack
+                </h3>
+                <div className="space-y-3">
+                  {visibleLines.map((line) => (
+                    <div
+                      key={line.lineId}
+                      className={`flex items-center justify-between bg-white rounded-xl border border-white/80 p-3 shadow-sm ${
+                        !line.isActiveInOperation ? "opacity-60" : ""
                       }`}
                     >
-                      <img src={img} alt="" className="w-full h-full object-cover" />
-                    </button>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${meta.bg} border ${meta.border}`}>
+                          <Package className={`w-4 h-4 ${meta.text}`} />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-800 text-sm">
+                            {line.quantity > 1 && (
+                              <span className={`${meta.text} font-black mr-1`}>{line.quantity}×</span>
+                            )}
+                            {line.internalName || line.sourceName || "Actividad incluida"}
+                          </p>
+                          {line.groupLabel && (
+                            <p className="text-xs text-slate-500">{line.groupLabel}</p>
+                          )}
+                          {!line.isActiveInOperation && (
+                            <p className="text-xs text-orange-600 font-medium">No disponible actualmente</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {line.isOptional && (
+                          <Badge variant="outline" className="text-xs">Opcional</Badge>
+                        )}
+                        {line.finalPrice > 0 && (
+                          <div className="text-right">
+                            {line.discountAmount > 0 ? (
+                              <div>
+                                <p className={`text-sm font-bold ${meta.text}`}>
+                                  {line.finalPrice.toFixed(2)} €
+                                </p>
+                                <p className="text-xs text-slate-400 line-through">
+                                  {line.basePrice.toFixed(2)} €
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-sm font-bold text-slate-700">
+                                {line.finalPrice.toFixed(2)} €
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
-              )}
-            </div>
-
-            {/* ── Info ─────────────────────────────────────────────────────────── */}
-            <div className="space-y-6">
-              {/* Categoría + Lego Pack badge */}
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs border-indigo-300 text-indigo-700 bg-indigo-50">
-                  <Layers className="w-3 h-3 mr-1" />
-                  Lego Pack
-                </Badge>
-                <Badge variant="outline" className="text-xs">
-                  {categoryLabel}
-                </Badge>
-              </div>
-
-              <div>
-                <h1 className="text-3xl md:text-4xl font-black text-foreground mb-2">
-                  {pack.title}
-                </h1>
-                {pack.subtitle && (
-                  <p className="text-lg text-indigo-600 font-semibold">{pack.subtitle}</p>
-                )}
-              </div>
-
-              {pack.shortDescription && (
-                <p className="text-muted-foreground leading-relaxed">{pack.shortDescription}</p>
-              )}
-
-              {/* Precio */}
-              <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-100">
-                {pricing ? (
-                  <div>
-                    <p className="text-sm text-indigo-600 font-medium mb-1">Precio total del pack</p>
-                    {isDiscountActive && pricing.totalOriginal > pricing.totalFinal ? (
-                      <div className="flex items-baseline gap-3">
-                        <span className="text-3xl font-black text-indigo-700">
-                          {pricing.totalFinal.toFixed(2)} €
-                        </span>
-                        <span className="text-lg text-muted-foreground line-through">
-                          {pricing.totalOriginal.toFixed(2)} €
-                        </span>
-                        <Badge className="bg-red-500 text-white border-0">
-                          -{discountPct}%
-                        </Badge>
-                      </div>
-                    ) : (
-                      <span className="text-3xl font-black text-indigo-700">
-                        {pricing.totalFinal.toFixed(2)} €
-                      </span>
-                    )}
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Precio calculado con todas las líneas activas
-                    </p>
-                  </div>
-                ) : pack.priceLabel ? (
-                  <div>
-                    <p className="text-sm text-indigo-600 font-medium mb-1">Precio</p>
-                    <p className="text-2xl font-black text-indigo-700">{pack.priceLabel}</p>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-sm text-indigo-600 font-medium mb-1">Precio</p>
-                    <p className="text-xl font-bold text-indigo-700">Consultar presupuesto</p>
+                {/* Ahorro total */}
+                {pricing && pricing.totalDiscount > 0 && (
+                  <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-green-700">Ahorro total</span>
+                    <span className="text-base font-black text-green-700">
+                      -{pricing.totalDiscount.toFixed(2)} €
+                    </span>
                   </div>
                 )}
-              </div>
-
-              {/* CTAs */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                {pack.isOnlineSale ? (
-                  <Button
-                    size="lg"
-                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
-                  >
-                    <ShoppingCart className="w-5 h-5 mr-2" />
-                    Reservar Online
-                  </Button>
-                ) : null}
-                <Link href={`/presupuesto?producto=${encodeURIComponent(pack.title)}&tipo=lego-pack`} className="flex-1">
-                  <Button
-                    size="lg"
-                    variant={pack.isOnlineSale ? "outline" : "default"}
-                    className={`w-full font-bold ${!pack.isOnlineSale ? "bg-indigo-600 hover:bg-indigo-700 text-white" : ""}`}
-                  >
-                    <MessageCircle className="w-5 h-5 mr-2" />
-                    Solicitar Presupuesto
-                  </Button>
-                </Link>
-              </div>
-
-              {/* Highlights */}
-              <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Check className="w-4 h-4 text-indigo-500" />
-                  Precio desglosado por línea
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Check className="w-4 h-4 text-indigo-500" />
-                  Composición modular
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Check className="w-4 h-4 text-indigo-500" />
-                  Cancelación gratuita 48h
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Descripción completa ─────────────────────────────────────────────── */}
-      {pack.description && (
-        <section className="py-12 bg-slate-50 border-t border-border/50">
-          <div className="container max-w-3xl">
-            <h2 className="text-2xl font-black mb-6 text-foreground">Descripción</h2>
-            <div className="prose prose-slate max-w-none">
-              <p className="text-muted-foreground leading-relaxed whitespace-pre-line">
-                {pack.description}
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ── Líneas del pack ─────────────────────────────────────────────────── */}
-      {pricing && pricing.lines.length > 0 && (
-        <section className="py-12 border-t border-border/50">
-          <div className="container max-w-3xl">
-            <div className="flex items-center gap-3 mb-6">
-              <Layers className="w-6 h-6 text-indigo-600" />
-              <h2 className="text-2xl font-black text-foreground">Qué incluye este Lego Pack</h2>
-            </div>
-            <div className="space-y-3">
-              {pricing.lines.filter((l) => l.isClientVisible).map((line) => (
-                <div
-                  key={line.lineId}
-                  className={`flex items-center justify-between p-4 rounded-xl border ${
-                    line.isActiveInOperation
-                      ? "bg-white border-indigo-100"
-                      : "bg-slate-50 border-slate-200 opacity-60"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      line.isActiveInOperation ? "bg-indigo-100" : "bg-slate-200"
-                    }`}>
-                      <Package className={`w-4 h-4 ${line.isActiveInOperation ? "text-indigo-600" : "text-slate-400"}`} />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-foreground text-sm">
-                        {line.internalName || line.sourceName}
-                      </p>
-                      {line.groupLabel && (
-                        <p className="text-xs text-muted-foreground">{line.groupLabel}</p>
-                      )}
-                      {!line.isActiveInOperation && (
-                        <p className="text-xs text-orange-600 font-medium">No disponible actualmente</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {line.discountAmount > 0 ? (
-                      <div>
-                        <p className="text-sm font-bold text-indigo-700">{line.finalPrice.toFixed(2)} €</p>
-                        <p className="text-xs text-muted-foreground line-through">{line.basePrice.toFixed(2)} €</p>
-                      </div>
-                    ) : (
-                      <p className="text-sm font-bold text-foreground">{line.finalPrice.toFixed(2)} €</p>
-                    )}
-                    {line.quantity > 1 && (
-                      <p className="text-xs text-muted-foreground">x{line.quantity}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Total */}
-            {pricing.totalDiscount > 0 && (
-              <div className="mt-4 p-4 rounded-xl bg-green-50 border border-green-200 flex items-center justify-between">
-                <span className="text-sm font-semibold text-green-700">Ahorro total</span>
-                <span className="text-lg font-black text-green-700">-{pricing.totalDiscount.toFixed(2)} €</span>
               </div>
             )}
-            <div className="mt-2 p-4 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-between">
-              <span className="text-sm font-semibold text-indigo-700">Total Lego Pack</span>
-              <span className="text-2xl font-black text-indigo-700">{pricing.totalFinal.toFixed(2)} €</span>
+
+            {/* Horarios */}
+            {(pack as any).schedule && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+                <h3 className="font-black text-slate-900 mb-2 flex items-center gap-2">
+                  <Calendar className={`w-5 h-5 ${meta.text}`} /> Disponibilidad y horarios
+                </h3>
+                <p className="text-slate-600 text-sm leading-relaxed">{(pack as any).schedule}</p>
+              </div>
+            )}
+
+            {/* Nota */}
+            {(pack as any).note && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
+                <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-amber-800 text-sm">{(pack as any).note}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Widget de precio — idéntico a PackDetail */}
+          <div className="sticky top-28">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-6 relative overflow-hidden">
+              {/* Ribbon de descuento */}
+              <DiscountRibbon
+                discountPercent={(pack as any)?.discountPercent}
+                discountExpiresAt={(pack as any)?.discountExpiresAt}
+                variant="card"
+              />
+
+              {/* Precio desde */}
+              <div className="mb-4">
+                <p className="text-sm text-slate-500 mb-1">
+                  {pack.priceLabel || "Precio por persona desde"}
+                </p>
+                {discountedPrice ? (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-black text-orange-500">
+                      {discountedPrice.toFixed(0)}€
+                    </span>
+                    <span className="text-lg text-slate-400 line-through">
+                      {basePrice.toFixed(0)}€
+                    </span>
+                    <span className="text-slate-500 text-sm">/persona</span>
+                  </div>
+                ) : (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-black text-slate-900">
+                      {basePrice > 0 ? `${basePrice.toFixed(0)}€` : "Consultar"}
+                    </span>
+                    {basePrice > 0 && (
+                      <span className="text-slate-500 text-sm">/persona</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Badge de oferta */}
+              {discountedPrice && (
+                <div className="mb-4">
+                  <DiscountRibbon
+                    discountPercent={(pack as any)?.discountPercent}
+                    discountExpiresAt={(pack as any)?.discountExpiresAt}
+                    variant="detail"
+                  />
+                </div>
+              )}
+
+              {/* Selector de personas */}
+              {pack.isOnlineSale && (
+                <div className="mb-4">
+                  <label className="text-sm font-semibold text-slate-700 block mb-2">
+                    Número de personas
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setPeople(Math.max(1, people - 1))}
+                      className="w-9 h-9 rounded-full border border-slate-300 flex items-center justify-center text-lg font-bold hover:bg-slate-100 transition-colors"
+                    >−</button>
+                    <span className="text-xl font-black w-8 text-center">{people}</span>
+                    <button
+                      onClick={() => setPeople(people + 1)}
+                      className="w-9 h-9 rounded-full border border-slate-300 flex items-center justify-center text-lg font-bold hover:bg-slate-100 transition-colors"
+                    >+</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Resumen de precio */}
+              {pack.isOnlineSale && basePrice > 0 && (
+                <div className="bg-slate-50 rounded-xl p-3 mb-5 text-sm">
+                  <div className="flex justify-between text-slate-600 mb-1">
+                    <span>{effectivePrice.toFixed(0)}€ × {people} personas</span>
+                    <span>{totalEstimado.toFixed(0)}€</span>
+                  </div>
+                  <div className="flex justify-between font-black text-slate-900 text-base border-t border-slate-200 pt-2 mt-2">
+                    <span>Total estimado</span>
+                    <span className="text-orange-600">{totalEstimado.toFixed(0)}€</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Botón Añadir al carrito */}
+              {pack.isOnlineSale ? (
+                <Button
+                  size="lg"
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base mb-3"
+                  onClick={() => {
+                    addItem({
+                      productId: pack.id,
+                      productName: pack.title,
+                      productSlug: pack.slug ?? "",
+                      productImage: heroImage ?? "",
+                      bookingDate: "",
+                      people,
+                      minPersons: 1,
+                      maxPersons: 999,
+                      pricePerPerson: effectivePrice,
+                      estimatedTotal: effectivePrice * people,
+                      extras: [],
+                    });
+                    openCart();
+                    toast.success("Lego Pack añadido al carrito");
+                  }}
+                >
+                  <ShoppingCart className="w-5 h-5 mr-2" /> Añadir al carrito
+                </Button>
+              ) : null}
+
+              <Link href={`/presupuesto?legoPack=${pack.slug ?? ""}`}>
+                <Button variant="outline" size="lg" className="w-full font-semibold mb-4">
+                  <MessageCircle className="w-4 h-4 mr-2" /> Solicitar Presupuesto
+                </Button>
+              </Link>
+
+              <div className="border-t border-slate-100 pt-4 space-y-2">
+                <a
+                  href="tel:+34930347791"
+                  className="flex items-center gap-2 text-sm text-slate-600 hover:text-orange-600 transition-colors"
+                >
+                  <Phone className="w-4 h-4" /> +34 930 34 77 91
+                </a>
+                <p className="text-xs text-slate-400">Cancelación gratuita hasta 48h antes</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Galería adicional */}
+      {pack.gallery && (pack.gallery as string[]).length > 1 && (
+        <section className="py-10 bg-slate-50 border-t border-slate-100">
+          <div className="container max-w-6xl">
+            <h2 className="text-2xl font-black text-slate-900 mb-6">Galería</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {(pack.gallery as string[]).map((img: string, i: number) => (
+                <img
+                  key={i}
+                  src={img}
+                  alt={`${pack.title} ${i + 1}`}
+                  className="w-full aspect-square object-cover rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
+                />
+              ))}
             </div>
           </div>
         </section>
       )}
-
-      {/* CTA final */}
-      <section className="py-14 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white text-center">
-        <div className="container max-w-2xl">
-          <Star className="w-10 h-10 mx-auto mb-4 text-indigo-200" />
-          <h2 className="text-3xl font-black mb-3">
-            ¿Te interesa este Lego Pack?
-          </h2>
-          <p className="text-indigo-100 mb-6 text-lg">
-            Solicita tu presupuesto personalizado sin compromiso.
-          </p>
-          <Link href={`/presupuesto?producto=${encodeURIComponent(pack.title)}&tipo=lego-pack`}>
-            <Button
-              size="lg"
-              className="bg-white text-indigo-600 hover:bg-indigo-50 font-bold px-8"
-            >
-              <MessageCircle className="w-5 h-5 mr-2" />
-              Solicitar Presupuesto
-            </Button>
-          </Link>
-        </div>
-      </section>
     </PublicLayout>
   );
 }

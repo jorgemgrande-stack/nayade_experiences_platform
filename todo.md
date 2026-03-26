@@ -1870,3 +1870,20 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Footer: columna Lego Packs con enlaces a las 3 categorías
 - [x] Editor backoffice: selector de categoría en formulario de Lego Pack
 - [x] 202 tests pasando, 0 errores TypeScript
+
+## Rediseño Ficha Pública Lego Pack (v20.0)
+- [x] Reescribir LegoPackDetail.tsx con diseño idéntico a PackDetail.tsx
+- [x] Hero section con imagen de fondo, overlay oscuro y banda de color por categoría
+- [x] Breadcrumb en el hero (Inicio / Lego Packs / Categoría / Título)
+- [x] Badges: badge personalizado, Destacado, Lego Pack
+- [x] Sección "Qué incluye": líneas del Lego Pack con nombre, cantidad, precio y descuento
+- [x] Indicador "No disponible actualmente" para líneas inactivas
+- [x] Indicador "Opcional" para líneas opcionales
+- [x] Ahorro total cuando hay descuento en líneas
+- [x] Sección Descripción con duración, personas y audiencia objetivo
+- [x] Widget lateral de precio (sticky): precio por persona, selector de personas, total estimado
+- [x] Descuento activo con DiscountRibbon (igual que PackDetail)
+- [x] Botón "Añadir al carrito" con misma lógica que PackDetail (addItem + openCart + toast)
+- [x] Botón "Solicitar Presupuesto" con enlace a /presupuesto?legoPack=slug
+- [x] Galería de imágenes adicionales
+- [x] 202 tests pasando, 0 errores TypeScript

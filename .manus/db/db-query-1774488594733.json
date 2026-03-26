@@ -1,0 +1,38 @@
+{
+  "query": "SELECT id, label, url, parentId, sortOrder FROM menu_items WHERE label LIKE '%Lego%' OR label LIKE '%lego%' ORDER BY sortOrder;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, label, url, parentId, sortOrder FROM menu_items WHERE label LIKE '%Lego%' OR label LIKE '%lego%' ORDER BY sortOrder;",
+  "rows": [
+    {
+      "id": "150002",
+      "label": "Lego Packs de Día",
+      "url": "/lego-packs/dia",
+      "parentId": "150001",
+      "sortOrder": "10"
+    },
+    {
+      "id": "150003",
+      "label": "Lego Packs Escolares",
+      "url": "/lego-packs/escolar",
+      "parentId": "150001",
+      "sortOrder": "20"
+    },
+    {
+      "id": "150001",
+      "label": "Lego Packs",
+      "url": "/lego-packs",
+      "parentId": "NULL",
+      "sortOrder": "25"
+    },
+    {
+      "id": "150004",
+      "label": "Lego Packs Empresas",
+      "url": "/lego-packs/empresa",
+      "parentId": "150001",
+      "sortOrder": "30"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tlabel\turl\tparentId\tsortOrder\n150002\tLego Packs de Día\t/lego-packs/dia\t150001\t10\n150003\tLego Packs Escolares\t/lego-packs/escolar\t150001\t20\n150001\tLego Packs\t/lego-packs\tNULL\t25\n150004\tLego Packs Empresas\t/lego-packs/empresa\t150001\t30\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Insertar ítem raíz \"Lego Packs\" entre Packs (20) y Hotel (30)\nINSERT INTO menu_items (label, url, parentId, sortOrder, isActive, menuZone) \nVALUES ('Lego Packs', '/lego-packs', NULL, 25, 1, 'header');\n\n-- Obtener el ID recién insertado y añadir los 3 hijos\nSET @lego_id = LAST_INSERT_ID();\n\nINSERT INTO menu_items (label, url, parentId, sortOrder, isActive, menuZone) VALUES\n  ('Lego Packs de Día',   '/lego-packs/dia',     @lego_id, 10, 1, 'header'),\n  ('Lego Packs Escolares','/lego-packs/escolar',  @lego_id, 20, 1, 'header'),\n  ('Lego Packs Empresas', '/lego-packs/empresa',  @lego_id, 30, 1, 'header');\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Insertar ítem raíz \"Lego Packs\" entre Packs (20) y Hotel (30)\nINSERT INTO menu_items (label, url, parentId, sortOrder, isActive, menuZone) \nVALUES ('Lego Packs', '/lego-packs', NULL, 25, 1, 'header');\n\n-- Obtener el ID recién insertado y añadir los 3 hijos\nSET @lego_id = LAST_INSERT_ID();\n\nINSERT INTO menu_items (label, url, parentId, sortOrder, isActive, menuZone) VALUES\n  ('Lego Packs de Día',   '/lego-packs/dia',     @lego_id, 10, 1, 'header'),\n  ('Lego Packs Escolares','/lego-packs/escolar',  @lego_id, 20, 1, 'header'),\n  ('Lego Packs Empresas', '/lego-packs/empresa',  @lego_id, 30, 1, 'header');\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 78
+}
