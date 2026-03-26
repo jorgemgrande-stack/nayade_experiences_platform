@@ -18,6 +18,7 @@ import {
   roomTypes,
   reservations,
   transactions,
+  legoPacks,
 } from "../../drizzle/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -280,7 +281,7 @@ export const tpvRouter = router({
 
   // ── CATALOG ────────────────────────────────────────────────────────────────
   getCatalog: protectedProcedure.query(async () => {
-    const [exps, pkgs, spas, rooms] = await Promise.all([
+    const [exps, pkgs, spas, rooms, legoPkgs] = await Promise.all([
       db.select({
         id: experiences.id,
         title: experiences.title,
@@ -317,6 +318,13 @@ export const tpvRouter = router({
         discountPercent: roomTypes.discountPercent,
         isActive: roomTypes.isActive,
       }).from(roomTypes).where(and(eq(roomTypes.isActive, true), eq(roomTypes.isPresentialSale, true))),
+
+      db.select({
+        id: legoPacks.id,
+        title: legoPacks.title,
+        coverImageUrl: legoPacks.coverImageUrl,
+        isActive: legoPacks.isActive,
+      }).from(legoPacks).where(and(eq(legoPacks.isActive, true), eq(legoPacks.isPresentialSale, true))),
     ]);
 
     return {
@@ -324,6 +332,7 @@ export const tpvRouter = router({
       packs: pkgs.map(p => ({ ...p, productType: "pack" as const })),
       spa: spas.map(p => ({ ...p, productType: "spa" as const })),
       hotel: rooms.map(p => ({ ...p, productType: "hotel" as const })),
+      legoPacks: legoPkgs.map(p => ({ ...p, basePrice: null, discountPercent: null, productType: "legoPack" as const })),
     };
   }),
 
@@ -341,7 +350,7 @@ export const tpvRouter = router({
         notes: z.string().optional(),
         items: z.array(
           z.object({
-            productType: z.enum(["experience", "pack", "spa", "hotel", "restaurant", "extra"]),
+            productType: z.enum(["experience", "pack", "spa", "hotel", "restaurant", "extra", "legoPack"]),
             productId: z.number(),
             productName: z.string(),
             quantity: z.number().int().positive(),

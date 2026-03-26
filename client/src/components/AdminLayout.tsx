@@ -46,6 +46,7 @@ const navItems = [
       { label: "Categorías", href: "/admin/productos/categorias" },
       { label: "Ubicaciones", href: "/admin/productos/ubicaciones" },
       { label: "Variantes", href: "/admin/productos/variantes" },
+      { label: "Lego Packs", href: "/admin/productos/lego-packs" },
     ],
   },
   {

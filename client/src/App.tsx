@@ -53,6 +53,7 @@ const PacksManager = lazy(() => import("./pages/admin/products/PacksManager"));
 const CategoriesManager = lazy(() => import("./pages/admin/products/CategoriesManager"));
 const LocationsManager = lazy(() => import("./pages/admin/products/LocationsManager"));
 const VariantsManager = lazy(() => import("./pages/admin/products/VariantsManager"));
+const LegoPacksManager = lazy(() => import("./pages/admin/products/LegoPacksManager"));
 
 // Operations
 const CalendarView = lazy(() => import("./pages/admin/operations/CalendarView"));
@@ -167,6 +168,7 @@ function Router() {
       <Route path="/admin/productos/categorias">{() => <Suspense fallback={<AdminLoadingFallback />}><CategoriesManager /></Suspense>}</Route>
       <Route path="/admin/productos/ubicaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><LocationsManager /></Suspense>}</Route>
       <Route path="/admin/productos/variantes">{() => <Suspense fallback={<AdminLoadingFallback />}><VariantsManager /></Suspense>}</Route>
+      <Route path="/admin/productos/lego-packs">{() => <Suspense fallback={<AdminLoadingFallback />}><LegoPacksManager /></Suspense>}</Route>
 
       {/* Quotes & Leads — redirigido al nuevo CRM */}
       <Route path="/admin/presupuestos">{() => { window.location.replace("/admin/crm"); return null; }}</Route>

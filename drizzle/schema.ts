@@ -1419,3 +1419,121 @@ export const discountCodeUses = mysqlTable("discount_code_uses", {
   appliedAt: timestamp("applied_at").defaultNow().notNull(),
 });
 export type DiscountCodeUse = typeof discountCodeUses.$inferSelect;
+
+// ─── LEGO PACKS ──────────────────────────────────────────────────────────────
+// Un Lego Pack es un producto compuesto preconfigurado exclusivamente por el
+// administrador. El cliente solo puede activar/desactivar líneas opcionales.
+export const legoPacks = mysqlTable("lego_packs", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 256 }).notNull().unique(),
+  title: varchar("title", { length: 256 }).notNull(),
+  subtitle: varchar("subtitle", { length: 512 }),
+  shortDescription: text("shortDescription"),
+  description: text("description"),
+  // Galería
+  coverImageUrl: text("coverImageUrl"),
+  image1: text("image1"),
+  image2: text("image2"),
+  image3: text("image3"),
+  image4: text("image4"),
+  gallery: json("gallery").$type<string[]>().default([]),
+  // Comercial
+  badge: varchar("badge", { length: 64 }),
+  priceLabel: varchar("priceLabel", { length: 128 }),
+  // Categorías / filtros
+  categoryId: int("categoryId"),
+  targetAudience: varchar("targetAudience", { length: 256 }),
+  // Disponibilidad
+  availabilityMode: mysqlEnum("availabilityMode", ["strict", "flexible"]).default("strict").notNull(),
+  // Estado
+  isActive: boolean("isActive").default(true).notNull(),
+  isPublished: boolean("isPublished").default(false).notNull(),
+  isFeatured: boolean("isFeatured").default(false).notNull(),
+  isPresentialSale: boolean("isPresentialSale").default(true).notNull(),
+  isOnlineSale: boolean("isOnlineSale").default(false).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  // SEO
+  metaTitle: varchar("metaTitle", { length: 256 }),
+  metaDescription: text("metaDescription"),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type LegoPack = typeof legoPacks.$inferSelect;
+export type InsertLegoPack = typeof legoPacks.$inferInsert;
+
+// ─── LEGO PACK LINES (Líneas de composición) ─────────────────────────────────
+// Cada línea referencia un producto simple (experience o pack) del catálogo.
+// Hereda fiscalidad, proveedor, variables y disponibilidad del producto origen.
+export const legoPackLines = mysqlTable("lego_pack_lines", {
+  id: int("id").autoincrement().primaryKey(),
+  legoPackId: int("legoPackId").notNull(),
+  // Producto origen
+  sourceType: mysqlEnum("sourceType", ["experience", "pack"]).notNull(),
+  sourceId: int("sourceId").notNull(),
+  // Metadatos de línea
+  internalName: varchar("internalName", { length: 256 }),
+  groupLabel: varchar("groupLabel", { length: 128 }),   // ej: "alojamiento", "experiencia", "spa"
+  sortOrder: int("sortOrder").default(0).notNull(),
+  // Flags de comportamiento
+  isActive: boolean("isActive").default(true).notNull(),
+  isRequired: boolean("isRequired").default(true).notNull(),    // obligatorio: no se puede quitar
+  isOptional: boolean("isOptional").default(false).notNull(),   // opcional: cliente puede quitar
+  isClientEditable: boolean("isClientEditable").default(false).notNull(), // cliente puede quitar si es opcional
+  isClientVisible: boolean("isClientVisible").default(true).notNull(),
+  // Cantidad
+  defaultQuantity: int("defaultQuantity").default(1).notNull(),
+  isQuantityEditable: boolean("isQuantityEditable").default(false).notNull(),
+  // Descuento específico por pack
+  discountType: mysqlEnum("discountType", ["percent", "fixed"]).default("percent").notNull(),
+  discountValue: decimal("discountValue", { precision: 10, scale: 2 }).default("0").notNull(),
+  // Texto informativo para frontend
+  frontendNote: text("frontendNote"),
+  // Timestamps
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type LegoPackLine = typeof legoPackLines.$inferSelect;
+export type InsertLegoPackLine = typeof legoPackLines.$inferInsert;
+
+// ─── LEGO PACK SNAPSHOTS (Snapshot por operación) ────────────────────────────
+// Guarda el estado exacto del pack en el momento de la operación.
+// Las operaciones históricas no se alteran si el pack cambia en catálogo.
+export const legoPackSnapshots = mysqlTable("lego_pack_snapshots", {
+  id: int("id").autoincrement().primaryKey(),
+  legoPackId: int("legoPackId").notNull(),
+  legoPackTitle: varchar("legoPackTitle", { length: 256 }).notNull(),
+  // Referencia a la operación
+  operationType: mysqlEnum("operationType", ["reservation", "quote", "tpv_sale", "invoice"]).notNull(),
+  operationId: int("operationId").notNull(),
+  // Snapshot completo de líneas activas en JSON
+  linesSnapshot: json("linesSnapshot").$type<{
+    lineId: number;
+    sourceType: string;
+    sourceId: number;
+    sourceName: string;
+    internalName?: string;
+    groupLabel?: string;
+    isRequired: boolean;
+    isOptional: boolean;
+    isActive: boolean;         // estado elegido por cliente/cajero
+    quantity: number;
+    basePrice: number;
+    discountType: string;
+    discountValue: number;
+    finalPrice: number;
+    fiscalRegime: string;      // heredado del producto origen
+    supplierId?: number;
+    supplierName?: string;
+    supplierCommissionPercent?: number;
+    parentLegoPackId: number;
+    parentLegoPackName: string;
+  }[]>().notNull(),
+  // Totales calculados
+  totalOriginal: decimal("totalOriginal", { precision: 12, scale: 2 }).notNull(),
+  totalDiscount: decimal("totalDiscount", { precision: 12, scale: 2 }).notNull(),
+  totalFinal: decimal("totalFinal", { precision: 12, scale: 2 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type LegoPackSnapshot = typeof legoPackSnapshots.$inferSelect;
+export type InsertLegoPackSnapshot = typeof legoPackSnapshots.$inferInsert;

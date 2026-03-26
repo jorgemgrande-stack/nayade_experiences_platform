@@ -1817,3 +1817,18 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregir el filtrado/join: preview y recalculate ahora incluyen reservas TPV pagadas con productos del proveedor
 - [x] Añadir procedimiento recalculate + botón Recalcular en UI
 - [x] Verificar con datos reales en BD y checkpoint (202 tests pasando)
+
+## Módulo Lego Packs (v18.0)
+- [x] Esquema BD: tablas lego_packs y lego_pack_lines con migración SQL
+- [x] Backend tRPC: CRUD lego_packs (list, get, create, update, delete)
+- [x] Backend tRPC: CRUD lego_pack_lines (add, update, remove, reorder)
+- [x] Backend tRPC: calcularPrecio (suma líneas activas con descuentos)
+- [x] Backoffice: página /admin/productos/lego-packs con listado y gestor
+- [x] Backoffice: constructor de líneas (configuración por línea, precio calculado)
+- [ ] Ficha pública del Lego Pack (pendiente)
+- [x] Integración TPV: tipo legoPack en catálogo, filtro y carrito
+- [x] Integración presupuestos/CRM: búsqueda de Lego Packs en selector de productos
+- [ ] Integración facturas/REAV: descomposición fiscal por líneas (pendiente)
+- [ ] Integración liquidaciones: trazabilidad parent_lego_pack_id por línea (pendiente)
+- [ ] Informes: métricas de ventas por Lego Pack (pendiente)
+- [x] Tests unitarios: 202 tests pasando, 0 errores TypeScript

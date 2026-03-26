@@ -20,6 +20,7 @@ import {
   siteSettings,
   tpvSales,
   tpvSaleItems,
+  legoPacks,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -3056,20 +3057,37 @@ export const crmRouter = router({
       q: z.string().optional(),
       limit: z.number().default(20),
     })).query(async ({ input }) => {
-      const conditions = input.q
+      const expConditions = input.q
         ? [or(like(experiences.title, `%${input.q}%`), like(experiences.shortDescription, `%${input.q}%`))]
         : [];
-      const rows = await db.select({
-        id: experiences.id,
-        title: experiences.title,
-        basePrice: experiences.basePrice,
-        image: experiences.image1,
-        coverImage: experiences.coverImageUrl,
-      }).from(experiences)
-        .where(and(eq(experiences.isActive, true), ...(conditions as any[])))
-        .orderBy(experiences.title)
-        .limit(input.limit);
-      return rows;
+      const legoConditions = input.q
+        ? [like(legoPacks.title, `%${input.q}%`)]
+        : [];
+      const [expRows, legoRows] = await Promise.all([
+        db.select({
+          id: experiences.id,
+          title: experiences.title,
+          basePrice: experiences.basePrice,
+          image: experiences.image1,
+          coverImage: experiences.coverImageUrl,
+          productType: sql<string>`'experience'`,
+        }).from(experiences)
+          .where(and(eq(experiences.isActive, true), ...(expConditions as any[])))
+          .orderBy(experiences.title)
+          .limit(input.limit),
+        db.select({
+          id: legoPacks.id,
+          title: legoPacks.title,
+          basePrice: sql<string>`'0'`,
+          image: legoPacks.coverImageUrl,
+          coverImage: legoPacks.coverImageUrl,
+          productType: sql<string>`'legoPack'`,
+        }).from(legoPacks)
+          .where(and(eq(legoPacks.isActive, true), ...(legoConditions as any[])))
+          .orderBy(legoPacks.title)
+          .limit(input.limit),
+      ]);
+      return [...expRows, ...legoRows];
     }),
   }),
 

@@ -28,7 +28,7 @@ import TpvTicket from "./TpvTicket";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ProductType = "experience" | "pack" | "spa" | "hotel" | "restaurant" | "extra";
+type ProductType = "experience" | "pack" | "spa" | "hotel" | "restaurant" | "extra" | "legoPack";
 
 interface CatalogProduct {
   id: number;
@@ -61,7 +61,7 @@ interface Payment {
   payerName?: string;
 }
 
-type Filter = "all" | "experience" | "pack" | "spa" | "hotel";
+type Filter = "all" | "experience" | "pack" | "spa" | "hotel" | "legoPack";
 
 // ─── Category colors ──────────────────────────────────────────────────────────
 
@@ -72,6 +72,7 @@ const TYPE_COLORS: Record<ProductType, string> = {
   hotel: "from-amber-600 to-orange-700",
   restaurant: "from-green-600 to-emerald-700",
   extra: "from-gray-600 to-slate-700",
+  legoPack: "from-emerald-600 to-teal-700",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -81,6 +82,7 @@ const TYPE_LABELS: Record<string, string> = {
   hotel: "Hotel",
   restaurant: "Restaurante",
   extra: "Extra",
+  legoPack: "Lego Pack",
 };
 
 const FILTER_ICONS: Record<string, React.ReactNode> = {
@@ -89,6 +91,7 @@ const FILTER_ICONS: Record<string, React.ReactNode> = {
   pack: <Layers className="w-3 h-3" />,
   spa: <Sparkles className="w-3 h-3" />,
   hotel: <Star className="w-3 h-3" />,
+  legoPack: <Zap className="w-3 h-3" />,
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -173,6 +176,7 @@ export default function TpvScreen() {
     ...(catalog?.packs ?? []),
     ...(catalog?.spa ?? []),
     ...(catalog?.hotel ?? []),
+    ...(catalog?.legoPacks ?? []),
   ];
 
   const filteredProducts = allProducts.filter((p) => {
@@ -402,7 +406,7 @@ export default function TpvScreen() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8 text-sm bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 max-w-48"
             />
-            {(["all", "experience", "pack", "spa", "hotel"] as Filter[]).map((f) => (
+            {(["all", "experience", "pack", "spa", "hotel", "legoPack"] as Filter[]).map((f) => (
               <Button
                 key={f}
                 size="sm"
