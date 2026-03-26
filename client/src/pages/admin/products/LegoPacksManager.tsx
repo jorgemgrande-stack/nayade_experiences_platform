@@ -585,18 +585,18 @@ export default function LegoPacksManager() {
                   </div>
 
                   {/* Lines table */}
-                  <div className="rounded-lg border bg-card overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="rounded-lg border bg-card overflow-x-auto">
+                    <table className="w-full text-sm min-w-[600px]">
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="text-left px-3 py-2 font-medium w-8">Act.</th>
-                          <th className="text-left px-3 py-2 font-medium">Producto</th>
+                          <th className="text-left px-3 py-2 font-medium max-w-[180px]">Producto</th>
                           <th className="text-left px-3 py-2 font-medium">Grupo</th>
-                          <th className="text-left px-3 py-2 font-medium">Qty</th>
-                          <th className="text-left px-3 py-2 font-medium">Dto.</th>
-                          <th className="text-left px-3 py-2 font-medium">Precio</th>
-                          <th className="text-left px-3 py-2 font-medium">Flags</th>
-                          <th className="px-3 py-2"></th>
+                          <th className="text-left px-3 py-2 font-medium w-10">Qty</th>
+                          <th className="text-left px-3 py-2 font-medium w-16">Dto.</th>
+                          <th className="text-left px-3 py-2 font-medium w-20">Precio</th>
+                          <th className="text-left px-3 py-2 font-medium w-20">Flags</th>
+                          <th className="sticky right-0 bg-muted/50 px-3 py-2 w-20"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -624,9 +624,9 @@ export default function LegoPacksManager() {
                                   }
                                 </button>
                               </td>
-                              <td className="px-3 py-2">
-                                <div className="font-medium">{pricingLine?.sourceName ?? `ID ${line.sourceId}`}</div>
-                                <div className="text-xs text-muted-foreground">{line.internalName || line.sourceType}</div>
+                              <td className="px-3 py-2 max-w-[180px]">
+                                <div className="font-medium truncate" title={pricingLine?.sourceName ?? `ID ${line.sourceId}`}>{pricingLine?.sourceName ?? `ID ${line.sourceId}`}</div>
+                                <div className="text-xs text-muted-foreground truncate">{line.internalName || line.sourceType}</div>
                               </td>
                               <td className="px-3 py-2">
                                 {line.groupLabel
@@ -649,13 +649,13 @@ export default function LegoPacksManager() {
                                   {!line.isClientVisible && <Badge variant="outline" className="text-xs bg-gray-50 text-gray-500 border-gray-200">Oculto</Badge>}
                                 </div>
                               </td>
-                              <td className="px-3 py-2">
+                              <td className="sticky right-0 bg-card px-3 py-2 border-l border-border/30">
                                 <div className="flex gap-1">
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditLine(line)}>
+                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Editar línea" onClick={() => openEditLine(line)}>
                                     <Pencil className="w-3 h-3" />
                                   </Button>
                                   <Button
-                                    size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                    size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Eliminar línea"
                                     onClick={() => { if (confirm("¿Eliminar esta línea?")) deleteLineMutation.mutate({ id: line.id }); }}
                                   >
                                     <Trash2 className="w-3 h-3" />
