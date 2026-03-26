@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Search,
-  SlidersHorizontal,
   ChevronRight,
   MessageCircle,
   Star,
@@ -16,8 +15,8 @@ import {
   GraduationCap,
   Building2,
   Layers,
-  Check,
 } from "lucide-react";
+import AddToCartModal from "@/components/AddToCartModal";
 
 // ── Category metadata ──────────────────────────────────────────────────────────
 const CATEGORY_META: Record<string, {
@@ -70,6 +69,11 @@ export default function LegoPacksList() {
   const { category } = useParams<{ category: string }>();
   const [search, setSearch] = useState("");
   const [selectedBadge, setSelectedBadge] = useState<string | null>(null);
+  const [cartPack, setCartPack] = useState<{
+    id: number; title: string; basePrice: number;
+    image1?: string | null; slug?: string | null;
+    discountPercent?: number | null; discountExpiresAt?: string | Date | null;
+  } | null>(null);
 
   const validCategory = (["dia", "escolar", "empresa"].includes(category ?? "") ? category : "dia") as "dia" | "escolar" | "empresa";
   const meta = CATEGORY_META[validCategory] ?? CATEGORY_META["dia"];
@@ -258,25 +262,62 @@ export default function LegoPacksList() {
                         )}
 
                         {/* Precio */}
-                        <div className="flex items-center justify-between mt-auto pt-3 border-t border-border/50">
-                          <div>
-                            {pack.priceLabel ? (
-                              <span className="text-sm font-semibold text-foreground">{pack.priceLabel}</span>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">Consultar precio</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {pack.isOnlineSale ? (
-                              <Badge variant="outline" className="text-xs border-sky-300 text-sky-700 bg-sky-50">
-                                Reserva online
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-xs border-emerald-300 text-emerald-700 bg-emerald-50">
-                                Solicitar presupuesto
-                              </Badge>
-                            )}
-                          </div>
+                        {/* CTAs */}
+                        <div className="mt-auto pt-3 border-t border-border/50 flex gap-2">
+                          {pack.isOnlineSale ? (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setCartPack({
+                                  id: pack.id,
+                                  title: pack.title,
+                                  // legoPacks use priceLabel (text), parse numeric part or default to 0
+                                  basePrice: pack.priceLabel ? parseFloat(pack.priceLabel.replace(/[^0-9.,]/g, "").replace(",", ".")) || 0 : 0,
+                                  image1: pack.image1 || pack.coverImageUrl,
+                                  slug: pack.slug,
+                                  discountPercent: pack.discountPercent ? parseFloat(String(pack.discountPercent)) : null,
+                                  discountExpiresAt: pack.discountExpiresAt ?? null,
+                                });
+                              }}
+                              style={{
+                                flex: 1, padding: "0.6rem 0.75rem",
+                                background: "linear-gradient(135deg, #f97316, #ea580c)",
+                                border: "none", borderRadius: "0.5rem",
+                                color: "#fff", fontWeight: 700, fontSize: "0.8rem",
+                                cursor: "pointer", boxShadow: "0 3px 8px rgba(249,115,22,0.35)",
+                              }}
+                            >
+                              🛒 Añadir al carrito
+                            </button>
+                          ) : (
+                            <Link href="/presupuesto" style={{ flex: 1 }} onClick={(e) => e.stopPropagation()}>
+                              <button
+                                style={{
+                                  width: "100%", padding: "0.6rem 0.75rem",
+                                  background: "linear-gradient(135deg, #f97316, #ea580c)",
+                                  border: "none", borderRadius: "0.5rem",
+                                  color: "#fff", fontWeight: 700, fontSize: "0.8rem",
+                                  cursor: "pointer", boxShadow: "0 3px 8px rgba(249,115,22,0.35)",
+                                }}
+                              >
+                                📋 Presupuesto
+                              </button>
+                            </Link>
+                          )}
+                          <Link href={`/lego-packs/detalle/${pack.slug}`} onClick={(e) => e.stopPropagation()}>
+                            <button
+                              style={{
+                                padding: "0.6rem 0.75rem",
+                                background: "transparent",
+                                border: "1.5px solid #d1d5db", borderRadius: "0.5rem",
+                                color: "#374151", fontWeight: 600, fontSize: "0.8rem",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Ver más
+                            </button>
+                          </Link>
                         </div>
                       </div>
                     </div>
@@ -310,6 +351,22 @@ export default function LegoPacksList() {
           </Link>
         </div>
       </section>
+      {/* AddToCartModal */}
+      {cartPack && (
+        <AddToCartModal
+          isOpen={!!cartPack}
+          onClose={() => setCartPack(null)}
+          product={{
+            id: cartPack.id,
+            title: cartPack.title,
+            basePrice: cartPack.basePrice,
+            image1: cartPack.image1 ?? undefined,
+            slug: cartPack.slug ?? undefined,
+            discountPercent: cartPack.discountPercent ?? undefined,
+            discountExpiresAt: cartPack.discountExpiresAt ?? undefined,
+          }}
+        />
+      )}
     </PublicLayout>
   );
 }
