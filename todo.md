@@ -1832,3 +1832,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [ ] Integración liquidaciones: trazabilidad parent_lego_pack_id por línea (pendiente)
 - [ ] Informes: métricas de ventas por Lego Pack (pendiente)
 - [x] Tests unitarios: 202 tests pasando, 0 errores TypeScript
+
+## Bug: Slug vacío al crear Lego Pack (v18.1)
+- [x] Corregir auto-generación de slug desde el título en el formulario de Lego Packs
+- [x] Verificar que el campo slug tiene valor real antes de enviar al backend

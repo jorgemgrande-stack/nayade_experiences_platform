@@ -453,11 +453,23 @@ export default function LegoPacksManager() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Título *</Label>
-                  <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Pack Aventura Completa" />
+                  <Input
+                    value={form.title}
+                    onChange={(e) => {
+                      const title = e.target.value;
+                      const autoSlug = title.toLowerCase()
+                        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                        .replace(/[^a-z0-9\s-]/g, "")
+                        .trim().replace(/\s+/g, "-");
+                      setForm({ ...form, title, slug: editId ? form.slug : autoSlug });
+                    }}
+                    placeholder="Pack Aventura Completa"
+                  />
                 </div>
                 <div>
                   <Label>Slug *</Label>
                   <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="pack-aventura-completa" />
+                  <p className="text-xs text-muted-foreground mt-1">Se genera automáticamente desde el título</p>
                 </div>
               </div>
               <div>
