@@ -31,6 +31,14 @@ const FALLBACK_NAV = [
       { label: "Team Building Empresas", href: "/packs/empresa" },
     ],
   },
+  {
+    label: "Lego Packs", href: "/lego-packs",
+    children: [
+      { label: "Lego Packs de Día", href: "/lego-packs/dia" },
+      { label: "Lego Packs Escolares", href: "/lego-packs/escolar" },
+      { label: "Lego Packs Empresas", href: "/lego-packs/empresa" },
+    ],
+  },
   { label: "Hotel", href: "/hotel" },
   { label: "SPA", href: "/spa" },
   {

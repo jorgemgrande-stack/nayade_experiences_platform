@@ -17,6 +17,9 @@ import Locations from "./pages/Locations";
 import PacksHome from "./pages/PacksHome";
 import PacksList from "./pages/PacksList";
 import PackDetail from "./pages/PackDetail";
+import LegoPacksHome from "./pages/LegoPacksHome";
+import LegoPacksList from "./pages/LegoPacksList";
+import LegoPackDetail from "./pages/LegoPackDetail";
 import Hotel from "./pages/Hotel";
 import Spa from "./pages/Spa";
 import Restaurantes from "./pages/Restaurantes";
@@ -121,6 +124,9 @@ function Router() {
       <Route path="/packs" component={PacksHome} />
       <Route path="/packs/:category" component={PacksList} />
       <Route path="/packs/:category/:slug" component={PackDetail} />
+      <Route path="/lego-packs" component={LegoPacksHome} />
+      <Route path="/lego-packs/detalle/:slug" component={LegoPackDetail} />
+      <Route path="/lego-packs/:category" component={LegoPacksList} />
       <Route path="/hotel" component={Hotel} />
       <Route path="/hotel/:slug" component={HotelRoom} />
       <Route path="/spa" component={Spa} />

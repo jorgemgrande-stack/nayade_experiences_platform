@@ -1857,3 +1857,16 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir Lego Packs dinámicamente al formulario de leads de la Home (¿Qué quieres vivir?)
 - [x] Añadir Lego Packs dinámicamente al formulario de Solicita tu Presupuesto
 - [x] Los Lego Packs publicados aparecen automáticamente según se crean (trpc.legoPacks.listPublic)
+
+## Estructura Pública Lego Packs (v19.0)
+- [x] Campo category en lego_packs (dia/escolar/empresa) + migración BD
+- [x] Backend: listPublicByCategory, getBySlug para Lego Packs
+- [x] Página /lego-packs: listado de categorías (igual que /packs)
+- [x] Página /lego-packs/dia: Lego Packs de Día
+- [x] Página /lego-packs/escolar: Lego Packs Escolares
+- [x] Página /lego-packs/empresa: Lego Packs para Empresas
+- [x] Página /lego-packs/detalle/:slug: ficha de detalle del Lego Pack
+- [x] Menú header: submenú Lego Packs con 3 categorías
+- [x] Footer: columna Lego Packs con enlaces a las 3 categorías
+- [x] Editor backoffice: selector de categoría en formulario de Lego Pack
+- [x] 202 tests pasando, 0 errores TypeScript

@@ -39,6 +39,7 @@ const legoPackInput = z.object({
   badge: z.string().max(64).optional().nullable(),
   priceLabel: z.string().max(128).optional().nullable(),
   categoryId: z.number().optional().nullable(),
+  category: z.enum(["dia", "escolar", "empresa"]).default("dia"),
   targetAudience: z.string().max(256).optional().nullable(),
   availabilityMode: z.enum(["strict", "flexible"]).default("strict"),
   discountPercent: z.string().optional().nullable(),
@@ -253,6 +254,21 @@ export const legoPacksRouter = router({
         .select()
         .from(legoPacks)
         .where(and(eq(legoPacks.isPublished, true), eq(legoPacks.isActive, true)))
+        .orderBy(asc(legoPacks.sortOrder));
+    }),
+
+  // ── Public list by category ───────────────────────────────────────────────
+  listPublicByCategory: publicProcedure
+    .input(z.object({ category: z.enum(["dia", "escolar", "empresa"]) }))
+    .query(async ({ input }) => {
+      return db
+        .select()
+        .from(legoPacks)
+        .where(and(
+          eq(legoPacks.isPublished, true),
+          eq(legoPacks.isActive, true),
+          eq(legoPacks.category, input.category),
+        ))
         .orderBy(asc(legoPacks.sortOrder));
     }),
 

@@ -22,6 +22,13 @@ const colPacks = [
   { label: "Team Building", href: "/packs/corporativo" },
 ];
 
+const colLegoPacks = [
+  { label: "Lego Packs de Día", href: "/lego-packs/dia" },
+  { label: "Lego Packs Escolares", href: "/lego-packs/escolar" },
+  { label: "Lego Packs Empresas", href: "/lego-packs/empresa" },
+  { label: "Solicitar Presupuesto", href: "/presupuesto" },
+];
+
 const colServicios = [
   { label: "Hotel Náyade ★★★", href: "/hotel" },
   { label: "SPA & Wellness", href: "/spa" },
@@ -39,7 +46,7 @@ export default function PublicFooter() {
     <footer className="bg-lago-dark text-white">
       {/* Main footer */}
       <div className="container py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-10">
           {/* Brand column */}
           <div className="lg:col-span-2">
             <Link href="/" className="inline-block mb-5 cursor-pointer">
@@ -107,6 +114,20 @@ export default function PublicFooter() {
             <h4 className="font-display font-bold text-white text-xs uppercase tracking-widest mb-4 text-accent">Packs</h4>
             <ul className="space-y-2">
               {colPacks.map((link) => (
+                <li key={link.href}>
+                  <Link href={link.href}>
+                    <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Lego Packs */}
+          <div>
+            <h4 className="font-display font-bold text-white text-xs uppercase tracking-widest mb-4 text-accent">Lego Packs</h4>
+            <ul className="space-y-2">
+              {colLegoPacks.map((link) => (
                 <li key={link.href}>
                   <Link href={link.href}>
                     <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
