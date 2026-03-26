@@ -45,6 +45,7 @@ export default function PackDetail() {
   const { category, slug } = useParams<{ category: string; slug: string }>();
   const [people, setPeople] = useState(1);
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
+  const [selectedDate, setSelectedDate] = useState("");
   const { addItem, openCart } = useCart();
 
   const { data: pack, isLoading } = trpc.packs.getBySlug.useQuery(
@@ -370,11 +371,32 @@ export default function PackDetail() {
                 </div>
               )}
 
+              {/* Selector de fecha preferida */}
+              {pack.isOnlinePurchase && (
+                <div className="mb-4">
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                    <Calendar className="w-4 h-4 inline mr-1 text-slate-500" />
+                    Fecha preferida
+                  </label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                </div>
+              )}
+
               {pack.isOnlinePurchase ? (
                 <Button
                   size="lg"
                   className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base mb-3"
                   onClick={() => {
+                    if (!selectedDate) {
+                      toast.info("Selecciona una fecha antes de añadir al carrito");
+                      return;
+                    }
                     if (packVariants.some(v => v.isRequired) && selectedVariantId === undefined) {
                       toast.info("Selecciona una modalidad antes de añadir al carrito");
                       return;
@@ -384,7 +406,7 @@ export default function PackDetail() {
                       productName: pack.title,
                       productSlug: pack.slug ?? "",
                       productImage: pack.image1 ?? "",
-                      bookingDate: "",
+                      bookingDate: selectedDate,
                       people,
                       minPersons: pack.minPersons ?? 1,
                       maxPersons: pack.maxPersons ?? 50,

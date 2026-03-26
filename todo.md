@@ -1887,3 +1887,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Botón "Solicitar Presupuesto" con enlace a /presupuesto?legoPack=slug
 - [x] Galería de imágenes adicionales
 - [x] 202 tests pasando, 0 errores TypeScript
+
+## Selector de fecha en Packs y Lego Packs (v20.1)
+- [x] Añadir selector de fecha preferida en widget de precio de PackDetail.tsx
+- [x] Validar que la fecha es obligatoria antes de añadir al carrito en PackDetail
+- [x] Pasar bookingDate al addItem en PackDetail
+- [x] Añadir selector de fecha preferida en widget de precio de LegoPackDetail.tsx
+- [x] Validar que la fecha es obligatoria antes de añadir al carrito en LegoPackDetail
+- [x] Pasar bookingDate al addItem en LegoPackDetail

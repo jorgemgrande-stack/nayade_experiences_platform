@@ -42,6 +42,7 @@ const CATEGORY_META: Record<string, {
 export default function LegoPackDetail() {
   const { category, slug } = useParams<{ category: string; slug: string }>();
   const [people, setPeople] = useState(1);
+  const [selectedDate, setSelectedDate] = useState("");
   const { addItem, openCart } = useCart();
 
   const { data: pack, isLoading } = trpc.legoPacks.getBySlug.useQuery(
@@ -375,18 +376,39 @@ export default function LegoPackDetail() {
                 </div>
               )}
 
+              {/* Selector de fecha preferida */}
+              {pack.isOnlineSale && (
+                <div className="mb-4">
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                    <Calendar className="w-4 h-4 inline mr-1 text-slate-500" />
+                    Fecha preferida
+                  </label>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                </div>
+              )}
+
               {/* Botón Añadir al carrito */}
               {pack.isOnlineSale ? (
                 <Button
                   size="lg"
                   className="w-full bg-orange-500 hover:bg-orange-600 text-white font-black text-base mb-3"
                   onClick={() => {
+                    if (!selectedDate) {
+                      toast.info("Selecciona una fecha antes de añadir al carrito");
+                      return;
+                    }
                     addItem({
                       productId: pack.id,
                       productName: pack.title,
                       productSlug: pack.slug ?? "",
                       productImage: heroImage ?? "",
-                      bookingDate: "",
+                      bookingDate: selectedDate,
                       people,
                       minPersons: 1,
                       maxPersons: 999,
