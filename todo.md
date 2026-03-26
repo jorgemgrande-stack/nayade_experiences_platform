@@ -1903,3 +1903,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Admin config: corregir superposición "Modo disponibilidad" y "Orden" → layout en columna con descripción contextual
 - [x] Admin config: Select de disponibilidad ocupa ancho completo, Input de orden tiene ancho fijo w-32
 - [x] 202 tests pasando, 0 errores TypeScript
+
+## v20.5 — Categorías en admin Lego Packs
+- [x] Añadir campo `category` al tipo PackForm y emptyForm en LegoPacksManager
+- [x] Selector visual de categoría (Día/Escolar/Empresa) con tarjetas en pestaña General
+- [x] Badge de categoría visible en cada tarjeta del listado admin
+- [x] Filtro por categoría en la barra superior del listado admin
+- [x] Sincronización de categoría al abrir un pack para edición (openEdit)
+- [x] La parte pública ya filtraba por category — confirmado funciona con el campo DB

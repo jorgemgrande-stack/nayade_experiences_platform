@@ -102,6 +102,7 @@ type PackForm = {
   slug: string; title: string; subtitle: string; shortDescription: string; description: string;
   coverImageUrl: string; image1: string; image2: string; image3: string; image4: string;
   badge: string; priceLabel: string; targetAudience: string;
+  category: "dia" | "escolar" | "empresa";
   availabilityMode: "strict" | "flexible";
   discountPercent: string; discountExpiresAt: string;
   isActive: boolean; isPublished: boolean; isFeatured: boolean; isPresentialSale: boolean; isOnlineSale: boolean;
@@ -112,6 +113,7 @@ const emptyForm: PackForm = {
   slug: "", title: "", subtitle: "", shortDescription: "", description: "",
   coverImageUrl: "", image1: "", image2: "", image3: "", image4: "",
   badge: "", priceLabel: "desde X€/persona", targetAudience: "",
+  category: "dia",
   availabilityMode: "strict", discountPercent: "", discountExpiresAt: "",
   isActive: true, isPublished: false, isFeatured: false, isPresentialSale: true, isOnlineSale: false,
   sortOrder: "0", metaTitle: "", metaDescription: "",
@@ -133,6 +135,7 @@ const emptyLineForm: LineForm = {
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function LegoPacksManager() {
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<"todos" | "dia" | "escolar" | "empresa">("todos");
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<PackForm>(emptyForm);
@@ -211,8 +214,12 @@ export default function LegoPacksManager() {
   // Filtered packs list
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return packs.filter((p) => p.title.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q));
-  }, [packs, search]);
+    return packs.filter((p) => {
+      const matchSearch = p.title.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q);
+      const matchCategory = categoryFilter === "todos" || p.category === categoryFilter;
+      return matchSearch && matchCategory;
+    });
+  }, [packs, search, categoryFilter]);
 
   // Catalog options for line builder
   const catalogOptions = useMemo(() => {
@@ -246,6 +253,7 @@ export default function LegoPacksManager() {
       description: p.description ?? "", coverImageUrl: p.coverImageUrl ?? "",
       image1: p.image1 ?? "", image2: p.image2 ?? "", image3: p.image3 ?? "", image4: p.image4 ?? "",
       badge: p.badge ?? "", priceLabel: p.priceLabel ?? "", targetAudience: p.targetAudience ?? "",
+      category: (p.category as "dia" | "escolar" | "empresa") ?? "dia",
       availabilityMode: p.availabilityMode as "strict" | "flexible",
       discountPercent: (p as any).discountPercent != null ? String((p as any).discountPercent) : "",
       discountExpiresAt: (p as any).discountExpiresAt
@@ -341,10 +349,27 @@ export default function LegoPacksManager() {
     <AdminLayout title="Lego Packs">
       {/* ── Pack list ── */}
       <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-sm">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Buscar Lego Pack..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          </div>
+          <div className="flex gap-1">
+            {(["todos", "dia", "escolar", "empresa"] as const).map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setCategoryFilter(cat)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+                  categoryFilter === cat
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted/40 text-muted-foreground border-border hover:border-primary/40"
+                )}
+              >
+                {cat === "todos" ? "Todos" : cat === "dia" ? "☀️ Día" : cat === "escolar" ? "🏫 Escolar" : "🏢 Empresa"}
+              </button>
+            ))}
           </div>
           <Button onClick={openCreate}>
             <Plus className="w-4 h-4 mr-2" /> Nuevo Lego Pack
@@ -379,6 +404,13 @@ export default function LegoPacksManager() {
                   <Badge variant="outline" className="text-xs">
                     <ListChecks className="w-3 h-3 mr-1" />
                     {(p as any).lineCount ?? 0} líneas
+                  </Badge>
+                  <Badge variant="outline" className={cn("text-xs",
+                    p.category === "dia" ? "border-blue-300 bg-blue-50 text-blue-700" :
+                    p.category === "escolar" ? "border-green-300 bg-green-50 text-green-700" :
+                    "border-purple-300 bg-purple-50 text-purple-700"
+                  )}>
+                    {p.category === "dia" ? "☀️ Día" : p.category === "escolar" ? "🏫 Escolar" : "🏢 Empresa"}
                   </Badge>
                   {(p as any).discountPercent && (
                     <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">
@@ -475,11 +507,38 @@ export default function LegoPacksManager() {
                   <Input value={form.priceLabel} onChange={(e) => setForm({ ...form, priceLabel: e.target.value })} placeholder="desde 45€/persona" />
                 </div>
               </div>
-              <div>
+               <div>
                 <Label>Público objetivo</Label>
                 <Input value={form.targetAudience} onChange={(e) => setForm({ ...form, targetAudience: e.target.value })} placeholder="Familias y amigos" />
               </div>
-
+              {/* Categoría */}
+              <div>
+                <Label className="text-sm font-semibold">Categoría *</Label>
+                <p className="text-xs text-muted-foreground mb-2">Determina en qué sección pública aparece este Lego Pack</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {([
+                    { value: "dia", label: "Día Completo", icon: "☀️", desc: "Packs para un día en el lago", color: "border-blue-400 bg-blue-50 text-blue-700" },
+                    { value: "escolar", label: "Escolar", icon: "🏫", desc: "Packs para grupos escolares", color: "border-green-400 bg-green-50 text-green-700" },
+                    { value: "empresa", label: "Empresa", icon: "🏢", desc: "Packs para equipos y empresas", color: "border-purple-400 bg-purple-50 text-purple-700" },
+                  ] as const).map((cat) => (
+                    <button
+                      key={cat.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, category: cat.value })}
+                      className={cn(
+                        "flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-center cursor-pointer",
+                        form.category === cat.value
+                          ? cat.color + " shadow-sm ring-2 ring-offset-1 ring-current"
+                          : "border-border bg-muted/30 text-muted-foreground hover:border-primary/40 hover:bg-muted/60"
+                      )}
+                    >
+                      <span className="text-2xl">{cat.icon}</span>
+                      <span className="font-bold text-sm">{cat.label}</span>
+                      <span className="text-xs opacity-75">{cat.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
               {/* Descuento promocional */}
               <div className="border border-amber-200 bg-amber-50/60 rounded-xl p-4">
                 <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5 mb-3">
