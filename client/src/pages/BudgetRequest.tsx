@@ -74,6 +74,7 @@ const FAMILY_CHIP_COLORS: Record<string, { active: string; hover: string }> = {
 const STATIC_CATEGORIES = [
   { id: "Experiencias", label: "Experiencias", icon: "🌊" },
   { id: "Packs", label: "Packs", icon: "⭐" },
+  { id: "LegoPacks", label: "Lego Packs", icon: "🧩" },
   { id: "Hotel", label: "Hotel", icon: "🏨" },
   { id: "Spa", label: "SPA", icon: "🧖" },
   { id: "Pack colegios", label: "Colegios", icon: "🎒" },
@@ -431,11 +432,15 @@ export default function BudgetRequest() {
     {} as { category?: "dia" | "escolar" | "empresa" },
     { enabled: selectedCategory === "Packs" }
   );
+  const { data: legoPacksList } = trpc.legoPacks.listPublic.useQuery(
+    undefined, { enabled: selectedCategory === "LegoPacks" }
+  );
 
   const products = useMemo(() => {
     if (selectedCategory === "Packs" && packsList) return packsList.map((p: any) => p.title);
+    if (selectedCategory === "LegoPacks" && legoPacksList) return legoPacksList.map((p: any) => p.title);
     return STATIC_PRODUCTS[selectedCategory] ?? [];
-  }, [selectedCategory, packsList]);
+  }, [selectedCategory, packsList, legoPacksList]);
 
   const submitBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setSubmitted(true),

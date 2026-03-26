@@ -1843,3 +1843,17 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Imágenes: cargador real (upload a S3) en lugar de campos URL
 - [x] Descuento con porcentaje y fecha de caducidad (igual que packs simples)
 - [x] 202 tests pasando, 0 errores TypeScript
+
+## Bug: Editor Lego Packs - modal y constructor de líneas (v18.3)
+- [x] Corregir pestaña por defecto del modal (debe abrir en "General", no "Configuración")
+- [x] Integrar constructor de líneas como pestaña "Líneas" dentro del modal de edición
+- [x] Buscador de productos del catálogo funcional dentro del modal
+- [x] Flujo completo: crear pack → añadir líneas → guardar, todo en un solo modal
+
+## Editor Lego Packs v2 + Formularios de Leads (v18.4)
+- [x] Corregir editor: pestaña "Líneas" integrada en el modal de edición (no panel separado)
+- [x] Corregir pestaña por defecto del modal (siempre abre en "General")
+- [x] Buscador de catálogo funcional dentro del modal de edición
+- [x] Añadir Lego Packs dinámicamente al formulario de leads de la Home (¿Qué quieres vivir?)
+- [x] Añadir Lego Packs dinámicamente al formulario de Solicita tu Presupuesto
+- [x] Los Lego Packs publicados aparecen automáticamente según se crean (trpc.legoPacks.listPublic)

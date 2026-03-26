@@ -390,6 +390,7 @@ export default function Home() {
   const HERO_CATEGORIES = [
     { id: "Experiencias", label: "Acuáticas", icon: "🌊" },
     { id: "Packs", label: "Packs", icon: "⭐" },
+    { id: "LegoPacks", label: "Lego Packs", icon: "🧩" },
     { id: "Hotel", label: "Hotel", icon: "🏨" },
     { id: "Spa", label: "SPA", icon: "🧖" },
     { id: "Pack colegios", label: "Colegios", icon: "🎒" },
@@ -448,11 +449,15 @@ export default function Home() {
   const { data: heroPacksList } = trpc.packs.getByCategory.useQuery(
     {} as { category?: "dia" | "escolar" | "empresa" }, { enabled: heroCategory === "Packs" }
   );
+  const { data: heroLegoPacksList } = trpc.legoPacks.listPublic.useQuery(
+    undefined, { enabled: heroCategory === "LegoPacks" }
+  );
   const heroProducts = useMemo(() => {
     if (heroCategory === "Experiencias" && heroExperiencesList) return heroExperiencesList.map((e: any) => e.title);
     if (heroCategory === "Packs" && heroPacksList) return heroPacksList.map((p: any) => p.title);
+    if (heroCategory === "LegoPacks" && heroLegoPacksList) return heroLegoPacksList.map((p: any) => p.title);
     return HERO_STATIC_PRODUCTS[heroCategory] ?? [];
-  }, [heroCategory, heroExperiencesList, heroPacksList]);
+  }, [heroCategory, heroExperiencesList, heroPacksList, heroLegoPacksList]);
 
   const submitHeroBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setHeroFormSubmitted(true),
