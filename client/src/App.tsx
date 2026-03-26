@@ -67,6 +67,11 @@ const DailyOrders = lazy(() => import("./pages/admin/operations/DailyOrders"));
 const AccountingDashboard = lazy(() => import("./pages/admin/accounting/AccountingDashboard"));
 const TransactionsList = lazy(() => import("./pages/admin/accounting/TransactionsList"));
 const AccountingReports = lazy(() => import("./pages/admin/accounting/AccountingReports"));
+const ExpensesManager = lazy(() => import("./pages/admin/accounting/ExpensesManager"));
+const ExpenseCategoriesManager = lazy(() => import("./pages/admin/accounting/ExpenseCategoriesManager"));
+const ExpenseSuppliersManager = lazy(() => import("./pages/admin/accounting/ExpenseSuppliersManager"));
+const RecurringExpensesManager = lazy(() => import("./pages/admin/accounting/RecurringExpensesManager"));
+const ProfitLossReport = lazy(() => import("./pages/admin/accounting/ProfitLossReport"));
 
 // Hotel & SPA
 const HotelManager = lazy(() => import("./pages/admin/hotel/HotelManager"));
@@ -194,6 +199,11 @@ function Router() {
       <Route path="/admin/contabilidad/dashboard">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingDashboard /></Suspense>}</Route>
       <Route path="/admin/contabilidad/transacciones">{() => <Suspense fallback={<AdminLoadingFallback />}><TransactionsList /></Suspense>}</Route>
       <Route path="/admin/contabilidad/informes">{() => <Suspense fallback={<AdminLoadingFallback />}><AccountingReports /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/gastos">{() => <Suspense fallback={<AdminLoadingFallback />}><ExpensesManager /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/gastos/categorias">{() => <Suspense fallback={<AdminLoadingFallback />}><ExpenseCategoriesManager /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/gastos/proveedores">{() => <Suspense fallback={<AdminLoadingFallback />}><ExpenseSuppliersManager /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/gastos/recurrentes">{() => <Suspense fallback={<AdminLoadingFallback />}><RecurringExpensesManager /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/cuenta-resultados">{() => <Suspense fallback={<AdminLoadingFallback />}><ProfitLossReport /></Suspense>}</Route>
 
       {/* Fiscal REAV */}
       <Route path="/admin/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>

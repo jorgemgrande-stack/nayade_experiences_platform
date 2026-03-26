@@ -1541,3 +1541,96 @@ export const legoPackSnapshots = mysqlTable("lego_pack_snapshots", {
 });
 export type LegoPackSnapshot = typeof legoPackSnapshots.$inferSelect;
 export type InsertLegoPackSnapshot = typeof legoPackSnapshots.$inferInsert;
+
+// ─── FINANCIAL MODULE — GASTOS & CUENTA DE RESULTADOS ────────────────────────
+
+// ── Centros de coste ──────────────────────────────────────────────────────────
+export const costCenters = mysqlTable("cost_centers", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type CostCenter = typeof costCenters.$inferSelect;
+export type InsertCostCenter = typeof costCenters.$inferInsert;
+
+// ── Categorías de gasto ───────────────────────────────────────────────────────
+export const expenseCategories = mysqlTable("expense_categories", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ExpenseCategory = typeof expenseCategories.$inferSelect;
+export type InsertExpenseCategory = typeof expenseCategories.$inferInsert;
+
+// ── Proveedores de gasto ──────────────────────────────────────────────────────
+export const expenseSuppliers = mysqlTable("expense_suppliers", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 256 }).notNull(),
+  fiscalName: varchar("fiscalName", { length: 256 }),
+  vatNumber: varchar("vatNumber", { length: 32 }),
+  address: text("address"),
+  email: varchar("email", { length: 320 }),
+  phone: varchar("phone", { length: 32 }),
+  iban: varchar("iban", { length: 64 }),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ExpenseSupplier = typeof expenseSuppliers.$inferSelect;
+export type InsertExpenseSupplier = typeof expenseSuppliers.$inferInsert;
+
+// ── Gastos ────────────────────────────────────────────────────────────────────
+export const expenses = mysqlTable("expenses", {
+  id: int("id").autoincrement().primaryKey(),
+  date: varchar("date", { length: 20 }).notNull(),
+  concept: varchar("concept", { length: 512 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  categoryId: int("categoryId").notNull(),
+  supplierId: int("supplierId"),
+  costCenterId: int("costCenterId").notNull(),
+  paymentMethod: mysqlEnum("paymentMethod", [
+    "cash", "card", "transfer", "direct_debit", "tpv_cash",
+  ]).notNull().default("transfer"),
+  status: mysqlEnum("status", ["pending", "justified", "accounted"]).notNull().default("pending"),
+  reservationId: int("reservationId"),
+  productId: int("productId"),
+  notes: text("notes"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Expense = typeof expenses.$inferSelect;
+export type InsertExpense = typeof expenses.$inferInsert;
+
+// ── Adjuntos de gasto ─────────────────────────────────────────────────────────
+export const expenseFiles = mysqlTable("expense_files", {
+  id: int("id").autoincrement().primaryKey(),
+  expenseId: int("expenseId").notNull(),
+  filePath: varchar("filePath", { length: 1024 }).notNull(),
+  fileName: varchar("fileName", { length: 256 }),
+  mimeType: varchar("mimeType", { length: 128 }),
+  uploadedAt: timestamp("uploadedAt").defaultNow().notNull(),
+});
+export type ExpenseFile = typeof expenseFiles.$inferSelect;
+export type InsertExpenseFile = typeof expenseFiles.$inferInsert;
+
+// ── Gastos recurrentes ────────────────────────────────────────────────────────
+export const recurringExpenses = mysqlTable("recurring_expenses", {
+  id: int("id").autoincrement().primaryKey(),
+  concept: varchar("concept", { length: 512 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  categoryId: int("categoryId").notNull(),
+  costCenterId: int("costCenterId").notNull(),
+  supplierId: int("supplierId"),
+  recurrenceType: mysqlEnum("recurrenceType", ["monthly", "weekly", "yearly"]).notNull().default("monthly"),
+  nextExecutionDate: varchar("nextExecutionDate", { length: 20 }).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type RecurringExpense = typeof recurringExpenses.$inferSelect;
+export type InsertRecurringExpense = typeof recurringExpenses.$inferInsert;

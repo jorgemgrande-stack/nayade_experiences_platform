@@ -1911,3 +1911,43 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Filtro por categoría en la barra superior del listado admin
 - [x] Sincronización de categoría al abrir un pack para edición (openEdit)
 - [x] La parte pública ya filtraba por category — confirmado funciona con el campo DB
+
+## v21.0 — Módulo Financiero: Gastos + Cuenta de Resultados
+- [ ] Tablas BD: expense_categories, expense_suppliers, cost_centers, expenses, recurring_expenses, expense_files
+- [ ] Datos iniciales: 6 centros de coste + categorías de gasto base
+- [ ] Router tRPC: expenses (CRUD + filtros + adjuntos)
+- [ ] Router tRPC: expenseCategories, expenseSuppliers, costCenters
+- [ ] Router tRPC: recurringExpenses (CRUD + trigger manual)
+- [ ] Router tRPC: profitLoss (cuenta de resultados con lógica REAV + cancelaciones)
+- [ ] UI: ExpensesManager (listado, nuevo gasto, filtros, adjuntos drag&drop)
+- [ ] UI: ExpenseCategoriesManager
+- [ ] UI: ExpenseSuppliersManager
+- [ ] UI: RecurringExpensesManager
+- [ ] UI: ProfitLossReport (KPIs + tabs por producto/categoría/centro coste/canal + export CSV)
+- [ ] Sidebar: añadir subsecciones Gastos y Cuenta de Resultados en Contabilidad
+- [ ] App.tsx: registrar todas las rutas nuevas
+- [ ] TPV: gasto rápido desde cierre de caja
+- [ ] Cron diario para gastos recurrentes
+- [ ] Tests Vitest para el módulo financiero
+
+## v21.0 — Módulo Financiero (Gastos + Cuenta de Resultados)
+- [x] Tablas BD: expense_categories, expense_suppliers, cost_centers, expenses, expense_files, recurring_expenses
+- [x] Router tRPC: financial.categories, financial.suppliers, financial.costCenters, financial.expenses, financial.recurring, financial.profitLoss
+- [x] Admin: ExpensesManager — listado, filtros, nuevo/editar gasto con adjuntos drag&drop
+- [x] Admin: ExpenseCategoriesManager — CRUD categorías de gastos
+- [x] Admin: ExpenseSuppliersManager — CRUD proveedores de gastos (con NIF, IBAN, email)
+- [x] Admin: RecurringExpensesManager — CRUD gastos recurrentes + botón generar ahora
+- [x] Admin: ProfitLossReport — KPIs, evolución mensual, ingresos por canal/producto, gastos por categoría/centro coste, exportación CSV
+- [x] Sidebar: sección Contabilidad expandible con submenú (Dashboard, Gastos, Recurrentes, Categorías, Proveedores, Cuenta Resultados)
+- [x] Rutas App.tsx: /admin/contabilidad/gastos, /categorias, /proveedores, /recurrentes, /cuenta-resultados
+
+## v21.0 — Módulo Financiero (Gastos + Cuenta de Resultados)
+- [x] Tablas BD: expense_categories, expense_suppliers, cost_centers, expenses, expense_files, recurring_expenses
+- [x] Router tRPC: financial.categories, financial.suppliers, financial.costCenters, financial.expenses, financial.recurring, financial.profitLoss
+- [x] Admin: ExpensesManager — listado, filtros, nuevo/editar gasto con adjuntos drag&drop
+- [x] Admin: ExpenseCategoriesManager — CRUD categorías de gastos
+- [x] Admin: ExpenseSuppliersManager — CRUD proveedores de gastos (con NIF, IBAN, email)
+- [x] Admin: RecurringExpensesManager — CRUD gastos recurrentes + botón generar ahora
+- [x] Admin: ProfitLossReport — KPIs, evolución mensual, ingresos por canal/producto, gastos por categoría/centro coste, exportación CSV
+- [x] Sidebar: sección Contabilidad expandible con submenú (Dashboard, Gastos, Recurrentes, Categorías, Proveedores, Cuenta Resultados)
+- [x] Rutas App.tsx: /admin/contabilidad/gastos, /categorias, /proveedores, /recurrentes, /cuenta-resultados
