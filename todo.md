@@ -1895,3 +1895,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir selector de fecha preferida en widget de precio de LegoPackDetail.tsx
 - [x] Validar que la fecha es obligatoria antes de añadir al carrito en LegoPackDetail
 - [x] Pasar bookingDate al addItem en LegoPackDetail
+
+## Mejoras admin Lego Packs (v20.2)
+- [x] Ficha pública LegoPackDetail: botón "Añadir al carrito" ya correcto (isOnlineSale, misma lógica que PackDetail)
+- [x] Admin líneas: openEditLine pre-rellena el buscador con el nombre del producto seleccionado
+- [x] Admin líneas: botones Editar (lápiz) y Borrar (papelera) ya visibles y funcionales en la tabla
+- [x] Admin config: corregir superposición "Modo disponibilidad" y "Orden" → layout en columna con descripción contextual
+- [x] Admin config: Select de disponibilidad ocupa ancho completo, Input de orden tiene ancho fijo w-32
+- [x] 202 tests pasando, 0 errores TypeScript

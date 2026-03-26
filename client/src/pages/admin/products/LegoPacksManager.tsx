@@ -295,7 +295,10 @@ export default function LegoPacksManager() {
       discountValue: String(line.discountValue),
       frontendNote: line.frontendNote ?? "",
     });
-    setProductSearch("");
+    // Pre-fill the search box with the product name from pricing data or internal name
+    const pricingLine = (pricing as any)?.lines?.find((l: any) => l.lineId === line.id);
+    const productName = pricingLine?.sourceName ?? line.internalName ?? "";
+    setProductSearch(productName);
     setShowLineForm(true);
   };
 
@@ -695,20 +698,28 @@ export default function LegoPacksManager() {
 
             {/* ── Configuración ── */}
             <TabsContent value="config" className="space-y-4 mt-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
                 <div>
-                  <Label>Modo disponibilidad</Label>
+                  <Label className="mb-1.5 block">Modo disponibilidad</Label>
                   <Select value={form.availabilityMode} onValueChange={(v) => setForm({ ...form, availabilityMode: v as "strict" | "flexible" })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecciona modo..." />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="strict">Estricto (todas las líneas deben estar disponibles)</SelectItem>
-                      <SelectItem value="flexible">Flexible (permite líneas no disponibles)</SelectItem>
+                      <SelectItem value="strict">Estricto — todas las líneas deben estar disponibles</SelectItem>
+                      <SelectItem value="flexible">Flexible — permite líneas no disponibles</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {form.availabilityMode === "strict"
+                      ? "El pack solo se ofrece si todas sus líneas están activas."
+                      : "El pack se ofrece aunque alguna línea no esté disponible."}
+                  </p>
                 </div>
                 <div>
-                  <Label>Orden</Label>
-                  <Input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} />
+                  <Label className="mb-1.5 block">Orden de aparición</Label>
+                  <Input type="number" min={0} value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} className="w-32" />
+                  <p className="text-xs text-muted-foreground mt-1">Número menor = aparece antes en el listado público.</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
