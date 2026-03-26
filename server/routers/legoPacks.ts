@@ -41,6 +41,8 @@ const legoPackInput = z.object({
   categoryId: z.number().optional().nullable(),
   targetAudience: z.string().max(256).optional().nullable(),
   availabilityMode: z.enum(["strict", "flexible"]).default("strict"),
+  discountPercent: z.string().optional().nullable(),
+  discountExpiresAt: z.string().optional().nullable(),
   isActive: z.boolean().default(true),
   isPublished: z.boolean().default(false),
   isFeatured: z.boolean().default(false),
@@ -290,9 +292,11 @@ export const legoPacksRouter = router({
   create: adminProcedure
     .input(legoPackInput)
     .mutation(async ({ input }) => {
+      const { discountExpiresAt, ...rest } = input;
       const [result] = await db.insert(legoPacks).values({
-        ...input,
-        gallery: input.gallery ?? [],
+        ...rest,
+        gallery: rest.gallery ?? [],
+        discountExpiresAt: discountExpiresAt ? new Date(discountExpiresAt) : null,
       });
       return { id: (result as any).insertId };
     }),
@@ -301,8 +305,12 @@ export const legoPacksRouter = router({
   update: adminProcedure
     .input(legoPackInput.extend({ id: z.number() }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      await db.update(legoPacks).set({ ...data, gallery: data.gallery ?? [] }).where(eq(legoPacks.id, id));
+      const { id, discountExpiresAt, ...data } = input;
+      await db.update(legoPacks).set({
+        ...data,
+        gallery: data.gallery ?? [],
+        discountExpiresAt: discountExpiresAt ? new Date(discountExpiresAt) : null,
+      }).where(eq(legoPacks.id, id));
       return { ok: true };
     }),
 

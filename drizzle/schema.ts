@@ -1445,6 +1445,9 @@ export const legoPacks = mysqlTable("lego_packs", {
   targetAudience: varchar("targetAudience", { length: 256 }),
   // Disponibilidad
   availabilityMode: mysqlEnum("availabilityMode", ["strict", "flexible"]).default("strict").notNull(),
+  // Descuento promocional
+  discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
+  discountExpiresAt: timestamp("discountExpiresAt"),
   // Estado
   isActive: boolean("isActive").default(true).notNull(),
   isPublished: boolean("isPublished").default(false).notNull(),

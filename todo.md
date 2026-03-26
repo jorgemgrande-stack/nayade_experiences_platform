@@ -1836,3 +1836,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ## Bug: Slug vacío al crear Lego Pack (v18.1)
 - [x] Corregir auto-generación de slug desde el título en el formulario de Lego Packs
 - [x] Verificar que el campo slug tiene valor real antes de enviar al backend
+
+## Mejoras editor Lego Packs (v18.2)
+- [x] Constructor de líneas: buscador de productos del catálogo (experiencias, SPA, hotel, restaurante)
+- [x] Líneas con checkbox de disponibilidad (isActive por línea, toggle instantáneo)
+- [x] Imágenes: cargador real (upload a S3) en lugar de campos URL
+- [x] Descuento con porcentaje y fecha de caducidad (igual que packs simples)
+- [x] 202 tests pasando, 0 errores TypeScript

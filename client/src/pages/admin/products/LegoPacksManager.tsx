@@ -1,12 +1,12 @@
 /**
- * LegoPacksManager — Backoffice de Lego Packs
- * Gestión completa: crear, editar, publicar, ordenar y construir líneas.
+ * LegoPacksManager — Backoffice de Lego Packs (v2)
+ * Mejoras: buscador de catálogo en líneas, checkbox isActive por línea,
+ * cargador de imágenes real (S3), descuento con caducidad a nivel de pack.
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import {
-  Plus, Search, Pencil, Trash2, Eye, EyeOff, Layers, GripVertical,
-  ChevronDown, ChevronUp, X, Save, Package, Link2, Percent, DollarSign,
-  ToggleLeft, ToggleRight, ArrowUpDown, Info,
+  Plus, Search, Pencil, Trash2, Eye, EyeOff, Layers,
+  X, Save, Package, Percent, CheckSquare, Square, Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,11 +17,86 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+// ─── Image Upload Zone (igual que PacksManager) ────────────────────────────────
+
+function ImageUploadZone({ label, value, onChange, index }: {
+  label: string; value: string; onChange: (url: string) => void; index: number;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { toast.error("La imagen no puede superar 10 MB"); return; }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      const res = await fetch("/api/upload/image", { method: "POST", body: fd, credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al subir");
+      onChange(data.url);
+      toast.success(`Imagen ${index} subida correctamente`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Error al subir imagen");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <div
+        className={cn(
+          "relative border-2 border-dashed rounded-xl overflow-hidden cursor-pointer transition-all",
+          "hover:border-primary/60 hover:bg-primary/5",
+          value ? "border-primary/40 bg-primary/5" : "border-border bg-muted/30",
+          "h-28"
+        )}
+        onClick={() => !uploading && inputRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+      >
+        {value ? (
+          <>
+            <img src={value} alt={label} className="w-full h-full object-cover" />
+            <button
+              type="button"
+              className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-red-600 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onChange(""); }}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-1 text-muted-foreground">
+            {uploading ? (
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <>
+                <ImageIcon className="w-6 h-6 opacity-40" />
+                <span className="text-xs">Haz clic o arrastra</span>
+              </>
+            )}
+          </div>
+        )}
+        {uploading && (
+          <div className="absolute inset-0 bg-white/70 flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+    </div>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +115,8 @@ type PackForm = {
   priceLabel: string;
   targetAudience: string;
   availabilityMode: "strict" | "flexible";
+  discountPercent: string;
+  discountExpiresAt: string;
   isActive: boolean;
   isPublished: boolean;
   isFeatured: boolean;
@@ -54,7 +131,8 @@ const emptyForm: PackForm = {
   slug: "", title: "", subtitle: "", shortDescription: "", description: "",
   coverImageUrl: "", image1: "", image2: "", image3: "", image4: "",
   badge: "", priceLabel: "desde X€/persona", targetAudience: "",
-  availabilityMode: "strict", isActive: true, isPublished: false,
+  availabilityMode: "strict", discountPercent: "", discountExpiresAt: "",
+  isActive: true, isPublished: false,
   isFeatured: false, isPresentialSale: true, isOnlineSale: false,
   sortOrder: "0", metaTitle: "", metaDescription: "",
 };
@@ -64,6 +142,7 @@ type LineForm = {
   sourceId: string;
   internalName: string;
   groupLabel: string;
+  isActive: boolean;
   isRequired: boolean;
   isOptional: boolean;
   isClientEditable: boolean;
@@ -77,7 +156,7 @@ type LineForm = {
 
 const emptyLineForm: LineForm = {
   sourceType: "experience", sourceId: "", internalName: "", groupLabel: "",
-  isRequired: true, isOptional: false, isClientEditable: false, isClientVisible: true,
+  isActive: true, isRequired: true, isOptional: false, isClientEditable: false, isClientVisible: true,
   defaultQuantity: "1", isQuantityEditable: false, discountType: "percent",
   discountValue: "0", frontendNote: "",
 };
@@ -96,6 +175,7 @@ export default function LegoPacksManager() {
   const [showLineForm, setShowLineForm] = useState(false);
   const [editLineId, setEditLineId] = useState<number | null>(null);
   const [lineForm, setLineForm] = useState<LineForm>(emptyLineForm);
+  const [productSearch, setProductSearch] = useState("");
 
   // Queries
   const { data: packs = [], refetch } = trpc.legoPacks.list.useQuery({});
@@ -104,8 +184,12 @@ export default function LegoPacksManager() {
     { enabled: selectedPackId !== null }
   );
   const { data: experiences = [] } = trpc.products.getAll.useQuery();
-  const { data: packProducts = [] } = trpc.packs.getAll.useQuery({ limit: 200, offset: 0 });
-  const { data: pricing } = trpc.legoPacks.calculatePrice.useQuery(
+  const { data: packProductsData } = trpc.packs.getAll.useQuery(
+    { limit: 200, offset: 0 },
+    {}
+  );
+  const packProducts = (packProductsData as any)?.items ?? packProductsData ?? [];
+  const { data: pricing, refetch: refetchPricing } = trpc.legoPacks.calculatePrice.useQuery(
     { legoPackId: selectedPackId! },
     { enabled: selectedPackId !== null }
   );
@@ -128,15 +212,19 @@ export default function LegoPacksManager() {
     onError: (e) => toast.error(e.message),
   });
   const addLineMutation = trpc.legoPacks.addLine.useMutation({
-    onSuccess: () => { toast.success("Línea añadida"); refetchPack(); setShowLineForm(false); setLineForm(emptyLineForm); },
+    onSuccess: () => { toast.success("Línea añadida"); refetchPack(); refetchPricing(); setShowLineForm(false); setLineForm(emptyLineForm); setProductSearch(""); },
     onError: (e) => toast.error(e.message),
   });
   const updateLineMutation = trpc.legoPacks.updateLine.useMutation({
-    onSuccess: () => { toast.success("Línea actualizada"); refetchPack(); setShowLineForm(false); setEditLineId(null); },
+    onSuccess: () => { toast.success("Línea actualizada"); refetchPack(); refetchPricing(); setShowLineForm(false); setEditLineId(null); },
     onError: (e) => toast.error(e.message),
   });
   const deleteLineMutation = trpc.legoPacks.deleteLine.useMutation({
-    onSuccess: () => { toast.success("Línea eliminada"); refetchPack(); },
+    onSuccess: () => { toast.success("Línea eliminada"); refetchPack(); refetchPricing(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const toggleLineActiveMutation = trpc.legoPacks.updateLine.useMutation({
+    onSuccess: () => { refetchPack(); refetchPricing(); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -145,6 +233,15 @@ export default function LegoPacksManager() {
     const q = search.toLowerCase();
     return packs.filter((p) => p.title.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q));
   }, [packs, search]);
+
+  // Filtered catalog products for line builder
+  const catalogOptions = useMemo(() => {
+    const q = productSearch.toLowerCase();
+    const exps = (experiences as any[]).map((e: any) => ({ id: e.id, title: e.title, type: "experience" as const, price: e.basePrice }));
+    const pkgs = (packProducts as any[]).map((p: any) => ({ id: p.id, title: p.title, type: "pack" as const, price: p.basePrice }));
+    const all = lineForm.sourceType === "experience" ? exps : pkgs;
+    return q ? all.filter((o) => o.title.toLowerCase().includes(q)) : all;
+  }, [experiences, packProducts, lineForm.sourceType, productSearch]);
 
   // Helpers
   const openCreate = () => { setEditId(null); setForm(emptyForm); setActiveTab("general"); setShowForm(true); };
@@ -156,6 +253,10 @@ export default function LegoPacksManager() {
       image2: p.image2 ?? "", image3: p.image3 ?? "", image4: p.image4 ?? "", badge: p.badge ?? "",
       priceLabel: p.priceLabel ?? "", targetAudience: p.targetAudience ?? "",
       availabilityMode: p.availabilityMode as "strict" | "flexible",
+      discountPercent: (p as any).discountPercent != null ? String((p as any).discountPercent) : "",
+      discountExpiresAt: (p as any).discountExpiresAt
+        ? new Date((p as any).discountExpiresAt as string | number | Date).toISOString().slice(0, 10)
+        : "",
       isActive: p.isActive, isPublished: p.isPublished, isFeatured: p.isFeatured,
       isPresentialSale: p.isPresentialSale, isOnlineSale: p.isOnlineSale,
       sortOrder: String(p.sortOrder), metaTitle: p.metaTitle ?? "", metaDescription: p.metaDescription ?? "",
@@ -164,12 +265,17 @@ export default function LegoPacksManager() {
     setShowForm(true);
   };
   const handleSave = () => {
-    const payload = { ...form, sortOrder: parseInt(form.sortOrder) || 0 };
+    const payload = {
+      ...form,
+      sortOrder: parseInt(form.sortOrder) || 0,
+      discountPercent: form.discountPercent || null,
+      discountExpiresAt: form.discountExpiresAt || null,
+    };
     if (editId) updateMutation.mutate({ id: editId, ...payload });
     else createMutation.mutate(payload);
   };
 
-  const openAddLine = () => { setEditLineId(null); setLineForm(emptyLineForm); setShowLineForm(true); };
+  const openAddLine = () => { setEditLineId(null); setLineForm(emptyLineForm); setProductSearch(""); setShowLineForm(true); };
   const openEditLine = (line: NonNullable<typeof selectedPack>["lines"][0]) => {
     setEditLineId(line.id);
     setLineForm({
@@ -177,6 +283,7 @@ export default function LegoPacksManager() {
       sourceId: String(line.sourceId),
       internalName: line.internalName ?? "",
       groupLabel: line.groupLabel ?? "",
+      isActive: line.isActive,
       isRequired: line.isRequired,
       isOptional: line.isOptional,
       isClientEditable: line.isClientEditable,
@@ -187,6 +294,7 @@ export default function LegoPacksManager() {
       discountValue: String(line.discountValue),
       frontendNote: line.frontendNote ?? "",
     });
+    setProductSearch("");
     setShowLineForm(true);
   };
   const handleSaveLine = () => {
@@ -197,6 +305,7 @@ export default function LegoPacksManager() {
       sourceId: parseInt(lineForm.sourceId),
       internalName: lineForm.internalName || null,
       groupLabel: lineForm.groupLabel || null,
+      isActive: lineForm.isActive,
       isRequired: lineForm.isRequired,
       isOptional: lineForm.isOptional,
       isClientEditable: lineForm.isClientEditable,
@@ -211,7 +320,15 @@ export default function LegoPacksManager() {
     else addLineMutation.mutate(payload);
   };
 
-  const sourceOptions = lineForm.sourceType === "experience" ? experiences : packProducts;
+  const toggleLineActive = (line: NonNullable<typeof selectedPack>["lines"][0]) => {
+    toggleLineActiveMutation.mutate({
+      id: line.id,
+      legoPackId: selectedPackId!,
+      sourceType: line.sourceType as "experience" | "pack",
+      sourceId: line.sourceId,
+      isActive: !line.isActive,
+    });
+  };
 
   return (
     <AdminLayout title="Lego Packs">
@@ -313,15 +430,15 @@ export default function LegoPacksManager() {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="rounded-lg border bg-card p-3">
                     <div className="text-xs text-muted-foreground">Precio base total</div>
-                    <div className="text-lg font-bold">{pricing.totalOriginal.toFixed(2)} €</div>
+                    <div className="text-lg font-bold">{(pricing as any).totalOriginal?.toFixed(2)} €</div>
                   </div>
                   <div className="rounded-lg border bg-card p-3">
                     <div className="text-xs text-muted-foreground">Descuento total</div>
-                    <div className="text-lg font-bold text-orange-500">-{pricing.totalDiscount.toFixed(2)} €</div>
+                    <div className="text-lg font-bold text-orange-500">-{(pricing as any).totalDiscount?.toFixed(2)} €</div>
                   </div>
                   <div className="rounded-lg border bg-accent/10 border-accent/30 p-3">
                     <div className="text-xs text-muted-foreground">Precio final pack</div>
-                    <div className="text-lg font-bold text-accent">{pricing.totalFinal.toFixed(2)} €</div>
+                    <div className="text-lg font-bold text-accent">{(pricing as any).totalFinal?.toFixed(2)} €</div>
                   </div>
                 </div>
               )}
@@ -331,14 +448,14 @@ export default function LegoPacksManager() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
-                      <th className="text-left px-4 py-2 font-medium">Producto origen</th>
-                      <th className="text-left px-4 py-2 font-medium">Grupo</th>
-                      <th className="text-left px-4 py-2 font-medium">Tipo</th>
-                      <th className="text-left px-4 py-2 font-medium">Qty</th>
-                      <th className="text-left px-4 py-2 font-medium">Descuento</th>
-                      <th className="text-left px-4 py-2 font-medium">Precio línea</th>
-                      <th className="text-left px-4 py-2 font-medium">Flags</th>
-                      <th className="px-4 py-2"></th>
+                      <th className="text-left px-3 py-2 font-medium w-8">Act.</th>
+                      <th className="text-left px-3 py-2 font-medium">Producto</th>
+                      <th className="text-left px-3 py-2 font-medium">Grupo</th>
+                      <th className="text-left px-3 py-2 font-medium">Qty</th>
+                      <th className="text-left px-3 py-2 font-medium">Dto.</th>
+                      <th className="text-left px-3 py-2 font-medium">Precio</th>
+                      <th className="text-left px-3 py-2 font-medium">Flags</th>
+                      <th className="px-3 py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -350,45 +467,53 @@ export default function LegoPacksManager() {
                       </tr>
                     )}
                     {(selectedPack?.lines ?? []).map((line) => {
-                      const pricingLine = pricing?.lines.find((l) => l.lineId === line.id);
+                      const pricingLine = (pricing as any)?.lines?.find((l: any) => l.lineId === line.id);
                       return (
-                        <tr key={line.id} className="border-t hover:bg-muted/30">
-                          <td className="px-4 py-2">
+                        <tr key={line.id} className={cn("border-t hover:bg-muted/30 transition-colors", !line.isActive && "opacity-50 bg-muted/20")}>
+                          {/* Checkbox de disponibilidad */}
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleLineActive(line)}
+                              className="text-muted-foreground hover:text-foreground transition-colors"
+                              title={line.isActive ? "Desactivar línea" : "Activar línea"}
+                            >
+                              {line.isActive
+                                ? <CheckSquare className="w-4 h-4 text-green-600" />
+                                : <Square className="w-4 h-4" />
+                              }
+                            </button>
+                          </td>
+                          <td className="px-3 py-2">
                             <div className="font-medium">{pricingLine?.sourceName ?? `ID ${line.sourceId}`}</div>
                             <div className="text-xs text-muted-foreground">{line.internalName || line.sourceType}</div>
                           </td>
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-2">
                             {line.groupLabel ? (
                               <Badge variant="outline" className="text-xs">{line.groupLabel}</Badge>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-2">
-                            <Badge variant={line.sourceType === "experience" ? "default" : "secondary"} className="text-xs">
-                              {line.sourceType === "experience" ? "Exp" : "Pack"}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-2">{line.defaultQuantity}</td>
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-2">{line.defaultQuantity}</td>
+                          <td className="px-3 py-2">
                             {parseFloat(String(line.discountValue)) > 0 ? (
                               <span className="text-orange-500 font-medium">
                                 {line.discountType === "percent" ? `${line.discountValue}%` : `${line.discountValue}€`}
                               </span>
                             ) : "—"}
                           </td>
-                          <td className="px-4 py-2 font-medium">
+                          <td className="px-3 py-2 font-medium">
                             {pricingLine ? `${pricingLine.finalPrice.toFixed(2)} €` : "—"}
                           </td>
-                          <td className="px-4 py-2">
-                            <div className="flex gap-1">
+                          <td className="px-3 py-2">
+                            <div className="flex gap-1 flex-wrap">
                               {line.isRequired && <Badge variant="outline" className="text-xs bg-red-50 text-red-600 border-red-200">Req</Badge>}
                               {line.isOptional && <Badge variant="outline" className="text-xs bg-blue-50 text-blue-600 border-blue-200">Opt</Badge>}
-                              {line.isClientEditable && <Badge variant="outline" className="text-xs bg-green-50 text-green-600 border-green-200">Edit</Badge>}
                               {!line.isClientVisible && <Badge variant="outline" className="text-xs bg-gray-50 text-gray-500 border-gray-200">Oculto</Badge>}
                             </div>
                           </td>
-                          <td className="px-4 py-2">
+                          <td className="px-3 py-2">
                             <div className="flex gap-1">
                               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditLine(line)}>
                                 <Pencil className="w-3 h-3" />
@@ -409,11 +534,11 @@ export default function LegoPacksManager() {
               </div>
 
               {/* Pricing detail */}
-              {pricing && pricing.lines.length > 0 && (
+              {pricing && (pricing as any).lines?.length > 0 && (
                 <div className="rounded-lg border bg-card p-4">
                   <h3 className="font-semibold mb-3 text-sm">Desglose de precios por línea</h3>
                   <div className="space-y-2">
-                    {pricing.lines.map((l) => (
+                    {(pricing as any).lines.map((l: any) => (
                       <div key={l.lineId} className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground">{l.groupLabel ? `[${l.groupLabel}]` : ""}</span>
@@ -449,6 +574,7 @@ export default function LegoPacksManager() {
               <TabsTrigger value="config">Configuración</TabsTrigger>
             </TabsList>
 
+            {/* ── General tab ── */}
             <TabsContent value="general" className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -491,28 +617,72 @@ export default function LegoPacksManager() {
                 </div>
                 <div>
                   <Label>Etiqueta de precio</Label>
-                  <Input value={form.priceLabel} onChange={(e) => setForm({ ...form, priceLabel: e.target.value })} placeholder="desde X€/persona" />
+                  <Input value={form.priceLabel} onChange={(e) => setForm({ ...form, priceLabel: e.target.value })} placeholder="desde 45€/persona" />
                 </div>
               </div>
               <div>
                 <Label>Público objetivo</Label>
-                <Input value={form.targetAudience} onChange={(e) => setForm({ ...form, targetAudience: e.target.value })} placeholder="Familias, grupos, empresas..." />
+                <Input value={form.targetAudience} onChange={(e) => setForm({ ...form, targetAudience: e.target.value })} placeholder="Familias y amigos" />
               </div>
-            </TabsContent>
 
-            <TabsContent value="media" className="space-y-4 mt-4">
-              <div>
-                <Label>Imagen de portada (URL)</Label>
-                <Input value={form.coverImageUrl} onChange={(e) => setForm({ ...form, coverImageUrl: e.target.value })} placeholder="https://..." />
-              </div>
-              {(["image1", "image2", "image3", "image4"] as const).map((key, i) => (
-                <div key={key}>
-                  <Label>Imagen {i + 1} (URL)</Label>
-                  <Input value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} placeholder="https://..." />
+              {/* Descuento promocional */}
+              <div className="border border-amber-200 bg-amber-50/60 rounded-xl p-4">
+                <p className="text-sm font-semibold text-amber-700 flex items-center gap-1.5 mb-3">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-xs font-bold">%</span>
+                  Descuento promocional
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Descuento (%)</label>
+                    <div className="relative mt-1">
+                      <input
+                        type="number" min="0" max="100" step="0.5"
+                        value={form.discountPercent}
+                        onChange={(e) => setForm({ ...form, discountPercent: e.target.value })}
+                        placeholder="Ej: 10"
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Válido hasta</label>
+                    <input
+                      type="date"
+                      value={form.discountExpiresAt}
+                      onChange={(e) => setForm({ ...form, discountExpiresAt: e.target.value })}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm mt-1"
+                    />
+                  </div>
                 </div>
-              ))}
+                {form.discountPercent && (
+                  <p className="text-xs text-amber-600 mt-2">
+                    El precio con descuento se calculará automáticamente y se mostrará en la ficha pública.
+                    {!form.discountExpiresAt && " Sin fecha de caducidad: el descuento estará activo indefinidamente."}
+                  </p>
+                )}
+              </div>
             </TabsContent>
 
+            {/* ── Media tab ── */}
+            <TabsContent value="media" className="space-y-4 mt-4">
+              <p className="text-xs text-muted-foreground">Haz clic en cada zona para subir una imagen, o arrástrala directamente. Formatos: JPG, PNG, WEBP. Máx. 10 MB.</p>
+              <div>
+                <p className="text-sm font-medium mb-2">Imagen de portada</p>
+                <ImageUploadZone label="Portada" value={form.coverImageUrl} onChange={(url) => setForm(f => ({ ...f, coverImageUrl: url }))} index={0} />
+              </div>
+              <div>
+                <p className="text-sm font-medium mb-2">Galería de imágenes</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <ImageUploadZone label="Imagen 1" value={form.image1} onChange={(url) => setForm(f => ({ ...f, image1: url }))} index={1} />
+                  <ImageUploadZone label="Imagen 2" value={form.image2} onChange={(url) => setForm(f => ({ ...f, image2: url }))} index={2} />
+                  <ImageUploadZone label="Imagen 3" value={form.image3} onChange={(url) => setForm(f => ({ ...f, image3: url }))} index={3} />
+                  <ImageUploadZone label="Imagen 4" value={form.image4} onChange={(url) => setForm(f => ({ ...f, image4: url }))} index={4} />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ── Config tab ── */}
             <TabsContent value="config" className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -566,35 +736,78 @@ export default function LegoPacksManager() {
       </Dialog>
 
       {/* ── Line form dialog ── */}
-      <Dialog open={showLineForm} onOpenChange={(v) => { if (!v) { setShowLineForm(false); setEditLineId(null); } }}>
+      <Dialog open={showLineForm} onOpenChange={(v) => { if (!v) { setShowLineForm(false); setEditLineId(null); setProductSearch(""); } }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editLineId ? "Editar línea" : "Añadir línea"}</DialogTitle>
+            <DialogTitle>{editLineId ? "Editar línea" : "Añadir línea al pack"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Tipo de producto</Label>
-                <Select value={lineForm.sourceType} onValueChange={(v) => setLineForm({ ...lineForm, sourceType: v as "experience" | "pack", sourceId: "" })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="experience">Experiencia</SelectItem>
-                    <SelectItem value="pack">Pack</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Producto *</Label>
-                <Select value={lineForm.sourceId} onValueChange={(v) => setLineForm({ ...lineForm, sourceId: v })}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
-                  <SelectContent>
-                    {(sourceOptions as any[]).map((opt: any) => (
-                      <SelectItem key={opt.id} value={String(opt.id)}>{opt.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Tipo de producto */}
+            <div>
+              <Label>Tipo de producto</Label>
+              <div className="flex gap-2 mt-1">
+                {(["experience", "pack"] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setLineForm({ ...lineForm, sourceType: type, sourceId: "" })}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all",
+                      lineForm.sourceType === type
+                        ? "border-accent bg-accent/10 text-accent"
+                        : "border-border hover:border-accent/50"
+                    )}
+                  >
+                    {type === "experience" ? "Experiencia" : "Pack simple"}
+                  </button>
+                ))}
               </div>
             </div>
+
+            {/* Buscador de productos del catálogo */}
+            <div>
+              <Label>Buscar producto del catálogo *</Label>
+              <div className="relative mt-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  placeholder={`Buscar ${lineForm.sourceType === "experience" ? "experiencia" : "pack"}...`}
+                  className="pl-9"
+                />
+              </div>
+              <div className="mt-2 max-h-48 overflow-y-auto border rounded-lg divide-y">
+                {catalogOptions.length === 0 && (
+                  <div className="text-center text-muted-foreground py-4 text-sm">
+                    {productSearch ? "Sin resultados" : `Cargando ${lineForm.sourceType === "experience" ? "experiencias" : "packs"}...`}
+                  </div>
+                )}
+                {catalogOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setLineForm({ ...lineForm, sourceId: String(opt.id), internalName: lineForm.internalName || opt.title });
+                      setProductSearch(opt.title);
+                    }}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors flex items-center justify-between",
+                      lineForm.sourceId === String(opt.id) && "bg-accent/10 text-accent font-medium"
+                    )}
+                  >
+                    <span>{opt.title}</span>
+                    <span className="text-xs text-muted-foreground ml-2 flex-shrink-0">{opt.price ? `${parseFloat(opt.price as string).toFixed(2)} €` : ""}</span>
+                  </button>
+                ))}
+              </div>
+              {lineForm.sourceId && (
+                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                  <CheckSquare className="w-3 h-3" />
+                  Producto seleccionado (ID {lineForm.sourceId})
+                </p>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Nombre interno</Label>
@@ -629,14 +842,17 @@ export default function LegoPacksManager() {
               <Label>Nota para el cliente (frontend)</Label>
               <Textarea rows={2} value={lineForm.frontendNote} onChange={(e) => setLineForm({ ...lineForm, frontendNote: e.target.value })} placeholder="Texto informativo visible al cliente..." />
             </div>
+
+            {/* Flags de comportamiento */}
             <div className="grid grid-cols-2 gap-3">
               {([
-                { key: "isRequired", label: "Obligatoria" },
-                { key: "isOptional", label: "Opcional (cliente puede quitar)" },
-                { key: "isClientEditable", label: "Cliente puede editar" },
-                { key: "isClientVisible", label: "Visible para el cliente" },
-                { key: "isQuantityEditable", label: "Cantidad editable" },
-              ] as const).map(({ key, label }) => (
+                { key: "isActive" as const, label: "Línea activa", color: "green" },
+                { key: "isRequired" as const, label: "Obligatoria (no se puede quitar)", color: "red" },
+                { key: "isOptional" as const, label: "Opcional (cliente puede quitar)", color: "blue" },
+                { key: "isClientEditable" as const, label: "Cliente puede editar", color: "purple" },
+                { key: "isClientVisible" as const, label: "Visible para el cliente", color: "gray" },
+                { key: "isQuantityEditable" as const, label: "Cantidad editable", color: "gray" },
+              ]).map(({ key, label }) => (
                 <div key={key} className="flex items-center justify-between rounded-lg border p-2">
                   <Label className="text-xs cursor-pointer">{label}</Label>
                   <Switch
@@ -648,7 +864,7 @@ export default function LegoPacksManager() {
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-            <Button variant="outline" onClick={() => { setShowLineForm(false); setEditLineId(null); }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => { setShowLineForm(false); setEditLineId(null); setProductSearch(""); }}>Cancelar</Button>
             <Button onClick={handleSaveLine} disabled={addLineMutation.isPending || updateLineMutation.isPending || !lineForm.sourceId}>
               <Save className="w-4 h-4 mr-2" />
               {editLineId ? "Guardar cambios" : "Añadir línea"}
