@@ -12,6 +12,7 @@ import Experiences from "./pages/Experiences";
 import ExperienceDetail from "./pages/ExperienceDetail";
 import Gallery from "./pages/Gallery";
 import BudgetRequest from "./pages/BudgetRequest";
+import CanjearCupon from "./pages/CanjearCupon";
 import Contact from "./pages/Contact";
 import Locations from "./pages/Locations";
 import PacksHome from "./pages/PacksHome";
@@ -99,6 +100,7 @@ const SettlementsManager = lazy(() => import("./pages/admin/suppliers/Settlement
 
 // Marketing
 const DiscountCodesManager = lazy(() => import("./pages/DiscountCodesManager"));
+const CuponesManager = lazy(() => import("./pages/admin/marketing/CuponesManager"));
 
 // TPV
 const TpvScreen = lazy(() => import("./pages/admin/tpv/TpvScreen"));
@@ -122,6 +124,7 @@ function Router() {
       <Route path="/experiencias/:slug" component={ExperienceDetail} />
       <Route path="/galeria" component={Gallery} />
       <Route path="/presupuesto" component={BudgetRequest} />
+      <Route path="/canjear-cupon" component={CanjearCupon} />
       <Route path="/presupuesto/:token" component={QuoteAcceptance} />
       <Route path="/contacto" component={Contact} />
       <Route path="/ubicaciones" component={Locations} />
@@ -210,7 +213,9 @@ function Router() {
       <Route path="/admin/fiscal/reav">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
 
       {/* Marketing */}
-      <Route path="/admin/marketing">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
+      <Route path="/admin/marketing">{() => <Suspense fallback={<AdminLoadingFallback />}><CuponesManager /></Suspense>}</Route>
+      <Route path="/admin/marketing/cupones">{() => <Suspense fallback={<AdminLoadingFallback />}><CuponesManager /></Suspense>}</Route>
+      <Route path="/admin/marketing/descuentos">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
       <Route path="/admin/marketing/codigos-descuento">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
 
       {/* Suppliers & Settlements */}

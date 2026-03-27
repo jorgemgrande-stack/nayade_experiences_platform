@@ -1634,3 +1634,80 @@ export const recurringExpenses = mysqlTable("recurring_expenses", {
 });
 export type RecurringExpense = typeof recurringExpenses.$inferSelect;
 export type InsertRecurringExpense = typeof recurringExpenses.$inferInsert;
+
+// ─── TICKETING / CUPONES GROUPON ─────────────────────────────────────────────
+
+// Catálogo de productos ticketing (ocultos en frontend normal)
+export const ticketingProducts = mysqlTable("ticketing_products", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 256 }).notNull(),
+  provider: varchar("provider", { length: 64 }).notNull().default("Groupon"),
+  linkedProductId: int("linkedProductId"), // → experiences.id
+  stationsAllowed: json("stationsAllowed"), // array de strings
+  rules: text("rules"),
+  commission: decimal("commission", { precision: 5, scale: 2 }).default("20.00"),
+  expectedPrice: decimal("expectedPrice", { precision: 10, scale: 2 }),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type TicketingProduct = typeof ticketingProducts.$inferSelect;
+export type InsertTicketingProduct = typeof ticketingProducts.$inferInsert;
+
+// Solicitudes de canje de cupones
+export const couponRedemptions = mysqlTable("coupon_redemptions", {
+  id: int("id").autoincrement().primaryKey(),
+  provider: varchar("provider", { length: 64 }).notNull().default("Groupon"),
+  productTicketingId: int("productTicketingId"), // → ticketingProducts.id
+  productRealId: int("productRealId"), // → experiences.id (asignado tras validación)
+
+  // Datos cliente
+  customerName: varchar("customerName", { length: 256 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  phone: varchar("phone", { length: 32 }),
+
+  // Datos cupón
+  couponCode: varchar("couponCode", { length: 128 }).notNull(),
+  securityCode: varchar("securityCode", { length: 128 }),
+  attachmentUrl: text("attachmentUrl"), // S3 URL del PDF/imagen del cupón
+
+  // Datos de experiencia solicitada
+  requestedDate: varchar("requestedDate", { length: 20 }),
+  station: varchar("station", { length: 128 }),
+  participants: int("participants").default(1),
+  children: int("children").default(0),
+  comments: text("comments"),
+
+  // Estados
+  statusOperational: mysqlEnum("statusOperational", [
+    "recibido", "validado", "reserva_generada", "disfrutado", "incidencia", "cancelado"
+  ]).default("recibido").notNull(),
+  statusFinancial: mysqlEnum("statusFinancial", [
+    "pendiente_canje_proveedor", "canjeado_en_proveedor", "pendiente_cobro", "cobrado", "discrepancia"
+  ]).default("pendiente_canje_proveedor").notNull(),
+
+  // OCR
+  ocrConfidenceScore: int("ocrConfidenceScore"), // 0-100
+  ocrStatus: mysqlEnum("ocrStatus", ["alta", "media", "baja", "conflicto"]),
+  ocrRawData: json("ocrRawData"), // datos extraídos por OCR
+
+  // Antifraude
+  duplicateFlag: boolean("duplicateFlag").default(false).notNull(),
+  duplicateNotes: text("duplicateNotes"),
+
+  // Conciliación financiera
+  realAmount: decimal("realAmount", { precision: 10, scale: 2 }),
+  settlementJustificantUrl: text("settlementJustificantUrl"),
+  settledAt: timestamp("settledAt"),
+
+  // Conversión a reserva
+  reservationId: int("reservationId"), // → reservations.id si se convirtió
+
+  // Admin
+  adminUserId: int("adminUserId"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type CouponRedemption = typeof couponRedemptions.$inferSelect;
+export type InsertCouponRedemption = typeof couponRedemptions.$inferInsert;

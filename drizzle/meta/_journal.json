@@ -169,6 +169,13 @@
       "when": 1774544340104,
       "tag": "0023_clammy_microbe",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1774636785518,
+      "tag": "0024_talented_joystick",
+      "breakpoints": true
     }
   ]
 }

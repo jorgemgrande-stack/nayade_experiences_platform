@@ -140,6 +140,7 @@ import { tpvRouter } from "./routers/tpv";
 import { discountsRouter } from "./routers/discounts";
 import { legoPacksRouter } from "./routers/legoPacks";
 import { expensesModuleRouter } from "./routers/expenses";
+import { ticketingRouter } from "./routers/ticketing";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -1463,6 +1464,7 @@ export const appRouter = router({
   discounts: discountsRouter,
   settlements: settlementsRouter,
   legoPacks: legoPacksRouter,
+  ticketing: ticketingRouter,
   reav: router({
     // Expedientes
     list: adminProcedure

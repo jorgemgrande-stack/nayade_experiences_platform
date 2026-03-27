@@ -26,7 +26,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Package, FileText, Calendar,
   BarChart3, Settings, Users, Image, BedDouble, Sparkles, UtensilsCrossed,
   Receipt, TrendingDown, RefreshCw, Tag, Building2, TrendingUp,
-  List, FileBarChart,
+  List, FileBarChart, Ticket, Percent,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -56,7 +56,10 @@ const menuItems: FlatMenuItem[] = [
   { icon: Tag,          label: "Categ. gastos",      path: "/admin/contabilidad/gastos/categorias",  indent: true },
   { icon: Building2,    label: "Proveedores gastos", path: "/admin/contabilidad/gastos/proveedores", indent: true },
   { icon: TrendingUp,   label: "Cuenta Resultados",  path: "/admin/contabilidad/cuenta-resultados",  indent: true },
-  // ── Otros ─────────────────────────────────────────────────────────────────
+  // ── Marketing ─────────────────────────────────────────────────────────────────────────────────
+  { icon: Ticket,  label: "Cupones & Ticketing", path: "/admin/marketing/cupones",    section: "Marketing" },
+  { icon: Percent, label: "Códigos descuento",   path: "/admin/marketing/descuentos", indent: true },
+  // ── Otros ───────────────────────────────────────────────────────────────────────────────────
   { icon: Receipt,          label: "Fiscal REAV",   path: "/admin/fiscal/reav",       section: "Otros" },
   { icon: BedDouble,        label: "Hotel",         path: "/admin/hotel" },
   { icon: Sparkles,         label: "SPA",           path: "/admin/spa" },

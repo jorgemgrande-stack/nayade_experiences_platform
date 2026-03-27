@@ -1957,3 +1957,19 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Plantilla Presupuesto (emailTemplates.ts): mismo diseño coherente con banda naranja
 - [x] Plantilla Liquidación (suppliers.ts): mismo diseño con banda violeta para documentos internos
 - [x] PDFs de muestra regenerados y enviados a reservas@nayadeexperiences.es
+
+## v22.0 — Módulo Canje de Cupones Groupon (Ticketing)
+- [x] BD: tabla ticketing_products (catálogo de productos Groupon ocultos)
+- [x] BD: tabla coupon_redemptions (solicitudes de canje con estados operativo + financiero)
+- [x] Backend tRPC: ticketing.products (CRUD admin, no visible en frontend normal)
+- [x] Backend tRPC: ticketing.redemptions (create, list, get, update, validate, convertToReservation)
+- [x] Backend: motor de validación (duplicidad dura/blanda, estados)
+- [x] Backend: motor OCR asistido (extracción texto PDF/imagen, scoring 0-100)
+- [x] Frontend público: página /canjear-cupon (replica diseño /presupuesto)
+- [x] Admin Marketing > Cupones: listado con filtros, detalle con comparativa OCR
+- [x] Admin Marketing > Incidencias Ticketing: bandeja de revisión
+- [x] Admin Contabilidad > Ticketing/Groupon: liquidaciones, métricas, justificantes
+- [x] Admin Marketing > Productos Ticketing: CRUD catálogo Groupon
+- [x] Sidebar admin: sección Marketing con subsecciones Cupones, Incidencias, Productos Ticketing
+- [x] Rutas App.tsx: /admin/marketing/cupones, /incidencias, /productos-ticketing, /liquidaciones-ticketing
+- [x] Tests Vitest: ticketing module (create, validate, duplicate detection, OCR scoring)
