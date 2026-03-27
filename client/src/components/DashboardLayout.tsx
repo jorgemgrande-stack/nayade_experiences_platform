@@ -1,3 +1,4 @@
+// v21.0 — Financial module submenu (Gastos, Recurrentes, Categorías, Proveedores, Cuenta Resultados)
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
