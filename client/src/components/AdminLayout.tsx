@@ -214,7 +214,10 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     );
   };
 
-  const isActive = (href: string) => location === href || location.startsWith(href + "/");
+  const isActive = (href: string) => {
+    if (href === "/admin") return location === "/admin";
+    return location === href || location.startsWith(href + "/") || location.startsWith(href + "?");
+  };
 
   const filteredNav = navItems.filter((item) => item.roles.includes(userRole));
 

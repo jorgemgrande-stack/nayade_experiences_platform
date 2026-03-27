@@ -1977,3 +1977,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ## v22.1 — Fix: sección Marketing no visible en sidebar
 - [x] Auditar todos los archivos de sidebar/navegación para encontrar cuál se usa realmente en producción
 - [x] Corregir el archivo correcto añadiendo la sección Marketing
+
+## v22.2 — Fix visual CuponesManager + bug sidebar activo
+- [x] Corregir bug sidebar: estado activo se aplica a todos los ítems al hacer clic
+- [x] Reescribir CuponesManager con estilo claro del dashboard (igual que CRM/Contabilidad)
