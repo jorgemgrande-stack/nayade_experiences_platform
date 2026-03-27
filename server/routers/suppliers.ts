@@ -90,6 +90,7 @@ async function generateSettlementPdfAndUpload(data: {
 <body>
   <div class="header">
     <div class="logo-area">
+      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" style="height:72px;width:auto;margin-bottom:8px;display:block;" />
       <h1>NÁYADE EXPERIENCES</h1>
       <p>Los Ángeles de San Rafael, Segovia · reservas@nayadeexperiences.es</p>
       <p>CIF: [CIF_EMPRESA] · Tel: +34 930 34 77 91</p>
