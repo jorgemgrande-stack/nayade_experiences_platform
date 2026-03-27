@@ -1973,3 +1973,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Sidebar admin: sección Marketing con subsecciones Cupones, Incidencias, Productos Ticketing
 - [x] Rutas App.tsx: /admin/marketing/cupones, /incidencias, /productos-ticketing, /liquidaciones-ticketing
 - [x] Tests Vitest: ticketing module (create, validate, duplicate detection, OCR scoring)
+
+## v22.1 — Fix: sección Marketing no visible en sidebar
+- [x] Auditar todos los archivos de sidebar/navegación para encontrar cuál se usa realmente en producción
+- [x] Corregir el archivo correcto añadiendo la sección Marketing

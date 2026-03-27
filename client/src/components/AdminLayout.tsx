@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, FileText, Calendar, BarChart3,
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
-  UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag,
+  UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -149,7 +149,8 @@ const navItems = [
     icon: Tag,
     roles: ["admin"],
     children: [
-      { label: "Códigos de descuento", href: "/admin/marketing/codigos-descuento" },
+      { label: "Cupones & Ticketing", href: "/admin/marketing/cupones" },
+      { label: "Códigos de descuento", href: "/admin/marketing/descuentos" },
     ],
   },
   {
