@@ -2029,3 +2029,6 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Auditar estructura Home.tsx para elegir posición óptima del módulo
 - [x] Diseñar e implementar módulo aspiracional con look & feel coherente con la web
 - [x] Módulo posicionado estratégicamente (entre Testimonios y CTA Final — sección 9)
+
+## v22.6 — Enlace "Canjear Cupón" en menú de navegación
+- [x] Añadir enlace "Canjear Cupón" en el header público junto a "Contacto" (desktop + mobile)

@@ -247,6 +247,12 @@ export default function PublicNav() {
                 Contacto
               </Button>
             </Link>
+            <Link href="/canjear-cupon">
+              <Button variant="ghost" size="sm" className="font-display font-medium rounded-full gap-1.5 text-orange-500 hover:text-orange-600 hover:bg-orange-50">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 flex-shrink-0"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+                Canjear Cupón
+              </Button>
+            </Link>
             <Link href="/presupuesto">
               <Button size="sm" className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-5 shadow-md">
                 Solicitar Presupuesto
@@ -311,6 +317,10 @@ export default function PublicNav() {
           <div className="pt-3 border-t border-border space-y-2">
             <Button variant="outline" className="w-full font-display font-medium rounded-full" onClick={() => mobileNavigate("/contacto")}>
               Contacto
+            </Button>
+            <Button variant="outline" className="w-full font-display font-medium rounded-full border-orange-200 text-orange-500 hover:bg-orange-50 gap-2" onClick={() => mobileNavigate("/canjear-cupon")}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 flex-shrink-0"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+              Canjear Cupón
             </Button>
             <Button className="w-full bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full" onClick={() => mobileNavigate("/presupuesto")}>
               Solicitar Presupuesto
