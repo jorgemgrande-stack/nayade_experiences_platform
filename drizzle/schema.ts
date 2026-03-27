@@ -1703,6 +1703,12 @@ export const couponRedemptions = mysqlTable("coupon_redemptions", {
   // Conversión a reserva
   reservationId: int("reservationId"), // → reservations.id si se convirtió
 
+  // Agrupación multi-cupón
+  submissionId: varchar("submissionId", { length: 64 }), // UUID del envío (varios cupones = mismo submissionId)
+  // Origen y canal
+  originSource: mysqlEnum("originSource", ["web", "admin_manual_entry"]).default("web").notNull(),
+  channelEntry: mysqlEnum("channelEntry", ["web", "email", "whatsapp", "telefono", "presencial", "manual"]).default("web").notNull(),
+  createdByAdminId: int("createdByAdminId"), // → users.id si fue alta manual
   // Admin
   adminUserId: int("adminUserId"),
   notes: text("notes"),
@@ -1711,3 +1717,15 @@ export const couponRedemptions = mysqlTable("coupon_redemptions", {
 });
 export type CouponRedemption = typeof couponRedemptions.$inferSelect;
 export type InsertCouponRedemption = typeof couponRedemptions.$inferInsert;
+
+// ── Configuración de emails automáticos de cupones ──────────────────────────
+export const couponEmailConfig = mysqlTable("coupon_email_config", {
+  id: int("id").autoincrement().primaryKey(),
+  autoSendCouponReceived: boolean("autoSendCouponReceived").default(true).notNull(),
+  autoSendCouponValidated: boolean("autoSendCouponValidated").default(true).notNull(),
+  autoSendInternalAlert: boolean("autoSendInternalAlert").default(true).notNull(),
+  emailMode: mysqlEnum("emailMode", ["per_submission", "per_coupon"]).default("per_submission").notNull(),
+  internalAlertEmail: varchar("internalAlertEmail", { length: 320 }).default("reservas@nayadeexperiences.es").notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type CouponEmailConfig = typeof couponEmailConfig.$inferSelect;

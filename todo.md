@@ -1981,3 +1981,33 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ## v22.2 — Fix visual CuponesManager + bug sidebar activo
 - [x] Corregir bug sidebar: estado activo se aplica a todos los ítems al hacer clic
 - [x] Reescribir CuponesManager con estilo claro del dashboard (igual que CRM/Contabilidad)
+
+## v22.3 — Ampliación sistema de canje de cupones (multi-cupón + alta manual + emails + conciliación)
+- [ ] BD: añadir submission_id, origin_source, channel_entry, created_by_admin_id a coupon_redemptions
+- [ ] BD: añadir tabla coupon_email_config (flags auto_send_received, auto_send_validated, auto_send_internal, email_mode)
+- [ ] Backend: createSubmission (multi-cupón, un envío = N registros con mismo submission_id)
+- [ ] Backend: createManualRedemption (alta manual admin, origin_source=admin_manual_entry)
+- [ ] Backend: emails automáticos (recepción, validación, alerta interna) con config flags
+- [ ] Backend: listSubmissions (agrupado por submission_id)
+- [ ] Backend: conciliación (marcar canje, marcar cobro, importe real, justificante)
+- [ ] Frontend /canjear-cupon: bloque multi-cupón dinámico (+ Añadir otro cupón / eliminar)
+- [ ] Admin CuponesManager: botón "Nuevo canje manual" con formulario completo
+- [ ] Admin CuponesManager: vista agrupada por submission_id
+- [ ] Admin CuponesManager: acciones completas (validar, duplicar, subir adjunto, relanzar OCR, marcar incidencia)
+- [ ] Admin Contabilidad: módulo Ticketing/Conciliación (filtros, marcar canje/cobro, justificante)
+- [ ] Tests Vitest: multi-cupón, alta manual, emails, conciliación
+
+## v22.3 — Ampliación multi-cupón y alta manual (completado)
+- [x] BD: añadir submission_id, origin_source, channel_entry, created_by_admin_id a coupon_redemptions
+- [x] BD: nueva tabla coupon_email_config para configuración de emails automáticos
+- [x] Backend: createSubmission (multi-cupón desde web con emails automáticos)
+- [x] Backend: createManualRedemption (alta manual desde admin)
+- [x] Backend: listSubmissions (vista agrupada por submission_id)
+- [x] Backend: getEmailConfig / updateEmailConfig (configuración de emails)
+- [x] Backend: updateSettlement (conciliación financiera)
+- [x] Frontend /canjear-cupon: soporte multi-cupón dinámico (añadir/quitar cupones)
+- [x] Panel Admin: tab "Envíos" con vista agrupada por submission_id expandible
+- [x] Panel Admin: botón "Alta manual" con modal completo
+- [x] Panel Admin: tab "Config. emails" con toggles y modo de envío
+- [x] Panel Admin: KPIs en cabecera (total, incidencias, pdte. canje, cobrados)
+- [x] Fix TypeScript: 0 errores tras reescritura completa de CuponesManager

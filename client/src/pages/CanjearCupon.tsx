@@ -1,12 +1,12 @@
 /**
  * CanjearCupon — Página pública de canje de cupones Groupon / Wonderbox / etc.
- * Diseño coherente con BudgetRequest: hero split + formulario glass flotante
+ * v22.3: soporte multi-cupón dinámico (añadir/quitar cupones en el mismo envío)
  */
 import React, { useState, useRef } from "react";
 import { Link } from "wouter";
 import {
   CheckCircle, Ticket, Upload, X, AlertTriangle,
-  Shield, Zap, Star, ArrowRight, Info, ChevronDown
+  Shield, Zap, Star, ArrowRight, Info, ChevronDown, Plus, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,14 +28,22 @@ const PROVIDERS = [
 ];
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
-interface FormState {
+interface CouponEntry {
+  id: string; // UUID local para key React
   provider: string;
   productTicketingId: string;
+  couponCode: string;
+  securityCode: string;
+  attachmentFile: File | null;
+  attachmentUrl: string;
+  uploading: boolean;
+  couponCodeError: string;
+}
+
+interface CommonForm {
   customerName: string;
   email: string;
   phone: string;
-  couponCode: string;
-  securityCode: string;
   requestedDate: string;
   station: string;
   participants: number;
@@ -46,130 +54,303 @@ interface FormState {
 interface FormErrors {
   customerName?: string;
   email?: string;
-  couponCode?: string;
   requestedDate?: string;
-  attachment?: string;
 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
-export default function CanjearCupon() {
-  const [form, setForm] = useState<FormState>({
+function makeCoupon(): CouponEntry {
+  return {
+    id: Math.random().toString(36).slice(2),
     provider: "Groupon",
     productTicketingId: "",
-    customerName: "",
-    email: "",
-    phone: "",
     couponCode: "",
     securityCode: "",
-    requestedDate: "",
-    station: "",
-    participants: 1,
-    children: 0,
-    comments: "",
-  });
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
-  const [attachmentUrl, setAttachmentUrl] = useState<string>("");
-  const [uploading, setUploading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+    attachmentFile: null,
+    attachmentUrl: "",
+    uploading: false,
+    couponCodeError: "",
+  };
+}
+
+// ─── Sub-componente: bloque de un cupón ──────────────────────────────────────
+function CouponBlock({
+  coupon,
+  index,
+  total,
+  products,
+  onUpdate,
+  onRemove,
+}: {
+  coupon: CouponEntry;
+  index: number;
+  total: number;
+  products: { id: number; name: string }[] | undefined;
+  onUpdate: (id: string, patch: Partial<CouponEntry>) => void;
+  onRemove: (id: string) => void;
+}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Cargar productos ticketing activos para el proveedor seleccionado
-  const { data: products } = trpc.ticketing.listActiveProducts.useQuery(
-    { provider: form.provider },
-    { enabled: !!form.provider }
-  );
-
-  // Mutation de canje
-  const createRedemption = trpc.ticketing.createRedemption.useMutation({
-    onSuccess: () => {
-      setSubmitted(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    },
-    onError: (err) => {
-      if (err.message.includes("ya ha sido registrado")) {
-        toast.error("Este cupón ya fue registrado. Si crees que es un error, contáctanos.");
-      } else {
-        toast.error("Error al enviar la solicitud. Inténtalo de nuevo.");
-      }
-    },
-  });
-
-  // Upload de adjunto al S3 via endpoint
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
-      setErrors((p) => ({ ...p, attachment: "El archivo no puede superar 10MB" }));
+      toast.error("El archivo no puede superar 10MB");
       return;
     }
     const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
     if (!allowed.includes(file.type)) {
-      setErrors((p) => ({ ...p, attachment: "Solo se admiten imágenes (JPG, PNG, WEBP) o PDF" }));
+      toast.error("Solo se admiten imágenes (JPG, PNG, WEBP) o PDF");
       return;
     }
-
-    setAttachmentFile(file);
-    setErrors((p) => ({ ...p, attachment: "" }));
-    setUploading(true);
-
+    onUpdate(coupon.id, { attachmentFile: file, uploading: true });
     try {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/upload-coupon", { method: "POST", body: formData });
       if (!res.ok) throw new Error("Upload failed");
       const { url } = await res.json() as { url: string };
-      setAttachmentUrl(url);
+      onUpdate(coupon.id, { attachmentUrl: url, uploading: false });
     } catch {
       toast.error("Error al subir el archivo. Puedes continuar sin adjunto.");
-      setAttachmentUrl("");
-    } finally {
-      setUploading(false);
+      onUpdate(coupon.id, { attachmentUrl: "", uploading: false });
     }
   };
 
   const removeFile = () => {
-    setAttachmentFile(null);
-    setAttachmentUrl("");
+    onUpdate(coupon.id, { attachmentFile: null, attachmentUrl: "" });
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-3 relative">
+      {/* Cabecera del bloque */}
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-amber-400 text-xs font-display font-semibold uppercase tracking-wider">
+          Cupón {index + 1}
+        </span>
+        {total > 1 && (
+          <button
+            type="button"
+            onClick={() => onRemove(coupon.id)}
+            className="text-white/25 hover:text-red-400 transition-colors"
+            title="Eliminar este cupón"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* Proveedor */}
+      <div>
+        <Label className="text-white/50 text-xs mb-1.5 block">Proveedor <span className="text-amber-400">*</span></Label>
+        <div className="grid grid-cols-2 gap-1.5">
+          {PROVIDERS.map(({ id, label, logo }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onUpdate(coupon.id, { provider: id, productTicketingId: "" })}
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs transition-all ${
+                coupon.provider === id
+                  ? "bg-amber-500/15 border-amber-500/50 text-amber-300"
+                  : "bg-white/[0.04] border-white/10 text-white/50 hover:border-white/20 hover:text-white/70"
+              }`}
+            >
+              <span>{logo}</span>
+              <span className="font-medium">{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Producto */}
+      {products && products.length > 0 && (
+        <div>
+          <Label className="text-white/50 text-xs mb-1.5 block">Experiencia del cupón</Label>
+          <div className="relative">
+            <select
+              value={coupon.productTicketingId}
+              onChange={(e) => onUpdate(coupon.id, { productTicketingId: e.target.value })}
+              className="w-full h-9 bg-white/[0.07] border border-white/10 text-white rounded-xl text-xs px-3 pr-8 appearance-none focus:border-amber-500/50 focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.07)" }}
+            >
+              <option value="" style={{ background: "#0a1428" }}>Selecciona la experiencia…</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id} style={{ background: "#0a1428" }}>{p.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
+          </div>
+        </div>
+      )}
+
+      {/* Código cupón + Código seguridad */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <Label className="text-white/50 text-xs mb-1.5 block">Código del cupón <span className="text-amber-400">*</span></Label>
+          <Input
+            value={coupon.couponCode}
+            onChange={(e) => onUpdate(coupon.id, { couponCode: e.target.value.toUpperCase(), couponCodeError: "" })}
+            className={`h-9 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-xs font-mono focus:border-amber-500/50 ${coupon.couponCodeError ? "border-red-400/60" : ""}`}
+            placeholder="GRP-XXXXXX"
+          />
+          {coupon.couponCodeError && <p className="text-red-400 text-xs mt-1">{coupon.couponCodeError}</p>}
+        </div>
+        <div>
+          <Label className="text-white/50 text-xs mb-1.5 block">Código de seguridad</Label>
+          <Input
+            value={coupon.securityCode}
+            onChange={(e) => onUpdate(coupon.id, { securityCode: e.target.value.toUpperCase() })}
+            className="h-9 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-xs font-mono focus:border-amber-500/50"
+            placeholder="SEC-XXXX"
+          />
+        </div>
+      </div>
+
+      {/* Adjunto */}
+      <div>
+        <Label className="text-white/50 text-xs mb-1.5 block">Adjuntar cupón (recomendado)</Label>
+        {!coupon.attachmentFile ? (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full h-12 rounded-xl border-2 border-dashed border-white/15 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/25 transition-all flex items-center justify-center gap-2 text-white/40 hover:text-white/60"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="text-xs">Subir imagen o PDF</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 bg-white/[0.06] border border-white/10 rounded-xl px-3 py-2">
+            {coupon.uploading ? (
+              <div className="w-3.5 h-3.5 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin shrink-0" />
+            ) : (
+              <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              </div>
+            )}
+            <span className="flex-1 text-white/60 text-xs truncate">{coupon.attachmentFile.name}</span>
+            <button type="button" onClick={removeFile} className="text-white/30 hover:text-white/60 transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <p className="text-white/25 text-xs mt-1">JPG, PNG, WEBP o PDF · Máx. 10MB</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Componente principal ─────────────────────────────────────────────────────
+export default function CanjearCupon() {
+  const [form, setForm] = useState<CommonForm>({
+    customerName: "",
+    email: "",
+    phone: "",
+    requestedDate: "",
+    station: "",
+    participants: 1,
+    children: 0,
+    comments: "",
+  });
+  const [coupons, setCoupons] = useState<CouponEntry[]>([makeCoupon()]);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<{ totalAccepted: number; totalRejected: number } | null>(null);
+
+  // Cargar productos activos (del primer proveedor seleccionado como referencia)
+  const { data: products } = trpc.ticketing.listActiveProducts.useQuery(
+    { provider: coupons[0]?.provider ?? "Groupon" },
+    { enabled: true }
+  );
+
+  const createSubmission = trpc.ticketing.createSubmission.useMutation({
+    onSuccess: (data) => {
+      setSubmissionResult({ totalAccepted: data.totalAccepted, totalRejected: data.totalRejected });
+      setSubmitted(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    onError: (err) => {
+      if (err.message.includes("duplicado") || err.message.includes("registrado")) {
+        toast.error("Uno o más cupones ya han sido registrados. Comprueba los códigos.");
+      } else {
+        toast.error("Error al enviar la solicitud. Inténtalo de nuevo.");
+      }
+    },
+  });
+
+  const setCommon = (field: keyof CommonForm, value: string | number) => {
+    setForm((p) => ({ ...p, [field]: value }));
+    if (field in errors) setErrors((p) => ({ ...p, [field]: "" }));
+  };
+
+  const updateCoupon = (id: string, patch: Partial<CouponEntry>) => {
+    setCoupons((prev) => prev.map((c) => c.id === id ? { ...c, ...patch } : c));
+  };
+
+  const removeCoupon = (id: string) => {
+    setCoupons((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const addCoupon = () => {
+    if (coupons.length >= 5) {
+      toast.info("Máximo 5 cupones por envío. Para más, contacta con nosotros.");
+      return;
+    }
+    setCoupons((prev) => [...prev, makeCoupon()]);
   };
 
   const validate = (): boolean => {
     const errs: FormErrors = {};
     if (!form.customerName.trim()) errs.customerName = "El nombre es obligatorio";
     if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = "Email inválido";
-    if (!form.couponCode.trim()) errs.couponCode = "El código del cupón es obligatorio";
     if (!form.requestedDate) errs.requestedDate = "Selecciona una fecha aproximada";
     setErrors(errs);
-    return Object.keys(errs).length === 0;
+
+    // Validar cupones
+    let couponValid = true;
+    setCoupons((prev) => prev.map((c) => {
+      if (!c.couponCode.trim()) {
+        couponValid = false;
+        return { ...c, couponCodeError: "El código es obligatorio" };
+      }
+      return c;
+    }));
+
+    return Object.keys(errs).length === 0 && couponValid;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+    const anyUploading = coupons.some((c) => c.uploading);
+    if (anyUploading) {
+      toast.info("Espera a que terminen de subirse los archivos adjuntos.");
+      return;
+    }
 
-    createRedemption.mutate({
-      provider: form.provider,
-      productTicketingId: form.productTicketingId ? parseInt(form.productTicketingId) : undefined,
+    createSubmission.mutate({
       customerName: form.customerName,
       email: form.email,
       phone: form.phone || undefined,
-      couponCode: form.couponCode.trim().toUpperCase(),
-      securityCode: form.securityCode.trim() || undefined,
-      attachmentUrl: attachmentUrl || undefined,
       requestedDate: form.requestedDate || undefined,
       station: form.station || undefined,
       participants: form.participants,
       children: form.children,
       comments: form.comments || undefined,
+      coupons: coupons.map((c) => ({
+        provider: c.provider,
+        productTicketingId: c.productTicketingId ? parseInt(c.productTicketingId) : undefined,
+        couponCode: c.couponCode.trim().toUpperCase(),
+        securityCode: c.securityCode.trim() || undefined,
+        attachmentUrl: c.attachmentUrl || undefined,
+      })),
     });
-  };
-
-  const set = (field: keyof FormState, value: string | number) => {
-    setForm((p) => ({ ...p, [field]: value }));
-    if (field in errors) setErrors((p) => ({ ...p, [field]: "" }));
   };
 
   // ─── Pantalla de éxito ────────────────────────────────────────────────────
@@ -185,20 +366,26 @@ export default function CanjearCupon() {
             </div>
             <h2 className="text-5xl font-heading font-bold text-white mb-4">¡Recibido!</h2>
             <p className="text-xl text-white/75 mb-3 font-display">Tu solicitud de canje está en proceso.</p>
+            {submissionResult && submissionResult.totalRejected > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 mb-6 text-left">
+                <p className="text-amber-300 text-sm font-medium mb-1">
+                  ⚠️ {submissionResult.totalAccepted} cupón{submissionResult.totalAccepted !== 1 ? "es" : ""} aceptado{submissionResult.totalAccepted !== 1 ? "s" : ""}
+                </p>
+                <p className="text-amber-400/70 text-xs">
+                  {submissionResult.totalRejected} cupón{submissionResult.totalRejected !== 1 ? "es" : ""} no pudo procesarse por ser duplicado. Contacta con nosotros si crees que es un error.
+                </p>
+              </div>
+            )}
             <p className="text-white/55 mb-10 leading-relaxed">
-              Nuestro equipo revisará tu cupón y te confirmará la reserva en
+              Nuestro equipo revisará {coupons.length > 1 ? `tus ${coupons.length} cupones` : "tu cupón"} y te confirmará la reserva en
               <strong className="text-amber-400"> menos de 24 horas</strong>.
             </p>
             <div className="bg-white/[0.08] rounded-2xl p-5 mb-8 text-left border border-white/10">
               <p className="text-white/40 text-xs mb-3 font-display uppercase tracking-wider">Resumen de tu solicitud</p>
               <div className="space-y-2 text-sm text-white/70">
                 <div className="flex justify-between">
-                  <span className="text-white/40">Proveedor</span>
-                  <span className="font-medium">{form.provider}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-white/40">Código cupón</span>
-                  <span className="font-mono font-medium text-amber-300">{form.couponCode.toUpperCase()}</span>
+                  <span className="text-white/40">Cupones enviados</span>
+                  <span className="font-medium">{coupons.length}</span>
                 </div>
                 {form.requestedDate && (
                   <div className="flex justify-between">
@@ -236,9 +423,6 @@ export default function CanjearCupon() {
   // ─── Formulario principal ─────────────────────────────────────────────────
   return (
     <PublicLayout>
-      {/* ══════════════════════════════════════════════════════════════════════
-          HERO SPLIT — Pantalla completa: claim izquierda + formulario derecha
-      ══════════════════════════════════════════════════════════════════════ */}
       <section className="relative min-h-screen flex items-stretch overflow-hidden">
 
         {/* Fondo */}
@@ -304,7 +488,7 @@ export default function CanjearCupon() {
           </div>
 
           {/* ── Columna derecha: Formulario glass flotante ───────────────── */}
-          <div className="w-full lg:w-[480px] xl:w-[520px] shrink-0 lg:py-8">
+          <div className="w-full lg:w-[500px] xl:w-[540px] shrink-0 lg:py-8">
             <div
               className="rounded-3xl overflow-hidden shadow-2xl"
               style={{
@@ -320,216 +504,133 @@ export default function CanjearCupon() {
 
               {/* Encabezado */}
               <div className="px-7 pt-6 pb-4 border-b border-white/[0.07]">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
-                    <Ticket className="w-4.5 h-4.5 text-amber-400" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
+                      <Ticket className="w-4 h-4 text-amber-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-white font-heading font-bold text-xl">Solicitud de canje</h2>
+                      <p className="text-white/45 text-sm mt-0.5">Confirmaremos tu reserva en menos de 24h</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-white font-heading font-bold text-xl">Solicitud de canje</h2>
-                    <p className="text-white/45 text-sm mt-0.5">Confirmaremos tu reserva en menos de 24h</p>
-                  </div>
+                  {coupons.length > 1 && (
+                    <span className="bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-semibold px-2.5 py-1 rounded-full">
+                      {coupons.length} cupones
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* Formulario con scroll interno */}
-              <div className="overflow-y-auto max-h-[calc(100vh-260px)] lg:max-h-[calc(100vh-200px)]">
+              <div className="overflow-y-auto max-h-[calc(100vh-240px)] lg:max-h-[calc(100vh-180px)]">
                 <form onSubmit={handleSubmit} className="px-7 py-5 space-y-5">
 
-                  {/* Proveedor */}
+                  {/* ── Datos del cliente (comunes a todos los cupones) ── */}
                   <div>
-                    <Label className="text-white/50 text-xs mb-2 block">Proveedor del cupón <span className="text-amber-400">*</span></Label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {PROVIDERS.map(({ id, label, logo }) => (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => { set("provider", id); set("productTicketingId", ""); }}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition-all ${
-                            form.provider === id
-                              ? "bg-amber-500/15 border-amber-500/50 text-amber-300"
-                              : "bg-white/[0.04] border-white/10 text-white/50 hover:border-white/20 hover:text-white/70"
-                          }`}
-                        >
-                          <span>{logo}</span>
-                          <span className="font-medium">{label}</span>
-                        </button>
+                    <p className="text-white/35 text-xs font-display uppercase tracking-wider mb-3">Tus datos</p>
+
+                    {/* Nombre + Email */}
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Nombre <span className="text-amber-400">*</span></Label>
+                        <Input
+                          value={form.customerName}
+                          onChange={(e) => setCommon("customerName", e.target.value)}
+                          className={`h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50 ${errors.customerName ? "border-red-400/60" : ""}`}
+                          placeholder="Tu nombre"
+                        />
+                        {errors.customerName && <p className="text-red-400 text-xs mt-1">{errors.customerName}</p>}
+                      </div>
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Email <span className="text-amber-400">*</span></Label>
+                        <Input
+                          type="email"
+                          value={form.email}
+                          onChange={(e) => setCommon("email", e.target.value)}
+                          className={`h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50 ${errors.email ? "border-red-400/60" : ""}`}
+                          placeholder="tu@email.com"
+                        />
+                        {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+                      </div>
+                    </div>
+
+                    {/* Teléfono + Fecha */}
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Teléfono</Label>
+                        <Input
+                          type="tel"
+                          value={form.phone}
+                          onChange={(e) => setCommon("phone", e.target.value)}
+                          className="h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50"
+                          placeholder="+34 600 000 000"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Fecha preferida <span className="text-amber-400">*</span></Label>
+                        <Input
+                          type="date"
+                          value={form.requestedDate}
+                          min={new Date(Date.now() + 86400000).toISOString().split("T")[0]}
+                          onChange={(e) => setCommon("requestedDate", e.target.value)}
+                          className={`h-10 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-amber-500/50 [color-scheme:dark] ${errors.requestedDate ? "border-red-400/60" : ""}`}
+                        />
+                        {errors.requestedDate && <p className="text-red-400 text-xs mt-1">{errors.requestedDate}</p>}
+                      </div>
+                    </div>
+
+                    {/* Participantes */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Adultos</Label>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setCommon("participants", Math.max(1, form.participants - 1))} className="w-8 h-8 rounded-lg bg-white/[0.07] border border-white/10 text-white/60 hover:bg-white/10 transition-all flex items-center justify-center text-lg leading-none">−</button>
+                          <span className="flex-1 text-center text-white font-medium text-sm">{form.participants}</span>
+                          <button type="button" onClick={() => setCommon("participants", form.participants + 1)} className="w-8 h-8 rounded-lg bg-white/[0.07] border border-white/10 text-white/60 hover:bg-white/10 transition-all flex items-center justify-center text-lg leading-none">+</button>
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-white/50 text-xs mb-1.5 block">Niños</Label>
+                        <div className="flex items-center gap-2">
+                          <button type="button" onClick={() => setCommon("children", Math.max(0, form.children - 1))} className="w-8 h-8 rounded-lg bg-white/[0.07] border border-white/10 text-white/60 hover:bg-white/10 transition-all flex items-center justify-center text-lg leading-none">−</button>
+                          <span className="flex-1 text-center text-white font-medium text-sm">{form.children}</span>
+                          <button type="button" onClick={() => setCommon("children", form.children + 1)} className="w-8 h-8 rounded-lg bg-white/[0.07] border border-white/10 text-white/60 hover:bg-white/10 transition-all flex items-center justify-center text-lg leading-none">+</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Bloque de cupones ── */}
+                  <div>
+                    <p className="text-white/35 text-xs font-display uppercase tracking-wider mb-3">
+                      Tus cupones ({coupons.length})
+                    </p>
+                    <div className="space-y-3">
+                      {coupons.map((coupon, idx) => (
+                        <CouponBlock
+                          key={coupon.id}
+                          coupon={coupon}
+                          index={idx}
+                          total={coupons.length}
+                          products={products}
+                          onUpdate={updateCoupon}
+                          onRemove={removeCoupon}
+                        />
                       ))}
                     </div>
-                  </div>
 
-                  {/* Producto / Experiencia */}
-                  {products && products.length > 0 && (
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Experiencia del cupón</Label>
-                      <div className="relative">
-                        <select
-                          value={form.productTicketingId}
-                          onChange={(e) => set("productTicketingId", e.target.value)}
-                          className="w-full h-10 bg-white/[0.07] border border-white/10 text-white rounded-xl text-sm px-3 pr-8 appearance-none focus:border-amber-500/50 focus:outline-none"
-                          style={{ background: "rgba(255,255,255,0.07)" }}
-                        >
-                          <option value="" style={{ background: "#0a1428" }}>Selecciona la experiencia…</option>
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id} style={{ background: "#0a1428" }}>{p.name}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Nombre + Email */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Nombre <span className="text-amber-400">*</span></Label>
-                      <Input
-                        value={form.customerName}
-                        onChange={(e) => set("customerName", e.target.value)}
-                        className={`h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50 ${errors.customerName ? "border-red-400/60" : ""}`}
-                        placeholder="Tu nombre"
-                      />
-                      {errors.customerName && <p className="text-red-400 text-xs mt-1">{errors.customerName}</p>}
-                    </div>
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Email <span className="text-amber-400">*</span></Label>
-                      <Input
-                        type="email"
-                        value={form.email}
-                        onChange={(e) => set("email", e.target.value)}
-                        className={`h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50 ${errors.email ? "border-red-400/60" : ""}`}
-                        placeholder="tu@email.com"
-                      />
-                      {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
-                    </div>
-                  </div>
-
-                  {/* Teléfono + Fecha */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Teléfono</Label>
-                      <Input
-                        type="tel"
-                        value={form.phone}
-                        onChange={(e) => set("phone", e.target.value)}
-                        className="h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm focus:border-amber-500/50"
-                        placeholder="+34 600 000 000"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Fecha preferida <span className="text-amber-400">*</span></Label>
-                      <Input
-                        type="date"
-                        value={form.requestedDate}
-                        min={new Date(Date.now() + 86400000).toISOString().split("T")[0]}
-                        onChange={(e) => set("requestedDate", e.target.value)}
-                        className={`h-10 bg-white/[0.07] border-white/10 text-white rounded-xl text-sm focus:border-amber-500/50 [color-scheme:dark] ${errors.requestedDate ? "border-red-400/60" : ""}`}
-                      />
-                      {errors.requestedDate && <p className="text-red-400 text-xs mt-1">{errors.requestedDate}</p>}
-                    </div>
-                  </div>
-
-                  {/* Código cupón + Código seguridad */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Código del cupón <span className="text-amber-400">*</span></Label>
-                      <Input
-                        value={form.couponCode}
-                        onChange={(e) => set("couponCode", e.target.value.toUpperCase())}
-                        className={`h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm font-mono focus:border-amber-500/50 ${errors.couponCode ? "border-red-400/60" : ""}`}
-                        placeholder="GRP-XXXXXX"
-                      />
-                      {errors.couponCode && <p className="text-red-400 text-xs mt-1">{errors.couponCode}</p>}
-                    </div>
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Código de seguridad</Label>
-                      <Input
-                        value={form.securityCode}
-                        onChange={(e) => set("securityCode", e.target.value.toUpperCase())}
-                        className="h-10 bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm font-mono focus:border-amber-500/50"
-                        placeholder="SEC-XXXX"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Participantes */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Adultos</Label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => set("participants", Math.max(1, form.participants - 1))}
-                          className="w-8 h-8 rounded-lg bg-white/[0.07] border border-white/10 text-white/60 hover:bg-white/10 transition-all flex items-center justify-center text-lg leading-none"
-                        >−</button>
-                        <span className="flex-1 text-center text-white font-medium text-sm">{form.participants}</span>
-                        <button
-                          type="button"
-                          onClick={() => set("participants", form.participants + 1)}
-                          className="w-8 h-8 rounded-lg bg-white/[0.07] border border-white/10 text-white/60 hover:bg-white/10 transition-all flex items-center justify-center text-lg leading-none"
-                        >+</button>
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="text-white/50 text-xs mb-1.5 block">Niños</Label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => set("children", Math.max(0, form.children - 1))}
-                          className="w-8 h-8 rounded-lg bg-white/[0.07] border border-white/10 text-white/60 hover:bg-white/10 transition-all flex items-center justify-center text-lg leading-none"
-                        >−</button>
-                        <span className="flex-1 text-center text-white font-medium text-sm">{form.children}</span>
-                        <button
-                          type="button"
-                          onClick={() => set("children", form.children + 1)}
-                          className="w-8 h-8 rounded-lg bg-white/[0.07] border border-white/10 text-white/60 hover:bg-white/10 transition-all flex items-center justify-center text-lg leading-none"
-                        >+</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Adjunto del cupón */}
-                  <div>
-                    <Label className="text-white/50 text-xs mb-1.5 block">
-                      Adjuntar cupón (opcional pero recomendado)
-                    </Label>
-                    {!attachmentFile ? (
+                    {/* Botón añadir cupón */}
+                    {coupons.length < 5 && (
                       <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="w-full h-16 rounded-xl border-2 border-dashed border-white/15 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/25 transition-all flex items-center justify-center gap-3 text-white/40 hover:text-white/60"
+                        onClick={addCoupon}
+                        className="mt-3 w-full h-10 rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.04] hover:bg-amber-500/[0.08] hover:border-amber-500/50 transition-all flex items-center justify-center gap-2 text-amber-400/70 hover:text-amber-400 text-xs font-medium"
                       >
-                        <Upload className="w-4 h-4" />
-                        <span className="text-sm">Subir imagen o PDF del cupón</span>
+                        <Plus className="w-3.5 h-3.5" />
+                        Añadir otro cupón
                       </button>
-                    ) : (
-                      <div className="flex items-center gap-3 bg-white/[0.06] border border-white/10 rounded-xl px-4 py-3">
-                        {uploading ? (
-                          <div className="w-4 h-4 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin shrink-0" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center shrink-0">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          </div>
-                        )}
-                        <span className="flex-1 text-white/60 text-xs truncate">{attachmentFile.name}</span>
-                        <button type="button" onClick={removeFile} className="text-white/30 hover:text-white/60 transition-colors">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
                     )}
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                    {errors.attachment && (
-                      <p className="flex items-center gap-1 text-red-400 text-xs mt-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        {errors.attachment}
-                      </p>
-                    )}
-                    <p className="text-white/25 text-xs mt-1">JPG, PNG, WEBP o PDF · Máx. 10MB · Agiliza la validación</p>
                   </div>
 
                   {/* Comentarios */}
@@ -537,7 +638,7 @@ export default function CanjearCupon() {
                     <Label className="text-white/50 text-xs mb-1.5 block">Comentarios (opcional)</Label>
                     <Textarea
                       value={form.comments}
-                      onChange={(e) => set("comments", e.target.value)}
+                      onChange={(e) => setCommon("comments", e.target.value)}
                       className="bg-white/[0.07] border-white/10 text-white placeholder:text-white/25 rounded-xl text-sm resize-none"
                       rows={2}
                       placeholder="Preferencias de horario, necesidades especiales…"
@@ -547,10 +648,10 @@ export default function CanjearCupon() {
                   {/* Submit */}
                   <Button
                     type="submit"
-                    disabled={createRedemption.isPending || uploading}
+                    disabled={createSubmission.isPending || coupons.some((c) => c.uploading)}
                     className="w-full h-12 bg-amber-500 hover:bg-amber-400 text-white font-semibold rounded-2xl text-sm shadow-lg shadow-amber-500/20 transition-all"
                   >
-                    {createRedemption.isPending ? (
+                    {createSubmission.isPending ? (
                       <span className="flex items-center gap-2">
                         <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                         Enviando solicitud…
@@ -558,7 +659,7 @@ export default function CanjearCupon() {
                     ) : (
                       <span className="flex items-center gap-2">
                         <Ticket className="w-4 h-4" />
-                        Solicitar canje de cupón
+                        Solicitar canje{coupons.length > 1 ? ` (${coupons.length} cupones)` : ""}
                       </span>
                     )}
                   </Button>
@@ -580,24 +681,9 @@ export default function CanjearCupon() {
           <h3 className="text-white font-heading font-bold text-2xl mb-8 text-center">¿Cómo funciona el canje?</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              {
-                step: "01",
-                title: "Rellena el formulario",
-                desc: "Introduce los datos de tu cupón y la fecha preferida para la experiencia.",
-                color: "text-amber-400",
-              },
-              {
-                step: "02",
-                title: "Validamos tu cupón",
-                desc: "Nuestro equipo verifica el código con el proveedor y confirma la disponibilidad.",
-                color: "text-sky-400",
-              },
-              {
-                step: "03",
-                title: "¡A disfrutar!",
-                desc: "Recibirás la confirmación por email con todos los detalles de tu reserva.",
-                color: "text-emerald-400",
-              },
+              { step: "01", title: "Rellena el formulario", desc: "Introduce tus datos y los códigos de tus cupones. Puedes enviar hasta 5 cupones en un solo formulario.", color: "text-amber-400" },
+              { step: "02", title: "Validamos tus cupones", desc: "Nuestro equipo verifica los códigos con el proveedor y confirma la disponibilidad para la fecha solicitada.", color: "text-sky-400" },
+              { step: "03", title: "¡A disfrutar!", desc: "Recibirás la confirmación por email con todos los detalles de tu reserva.", color: "text-emerald-400" },
             ].map(({ step, title, desc, color }) => (
               <div key={step} className="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-6">
                 <div className={`text-4xl font-heading font-black ${color} mb-3 opacity-60`}>{step}</div>
@@ -615,18 +701,10 @@ export default function CanjearCupon() {
             </h4>
             <div className="space-y-4 text-sm">
               {[
-                {
-                  q: "¿Qué proveedores son válidos?",
-                  a: "Aceptamos cupones de Groupon, Wonderbox, SmartBox y otros proveedores de experiencias. Si tienes dudas, contáctanos.",
-                },
-                {
-                  q: "¿Cuánto tiempo tengo para canjear?",
-                  a: "Depende de la fecha de caducidad de tu cupón. Revisa las condiciones del proveedor. Recomendamos canjear con al menos 7 días de antelación.",
-                },
-                {
-                  q: "¿Puedo cambiar la fecha una vez confirmada?",
-                  a: "Sí, con 48h de antelación y sujeto a disponibilidad. Contacta con nosotros en reservas@nayadeexperiences.es.",
-                },
+                { q: "¿Qué proveedores son válidos?", a: "Aceptamos cupones de Groupon, Wonderbox, SmartBox y otros proveedores de experiencias. Si tienes dudas, contáctanos." },
+                { q: "¿Puedo enviar varios cupones a la vez?", a: "Sí, puedes añadir hasta 5 cupones en un mismo formulario. Ideal si tienes cupones para toda la familia." },
+                { q: "¿Cuánto tiempo tengo para canjear?", a: "Depende de la fecha de caducidad de tu cupón. Revisa las condiciones del proveedor. Recomendamos canjear con al menos 7 días de antelación." },
+                { q: "¿Puedo cambiar la fecha una vez confirmada?", a: "Sí, con 48h de antelación y sujeto a disponibilidad. Contacta con nosotros en reservas@nayadeexperiences.es." },
               ].map(({ q, a }) => (
                 <div key={q} className="border-b border-white/[0.06] pb-4 last:border-0 last:pb-0">
                   <p className="text-white/70 font-medium mb-1">{q}</p>

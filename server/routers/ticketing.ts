@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import {
   ticketingProducts,
   couponRedemptions,
+  couponEmailConfig,
   experiences,
   reservations,
   clients,
@@ -249,6 +250,44 @@ async function checkDuplicates(couponCode: string, securityCode: string | undefi
 
 // ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
 
+function buildInternalAlertHtml(data: {
+  customerName: string;
+  email: string;
+  phone?: string;
+  coupons: { couponCode: string; provider: string }[];
+  submissionId: string;
+  requestedDate?: string;
+}): string {
+  const couponRows = data.coupons.map((c) =>
+    `<tr><td style="padding:4px 8px;color:#6b7280;">${c.provider}</td><td style="padding:4px 8px;font-family:monospace;font-weight:600;color:#f97316;">${c.couponCode}</td></tr>`
+  ).join("");
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/></head>
+<body style="font-family:Arial,sans-serif;background:#f8fafc;padding:20px;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+    <div style="background:#1a3a6b;padding:20px 28px;">
+      <h2 style="color:#fff;margin:0;font-size:18px;">&#x1F514; Nuevo env\u00edo de cup\u00f3n</h2>
+      <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:12px;">Submission ID: ${data.submissionId}</p>
+    </div>
+    <div style="padding:24px 28px;">
+      <table style="width:100%;font-size:14px;color:#374151;margin-bottom:16px;">
+        <tr><td style="padding:4px 0;color:#6b7280;">Cliente:</td><td style="padding:4px 0;font-weight:600;">${data.customerName}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Email:</td><td style="padding:4px 0;">${data.email}</td></tr>
+        ${data.phone ? `<tr><td style="padding:4px 0;color:#6b7280;">Tel\u00e9fono:</td><td style="padding:4px 0;">${data.phone}</td></tr>` : ""}
+        ${data.requestedDate ? `<tr><td style="padding:4px 0;color:#6b7280;">Fecha solicitada:</td><td style="padding:4px 0;">${data.requestedDate}</td></tr>` : ""}
+      </table>
+      <p style="font-weight:700;color:#1a3a6b;margin:0 0 8px;">Cup\u00f3n${data.coupons.length > 1 ? "es" : ""} (${data.coupons.length}):</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead><tr style="background:#f0f7ff;"><th style="padding:6px 8px;text-align:left;color:#1a3a6b;">Proveedor</th><th style="padding:6px 8px;text-align:left;color:#1a3a6b;">C\u00f3digo</th></tr></thead>
+        <tbody>${couponRows}</tbody>
+      </table>
+      <div style="margin-top:20px;padding:12px 16px;background:#fef3c7;border-radius:8px;">
+        <a href="https://nayade-shop-av298fs8.manus.space/admin/marketing/cupones" style="color:#92400e;font-weight:600;font-size:13px;">&#x1F517; Ver en el CRM</a>
+      </div>
+    </div>
+  </div>
+</body></html>`;
+}
+
 function buildRedemptionConfirmationHtml(data: {
   customerName: string;
   couponCode: string;
@@ -377,6 +416,254 @@ export const ticketingRouter = router({
     }),
 
   // ── SOLICITUDES DE CANJE ─────────────────────────────────────────────────
+
+  /** Público: crear múltiples cupones en un mismo envío (multi-cupón) */
+  createSubmission: publicProcedure
+    .input(z.object({
+      customerName: z.string().min(1),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      requestedDate: z.string().optional(),
+      station: z.string().optional(),
+      participants: z.number().int().min(1).default(1),
+      children: z.number().int().min(0).default(0),
+      comments: z.string().optional(),
+      coupons: z.array(z.object({
+        provider: z.string().default("Groupon"),
+        productTicketingId: z.number().optional(),
+        couponCode: z.string().min(1),
+        securityCode: z.string().optional(),
+        attachmentUrl: z.string().url().optional(),
+      })).min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const submissionId = crypto.randomUUID();
+      const results: { redemptionId: number; couponCode: string; softDuplicate: boolean; hardDuplicate: boolean }[] = [];
+      const [emailCfg] = await db.select().from(couponEmailConfig).limit(1);
+      const cfg = emailCfg ?? { autoSendCouponReceived: true, autoSendInternalAlert: true, autoSendCouponValidated: true, emailMode: "per_submission" as const, internalAlertEmail: COPY_EMAIL };
+
+      for (const coupon of input.coupons) {
+        const dupCheck = await checkDuplicates(coupon.couponCode, coupon.securityCode, input.email, input.phone, input.requestedDate, coupon.productTicketingId);
+        if (dupCheck.hardDuplicate) {
+          results.push({ redemptionId: -1, couponCode: coupon.couponCode, softDuplicate: false, hardDuplicate: true });
+          continue;
+        }
+        let productName = "Experiencia Náyade";
+        if (coupon.productTicketingId) {
+          const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, coupon.productTicketingId)).limit(1);
+          if (prod) productName = prod.name;
+        }
+        const [result] = await db.insert(couponRedemptions).values({
+          provider: coupon.provider,
+          productTicketingId: coupon.productTicketingId ?? null,
+          customerName: input.customerName,
+          email: input.email,
+          phone: input.phone ?? null,
+          couponCode: coupon.couponCode,
+          securityCode: coupon.securityCode ?? null,
+          attachmentUrl: coupon.attachmentUrl ?? null,
+          requestedDate: input.requestedDate ?? null,
+          station: input.station ?? null,
+          participants: input.participants,
+          children: input.children,
+          comments: input.comments ?? null,
+          statusOperational: "recibido",
+          statusFinancial: "pendiente_canje_proveedor",
+          duplicateFlag: dupCheck.softDuplicate,
+          duplicateNotes: dupCheck.notes || null,
+          submissionId,
+          originSource: "web",
+          channelEntry: "web",
+        });
+        const redemptionId = (result as { insertId: number }).insertId;
+        results.push({ redemptionId, couponCode: coupon.couponCode, softDuplicate: dupCheck.softDuplicate, hardDuplicate: false });
+        if (coupon.attachmentUrl) {
+          const attachUrl = coupon.attachmentUrl;
+          const pName = productName;
+          setImmediate(async () => {
+            try {
+              const ocr = await runOcrExtraction(attachUrl, { couponCode: coupon.couponCode, securityCode: coupon.securityCode, productName: pName, customerName: input.customerName });
+              await db.update(couponRedemptions).set({ ocrConfidenceScore: ocr.score, ocrStatus: ocr.status, ocrRawData: ocr.rawData, statusOperational: ocr.score >= 90 ? "validado" : "recibido" }).where(eq(couponRedemptions.id, redemptionId));
+            } catch (err) { console.error("[Ticketing OCR]", err); }
+          });
+        }
+        if (cfg.autoSendCouponReceived && cfg.emailMode === "per_coupon") {
+          sendEmail({ to: input.email, subject: `Hemos recibido tu solicitud de canje \u2014 ${coupon.provider}`, html: buildRedemptionConfirmationHtml({ customerName: input.customerName, couponCode: coupon.couponCode, provider: coupon.provider, productName, requestedDate: input.requestedDate }) }).catch(console.error);
+        }
+      }
+
+      const validResults = results.filter((r) => r.redemptionId > 0);
+      if (cfg.autoSendCouponReceived && cfg.emailMode !== "per_coupon" && validResults.length > 0) {
+        const firstCoupon = input.coupons[0];
+        sendEmail({ to: input.email, subject: `Hemos recibido tu solicitud de canje (${validResults.length} cup\u00f3n${validResults.length > 1 ? "es" : ""})`, html: buildRedemptionConfirmationHtml({ customerName: input.customerName, couponCode: validResults.map((r) => r.couponCode).join(", "), provider: firstCoupon.provider, productName: `${validResults.length} experiencia${validResults.length > 1 ? "s" : ""}`, requestedDate: input.requestedDate }) }).catch(console.error);
+      }
+      if (cfg.autoSendInternalAlert && validResults.length > 0) {
+        sendEmail({ to: cfg.internalAlertEmail, subject: `[Ticketing] Nuevo env\u00edo: ${validResults.length} cup\u00f3n${validResults.length > 1 ? "es" : ""} \u2014 ${input.customerName}`, html: buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: input.coupons.map((c) => ({ couponCode: c.couponCode, provider: c.provider })), submissionId, requestedDate: input.requestedDate }) }).catch(console.error);
+      }
+      return { success: true, submissionId, results, totalAccepted: validResults.length, totalRejected: results.length - validResults.length };
+    }),
+
+  /** Admin: alta manual de cupón */
+  createManualRedemption: adminProc
+    .input(z.object({
+      provider: z.string().default("Groupon"),
+      productTicketingId: z.number().optional(),
+      customerName: z.string().min(1),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      couponCode: z.string().min(1),
+      securityCode: z.string().optional(),
+      attachmentUrl: z.string().url().optional(),
+      requestedDate: z.string().optional(),
+      station: z.string().optional(),
+      participants: z.number().int().min(1).default(1),
+      children: z.number().int().min(0).default(0),
+      comments: z.string().optional(),
+      channelEntry: z.enum(["web", "email", "whatsapp", "telefono", "presencial", "manual"]).default("manual"),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const dupCheck = await checkDuplicates(input.couponCode, input.securityCode, input.email, input.phone, input.requestedDate, input.productTicketingId);
+      if (dupCheck.hardDuplicate) throw new TRPCError({ code: "CONFLICT", message: "Código de cupón duplicado." });
+      let productName = "Experiencia Náyade";
+      if (input.productTicketingId) {
+        const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, input.productTicketingId)).limit(1);
+        if (prod) productName = prod.name;
+      }
+      const submissionId = crypto.randomUUID();
+      const [result] = await db.insert(couponRedemptions).values({
+        provider: input.provider,
+        productTicketingId: input.productTicketingId ?? null,
+        customerName: input.customerName,
+        email: input.email,
+        phone: input.phone ?? null,
+        couponCode: input.couponCode,
+        securityCode: input.securityCode ?? null,
+        attachmentUrl: input.attachmentUrl ?? null,
+        requestedDate: input.requestedDate ?? null,
+        station: input.station ?? null,
+        participants: input.participants,
+        children: input.children,
+        comments: input.comments ?? null,
+        notes: input.notes ?? null,
+        statusOperational: "recibido",
+        statusFinancial: "pendiente_canje_proveedor",
+        duplicateFlag: dupCheck.softDuplicate,
+        duplicateNotes: dupCheck.notes || null,
+        submissionId,
+        originSource: "admin_manual_entry",
+        channelEntry: input.channelEntry,
+        createdByAdminId: ctx.user.id,
+      });
+      const redemptionId = (result as { insertId: number }).insertId;
+      if (input.attachmentUrl) {
+        const attachUrl = input.attachmentUrl;
+        const pName = productName;
+        setImmediate(async () => {
+          try {
+            const ocr = await runOcrExtraction(attachUrl, { couponCode: input.couponCode, securityCode: input.securityCode, productName: pName, customerName: input.customerName });
+            await db.update(couponRedemptions).set({ ocrConfidenceScore: ocr.score, ocrStatus: ocr.status, ocrRawData: ocr.rawData, statusOperational: ocr.score >= 90 ? "validado" : "recibido" }).where(eq(couponRedemptions.id, redemptionId));
+          } catch (err) { console.error("[Ticketing OCR manual]", err); }
+        });
+      }
+      return { success: true, redemptionId, submissionId, softDuplicate: dupCheck.softDuplicate };
+    }),
+
+  /** Admin: listar envíos agrupados por submission_id */
+  listSubmissions: adminProc
+    .input(z.object({
+      page: z.number().int().min(1).default(1),
+      pageSize: z.number().int().min(1).max(50).default(20),
+      search: z.string().optional(),
+      statusOperational: z.enum(["recibido", "validado", "reserva_generada", "disfrutado", "incidencia", "cancelado"]).optional(),
+    }))
+    .query(async ({ input }) => {
+      const offset = (input.page - 1) * input.pageSize;
+      const conditions = [];
+      if (input.statusOperational) conditions.push(eq(couponRedemptions.statusOperational, input.statusOperational));
+      if (input.search) conditions.push(or(like(couponRedemptions.customerName, `%${input.search}%`), like(couponRedemptions.email, `%${input.search}%`), like(couponRedemptions.couponCode, `%${input.search}%`)));
+      const where = conditions.length > 0 ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined;
+      const allRows = await db.select({
+        id: couponRedemptions.id,
+        submissionId: couponRedemptions.submissionId,
+        customerName: couponRedemptions.customerName,
+        email: couponRedemptions.email,
+        provider: couponRedemptions.provider,
+        couponCode: couponRedemptions.couponCode,
+        statusOperational: couponRedemptions.statusOperational,
+        statusFinancial: couponRedemptions.statusFinancial,
+        ocrStatus: couponRedemptions.ocrStatus,
+        ocrConfidenceScore: couponRedemptions.ocrConfidenceScore,
+        duplicateFlag: couponRedemptions.duplicateFlag,
+        originSource: couponRedemptions.originSource,
+        channelEntry: couponRedemptions.channelEntry,
+        createdAt: couponRedemptions.createdAt,
+      }).from(couponRedemptions).where(where).orderBy(desc(couponRedemptions.createdAt));
+      const grouped = new Map<string, typeof allRows>();
+      for (const row of allRows) {
+        const key = row.submissionId ?? `single_${row.id}`;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(row);
+      }
+      const submissions = Array.from(grouped.entries()).map(([sid, rows]) => ({
+        submissionId: sid,
+        customerName: rows[0].customerName,
+        email: rows[0].email,
+        couponCount: rows.length,
+        coupons: rows,
+        statusOperational: rows[0].statusOperational,
+        originSource: rows[0].originSource,
+        channelEntry: rows[0].channelEntry,
+        createdAt: rows[0].createdAt,
+        hasIncidencia: rows.some((r) => r.statusOperational === "incidencia"),
+        hasDuplicate: rows.some((r) => r.duplicateFlag),
+      }));
+      const total = submissions.length;
+      const paginated = submissions.slice(offset, offset + input.pageSize);
+      return { items: paginated, total, page: input.page, totalPages: Math.ceil(total / input.pageSize) };
+    }),
+
+  /** Admin: obtener/actualizar configuración de emails automáticos */
+  getEmailConfig: adminProc.query(async () => {
+    const [cfg] = await db.select().from(couponEmailConfig).limit(1);
+    return cfg ?? { id: 0, autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission" as const, internalAlertEmail: "reservas@nayadeexperiences.es", updatedAt: new Date() };
+  }),
+
+  updateEmailConfig: adminProc
+    .input(z.object({
+      autoSendCouponReceived: z.boolean().optional(),
+      autoSendCouponValidated: z.boolean().optional(),
+      autoSendInternalAlert: z.boolean().optional(),
+      emailMode: z.enum(["per_submission", "per_coupon"]).optional(),
+      internalAlertEmail: z.string().email().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [existing] = await db.select({ id: couponEmailConfig.id }).from(couponEmailConfig).limit(1);
+      if (existing) {
+        await db.update(couponEmailConfig).set(input).where(eq(couponEmailConfig.id, existing.id));
+      } else {
+        await db.insert(couponEmailConfig).values({ autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission", internalAlertEmail: "reservas@nayadeexperiences.es", ...input });
+      }
+      return { success: true };
+    }),
+
+  /** Admin: actualizar datos de conciliación financiera */
+  updateSettlement: adminProc
+    .input(z.object({
+      id: z.number(),
+      statusFinancial: z.enum(["pendiente_canje_proveedor", "canjeado_en_proveedor", "pendiente_cobro", "cobrado", "discrepancia"]).optional(),
+      realAmount: z.string().optional().nullable(),
+      settlementJustificantUrl: z.string().url().optional().nullable(),
+      settledAt: z.string().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, settledAt, ...rest } = input;
+      const updateData: Record<string, unknown> = { ...rest };
+      if (settledAt) updateData.settledAt = new Date(settledAt);
+      await db.update(couponRedemptions).set(updateData).where(eq(couponRedemptions.id, id));
+      return { success: true };
+    }),
 
   /** Público: crear solicitud de canje (desde /canjear-cupon) */
   createRedemption: publicProcedure
