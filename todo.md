@@ -2045,3 +2045,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Eliminar procedimientos tRPC públicos de packs (getByCategory, getBySlug) — admin procedures preservados para TPV y liquidaciones
 - [x] Eliminar categoría "Packs" de BudgetRequest.tsx y query packsList
 - [x] TypeScript: 0 errores. Tests: 222 pasando.
+
+## v22.9 — Mejora de buscadores CRM (Leads, Presupuestos, Reservas, Facturas)
+- [x] Auditar queries de búsqueda actuales en crm.ts (listLeads, listQuotes, listReservations, listInvoices)
+- [x] Leads: buscar por nombre, email, teléfono, empresa, producto, categoría, mensaje, origen
+- [x] Presupuestos: buscar por número, título, notas + nombre/email/teléfono/empresa/producto del lead (JOIN)
+- [x] Reservas: buscar por nombre, email, teléfono, merchant_order, número factura, producto, fecha reserva, notas
+- [x] Facturas: buscar por número factura, nombre, email, teléfono, NIF, dirección
+- [x] TypeScript: 0 errores. Tests: 222 pasando.

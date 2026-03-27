@@ -474,11 +474,17 @@ export const crmRouter = router({
         if (input.assignedTo) conditions.push(eq(leads.assignedTo, input.assignedTo));
         if (input.priority) conditions.push(eq(leads.priority, input.priority));
         if (input.search) {
+          const s = `%${input.search}%`;
           conditions.push(
             or(
-              like(leads.name, `%${input.search}%`),
-              like(leads.email, `%${input.search}%`),
-              like(leads.phone ?? "", `%${input.search}%`)
+              like(leads.name, s),
+              like(leads.email, s),
+              like(leads.phone, s),
+              like(leads.company, s),
+              like(leads.selectedProduct, s),
+              like(leads.selectedCategory, s),
+              like(leads.message, s),
+              like(leads.source, s)
             )
           );
         }
@@ -905,12 +911,11 @@ export const crmRouter = router({
       .query(async ({ input }) => {
         const conditions = [];
         if (input.status) conditions.push(eq(quotes.status, input.status));
-        if (input.search) conditions.push(or(like(quotes.quoteNumber, `%${input.search}%`), like(quotes.title, `%${input.search}%`)));
-        if (input.from) conditions.push(gte(quotes.createdAt, new Date(input.from)));
+         if (input.from) conditions.push(gte(quotes.createdAt, new Date(input.from)));
         if (input.to) conditions.push(lte(quotes.createdAt, new Date(input.to)));
-
         // Join con leads para obtener datos del cliente
-        const rows = await db
+        // NOTE: search filter is applied AFTER the join so we can search by client name/email/phone
+        const baseQuery = db
           .select({
             id: quotes.id,
             quoteNumber: quotes.quoteNumber,
@@ -940,7 +945,24 @@ export const crmRouter = router({
             clientCompany: leads.company,
           })
           .from(quotes)
-          .leftJoin(leads, eq(quotes.leadId, leads.id))
+          .leftJoin(leads, eq(quotes.leadId, leads.id));
+        // Build search condition including joined lead fields
+        if (input.search) {
+          const s = `%${input.search}%`;
+          conditions.push(
+            or(
+              like(quotes.quoteNumber, s),
+              like(quotes.title, s),
+              like(quotes.notes, s),
+              like(leads.name, s),
+              like(leads.email, s),
+              like(leads.phone, s),
+              like(leads.company, s),
+              like(leads.selectedProduct, s)
+            )
+          );
+        }
+        const rows = await baseQuery
           .where(conditions.length ? and(...conditions) : undefined)
           .orderBy(desc(quotes.createdAt))
           .limit(input.limit)
@@ -2348,12 +2370,17 @@ export const crmRouter = router({
         if (input.status) conditions.push(eq(reservations.status, input.status as "draft" | "pending_payment" | "paid" | "failed" | "cancelled"));
         if (input.channel) conditions.push(eq(reservations.channel, input.channel as "web" | "crm" | "telefono" | "email" | "otro" | "tpv"));
         if (input.search) {
+          const s = `%${input.search}%`;
           conditions.push(
             or(
-              like(reservations.customerName, `%${input.search}%`),
-              like(reservations.customerEmail, `%${input.search}%`),
-              like(reservations.merchantOrder, `%${input.search}%`),
-              like(reservations.invoiceNumber, `%${input.search}%`)
+              like(reservations.customerName, s),
+              like(reservations.customerEmail, s),
+              like(reservations.customerPhone, s),
+              like(reservations.merchantOrder, s),
+              like(reservations.invoiceNumber, s),
+              like(reservations.productName, s),
+              like(reservations.bookingDate, s),
+              like(reservations.notes, s)
             )
           );
         }
@@ -2693,10 +2720,14 @@ export const crmRouter = router({
         if (input.invoiceType) conditions.push(eq(invoices.invoiceType, input.invoiceType));
         if (input.paymentMethod) conditions.push(eq(invoices.paymentMethod, input.paymentMethod));
         if (input.search) {
+          const s = `%${input.search}%`;
           conditions.push(or(
-            like(invoices.invoiceNumber, `%${input.search}%`),
-            like(invoices.clientName, `%${input.search}%`),
-            like(invoices.clientEmail, `%${input.search}%`),
+            like(invoices.invoiceNumber, s),
+            like(invoices.clientName, s),
+            like(invoices.clientEmail, s),
+            like(invoices.clientPhone, s),
+            like(invoices.clientNif, s),
+            like(invoices.clientAddress, s),
           ) as SQL);
         }
         if (input.dateFrom) {
