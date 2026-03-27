@@ -2011,3 +2011,16 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Panel Admin: tab "Config. emails" con toggles y modo de envío
 - [x] Panel Admin: KPIs en cabecera (total, incidencias, pdte. canje, cobrados)
 - [x] Fix TypeScript: 0 errores tras reescritura completa de CuponesManager
+
+## v22.4 — Reservas Groupon en CRM (completado)
+- [x] BD: añadir channel, origin_source, redemption_id a tabla reservations
+- [x] Backend: convertToReservation crea reserva con channel=groupon, origin_source=coupon_redemption, redemption_id
+- [x] Backend: listReservations filtra/expone campo channel y redemption_id
+- [x] CRM listado: badge "Groupon / No facturable" en filas con channel=groupon
+- [x] CRM listado: filtro por canal (Todos / Directo / Groupon / Otro)
+- [x] CRM detalle: ocultar/desactivar botón "Facturar" si channel=groupon
+- [x] CRM detalle: bloquear conversión a factura en backend (adminProcedure con guard)
+- [x] CRM detalle: enlace al canje original (redemption_id → /admin/marketing/cupones)
+- [x] CRM detalle: sección informativa "Reserva procedente de canje Groupon"
+- [x] Calendario operaciones: mostrar badge Groupon en eventos de este canal
+- [x] Tests Vitest: convertToReservation, guard anti-facturación Groupon

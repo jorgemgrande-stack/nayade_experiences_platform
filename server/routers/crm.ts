@@ -2509,6 +2509,13 @@ export const crmRouter = router({
         const [res] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         if (res.invoiceId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Esta reserva ya tiene factura generada" });
+        // ⚠️ GUARD: Reservas Groupon no son facturables desde el CRM
+        if (res.channel === "groupon" || res.originSource === "coupon_redemption") {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Las reservas procedentes de canje de cupón Groupon no pueden facturarse desde el CRM. Su liquidación económica pertenece al flujo de conciliación del proveedor ticketing.",
+          });
+        }
 
         // 2. Load TPV sale and items if available
         const tpvSaleRows = await db.select().from(tpvSales).where(eq(tpvSales.reservationId, input.reservationId));

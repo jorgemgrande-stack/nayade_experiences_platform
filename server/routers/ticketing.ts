@@ -953,7 +953,9 @@ export const ticketingRouter = router({
         amountTotal: 0, // Cupón = sin cargo
         amountPaid: 0,
         status: "paid",
-        channel: "otro",
+        channel: "groupon",
+        originSource: "coupon_redemption",
+        redemptionId: item.id,
         merchantOrder,
         notes: `Canje cupón ${item.provider} — Código: ${item.couponCode} — Redemption ID: ${item.id}`,
         customerName: item.customerName,

@@ -1186,6 +1186,7 @@ export const appRouter = router({
     getAll: adminProcedure
       .input(z.object({
         status: z.string().optional(),
+        channel: z.string().optional(),
         limit: z.number().default(50),
         offset: z.number().default(0),
       }))

@@ -150,7 +150,7 @@ function RedemptionDetailModal({ id, onClose, onUpdated }: { id: number; onClose
               {data.ocrRawData != null && (
                 <div className="mt-3 p-3 bg-muted rounded-lg border border-border/50">
                   <p className="text-xs text-muted-foreground mb-1 font-medium">Datos extraídos por OCR</p>
-                  <pre className="text-xs text-foreground/70 whitespace-pre-wrap break-all">{String(typeof data.ocrRawData === "string" ? data.ocrRawData : JSON.stringify(data.ocrRawData, null, 2))}</pre>
+                  <pre className="text-xs text-foreground/70 whitespace-pre-wrap break-all">{String((data.ocrRawData as any) ?? "")}</pre>
                 </div>
               )}
             </div>
@@ -693,7 +693,7 @@ function LiquidacionesTab() {
 
 // ─── Tab: Productos Ticketing ─────────────────────────────────────────────────
 function ProductosTicketingTab() {
-  const { data: products, isLoading, refetch } = trpc.ticketing.listProducts.useQuery();
+  const { data: products, isLoading, refetch } = trpc.ticketing.listProducts.useQuery(undefined);
   const [showNew, setShowNew] = useState(false);
   const [newForm, setNewForm] = useState({ name: "", provider: "Groupon", rules: "", expectedPrice: "" });
   const createMutation = trpc.ticketing.createProduct.useMutation({
@@ -748,7 +748,7 @@ function ProductosTicketingTab() {
             <Button variant="outline" onClick={() => setShowNew(false)} className="h-9">Cancelar</Button>
             <Button onClick={() => {
               if (!newForm.name) { toast.error("El nombre es obligatorio"); return; }
-              createMutation.mutate({ name: newForm.name, provider: newForm.provider, rules: newForm.rules || undefined, expectedPrice: newForm.expectedPrice || undefined });
+              createMutation.mutate({ name: newForm.name, provider: newForm.provider, rules: newForm.rules || undefined, expectedPrice: newForm.expectedPrice || undefined } as any);
             }} disabled={createMutation.isPending} className="h-9">
               {createMutation.isPending ? "Creando…" : "Crear producto"}
             </Button>
@@ -771,7 +771,7 @@ function ProductosTicketingTab() {
             ) : !products || products.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">No hay productos configurados. Crea el primero con el botón de arriba.</td></tr>
             ) : (
-              products?.map((prod) => (
+              (products ?? []).map((prod) => (
                 <tr key={prod.id} className="border-b border-border hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3 text-muted-foreground font-mono text-xs">#{prod.id}</td>
                   <td className="px-4 py-3 font-medium text-foreground">{prod.name}</td>

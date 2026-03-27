@@ -183,6 +183,13 @@
       "when": 1774641597001,
       "tag": "0025_windy_power_pack",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1774643946403,
+      "tag": "0026_small_wiccan",
+      "breakpoints": true
     }
   ]
 }

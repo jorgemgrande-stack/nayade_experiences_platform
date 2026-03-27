@@ -486,7 +486,9 @@ export const reservations = mysqlTable("reservations", {
   paymentValidatedAt: bigint("paymentValidatedAt", { mode: "number" }),
   transferProofUrl: text("transferProofUrl"),
   // Channel & metadata
-  channel: mysqlEnum("channel", ["web", "crm", "telefono", "email", "otro", "tpv"]).default("web"),
+  channel: mysqlEnum("channel", ["web", "crm", "telefono", "email", "otro", "tpv", "groupon"]).default("web"),
+  originSource: varchar("origin_source", { length: 64 }), // 'coupon_redemption' | null
+  redemptionId: int("redemption_id"), // FK → coupon_redemptions.id
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   paidAt: bigint("paid_at", { mode: "number" }),

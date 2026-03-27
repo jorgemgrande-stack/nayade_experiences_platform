@@ -917,12 +917,12 @@ export async function updateReservationPayment(
   return { success: true };
 }
 
-export async function getAllReservations(params: { status?: string; limit?: number; offset?: number }) {
+export async function getAllReservations(params: { status?: string; channel?: string; limit?: number; offset?: number }) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = params.status
-    ? [eq(reservations.status, params.status as any)]
-    : [];
+  const conditions: any[] = [];
+  if (params.status) conditions.push(eq(reservations.status, params.status as any));
+  if (params.channel) conditions.push(eq(reservations.channel, params.channel as any));
   return db.select().from(reservations)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(reservations.createdAt))
