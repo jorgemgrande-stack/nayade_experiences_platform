@@ -1327,7 +1327,136 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════
-          9. CTA FINAL — foto impactante del lago + overlay fuerte
+          9. CANJEA TU CUPÓN — módulo informativo aspiracional
+             (Groupon · Wonderbox · El Corte Inglés · LetsBonus)
+          ══════════════════════════════════════════════════════════════════ */}
+      <section className="relative py-20 overflow-hidden">
+        {/* Fondo: foto del lago con overlay azul oscuro profundo */}
+        <div className="absolute inset-0">
+          <img src={CDN.hero1} alt="" className="w-full h-full object-cover scale-105" style={{ objectPosition: "center 40%" }} />
+          <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(8,18,38,0.93) 0%, rgba(14,32,64,0.88) 50%, rgba(8,18,38,0.93) 100%)" }} />
+          {/* Textura de puntos decorativa */}
+          <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        </div>
+
+        <div className="relative z-10 container">
+          {/* Layout split: texto izquierda + tarjeta derecha */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+
+            {/* ── Columna izquierda: Claim aspiracional ─────────────────── */}
+            <div>
+              {/* Badge plataformas */}
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-orange-400/40 bg-orange-500/10 text-orange-300 text-xs font-display font-bold uppercase tracking-widest mb-6">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+                Groupon · Wonderbox · El Corte Inglés · LetsBonus
+              </div>
+
+              <h2 className="text-4xl md:text-5xl font-heading font-bold text-white leading-tight mb-5">
+                ¿Tienes un Cupón<br />
+                <span className="text-orange-400">Regalo</span> o{" "}
+                <span className="text-sky-400">Voucher</span>?
+              </h2>
+
+              <p className="text-white/70 text-lg leading-relaxed mb-8 max-w-lg">
+                Canjea tu experiencia en Náyade de forma rápida y sencilla.
+                Rellena el formulario online, adjunta tu cupón y nuestro equipo
+                se pondrá en contacto contigo en menos de 24 horas para
+                confirmar fecha y detalles.
+              </p>
+
+              {/* Pasos del proceso */}
+              <div className="space-y-4 mb-8">
+                {[
+                  { step: "01", title: "Envía tu cupón", desc: "Rellena el formulario y adjunta la foto o PDF de tu cupón.", color: "text-orange-400", border: "border-orange-400/30", bg: "bg-orange-500/10" },
+                  { step: "02", title: "Validamos en 24h", desc: "Nuestro equipo verifica el cupón y te confirma disponibilidad.", color: "text-sky-400", border: "border-sky-400/30", bg: "bg-sky-500/10" },
+                  { step: "03", title: "¡A disfrutar!", desc: "Ven en la fecha acordada y vive tu experiencia en el lago.", color: "text-emerald-400", border: "border-emerald-400/30", bg: "bg-emerald-500/10" },
+                ].map((item) => (
+                  <div key={item.step} className={`flex items-start gap-4 p-4 rounded-2xl border ${item.border} ${item.bg}`}>
+                    <div className={`text-2xl font-heading font-black ${item.color} leading-none flex-shrink-0 w-10`}>{item.step}</div>
+                    <div>
+                      <div className="font-display font-bold text-white text-sm mb-0.5">{item.title}</div>
+                      <div className="text-white/55 text-sm leading-relaxed">{item.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Plataformas aceptadas */}
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-white/40 text-xs font-display uppercase tracking-wider">Aceptamos cupones de:</span>
+                {["Groupon", "Wonderbox", "El Corte Inglés", "LetsBonus", "Smartbox"].map((p) => (
+                  <span key={p} className="px-3 py-1 rounded-full bg-white/8 border border-white/15 text-white/70 text-xs font-display font-medium">{p}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Columna derecha: Tarjeta CTA ──────────────────────────── */}
+            <div className="flex justify-center lg:justify-end">
+              <div className="w-full max-w-sm">
+                {/* Tarjeta glass */}
+                <div className="relative rounded-3xl overflow-hidden border border-white/15 shadow-2xl" style={{ background: "rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+                  {/* Banda superior naranja */}
+                  <div className="h-1.5 w-full bg-gradient-to-r from-orange-400 via-amber-400 to-orange-500" />
+
+                  <div className="p-8">
+                    {/* Icono central */}
+                    <div className="flex justify-center mb-6">
+                      <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.25) 0%, rgba(14,165,233,0.20) 100%)", border: "1.5px solid rgba(249,115,22,0.35)" }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-9 h-9 text-orange-400"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+                      </div>
+                    </div>
+
+                    <h3 className="text-2xl font-heading font-bold text-white text-center mb-2">
+                      Canjea tu Cupón
+                    </h3>
+                    <p className="text-white/55 text-sm text-center leading-relaxed mb-8">
+                      Proceso 100% online. Sin esperas.<br />Respuesta garantizada en menos de 24h.
+                    </p>
+
+                    {/* Beneficios */}
+                    <div className="space-y-3 mb-8">
+                      {[
+                        { icon: "✓", text: "Sin coste adicional — solo tu cupón" },
+                        { icon: "✓", text: "Todas las actividades disponibles" },
+                        { icon: "✓", text: "Fechas flexibles según disponibilidad" },
+                        { icon: "✓", text: "Atención personalizada por nuestro equipo" },
+                      ].map((b) => (
+                        <div key={b.text} className="flex items-start gap-3">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 text-xs font-bold flex-shrink-0 mt-0.5">{b.icon}</span>
+                          <span className="text-white/70 text-sm leading-relaxed">{b.text}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* CTA principal */}
+                    <Link href="/canjear-cupon">
+                      <button className="w-full py-4 rounded-2xl font-display font-bold text-white text-base transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg" style={{ background: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)", boxShadow: "0 8px 24px rgba(249,115,22,0.35)" }}>
+                        Canjear mi Cupón Ahora
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 ml-2 inline-block"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                      </button>
+                    </Link>
+
+                    {/* Enlace secundario */}
+                    <p className="text-center mt-4 text-white/35 text-xs">
+                      ¿Dudas? Llámanos al{" "}
+                      <a href="tel:+34930347791" className="text-sky-400 hover:text-sky-300 transition-colors">+34 930 34 77 91</a>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Nota de confianza bajo la tarjeta */}
+                <div className="mt-4 flex items-center justify-center gap-2 text-white/35 text-xs">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-emerald-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  Proceso seguro y verificado por nuestro equipo
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          10. CTA FINAL — foto impactante del lago + overlay fuerte
              (cierre potente, llamada a la acción)
           ══════════════════════════════════════════════════════════════════ */}
       <section className="relative py-28 overflow-hidden">

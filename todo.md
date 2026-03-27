@@ -2024,3 +2024,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] CRM detalle: sección informativa "Reserva procedente de canje Groupon"
 - [x] Calendario operaciones: mostrar badge Groupon en eventos de este canal
 - [x] Tests Vitest: convertToReservation, guard anti-facturación Groupon
+
+## v22.5 — Módulo "Canjea tu cupón" en Home
+- [x] Auditar estructura Home.tsx para elegir posición óptima del módulo
+- [x] Diseñar e implementar módulo aspiracional con look & feel coherente con la web
+- [x] Módulo posicionado estratégicamente (entre Testimonios y CTA Final — sección 9)
