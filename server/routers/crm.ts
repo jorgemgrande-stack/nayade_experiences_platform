@@ -169,43 +169,60 @@ async function generateInvoicePdf(invoice: {
 <meta charset="UTF-8"/>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a2e; background: #fff; padding: 40px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; padding-bottom: 24px; border-bottom: 3px solid #1a3a6b; }
-  .logo-area h1 { font-size: 28px; font-weight: 800; color: #1a3a6b; letter-spacing: -0.5px; }
-  .logo-area p { color: #6b7280; font-size: 13px; margin-top: 4px; }
-  .invoice-meta { text-align: right; }
-  .invoice-meta .invoice-num { font-size: 22px; font-weight: 700; color: #f97316; }
-  .invoice-meta .invoice-date { color: #6b7280; font-size: 13px; margin-top: 4px; }
-  .parties { display: flex; gap: 40px; margin-bottom: 32px; }
-  .party { flex: 1; }
-  .party h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; margin-bottom: 8px; }
-  .party p { font-size: 14px; line-height: 1.6; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a2e; background: #fff; }
+  /* ── ENCABEZADO ── */
+  .doc-header { background: #1a3a6b; padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .logo-block { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  .logo-block img { width: 90px; height: 90px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.85); object-fit: cover; display: block; }
+  .brand-text .brand-name { font-size: 20px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #fff; line-height: 1.1; }
+  .brand-text .brand-sub { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,0.65); margin-top: 3px; }
+  .company-info { text-align: right; color: rgba(255,255,255,0.80); font-size: 11.5px; line-height: 1.7; }
+  .company-info strong { color: #fff; font-size: 12.5px; display: block; }
+  .doc-type-band { background: #f97316; padding: 8px 40px; display: flex; align-items: center; justify-content: space-between; }
+  .doc-type-band .doc-label { color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+  .doc-type-band .doc-ref { color: #fff; font-size: 13px; font-weight: 700; }
+  /* ── CUERPO ── */
+  .body-content { padding: 28px 40px; }
+  .parties { display: flex; gap: 28px; margin-bottom: 24px; }
+  .party { flex: 1; background: #f8fafc; border-radius: 8px; padding: 14px 16px; border: 1px solid #e5e7eb; }
+  .party h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #1a3a6b; margin-bottom: 8px; font-weight: 700; }
+  .party p { font-size: 13px; line-height: 1.7; color: #374151; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
   thead tr { background: #1a3a6b; color: #fff; }
-  thead th { padding: 10px 12px; text-align: left; font-size: 13px; font-weight: 600; }
+  thead th { padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; }
   thead th:last-child, thead th:nth-child(2), thead th:nth-child(3) { text-align: right; }
-  .totals { margin-left: auto; width: 280px; }
-  .totals tr td { padding: 6px 12px; font-size: 14px; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  tbody td { padding: 9px 12px; border-bottom: 1px solid #e5e7eb; }
+  .totals-wrap { display: flex; justify-content: flex-end; margin-bottom: 24px; }
+  .totals { width: 300px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  .totals tr td { padding: 8px 14px; font-size: 13px; border-bottom: 1px solid #e5e7eb; }
   .totals tr td:last-child { text-align: right; font-weight: 600; }
-  .totals .total-row { background: #1a3a6b; color: #fff; font-size: 16px; font-weight: 700; }
-  .totals .total-row td { padding: 10px 12px; }
-  .footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #9ca3af; font-size: 12px; }
+  .totals .total-row { background: #1a3a6b; color: #fff; }
+  .totals .total-row td { padding: 11px 14px; font-size: 15px; font-weight: 700; border-bottom: none; }
+  .footer { padding: 16px 40px; border-top: 2px solid #1a3a6b; text-align: center; color: #9ca3af; font-size: 11px; line-height: 1.8; }
 </style>
 </head>
 <body>
-  <div class="header">
-    <div class="logo-area">
-      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" style="height:72px;width:auto;margin-bottom:8px;display:block;" />
-      <h1>${legal.name.toUpperCase()}</h1>
-      <p>${legalAddressFull}</p>
-      <p>CIF: ${legal.cif}${legal.phone ? ` &middot; Tel: ${legal.phone}` : ""}${legal.email ? ` &middot; ${legal.email}` : ""}</p>
+  <div class="doc-header">
+    <div class="logo-block">
+      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" />
+      <div class="brand-text">
+        <div class="brand-name">Náyade</div>
+        <div class="brand-sub">Experiences</div>
+      </div>
     </div>
-    <div class="invoice-meta">
-      <div class="invoice-num">${invoice.invoiceNumber}</div>
-      <div class="invoice-date">Fecha: ${invoice.issuedAt.toLocaleDateString("es-ES")}</div>
+    <div class="company-info">
+      <strong>${legal.name}</strong>
+      ${legalAddressFull}<br/>
+      CIF: ${legal.cif}${legal.phone ? ` &middot; Tel: ${legal.phone}` : ""}${legal.email ? `<br/>${legal.email}` : ""}
     </div>
   </div>
+  <div class="doc-type-band">
+    <span class="doc-label">Factura</span>
+    <span class="doc-ref">${invoice.invoiceNumber} &nbsp;&middot;&nbsp; ${invoice.issuedAt.toLocaleDateString("es-ES")}</span>
+  </div>
 
+  <div class="body-content">
   <div class="parties">
     <div class="party">
       <h3>Emisor</h3>
@@ -235,7 +252,7 @@ async function generateInvoicePdf(invoice: {
     <tbody>${itemRows}</tbody>
   </table>
 
-  <table class="totals">
+  <div class="totals-wrap"><table class="totals">
     ${hasGeneral && hasReav ? `
     <tr><td style="color:#6b7280;font-size:13px;">Subtotal rég. general</td><td>${generalItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
     <tr><td style="color:#6b7280;font-size:13px;">Subtotal REAV (sin IVA)</td><td>${reavItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
@@ -243,8 +260,8 @@ async function generateInvoicePdf(invoice: {
     ${hasGeneral ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>` : ''}
     ${hasReav && !hasGeneral ? `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">Operación sujeta al Régimen Especial de Agencias de Viaje (REAV). No procede repercusión de IVA al cliente.</td></tr>` : ''}
     <tr class="total-row"><td>TOTAL</td><td>${Number(invoice.total).toFixed(2)} €</td></tr>
-  </table>
-
+  </table></div>
+  </div>
   <div class="footer">
     <p>Gracias por confiar en Náyade Experiences &middot; www.nayadeexperiences.es</p>
     <p>Documento emitido por <strong>${legal.name}</strong> &mdash; CIF: ${legal.cif} &mdash; ${legalAddressFull}</p>

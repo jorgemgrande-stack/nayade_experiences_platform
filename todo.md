@@ -1951,3 +1951,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Admin: ProfitLossReport — KPIs, evolución mensual, ingresos por canal/producto, gastos por categoría/centro coste, exportación CSV
 - [x] Sidebar: sección Contabilidad expandible con submenú (Dashboard, Gastos, Recurrentes, Categorías, Proveedores, Cuenta Resultados)
 - [x] Rutas App.tsx: /admin/contabilidad/gastos, /categorias, /proveedores, /recurrentes, /cuenta-resultados
+
+## v21.5 — Rediseño encabezado PDFs (logo 90px coherente)
+- [x] Plantilla Factura (crm.ts): encabezado azul oscuro + logo circular 90px + banda naranja
+- [x] Plantilla Presupuesto (emailTemplates.ts): mismo diseño coherente con banda naranja
+- [x] Plantilla Liquidación (suppliers.ts): mismo diseño con banda violeta para documentos internos
+- [x] PDFs de muestra regenerados y enviados a reservas@nayadeexperiences.es

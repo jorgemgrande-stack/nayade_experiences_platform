@@ -955,38 +955,38 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
 <style>
   @page { margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; background: #e8edf5; color: #1e293b; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #1e293b; }
 </style>
 </head>
-<body style="margin:0;padding:0;background:#e8edf5;font-family:Arial,Helvetica,sans-serif;">
-  <div style="max-width:700px;margin:0 auto;background:#ffffff;min-height:100vh;box-shadow:0 8px 40px rgba(10,22,40,0.15);">
-    <!-- Header con imagen de fondo del lago -->
-    <div style="background-color:${BRAND_BLUE};background-image:url('${HERO_IMG}');background-size:cover;background-position:center top;padding:0;">
-      <div style="background:linear-gradient(180deg,rgba(10,22,40,0.72) 0%,rgba(10,22,40,0.88) 100%);padding:36px 40px 28px;text-align:center;">
-        <div style="display:inline-block;border-radius:50%;border:3px solid rgba(255,255,255,0.8);padding:4px;margin-bottom:12px;">
-          <img src="${LOGO_URL}" alt="Náyade" width="70" height="70" style="display:block;border-radius:50%;object-fit:cover;" />
+<body style="margin:0;padding:0;background:#fff;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:700px;margin:0 auto;background:#ffffff;min-height:100vh;">
+    <!-- Encabezado azul oscuro -->
+    <div style="background:#1a3a6b;padding:20px 40px;display:flex;align-items:center;justify-content:space-between;gap:20px;">
+      <div style="display:flex;align-items:center;gap:16px;flex-shrink:0;">
+        <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" width="90" height="90" style="display:block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);object-fit:cover;" />
+        <div>
+          <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:2px;text-transform:uppercase;line-height:1.1;">Náyade</div>
+          <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;">Experiences</div>
         </div>
-        <div style="color:#ffffff;font-size:28px;font-weight:900;letter-spacing:5px;font-family:Georgia,'Times New Roman',serif;">NÁYADE</div>
-        <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:7px;text-transform:uppercase;margin-top:2px;margin-bottom:14px;">EXPERIENCES</div>
-        <div style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;border-radius:20px;">Presupuesto</div>
       </div>
-      <!-- Ola blanca inferior -->
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 32" preserveAspectRatio="none" width="700" height="32" style="display:block;">
-        <path d="M0,16 C117,32 233,0 350,16 C467,32 583,0 700,16 L700,32 L0,32 Z" fill="#ffffff"/>
-      </svg>
+      <div style="text-align:right;color:rgba(255,255,255,0.80);font-size:11.5px;line-height:1.7;">
+        <strong style="color:#fff;font-size:12.5px;display:block;">${d.issuerName ?? 'Náyade Experiences'}</strong>
+        ${d.issuerAddress ?? ''}<br/>
+        ${d.issuerCif ? 'CIF: ' + d.issuerCif : ''}
+      </div>
+    </div>
+    <!-- Banda naranja con tipo de documento -->
+    <div style="background:#f97316;padding:8px 40px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="color:#fff;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">Presupuesto</span>
+      <span style="color:#fff;font-size:13px;font-weight:700;">${d.quoteNumber} &nbsp;&middot;&nbsp; ${new Date(d.createdAt).toLocaleDateString("es-ES")}${d.validUntil ? " &nbsp;&middot;&nbsp; Válido hasta: " + new Date(d.validUntil).toLocaleDateString("es-ES") : ""}</span>
     </div>
 
-    <!-- Meta row -->
+    <!-- Meta row cliente -->
     <div style="padding:24px 40px 0;display:flex;justify-content:space-between;align-items:flex-start;">
-      <div>
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;margin-bottom:6px;font-family:Arial,sans-serif;">Cliente</div>
-        <div style="font-size:17px;font-weight:700;color:${BRAND_BLUE};">${d.clientName}</div>
-        <div style="font-size:13px;color:#6b7280;margin-top:2px;">${d.clientEmail}${d.clientPhone ? " · " + d.clientPhone : ""}${d.clientCompany ? " · " + d.clientCompany : ""}</div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-size:22px;font-weight:800;color:${BRAND_ORANGE};">${d.quoteNumber}</div>
-        <div style="font-size:12px;color:#9ca3af;margin-top:4px;">Fecha: ${new Date(d.createdAt).toLocaleDateString("es-ES")}</div>
-        ${d.validUntil ? `<div style="font-size:12px;color:#9ca3af;">Válido hasta: ${new Date(d.validUntil).toLocaleDateString("es-ES")}</div>` : ""}
+      <div style="background:#f8fafc;border-radius:8px;padding:14px 16px;border:1px solid #e5e7eb;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#1a3a6b;margin-bottom:8px;font-weight:700;">Cliente</div>
+        <div style="font-size:15px;font-weight:700;color:#1a3a6b;">${d.clientName}</div>
+        <div style="font-size:13px;color:#6b7280;margin-top:4px;line-height:1.6;">${d.clientEmail}${d.clientPhone ? "<br/>" + d.clientPhone : ""}${d.clientCompany ? "<br/>" + d.clientCompany : ""}</div>
       </div>
     </div>
 
@@ -1017,34 +1017,10 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
     ${d.conditions ? `<div style="padding:0 40px 16px;"><div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:18px 22px;"><p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;">Condiciones</p><p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0;">${d.conditions}</p></div></div>` : ""}
     ${d.paymentLinkUrl ? `<div style="padding:0 40px 16px;text-align:center;"><div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;"><p style="color:#374151;font-size:13px;margin:0 0 6px;">Enlace de pago:</p><p style="color:${BRAND_ORANGE};font-size:13px;font-weight:600;word-break:break-all;margin:0;">${d.paymentLinkUrl}</p></div></div>` : ""}
 
-    <!-- Bloque emisor legal -->
-    ${d.issuerName ? `
-    <div style="padding:0 40px 16px;">
-      <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:14px 18px;">
-        <p style="color:#9ca3af;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 6px;font-family:Arial,sans-serif;">Documento emitido por</p>
-        <p style="color:#374151;font-size:12px;margin:0;line-height:1.7;font-family:Arial,sans-serif;">
-          <strong>${d.issuerName}</strong> &nbsp;&middot;&nbsp; CIF: ${d.issuerCif ?? ""}<br/>${d.issuerAddress ?? ""}
-        </p>
-      </div>
-    </div>` : ""}
-
-    <!-- Footer beige arena -->
-    <div style="padding:0;">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 24" preserveAspectRatio="none" width="700" height="24" style="display:block;background:#ffffff;">
-        <path d="M0,12 C117,24 233,0 350,12 C467,24 583,0 700,12 L700,24 L0,24 Z" fill="${BRAND_SAND}"/>
-      </svg>
-      <div style="background:${BRAND_SAND};padding:20px 40px;text-align:center;">
-        <p style="color:#6b5c3e;font-size:12px;margin:0 0 6px;line-height:1.8;font-family:Arial,sans-serif;">
-          +34 930 34 77 91 &nbsp;&middot;&nbsp; reservas@nayadeexperiences.es
-        </p>
-        <p style="color:#8b7355;font-size:12px;margin:0 0 10px;font-family:Arial,sans-serif;">
-          Los Ángeles de San Rafael · El Espinar · Segovia
-        </p>
-        <p style="color:#a08060;font-size:12px;margin:0 0 4px;font-family:Georgia,'Times New Roman',serif;font-style:italic;">
-          Náyade Experiences — Vive el verano todo el año
-        </p>
-        <p style="color:#c4a882;font-size:10px;margin:0;letter-spacing:1px;">© ${new Date().getFullYear()} NÁYADE EXPERIENCES · TODOS LOS DERECHOS RESERVADOS</p>
-      </div>
+    <!-- Footer -->
+    <div style="padding:16px 40px;border-top:2px solid #1a3a6b;text-align:center;color:#9ca3af;font-size:11px;line-height:1.8;">
+      <p style="margin:0;">Gracias por confiar en Náyade Experiences &middot; www.nayadeexperiences.es</p>
+      <p style="margin:0;">+34 930 34 77 91 &nbsp;&middot;&nbsp; reservas@nayadeexperiences.es &nbsp;&middot;&nbsp; Los Ángeles de San Rafael, Segovia</p>
     </div>
   </div>
 </body>
