@@ -1,4 +1,4 @@
-// v21.0 — Financial module submenu (Gastos, Recurrentes, Categorías, Proveedores, Cuenta Resultados)
+// v21.2 — Flat menu: all items always visible, no expandable submenus
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -25,39 +25,44 @@ import { useIsMobile } from "@/hooks/useMobile";
 import {
   LayoutDashboard, LogOut, PanelLeft, Package, FileText, Calendar,
   BarChart3, Settings, Users, Image, BedDouble, Sparkles, UtensilsCrossed,
-  Receipt, TrendingDown, RefreshCw, Tag, Building2, TrendingUp, ChevronDown, ChevronRight,
+  Receipt, TrendingDown, RefreshCw, Tag, Building2, TrendingUp,
+  List, FileBarChart,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
-type SubItem = { icon: React.ElementType; label: string; path: string };
-type MenuItem = { icon: React.ElementType; label: string; path: string; children?: SubItem[] };
+type FlatMenuItem = {
+  icon: React.ElementType;
+  label: string;
+  path: string;
+  section?: string; // section header label (only on first item of each section)
+  indent?: boolean; // visual indent for sub-items
+};
 
-const menuItems: MenuItem[] = [
-  { icon: LayoutDashboard, label: "Dashboard",    path: "/admin" },
-  { icon: Image,           label: "CMS",          path: "/admin/cms" },
-  { icon: Package,         label: "Productos",    path: "/admin/productos" },
-  { icon: FileText,        label: "CRM",          path: "/admin/crm" },
-  { icon: Calendar,        label: "Operaciones",  path: "/admin/operaciones" },
-  {
-    icon: BarChart3, label: "Contabilidad", path: "/admin/contabilidad",
-    children: [
-      { icon: BarChart3,    label: "Dashboard",          path: "/admin/contabilidad/dashboard" },
-      { icon: TrendingDown, label: "Gastos",              path: "/admin/contabilidad/gastos" },
-      { icon: RefreshCw,    label: "Recurrentes",         path: "/admin/contabilidad/gastos/recurrentes" },
-      { icon: Tag,          label: "Categorías gastos",   path: "/admin/contabilidad/gastos/categorias" },
-      { icon: Building2,    label: "Proveedores gastos",  path: "/admin/contabilidad/gastos/proveedores" },
-      { icon: TrendingUp,   label: "Cuenta Resultados",   path: "/admin/contabilidad/cuenta-resultados" },
-    ],
-  },
-  { icon: Receipt,          label: "Fiscal REAV",  path: "/admin/fiscal/reav" },
-  { icon: BedDouble,        label: "Hotel",        path: "/admin/hotel" },
-  { icon: Sparkles,         label: "SPA",          path: "/admin/spa" },
-  { icon: UtensilsCrossed,  label: "Restaurantes", path: "/admin/restaurantes" },
-  { icon: Users,            label: "Usuarios",     path: "/admin/usuarios" },
-  { icon: Settings,         label: "Configuración",path: "/admin/configuracion" },
+const menuItems: FlatMenuItem[] = [
+  { icon: LayoutDashboard, label: "Dashboard",       path: "/admin" },
+  { icon: Image,           label: "CMS",             path: "/admin/cms" },
+  { icon: Package,         label: "Productos",       path: "/admin/productos" },
+  { icon: FileText,        label: "CRM",             path: "/admin/crm" },
+  { icon: Calendar,        label: "Operaciones",     path: "/admin/operaciones" },
+  // ── Contabilidad ──────────────────────────────────────────────────────────
+  { icon: BarChart3,    label: "Dashboard Contab.",  path: "/admin/contabilidad/dashboard",        section: "Contabilidad" },
+  { icon: List,         label: "Transacciones",      path: "/admin/contabilidad/transacciones",    indent: true },
+  { icon: FileBarChart, label: "Informes",           path: "/admin/contabilidad/informes",         indent: true },
+  { icon: TrendingDown, label: "Gastos",             path: "/admin/contabilidad/gastos",           indent: true },
+  { icon: RefreshCw,    label: "Recurrentes",        path: "/admin/contabilidad/gastos/recurrentes", indent: true },
+  { icon: Tag,          label: "Categ. gastos",      path: "/admin/contabilidad/gastos/categorias",  indent: true },
+  { icon: Building2,    label: "Proveedores gastos", path: "/admin/contabilidad/gastos/proveedores", indent: true },
+  { icon: TrendingUp,   label: "Cuenta Resultados",  path: "/admin/contabilidad/cuenta-resultados",  indent: true },
+  // ── Otros ─────────────────────────────────────────────────────────────────
+  { icon: Receipt,          label: "Fiscal REAV",   path: "/admin/fiscal/reav",       section: "Otros" },
+  { icon: BedDouble,        label: "Hotel",         path: "/admin/hotel" },
+  { icon: Sparkles,         label: "SPA",           path: "/admin/spa" },
+  { icon: UtensilsCrossed,  label: "Restaurantes",  path: "/admin/restaurantes" },
+  { icon: Users,            label: "Usuarios",      path: "/admin/usuarios" },
+  { icon: Settings,         label: "Configuración", path: "/admin/configuracion" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -116,21 +121,10 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
-  // Track which expandable sections are open
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => {
-    // Auto-expand the section that contains the current path
-    const expanded: Record<string, boolean> = {};
-    menuItems.forEach((item) => {
-      if (item.children?.some((c) => location.startsWith(c.path))) {
-        expanded[item.path] = true;
-      }
-    });
-    return expanded;
+  const activeMenuItem = menuItems.find((item) => {
+    if (item.path === "/admin") return location === "/admin";
+    return location.startsWith(item.path);
   });
-
-  const activeMenuItem = menuItems.find((item) =>
-    item.children ? item.children.some((c) => location.startsWith(c.path)) : item.path === location
-  );
 
   useEffect(() => {
     if (isCollapsed) setIsResizing(false);
@@ -158,10 +152,6 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
     };
   }, [isResizing, setSidebarWidth]);
 
-  function toggleSection(path: string) {
-    setExpandedSections((prev) => ({ ...prev, [path]: !prev[path] }));
-  }
-
   return (
     <>
       <div className="relative" ref={sidebarRef}>
@@ -186,58 +176,31 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
               {menuItems.map((item) => {
-                const hasChildren = !!item.children?.length;
-                const isExpanded = expandedSections[item.path];
-                const isSectionActive = hasChildren
-                  ? item.children!.some((c) => location.startsWith(c.path))
-                  : location === item.path;
+                const isActive = item.path === "/admin"
+                  ? location === "/admin"
+                  : location.startsWith(item.path);
 
                 return (
                   <SidebarMenuItem key={item.path}>
-                    {/* Parent item */}
-                    <SidebarMenuButton
-                      isActive={isSectionActive && !hasChildren}
-                      onClick={() => {
-                        if (hasChildren) {
-                          toggleSection(item.path);
-                        } else {
-                          setLocation(item.path);
-                        }
-                      }}
-                      tooltip={item.label}
-                      className={`h-10 transition-all font-normal ${isSectionActive ? "text-primary" : ""}`}
-                    >
-                      <item.icon className={`h-4 w-4 shrink-0 ${isSectionActive ? "text-primary" : ""}`} />
-                      <span className="flex-1">{item.label}</span>
-                      {hasChildren && !isCollapsed && (
-                        isExpanded
-                          ? <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                          : <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                      )}
-                    </SidebarMenuButton>
-
-                    {/* Children submenu */}
-                    {hasChildren && isExpanded && !isCollapsed && (
-                      <div className="ml-4 mt-0.5 mb-1 border-l border-border pl-2 space-y-0.5">
-                        {item.children!.map((child) => {
-                          const isChildActive = location.startsWith(child.path);
-                          return (
-                            <button
-                              key={child.path}
-                              onClick={() => setLocation(child.path)}
-                              className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors
-                                ${isChildActive
-                                  ? "bg-primary/10 text-primary font-medium"
-                                  : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                                }`}
-                            >
-                              <child.icon className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{child.label}</span>
-                            </button>
-                          );
-                        })}
+                    {/* Section header label */}
+                    {item.section && !isCollapsed && (
+                      <div className="px-2 pt-3 pb-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                          {item.section}
+                        </span>
+                        <div className="mt-1 h-px bg-border/50" />
                       </div>
                     )}
+
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      onClick={() => setLocation(item.path)}
+                      tooltip={item.label}
+                      className={`h-9 transition-all font-normal ${item.indent && !isCollapsed ? "ml-3 w-[calc(100%-0.75rem)]" : ""} ${isActive ? "text-primary" : ""}`}
+                    >
+                      <item.icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : ""}`} />
+                      <span className="flex-1 truncate">{item.label}</span>
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
               })}
@@ -281,10 +244,8 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-foreground">{activeMenuItem?.label ?? "Menu"}</span>
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="tracking-tight text-foreground">{activeMenuItem?.label ?? "Menu"}</span>
               </div>
             </div>
           </div>
