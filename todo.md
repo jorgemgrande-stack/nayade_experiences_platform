@@ -2032,3 +2032,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 
 ## v22.6 — Enlace "Canjear Cupón" en menú de navegación
 - [x] Añadir enlace "Canjear Cupón" en el header público junto a "Contacto" (desktop + mobile)
+
+## v22.7 — Sección "Pack de Día Completo" apunta a Lego Packs
+- [x] Cambiar query/categoría de la sección Pack de Día en Home.tsx de packs a lego-packs
+- [x] Actualizar rutas de ficha de producto y botón añadir al carrito hacia lego-packs
