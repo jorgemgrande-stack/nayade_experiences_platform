@@ -78,9 +78,6 @@ import {
   hardDeleteLocation,
   toggleLocationActive,
   cloneLocation,
-  getPublicPacks,
-  getPackBySlug,
-  getPackCrossSells,
   getAllPacksAdmin,
   createPack,
   updatePack,
@@ -1314,20 +1311,8 @@ export const appRouter = router({
 
   // ─── PACKS ───────────────────────────────────────────────────────────────────
   packs: router({
-    /** Listado público por categoría */
-    getByCategory: publicProcedure
-      .input(z.object({ category: z.enum(["dia", "escolar", "empresa"]).optional() }))
-      .query(async ({ input }) => getPublicPacks(input.category)),
-
-    /** Detalle público por slug */
-    getBySlug: publicProcedure
-      .input(z.object({ slug: z.string() }))
-      .query(async ({ input }) => {
-        const pack = await getPackBySlug(input.slug);
-        if (!pack) throw new TRPCError({ code: "NOT_FOUND" });
-        const crossSells = await getPackCrossSells(pack.id);
-        return { ...pack, crossSells };
-      }),
+    // NOTE: Public procedures (getByCategory, getBySlug) removed in v22.8.
+    // The packs table and admin procedures are preserved for TPV, supplier liquidations, and LegoPacksManager.
 
     /** Listado admin */
     getAll: adminProcedure

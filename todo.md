@@ -2036,3 +2036,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ## v22.7 — Sección "Pack de Día Completo" apunta a Lego Packs
 - [x] Cambiar query/categoría de la sección Pack de Día en Home.tsx de packs a lego-packs
 - [x] Actualizar rutas de ficha de producto y botón añadir al carrito hacia lego-packs
+
+## v22.8 / v23.0 — Eliminación completa del sistema de Packs (mantener Lego Packs)
+- [x] Auditoría: mapear todas las referencias a packs en rutas, componentes, sidebar, menú, carrito y BD
+- [x] Eliminar páginas públicas: /packs, /packs/dia, /packs/escolares, /packs/corporativo y sus rutas (PacksList.tsx, PackDetail.tsx, PacksHome.tsx eliminados)
+- [x] Eliminar entradas de packs del menú público (PublicNav.tsx) y del sidebar admin (AdminLayout.tsx ya sólo tiene Lego Packs)
+- [x] Eliminar referencias a packs en Home.tsx (categoría Packs del hero form, ctaLink /packs → /lego-packs)
+- [x] Eliminar procedimientos tRPC públicos de packs (getByCategory, getBySlug) — admin procedures preservados para TPV y liquidaciones
+- [x] Eliminar categoría "Packs" de BudgetRequest.tsx y query packsList
+- [x] TypeScript: 0 errores. Tests: 222 pasando.

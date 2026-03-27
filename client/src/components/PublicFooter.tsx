@@ -12,16 +12,6 @@ const colExperiencias = [
   { label: "Aventura Hinchable", href: "/experiencias/aventura-hinchable" },
 ];
 
-const colPacks = [
-  { label: "Day Pass Náyade", href: "/packs/day-pass-nayade" },
-  { label: "Pack Discovery", href: "/packs/pack-discovery" },
-  { label: "Pack Aventura", href: "/packs/pack-aventura" },
-  { label: "Pack Adrenalina", href: "/packs/pack-adrenalina" },
-  { label: "Pack Lago Gourmet", href: "/packs/pack-lago-gourmet" },
-  { label: "Packs Escolares", href: "/packs/escolares" },
-  { label: "Team Building", href: "/packs/corporativo" },
-];
-
 const colLegoPacks = [
   { label: "Lego Packs de Día", href: "/lego-packs/dia" },
   { label: "Lego Packs Escolares", href: "/lego-packs/escolar" },
@@ -100,20 +90,6 @@ export default function PublicFooter() {
             <h4 className="font-display font-bold text-white text-xs uppercase tracking-widest mb-4 text-accent">Experiencias</h4>
             <ul className="space-y-2">
               {colExperiencias.map((link) => (
-                <li key={link.href}>
-                  <Link href={link.href}>
-                    <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Packs */}
-          <div>
-            <h4 className="font-display font-bold text-white text-xs uppercase tracking-widest mb-4 text-accent">Packs</h4>
-            <ul className="space-y-2">
-              {colPacks.map((link) => (
                 <li key={link.href}>
                   <Link href={link.href}>
                     <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>

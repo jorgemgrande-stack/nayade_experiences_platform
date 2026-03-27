@@ -77,7 +77,7 @@ const CDN = {
 const heroSlides: Array<{ img: string; badge: string; title: string; subtitle: string; desc: string; cta: string; ctaLink: string; reserveUrl: string }> = [
   { img: CDN.hero1, badge: "Temporada Abril — Octubre 2026", title: "El Lago te Espera", subtitle: "A solo 45 minutos de Madrid", desc: "Deportes acuáticos, hotel premium y gastronomía en el embalse de Los Ángeles de San Rafael, Segovia.", cta: "Explorar Experiencias", ctaLink: "/experiencias", reserveUrl: "" },
   { img: CDN.hero2, badge: "Actividad Estrella", title: "Cableski & Wakeboard", subtitle: "Para todos los niveles", desc: "Practica wakeboard y esquí acuático en nuestro sistema de cable aéreo. Material y chaleco incluidos.", cta: "Reservar Ahora", ctaLink: "/experiencias/cableski-wakeboard", reserveUrl: "/experiencias/cableski-wakeboard" },
-  { img: CDN.hero3, badge: "Grupos y Familias", title: "Aventura en Grupo", subtitle: "Canoas, Kayaks y más", desc: "Rutas guiadas por el embalse, actividades para todas las edades y packs personalizados para grupos.", cta: "Ver Packs", ctaLink: "/packs", reserveUrl: "" },
+  { img: CDN.hero3, badge: "Grupos y Familias", title: "Aventura en Grupo", subtitle: "Canoas, Kayaks y más", desc: "Rutas guiadas por el embalse, actividades para todas las edades y packs personalizados para grupos.", cta: "Ver Packs", ctaLink: "/lego-packs", reserveUrl: "" },
 ];
 
 const actividades = [
@@ -87,15 +87,6 @@ const actividades = [
   { icon: "🛶", name: "Canoas & Kayaks", desc: "Ruta guiada por el embalse", price: "25€/hora", img: CDN.canoa, slug: "canoas-kayaks", badge: "" },
   { icon: "🏄‍♀️", name: "Paddle Surf", desc: "Equilibrio sobre el agua", price: "20€/hora", img: CDN.paddle, slug: "paddle-surf", badge: "" },
   { icon: "🚢", name: "Paseos en Barco", desc: "Descubre el embalse", price: "Desde 110€/hora", img: CDN.hero1, slug: "paseos-barco", badge: "Premium" },
-];
-
-const packs = [
-  { id: 1,  name: "Day Pass Náyade",         price: "45€",  basePrice: 45,  unit: "por persona", items: ["Acceso a piscinas del club", "Zona de playa del lago", "Hamacas y chill out", "Acceso a bares y restaurantes"], slug: "day-pass-nayade",          highlight: false, minPersons: 2, maxPersons: 20 },
-  { id: 2,  name: "Pack Discovery",            price: "65€",  basePrice: 65,  unit: "por persona", items: ["Ruta en canoas o paddle surf (1h)", "Banana Ski (20 min)", "Castillos hinchables acuáticos", "Acceso a piscina"], slug: "pack-discovery",           highlight: false, minPersons: 2, maxPersons: 20 },
-  { id: 3,  name: "Pack Aventura ★",           price: "85€",  basePrice: 85,  unit: "por persona", items: ["Todo lo del Pack Discovery", "Blob Jump — 5 saltos", "Acceso a piscina todo el día", "Descuento 10% reserva online"], slug: "pack-aventura",            highlight: true,  minPersons: 2, maxPersons: 20 },
-  { id: 4,  name: "Pack Adrenalina",            price: "120€", basePrice: 120, unit: "por persona", items: ["Canoas + Banana Ski + Blob Jump", "Sesión de Cableski", "Castillos hinchables", "Acceso a piscina"], slug: "pack-adrenalina",           highlight: false, minPersons: 2, maxPersons: 20 },
-  { id: 5,  name: "Pack Lago Gourmet",          price: "150€", basePrice: 150, unit: "por persona", items: ["Actividades acuáticas completas", "Blob Jump 5 saltos", "Paella en Arrocería La Cabaña", "Acceso a piscina"], slug: "pack-lago-gourmet",         highlight: false, minPersons: 2, maxPersons: 20 },
-  { id: 6,  name: "Pack CableSki Experience",   price: "95€",  basePrice: 95,  unit: "por persona", items: ["Cableski jornada completa", "Equipamiento completo incluido", "Paella en Arrocería La Cabaña", "Zona de descanso junto al lago"], slug: "pack-cableski-experience", highlight: false, minPersons: 1, maxPersons: 20 },
 ];
 
 const habitaciones = [
@@ -322,8 +313,6 @@ export default function Home() {
   const [, navigate] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string; discountPercent?: number | null; discountExpiresAt?: string | Date | null } | null>(null);
-  const [addToCartPack, setAddToCartPack] = useState<{ id: number; title: string; basePrice: number; slug: string; minPersons: number; maxPersons: number } | null>(null);
-
   function todayStr() { return new Date().toISOString().split("T")[0]; }
   function tomorrowStr() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; }
 
@@ -389,7 +378,6 @@ export default function Home() {
   // ── Estado formulario hero ─────────────────────────────────────────
   const HERO_CATEGORIES = [
     { id: "Experiencias", label: "Acuáticas", icon: "🌊" },
-    { id: "Packs", label: "Packs", icon: "⭐" },
     { id: "LegoPacks", label: "Lego Packs", icon: "🧩" },
     { id: "Hotel", label: "Hotel", icon: "🏨" },
     { id: "Spa", label: "SPA", icon: "🧖" },
@@ -446,9 +434,6 @@ export default function Home() {
   const { data: heroExperiencesList } = trpc.public.getExperiences.useQuery(
     { limit: 50 }, { enabled: heroCategory === "Experiencias" }
   );
-  const { data: heroPacksList } = trpc.packs.getByCategory.useQuery(
-    {} as { category?: "dia" | "escolar" | "empresa" }, { enabled: heroCategory === "Packs" }
-  );
   const { data: heroLegoPacksList } = trpc.legoPacks.listPublic.useQuery(
     undefined, { enabled: heroCategory === "LegoPacks" }
   );
@@ -459,10 +444,9 @@ export default function Home() {
   );
   const heroProducts = useMemo(() => {
     if (heroCategory === "Experiencias" && heroExperiencesList) return heroExperiencesList.map((e: any) => e.title);
-    if (heroCategory === "Packs" && heroPacksList) return heroPacksList.map((p: any) => p.title);
     if (heroCategory === "LegoPacks" && heroLegoPacksList) return heroLegoPacksList.map((p: any) => p.title);
     return HERO_STATIC_PRODUCTS[heroCategory] ?? [];
-  }, [heroCategory, heroExperiencesList, heroPacksList, heroLegoPacksList]);
+  }, [heroCategory, heroExperiencesList, heroLegoPacksList]);
 
   const submitHeroBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setHeroFormSubmitted(true),
@@ -950,15 +934,14 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {(homeLegoPacks && homeLegoPacks.length > 0 ? homeLegoPacks : packs).map((pack: any, idx: number) => {
-              const isLego = !!(homeLegoPacks && homeLegoPacks.length > 0);
+            {(homeLegoPacks ?? []).map((pack: any, idx: number) => {
               const packImgs = [CDN.wakeboard, CDN.kayak2, CDN.hinchable, CDN.tubing, CDN.barco, CDN.banana];
-              const bg = (isLego ? pack.coverImageUrl : null) ?? packImgs[idx % packImgs.length];
+              const bg = pack.coverImageUrl ?? packImgs[idx % packImgs.length];
               const packSlug = pack.slug ?? "";
-              const packName = isLego ? pack.title : pack.name;
-              const packPrice = isLego ? (pack.priceLabel ?? "Consultar") : pack.price;
-              const isFeatured = isLego ? pack.isFeatured : pack.highlight;
-              const detailHref = isLego ? `/lego-packs/detalle/${packSlug}` : `/packs/${packSlug}`;
+              const packName = pack.title;
+              const packPrice = pack.priceLabel ?? "Consultar";
+              const isFeatured = pack.isFeatured;
+              const detailHref = `/lego-packs/detalle/${packSlug}`;
               return (
                 <div key={packSlug || idx} className={`group relative rounded-3xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${isFeatured ? "ring-2 ring-orange-400 shadow-orange-500/20 shadow-xl" : "shadow-lg"}`} style={{ minHeight: 400 }}>
                   <img src={bg} alt={packName} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -982,24 +965,14 @@ export default function Home() {
                     <div className="mb-3">
                       <div className="flex items-baseline gap-1 mb-1">
                         <span className="text-4xl font-display font-extrabold text-white">{packPrice}</span>
-                        {!isLego && <span className="text-white/60 text-sm">{pack.unit}</span>}
+  
                       </div>
                       <h3 className="font-heading font-bold text-xl text-white mb-3">{packName}</h3>
-                      {isLego && pack.subtitle && (
+                      {pack.subtitle && (
                         <p className="text-white/65 text-sm mb-2">{pack.subtitle}</p>
                       )}
                     </div>
-                    {!isLego && (
-                      <ul className="space-y-1.5 mb-5">
-                        {(pack.items ?? []).map((item: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-white/75">
-                            <span className="text-orange-400 mt-0.5 flex-shrink-0">✓</span>
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {isLego && pack.shortDescription && (
+                    {pack.shortDescription && (
                       <p className="text-white/65 text-sm mb-5 line-clamp-3">{pack.shortDescription}</p>
                     )}
                     <div className="flex items-center justify-between pt-4 border-t border-white/15">
@@ -1007,7 +980,7 @@ export default function Home() {
                         <span className="font-display font-semibold text-sm text-white/70 hover:text-white transition-colors cursor-pointer">Ver detalles</span>
                       </Link>
                       <button
-                        onClick={() => setAddToCartPack({ id: pack.id, title: packName, basePrice: isLego ? 0 : (pack.basePrice ?? 0), slug: packSlug, minPersons: pack.minPersons ?? 1, maxPersons: pack.maxPersons ?? 20 })}
+                        onClick={() => setAddToCartProduct({ id: pack.id, title: packName, basePrice: 0, image1: pack.coverImageUrl })}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-orange-500 hover:bg-orange-600 text-white text-xs font-display font-bold transition-all"
                       >
                         <ShoppingCartIcon className="w-3.5 h-3.5" /> Añadir al carrito
@@ -1020,7 +993,7 @@ export default function Home() {
           </div>
 
           <div className="text-center mt-12">
-            <Link href={homeLegoPacks && homeLegoPacks.length > 0 ? "/lego-packs/dia" : "/packs"}>
+            <Link href="/lego-packs/dia">
               <Button size="lg" className="bg-orange-500 hover:bg-orange-600 text-white font-display font-semibold rounded-full px-10 shadow-lg">
                 Ver Todos los Packs <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
@@ -1523,22 +1496,6 @@ export default function Home() {
           isOpen={!!addToCartProduct}
           onClose={() => setAddToCartProduct(null)}
           product={addToCartProduct}
-        />
-      )}
-
-      {/* AddToCartModal — packs de día */}
-      {addToCartPack && (
-        <AddToCartModal
-          isOpen={!!addToCartPack}
-          onClose={() => setAddToCartPack(null)}
-          product={{
-            id: addToCartPack.id,
-            title: addToCartPack.title,
-            basePrice: addToCartPack.basePrice,
-            slug: addToCartPack.slug,
-            minPersons: addToCartPack.minPersons,
-            maxPersons: addToCartPack.maxPersons,
-          }}
         />
       )}
 

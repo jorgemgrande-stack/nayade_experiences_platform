@@ -24,14 +24,6 @@ const FALLBACK_NAV = [
     ],
   },
   {
-    label: "Packs", href: "/packs",
-    children: [
-      { label: "Packs de Día", href: "/packs/dia" },
-      { label: "Packs Escolares", href: "/packs/escolar" },
-      { label: "Team Building Empresas", href: "/packs/empresa" },
-    ],
-  },
-  {
     label: "Lego Packs", href: "/lego-packs",
     children: [
       { label: "Lego Packs de Día", href: "/lego-packs/dia" },

@@ -15,9 +15,6 @@ import BudgetRequest from "./pages/BudgetRequest";
 import CanjearCupon from "./pages/CanjearCupon";
 import Contact from "./pages/Contact";
 import Locations from "./pages/Locations";
-import PacksHome from "./pages/PacksHome";
-import PacksList from "./pages/PacksList";
-import PackDetail from "./pages/PackDetail";
 import LegoPacksHome from "./pages/LegoPacksHome";
 import LegoPacksList from "./pages/LegoPacksList";
 import LegoPackDetail from "./pages/LegoPackDetail";
@@ -53,7 +50,6 @@ const GalleryManager = lazy(() => import("./pages/admin/cms/GalleryManager"));
 
 // Products
 const ExperiencesManager = lazy(() => import("./pages/admin/products/ExperiencesManager"));
-const PacksManager = lazy(() => import("./pages/admin/products/PacksManager"));
 const CategoriesManager = lazy(() => import("./pages/admin/products/CategoriesManager"));
 const LocationsManager = lazy(() => import("./pages/admin/products/LocationsManager"));
 const VariantsManager = lazy(() => import("./pages/admin/products/VariantsManager"));
@@ -129,9 +125,6 @@ function Router() {
       <Route path="/contacto" component={Contact} />
       <Route path="/ubicaciones" component={Locations} />
       <Route path="/ubicaciones/:slug" component={Locations} />
-      <Route path="/packs" component={PacksHome} />
-      <Route path="/packs/:category" component={PacksList} />
-      <Route path="/packs/:category/:slug" component={PackDetail} />
       <Route path="/lego-packs" component={LegoPacksHome} />
       <Route path="/lego-packs/detalle/:slug" component={LegoPackDetail} />
       <Route path="/lego-packs/:category" component={LegoPacksList} />
@@ -178,7 +171,6 @@ function Router() {
       {/* Products */}
       <Route path="/admin/productos">{() => <Suspense fallback={<AdminLoadingFallback />}><ExperiencesManager /></Suspense>}</Route>
       <Route path="/admin/productos/experiencias">{() => <Suspense fallback={<AdminLoadingFallback />}><ExperiencesManager /></Suspense>}</Route>
-      <Route path="/admin/productos/packs">{() => <Suspense fallback={<AdminLoadingFallback />}><PacksManager /></Suspense>}</Route>
       <Route path="/admin/productos/categorias">{() => <Suspense fallback={<AdminLoadingFallback />}><CategoriesManager /></Suspense>}</Route>
       <Route path="/admin/productos/ubicaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><LocationsManager /></Suspense>}</Route>
       <Route path="/admin/productos/variantes">{() => <Suspense fallback={<AdminLoadingFallback />}><VariantsManager /></Suspense>}</Route>
