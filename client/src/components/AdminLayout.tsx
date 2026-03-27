@@ -84,6 +84,11 @@ const navItems = [
       { label: "Dashboard", href: "/admin/contabilidad/dashboard" },
       { label: "Transacciones", href: "/admin/contabilidad/transacciones" },
       { label: "Informes", href: "/admin/contabilidad/informes" },
+      { label: "Gastos", href: "/admin/contabilidad/gastos" },
+      { label: "Recurrentes", href: "/admin/contabilidad/gastos/recurrentes" },
+      { label: "Categ. gastos", href: "/admin/contabilidad/gastos/categorias" },
+      { label: "Proveedores gastos", href: "/admin/contabilidad/gastos/proveedores" },
+      { label: "Cuenta Resultados", href: "/admin/contabilidad/cuenta-resultados" },
     ],
   },
   {
