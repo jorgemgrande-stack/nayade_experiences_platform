@@ -1682,11 +1682,11 @@ export const couponRedemptions = mysqlTable("coupon_redemptions", {
 
   // Estados
   statusOperational: mysqlEnum("statusOperational", [
-    "recibido", "validado", "reserva_generada", "disfrutado", "incidencia", "cancelado"
+    "recibido", "pendiente", "reserva_generada"
   ]).default("recibido").notNull(),
   statusFinancial: mysqlEnum("statusFinancial", [
-    "pendiente_canje_proveedor", "canjeado_en_proveedor", "pendiente_cobro", "cobrado", "discrepancia"
-  ]).default("pendiente_canje_proveedor").notNull(),
+    "pendiente_canjear", "canjeado", "incidencia"
+  ]).default("pendiente_canjear").notNull(),
 
   // OCR
   ocrConfidenceScore: int("ocrConfidenceScore"), // 0-100
@@ -1731,3 +1731,52 @@ export const couponEmailConfig = mysqlTable("coupon_email_config", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type CouponEmailConfig = typeof couponEmailConfig.$inferSelect;
+
+// ── Plataformas de venta externa (Groupon, Smartbox, etc.) ──────────────────
+export const platforms = mysqlTable("platforms", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  slug: varchar("slug", { length: 64 }).notNull().unique(),
+  logoUrl: text("logo_url"),
+  active: boolean("active").default(true).notNull(),
+  settlementFrequency: mysqlEnum("settlement_frequency", ["quincenal", "mensual", "trimestral"]).default("mensual").notNull(),
+  commissionPct: decimal("commission_pct", { precision: 5, scale: 2 }).default("20.00"),
+  externalUrl: text("external_url"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type Platform = typeof platforms.$inferSelect;
+export type InsertPlatform = typeof platforms.$inferInsert;
+
+// ── Productos publicados en plataformas ────────────────────────────────────
+export const platformProducts = mysqlTable("platform_products", {
+  id: int("id").autoincrement().primaryKey(),
+  platformId: int("platform_id").notNull(), // → platforms.id
+  experienceId: int("experience_id"),       // → experiences.id (producto interno)
+  externalLink: text("external_link"),       // URL del producto en la plataforma
+  externalProductName: varchar("external_product_name", { length: 256 }),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type PlatformProduct = typeof platformProducts.$inferSelect;
+export type InsertPlatformProduct = typeof platformProducts.$inferInsert;
+
+// ── Liquidaciones de plataformas ───────────────────────────────────────────
+export const platformSettlements = mysqlTable("platform_settlements", {
+  id: int("id").autoincrement().primaryKey(),
+  platformId: int("platform_id").notNull(), // → platforms.id
+  periodLabel: varchar("period_label", { length: 64 }).notNull(), // ej: "2025-01"
+  periodFrom: varchar("period_from", { length: 20 }),
+  periodTo: varchar("period_to", { length: 20 }),
+  totalCoupons: int("total_coupons").default(0).notNull(),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  status: mysqlEnum("status", ["pendiente_cobro", "cobrado"]).default("pendiente_cobro").notNull(),
+  justificantUrl: text("justificant_url"),
+  notes: text("notes"),
+  settledAt: timestamp("settled_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type PlatformSettlement = typeof platformSettlements.$inferSelect;
+export type InsertPlatformSettlement = typeof platformSettlements.$inferInsert;

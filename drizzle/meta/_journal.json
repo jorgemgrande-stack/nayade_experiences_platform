@@ -190,6 +190,13 @@
       "when": 1774643946403,
       "tag": "0026_small_wiccan",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1774692076456,
+      "tag": "0027_jazzy_talisman",
+      "breakpoints": true
     }
   ]
 }

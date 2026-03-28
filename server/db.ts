@@ -226,79 +226,6 @@ export async function createLead(data: {
   return { id: leadId, success: true };
 }
 
-export async function getAllLeads(params: { status?: string; limit?: number; offset?: number }) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(leads)
-    .orderBy(desc(leads.createdAt))
-    .limit(params.limit ?? 20)
-    .offset(params.offset ?? 0);
-}
-
-export async function updateLeadStatus(id: number, status: string, assignedTo?: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(leads).set({
-    status: status as any,
-    ...(assignedTo ? { assignedTo } : {}),
-  }).where(eq(leads.id, id));
-  return { success: true };
-}
-
-// ─── QUOTES ───────────────────────────────────────────────────────────────────
-
-export async function createQuote(data: {
-  leadId: number;
-  agentId: number;
-  title: string;
-  description?: string;
-  items: { description: string; quantity: number; unitPrice: number; total: number }[];
-  subtotal: string;
-  discount?: string;
-  tax?: string;
-  total: string;
-  validUntil?: string;
-  notes?: string;
-}) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  const quoteNumber = `QT-${Date.now()}-${nanoid(4).toUpperCase()}`;
-  const paymentLinkToken = nanoid(32);
-  const result = await db.insert(quotes).values({
-    quoteNumber,
-    leadId: data.leadId,
-    agentId: data.agentId,
-    title: data.title,
-    description: data.description ?? null,
-    items: data.items,
-    subtotal: data.subtotal,
-    discount: data.discount ?? "0",
-    tax: data.tax ?? "0",
-    total: data.total,
-    validUntil: data.validUntil ? new Date(data.validUntil) : null,
-    notes: data.notes ?? null,
-    paymentLinkToken,
-    status: "borrador",
-  });
-  return { id: Number(result[0].insertId), quoteNumber, paymentLinkToken, success: true };
-}
-
-export async function getAllQuotes(params: { status?: string; limit?: number; offset?: number }) {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(quotes)
-    .orderBy(desc(quotes.createdAt))
-    .limit(params.limit ?? 20)
-    .offset(params.offset ?? 0);
-}
-
-export async function updateQuoteStatus(id: number, status: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(quotes).set({ status: status as any }).where(eq(quotes.id, id));
-  return { success: true };
-}
-
 // ─── BOOKINGS ─────────────────────────────────────────────────────────────────
 
 export async function createBooking(data: {
@@ -1136,35 +1063,6 @@ export async function cloneLocation(id: number) {
     sortOrder: orig.sortOrder,
   });
   return { success: true, slug: newSlug };
-}
-
-// ─── PACKS ────────────────────────────────────────────────────────────────────
-
-export async function getPublicPacks(category?: "dia" | "escolar" | "empresa") {
-  const db = await getDb();
-  if (!db) return [];
-  const conditions = category
-    ? and(eq(packs.isActive, true), eq(packs.category, category))
-    : eq(packs.isActive, true);
-  return db.select().from(packs).where(conditions).orderBy(packs.sortOrder);
-}
-
-export async function getPackBySlug(slug: string) {
-  const db = await getDb();
-  if (!db) return null;
-  const result = await db.select().from(packs).where(eq(packs.slug, slug)).limit(1);
-  return result[0] ?? null;
-}
-
-export async function getPackCrossSells(packId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  const crosses = await db.select().from(packCrossSells)
-    .where(eq(packCrossSells.packId, packId))
-    .orderBy(packCrossSells.sortOrder);
-  if (crosses.length === 0) return [];
-  const ids = crosses.map(c => c.relatedPackId);
-  return db.select().from(packs).where(and(inArray(packs.id, ids), eq(packs.isActive, true)));
 }
 
 export async function getAllPacksAdmin(params: { category?: string; search?: string; limit?: number; offset?: number }) {

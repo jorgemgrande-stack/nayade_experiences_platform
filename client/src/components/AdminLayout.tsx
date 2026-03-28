@@ -149,6 +149,7 @@ const navItems = [
     roles: ["admin"],
     children: [
       { label: "Cupones & Ticketing", href: "/admin/marketing/cupones" },
+      { label: "Plataformas de cupones", href: "/admin/marketing/plataformas" },
       { label: "Códigos de descuento", href: "/admin/marketing/descuentos" },
     ],
   },

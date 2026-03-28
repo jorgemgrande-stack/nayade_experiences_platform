@@ -1,0 +1,22 @@
+{
+  "query": "SELECT statusOperational, COUNT(*) as cnt FROM coupon_redemptions GROUP BY statusOperational;\nSELECT statusFinancial, COUNT(*) as cnt FROM coupon_redemptions GROUP BY statusFinancial;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT statusOperational, COUNT(*) as cnt FROM coupon_redemptions GROUP BY statusOperational;\nSELECT statusFinancial, COUNT(*) as cnt FROM coupon_redemptions GROUP BY statusFinancial;",
+  "rows": [
+    {
+      "statusOperational": "validado",
+      "cnt": "1"
+    },
+    {
+      "statusOperational": "statusFinancial",
+      "cnt": "cnt"
+    },
+    {
+      "statusOperational": "pendiente_canje_proveedor",
+      "cnt": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "statusOperational\tcnt\nvalidado\t1\nstatusFinancial\tcnt\npendiente_canje_proveedor\t1\n",
+  "stderr": "",
+  "execution_time_ms": 67
+}

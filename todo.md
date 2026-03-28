@@ -2053,3 +2053,75 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Reservas: buscar por nombre, email, teléfono, merchant_order, número factura, producto, fecha reserva, notas
 - [x] Facturas: buscar por número factura, nombre, email, teléfono, NIF, dirección
 - [x] TypeScript: 0 errores. Tests: 222 pasando.
+
+## v23.0 — Limpieza técnica completa (auditoría v22.9)
+
+### Sprint 1 — Alta prioridad
+- [ ] A1: Eliminar 4 entradas obsoletas de packs en authGuard.ts (líneas 67-70)
+- [ ] A3: Eliminar PacksManager.tsx huérfano (814 líneas, no enrutado)
+- [ ] A4: Eliminar ComponentShowcase.tsx huérfano (1.437 líneas, no enrutado)
+- [ ] A5: Eliminar 9 funciones muertas de db.ts (getAllLeads, updateLeadStatus, createQuote, getAllQuotes, updateQuoteStatus, getPublicPacks, getPackBySlug, getPackCrossSells, generateExpedientNumber)
+
+### Sprint 2 — Alta prioridad
+- [ ] A2: Crear server/dbPool.ts singleton y reemplazar los 4 pools independientes (crm.ts, legoPacks.ts, tpv.ts, suppliers.ts)
+
+### Sprint 3 — Media prioridad
+- [ ] M1: Migrar 7 archivos que reimplementan sendEmail para usar mailer.ts
+- [ ] M2: Centralizar adminProcedure y staffProcedure en _core/trpc.ts, eliminar definiciones locales
+
+### Sprint 4 — Media prioridad
+- [ ] M3/B7: Cambiar rutas /admin/suppliers → /admin/proveedores y /admin/settlements → /admin/liquidaciones en App.tsx y AdminLayout.tsx
+- [ ] M4: Eliminar 6 pares de rutas alias sin documentar en App.tsx
+- [ ] M5: Reemplazar 5 rutas legacy window.location.replace por Redirect de wouter
+- [ ] M8: Unificar validación customerName a min(2) en hotel.ts, spa.ts, tpv.ts, ticketing.ts
+
+### Sprint 5 — Baja prioridad
+- [ ] B1: Mover DiscountCodesManager.tsx a admin/marketing/ y actualizar import en App.tsx
+- [ ] B2: Definir DEFAULT_PAGE_SIZE=50 en shared/const.ts y usar en todos los routers
+- [ ] B3: Eliminar/reducir 25 console.log en código de servidor de producción
+- [ ] B4/B5/B6/M6: Eliminar imports ghlWebhookLogs, dailyOrders, packCrossSells de db.ts
+- [ ] B8: Corregir comentario engañoso en crm.ts sobre pool compartida
+- [ ] M9: Añadir convención de nomenclatura en schema.ts
+
+## v23.1 — Refactor completo módulo Cupones & Ticketing (pipeline tipo CRM)
+
+### Fase 1 — BD
+- [x] Simplificar statusOperational: recibido | pendiente | reserva_generada
+- [x] Simplificar statusFinancial: pendiente_canjear | canjeado | incidencia
+- [x] Añadir tabla platforms (nombre, logo, activa, frecuencia_liquidacion, comision, url)
+- [x] Añadir tabla platform_products (platformId, experienceId, externalLink, activo)
+- [x] Añadir tabla platform_settlements (platformId, periodo, estado, importe, cupones_ids)
+- [x] Ejecutar migración SQL
+
+### Fase 2 — Backend
+- [x] Nuevos procedimientos: listCoupons (con filtros), updateCouponStatus, convertToReservation
+- [x] Procedimiento postponeCoupon (cambia estado + envía email automático)
+- [x] Procedimiento markIncidence
+- [x] CRUD plataformas (createPlatform, updatePlatform, togglePlatform, deletePlatform)
+- [x] CRUD platform_products
+- [x] CRUD liquidaciones de plataformas
+- [x] Procedimiento getDashboardStats (métricas pipeline)
+- [x] authGuard actualizado con procedimientos públicos
+
+### Fase 3 — Frontend CuponesManager
+- [x] Dashboard superior con 4 cards pipeline (Recibidos, Pendientes, Reserva generada, Incidencias)
+- [x] Métricas secundarias (total, % conversión, valor €, pendientes)
+- [x] Tabs: Cupones | Reservas generadas | Pendientes | Incidencias | Liquidaciones
+- [x] Tabla de cupones con acciones rápidas (Ver, Convertir, Posponer, Incidencia)
+- [x] Modal "Convertir en reserva" con selector de fecha/producto
+- [x] Modal "Ver detalle" completo del cupón
+- [x] Filtro por proveedor (Groupon, Smartbox, CheckYeti, Atrapalo, Jumping, Alpine Resort, Civitatis)
+- [x] Badges de proveedor en cada fila
+- [x] Look & feel idéntico al CRM (fondo negro, degradados, tipografía)
+
+### Fase 4 — PlatformsManager
+- [x] Crear PlatformsManager.tsx con 3 sub-tabs: Configuración | Productos | Liquidaciones
+- [x] Formulario de plataforma con logo, frecuencia, comisión, URL
+- [x] Tabla de productos publicados por plataforma
+- [x] Módulo de liquidaciones con estados pendiente_cobro / cobrado
+- [x] Registrar ruta /admin/marketing/plataformas en App.tsx y sidebar
+
+### Fase 5 — Integración CRM
+- [x] Reservas generadas desde cupón aparecen en CRM con origen "Plataforma"
+- [x] Badge de proveedor visible en reserva del CRM
+- [x] Trazabilidad: campo couponId en reservations

@@ -63,12 +63,6 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "locations.getAll",
   "locations.getBySlug",
 
-  // ── Packs ─────────────────────────────────────────────────────────────────
-  "packs.getAll",
-  "packs.getBySlug",
-  "packs.getByCategory",
-  "packs.getCategories",
-
   // ── Hotel ─────────────────────────────────────────────────────────────────
   "hotel.getRoomTypes",
   "hotel.getRoomBySlug",

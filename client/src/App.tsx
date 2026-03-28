@@ -97,6 +97,7 @@ const SettlementsManager = lazy(() => import("./pages/admin/suppliers/Settlement
 // Marketing
 const DiscountCodesManager = lazy(() => import("./pages/DiscountCodesManager"));
 const CuponesManager = lazy(() => import("./pages/admin/marketing/CuponesManager"));
+const PlatformsManager = lazy(() => import("./pages/admin/marketing/PlatformsManager"));
 
 // TPV
 const TpvScreen = lazy(() => import("./pages/admin/tpv/TpvScreen"));
@@ -207,6 +208,7 @@ function Router() {
       {/* Marketing */}
       <Route path="/admin/marketing">{() => <Suspense fallback={<AdminLoadingFallback />}><CuponesManager /></Suspense>}</Route>
       <Route path="/admin/marketing/cupones">{() => <Suspense fallback={<AdminLoadingFallback />}><CuponesManager /></Suspense>}</Route>
+      <Route path="/admin/marketing/plataformas">{() => <Suspense fallback={<AdminLoadingFallback />}><PlatformsManager /></Suspense>}</Route>
       <Route path="/admin/marketing/descuentos">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
       <Route path="/admin/marketing/codigos-descuento">{() => <Suspense fallback={<AdminLoadingFallback />}><DiscountCodesManager /></Suspense>}</Route>
 

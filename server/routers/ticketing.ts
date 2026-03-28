@@ -1,6 +1,7 @@
 /**
- * Ticketing Router — Módulo de Canje de Cupones Groupon
- * Gestión completa: recepción → validación OCR → conversión a reserva → liquidación
+ * Ticketing Router — Pipeline de Cupones & Plataformas
+ * Flujo: Recibido → Pendiente → Reserva generada
+ * Financiero: Pendiente canjear → Canjeado | Incidencia
  */
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -14,8 +15,11 @@ import {
   experiences,
   reservations,
   clients,
+  platforms,
+  platformProducts,
+  platformSettlements,
 } from "../../drizzle/schema";
-import { eq, desc, and, like, or, sql, count } from "drizzle-orm";
+import { eq, desc, and, like, or, sql, count, inArray } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
@@ -25,27 +29,39 @@ const db = drizzle(_pool);
 
 const COPY_EMAIL = "reservas@nayadeexperiences.es";
 
+// ─── PROVEEDORES FIJOS ────────────────────────────────────────────────────────
+export const FIXED_PROVIDERS = [
+  "Groupon",
+  "Smartbox",
+  "CheckYeti",
+  "Atrapalo",
+  "Jumping",
+  "Alpine Resort",
+  "Civitatis",
+] as const;
+
+type FixedProvider = typeof FIXED_PROVIDERS[number];
+
+// ─── STATUS TYPES ─────────────────────────────────────────────────────────────
+type StatusOperational = "recibido" | "pendiente" | "reserva_generada";
+type StatusFinancial = "pendiente_canjear" | "canjeado" | "incidencia";
+
+// ─── EMAIL HELPER ─────────────────────────────────────────────────────────────
 async function sendEmail(opts: { to: string; subject: string; html: string }) {
   const sent = await sharedSendEmail(opts);
   if (!sent) console.warn("[Ticketing] SMTP not configured, skipping email");
   else await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${opts.subject}`, html: opts.html });
 }
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// ─── ADMIN PROCEDURE ─────────────────────────────────────────────────────────
+const adminProc = protectedProcedure.use(({ ctx, next }) => {
+  if (!["admin", "agente"].includes(ctx.user.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores y agentes" });
+  }
+  return next({ ctx });
+});
 
-function adminProcedure() {
-  return protectedProcedure.use(({ ctx, next }) => {
-    if (!["admin", "agente"].includes(ctx.user.role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores y agentes" });
-    }
-    return next({ ctx });
-  });
-}
-
-/**
- * Motor OCR asistido — extrae datos del cupón usando LLM con visión
- * Retorna un score de confianza (0-100) y los datos extraídos
- */
+// ─── OCR ENGINE ──────────────────────────────────────────────────────────────
 async function runOcrExtraction(attachmentUrl: string, formData: {
   couponCode: string;
   securityCode?: string;
@@ -57,13 +73,13 @@ async function runOcrExtraction(attachmentUrl: string, formData: {
   rawData: Record<string, unknown>;
 }> {
   try {
-    const prompt = `Analiza esta imagen/PDF de un cupón de Groupon y extrae la siguiente información en JSON:
+    const prompt = `Analiza esta imagen/PDF de un cupón y extrae la siguiente información en JSON:
 - coupon_code: código del cupón
 - security_code: código de seguridad
 - product_name: nombre del producto/experiencia
 - customer_name: nombre del cliente
 - expiry_date: fecha de caducidad (si aparece)
-- provider: proveedor (Groupon, Wonderbox, etc.)
+- provider: proveedor (Groupon, Smartbox, etc.)
 
 Responde SOLO con JSON válido, sin texto adicional.`;
 
@@ -99,146 +115,77 @@ Responde SOLO con JSON válido, sin texto adicional.`;
       },
     });
 
-    const content = response.choices?.[0]?.message?.content;
-    if (!content) throw new Error("No OCR response");
+    const rawData = JSON.parse(response.choices[0].message.content as string) as Record<string, unknown>;
+    let score = 50;
+    let conflicts = 0;
 
-    const extracted = typeof content === "string" ? JSON.parse(content) : content;
-
-    // Calcular score de confianza según pesos definidos en el spec
-    let score = 0;
-
-    // Código cupón (30%)
-    const couponMatch = extracted.coupon_code &&
-      formData.couponCode &&
-      extracted.coupon_code.replace(/\s/g, "").toLowerCase() ===
-      formData.couponCode.replace(/\s/g, "").toLowerCase();
-    if (couponMatch) score += 30;
-    else if (extracted.coupon_code && formData.couponCode &&
-      extracted.coupon_code.replace(/\s/g, "").toLowerCase().includes(
-        formData.couponCode.replace(/\s/g, "").toLowerCase().slice(0, 4)
-      )) score += 15;
-
-    // Código seguridad (30%)
-    if (formData.securityCode) {
-      const secMatch = extracted.security_code &&
-        extracted.security_code.replace(/\s/g, "").toLowerCase() ===
-        formData.securityCode.replace(/\s/g, "").toLowerCase();
-      if (secMatch) score += 30;
-      else if (extracted.security_code) score += 10;
-    } else {
-      score += 20; // No se proporcionó, no penalizar
+    if (rawData.coupon_code && typeof rawData.coupon_code === "string") {
+      const extracted = (rawData.coupon_code as string).replace(/\s/g, "").toUpperCase();
+      const provided = formData.couponCode.replace(/\s/g, "").toUpperCase();
+      if (extracted === provided) score += 30;
+      else { score -= 20; conflicts++; }
+    }
+    if (rawData.customer_name && typeof rawData.customer_name === "string") {
+      const extracted = (rawData.customer_name as string).toLowerCase();
+      const provided = formData.customerName.toLowerCase();
+      if (extracted.includes(provided.split(" ")[0]) || provided.includes(extracted.split(" ")[0])) score += 10;
+    }
+    if (rawData.security_code && formData.securityCode) {
+      const extracted = (rawData.security_code as string).replace(/\s/g, "").toUpperCase();
+      const provided = formData.securityCode.replace(/\s/g, "").toUpperCase();
+      if (extracted === provided) score += 10;
+      else { score -= 10; conflicts++; }
     }
 
-    // Producto (25%)
-    if (formData.productName && extracted.product_name) {
-      const prodWords = formData.productName.toLowerCase().split(/\s+/);
-      const ocrWords = extracted.product_name.toLowerCase();
-      const matchCount = prodWords.filter((w) => w.length > 3 && ocrWords.includes(w)).length;
-      score += Math.min(25, Math.round((matchCount / Math.max(prodWords.length, 1)) * 25));
-    } else {
-      score += 12; // Parcial si no hay producto
-    }
+    score = Math.max(0, Math.min(100, score));
+    const status: "alta" | "media" | "baja" | "conflicto" =
+      conflicts > 0 ? "conflicto" : score >= 80 ? "alta" : score >= 60 ? "media" : "baja";
 
-    // Fecha validez (10%) — si no ha caducado
-    if (extracted.expiry_date) {
-      try {
-        const parts = extracted.expiry_date.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
-        if (parts) {
-          const [, d, m, y] = parts;
-          const expiry = new Date(`${y.length === 2 ? "20" + y : y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`);
-          if (expiry > new Date()) score += 10;
-        } else {
-          score += 5; // Fecha presente pero no parseable
-        }
-      } catch {
-        score += 5;
-      }
-    } else {
-      score += 5;
-    }
-
-    // Nombre cliente (5%)
-    if (formData.customerName && extracted.customer_name) {
-      const nameWords = formData.customerName.toLowerCase().split(/\s+/);
-      const ocrName = extracted.customer_name.toLowerCase();
-      const nameMatch = nameWords.some((w) => w.length > 2 && ocrName.includes(w));
-      if (nameMatch) score += 5;
-    } else {
-      score += 3;
-    }
-
-    score = Math.min(100, Math.max(0, score));
-
-    let status: "alta" | "media" | "baja" | "conflicto";
-    if (score >= 90) status = "alta";
-    else if (score >= 70) status = "media";
-    else if (score >= 40) status = "baja";
-    else status = "conflicto";
-
-    return { score, status, rawData: extracted };
-  } catch (err) {
-    console.error("[Ticketing OCR] Error:", err);
-    return { score: 0, status: "conflicto", rawData: { error: String(err) } };
+    return { score, status, rawData };
+  } catch {
+    return { score: 0, status: "baja", rawData: {} };
   }
 }
 
-/**
- * Verificación de duplicados
- */
-async function checkDuplicates(couponCode: string, securityCode: string | undefined, email: string, phone: string | undefined, requestedDate: string | undefined, productTicketingId: number | undefined): Promise<{
-  hardDuplicate: boolean;
-  softDuplicate: boolean;
-  notes: string;
-}> {
-  // Duplicidad dura: mismo couponCode o mismo securityCode
+// ─── DUPLICATE CHECK ─────────────────────────────────────────────────────────
+async function checkDuplicates(
+  couponCode: string,
+  securityCode?: string,
+  email?: string,
+  phone?: string,
+  requestedDate?: string,
+  productTicketingId?: number,
+): Promise<{ hardDuplicate: boolean; softDuplicate: boolean; notes: string }> {
   const hardConditions = [like(couponRedemptions.couponCode, couponCode)];
   if (securityCode) {
     hardConditions.push(like(couponRedemptions.securityCode, securityCode));
   }
-
   const hardDupes = await db
-    .select({ id: couponRedemptions.id, couponCode: couponRedemptions.couponCode })
+    .select({ id: couponRedemptions.id })
     .from(couponRedemptions)
-    .where(or(...hardConditions))
-    .limit(5);
+    .where(and(...hardConditions))
+    .limit(1);
 
   if (hardDupes.length > 0) {
-    return {
-      hardDuplicate: true,
-      softDuplicate: false,
-      notes: `Duplicado duro detectado: mismo código de cupón o seguridad ya existe (IDs: ${hardDupes.map((d) => d.id).join(", ")})`,
-    };
+    return { hardDuplicate: true, softDuplicate: false, notes: "Código de cupón duplicado (hard)" };
   }
 
-  // Duplicidad blanda: mismo email + fecha o mismo teléfono + producto
   const softNotes: string[] = [];
-
   if (email && requestedDate) {
     const emailDateDupes = await db
       .select({ id: couponRedemptions.id })
       .from(couponRedemptions)
-      .where(and(
-        eq(couponRedemptions.email, email),
-        eq(couponRedemptions.requestedDate, requestedDate),
-      ))
-      .limit(3);
-    if (emailDateDupes.length > 0) {
-      softNotes.push(`Mismo email + fecha (IDs: ${emailDateDupes.map((d) => d.id).join(", ")})`);
-    }
+      .where(and(eq(couponRedemptions.email, email), eq(couponRedemptions.requestedDate, requestedDate)))
+      .limit(1);
+    if (emailDateDupes.length > 0) softNotes.push("Mismo email y fecha");
   }
-
   if (phone && productTicketingId) {
-    const phoneProductDupes = await db
+    const phoneProdDupes = await db
       .select({ id: couponRedemptions.id })
       .from(couponRedemptions)
-      .where(and(
-        eq(couponRedemptions.phone, phone),
-        eq(couponRedemptions.productTicketingId, productTicketingId),
-      ))
-      .limit(3);
-    if (phoneProductDupes.length > 0) {
-      softNotes.push(`Mismo teléfono + producto (IDs: ${phoneProductDupes.map((d) => d.id).join(", ")})`);
-    }
+      .where(and(eq(couponRedemptions.phone, phone), eq(couponRedemptions.productTicketingId, productTicketingId)))
+      .limit(1);
+    if (phoneProdDupes.length > 0) softNotes.push("Mismo teléfono y producto");
   }
 
   return {
@@ -249,6 +196,47 @@ async function checkDuplicates(couponCode: string, securityCode: string | undefi
 }
 
 // ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
+function buildRedemptionConfirmationHtml(data: {
+  customerName: string;
+  email: string;
+  phone?: string;
+  coupons: { couponCode: string; provider: string }[];
+  submissionId: string;
+  requestedDate?: string;
+}) {
+  const couponRows = data.coupons.map((c) =>
+    `<tr><td style="padding:8px;border-bottom:1px solid #333;">${c.provider}</td><td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;">${c.couponCode}</td></tr>`
+  );
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/></head>
+<body style="background:#0a0a0a;color:#fff;font-family:sans-serif;padding:32px;">
+<h2 style="color:#a78bfa;">Hemos recibido tu solicitud de canje</h2>
+<p>Hola <strong>${data.customerName}</strong>,</p>
+<p>Hemos registrado tu solicitud correctamente. Nos pondremos en contacto contigo para confirmar la disponibilidad.</p>
+<table style="width:100%;border-collapse:collapse;margin:16px 0;">
+<thead><tr><th style="text-align:left;padding:8px;background:#1a1a2e;color:#a78bfa;">Proveedor</th><th style="text-align:left;padding:8px;background:#1a1a2e;color:#a78bfa;">Código</th></tr></thead>
+<tbody>${couponRows.join("")}</tbody></table>
+${data.requestedDate ? `<p>Fecha solicitada: <strong>${data.requestedDate}</strong></p>` : ""}
+<p style="color:#888;font-size:12px;">Referencia: ${data.submissionId}</p>
+</body></html>`;
+}
+
+function buildPostponeEmailHtml(data: {
+  customerName: string;
+  couponCode: string;
+  provider: string;
+  productName: string;
+  requestedDate?: string;
+}) {
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/></head>
+<body style="background:#0a0a0a;color:#fff;font-family:sans-serif;padding:32px;">
+<h2 style="color:#f59e0b;">Información sobre tu solicitud de canje</h2>
+<p>Hola <strong>${data.customerName}</strong>,</p>
+<p>Actualmente no hay disponibilidad para la fecha solicitada${data.requestedDate ? ` (${data.requestedDate})` : ""} para <strong>${data.productName}</strong>.</p>
+<p>Tu solicitud queda en estado <strong>Pendiente</strong>. Nos pondremos en contacto contigo para ofrecerte fechas alternativas.</p>
+<p>Código de cupón: <code style="background:#1a1a2e;padding:4px 8px;border-radius:4px;">${data.couponCode}</code> (${data.provider})</p>
+<p>Disculpa las molestias. ¡Nos vemos pronto en la nieve!</p>
+</body></html>`;
+}
 
 function buildInternalAlertHtml(data: {
   customerName: string;
@@ -257,93 +245,30 @@ function buildInternalAlertHtml(data: {
   coupons: { couponCode: string; provider: string }[];
   submissionId: string;
   requestedDate?: string;
-}): string {
+}) {
   const couponRows = data.coupons.map((c) =>
-    `<tr><td style="padding:4px 8px;color:#6b7280;">${c.provider}</td><td style="padding:4px 8px;font-family:monospace;font-weight:600;color:#f97316;">${c.couponCode}</td></tr>`
-  ).join("");
+    `<tr><td style="padding:6px;border-bottom:1px solid #333;">${c.provider}</td><td style="padding:6px;border-bottom:1px solid #333;font-family:monospace;">${c.couponCode}</td></tr>`
+  );
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/></head>
-<body style="font-family:Arial,sans-serif;background:#f8fafc;padding:20px;">
-  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-    <div style="background:#1a3a6b;padding:20px 28px;">
-      <h2 style="color:#fff;margin:0;font-size:18px;">&#x1F514; Nuevo env\u00edo de cup\u00f3n</h2>
-      <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:12px;">Submission ID: ${data.submissionId}</p>
-    </div>
-    <div style="padding:24px 28px;">
-      <table style="width:100%;font-size:14px;color:#374151;margin-bottom:16px;">
-        <tr><td style="padding:4px 0;color:#6b7280;">Cliente:</td><td style="padding:4px 0;font-weight:600;">${data.customerName}</td></tr>
-        <tr><td style="padding:4px 0;color:#6b7280;">Email:</td><td style="padding:4px 0;">${data.email}</td></tr>
-        ${data.phone ? `<tr><td style="padding:4px 0;color:#6b7280;">Tel\u00e9fono:</td><td style="padding:4px 0;">${data.phone}</td></tr>` : ""}
-        ${data.requestedDate ? `<tr><td style="padding:4px 0;color:#6b7280;">Fecha solicitada:</td><td style="padding:4px 0;">${data.requestedDate}</td></tr>` : ""}
-      </table>
-      <p style="font-weight:700;color:#1a3a6b;margin:0 0 8px;">Cup\u00f3n${data.coupons.length > 1 ? "es" : ""} (${data.coupons.length}):</p>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;">
-        <thead><tr style="background:#f0f7ff;"><th style="padding:6px 8px;text-align:left;color:#1a3a6b;">Proveedor</th><th style="padding:6px 8px;text-align:left;color:#1a3a6b;">C\u00f3digo</th></tr></thead>
-        <tbody>${couponRows}</tbody>
-      </table>
-      <div style="margin-top:20px;padding:12px 16px;background:#fef3c7;border-radius:8px;">
-        <a href="https://nayade-shop-av298fs8.manus.space/admin/marketing/cupones" style="color:#92400e;font-weight:600;font-size:13px;">&#x1F517; Ver en el CRM</a>
-      </div>
-    </div>
-  </div>
+<body style="background:#0a0a0a;color:#fff;font-family:sans-serif;padding:24px;">
+<h3 style="color:#a78bfa;">[Ticketing] Nuevo envío de cupones</h3>
+<p><strong>Cliente:</strong> ${data.customerName} | ${data.email}${data.phone ? ` | ${data.phone}` : ""}</p>
+<table style="width:100%;border-collapse:collapse;margin:12px 0;">
+<thead><tr><th style="text-align:left;padding:6px;background:#1a1a2e;color:#a78bfa;">Proveedor</th><th style="text-align:left;padding:6px;background:#1a1a2e;color:#a78bfa;">Código</th></tr></thead>
+<tbody>${couponRows.join("")}</tbody></table>
+${data.requestedDate ? `<p>Fecha solicitada: <strong>${data.requestedDate}</strong></p>` : ""}
+<p style="color:#888;font-size:12px;">Ref: ${data.submissionId}</p>
 </body></html>`;
 }
 
-function buildRedemptionConfirmationHtml(data: {
-  customerName: string;
-  couponCode: string;
-  provider: string;
-  productName: string;
-  requestedDate?: string;
-}): string {
-  return `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8"/></head>
-<body style="font-family:Arial,sans-serif;background:#f8fafc;padding:20px;">
-  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-    <div style="background:#1a3a6b;padding:24px 32px;text-align:center;">
-      <h1 style="color:#fff;margin:0;font-size:22px;">Náyade Experiences</h1>
-      <p style="color:rgba(255,255,255,0.7);margin:4px 0 0;font-size:13px;">Solicitud de canje recibida</p>
-    </div>
-    <div style="padding:32px;">
-      <h2 style="color:#1a3a6b;margin-top:0;">Hola, ${data.customerName}</h2>
-      <p style="color:#374151;line-height:1.6;">Hemos recibido tu solicitud de canje del cupón <strong>${data.provider}</strong>. Nuestro equipo la revisará y se pondrá en contacto contigo en breve para confirmar tu reserva.</p>
-      <div style="background:#f0f7ff;border-radius:8px;padding:16px 20px;margin:20px 0;">
-        <p style="margin:0 0 8px;color:#1a3a6b;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1px;">Detalles de tu solicitud</p>
-        <table style="width:100%;font-size:14px;color:#374151;">
-          <tr><td style="padding:4px 0;color:#6b7280;">Proveedor:</td><td style="padding:4px 0;font-weight:600;">${data.provider}</td></tr>
-          <tr><td style="padding:4px 0;color:#6b7280;">Experiencia:</td><td style="padding:4px 0;font-weight:600;">${data.productName}</td></tr>
-          <tr><td style="padding:4px 0;color:#6b7280;">Código cupón:</td><td style="padding:4px 0;font-weight:600;font-family:monospace;">${data.couponCode}</td></tr>
-          ${data.requestedDate ? `<tr><td style="padding:4px 0;color:#6b7280;">Fecha solicitada:</td><td style="padding:4px 0;font-weight:600;">${data.requestedDate}</td></tr>` : ""}
-        </table>
-      </div>
-      <p style="color:#374151;line-height:1.6;">Si tienes alguna duda, puedes contactarnos en <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a> o llamarnos al <strong>+34 930 34 77 91</strong>.</p>
-    </div>
-    <div style="background:#f8fafc;padding:16px 32px;text-align:center;border-top:1px solid #e5e7eb;">
-      <p style="color:#9ca3af;font-size:12px;margin:0;">Náyade Experiences · Los Ángeles de San Rafael, Segovia · www.nayadeexperiences.es</p>
-    </div>
-  </div>
-</body>
-</html>`;
-}
-
-// ─── ROUTER ──────────────────────────────────────────────────────────────────
-
-const adminProc = protectedProcedure.use(({ ctx, next }) => {
-  if (!["admin", "agente"].includes(ctx.user.role)) {
-    throw new TRPCError({ code: "FORBIDDEN" });
-  }
-  return next({ ctx });
-});
-
+// ─── ROUTER ───────────────────────────────────────────────────────────────────
 export const ticketingRouter = router({
-  // ── PRODUCTOS TICKETING ──────────────────────────────────────────────────
 
-  /** Admin: listar todos los productos ticketing */
+  // ── PRODUCTOS TICKETING ──────────────────────────────────────────────────
   listProducts: adminProc.query(async () => {
     return db.select().from(ticketingProducts).orderBy(desc(ticketingProducts.createdAt));
   }),
 
-  /** Admin: obtener producto ticketing por ID */
   getProduct: adminProc
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
@@ -352,7 +277,6 @@ export const ticketingRouter = router({
       return product;
     }),
 
-  /** Admin: crear producto ticketing */
   createProduct: adminProc
     .input(z.object({
       name: z.string().min(1),
@@ -378,7 +302,6 @@ export const ticketingRouter = router({
       return { id: (result as { insertId: number }).insertId };
     }),
 
-  /** Admin: actualizar producto ticketing */
   updateProduct: adminProc
     .input(z.object({
       id: z.number(),
@@ -397,7 +320,6 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Admin: eliminar producto ticketing */
   deleteProduct: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
@@ -415,37 +337,36 @@ export const ticketingRouter = router({
         .where(and(eq(ticketingProducts.active, true), eq(ticketingProducts.provider, input.provider)));
     }),
 
-  // ── SOLICITUDES DE CANJE ─────────────────────────────────────────────────
-
-  /** Público: crear múltiples cupones en un mismo envío (multi-cupón) */
+  // ── SOLICITUDES DE CANJE (MULTI-CUPÓN) ───────────────────────────────────
+  /** Público: crear múltiples cupones en un mismo envío */
   createSubmission: publicProcedure
     .input(z.object({
+      provider: z.string().default("Groupon"),
       customerName: z.string().min(1),
       email: z.string().email(),
       phone: z.string().optional(),
+      coupons: z.array(z.object({
+        couponCode: z.string().min(1),
+        securityCode: z.string().optional(),
+        productTicketingId: z.number().optional(),
+        attachmentUrl: z.string().url().optional(),
+        provider: z.string().default("Groupon"),
+      })).min(1).max(10),
       requestedDate: z.string().optional(),
       station: z.string().optional(),
       participants: z.number().int().min(1).default(1),
       children: z.number().int().min(0).default(0),
       comments: z.string().optional(),
-      coupons: z.array(z.object({
-        provider: z.string().default("Groupon"),
-        productTicketingId: z.number().optional(),
-        couponCode: z.string().min(1),
-        securityCode: z.string().optional(),
-        attachmentUrl: z.string().url().optional(),
-      })).min(1),
     }))
     .mutation(async ({ input }) => {
       const submissionId = crypto.randomUUID();
-      const results: { redemptionId: number; couponCode: string; softDuplicate: boolean; hardDuplicate: boolean }[] = [];
-      const [emailCfg] = await db.select().from(couponEmailConfig).limit(1);
-      const cfg = emailCfg ?? { autoSendCouponReceived: true, autoSendInternalAlert: true, autoSendCouponValidated: true, emailMode: "per_submission" as const, internalAlertEmail: COPY_EMAIL };
+      const results: { couponCode: string; accepted: boolean; reason?: string; redemptionId?: number }[] = [];
+      const validResults: { couponCode: string; provider: string }[] = [];
 
       for (const coupon of input.coupons) {
         const dupCheck = await checkDuplicates(coupon.couponCode, coupon.securityCode, input.email, input.phone, input.requestedDate, coupon.productTicketingId);
         if (dupCheck.hardDuplicate) {
-          results.push({ redemptionId: -1, couponCode: coupon.couponCode, softDuplicate: false, hardDuplicate: true });
+          results.push({ couponCode: coupon.couponCode, accepted: false, reason: "Código duplicado" });
           continue;
         }
         let productName = "Experiencia Náyade";
@@ -454,7 +375,7 @@ export const ticketingRouter = router({
           if (prod) productName = prod.name;
         }
         const [result] = await db.insert(couponRedemptions).values({
-          provider: coupon.provider,
+          provider: coupon.provider ?? input.provider,
           productTicketingId: coupon.productTicketingId ?? null,
           customerName: input.customerName,
           email: input.email,
@@ -468,7 +389,7 @@ export const ticketingRouter = router({
           children: input.children,
           comments: input.comments ?? null,
           statusOperational: "recibido",
-          statusFinancial: "pendiente_canje_proveedor",
+          statusFinancial: "pendiente_canjear",
           duplicateFlag: dupCheck.softDuplicate,
           duplicateNotes: dupCheck.notes || null,
           submissionId,
@@ -476,30 +397,38 @@ export const ticketingRouter = router({
           channelEntry: "web",
         });
         const redemptionId = (result as { insertId: number }).insertId;
-        results.push({ redemptionId, couponCode: coupon.couponCode, softDuplicate: dupCheck.softDuplicate, hardDuplicate: false });
+        results.push({ couponCode: coupon.couponCode, accepted: true, redemptionId });
+        validResults.push({ couponCode: coupon.couponCode, provider: coupon.provider ?? input.provider });
+
+        // OCR en background
         if (coupon.attachmentUrl) {
           const attachUrl = coupon.attachmentUrl;
           const pName = productName;
           setImmediate(async () => {
             try {
               const ocr = await runOcrExtraction(attachUrl, { couponCode: coupon.couponCode, securityCode: coupon.securityCode, productName: pName, customerName: input.customerName });
-              await db.update(couponRedemptions).set({ ocrConfidenceScore: ocr.score, ocrStatus: ocr.status, ocrRawData: ocr.rawData, statusOperational: ocr.score >= 90 ? "validado" : "recibido" }).where(eq(couponRedemptions.id, redemptionId));
-            } catch (err) { console.error("[Ticketing OCR]", err); }
+              await db.update(couponRedemptions).set({ ocrConfidenceScore: ocr.score, ocrStatus: ocr.status, ocrRawData: ocr.rawData }).where(eq(couponRedemptions.id, redemptionId));
+            } catch { /* silent */ }
           });
-        }
-        if (cfg.autoSendCouponReceived && cfg.emailMode === "per_coupon") {
-          sendEmail({ to: input.email, subject: `Hemos recibido tu solicitud de canje \u2014 ${coupon.provider}`, html: buildRedemptionConfirmationHtml({ customerName: input.customerName, couponCode: coupon.couponCode, provider: coupon.provider, productName, requestedDate: input.requestedDate }) }).catch(console.error);
         }
       }
 
-      const validResults = results.filter((r) => r.redemptionId > 0);
-      if (cfg.autoSendCouponReceived && cfg.emailMode !== "per_coupon" && validResults.length > 0) {
-        const firstCoupon = input.coupons[0];
-        sendEmail({ to: input.email, subject: `Hemos recibido tu solicitud de canje (${validResults.length} cup\u00f3n${validResults.length > 1 ? "es" : ""})`, html: buildRedemptionConfirmationHtml({ customerName: input.customerName, couponCode: validResults.map((r) => r.couponCode).join(", "), provider: firstCoupon.provider, productName: `${validResults.length} experiencia${validResults.length > 1 ? "s" : ""}`, requestedDate: input.requestedDate }) }).catch(console.error);
+      if (validResults.length > 0) {
+        // Email confirmación cliente
+        sendEmail({
+          to: input.email,
+          subject: `Hemos recibido tu solicitud de canje — ${input.provider}`,
+          html: buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate }),
+        }).catch(console.error);
+
+        // Alerta interna
+        const [cfg] = await db.select().from(couponEmailConfig).limit(1);
+        if (!cfg || cfg.autoSendInternalAlert) {
+          const alertEmail = cfg?.internalAlertEmail ?? COPY_EMAIL;
+          sendEmail({ to: alertEmail, subject: `[Ticketing] Nuevo envío: ${validResults.length} cupón${validResults.length > 1 ? "es" : ""} — ${input.customerName}`, html: buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate }) }).catch(console.error);
+        }
       }
-      if (cfg.autoSendInternalAlert && validResults.length > 0) {
-        sendEmail({ to: cfg.internalAlertEmail, subject: `[Ticketing] Nuevo env\u00edo: ${validResults.length} cup\u00f3n${validResults.length > 1 ? "es" : ""} \u2014 ${input.customerName}`, html: buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: input.coupons.map((c) => ({ couponCode: c.couponCode, provider: c.provider })), submissionId, requestedDate: input.requestedDate }) }).catch(console.error);
-      }
+
       return { success: true, submissionId, results, totalAccepted: validResults.length, totalRejected: results.length - validResults.length };
     }),
 
@@ -547,7 +476,7 @@ export const ticketingRouter = router({
         comments: input.comments ?? null,
         notes: input.notes ?? null,
         statusOperational: "recibido",
-        statusFinancial: "pendiente_canje_proveedor",
+        statusFinancial: "pendiente_canjear",
         duplicateFlag: dupCheck.softDuplicate,
         duplicateNotes: dupCheck.notes || null,
         submissionId,
@@ -562,71 +491,252 @@ export const ticketingRouter = router({
         setImmediate(async () => {
           try {
             const ocr = await runOcrExtraction(attachUrl, { couponCode: input.couponCode, securityCode: input.securityCode, productName: pName, customerName: input.customerName });
-            await db.update(couponRedemptions).set({ ocrConfidenceScore: ocr.score, ocrStatus: ocr.status, ocrRawData: ocr.rawData, statusOperational: ocr.score >= 90 ? "validado" : "recibido" }).where(eq(couponRedemptions.id, redemptionId));
-          } catch (err) { console.error("[Ticketing OCR manual]", err); }
+            await db.update(couponRedemptions).set({ ocrConfidenceScore: ocr.score, ocrStatus: ocr.status, ocrRawData: ocr.rawData }).where(eq(couponRedemptions.id, redemptionId));
+          } catch { /* silent */ }
         });
       }
       return { success: true, redemptionId, submissionId, softDuplicate: dupCheck.softDuplicate };
     }),
 
-  /** Admin: listar envíos agrupados por submission_id */
-  listSubmissions: adminProc
+  // ── PIPELINE — LISTADO Y FILTROS ─────────────────────────────────────────
+  /** Admin: listar cupones con filtros de pipeline */
+  listCoupons: adminProc
     .input(z.object({
       page: z.number().int().min(1).default(1),
-      pageSize: z.number().int().min(1).max(50).default(20),
+      pageSize: z.number().int().min(1).max(100).default(25),
+      provider: z.string().optional(),
+      statusOperational: z.enum(["recibido", "pendiente", "reserva_generada"]).optional(),
+      statusFinancial: z.enum(["pendiente_canjear", "canjeado", "incidencia"]).optional(),
+      duplicateFlag: z.boolean().optional(),
       search: z.string().optional(),
-      statusOperational: z.enum(["recibido", "validado", "reserva_generada", "disfrutado", "incidencia", "cancelado"]).optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
     }))
     .query(async ({ input }) => {
-      const offset = (input.page - 1) * input.pageSize;
       const conditions = [];
+      if (input.provider) conditions.push(eq(couponRedemptions.provider, input.provider));
       if (input.statusOperational) conditions.push(eq(couponRedemptions.statusOperational, input.statusOperational));
-      if (input.search) conditions.push(or(like(couponRedemptions.customerName, `%${input.search}%`), like(couponRedemptions.email, `%${input.search}%`), like(couponRedemptions.couponCode, `%${input.search}%`)));
-      const where = conditions.length > 0 ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined;
-      const allRows = await db.select({
-        id: couponRedemptions.id,
-        submissionId: couponRedemptions.submissionId,
-        customerName: couponRedemptions.customerName,
-        email: couponRedemptions.email,
-        provider: couponRedemptions.provider,
-        couponCode: couponRedemptions.couponCode,
-        statusOperational: couponRedemptions.statusOperational,
-        statusFinancial: couponRedemptions.statusFinancial,
-        ocrStatus: couponRedemptions.ocrStatus,
-        ocrConfidenceScore: couponRedemptions.ocrConfidenceScore,
-        duplicateFlag: couponRedemptions.duplicateFlag,
-        originSource: couponRedemptions.originSource,
-        channelEntry: couponRedemptions.channelEntry,
-        createdAt: couponRedemptions.createdAt,
-      }).from(couponRedemptions).where(where).orderBy(desc(couponRedemptions.createdAt));
-      const grouped = new Map<string, typeof allRows>();
-      for (const row of allRows) {
-        const key = row.submissionId ?? `single_${row.id}`;
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key)!.push(row);
+      if (input.statusFinancial) conditions.push(eq(couponRedemptions.statusFinancial, input.statusFinancial));
+      if (input.duplicateFlag !== undefined) conditions.push(eq(couponRedemptions.duplicateFlag, input.duplicateFlag));
+      if (input.search) {
+        conditions.push(or(
+          like(couponRedemptions.customerName, `%${input.search}%`),
+          like(couponRedemptions.email, `%${input.search}%`),
+          like(couponRedemptions.couponCode, `%${input.search}%`),
+          like(couponRedemptions.phone, `%${input.search}%`),
+          like(couponRedemptions.provider, `%${input.search}%`),
+          like(couponRedemptions.station, `%${input.search}%`),
+          like(couponRedemptions.notes, `%${input.search}%`),
+        ));
       }
-      const submissions = Array.from(grouped.entries()).map(([sid, rows]) => ({
-        submissionId: sid,
-        customerName: rows[0].customerName,
-        email: rows[0].email,
-        couponCount: rows.length,
-        coupons: rows,
-        statusOperational: rows[0].statusOperational,
-        originSource: rows[0].originSource,
-        channelEntry: rows[0].channelEntry,
-        createdAt: rows[0].createdAt,
-        hasIncidencia: rows.some((r) => r.statusOperational === "incidencia"),
-        hasDuplicate: rows.some((r) => r.duplicateFlag),
-      }));
-      const total = submissions.length;
-      const paginated = submissions.slice(offset, offset + input.pageSize);
-      return { items: paginated, total, page: input.page, totalPages: Math.ceil(total / input.pageSize) };
+      const where = conditions.length > 0 ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined;
+      const offset = (input.page - 1) * input.pageSize;
+      const [items, [{ total }]] = await Promise.all([
+        db.select().from(couponRedemptions).where(where).orderBy(desc(couponRedemptions.createdAt)).limit(input.pageSize).offset(offset),
+        db.select({ total: count() }).from(couponRedemptions).where(where),
+      ]);
+      return { items, total, page: input.page, pageSize: input.pageSize, totalPages: Math.ceil(total / input.pageSize) };
     }),
 
-  /** Admin: obtener/actualizar configuración de emails automáticos */
+  /** Admin: obtener detalle de un cupón */
+  getRedemption: adminProc
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+      let ticketingProduct = null;
+      if (item.productTicketingId) {
+        const [tp] = await db.select().from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
+        ticketingProduct = tp ?? null;
+      }
+      let realProduct = null;
+      if (item.productRealId) {
+        const [rp] = await db.select({ id: experiences.id, title: experiences.title }).from(experiences).where(eq(experiences.id, item.productRealId)).limit(1);
+        realProduct = rp ?? null;
+      }
+      return { ...item, ticketingProduct, realProduct };
+    }),
+
+  // ── PIPELINE — ACCIONES ───────────────────────────────────────────────────
+  /** Admin: actualizar estado de un cupón */
+  updateCouponStatus: adminProc
+    .input(z.object({
+      id: z.number(),
+      statusOperational: z.enum(["recibido", "pendiente", "reserva_generada"]).optional(),
+      statusFinancial: z.enum(["pendiente_canjear", "canjeado", "incidencia"]).optional(),
+      notes: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { id, ...data } = input;
+      await db.update(couponRedemptions).set({ ...data as Record<string, unknown>, adminUserId: ctx.user.id }).where(eq(couponRedemptions.id, id));
+      return { success: true };
+    }),
+
+  /** Admin: posponer cupón — estado Pendiente + email automático */
+  postponeCoupon: adminProc
+    .input(z.object({
+      id: z.number(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+
+      let productName = "Experiencia Náyade";
+      if (item.productTicketingId) {
+        const [tp] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
+        if (tp) productName = tp.name;
+      }
+
+      await db.update(couponRedemptions)
+        .set({ statusOperational: "pendiente", notes: input.notes ?? item.notes, adminUserId: ctx.user.id })
+        .where(eq(couponRedemptions.id, input.id));
+
+      // Email automático al cliente
+      sendEmail({
+        to: item.email,
+        subject: `Información sobre tu solicitud de canje — ${item.provider}`,
+        html: buildPostponeEmailHtml({
+          customerName: item.customerName,
+          couponCode: item.couponCode,
+          provider: item.provider,
+          productName,
+          requestedDate: item.requestedDate ?? undefined,
+        }),
+      }).catch(console.error);
+
+      return { success: true };
+    }),
+
+  /** Admin: marcar incidencia */
+  markIncidence: adminProc
+    .input(z.object({
+      id: z.number(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await db.update(couponRedemptions)
+        .set({ statusFinancial: "incidencia", notes: input.notes ?? null, adminUserId: ctx.user.id })
+        .where(eq(couponRedemptions.id, input.id));
+      return { success: true };
+    }),
+
+  /** Admin: convertir cupón en reserva real */
+  convertToReservation: adminProc
+    .input(z.object({
+      id: z.number(),
+      productRealId: z.number(),
+      reservationDate: z.string(),
+      participants: z.number().int().min(1),
+      providerTag: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+      if (item.statusOperational === "reserva_generada") {
+        throw new TRPCError({ code: "CONFLICT", message: "Esta solicitud ya tiene una reserva generada" });
+      }
+
+      // Obtener o crear cliente
+      let clientId: number | null = null;
+      const [existingClient] = await db.select({ id: clients.id }).from(clients).where(sql`${clients.email} = ${item.email}`).limit(1);
+      clientId = existingClient?.id ?? null;
+      if (!clientId) {
+        const [newClient] = await db.insert(clients).values({ name: item.customerName, email: item.email, phone: item.phone ?? null, source: "ticketing" });
+        clientId = (newClient as { insertId: number }).insertId;
+      }
+
+      // Crear reserva en CRM
+      const merchantOrder = `TKT-${Date.now()}`;
+      const [expRow] = await db.select({ title: experiences.title }).from(experiences).where(eq(experiences.id, input.productRealId)).limit(1);
+      const now = Date.now();
+      const providerTag = input.providerTag ?? item.provider;
+      const [resResult] = await db.insert(reservations).values({
+        productId: input.productRealId,
+        productName: expRow?.title ?? "Experiencia Náyade",
+        bookingDate: input.reservationDate,
+        people: input.participants,
+        amountTotal: 0,
+        amountPaid: 0,
+        status: "paid",
+        channel: "groupon",
+        originSource: "coupon_redemption",
+        redemptionId: item.id,
+        merchantOrder,
+        notes: `Canje cupón ${providerTag} — Código: ${item.couponCode} — ID: ${item.id}`,
+        customerName: item.customerName,
+        customerEmail: item.email,
+        customerPhone: item.phone ?? null,
+        createdAt: now,
+        updatedAt: now,
+        paidAt: now,
+      });
+      const reservationId = (resResult as { insertId: number }).insertId;
+
+      // Actualizar cupón
+      await db.update(couponRedemptions)
+        .set({ statusOperational: "reserva_generada", statusFinancial: "pendiente_canjear", productRealId: input.productRealId, reservationId, adminUserId: ctx.user.id })
+        .where(eq(couponRedemptions.id, input.id));
+
+      return { success: true, reservationId };
+    }),
+
+  /** Admin: re-ejecutar OCR manualmente */
+  rerunOcr: adminProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!item.attachmentUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No hay adjunto para analizar" });
+      let productName = "Experiencia Náyade";
+      if (item.productTicketingId) {
+        const [tp] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
+        if (tp) productName = tp.name;
+      }
+      const ocr = await runOcrExtraction(item.attachmentUrl, { couponCode: item.couponCode, securityCode: item.securityCode ?? undefined, productName, customerName: item.customerName });
+      await db.update(couponRedemptions).set({ ocrConfidenceScore: ocr.score, ocrStatus: ocr.status, ocrRawData: ocr.rawData }).where(eq(couponRedemptions.id, input.id));
+      return { score: ocr.score, status: ocr.status, rawData: ocr.rawData };
+    }),
+
+  // ── DASHBOARD MÉTRICAS ────────────────────────────────────────────────────
+  getDashboardStats: adminProc.query(async () => {
+    const [total] = await db.select({ count: count() }).from(couponRedemptions);
+
+    const byOperational = await db
+      .select({ status: couponRedemptions.statusOperational, count: count() })
+      .from(couponRedemptions)
+      .groupBy(couponRedemptions.statusOperational);
+
+    const byFinancial = await db
+      .select({ status: couponRedemptions.statusFinancial, count: count() })
+      .from(couponRedemptions)
+      .groupBy(couponRedemptions.statusFinancial);
+
+    const recibidos = byOperational.find((s) => s.status === "recibido")?.count ?? 0;
+    const pendientes = byOperational.find((s) => s.status === "pendiente")?.count ?? 0;
+    const convertidos = byOperational.find((s) => s.status === "reserva_generada")?.count ?? 0;
+    const incidencias = byFinancial.find((s) => s.status === "incidencia")?.count ?? 0;
+    const canjeados = byFinancial.find((s) => s.status === "canjeado")?.count ?? 0;
+    const totalCount = total.count;
+    const conversionRate = totalCount > 0 ? Math.round((convertidos / totalCount) * 100) : 0;
+
+    return {
+      total: totalCount,
+      recibidos,
+      pendientes,
+      convertidos,
+      incidencias,
+      canjeados,
+      conversionRate,
+      byOperational,
+      byFinancial,
+    };
+  }),
+
+  // ── EMAIL CONFIG ─────────────────────────────────────────────────────────
   getEmailConfig: adminProc.query(async () => {
     const [cfg] = await db.select().from(couponEmailConfig).limit(1);
-    return cfg ?? { id: 0, autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission" as const, internalAlertEmail: "reservas@nayadeexperiences.es", updatedAt: new Date() };
+    return cfg ?? { id: 0, autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission" as const, internalAlertEmail: COPY_EMAIL, updatedAt: new Date() };
   }),
 
   updateEmailConfig: adminProc
@@ -642,16 +752,16 @@ export const ticketingRouter = router({
       if (existing) {
         await db.update(couponEmailConfig).set(input).where(eq(couponEmailConfig.id, existing.id));
       } else {
-        await db.insert(couponEmailConfig).values({ autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission", internalAlertEmail: "reservas@nayadeexperiences.es", ...input });
+        await db.insert(couponEmailConfig).values({ autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission", internalAlertEmail: COPY_EMAIL, ...input });
       }
       return { success: true };
     }),
 
-  /** Admin: actualizar datos de conciliación financiera */
-  updateSettlement: adminProc
+  // ── CONCILIACIÓN FINANCIERA ───────────────────────────────────────────────
+  updateFinancial: adminProc
     .input(z.object({
       id: z.number(),
-      statusFinancial: z.enum(["pendiente_canje_proveedor", "canjeado_en_proveedor", "pendiente_cobro", "cobrado", "discrepancia"]).optional(),
+      statusFinancial: z.enum(["pendiente_canjear", "canjeado", "incidencia"]).optional(),
       realAmount: z.string().optional().nullable(),
       settlementJustificantUrl: z.string().url().optional().nullable(),
       settledAt: z.string().optional(),
@@ -665,7 +775,234 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Público: crear solicitud de canje (desde /canjear-cupon) */
+  /** Admin: subir adjunto de cupón */
+  uploadAttachment: adminProc
+    .input(z.object({
+      id: z.number(),
+      fileBase64: z.string(),
+      fileName: z.string(),
+      mimeType: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const buffer = Buffer.from(input.fileBase64, "base64");
+      const key = `ticketing/attachments/${input.id}-${Date.now()}-${input.fileName}`;
+      const { url } = await storagePut(key, buffer, input.mimeType);
+      await db.update(couponRedemptions).set({ attachmentUrl: url }).where(eq(couponRedemptions.id, input.id));
+      return { url };
+    }),
+
+  // ── PLATAFORMAS ───────────────────────────────────────────────────────────
+  listPlatforms: adminProc.query(async () => {
+    return db.select().from(platforms).orderBy(platforms.name);
+  }),
+
+  getPlatform: adminProc
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const [p] = await db.select().from(platforms).where(eq(platforms.id, input.id)).limit(1);
+      if (!p) throw new TRPCError({ code: "NOT_FOUND" });
+      return p;
+    }),
+
+  createPlatform: adminProc
+    .input(z.object({
+      name: z.string().min(1),
+      slug: z.string().min(1),
+      logoUrl: z.string().url().optional(),
+      active: z.boolean().default(true),
+      settlementFrequency: z.enum(["quincenal", "mensual", "trimestral"]).default("mensual"),
+      commissionPct: z.string().optional(),
+      externalUrl: z.string().url().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [result] = await db.insert(platforms).values({
+        name: input.name,
+        slug: input.slug,
+        logoUrl: input.logoUrl ?? null,
+        active: input.active,
+        settlementFrequency: input.settlementFrequency,
+        commissionPct: input.commissionPct ?? "20.00",
+        externalUrl: input.externalUrl ?? null,
+        notes: input.notes ?? null,
+      });
+      return { id: (result as { insertId: number }).insertId };
+    }),
+
+  updatePlatform: adminProc
+    .input(z.object({
+      id: z.number(),
+      name: z.string().min(1).optional(),
+      slug: z.string().min(1).optional(),
+      logoUrl: z.string().url().nullable().optional(),
+      active: z.boolean().optional(),
+      settlementFrequency: z.enum(["quincenal", "mensual", "trimestral"]).optional(),
+      commissionPct: z.string().optional(),
+      externalUrl: z.string().url().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.update(platforms).set(data as Record<string, unknown>).where(eq(platforms.id, id));
+      return { success: true };
+    }),
+
+  togglePlatform: adminProc
+    .input(z.object({ id: z.number(), active: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await db.update(platforms).set({ active: input.active }).where(eq(platforms.id, input.id));
+      return { success: true };
+    }),
+
+  deletePlatform: adminProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(platformProducts).where(eq(platformProducts.platformId, input.id));
+      await db.delete(platforms).where(eq(platforms.id, input.id));
+      return { success: true };
+    }),
+
+  // ── PRODUCTOS DE PLATAFORMA ───────────────────────────────────────────────
+  listPlatformProducts: adminProc
+    .input(z.object({ platformId: z.number() }))
+    .query(async ({ input }) => {
+      const rows = await db
+        .select({
+          id: platformProducts.id,
+          platformId: platformProducts.platformId,
+          experienceId: platformProducts.experienceId,
+          externalLink: platformProducts.externalLink,
+          externalProductName: platformProducts.externalProductName,
+          active: platformProducts.active,
+          createdAt: platformProducts.createdAt,
+          experienceTitle: experiences.title,
+        })
+        .from(platformProducts)
+        .leftJoin(experiences, eq(platformProducts.experienceId, experiences.id))
+        .where(eq(platformProducts.platformId, input.platformId))
+        .orderBy(platformProducts.createdAt);
+      return rows;
+    }),
+
+  createPlatformProduct: adminProc
+    .input(z.object({
+      platformId: z.number(),
+      experienceId: z.number().optional(),
+      externalLink: z.string().url().optional(),
+      externalProductName: z.string().optional(),
+      active: z.boolean().default(true),
+    }))
+    .mutation(async ({ input }) => {
+      const [result] = await db.insert(platformProducts).values({
+        platformId: input.platformId,
+        experienceId: input.experienceId ?? null,
+        externalLink: input.externalLink ?? null,
+        externalProductName: input.externalProductName ?? null,
+        active: input.active,
+      });
+      return { id: (result as { insertId: number }).insertId };
+    }),
+
+  updatePlatformProduct: adminProc
+    .input(z.object({
+      id: z.number(),
+      experienceId: z.number().nullable().optional(),
+      externalLink: z.string().url().nullable().optional(),
+      externalProductName: z.string().nullable().optional(),
+      active: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.update(platformProducts).set(data as Record<string, unknown>).where(eq(platformProducts.id, id));
+      return { success: true };
+    }),
+
+  deletePlatformProduct: adminProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(platformProducts).where(eq(platformProducts.id, input.id));
+      return { success: true };
+    }),
+
+  // ── LIQUIDACIONES DE PLATAFORMA ───────────────────────────────────────────
+  listSettlements: adminProc
+    .input(z.object({ platformId: z.number().optional() }))
+    .query(async ({ input }) => {
+      const where = input.platformId ? eq(platformSettlements.platformId, input.platformId) : undefined;
+      const rows = await db
+        .select({
+          id: platformSettlements.id,
+          platformId: platformSettlements.platformId,
+          periodLabel: platformSettlements.periodLabel,
+          periodFrom: platformSettlements.periodFrom,
+          periodTo: platformSettlements.periodTo,
+          totalCoupons: platformSettlements.totalCoupons,
+          totalAmount: platformSettlements.totalAmount,
+          status: platformSettlements.status,
+          justificantUrl: platformSettlements.justificantUrl,
+          notes: platformSettlements.notes,
+          settledAt: platformSettlements.settledAt,
+          createdAt: platformSettlements.createdAt,
+          platformName: platforms.name,
+        })
+        .from(platformSettlements)
+        .leftJoin(platforms, eq(platformSettlements.platformId, platforms.id))
+        .where(where)
+        .orderBy(desc(platformSettlements.createdAt));
+      return rows;
+    }),
+
+  createSettlement: adminProc
+    .input(z.object({
+      platformId: z.number(),
+      periodLabel: z.string().min(1),
+      periodFrom: z.string().optional(),
+      periodTo: z.string().optional(),
+      totalCoupons: z.number().int().min(0).default(0),
+      totalAmount: z.string().default("0.00"),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [result] = await db.insert(platformSettlements).values({
+        platformId: input.platformId,
+        periodLabel: input.periodLabel,
+        periodFrom: input.periodFrom ?? null,
+        periodTo: input.periodTo ?? null,
+        totalCoupons: input.totalCoupons,
+        totalAmount: input.totalAmount,
+        status: "pendiente_cobro",
+        notes: input.notes ?? null,
+      });
+      return { id: (result as { insertId: number }).insertId };
+    }),
+
+  updateSettlement: adminProc
+    .input(z.object({
+      id: z.number(),
+      status: z.enum(["pendiente_cobro", "cobrado"]).optional(),
+      totalCoupons: z.number().int().min(0).optional(),
+      totalAmount: z.string().optional(),
+      justificantUrl: z.string().url().nullable().optional(),
+      settledAt: z.string().optional(),
+      notes: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, settledAt, ...rest } = input;
+      const updateData: Record<string, unknown> = { ...rest };
+      if (settledAt) updateData.settledAt = new Date(settledAt);
+      await db.update(platformSettlements).set(updateData).where(eq(platformSettlements.id, id));
+      return { success: true };
+    }),
+
+  deleteSettlement: adminProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(platformSettlements).where(eq(platformSettlements.id, input.id));
+      return { success: true };
+    }),
+
+  // ── CANJE PÚBLICO ─────────────────────────────────────────────────────────
+  /** Público: crear solicitud de canje individual (desde /canjear-cupon) */
   createRedemption: publicProcedure
     .input(z.object({
       provider: z.string().default("Groupon"),
@@ -683,35 +1020,16 @@ export const ticketingRouter = router({
       comments: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      // 1. Verificar duplicados
-      const dupCheck = await checkDuplicates(
-        input.couponCode,
-        input.securityCode,
-        input.email,
-        input.phone,
-        input.requestedDate,
-        input.productTicketingId,
-      );
-
+      const dupCheck = await checkDuplicates(input.couponCode, input.securityCode, input.email, input.phone, input.requestedDate, input.productTicketingId);
       if (dupCheck.hardDuplicate) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Este código de cupón ya ha sido registrado en el sistema. Si crees que es un error, contacta con nosotros.",
-        });
+        throw new TRPCError({ code: "CONFLICT", message: "Este código de cupón ya ha sido registrado. Si crees que es un error, contacta con nosotros." });
       }
-
-      // 2. Obtener nombre del producto ticketing
       let productName = "Experiencia Náyade";
       if (input.productTicketingId) {
-        const [prod] = await db
-          .select({ name: ticketingProducts.name })
-          .from(ticketingProducts)
-          .where(eq(ticketingProducts.id, input.productTicketingId))
-          .limit(1);
+        const [prod] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, input.productTicketingId)).limit(1);
         if (prod) productName = prod.name;
       }
-
-      // 3. Insertar solicitud
+      const submissionId = crypto.randomUUID();
       const [result] = await db.insert(couponRedemptions).values({
         provider: input.provider,
         productTicketingId: input.productTicketingId ?? null,
@@ -727,302 +1045,27 @@ export const ticketingRouter = router({
         children: input.children,
         comments: input.comments ?? null,
         statusOperational: "recibido",
-        statusFinancial: "pendiente_canje_proveedor",
+        statusFinancial: "pendiente_canjear",
         duplicateFlag: dupCheck.softDuplicate,
         duplicateNotes: dupCheck.notes || null,
+        submissionId,
       });
-
       const redemptionId = (result as { insertId: number }).insertId;
-
-      // 4. Lanzar OCR en background si hay adjunto
       if (input.attachmentUrl) {
         setImmediate(async () => {
           try {
-            const ocr = await runOcrExtraction(input.attachmentUrl!, {
-              couponCode: input.couponCode,
-              securityCode: input.securityCode,
-              productName,
-              customerName: input.customerName,
-            });
-            await db.update(couponRedemptions)
-              .set({
-                ocrConfidenceScore: ocr.score,
-                ocrStatus: ocr.status,
-                ocrRawData: ocr.rawData,
-                // Auto-validar si score >= 90
-                statusOperational: ocr.score >= 90 ? "validado" : "recibido",
-              })
-              .where(eq(couponRedemptions.id, redemptionId));
-          } catch (err) {
-            console.error("[Ticketing OCR background]", err);
-          }
+            const ocr = await runOcrExtraction(input.attachmentUrl!, { couponCode: input.couponCode, securityCode: input.securityCode, productName, customerName: input.customerName });
+            await db.update(couponRedemptions).set({ ocrConfidenceScore: ocr.score, ocrStatus: ocr.status, ocrRawData: ocr.rawData }).where(eq(couponRedemptions.id, redemptionId));
+          } catch { /* silent */ }
         });
       }
-
-      // 5. Enviar email de confirmación al cliente
       try {
         await sendEmail({
           to: input.email,
           subject: `Hemos recibido tu solicitud de canje — ${input.provider}`,
-          html: buildRedemptionConfirmationHtml({
-            customerName: input.customerName,
-            couponCode: input.couponCode,
-            provider: input.provider,
-            productName,
-            requestedDate: input.requestedDate,
-          }),
+          html: buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: [{ couponCode: input.couponCode, provider: input.provider }], submissionId, requestedDate: input.requestedDate }),
         });
-      } catch (err) {
-        console.error("[Ticketing] Error sending confirmation email:", err);
-      }
-
-      return {
-        success: true,
-        redemptionId,
-        softDuplicate: dupCheck.softDuplicate,
-        message: "Solicitud de canje registrada correctamente. Recibirás un email de confirmación.",
-      };
+      } catch { /* silent */ }
+      return { success: true, redemptionId, softDuplicate: dupCheck.softDuplicate, message: "Solicitud registrada correctamente. Recibirás un email de confirmación." };
     }),
-
-  /** Admin: listar solicitudes de canje con filtros */
-  listRedemptions: adminProc
-    .input(z.object({
-      page: z.number().int().min(1).default(1),
-      pageSize: z.number().int().min(1).max(100).default(25),
-      provider: z.string().optional(),
-      statusOperational: z.enum(["recibido", "validado", "reserva_generada", "disfrutado", "incidencia", "cancelado"]).optional(),
-      statusFinancial: z.enum(["pendiente_canje_proveedor", "canjeado_en_proveedor", "pendiente_cobro", "cobrado", "discrepancia"]).optional(),
-      ocrStatus: z.enum(["alta", "media", "baja", "conflicto"]).optional(),
-      duplicateFlag: z.boolean().optional(),
-      search: z.string().optional(),
-      dateFrom: z.string().optional(),
-      dateTo: z.string().optional(),
-    }))
-    .query(async ({ input }) => {
-      const conditions = [];
-
-      if (input.provider) conditions.push(eq(couponRedemptions.provider, input.provider));
-      if (input.statusOperational) conditions.push(eq(couponRedemptions.statusOperational, input.statusOperational));
-      if (input.statusFinancial) conditions.push(eq(couponRedemptions.statusFinancial, input.statusFinancial));
-      if (input.ocrStatus) conditions.push(eq(couponRedemptions.ocrStatus, input.ocrStatus));
-      if (input.duplicateFlag !== undefined) conditions.push(eq(couponRedemptions.duplicateFlag, input.duplicateFlag));
-      if (input.search) {
-        conditions.push(or(
-          like(couponRedemptions.customerName, `%${input.search}%`),
-          like(couponRedemptions.email, `%${input.search}%`),
-          like(couponRedemptions.couponCode, `%${input.search}%`),
-        ));
-      }
-
-      const where = conditions.length > 0 ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined;
-      const offset = (input.page - 1) * input.pageSize;
-
-      const [items, [{ total }]] = await Promise.all([
-        db.select().from(couponRedemptions)
-          .where(where)
-          .orderBy(desc(couponRedemptions.createdAt))
-          .limit(input.pageSize)
-          .offset(offset),
-        db.select({ total: count() }).from(couponRedemptions).where(where),
-      ]);
-
-      return { items, total, page: input.page, pageSize: input.pageSize, totalPages: Math.ceil(total / input.pageSize) };
-    }),
-
-  /** Admin: obtener detalle de una solicitud */
-  getRedemption: adminProc
-    .input(z.object({ id: z.number() }))
-    .query(async ({ input }) => {
-      const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
-      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
-
-      // Obtener producto ticketing si existe
-      let ticketingProduct = null;
-      if (item.productTicketingId) {
-        const [tp] = await db.select().from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
-        ticketingProduct = tp ?? null;
-      }
-
-      // Obtener producto real si existe
-      let realProduct = null;
-      if (item.productRealId) {
-        const [rp] = await db.select({ id: experiences.id, title: experiences.title }).from(experiences).where(eq(experiences.id, item.productRealId)).limit(1);
-        realProduct = rp ?? null;
-      }
-
-      return { ...item, ticketingProduct, realProduct };
-    }),
-
-  /** Admin: actualizar estado y datos de una solicitud */
-  updateRedemption: adminProc
-    .input(z.object({
-      id: z.number(),
-      statusOperational: z.enum(["recibido", "validado", "reserva_generada", "disfrutado", "incidencia", "cancelado"]).optional(),
-      statusFinancial: z.enum(["pendiente_canje_proveedor", "canjeado_en_proveedor", "pendiente_cobro", "cobrado", "discrepancia"]).optional(),
-      productRealId: z.number().nullable().optional(),
-      notes: z.string().nullable().optional(),
-      duplicateFlag: z.boolean().optional(),
-      duplicateNotes: z.string().nullable().optional(),
-      realAmount: z.string().nullable().optional(),
-      settlementJustificantUrl: z.string().nullable().optional(),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      const { id, ...data } = input;
-      await db.update(couponRedemptions)
-        .set({ ...data as Record<string, unknown>, adminUserId: ctx.user.id })
-        .where(eq(couponRedemptions.id, id));
-      return { success: true };
-    }),
-
-  /** Admin: re-ejecutar OCR manualmente */
-  rerunOcr: adminProc
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
-      const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
-      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
-      if (!item.attachmentUrl) throw new TRPCError({ code: "BAD_REQUEST", message: "No hay adjunto para analizar" });
-
-      let productName = "Experiencia Náyade";
-      if (item.productTicketingId) {
-        const [tp] = await db.select({ name: ticketingProducts.name }).from(ticketingProducts).where(eq(ticketingProducts.id, item.productTicketingId)).limit(1);
-        if (tp) productName = tp.name;
-      }
-
-      const ocr = await runOcrExtraction(item.attachmentUrl, {
-        couponCode: item.couponCode,
-        securityCode: item.securityCode ?? undefined,
-        productName,
-        customerName: item.customerName,
-      });
-
-      await db.update(couponRedemptions)
-        .set({
-          ocrConfidenceScore: ocr.score,
-          ocrStatus: ocr.status,
-          ocrRawData: ocr.rawData,
-        })
-        .where(eq(couponRedemptions.id, input.id));
-
-      return { score: ocr.score, status: ocr.status, rawData: ocr.rawData };
-    }),
-
-  /** Admin: convertir solicitud validada en reserva real */
-  convertToReservation: adminProc
-    .input(z.object({
-      id: z.number(),
-      productRealId: z.number(),
-      reservationDate: z.string(),
-      participants: z.number().int().min(1),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
-      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
-      if (item.statusOperational === "reserva_generada") {
-        throw new TRPCError({ code: "CONFLICT", message: "Esta solicitud ya tiene una reserva generada" });
-      }
-
-      // Obtener o crear cliente
-      let clientId: number | null = null;
-      const [existingClient] = await db
-        .select({ id: clients.id })
-        .from(clients)
-        .where(sql`${clients.email} = ${item.email}`)
-        .limit(1);
-      clientId = existingClient?.id ?? null;
-
-      if (!clientId) {
-        const [newClient] = await db.insert(clients).values({
-          name: item.customerName,
-          email: item.email,
-          phone: item.phone ?? null,
-          source: "ticketing",
-        });
-        clientId = (newClient as { insertId: number }).insertId;
-      }
-
-      // Crear reserva
-      const merchantOrder = `TKT-${Date.now()}`;
-      // Get product name for reservation
-      const [expRow] = await db.select({ title: experiences.title }).from(experiences).where(eq(experiences.id, input.productRealId)).limit(1);
-      const now = Date.now();
-      const [resResult] = await db.insert(reservations).values({
-        productId: input.productRealId,
-        productName: expRow?.title ?? "Experiencia Náyade",
-        bookingDate: input.reservationDate,
-        people: input.participants,
-        amountTotal: 0, // Cupón = sin cargo
-        amountPaid: 0,
-        status: "paid",
-        channel: "groupon",
-        originSource: "coupon_redemption",
-        redemptionId: item.id,
-        merchantOrder,
-        notes: `Canje cupón ${item.provider} — Código: ${item.couponCode} — Redemption ID: ${item.id}`,
-        customerName: item.customerName,
-        customerEmail: item.email,
-        customerPhone: item.phone ?? null,
-        createdAt: now,
-        updatedAt: now,
-        paidAt: now,
-      });
-
-      const reservationId = (resResult as { insertId: number }).insertId;
-
-      // Actualizar solicitud
-      await db.update(couponRedemptions)
-        .set({
-          statusOperational: "reserva_generada",
-          productRealId: input.productRealId,
-          reservationId,
-          adminUserId: ctx.user.id,
-        })
-        .where(eq(couponRedemptions.id, input.id));
-
-      return { success: true, reservationId };
-    }),
-
-  /** Admin: métricas del módulo ticketing */
-  getMetrics: adminProc.query(async () => {
-    const [metrics] = await db.select({
-      total: count(),
-    }).from(couponRedemptions);
-
-    const byStatus = await db
-      .select({
-        status: couponRedemptions.statusOperational,
-        count: count(),
-      })
-      .from(couponRedemptions)
-      .groupBy(couponRedemptions.statusOperational);
-
-    const byFinancial = await db
-      .select({
-        status: couponRedemptions.statusFinancial,
-        count: count(),
-      })
-      .from(couponRedemptions)
-      .groupBy(couponRedemptions.statusFinancial);
-
-    const byOcr = await db
-      .select({
-        status: couponRedemptions.ocrStatus,
-        count: count(),
-      })
-      .from(couponRedemptions)
-      .groupBy(couponRedemptions.ocrStatus);
-
-    const incidencias = byStatus.find((s) => s.status === "incidencia")?.count ?? 0;
-    const pendientesCanje = byFinancial.find((s) => s.status === "pendiente_canje_proveedor")?.count ?? 0;
-    const cobrados = byFinancial.find((s) => s.status === "cobrado")?.count ?? 0;
-
-    return {
-      total: metrics.total,
-      byStatus,
-      byFinancial,
-      byOcr,
-      incidencias,
-      pendientesCanje,
-      cobrados,
-    };
-  }),
 });
