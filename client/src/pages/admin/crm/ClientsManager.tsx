@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   Users, Plus, Search, Pencil, Trash2, RefreshCw, Phone, Mail,
   Building2, FileText, ChevronRight, UserCheck, UserPlus, ArrowRight,
-  MapPin, CreditCard, Calendar, Globe, Tag
+  MapPin, CreditCard, Calendar, Globe, Tag, Ticket
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Link } from "wouter";
@@ -498,6 +498,13 @@ export default function ClientsManager() {
                     {client.isConverted ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 text-xs">
                         <UserCheck className="w-3 h-3" /> Cliente
+                      </span>
+                    ) : client.source === "cupon" ? (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs"
+                        title="Cliente captado desde cupón de plataforma externa"
+                      >
+                        <Ticket className="w-3 h-3" /> Lead Cupón
                       </span>
                     ) : (
                       <button

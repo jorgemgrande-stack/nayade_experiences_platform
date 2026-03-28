@@ -2190,3 +2190,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: botón papelera Trash2 en cada fila del listado de cupones (CuponesManager)
 - [x] Frontend: modal de confirmación con datos del cupón antes de borrar (icono alerta rojo, nombre cliente, código, proveedor, estado)
 - [x] 235 tests pasando (0 errores TypeScript)
+
+## v23.7 — Badge "Lead Cupón" en listado de clientes CRM
+- [ ] CRM Clientes: columna Estado muestra "Lead Cupón" (badge diferenciado) cuando source="cupon", en lugar de "Lead" genérico
+
+## v23.7 — Badge "Lead Cupón" en ClientsManager + Columna Clientes en PlatformsManager [COMPLETADO]
+- [x] ClientsManager: badge violeta "Lead Cupón" (icono Ticket) cuando source="cupon", diferenciado del "Lead" naranja
+- [x] PlatformsManager: columna "Clientes" en tabla de productos que muestra nombres de clientes (máx. 3 visibles + contador +N)
+- [x] Backend: getProductStats devuelve customerNames[] por producto (deduplicados)
+- [x] 235 tests pasando (0 errores TypeScript)

@@ -1137,6 +1137,7 @@ export const ticketingRouter = router({
           provider: couponRedemptions.provider,
           statusFinancial: couponRedemptions.statusFinancial,
           statusOperational: couponRedemptions.statusOperational,
+          customerName: couponRedemptions.customerName,
         })
         .from(couponRedemptions)
         .where(
@@ -1155,9 +1156,10 @@ export const ticketingRouter = router({
         anulados: number;
         pvpTotal: number;
         netoTotal: number;
+        customerNames: string[];
       }> = {};
       for (const p of prods) {
-        statsMap[p.id] = { total: 0, canjeados: 0, pendientes: 0, incidencias: 0, anulados: 0, pvpTotal: 0, netoTotal: 0 };
+        statsMap[p.id] = { total: 0, canjeados: 0, pendientes: 0, incidencias: 0, anulados: 0, pvpTotal: 0, netoTotal: 0, customerNames: [] };
       }
 
       // 5. Agregar cada cupón al producto correcto
@@ -1173,6 +1175,9 @@ export const ticketingRouter = router({
         const neto = parseFloat(prod?.netPrice ?? "0");
 
         st.total++;
+        if (c.customerName && !st.customerNames.includes(c.customerName)) {
+          st.customerNames.push(c.customerName);
+        }
         if (c.statusFinancial === "canjeado") { st.canjeados++; st.netoTotal += neto; }
         else if (c.statusFinancial === "pendiente_canjear") st.pendientes++;
         else if (c.statusFinancial === "incidencia") st.incidencias++;

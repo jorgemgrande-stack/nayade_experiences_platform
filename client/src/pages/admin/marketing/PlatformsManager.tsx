@@ -511,6 +511,7 @@ export default function PlatformsManager() {
                                 <th className="text-center px-3 py-3 text-red-400/60 font-medium text-xs" title="Cupones con incidencia">Anulados</th>
                                 <th className="text-right px-3 py-3 text-violet-400/60 font-medium text-xs" title="PVP generado (suma de precios PVP de cupones no incidencia)">PVP gen.</th>
                                 <th className="text-right px-3 py-3 text-teal-400/60 font-medium text-xs" title="Precio neto obtenido (suma de neto de cupones canjeados)">Neto obt.</th>
+                                <th className="text-left px-3 py-3 text-white/40 font-medium text-xs" title="Clientes con cupón de este producto">Clientes</th>
                                 <th className="px-4 py-3" />
                               </tr>
                             </thead>
@@ -518,7 +519,7 @@ export default function PlatformsManager() {
                               {products.map((p) => {
                                 const expired = isExpired(p.expiresAt);
                                 const expiring = isExpiringSoon(p.expiresAt);
-                                const st = (productStats as Record<number, { total: number; canjeados: number; pendientes: number; incidencias: number; anulados: number; pvpTotal: number; netoTotal: number }>)[p.id];
+                                const st = (productStats as Record<number, { total: number; canjeados: number; pendientes: number; incidencias: number; anulados: number; pvpTotal: number; netoTotal: number; customerNames?: string[] }>)[p.id];
                                 return (
                                   <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.03]">
                                     <td className="px-4 py-3">
@@ -584,6 +585,24 @@ export default function PlatformsManager() {
                                     </td>
                                     <td className="px-3 py-3 text-right">
                                       <span className="text-teal-400 font-semibold text-sm">{st ? st.netoTotal.toFixed(2) + " €" : "—"}</span>
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      {st?.customerNames && st.customerNames.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1 max-w-[180px]">
+                                          {st.customerNames.slice(0, 3).map((name, i) => (
+                                            <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/70 text-[10px] truncate max-w-[85px]" title={name}>
+                                              {name}
+                                            </span>
+                                          ))}
+                                          {st.customerNames.length > 3 && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-white/40 text-[10px]">
+                                              +{st.customerNames.length - 3}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="text-white/20 text-xs">—</span>
+                                      )}
                                     </td>
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-end gap-1">
