@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import {
   Ticket, Search, Plus, Eye, CalendarCheck, Clock, AlertTriangle,
   CheckCircle, RefreshCw, Filter, TrendingUp, Banknote, ChevronRight,
-  FileText, Pause, Zap, ExternalLink, Settings,
+  FileText, Pause, Zap, ExternalLink, Settings, BadgeCheck, Upload, X,
 } from "lucide-react";
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
@@ -444,6 +444,7 @@ export default function CuponesManager() {
   const [convertCoupon, setConvertCoupon] = useState<Coupon | null>(null);
   const [postponeCoupon, setPostponeCoupon] = useState<Coupon | null>(null);
   const [incidenceCoupon, setIncidenceCoupon] = useState<Coupon | null>(null);
+  const [redeemCoupon, setRedeemCoupon] = useState<Coupon | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
 
   // Form states
@@ -496,6 +497,10 @@ export default function CuponesManager() {
   });
   const incidenceMutation = trpc.ticketing.markIncidence.useMutation({
     onSuccess: () => { toast.success("Incidencia registrada"); setIncidenceCoupon(null); setIncidenceNotes(""); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const markAsRedeemedMutation = trpc.ticketing.markAsRedeemed.useMutation({
+    onSuccess: () => { toast.success("Cupón marcado como canjeado"); setRedeemCoupon(null); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
   const createManualMutation = trpc.ticketing.createManualRedemption.useMutation({
@@ -697,6 +702,12 @@ export default function CuponesManager() {
                                 <Pause className="w-4 h-4" />
                               </button>
                             )}
+                            {c.statusFinancial === "pendiente_canjear" && (
+                              <button onClick={() => setRedeemCoupon(c)}
+                                className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400/60 hover:text-emerald-400 transition-colors" aria-label="Marcar como canjeado">
+                                <BadgeCheck className="w-4 h-4" />
+                              </button>
+                            )}
                             {c.statusFinancial !== "incidencia" && (
                               <button onClick={() => { setIncidenceCoupon(c); setIncidenceNotes(""); }}
                                 className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/60 hover:text-red-400 transition-colors" aria-label="Marcar incidencia">
@@ -829,6 +840,16 @@ export default function CuponesManager() {
         </DialogContent>
       </Dialog>
 
+      {/* Marcar como canjeado */}
+      {redeemCoupon && (
+        <RedeemModal
+          coupon={redeemCoupon}
+          onClose={() => setRedeemCoupon(null)}
+          onConfirm={(data) => markAsRedeemedMutation.mutate({ id: redeemCoupon.id, ...data })}
+          isPending={markAsRedeemedMutation.isPending}
+        />
+      )}
+
       {/* Alta manual */}
       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
         <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto">
@@ -911,6 +932,107 @@ export default function CuponesManager() {
         </DialogContent>
       </Dialog>
     </AdminLayout>
+  );
+}
+
+// ─── REDEEM MODAL ────────────────────────────────────────────────────────────
+function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
+  coupon: Coupon;
+  onClose: () => void;
+  onConfirm: (data: { notes?: string; justificantBase64?: string; justificantFileName?: string; justificantMimeType?: string }) => void;
+  isPending: boolean;
+}) {
+  const [notes, setNotes] = React.useState("");
+  const [file, setFile] = React.useState<File | null>(null);
+  const [filePreview, setFilePreview] = React.useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    if (f.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (ev) => setFilePreview(ev.target?.result as string);
+      reader.readAsDataURL(f);
+    } else {
+      setFilePreview(null);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const base64 = (ev.target?.result as string).split(",")[1];
+        onConfirm({
+          notes: notes || undefined,
+          justificantBase64: base64,
+          justificantFileName: file.name,
+          justificantMimeType: file.type,
+        });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      onConfirm({ notes: notes || undefined });
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BadgeCheck className="w-5 h-5 text-emerald-400" />
+            Marcar como canjeado
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
+            El cupón pasará a estado <strong>Canjeado</strong> y quedará listo para incluir en la próxima liquidación.
+          </div>
+          <div className="p-3 rounded-lg bg-white/5 text-sm space-y-1">
+            <p className="text-white/60">Cliente: <span className="text-white">{coupon.customerName}</span></p>
+            <p className="text-white/60">Cupón: <code className="text-violet-300">{coupon.couponCode}</code></p>
+            <p className="text-white/60">Proveedor: <span className="text-white">{coupon.provider}</span></p>
+          </div>
+
+          {/* Subida de comprobante */}
+          <div>
+            <Label className="text-white/70 text-sm mb-2 block">Comprobante de canje (PDF o imagen)</Label>
+            <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed border-white/10 hover:border-emerald-500/40 cursor-pointer transition-colors bg-white/3 hover:bg-emerald-500/5">
+              <Upload className="w-6 h-6 text-white/30" />
+              <span className="text-xs text-white/40">{file ? file.name : "Arrastra o haz clic para subir"}</span>
+              <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleFileChange} />
+            </label>
+            {file && (
+              <div className="mt-2 flex items-center justify-between p-2 rounded-lg bg-white/5 text-xs">
+                <span className="text-white/70 truncate">{file.name}</span>
+                <button onClick={() => { setFile(null); setFilePreview(null); }} className="text-white/30 hover:text-red-400 ml-2">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            {filePreview && (
+              <img src={filePreview} alt="Preview" className="mt-2 rounded-lg max-h-32 object-contain w-full" />
+            )}
+          </div>
+
+          <div>
+            <Label className="text-white/70 text-sm">Notas internas (opcional)</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Observaciones del canje..." className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={2} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} className="border-white/10 text-white/70">Cancelar</Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            disabled={isPending}
+            onClick={handleConfirm}>
+            {isPending ? "Guardando..." : "✅ Confirmar canje"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -19,7 +19,7 @@ import {
   platformProducts,
   platformSettlements,
 } from "../../drizzle/schema";
-import { eq, desc, and, like, or, sql, count, inArray } from "drizzle-orm";
+import { eq, desc, and, like, or, sql, count, inArray, sum } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
@@ -690,6 +690,7 @@ export const ticketingRouter = router({
         status: "paid",
         channel: "groupon",
         originSource: "coupon_redemption",
+        platformName: providerTag ?? null,
         redemptionId: item.id,
         merchantOrder,
         notes: couponNotes,
@@ -845,6 +846,40 @@ export const ticketingRouter = router({
       const { url } = await storagePut(key, buffer, input.mimeType);
       await db.update(couponRedemptions).set({ attachmentUrl: url }).where(eq(couponRedemptions.id, input.id));
       return { url };
+    }),
+
+  /** Admin: marcar cupón como canjeado con comprobante opcional */
+  markAsRedeemed: adminProc
+    .input(z.object({
+      id: z.number(),
+      notes: z.string().optional(),
+      justificantBase64: z.string().optional(), // base64 del documento de comprobante
+      justificantFileName: z.string().optional(),
+      justificantMimeType: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+
+      let justificantUrl: string | null = null;
+
+      // Subir comprobante a S3 si se proporcionó
+      if (input.justificantBase64 && input.justificantFileName && input.justificantMimeType) {
+        const buffer = Buffer.from(input.justificantBase64, "base64");
+        const key = `ticketing/justificantes/${input.id}-${Date.now()}-${input.justificantFileName}`;
+        const { url } = await storagePut(key, buffer, input.justificantMimeType);
+        justificantUrl = url;
+      }
+
+      const updateData: Record<string, unknown> = {
+        statusFinancial: "canjeado",
+        settledAt: new Date(),
+      };
+      if (justificantUrl) updateData.settlementJustificantUrl = justificantUrl;
+      if (input.notes) updateData.notes = input.notes;
+
+      await db.update(couponRedemptions).set(updateData).where(eq(couponRedemptions.id, input.id));
+      return { success: true, justificantUrl };
     }),
 
   // ── PLATAFORMAS ───────────────────────────────────────────────────────────
@@ -1016,6 +1051,53 @@ export const ticketingRouter = router({
     .mutation(async ({ input }) => {
       await db.delete(platformProducts).where(eq(platformProducts.id, input.id));
       return { success: true };
+    }),
+
+  /** Estadísticas de cupones por producto de plataforma */
+  getProductStats: adminProc
+    .input(z.object({ platformId: z.number() }))
+    .query(async ({ input }) => {
+      // Agrupamos todos los cupones de esta plataforma por platformProductId
+      const rows = await db
+        .select({
+          platformProductId: couponRedemptions.platformProductId,
+          total: count(),
+          canjeados: sql<number>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} = 'canjeado' THEN 1 ELSE 0 END)`,
+          pendientes: sql<number>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} = 'pendiente_canjear' THEN 1 ELSE 0 END)`,
+          incidencias: sql<number>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} = 'incidencia' THEN 1 ELSE 0 END)`,
+          anulados: sql<number>`SUM(CASE WHEN ${couponRedemptions.statusOperational} = 'anulado' THEN 1 ELSE 0 END)`,
+          pvpTotal: sql<string>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} != 'incidencia' THEN CAST(pp.pvpPrice AS DECIMAL(10,2)) ELSE 0 END)`,
+          netoTotal: sql<string>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} = 'canjeado' THEN CAST(pp.netPrice AS DECIMAL(10,2)) ELSE 0 END)`,
+        })
+        .from(couponRedemptions)
+        .innerJoin(platformProducts, eq(couponRedemptions.platformProductId, platformProducts.id))
+        .where(eq(platformProducts.platformId, input.platformId))
+        .groupBy(couponRedemptions.platformProductId);
+
+      // Convertir a mapa por platformProductId para fácil lookup
+      const statsMap: Record<number, {
+        total: number;
+        canjeados: number;
+        pendientes: number;
+        incidencias: number;
+        anulados: number;
+        pvpTotal: number;
+        netoTotal: number;
+      }> = {};
+      for (const r of rows) {
+        if (r.platformProductId != null) {
+          statsMap[r.platformProductId] = {
+            total: Number(r.total),
+            canjeados: Number(r.canjeados),
+            pendientes: Number(r.pendientes),
+            incidencias: Number(r.incidencias),
+            anulados: Number(r.anulados),
+            pvpTotal: parseFloat(r.pvpTotal ?? "0"),
+            netoTotal: parseFloat(r.netoTotal ?? "0"),
+          };
+        }
+      }
+      return statsMap;
     }),
 
   // ── LIQUIDACIONES DE PLATAFORMA ───────────────────────────────────────────────

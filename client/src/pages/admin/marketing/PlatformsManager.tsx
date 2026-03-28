@@ -242,6 +242,10 @@ export default function PlatformsManager() {
     { settlementId: detailSettlement?.id ?? 0 },
     { enabled: !!detailSettlement }
   );
+  const productStatsQuery = trpc.ticketing.getProductStats.useQuery(
+    { platformId: selectedPlatform?.id ?? 0 },
+    { enabled: !!selectedPlatform }
+  );
 
   const utils = trpc.useUtils();
 
@@ -310,6 +314,7 @@ export default function PlatformsManager() {
   const platforms = (platformsQuery.data ?? []) as Platform[];
   const products = (productsQuery.data ?? []) as PlatformProduct[];
   const settlements = (settlementsQuery.data ?? []) as Settlement[];
+  const productStats = productStatsQuery.data ?? {};
 
   // ── HELPERS ───────────────────────────────────────────────────────────────
   const slugify = (s: string) => s.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
@@ -500,6 +505,12 @@ export default function PlatformsManager() {
                                 <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Precio neto</th>
                                 <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Caduca</th>
                                 <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Estado</th>
+                                <th className="text-center px-3 py-3 text-blue-400/60 font-medium text-xs" title="Cupones recibidos">Recibidos</th>
+                                <th className="text-center px-3 py-3 text-emerald-400/60 font-medium text-xs" title="Cupones canjeados">Canjeados</th>
+                                <th className="text-center px-3 py-3 text-amber-400/60 font-medium text-xs" title="Cupones aparcados / pendientes">Aparcados</th>
+                                <th className="text-center px-3 py-3 text-red-400/60 font-medium text-xs" title="Cupones con incidencia">Anulados</th>
+                                <th className="text-right px-3 py-3 text-violet-400/60 font-medium text-xs" title="PVP generado (suma de precios PVP de cupones no incidencia)">PVP gen.</th>
+                                <th className="text-right px-3 py-3 text-teal-400/60 font-medium text-xs" title="Precio neto obtenido (suma de neto de cupones canjeados)">Neto obt.</th>
                                 <th className="px-4 py-3" />
                               </tr>
                             </thead>
@@ -507,6 +518,7 @@ export default function PlatformsManager() {
                               {products.map((p) => {
                                 const expired = isExpired(p.expiresAt);
                                 const expiring = isExpiringSoon(p.expiresAt);
+                                const st = (productStats as Record<number, { total: number; canjeados: number; pendientes: number; incidencias: number; anulados: number; pvpTotal: number; netoTotal: number }>)[p.id];
                                 return (
                                   <tr key={p.id} className="border-b border-white/5 hover:bg-white/[0.03]">
                                     <td className="px-4 py-3">
@@ -553,6 +565,25 @@ export default function PlatformsManager() {
                                       }`}>
                                         {p.active ? "Activo" : "Inactivo"}
                                       </span>
+                                    </td>
+                                    {/* Columnas estadísticas */}
+                                    <td className="px-3 py-3 text-center">
+                                      <span className="text-blue-400 font-semibold text-sm">{st?.total ?? 0}</span>
+                                    </td>
+                                    <td className="px-3 py-3 text-center">
+                                      <span className="text-emerald-400 font-semibold text-sm">{st?.canjeados ?? 0}</span>
+                                    </td>
+                                    <td className="px-3 py-3 text-center">
+                                      <span className="text-amber-400 font-semibold text-sm">{st?.pendientes ?? 0}</span>
+                                    </td>
+                                    <td className="px-3 py-3 text-center">
+                                      <span className="text-red-400 font-semibold text-sm">{st?.incidencias ?? 0}</span>
+                                    </td>
+                                    <td className="px-3 py-3 text-right">
+                                      <span className="text-violet-400 font-semibold text-sm">{st ? st.pvpTotal.toFixed(2) + " €" : "—"}</span>
+                                    </td>
+                                    <td className="px-3 py-3 text-right">
+                                      <span className="text-teal-400 font-semibold text-sm">{st ? st.netoTotal.toFixed(2) + " €" : "—"}</span>
                                     </td>
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-end gap-1">

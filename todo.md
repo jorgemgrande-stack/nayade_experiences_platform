@@ -2166,3 +2166,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Reutilizar plantilla HTML buildReservationConfirmHtml con datos del producto de plataforma
 - [x] Copia BCC automática a reservas@nayadeexperiences.es
 - [x] TypeScript: 0 errores. Tests: 222 pasando.
+
+## v23.4 — Mejoras módulo cupones y CRM [COMPLETADO]
+- [x] CRM Reservas: badge de plataforma (Groupon, Smartbox…) en reservas con origen "Plataforma" (campo platformName en BD + badge naranja dinámico)
+- [x] CuponesManager: modal lateral "Marcar como canjeado" con subida de comprobante (PDF/imagen) — RedeemModal con drag&drop
+- [x] Backend: procedimiento markAsRedeemed con upload de comprobante a S3, actualiza statusFinancial→canjeado y guarda settlementJustificantUrl
+- [x] PlatformsManager: columnas estadísticas por producto (cupones recibidos/canjeados/aparcados/anulados/PVP generado/neto obtenido)
+- [x] Backend: procedimiento getProductStats que agrega cupones por platformProductId
+- [x] Tests Vitest: 235 tests pasando (13 nuevos para markAsRedeemed, getProductStats, RedeemModal, badge CRM)

@@ -2368,7 +2368,14 @@ export const crmRouter = router({
       .query(async ({ input }) => {
         const conditions = [];
         if (input.status) conditions.push(eq(reservations.status, input.status as "draft" | "pending_payment" | "paid" | "failed" | "cancelled"));
-        if (input.channel) conditions.push(eq(reservations.channel, input.channel as "web" | "crm" | "telefono" | "email" | "otro" | "tpv"));
+        if (input.channel) {
+          if (input.channel === "coupon") {
+            // Filtrar por origen cupón (cualquier plataforma)
+            conditions.push(eq(reservations.originSource, "coupon_redemption"));
+          } else {
+            conditions.push(eq(reservations.channel, input.channel as "web" | "crm" | "telefono" | "email" | "otro" | "tpv" | "groupon"));
+          }
+        }
         if (input.search) {
           const s = `%${input.search}%`;
           conditions.push(

@@ -3001,6 +3001,7 @@ export default function CRMDashboard() {
                 <SelectItem value="web" className="text-sky-300 text-xs">🌐 Online</SelectItem>
                 <SelectItem value="crm" className="text-purple-300 text-xs">💼 CRM Delegado</SelectItem>
                 <SelectItem value="telefono" className="text-amber-300 text-xs">📞 Teléfono</SelectItem>
+                <SelectItem value="coupon" className="text-orange-300 text-xs">🎫 Plataformas (Cupón)</SelectItem>
                 <SelectItem value="otro" className="text-white/50 text-xs">❓ Otro</SelectItem>
               </SelectContent>
             </Select>
@@ -3344,6 +3345,11 @@ export default function CRMDashboard() {
                           {res.channel === "telefono" && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full">
                               📞 Teléfono
+                            </span>
+                          )}
+                          {res.originSource === "coupon_redemption" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-300 bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.5 rounded-full">
+                              🎫 {res.platformName ?? "Cupón"}
                             </span>
                           )}
                         </div>
