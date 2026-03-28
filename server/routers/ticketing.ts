@@ -625,16 +625,44 @@ export const ticketingRouter = router({
   convertToReservation: adminProc
     .input(z.object({
       id: z.number(),
-      productRealId: z.number(),
+      platformProductId: z.number().optional(), // ID del producto de plataforma (nuevo flujo)
+      productRealId: z.number().optional(),      // ID de experiencia interna (fallback)
       reservationDate: z.string(),
       participants: z.number().int().min(1),
       providerTag: z.string().optional(),
+      notes: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
       if (!item) throw new TRPCError({ code: "NOT_FOUND" });
       if (item.statusOperational === "reserva_generada") {
         throw new TRPCError({ code: "CONFLICT", message: "Esta solicitud ya tiene una reserva generada" });
+      }
+
+      // Resolver producto: primero por platformProductId, luego por productRealId
+      let resolvedExperienceId: number | null = null;
+      let resolvedProductName = "Experiencia Náyade";
+      let resolvedPvpPrice = "0";
+      let resolvedNetPrice = "0";
+
+      if (input.platformProductId) {
+        const [pp] = await db
+          .select({ experienceId: platformProducts.experienceId, externalProductName: platformProducts.externalProductName, pvpPrice: platformProducts.pvpPrice, netPrice: platformProducts.netPrice, expTitle: experiences.title })
+          .from(platformProducts)
+          .leftJoin(experiences, eq(platformProducts.experienceId, experiences.id))
+          .where(eq(platformProducts.id, input.platformProductId))
+          .limit(1);
+        if (pp) {
+          resolvedExperienceId = pp.experienceId ?? null;
+          resolvedProductName = pp.externalProductName ?? pp.expTitle ?? "Experiencia Náyade";
+          resolvedPvpPrice = pp.pvpPrice ?? "0";
+          resolvedNetPrice = pp.netPrice ?? "0";
+        }
+      } else if (input.productRealId) {
+        const [expRow] = await db.select({ title: experiences.title, basePrice: experiences.basePrice }).from(experiences).where(eq(experiences.id, input.productRealId)).limit(1);
+        resolvedExperienceId = input.productRealId;
+        resolvedProductName = expRow?.title ?? "Experiencia Náyade";
+        resolvedPvpPrice = expRow?.basePrice ?? "0";
       }
 
       // Obtener o crear cliente
@@ -648,22 +676,22 @@ export const ticketingRouter = router({
 
       // Crear reserva en CRM
       const merchantOrder = `TKT-${Date.now()}`;
-      const [expRow] = await db.select({ title: experiences.title }).from(experiences).where(eq(experiences.id, input.productRealId)).limit(1);
       const now = Date.now();
       const providerTag = input.providerTag ?? item.provider;
+      const couponNotes = `Canje cupón ${providerTag} — Código: ${item.couponCode} — Producto: ${resolvedProductName}${input.notes ? ` — ${input.notes}` : ""}`;
       const [resResult] = await db.insert(reservations).values({
-        productId: input.productRealId,
-        productName: expRow?.title ?? "Experiencia Náyade",
+        productId: resolvedExperienceId ?? 0,
+        productName: resolvedProductName,
         bookingDate: input.reservationDate,
         people: input.participants,
-        amountTotal: 0,
-        amountPaid: 0,
+        amountTotal: parseFloat(resolvedPvpPrice) * input.participants,
+        amountPaid: parseFloat(resolvedNetPrice) * input.participants,
         status: "paid",
         channel: "groupon",
         originSource: "coupon_redemption",
         redemptionId: item.id,
         merchantOrder,
-        notes: `Canje cupón ${providerTag} — Código: ${item.couponCode} — ID: ${item.id}`,
+        notes: couponNotes,
         customerName: item.customerName,
         customerEmail: item.email,
         customerPhone: item.phone ?? null,
@@ -673,12 +701,19 @@ export const ticketingRouter = router({
       });
       const reservationId = (resResult as { insertId: number }).insertId;
 
-      // Actualizar cupón
+      // Actualizar cupón con todos los datos de trazabilidad
       await db.update(couponRedemptions)
-        .set({ statusOperational: "reserva_generada", statusFinancial: "pendiente_canjear", productRealId: input.productRealId, reservationId, adminUserId: ctx.user.id })
+        .set({
+          statusOperational: "reserva_generada",
+          statusFinancial: "pendiente_canjear",
+          productRealId: resolvedExperienceId ?? (input.productRealId ?? null),
+          reservationId,
+          platformProductId: input.platformProductId ?? null,
+          adminUserId: ctx.user.id,
+        })
         .where(eq(couponRedemptions.id, input.id));
 
-      return { success: true, reservationId };
+      return { success: true, reservationId, productName: resolvedProductName, pvpPrice: resolvedPvpPrice, netPrice: resolvedNetPrice };
     }),
 
   /** Admin: re-ejecutar OCR manualmente */
@@ -873,9 +908,14 @@ export const ticketingRouter = router({
           experienceId: platformProducts.experienceId,
           externalLink: platformProducts.externalLink,
           externalProductName: platformProducts.externalProductName,
+          pvpPrice: platformProducts.pvpPrice,
+          netPrice: platformProducts.netPrice,
+          expiresAt: platformProducts.expiresAt,
           active: platformProducts.active,
           createdAt: platformProducts.createdAt,
+          updatedAt: platformProducts.updatedAt,
           experienceTitle: experiences.title,
+          experienceBasePrice: experiences.basePrice,
         })
         .from(platformProducts)
         .leftJoin(experiences, eq(platformProducts.experienceId, experiences.id))
@@ -884,12 +924,37 @@ export const ticketingRouter = router({
       return rows;
     }),
 
+  /** Lista productos activos de una plataforma para el selector del modal Convertir */
+  listActivePlatformProducts: adminProc
+    .input(z.object({ platformId: z.number() }))
+    .query(async ({ input }) => {
+      const rows = await db
+        .select({
+          id: platformProducts.id,
+          externalProductName: platformProducts.externalProductName,
+          pvpPrice: platformProducts.pvpPrice,
+          netPrice: platformProducts.netPrice,
+          expiresAt: platformProducts.expiresAt,
+          externalLink: platformProducts.externalLink,
+          experienceId: platformProducts.experienceId,
+          experienceTitle: experiences.title,
+        })
+        .from(platformProducts)
+        .leftJoin(experiences, eq(platformProducts.experienceId, experiences.id))
+        .where(and(eq(platformProducts.platformId, input.platformId), eq(platformProducts.active, true)))
+        .orderBy(platformProducts.externalProductName);
+      return rows;
+    }),
+
   createPlatformProduct: adminProc
     .input(z.object({
       platformId: z.number(),
       experienceId: z.number().optional(),
-      externalLink: z.string().url().optional(),
+      externalLink: z.string().optional(),
       externalProductName: z.string().optional(),
+      pvpPrice: z.string().optional(),
+      netPrice: z.string().optional(),
+      expiresAt: z.string().optional(), // ISO date string
       active: z.boolean().default(true),
     }))
     .mutation(async ({ input }) => {
@@ -898,6 +963,9 @@ export const ticketingRouter = router({
         experienceId: input.experienceId ?? null,
         externalLink: input.externalLink ?? null,
         externalProductName: input.externalProductName ?? null,
+        pvpPrice: input.pvpPrice ?? null,
+        netPrice: input.netPrice ?? null,
+        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
         active: input.active,
       });
       return { id: (result as { insertId: number }).insertId };
@@ -907,13 +975,18 @@ export const ticketingRouter = router({
     .input(z.object({
       id: z.number(),
       experienceId: z.number().nullable().optional(),
-      externalLink: z.string().url().nullable().optional(),
+      externalLink: z.string().nullable().optional(),
       externalProductName: z.string().nullable().optional(),
+      pvpPrice: z.string().nullable().optional(),
+      netPrice: z.string().nullable().optional(),
+      expiresAt: z.string().nullable().optional(),
       active: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      await db.update(platformProducts).set(data as Record<string, unknown>).where(eq(platformProducts.id, id));
+      const { id, expiresAt, ...rest } = input;
+      const updateData: Record<string, unknown> = { ...rest };
+      if (expiresAt !== undefined) updateData.expiresAt = expiresAt ? new Date(expiresAt) : null;
+      await db.update(platformProducts).set(updateData).where(eq(platformProducts.id, id));
       return { success: true };
     }),
 
@@ -924,7 +997,7 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  // ── LIQUIDACIONES DE PLATAFORMA ───────────────────────────────────────────
+  // ── LIQUIDACIONES DE PLATAFORMA ───────────────────────────────────────────────
   listSettlements: adminProc
     .input(z.object({ platformId: z.number().optional() }))
     .query(async ({ input }) => {
@@ -938,17 +1011,101 @@ export const ticketingRouter = router({
           periodTo: platformSettlements.periodTo,
           totalCoupons: platformSettlements.totalCoupons,
           totalAmount: platformSettlements.totalAmount,
+          netTotal: platformSettlements.netTotal,
           status: platformSettlements.status,
           justificantUrl: platformSettlements.justificantUrl,
+          invoiceRef: platformSettlements.invoiceRef,
+          couponIds: platformSettlements.couponIds,
           notes: platformSettlements.notes,
-          settledAt: platformSettlements.settledAt,
+          emittedAt: platformSettlements.emittedAt,
+          paidAt: platformSettlements.paidAt,
           createdAt: platformSettlements.createdAt,
           platformName: platforms.name,
+          platformFrequency: platforms.settlementFrequency,
         })
         .from(platformSettlements)
         .leftJoin(platforms, eq(platformSettlements.platformId, platforms.id))
         .where(where)
         .orderBy(desc(platformSettlements.createdAt));
+      return rows;
+    }),
+
+  /** Genera una liquidación agrupando los cupones canjeados del periodo que aún no tienen liquidación */
+  generateSettlement: adminProc
+    .input(z.object({
+      platformId: z.number(),
+      periodLabel: z.string().min(1),   // ej: "2025-01" o "2025-S1"
+      periodFrom: z.string(),            // ISO date
+      periodTo: z.string(),              // ISO date
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      // Buscar cupones canjeados de esta plataforma en el periodo sin liquidación asignada
+      const couponsInPeriod = await db
+        .select({
+          id: couponRedemptions.id,
+          netPrice: platformProducts.netPrice,
+          pvpPrice: platformProducts.pvpPrice,
+        })
+        .from(couponRedemptions)
+        .leftJoin(platformProducts, eq(couponRedemptions.platformProductId, platformProducts.id))
+        .where(and(
+          eq(couponRedemptions.provider, (await db.select({ name: platforms.name }).from(platforms).where(eq(platforms.id, input.platformId)).limit(1))[0]?.name ?? ""),
+          eq(couponRedemptions.statusFinancial, "canjeado"),
+          sql`${couponRedemptions.settlementId} IS NULL`,
+          sql`${couponRedemptions.createdAt} >= ${new Date(input.periodFrom)}`,
+          sql`${couponRedemptions.createdAt} <= ${new Date(input.periodTo)}`,
+        ));
+
+      const couponIds = couponsInPeriod.map((c) => c.id);
+      const netTotal = couponsInPeriod.reduce((sum, c) => sum + parseFloat(c.netPrice ?? "0"), 0);
+      const totalAmount = couponsInPeriod.reduce((sum, c) => sum + parseFloat(c.pvpPrice ?? "0"), 0);
+
+      const [result] = await db.insert(platformSettlements).values({
+        platformId: input.platformId,
+        periodLabel: input.periodLabel,
+        periodFrom: input.periodFrom,
+        periodTo: input.periodTo,
+        totalCoupons: couponIds.length,
+        totalAmount: totalAmount.toFixed(2),
+        netTotal: netTotal.toFixed(2),
+        couponIds,
+        status: "pendiente",
+        notes: input.notes ?? null,
+      });
+      const settlementId = (result as { insertId: number }).insertId;
+
+      // Vincular cupones a esta liquidación
+      if (couponIds.length > 0) {
+        await db.update(couponRedemptions)
+          .set({ settlementId })
+          .where(inArray(couponRedemptions.id, couponIds));
+      }
+
+      return { id: settlementId, totalCoupons: couponIds.length, netTotal, totalAmount };
+    }),
+
+  /** Lista los cupones incluidos en una liquidación */
+  listSettlementCoupons: adminProc
+    .input(z.object({ settlementId: z.number() }))
+    .query(async ({ input }) => {
+      const rows = await db
+        .select({
+          id: couponRedemptions.id,
+          couponCode: couponRedemptions.couponCode,
+          customerName: couponRedemptions.customerName,
+          email: couponRedemptions.email,
+          provider: couponRedemptions.provider,
+          statusFinancial: couponRedemptions.statusFinancial,
+          createdAt: couponRedemptions.createdAt,
+          pvpPrice: platformProducts.pvpPrice,
+          netPrice: platformProducts.netPrice,
+          productName: platformProducts.externalProductName,
+        })
+        .from(couponRedemptions)
+        .leftJoin(platformProducts, eq(couponRedemptions.platformProductId, platformProducts.id))
+        .where(eq(couponRedemptions.settlementId, input.settlementId))
+        .orderBy(couponRedemptions.createdAt);
       return rows;
     }),
 
@@ -960,6 +1117,8 @@ export const ticketingRouter = router({
       periodTo: z.string().optional(),
       totalCoupons: z.number().int().min(0).default(0),
       totalAmount: z.string().default("0.00"),
+      netTotal: z.string().default("0.00"),
+      invoiceRef: z.string().optional(),
       notes: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
@@ -970,7 +1129,9 @@ export const ticketingRouter = router({
         periodTo: input.periodTo ?? null,
         totalCoupons: input.totalCoupons,
         totalAmount: input.totalAmount,
-        status: "pendiente_cobro",
+        netTotal: input.netTotal,
+        invoiceRef: input.invoiceRef ?? null,
+        status: "pendiente",
         notes: input.notes ?? null,
       });
       return { id: (result as { insertId: number }).insertId };
@@ -979,17 +1140,26 @@ export const ticketingRouter = router({
   updateSettlement: adminProc
     .input(z.object({
       id: z.number(),
-      status: z.enum(["pendiente_cobro", "cobrado"]).optional(),
+      status: z.enum(["pendiente", "emitida", "pagada"]).optional(),
       totalCoupons: z.number().int().min(0).optional(),
       totalAmount: z.string().optional(),
-      justificantUrl: z.string().url().nullable().optional(),
-      settledAt: z.string().optional(),
+      netTotal: z.string().optional(),
+      invoiceRef: z.string().nullable().optional(),
+      justificantUrl: z.string().nullable().optional(),
+      emittedAt: z.string().optional(),
+      paidAt: z.string().optional(),
       notes: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
-      const { id, settledAt, ...rest } = input;
+      const { id, emittedAt, paidAt, status, ...rest } = input;
       const updateData: Record<string, unknown> = { ...rest };
-      if (settledAt) updateData.settledAt = new Date(settledAt);
+      if (status) {
+        updateData.status = status;
+        if (status === "emitida" && !emittedAt) updateData.emittedAt = new Date();
+        if (status === "pagada" && !paidAt) updateData.paidAt = new Date();
+      }
+      if (emittedAt) updateData.emittedAt = new Date(emittedAt);
+      if (paidAt) updateData.paidAt = new Date(paidAt);
       await db.update(platformSettlements).set(updateData).where(eq(platformSettlements.id, id));
       return { success: true };
     }),

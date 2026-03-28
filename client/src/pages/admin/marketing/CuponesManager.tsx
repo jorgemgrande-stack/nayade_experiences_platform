@@ -257,6 +257,181 @@ function DetailModal({ coupon, onClose, onConvert, onPostpone, onIncidence }: {
   );
 }
 
+// ─── CONVERT MODAL ──────────────────────────────────────────────────────────
+interface ConvertFormState {
+  reservationDate: string;
+  participants: number;
+  platformProductId: number | undefined;
+  selectedPlatformId: number | undefined;
+}
+
+function ConvertModal({
+  coupon, convertForm, setConvertForm, convertMutation, onClose,
+}: {
+  coupon: Coupon;
+  convertForm: ConvertFormState;
+  setConvertForm: React.Dispatch<React.SetStateAction<ConvertFormState>>;
+  convertMutation: ReturnType<typeof trpc.ticketing.convertToReservation.useMutation>;
+  onClose: () => void;
+}) {
+  // Cargar plataformas activas
+  const platformsQuery = trpc.ticketing.listPlatforms.useQuery();
+  const platforms = platformsQuery.data ?? [];
+
+  // Cargar productos de la plataforma seleccionada
+  const productsQuery = trpc.ticketing.listPlatformProducts.useQuery(
+    { platformId: convertForm.selectedPlatformId! },
+    { enabled: !!convertForm.selectedPlatformId }
+  );
+  const products = (productsQuery.data ?? []).filter((p: { active: boolean }) => p.active);
+
+  // Producto seleccionado (para mostrar PVP/neto)
+  const selectedProduct = products.find((p: { id: number }) => p.id === convertForm.platformProductId);
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarCheck className="w-5 h-5 text-emerald-400" />
+            Convertir en reserva
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* Info cupón */}
+          <div className="p-3 rounded-lg bg-white/5 text-sm">
+            <p className="text-white/60">Cliente: <span className="text-white font-medium">{coupon.customerName}</span></p>
+            <p className="text-white/60 mt-0.5">Cupón: <code className="text-violet-300">{coupon.couponCode}</code> · <ProviderBadge provider={coupon.provider} /></p>
+          </div>
+
+          {/* Selector de plataforma */}
+          <div>
+            <Label className="text-white/70 text-sm">Plataforma *</Label>
+            <Select
+              value={convertForm.selectedPlatformId?.toString() ?? ""}
+              onValueChange={(v) => setConvertForm(f => ({ ...f, selectedPlatformId: parseInt(v), platformProductId: undefined }))}
+            >
+              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+                <SelectValue placeholder="Selecciona la plataforma del cupón" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1a1a2e] border-white/10">
+                {platforms.map((pl: { id: number; name: string }) => (
+                  <SelectItem key={pl.id} value={pl.id.toString()}>{pl.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Selector de producto de plataforma */}
+          {convertForm.selectedPlatformId && (
+            <div>
+              <Label className="text-white/70 text-sm">Producto *</Label>
+              {productsQuery.isPending ? (
+                <p className="text-white/40 text-sm mt-2">Cargando productos...</p>
+              ) : products.length === 0 ? (
+                <p className="text-amber-400 text-sm mt-2">No hay productos activos en esta plataforma. Configúralos en Plataformas.</p>
+              ) : (
+                <Select
+                  value={convertForm.platformProductId?.toString() ?? ""}
+                  onValueChange={(v) => setConvertForm(f => ({ ...f, platformProductId: parseInt(v) }))}
+                >
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+                    <SelectValue placeholder="Selecciona el producto" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                    {products.map((p: { id: number; externalProductName?: string | null; pvpPrice?: string | null; netPrice?: string | null; expiresAt?: Date | null }) => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        <span>{p.externalProductName ?? `Producto #${p.id}`}</span>
+                        {p.pvpPrice && <span className="ml-2 text-white/40 text-xs">PVP: {p.pvpPrice}€</span>}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+
+          {/* Detalle del producto seleccionado */}
+          {selectedProduct && (
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
+                <p className="text-xs text-white/40 mb-0.5">PVP</p>
+                <p className="text-emerald-400 font-bold">{selectedProduct.pvpPrice ?? "—"}€</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-center">
+                <p className="text-xs text-white/40 mb-0.5">Precio neto</p>
+                <p className="text-blue-400 font-bold">{selectedProduct.netPrice ?? "—"}€</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-center">
+                <p className="text-xs text-white/40 mb-0.5">Caduca</p>
+                <p className="text-white/70 text-sm">
+                  {selectedProduct.expiresAt
+                    ? new Date(selectedProduct.expiresAt).toLocaleDateString("es-ES")
+                    : "Sin caducidad"}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Fecha y participantes */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-white/70 text-sm">Fecha de reserva *</Label>
+              <Input type="date" value={convertForm.reservationDate}
+                onChange={(e) => setConvertForm(f => ({ ...f, reservationDate: e.target.value }))}
+                className="bg-white/5 border-white/10 text-white mt-1" />
+            </div>
+            <div>
+              <Label className="text-white/70 text-sm">Participantes</Label>
+              <Input type="number" min={1} value={convertForm.participants}
+                onChange={(e) => setConvertForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))}
+                className="bg-white/5 border-white/10 text-white mt-1" />
+            </div>
+          </div>
+
+          {/* Resumen de importes */}
+          {selectedProduct && convertForm.participants > 0 && (
+            <div className="p-3 rounded-lg bg-white/5 border border-white/5 text-sm">
+              <div className="flex justify-between text-white/60">
+                <span>Importe total (PVP × {convertForm.participants} pax)</span>
+                <span className="text-white font-medium">
+                  {((parseFloat(selectedProduct.pvpPrice ?? "0")) * convertForm.participants).toFixed(2)}€
+                </span>
+              </div>
+              <div className="flex justify-between text-white/60 mt-1">
+                <span>Importe neto (lo que pagamos al proveedor)</span>
+                <span className="text-blue-400 font-medium">
+                  {((parseFloat(selectedProduct.netPrice ?? "0")) * convertForm.participants).toFixed(2)}€
+                </span>
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-white/30">
+            Se creará una reserva en el CRM con origen "Plataforma" y etiqueta del proveedor. El cupón pasará a estado "Reserva generada".
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} className="border-white/10 text-white/70">Cancelar</Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            disabled={!convertForm.reservationDate || !convertForm.platformProductId || convertMutation.isPending}
+            onClick={() => {
+              convertMutation.mutate({
+                id: coupon.id,
+                platformProductId: convertForm.platformProductId,
+                reservationDate: convertForm.reservationDate,
+                participants: convertForm.participants,
+                providerTag: coupon.provider,
+              });
+            }}>
+            {convertMutation.isPending ? "Creando reserva..." : "Crear reserva en CRM"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function CuponesManager() {
   const [activeTab, setActiveTab] = useState<Tab>("todos");
@@ -272,7 +447,7 @@ export default function CuponesManager() {
   const [manualOpen, setManualOpen] = useState(false);
 
   // Form states
-  const [convertForm, setConvertForm] = useState({ reservationDate: "", participants: 1 });
+  const [convertForm, setConvertForm] = useState({ reservationDate: "", participants: 1, platformProductId: undefined as number | undefined, selectedPlatformId: undefined as number | undefined });
   const [postponeNotes, setPostponeNotes] = useState("");
   const [incidenceNotes, setIncidenceNotes] = useState("");
   const [manualForm, setManualForm] = useState({
@@ -312,7 +487,7 @@ export default function CuponesManager() {
 
   // ── MUTATIONS ─────────────────────────────────────────────────────────────
   const convertMutation = trpc.ticketing.convertToReservation.useMutation({
-    onSuccess: () => { toast.success("Reserva creada en el CRM con origen Plataforma"); setConvertCoupon(null); setConvertForm({ reservationDate: "", participants: 1 }); invalidate(); },
+    onSuccess: () => { toast.success("Reserva creada en el CRM con origen Plataforma"); setConvertCoupon(null); setConvertForm({ reservationDate: "", participants: 1, platformProductId: undefined, selectedPlatformId: undefined }); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
   const postponeMutation = trpc.ticketing.postponeCoupon.useMutation({
@@ -569,58 +744,15 @@ export default function CuponesManager() {
       )}
 
       {/* Convertir en reserva */}
-      <Dialog open={!!convertCoupon} onOpenChange={() => setConvertCoupon(null)}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarCheck className="w-5 h-5 text-emerald-400" />
-              Convertir en reserva
-            </DialogTitle>
-          </DialogHeader>
-          {convertCoupon && (
-            <div className="space-y-4">
-              <div className="p-3 rounded-lg bg-white/5 text-sm">
-                <p className="text-white/60">Cliente: <span className="text-white">{convertCoupon.customerName}</span></p>
-                <p className="text-white/60">Cupón: <code className="text-violet-300">{convertCoupon.couponCode}</code> ({convertCoupon.provider})</p>
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-white/70 text-sm">Fecha de reserva *</Label>
-                  <Input type="date" value={convertForm.reservationDate}
-                    onChange={(e) => setConvertForm(f => ({ ...f, reservationDate: e.target.value }))}
-                    className="bg-white/5 border-white/10 text-white mt-1" />
-                </div>
-                <div>
-                  <Label className="text-white/70 text-sm">Participantes</Label>
-                  <Input type="number" min={1} value={convertForm.participants}
-                    onChange={(e) => setConvertForm(f => ({ ...f, participants: parseInt(e.target.value) || 1 }))}
-                    className="bg-white/5 border-white/10 text-white mt-1" />
-                </div>
-              </div>
-              <p className="text-xs text-white/40">
-                Se creará una reserva en el CRM con origen "Plataforma" y etiqueta del proveedor. El estado del cupón pasará a "Reserva generada".
-              </p>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConvertCoupon(null)} className="border-white/10 text-white/70">Cancelar</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={!convertForm.reservationDate || convertMutation.isPending}
-              onClick={() => {
-                if (!convertCoupon) return;
-                convertMutation.mutate({
-                  id: convertCoupon.id,
-                  productRealId: 1,
-                  reservationDate: convertForm.reservationDate,
-                  participants: convertForm.participants,
-                  providerTag: convertCoupon.provider,
-                });
-              }}>
-              {convertMutation.isPending ? "Creando..." : "Crear reserva en CRM"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {convertCoupon && (
+        <ConvertModal
+          coupon={convertCoupon}
+          convertForm={convertForm}
+          setConvertForm={setConvertForm}
+          convertMutation={convertMutation}
+          onClose={() => { setConvertCoupon(null); setConvertForm({ reservationDate: "", participants: 1, platformProductId: undefined, selectedPlatformId: undefined }); }}
+        />
+      )}
 
       {/* Posponer */}
       <Dialog open={!!postponeCoupon} onOpenChange={() => setPostponeCoupon(null)}>
@@ -819,13 +951,17 @@ function LiquidacionesTab() {
                   <td className="px-4 py-3 text-white">{s.totalCoupons}</td>
                   <td className="px-4 py-3 text-white font-medium">{s.totalAmount} €</td>
                   <td className="px-4 py-3">
-                    {s.status === "cobrado" ? (
+                    {s.status === "pagada" ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
-                        <CheckCircle className="w-3 h-3" /> Cobrado
+                        <CheckCircle className="w-3 h-3" /> Pagada
+                      </span>
+                    ) : s.status === "emitida" ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-blue-500/15 text-blue-400 border-blue-500/30">
+                        <Zap className="w-3 h-3" /> Emitida
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/15 text-amber-400 border-amber-500/30">
-                        <Clock className="w-3 h-3" /> Pendiente cobro
+                        <Clock className="w-3 h-3" /> Pendiente
                       </span>
                     )}
                   </td>

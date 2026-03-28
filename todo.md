@@ -2125,3 +2125,35 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Reservas generadas desde cupón aparecen en CRM con origen "Plataforma"
 - [x] Badge de proveedor visible en reserva del CRM
 - [x] Trazabilidad: campo couponId en reservations
+
+## v23.2 — Plataformas: productos con PVP/neto/URL/caducidad + liquidaciones periódicas [COMPLETADO]
+
+### BD
+- [x] Añadir pvpPrice, netPrice, expiresAt, updatedAt a platform_products
+- [x] Mejorar platform_settlements: añadir notes, invoiceRef, paidAt, emittedAt, couponIds, netTotal, estado emitida
+- [x] Añadir platformProductId y settlementId a coupon_redemptions
+- [x] Ejecutar migración SQL
+
+### Backend
+- [x] CRUD platform_products con nuevos campos (pvpPrice, netPrice, externalLink, expiresAt)
+- [x] Procedimiento listPlatformProducts con filtro por plataforma (para selector en "Convertir en Reserva")
+- [x] Procedimiento generateSettlement (crea liquidación con cupones canjeados del periodo)
+- [x] Procedimiento listSettlementCoupons (cupones incluidos en una liquidación)
+- [x] Lógica de periodicidad: calcular periodo según frecuencia (quincenal/mensual/trimestral)
+
+### Frontend PlatformsManager
+- [x] Tabla de productos con columnas: Producto, PVP, Precio neto, URL externa, Caducidad, Estado
+- [x] Formulario de producto ampliado con pvpPrice, netPrice, externalLink, expiresAt
+- [x] Indicador visual de productos caducados (badge rojo) y próximos a caducar (badge ámbar)
+
+### Frontend CuponesManager
+- [x] Modal "Convertir en Reserva": selector de plataforma → carga productos activos de esa plataforma
+- [x] Mostrar PVP y precio neto del producto seleccionado en el modal
+- [x] Resumen de importes (PVP total × pax, neto total) en el modal
+
+### Frontend Liquidaciones
+- [x] Tab Liquidaciones en PlatformsManager: listado por plataforma con periodo y estado
+- [x] Botón "Generar liquidación" que agrupa cupones canjeados del periodo automáticamente
+- [x] Estados: Pendiente / Emitida / Pagada con acciones de transición
+- [x] Detalle de liquidación: lista de cupones incluidos, importe total, precio neto total
+- [x] TypeScript: 0 errores. Tests: 222 pasando.

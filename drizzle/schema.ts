@@ -1703,7 +1703,9 @@ export const couponRedemptions = mysqlTable("coupon_redemptions", {
   settledAt: timestamp("settledAt"),
 
   // Conversión a reserva
-  reservationId: int("reservationId"), // → reservations.id si se convirtió
+  reservationId: int("reservationId"),           // → reservations.id si se convirtió
+  platformProductId: int("platformProductId"),   // → platform_products.id (producto de plataforma usado en la conversión)
+  settlementId: int("settlementId"),             // → platform_settlements.id (liquidación a la que pertenece este cupón)
 
   // Agrupación multi-cupón
   submissionId: varchar("submissionId", { length: 64 }), // UUID del envío (varios cupones = mismo submissionId)
@@ -1748,16 +1750,19 @@ export const platforms = mysqlTable("platforms", {
 });
 export type Platform = typeof platforms.$inferSelect;
 export type InsertPlatform = typeof platforms.$inferInsert;
-
-// ── Productos publicados en plataformas ────────────────────────────────────
+// ── Productos publicados en plataformas ──────────────────────────────────────────────
 export const platformProducts = mysqlTable("platform_products", {
   id: int("id").autoincrement().primaryKey(),
-  platformId: int("platform_id").notNull(), // → platforms.id
-  experienceId: int("experience_id"),       // → experiences.id (producto interno)
-  externalLink: text("external_link"),       // URL del producto en la plataforma
+  platformId: int("platform_id").notNull(),           // → platforms.id
+  experienceId: int("experience_id"),                 // → experiences.id (producto interno)
+  externalLink: text("external_link"),                // URL del producto en la plataforma
   externalProductName: varchar("external_product_name", { length: 256 }),
+  pvpPrice: decimal("pvp_price", { precision: 10, scale: 2 }),  // Precio PVP público en la plataforma
+  netPrice: decimal("net_price", { precision: 10, scale: 2 }),  // Precio neto que recibimos de la plataforma
+  expiresAt: timestamp("expires_at"),                           // Fecha de caducidad del producto en la plataforma
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 export type PlatformProduct = typeof platformProducts.$inferSelect;
 export type InsertPlatformProduct = typeof platformProducts.$inferInsert;
@@ -1771,10 +1776,14 @@ export const platformSettlements = mysqlTable("platform_settlements", {
   periodTo: varchar("period_to", { length: 20 }),
   totalCoupons: int("total_coupons").default(0).notNull(),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).default("0.00").notNull(),
-  status: mysqlEnum("status", ["pendiente_cobro", "cobrado"]).default("pendiente_cobro").notNull(),
+  status: mysqlEnum("status", ["pendiente", "emitida", "pagada"]).default("pendiente").notNull(),
   justificantUrl: text("justificant_url"),
+  invoiceRef: varchar("invoice_ref", { length: 128 }),  // Referencia de factura / número de liquidación emitida
+  couponIds: json("coupon_ids").$type<number[]>().default([]),  // IDs de cupones incluidos en esta liquidación
+  netTotal: decimal("net_total", { precision: 10, scale: 2 }).default("0.00"), // Suma de precios netos de los cupones
   notes: text("notes"),
-  settledAt: timestamp("settled_at"),
+  emittedAt: timestamp("emitted_at"),  // Fecha en que se emitió la liquidación al proveedor
+  paidAt: timestamp("paid_at"),        // Fecha en que el proveedor pagó
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
