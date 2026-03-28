@@ -2157,3 +2157,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Estados: Pendiente / Emitida / Pagada con acciones de transición
 - [x] Detalle de liquidación: lista de cupones incluidos, importe total, precio neto total
 - [x] TypeScript: 0 errores. Tests: 222 pasando.
+
+## v23.3 — Transiciones directas de estado en liquidaciones + email al convertir cupón [COMPLETADO]
+
+- [x] Botones de transición directa en tabla de liquidaciones (Pendiente→Emitida→Pagada)
+- [x] Procedimiento advanceSettlementStatus en router ticketing (con timestamps automáticos emittedAt/paidAt)
+- [x] Email automático de confirmación al cliente al convertir cupón en reserva
+- [x] Reutilizar plantilla HTML buildReservationConfirmHtml con datos del producto de plataforma
+- [x] Copia BCC automática a reservas@nayadeexperiences.es
+- [x] TypeScript: 0 errores. Tests: 222 pasando.

@@ -290,6 +290,14 @@ export default function PlatformsManager() {
     onSuccess: () => { toast.success("Liquidación eliminada"); utils.ticketing.listSettlements.invalidate(); },
     onError: (e) => toast.error(e.message),
   });
+  const advanceSettlementStatus = trpc.ticketing.advanceSettlementStatus.useMutation({
+    onSuccess: (data) => {
+      const labels: Record<string, string> = { emitida: "Emitida", pagada: "Pagada" };
+      toast.success(`Estado actualizado a: ${labels[data.newStatus] ?? data.newStatus}`);
+      utils.ticketing.listSettlements.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const generateSettlement = trpc.ticketing.generateSettlement.useMutation({
     onSuccess: (data) => {
       toast.success(`Liquidación generada: ${data.totalCoupons} cupones · ${data.netTotal.toFixed(2)} € neto`);
@@ -661,6 +669,21 @@ export default function PlatformsManager() {
                                     </td>
                                     <td className="px-4 py-3">
                                       <div className="flex items-center justify-end gap-1">
+                                        {/* Botón de avance directo de estado */}
+                                        {s.status !== "pagada" && (
+                                          <button
+                                            onClick={() => advanceSettlementStatus.mutate({ id: s.id })}
+                                            disabled={advanceSettlementStatus.isPending}
+                                            title={s.status === "pendiente" ? "Marcar como Emitida" : "Marcar como Pagada"}
+                                            className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
+                                              s.status === "pendiente"
+                                                ? "bg-blue-500/20 hover:bg-blue-500/35 text-blue-300 border border-blue-500/30"
+                                                : "bg-emerald-500/20 hover:bg-emerald-500/35 text-emerald-300 border border-emerald-500/30"
+                                            }`}
+                                          >
+                                            {s.status === "pendiente" ? "→ Emitida" : "→ Pagada"}
+                                          </button>
+                                        )}
                                         <button onClick={() => openEditSettlement(s)}
                                           className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors">
                                           <Edit2 className="w-3.5 h-3.5" />

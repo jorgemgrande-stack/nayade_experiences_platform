@@ -23,6 +23,7 @@ import { eq, desc, and, like, or, sql, count, inArray } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
+import { buildReservationConfirmHtml } from "../emailTemplates";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -713,6 +714,26 @@ export const ticketingRouter = router({
         })
         .where(eq(couponRedemptions.id, input.id));
 
+      // Enviar email de confirmación al cliente con los datos de la reserva
+      const bookingDateFormatted = input.reservationDate
+        ? new Date(input.reservationDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+        : "Por confirmar";
+      const totalAmount = (parseFloat(resolvedPvpPrice) * input.participants).toFixed(2).replace(".", ",");
+      const confirmHtml = buildReservationConfirmHtml({
+        merchantOrder,
+        productName: resolvedProductName,
+        customerName: item.customerName,
+        date: bookingDateFormatted,
+        people: input.participants,
+        amount: `${totalAmount} €`,
+        extras: `Cupón ${item.provider ?? ""} — Código: ${item.couponCode}`,
+      });
+      sendEmail({
+        to: item.email,
+        subject: `✅ Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
+        html: confirmHtml,
+      }).catch(console.error);
+
       return { success: true, reservationId, productName: resolvedProductName, pvpPrice: resolvedPvpPrice, netPrice: resolvedNetPrice };
     }),
 
@@ -1169,6 +1190,26 @@ export const ticketingRouter = router({
     .mutation(async ({ input }) => {
       await db.delete(platformSettlements).where(eq(platformSettlements.id, input.id));
       return { success: true };
+    }),
+
+  /** Admin: avanzar estado de liquidación en un paso (pendiente→emitida→pagada) */
+  advanceSettlementStatus: adminProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [settlement] = await db
+        .select({ status: platformSettlements.status })
+        .from(platformSettlements)
+        .where(eq(platformSettlements.id, input.id))
+        .limit(1);
+      if (!settlement) throw new TRPCError({ code: "NOT_FOUND" });
+      const transitions: Record<string, string> = { pendiente: "emitida", emitida: "pagada" };
+      const nextStatus = transitions[settlement.status ?? "pendiente"];
+      if (!nextStatus) throw new TRPCError({ code: "BAD_REQUEST", message: "La liquidación ya está en estado final (Pagada)" });
+      const updateData: Record<string, unknown> = { status: nextStatus };
+      if (nextStatus === "emitida") updateData.emittedAt = new Date();
+      if (nextStatus === "pagada") updateData.paidAt = new Date();
+      await db.update(platformSettlements).set(updateData).where(eq(platformSettlements.id, input.id));
+      return { success: true, newStatus: nextStatus };
     }),
 
   // ── CANJE PÚBLICO ─────────────────────────────────────────────────────────
