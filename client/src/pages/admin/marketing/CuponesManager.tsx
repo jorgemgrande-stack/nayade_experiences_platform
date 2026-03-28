@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import {
   Ticket, Search, Plus, Eye, CalendarCheck, Clock, AlertTriangle,
   CheckCircle, RefreshCw, Filter, TrendingUp, Banknote, ChevronRight,
-  FileText, Pause, Zap, ExternalLink, Settings, BadgeCheck, Upload, X,
+  FileText, Pause, Zap, ExternalLink, Settings, BadgeCheck, Upload, X, Trash2,
 } from "lucide-react";
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
@@ -445,6 +445,7 @@ export default function CuponesManager() {
   const [postponeCoupon, setPostponeCoupon] = useState<Coupon | null>(null);
   const [incidenceCoupon, setIncidenceCoupon] = useState<Coupon | null>(null);
   const [redeemCoupon, setRedeemCoupon] = useState<Coupon | null>(null);
+  const [deleteCoupon, setDeleteCoupon] = useState<Coupon | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
 
   // Form states
@@ -501,6 +502,10 @@ export default function CuponesManager() {
   });
   const markAsRedeemedMutation = trpc.ticketing.markAsRedeemed.useMutation({
     onSuccess: () => { toast.success("Cupón marcado como canjeado"); setRedeemCoupon(null); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteRedemptionMutation = trpc.ticketing.deleteRedemption.useMutation({
+    onSuccess: (res) => { toast.success(`Cupón ${res.couponCode} eliminado`); setDeleteCoupon(null); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
   const createManualMutation = trpc.ticketing.createManualRedemption.useMutation({
@@ -714,6 +719,10 @@ export default function CuponesManager() {
                                 <AlertTriangle className="w-4 h-4" />
                               </button>
                             )}
+                            <button onClick={() => setDeleteCoupon(c)}
+                              className="p-1.5 rounded-lg hover:bg-red-700/30 text-red-600/50 hover:text-red-400 transition-colors" aria-label="Eliminar cupón">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -931,6 +940,58 @@ export default function CuponesManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de confirmación de borrado */}
+      {deleteCoupon && (
+        <Dialog open onOpenChange={() => setDeleteCoupon(null)}>
+          <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-400">
+                <Trash2 className="w-5 h-5" />
+                Eliminar cupón
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+                <p className="text-sm text-red-300">
+                  Esta acción es <strong>permanente e irreversible</strong>. El cupón será eliminado completamente del sistema.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-white/5 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 text-xs w-20">Cliente</span>
+                  <span className="text-white text-sm font-medium">{deleteCoupon.customerName}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 text-xs w-20">Código</span>
+                  <code className="text-violet-300 font-mono text-sm">{deleteCoupon.couponCode}</code>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 text-xs w-20">Proveedor</span>
+                  <ProviderBadge provider={deleteCoupon.provider} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-white/40 text-xs w-20">Estado</span>
+                  <OpBadge status={deleteCoupon.statusOperational} />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteCoupon(null)}
+                className="border-white/10 text-white/70 hover:bg-white/10">
+                Cancelar
+              </Button>
+              <Button
+                className="bg-red-600 hover:bg-red-700 text-white"
+                disabled={deleteRedemptionMutation.isPending}
+                onClick={() => deleteRedemptionMutation.mutate({ id: deleteCoupon.id })}>
+                {deleteRedemptionMutation.isPending ? "Eliminando..." : "Sí, eliminar cupón"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </AdminLayout>
   );
 }

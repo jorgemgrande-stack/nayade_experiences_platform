@@ -2184,3 +2184,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Feature: upsert automático de cliente en tabla clients al registrar cupón desde /canjear-cupon (createRedemption)
 - [x] Todos los upserts usan source="cupon" y el patrón onDuplicateKeyUpdate robusto (no sobreescribe datos existentes)
 - [x] 235 tests pasando (0 errores TypeScript)
+
+## v23.6 — Botón borrar cupón con modal de confirmación [COMPLETADO]
+- [x] Backend: procedimiento deleteRedemption (solo admin, elimina registro de coupon_redemptions)
+- [x] Frontend: botón papelera Trash2 en cada fila del listado de cupones (CuponesManager)
+- [x] Frontend: modal de confirmación con datos del cupón antes de borrar (icono alerta rojo, nombre cliente, código, proveedor, estado)
+- [x] 235 tests pasando (0 errores TypeScript)

@@ -921,6 +921,17 @@ export const ticketingRouter = router({
       return { success: true, justificantUrl };
     }),
 
+  /** Admin: eliminar un cupón por ID (borrado físico) */
+  deleteRedemption: adminProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [item] = await db.select({ id: couponRedemptions.id, couponCode: couponRedemptions.couponCode })
+        .from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Cupón no encontrado" });
+      await db.delete(couponRedemptions).where(eq(couponRedemptions.id, input.id));
+      return { success: true, deletedId: input.id, couponCode: item.couponCode };
+    }),
+
   // ── PLATAFORMAS ───────────────────────────────────────────────────────────
   listPlatforms: adminProc.query(async () => {
     return db.select().from(platforms).orderBy(platforms.name);
