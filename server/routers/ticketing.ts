@@ -415,6 +415,26 @@ export const ticketingRouter = router({
       }
 
       if (validResults.length > 0) {
+        // Upsert cliente en CRM (mismo patrón que createLead)
+        try {
+          await db.insert(clients).values({
+            source: "cupon",
+            name: input.customerName,
+            email: input.email,
+            phone: input.phone ?? "",
+            company: "",
+            tags: [],
+            isConverted: false,
+            totalBookings: 0,
+          }).onDuplicateKeyUpdate({
+            set: {
+              name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${input.customerName}, ${clients.name})`,
+              phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${input.phone ?? ''}, ${clients.phone})`,
+              updatedAt: new Date(),
+            },
+          });
+        } catch { /* silent — no bloquear el flujo si el upsert falla */ }
+
         // Email confirmación cliente
         sendEmail({
           to: input.email,
@@ -486,6 +506,25 @@ export const ticketingRouter = router({
         createdByAdminId: ctx.user.id,
       });
       const redemptionId = (result as { insertId: number }).insertId;
+      // Upsert cliente en CRM
+      try {
+        await db.insert(clients).values({
+          source: "cupon",
+          name: input.customerName,
+          email: input.email,
+          phone: input.phone ?? "",
+          company: "",
+          tags: [],
+          isConverted: false,
+          totalBookings: 0,
+        }).onDuplicateKeyUpdate({
+          set: {
+            name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${input.customerName}, ${clients.name})`,
+            phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${input.phone ?? ''}, ${clients.phone})`,
+            updatedAt: new Date(),
+          },
+        });
+      } catch { /* silent */ }
       if (input.attachmentUrl) {
         const attachUrl = input.attachmentUrl;
         const pName = productName;
@@ -1057,24 +1096,46 @@ export const ticketingRouter = router({
   getProductStats: adminProc
     .input(z.object({ platformId: z.number() }))
     .query(async ({ input }) => {
-      // Agrupamos todos los cupones de esta plataforma por platformProductId
-      const rows = await db
+      // 1. Obtener todos los productos de la plataforma con sus precios
+      const prods = await db
+        .select({
+          id: platformProducts.id,
+          pvpPrice: platformProducts.pvpPrice,
+          netPrice: platformProducts.netPrice,
+        })
+        .from(platformProducts)
+        .where(eq(platformProducts.platformId, input.platformId));
+
+      if (prods.length === 0) return {};
+
+      // 2. Obtener el nombre de la plataforma para el fallback por provider
+      const [plat] = await db
+        .select({ name: platforms.name })
+        .from(platforms)
+        .where(eq(platforms.id, input.platformId))
+        .limit(1);
+      const platformName = plat?.name ?? "";
+
+      // 3. Obtener todos los cupones relacionados con esta plataforma:
+      //    - Los que tienen platformProductId apuntando a un producto de esta plataforma (flujo nuevo)
+      //    - Los que tienen provider coincidente con el nombre de la plataforma (flujo legacy)
+      const prodIds = prods.map((p) => p.id);
+      const allCoupons = await db
         .select({
           platformProductId: couponRedemptions.platformProductId,
-          total: count(),
-          canjeados: sql<number>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} = 'canjeado' THEN 1 ELSE 0 END)`,
-          pendientes: sql<number>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} = 'pendiente_canjear' THEN 1 ELSE 0 END)`,
-          incidencias: sql<number>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} = 'incidencia' THEN 1 ELSE 0 END)`,
-          anulados: sql<number>`SUM(CASE WHEN ${couponRedemptions.statusOperational} = 'anulado' THEN 1 ELSE 0 END)`,
-          pvpTotal: sql<string>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} != 'incidencia' THEN CAST(pp.pvpPrice AS DECIMAL(10,2)) ELSE 0 END)`,
-          netoTotal: sql<string>`SUM(CASE WHEN ${couponRedemptions.statusFinancial} = 'canjeado' THEN CAST(pp.netPrice AS DECIMAL(10,2)) ELSE 0 END)`,
+          provider: couponRedemptions.provider,
+          statusFinancial: couponRedemptions.statusFinancial,
+          statusOperational: couponRedemptions.statusOperational,
         })
         .from(couponRedemptions)
-        .innerJoin(platformProducts, eq(couponRedemptions.platformProductId, platformProducts.id))
-        .where(eq(platformProducts.platformId, input.platformId))
-        .groupBy(couponRedemptions.platformProductId);
+        .where(
+          or(
+            inArray(couponRedemptions.platformProductId, prodIds),
+            like(couponRedemptions.provider, `%${platformName}%`),
+          )
+        );
 
-      // Convertir a mapa por platformProductId para fácil lookup
+      // 4. Inicializar mapa con 0 para todos los productos
       const statsMap: Record<number, {
         total: number;
         canjeados: number;
@@ -1084,19 +1145,30 @@ export const ticketingRouter = router({
         pvpTotal: number;
         netoTotal: number;
       }> = {};
-      for (const r of rows) {
-        if (r.platformProductId != null) {
-          statsMap[r.platformProductId] = {
-            total: Number(r.total),
-            canjeados: Number(r.canjeados),
-            pendientes: Number(r.pendientes),
-            incidencias: Number(r.incidencias),
-            anulados: Number(r.anulados),
-            pvpTotal: parseFloat(r.pvpTotal ?? "0"),
-            netoTotal: parseFloat(r.netoTotal ?? "0"),
-          };
-        }
+      for (const p of prods) {
+        statsMap[p.id] = { total: 0, canjeados: 0, pendientes: 0, incidencias: 0, anulados: 0, pvpTotal: 0, netoTotal: 0 };
       }
+
+      // 5. Agregar cada cupón al producto correcto
+      for (const c of allCoupons) {
+        // Primero intentar por platformProductId; si no, fallback al único producto (si solo hay uno)
+        let targetId: number | null = (c.platformProductId != null && statsMap[c.platformProductId]) ? c.platformProductId : null;
+        if (!targetId && prods.length === 1) targetId = prods[0].id;
+        if (!targetId) continue;
+
+        const st = statsMap[targetId];
+        const prod = prods.find((p) => p.id === targetId);
+        const pvp = parseFloat(prod?.pvpPrice ?? "0");
+        const neto = parseFloat(prod?.netPrice ?? "0");
+
+        st.total++;
+        if (c.statusFinancial === "canjeado") { st.canjeados++; st.netoTotal += neto; }
+        else if (c.statusFinancial === "pendiente_canjear") st.pendientes++;
+        else if (c.statusFinancial === "incidencia") st.incidencias++;
+        if ((c.statusOperational as string) === "anulado") st.anulados++;
+        if (c.statusFinancial !== "incidencia") st.pvpTotal += pvp;
+      }
+
       return statsMap;
     }),
 
@@ -1344,6 +1416,25 @@ export const ticketingRouter = router({
         submissionId,
       });
       const redemptionId = (result as { insertId: number }).insertId;
+      // Upsert cliente en CRM
+      try {
+        await db.insert(clients).values({
+          source: "cupon",
+          name: input.customerName,
+          email: input.email,
+          phone: input.phone ?? "",
+          company: "",
+          tags: [],
+          isConverted: false,
+          totalBookings: 0,
+        }).onDuplicateKeyUpdate({
+          set: {
+            name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${input.customerName}, ${clients.name})`,
+            phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${input.phone ?? ''}, ${clients.phone})`,
+            updatedAt: new Date(),
+          },
+        });
+      } catch { /* silent */ }
       if (input.attachmentUrl) {
         setImmediate(async () => {
           try {

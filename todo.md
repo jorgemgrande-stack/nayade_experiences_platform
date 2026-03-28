@@ -2174,3 +2174,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] PlatformsManager: columnas estadísticas por producto (cupones recibidos/canjeados/aparcados/anulados/PVP generado/neto obtenido)
 - [x] Backend: procedimiento getProductStats que agrega cupones por platformProductId
 - [x] Tests Vitest: 235 tests pasando (13 nuevos para markAsRedeemed, getProductStats, RedeemModal, badge CRM)
+
+## v23.5 — Bug estadísticas productos + cliente automático desde cupón [COMPLETADO]
+- [x] Bug fix: getProductStats usaba INNER JOIN + alias SQL roto (pp.pvpPrice) → ahora usa lógica JS-side con fallback por provider
+- [x] Bug fix: estadísticas ahora cuentan cupónes legacy (sin platformProductId) buscando por nombre de plataforma en campo provider
+- [x] Bug fix: si la plataforma tiene un solo producto, todos sus cupones se asignan automáticamente a ese producto
+- [x] Feature: upsert automático de cliente en tabla clients al registrar cupón desde web pública (createSubmission)
+- [x] Feature: upsert automático de cliente en tabla clients al dar de alta manual un cupón (createManualRedemption)
+- [x] Feature: upsert automático de cliente en tabla clients al registrar cupón desde /canjear-cupon (createRedemption)
+- [x] Todos los upserts usan source="cupon" y el patrón onDuplicateKeyUpdate robusto (no sobreescribe datos existentes)
+- [x] 235 tests pasando (0 errores TypeScript)
