@@ -7,10 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Popover, PopoverContent, PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+
 
 type ViewMode = "day" | "week" | "timeline";
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
@@ -86,7 +83,7 @@ function EventCard({ ev, compact = false }: { ev: any; compact?: boolean }) {
 export default function CalendarView() {
   const [viewMode, setViewMode] = useState<ViewMode>("timeline");
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const [calendarOpen, setCalendarOpen] = useState(false);
+
 
   const weekStart = useMemo(() => getWeekStart(currentDate), [currentDate]);
   const weekDays = useMemo(
@@ -203,33 +200,22 @@ export default function CalendarView() {
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
-            {/* Date Picker */}
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-slate-700 text-slate-300 hover:bg-slate-800 gap-2 ml-1"
-                >
-                  <CalendarDays className="w-4 h-4 text-blue-400" />
-                  Ir a fecha
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 bg-[#111827] border-slate-700" align="start">
-                <Calendar
-                  mode="single"
-                  selected={currentDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      setCurrentDate(date);
-                      setCalendarOpen(false);
-                    }
-                  }}
-                  initialFocus
-                  className="text-white"
-                />
-              </PopoverContent>
-            </Popover>
+            {/* Date Picker nativo */}
+            <label className="flex items-center gap-2 cursor-pointer border border-slate-700 rounded-md px-3 h-8 bg-transparent hover:bg-slate-800 transition-colors ml-1">
+              <CalendarDays className="w-4 h-4 text-blue-400 shrink-0" />
+              <span className="text-slate-300 text-sm">Ir a fecha</span>
+              <input
+                type="date"
+                value={formatDate(currentDate)}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const [y, mo, d] = e.target.value.split("-").map(Number);
+                    setCurrentDate(new Date(y, mo - 1, d));
+                  }
+                }}
+                className="opacity-0 absolute w-0 h-0"
+              />
+            </label>
           </div>
           <h2 className="text-lg font-semibold text-white capitalize">{todayLabel}</h2>
           <div className="ml-auto flex items-center gap-3 text-xs text-slate-400">

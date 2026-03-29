@@ -13,10 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Popover, PopoverContent, PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+
 import { toast } from "sonner";
 
 function addDays(d: Date, n: number) {
@@ -53,7 +50,7 @@ export default function DailyActivities() {
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string>("");
-  const [calendarOpen, setCalendarOpen] = useState(false);
+
 
   const dateStr = formatDate(currentDate);
 
@@ -140,33 +137,22 @@ export default function DailyActivities() {
           >
             <ChevronRight className="w-4 h-4" />
           </Button>
-          {/* Date Picker */}
-          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-slate-700 text-slate-300 hover:bg-slate-800 gap-2"
-              >
-                <CalendarDays className="w-4 h-4 text-blue-400" />
-                Ir a fecha
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 bg-[#111827] border-slate-700" align="start">
-              <Calendar
-                mode="single"
-                selected={currentDate}
-                onSelect={(date) => {
-                  if (date) {
-                    setCurrentDate(date);
-                    setCalendarOpen(false);
-                  }
-                }}
-                initialFocus
-                className="text-white"
-              />
-            </PopoverContent>
-          </Popover>
+          {/* Date Picker nativo */}
+          <label className="flex items-center gap-2 cursor-pointer border border-slate-700 rounded-md px-3 h-8 bg-transparent hover:bg-slate-800 transition-colors">
+            <CalendarDays className="w-4 h-4 text-blue-400 shrink-0" />
+            <span className="text-slate-300 text-sm">Ir a fecha</span>
+            <input
+              type="date"
+              value={formatDate(currentDate)}
+              onChange={(e) => {
+                if (e.target.value) {
+                  const [y, m, d] = e.target.value.split("-").map(Number);
+                  setCurrentDate(new Date(y, m - 1, d));
+                }
+              }}
+              className="opacity-0 absolute w-0 h-0"
+            />
+          </label>
           <h2 className="text-lg font-semibold text-white capitalize">
             {currentDate.toLocaleDateString("es-ES", {
               weekday: "long", day: "numeric", month: "long", year: "numeric",
