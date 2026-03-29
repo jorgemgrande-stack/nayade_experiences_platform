@@ -72,10 +72,7 @@ export default function EmailTemplatesManager() {
   // Mutations
   const sendTestMutation = trpc.emailTemplates.sendTest.useMutation({
     onSuccess: (data) => {
-      toast({
-        title: "Prueba enviada",
-        description: `"${data.templateName}" enviada a ${data.sentTo}`,
-      });
+      toast.success("Prueba enviada", { description: `"${data.templateName}" enviada a ${data.sentTo}` });
     },
     onError: (err) => {
       toast.error("Error al enviar", { description: err.message });
@@ -86,11 +83,11 @@ export default function EmailTemplatesManager() {
     onSuccess: (data) => {
       setAllResults(data.results);
       setSendingAll(false);
-      toast({
-        title: `${data.sent}/${data.total} plantillas enviadas`,
-        description: data.failed > 0 ? `${data.failed} fallaron. Revisa los resultados.` : "Todas enviadas correctamente.",
-        variant: data.failed > 0 ? "destructive" : "default",
-      });
+      if (data.failed > 0) {
+        toast.error(`${data.sent}/${data.total} plantillas enviadas`, { description: `${data.failed} fallaron. Revisa los resultados.` });
+      } else {
+        toast.success(`${data.sent}/${data.total} plantillas enviadas`, { description: "Todas enviadas correctamente." });
+      }
     },
     onError: (err) => {
       setSendingAll(false);
