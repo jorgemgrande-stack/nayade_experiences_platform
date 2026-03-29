@@ -2269,3 +2269,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [ ] Registrar ruta /admin/crm/plantillas en App.tsx y sidebar del CRM
 - [ ] Cargar todas las plantillas existentes en la BD al arrancar (seed)
 - [ ] Enviar todas las plantillas de prueba a reservas@nayadeexperiences.es
+
+## v25.6 — Editor completo de Plantillas Email y PDF [COMPLETADO]
+- [x] Tabla `email_templates` en BD para plantillas editables (asunto, cuerpo HTML, imagen cabecera, variables)
+- [x] Tabla `pdf_templates` en BD para plantillas PDF editables
+- [x] Procedimientos tRPC: getTemplate, saveTemplate, createTemplate, deleteTemplate (email y PDF)
+- [x] EmailTemplatesManager: panel de edición de asunto, textos del cuerpo e imagen de cabecera
+- [x] EmailTemplatesManager: botón "Nueva plantilla" con formulario de creación
+- [x] PdfTemplatesManager: módulo equivalente para facturas, presupuestos, tickets y bonos
+- [x] Sidebar: añadir "Plantillas PDF" bajo Configuración junto a "Plantillas Email"

@@ -140,6 +140,7 @@ import { expensesModuleRouter } from "./routers/expenses";
 import { ticketingRouter } from "./routers/ticketing";
 import { cancellationsRouter } from "./routers/cancellations";
 import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
+import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -161,6 +162,7 @@ export const appRouter = router({
   financial: expensesModuleRouter,
   cancellations: cancellationsRouter,
   emailTemplates: emailTemplatesRouter,
+  pdfTemplates: pdfTemplatesRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

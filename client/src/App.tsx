@@ -110,6 +110,7 @@ const TpvBackoffice = lazy(() => import("./pages/admin/tpv/TpvBackoffice"));
 
 // Plantillas Email
 const EmailTemplatesManager = lazy(() => import("./pages/admin/EmailTemplatesManager"));
+const PdfTemplatesManager = lazy(() => import("./pages/admin/PdfTemplatesManager"));
 
 // Fallback de carga para páginas admin
 function AdminLoadingFallback() {

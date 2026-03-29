@@ -1905,3 +1905,55 @@ export const compensationVouchers = mysqlTable("compensation_vouchers", {
 });
 export type CompensationVoucher = typeof compensationVouchers.$inferSelect;
 export type InsertCompensationVoucher = typeof compensationVouchers.$inferInsert;
+
+// ─── Email Templates (editable desde el CRM) ─────────────────────────────────
+export const emailTemplates = mysqlTable("email_templates", {
+  id: varchar("id", { length: 100 }).primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 50 }).notNull().default("general"),
+  recipient: varchar("recipient", { length: 20 }).notNull().default("cliente"),
+  subject: varchar("subject", { length: 300 }).notNull(),
+  headerImageUrl: text("header_image_url"),
+  headerTitle: varchar("header_title", { length: 200 }),
+  headerSubtitle: varchar("header_subtitle", { length: 300 }),
+  bodyHtml: text("body_html").notNull(),
+  footerText: text("footer_text"),
+  ctaLabel: varchar("cta_label", { length: 100 }),
+  ctaUrl: text("cta_url"),
+  variables: text("variables"),
+  isCustom: boolean("is_custom").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type EmailTemplate = typeof emailTemplates.$inferSelect;
+export type InsertEmailTemplate = typeof emailTemplates.$inferInsert;
+
+// ─── PDF Templates (editable desde el CRM) ───────────────────────────────────
+export const pdfTemplates = mysqlTable("pdf_templates", {
+  id: varchar("id", { length: 100 }).primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 50 }).notNull().default("general"),
+  logoUrl: text("logo_url"),
+  headerColor: varchar("header_color", { length: 20 }).default("#0a1628"),
+  accentColor: varchar("accent_color", { length: 20 }).default("#f97316"),
+  companyName: varchar("company_name", { length: 200 }),
+  companyAddress: text("company_address"),
+  companyPhone: varchar("company_phone", { length: 50 }),
+  companyEmail: varchar("company_email", { length: 200 }),
+  companyNif: varchar("company_nif", { length: 50 }),
+  footerText: text("footer_text"),
+  legalText: text("legal_text"),
+  showLogo: boolean("show_logo").default(true).notNull(),
+  showWatermark: boolean("show_watermark").default(false).notNull(),
+  bodyHtml: text("body_html").notNull(),
+  variables: text("variables"),
+  isCustom: boolean("is_custom").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type PdfTemplate = typeof pdfTemplates.$inferSelect;
+export type InsertPdfTemplate = typeof pdfTemplates.$inferInsert;
