@@ -1,0 +1,74 @@
+{
+  "query": "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations' AND ORDINAL_POSITION > 20 ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations' AND ORDINAL_POSITION > 20 ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "quote_id",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "quoteId",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "invoiceId",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "invoiceNumber",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "paymentMethod",
+      "DATA_TYPE": "enum"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedBy",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedAt",
+      "DATA_TYPE": "bigint"
+    },
+    {
+      "COLUMN_NAME": "transferProofUrl",
+      "DATA_TYPE": "text"
+    },
+    {
+      "COLUMN_NAME": "channel",
+      "DATA_TYPE": "enum"
+    },
+    {
+      "COLUMN_NAME": "discount_code",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "discount_percent",
+      "DATA_TYPE": "decimal"
+    },
+    {
+      "COLUMN_NAME": "discount_amount",
+      "DATA_TYPE": "decimal"
+    },
+    {
+      "COLUMN_NAME": "original_amount",
+      "DATA_TYPE": "decimal"
+    },
+    {
+      "COLUMN_NAME": "origin_source",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "platform_name",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "redemption_id",
+      "DATA_TYPE": "int"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\tDATA_TYPE\nquote_id\tint\nquoteId\tint\ninvoiceId\tint\ninvoiceNumber\tvarchar\npaymentMethod\tenum\npaymentValidatedBy\tint\npaymentValidatedAt\tbigint\ntransferProofUrl\ttext\nchannel\tenum\ndiscount_code\tvarchar\ndiscount_percent\tdecimal\ndiscount_amount\tdecimal\noriginal_amount\tdecimal\norigin_source\tvarchar\nplatform_name\tvarchar\nredemption_id\tint\n",
+  "stderr": "",
+  "execution_time_ms": 73
+}

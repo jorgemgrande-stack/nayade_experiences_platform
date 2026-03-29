@@ -222,21 +222,22 @@ const calendarRouter = router({
       to: z.string(),   // ISO date string
     }))
     .query(async ({ input }) => {
-      const fromTs = new Date(input.from).getTime();
-      const toTs = new Date(input.to).getTime();
+      // booking_date is a DATE column — convert from/to to YYYY-MM-DD strings
+      const fromDate = new Date(input.from).toISOString().slice(0, 10);
+      const toDate = new Date(input.to).toISOString().slice(0, 10);
 
-      // Query reservations (activities/packs) from the main reservations table
+      // Query reservations (activities/packs/presupuestos) from the main reservations table
       const [activityRows] = await pool.execute<any[]>(`
         SELECT
           r.id,
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
-          r.scheduled_date AS scheduledDate,
-          r.number_of_persons AS numberOfPersons,
+          r.booking_date AS scheduledDate,
+          r.people AS numberOfPersons,
           r.status,
           r.channel,
-          e.title AS activityTitle,
+          COALESCE(e.title, r.product_name) AS activityTitle,
           e.slug AS activitySlug,
           'activity' AS eventType,
           ro.client_confirmed AS clientConfirmed,
@@ -246,13 +247,13 @@ const calendarRouter = router({
           ro.op_status AS opStatus,
           m.full_name AS monitorName
         FROM reservations r
-        LEFT JOIN experiences e ON r.experience_id = e.id
+        LEFT JOIN experiences e ON r.product_id = e.id
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
-        WHERE r.scheduled_date >= ? AND r.scheduled_date <= ?
-          AND r.status NOT IN ('cancelled','payment_failed')
-        ORDER BY r.scheduled_date ASC
-      `, [fromTs, toTs]);
+        WHERE r.booking_date >= ? AND r.booking_date <= ?
+          AND r.status NOT IN ('cancelled','failed')
+        ORDER BY r.booking_date ASC
+      `, [fromDate, toDate]);
 
       // Query restaurant bookings
       const [restaurantRows] = await pool.execute<any[]>(`
@@ -278,9 +279,9 @@ const calendarRouter = router({
         LEFT JOIN restaurants rest ON rest.id = rb.restaurantId
         LEFT JOIN reservation_operational ro ON ro.reservation_id = rb.id AND ro.reservation_type = 'restaurant'
         WHERE rb.bookingDate >= ? AND rb.bookingDate <= ?
-          AND rb.status NOT IN ('cancelled','payment_failed')
+          AND rb.status NOT IN ('cancelled','failed')
         ORDER BY rb.bookingDate ASC, rb.bookingTime ASC
-      `, [fromTs, toTs]);
+      `, [fromDate, toDate]);
 
       return {
         activities: activityRows || [],
@@ -294,9 +295,8 @@ const dailyOrdersRouter = router({
   getForDate: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      const date = new Date(input.date);
-      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0).getTime();
-      const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59).getTime();
+      // booking_date is a DATE column — use YYYY-MM-DD string for filtering
+      const dateStr = new Date(input.date).toISOString().slice(0, 10);
 
       const [activityRows] = await pool.execute<any[]>(`
         SELECT
@@ -304,10 +304,10 @@ const dailyOrdersRouter = router({
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
-          r.scheduled_date AS scheduledDate,
-          r.number_of_persons AS numberOfPersons,
+          r.booking_date AS scheduledDate,
+          r.people AS numberOfPersons,
           r.status,
-          e.title AS activityTitle,
+          COALESCE(e.title, r.product_name) AS activityTitle,
           'activity' AS eventType,
           ro.client_confirmed AS clientConfirmed,
           ro.client_confirmed_at AS clientConfirmedAt,
@@ -318,13 +318,13 @@ const dailyOrdersRouter = router({
           m.full_name AS monitorName,
           ro.id AS opId
         FROM reservations r
-        LEFT JOIN experiences e ON r.experience_id = e.id
+        LEFT JOIN experiences e ON r.product_id = e.id
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
-        WHERE r.scheduled_date >= ? AND r.scheduled_date <= ?
-          AND r.status NOT IN ('cancelled','payment_failed')
-        ORDER BY r.scheduled_date ASC
-      `, [startOfDay, endOfDay]);
+        WHERE r.booking_date = ?
+          AND r.status NOT IN ('cancelled','failed')
+        ORDER BY r.booking_date ASC
+      `, [dateStr]);
 
       const [restaurantRows] = await pool.execute<any[]>(`
         SELECT
@@ -349,10 +349,10 @@ const dailyOrdersRouter = router({
         FROM restaurant_bookings rb
         LEFT JOIN restaurants rest ON rest.id = rb.restaurantId
         LEFT JOIN reservation_operational ro ON ro.reservation_id = rb.id AND ro.reservation_type = 'restaurant'
-        WHERE rb.bookingDate >= ? AND rb.bookingDate <= ?
-          AND rb.status NOT IN ('cancelled','payment_failed')
+        WHERE rb.bookingDate = ?
+          AND rb.status NOT IN ('cancelled','failed')
         ORDER BY rb.bookingDate ASC, rb.bookingTime ASC
-      `, [startOfDay, endOfDay]);
+      `, [dateStr]);
 
       return {
         activities: activityRows || [],
@@ -414,6 +414,8 @@ const dailyOrdersRouter = router({
       const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0).getTime();
       const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59).getTime();
 
+      const dateStr2 = new Date(input.date).toISOString().slice(0, 10);
+
       const [[actStats]] = await pool.execute<any[]>(`
         SELECT
           COUNT(*) AS total,
@@ -422,16 +424,16 @@ const dailyOrdersRouter = router({
           SUM(CASE WHEN ro.op_status = 'incidencia' THEN 1 ELSE 0 END) AS incidencias
         FROM reservations r
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
-        WHERE r.scheduled_date >= ? AND r.scheduled_date <= ?
-          AND r.status NOT IN ('cancelled','payment_failed')
-      `, [startOfDay, endOfDay]);
+        WHERE r.booking_date = ?
+          AND r.status NOT IN ('cancelled','failed')
+      `, [dateStr2]);
 
       const [[restStats]] = await pool.execute<any[]>(`
         SELECT COUNT(*) AS total
         FROM restaurant_bookings rb
-        WHERE rb.bookingDate >= ? AND rb.bookingDate <= ?
-          AND rb.status NOT IN ('cancelled','payment_failed')
-      `, [startOfDay, endOfDay]);
+        WHERE rb.bookingDate = ?
+          AND rb.status NOT IN ('cancelled','failed')
+      `, [dateStr2]);
 
       return {
         totalReservations: (actStats?.total || 0) + (restStats?.total || 0),
@@ -448,9 +450,8 @@ const activitiesRouter = router({
   getForDate: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      const date = new Date(input.date);
-      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0).getTime();
-      const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59).getTime();
+      // booking_date is a DATE column — use YYYY-MM-DD string
+      const actDateStr = new Date(input.date).toISOString().slice(0, 10);
 
       const [rows] = await pool.execute<any[]>(`
         SELECT
@@ -458,11 +459,11 @@ const activitiesRouter = router({
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
-          r.scheduled_date AS scheduledDate,
-          r.number_of_persons AS numberOfPersons,
+          r.booking_date AS scheduledDate,
+          r.people AS numberOfPersons,
           r.status,
           r.channel,
-          e.title AS activityTitle,
+          COALESCE(e.title, r.product_name) AS activityTitle,
           e.slug AS activitySlug,
           e.duration AS duration,
           ro.client_confirmed AS clientConfirmed,
@@ -473,13 +474,13 @@ const activitiesRouter = router({
           m.full_name AS monitorName,
           ro.id AS opId
         FROM reservations r
-        LEFT JOIN experiences e ON r.experience_id = e.id
+        LEFT JOIN experiences e ON r.product_id = e.id
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
-        WHERE r.scheduled_date >= ? AND r.scheduled_date <= ?
-          AND r.status NOT IN ('cancelled','payment_failed')
-        ORDER BY r.scheduled_date ASC
-      `, [startOfDay, endOfDay]);
+        WHERE r.booking_date = ?
+          AND r.status NOT IN ('cancelled','failed')
+        ORDER BY r.booking_date ASC
+      `, [actDateStr]);
 
       return rows || [];
     }),

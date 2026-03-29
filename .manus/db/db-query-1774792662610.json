@@ -1,0 +1,40 @@
+{
+  "query": "SELECT id, customer_name, customer_email, status, booking_date, product_id, product_name, created_at FROM reservations WHERE customer_name LIKE '%Simo%' OR customer_name LIKE '%Blanquez%' OR customer_email LIKE '%severalenergy%' ORDER BY created_at DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, customer_name, customer_email, status, booking_date, product_id, product_name, created_at FROM reservations WHERE customer_name LIKE '%Simo%' OR customer_name LIKE '%Blanquez%' OR customer_email LIKE '%severalenergy%' ORDER BY created_at DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "420001",
+      "customer_name": "Simo Blanquez",
+      "customer_email": "j.grande@severalenergy.com",
+      "status": "paid",
+      "booking_date": "2026-03-29",
+      "product_id": "0",
+      "product_name": "Presupuesto Nayade Experiences - Simo Blanquez",
+      "created_at": "1774791857547"
+    },
+    {
+      "id": "390003",
+      "customer_name": "Cristina Batistelli",
+      "customer_email": "canales@severalenergy.com",
+      "status": "paid",
+      "booking_date": "2026-03-30",
+      "product_id": "0",
+      "product_name": "Groupon Nayade day",
+      "created_at": "1774741884758"
+    },
+    {
+      "id": "300002",
+      "customer_name": "Caridad martinez",
+      "customer_email": "canales@severalenergy.com",
+      "status": "paid",
+      "booking_date": "2026-03-25",
+      "product_id": "150001",
+      "product_name": "Entrada General Piscina Club Nautico (+3 más)",
+      "created_at": "1774458119000"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tcustomer_name\tcustomer_email\tstatus\tbooking_date\tproduct_id\tproduct_name\tcreated_at\n420001\tSimo Blanquez\tj.grande@severalenergy.com\tpaid\t2026-03-29\t0\tPresupuesto Nayade Experiences - Simo Blanquez\t1774791857547\n390003\tCristina Batistelli\tcanales@severalenergy.com\tpaid\t2026-03-30\t0\tGroupon Nayade day\t1774741884758\n300002\tCaridad martinez\tcanales@severalenergy.com\tpaid\t2026-03-25\t150001\tEntrada General Piscina Club Nautico (+3 más)\t1774458119000\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}

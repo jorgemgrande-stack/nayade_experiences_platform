@@ -2311,3 +2311,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: bloque de subida de foto en el formulario crear/editar con preview inmediata
 - [x] Frontend: botón Quitar foto para limpiar la selección
 - [x] 0 errores TypeScript
+
+## BUG v25.11 — Reserva Simo Blanquez no aparece en Calendario/Actividades [RESUELTO]
+- [x] Diagnosticar: las consultas SQL usaban columnas inexistentes (scheduled_date, experience_id, number_of_persons)
+- [x] Corregir: reemplazado por booking_date (DATE), product_id, people; filtro status cambiado a 'cancelled','failed'
+- [x] Calendario, Actividades del Día y Órdenes del Día ahora muestran TODAS las reservas (incluyendo presupuestos con product_id=0)

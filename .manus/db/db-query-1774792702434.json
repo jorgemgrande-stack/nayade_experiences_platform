@@ -1,0 +1,90 @@
+{
+  "query": "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'experiences' ORDER BY ORDINAL_POSITION LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'experiences' ORDER BY ORDINAL_POSITION LIMIT 20;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "slug",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "title",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "shortDescription",
+      "DATA_TYPE": "text"
+    },
+    {
+      "COLUMN_NAME": "description",
+      "DATA_TYPE": "text"
+    },
+    {
+      "COLUMN_NAME": "categoryId",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "locationId",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "coverImageUrl",
+      "DATA_TYPE": "text"
+    },
+    {
+      "COLUMN_NAME": "image1",
+      "DATA_TYPE": "text"
+    },
+    {
+      "COLUMN_NAME": "image2",
+      "DATA_TYPE": "text"
+    },
+    {
+      "COLUMN_NAME": "image3",
+      "DATA_TYPE": "text"
+    },
+    {
+      "COLUMN_NAME": "image4",
+      "DATA_TYPE": "text"
+    },
+    {
+      "COLUMN_NAME": "gallery",
+      "DATA_TYPE": "json"
+    },
+    {
+      "COLUMN_NAME": "basePrice",
+      "DATA_TYPE": "decimal"
+    },
+    {
+      "COLUMN_NAME": "currency",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "duration",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "minPersons",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "maxPersons",
+      "DATA_TYPE": "int"
+    },
+    {
+      "COLUMN_NAME": "difficulty",
+      "DATA_TYPE": "varchar"
+    },
+    {
+      "COLUMN_NAME": "includes",
+      "DATA_TYPE": "json"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\tDATA_TYPE\nid\tint\nslug\tvarchar\ntitle\tvarchar\nshortDescription\ttext\ndescription\ttext\ncategoryId\tint\nlocationId\tint\ncoverImageUrl\ttext\nimage1\ttext\nimage2\ttext\nimage3\ttext\nimage4\ttext\ngallery\tjson\nbasePrice\tdecimal\ncurrency\tvarchar\nduration\tvarchar\nminPersons\tint\nmaxPersons\tint\ndifficulty\tvarchar\nincludes\tjson\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}
