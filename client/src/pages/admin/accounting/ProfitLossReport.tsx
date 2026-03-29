@@ -3,7 +3,7 @@
  * v21.0 — Módulo Financiero Nayade Experiences
  */
 import { useState, useMemo } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
+import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,7 +107,7 @@ export default function ProfitLossReport() {
   }
 
   return (
-    <DashboardLayout>
+    <AdminLayout>
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -349,6 +349,6 @@ export default function ProfitLossReport() {
           </>
         )}
       </div>
-    </DashboardLayout>
+    </AdminLayout>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import DashboardLayout from "@/components/DashboardLayout";
+import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,7 +91,7 @@ export default function RecurringExpensesManager() {
   function getCostCenterName(id: number) { return costCenters.find((c) => c.id === id)?.name ?? `CC ${id}`; }
 
   return (
-    <DashboardLayout>
+    <AdminLayout>
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -206,6 +206,6 @@ export default function RecurringExpensesManager() {
           </div>
         </DialogContent>
       </Dialog>
-    </DashboardLayout>
+    </AdminLayout>
   );
 }

@@ -2362,6 +2362,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Dashboard: icono de monitor asignado (azul) vs sin monitor (ámbar) para identificación rápida
 - [x] 0 errores TypeScript
 
+## BUG v25.17 — Layout incorrecto en pantallas de Contabilidad [RESUELTO]
+- [x] /admin/contabilidad/gastos: unificado con AdminLayout estándar
+- [x] /admin/contabilidad/gastos/recurrentes: unificado con AdminLayout estándar
+- [x] /admin/contabilidad/gastos/categorias: unificado con AdminLayout estándar
+- [x] /admin/contabilidad/gastos/proveedores: unificado con AdminLayout estándar
+- [x] /admin/contabilidad/cuenta-resultados: unificado con AdminLayout estándar
+
 ## BUG v25.16 — Reserva Simo Blanquez sigue sin aparecer en Calendario y Órdenes del Día [RESUELTO]
 - [x] Diagnóstico completo: BD + SQL + frontend
 - [x] Causa raíz: formatDate() en DailyOrders.tsx y DailyActivities.tsx usaba toISOString() que convierte a UTC, causando desfase de -1 día en España (UTC+2)
