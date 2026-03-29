@@ -69,7 +69,7 @@ const navItems = [
     roles: ["admin", "agente", "monitor"],
     children: [
       { label: "Calendario", href: "/admin/operaciones/calendario" },
-      { label: "Actividades", href: "/admin/operaciones/reservas" },
+      { label: "Actividades del Día", href: "/admin/operaciones/actividades" },
       { label: "Órdenes del Día", href: "/admin/operaciones/ordenes" },
       { label: "Monitores", href: "/admin/operaciones/monitores" },
       { label: "Reseñas", href: "/admin/operaciones/resenas" },

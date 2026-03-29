@@ -2285,3 +2285,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Guardar preferencia en localStorage (nayade_cookie_consent)
 - [x] Integrar en layout público (App.tsx) visible en todas las páginas públicas
 - [x] Enlace directo a /cookies desde el banner
+
+## v25.8 — Módulos de Operaciones completos (Monitores, Actividades, Órdenes) [COMPLETADO]
+- [x] MonitorsManager.tsx: reescrito alineado con schema real del backend (contractType, sin specialty)
+- [x] DailyActivities.tsx: corregido assignMonitor (eliminar campo date no existente en el procedimiento)
+- [x] DailyOrders.tsx: corregido tipo de datos (activities + restaurants combinados) y añadido reservationType en updateOperational
+- [x] App.tsx: añadidas rutas /admin/operaciones/actividades y /admin/operaciones/monitores
+- [x] AdminLayout.tsx: corregido enlace "Actividades del Día" → /admin/operaciones/actividades
+- [x] 0 errores TypeScript tras todas las correcciones

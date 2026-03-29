@@ -1,314 +1,408 @@
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Calendar, Users, Clock, MapPin, User, CheckCircle, AlertCircle } from "lucide-react";
+import { useState, useMemo } from "react";
+import { trpc } from "@/lib/trpc";
+import AdminLayout from "@/components/AdminLayout";
+import {
+  Calendar, ChevronLeft, ChevronRight, Users, User,
+  AlertTriangle, CheckCircle2, Waves, Utensils, RefreshCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import AdminLayout from "@/components/AdminLayout";
-import { trpc } from "@/lib/trpc";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
-const DAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+type ViewMode = "day" | "week" | "timeline";
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
 
-const statusColors: Record<string, string> = {
-  pendiente: "bg-amber-100 text-amber-700 border-amber-200",
-  confirmado: "bg-blue-100 text-blue-700 border-blue-200",
-  en_curso: "bg-purple-100 text-purple-700 border-purple-200",
-  completado: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  cancelado: "bg-red-100 text-red-700 border-red-200",
-};
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate();
+function formatDate(d: Date) { return d.toISOString().split("T")[0]; }
+function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function getWeekStart(d: Date) {
+  const r = new Date(d);
+  const day = r.getDay();
+  r.setDate(r.getDate() + (day === 0 ? -6 : 1 - day));
+  return r;
+}
+function getEventHour(ts: number) {
+  const d = new Date(ts);
+  return d.getHours() + d.getMinutes() / 60;
+}
+function formatTime(ts: number) {
+  return new Date(ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+}
+function formatDayLabel(d: Date) {
+  return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
 }
 
-function getFirstDayOfMonth(year: number, month: number) {
-  const day = new Date(year, month, 1).getDay();
-  return day === 0 ? 6 : day - 1; // Monday-based
+function EventCard({ ev, compact = false }: { ev: any; compact?: boolean }) {
+  const isActivity = ev.eventType === "activity";
+  const colorClass = isActivity
+    ? "border-l-blue-400 bg-blue-500/10"
+    : "border-l-emerald-400 bg-emerald-500/10";
+  return (
+    <div className={`border-l-2 rounded-r px-2 py-1 text-xs ${colorClass} mb-1`}>
+      <div className="flex items-center gap-1 font-semibold text-white truncate">
+        {isActivity
+          ? <Waves className="w-3 h-3 text-blue-400 shrink-0" />
+          : <Utensils className="w-3 h-3 text-emerald-400 shrink-0" />}
+        <span className="truncate">{ev.activityTitle || ev.clientName}</span>
+      </div>
+      {!compact && (
+        <div className="flex items-center gap-1 text-slate-300 mt-0.5 flex-wrap">
+          <User className="w-3 h-3" />
+          <span className="truncate">{ev.clientName}</span>
+          <Users className="w-3 h-3 ml-1" />
+          <span>{ev.numberOfPersons}</span>
+          {ev.clientConfirmed
+            ? <span className="text-emerald-400 flex items-center gap-0.5 ml-1"><CheckCircle2 className="w-3 h-3" />OK</span>
+            : <span className="text-amber-400 flex items-center gap-0.5 ml-1"><AlertTriangle className="w-3 h-3" />Sin confirmar</span>}
+          {isActivity && !ev.monitorId && (
+            <span className="text-red-400 flex items-center gap-0.5">
+              <AlertTriangle className="w-3 h-3" />Sin monitor
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function CalendarView() {
-  const today = new Date();
-  const [currentYear, setCurrentYear] = useState(today.getFullYear());
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [showOrderModal, setShowOrderModal] = useState(false);
-  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("timeline");
+  const [currentDate, setCurrentDate] = useState(() => new Date());
 
-  const { data: bookings, refetch } = trpc.bookings.getAll.useQuery({
-    from: new Date(currentYear, currentMonth, 1).toISOString(),
-    to: new Date(currentYear, currentMonth + 1, 0).toISOString(),
-    limit: 100,
-    offset: 0,
-  });
+  const weekStart = useMemo(() => getWeekStart(currentDate), [currentDate]);
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart]
+  );
 
-  const { data: monitors } = trpc.admin.getUsers.useQuery();
+  const fromDate = viewMode === "week" ? formatDate(weekStart) : formatDate(currentDate);
+  const toDate = viewMode === "week" ? formatDate(addDays(weekStart, 6)) : formatDate(currentDate);
 
-  const assignMonitorMutation = trpc.bookings.updateStatus.useMutation({
-      onSuccess: () => { toast.success("Estado actualizado"); refetch(); },
-    onError: () => toast.error("Error al actualizar"),
-  });
+  const { data, isLoading, refetch } = trpc.operations.calendar.getEvents.useQuery(
+    { from: fromDate + "T00:00:00", to: toDate + "T23:59:59" },
+    { refetchOnWindowFocus: false }
+  );
 
-  const updateStatusMutation = trpc.bookings.updateStatus.useMutation({
-    onSuccess: () => { toast.success("Estado actualizado"); refetch(); },
-    onError: () => toast.error("Error al actualizar estado"),
-  });
+  const allEvents = useMemo(() => {
+    const acts = (data?.activities || []).map((e: any) => ({ ...e, eventType: "activity" }));
+    const rests = (data?.restaurants || []).map((e: any) => ({ ...e, eventType: "restaurant" }));
+    return [...acts, ...rests].sort(
+      (a: any, b: any) => (a.scheduledDate || 0) - (b.scheduledDate || 0)
+    );
+  }, [data]);
 
-  const prevMonth = () => {
-    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); }
-    else setCurrentMonth(currentMonth - 1);
-  };
-  const nextMonth = () => {
-    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
-    else setCurrentMonth(currentMonth + 1);
-  };
+  function navigate(dir: number) {
+    if (viewMode === "week") setCurrentDate(d => addDays(d, dir * 7));
+    else setCurrentDate(d => addDays(d, dir));
+  }
 
-  const daysInMonth = getDaysInMonth(currentYear, currentMonth);
-  const firstDay = getFirstDayOfMonth(currentYear, currentMonth);
+  const todayLabel =
+    viewMode === "week"
+      ? `${formatDayLabel(weekStart)} — ${formatDayLabel(addDays(weekStart, 6))}`
+      : currentDate.toLocaleDateString("es-ES", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
 
-  const getBookingsForDay = (day: number) => {
-    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    return (bookings ?? []).filter((b) => {
-      const bDate = new Date(b.scheduledDate).toISOString().split("T")[0];
-      return bDate === dateStr;
+  const eventsByDay = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    weekDays.forEach(d => { map[formatDate(d)] = []; });
+    allEvents.forEach((ev: any) => {
+      const key = formatDate(new Date(ev.scheduledDate));
+      if (map[key]) map[key].push(ev);
     });
-  };
-
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    return map;
+  }, [allEvents, weekDays]);
 
   return (
-    <AdminLayout title="Calendario de Operaciones">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Calendar */}
-        <div className="lg:col-span-2">
-          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
-            {/* Calendar Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-              <h2 className="font-display font-bold text-lg text-foreground">
-                {MONTHS[currentMonth]} {currentYear}
-              </h2>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" onClick={prevMonth} className="w-8 h-8">
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => { setCurrentMonth(today.getMonth()); setCurrentYear(today.getFullYear()); }} className="text-xs">
-                  Hoy
-                </Button>
-                <Button variant="ghost" size="icon" onClick={nextMonth} className="w-8 h-8">
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Day Headers */}
-            <div className="grid grid-cols-7 border-b border-border">
-              {DAYS.map((d) => (
-                <div key={d} className="py-2 text-center text-xs font-semibold text-muted-foreground">{d}</div>
+    <AdminLayout title="Calendario Operativo">
+      <div className="min-h-screen bg-[#0a0f1a] text-white p-6 -m-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Calendar className="w-6 h-6 text-blue-400" />
+              Calendario Operativo
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">Vista unificada de todas las reservas</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+            <div className="flex rounded-lg border border-slate-700 overflow-hidden">
+              {(["day", "week", "timeline"] as ViewMode[]).map(v => (
+                <button
+                  key={v}
+                  onClick={() => setViewMode(v)}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                    viewMode === v
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-900 text-slate-400 hover:bg-slate-800"
+                  }`}
+                >
+                  {v === "day" ? "Día" : v === "week" ? "Semana" : "Timeline"}
+                </button>
               ))}
-            </div>
-
-            {/* Calendar Grid */}
-            <div className="grid grid-cols-7">
-              {Array.from({ length: firstDay }).map((_, i) => (
-                <div key={`empty-${i}`} className="min-h-[80px] border-b border-r border-border/30 bg-muted/10" />
-              ))}
-              {Array.from({ length: daysInMonth }).map((_, i) => {
-                const day = i + 1;
-                const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-                const dayBookings = getBookingsForDay(day);
-                const isToday = dateStr === todayStr;
-                const isSelected = dateStr === selectedDate;
-
-                return (
-                  <div
-                    key={day}
-                    className={cn(
-                      "min-h-[80px] border-b border-r border-border/30 p-1.5 cursor-pointer transition-colors",
-                      isToday && "bg-accent/5",
-                      isSelected && "bg-accent/10",
-                      !isToday && !isSelected && "hover:bg-muted/30"
-                    )}
-                    onClick={() => setSelectedDate(dateStr)}
-                  >
-                    <div className={cn(
-                      "w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold mb-1",
-                      isToday ? "bg-accent text-white" : "text-foreground"
-                    )}>
-                      {day}
-                    </div>
-                    <div className="space-y-0.5">
-                      {dayBookings.slice(0, 2).map((b) => (
-                        <div
-                          key={b.id}
-                          className={cn("text-xs px-1.5 py-0.5 rounded truncate border cursor-pointer", statusColors[b.status] ?? "bg-gray-100 text-gray-700")}
-                          onClick={(e) => { e.stopPropagation(); setSelectedBooking(b); }}
-                        >
-                          {"Actividad"}
-                        </div>
-                      ))}
-                      {dayBookings.length > 2 && (
-                        <div className="text-xs text-muted-foreground px-1">+{dayBookings.length - 2} más</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         </div>
 
-        {/* Sidebar: Day Detail */}
-        <div className="space-y-5">
-          {/* Legend */}
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
-            <h3 className="font-display font-semibold text-foreground mb-3">Estado de Actividades</h3>
-            <div className="space-y-2">
-              {Object.entries(statusColors).map(([status, colors]) => (
-                <div key={status} className="flex items-center gap-2">
-                  <div className={cn("w-3 h-3 rounded-full border", colors)} />
-                  <span className="text-xs text-muted-foreground capitalize">{status.replace("_", " ")}</span>
-                </div>
-              ))}
-            </div>
+        {/* Navigation */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => navigate(-1)}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800 w-8 h-8"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentDate(new Date())}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800 text-xs px-3"
+            >
+              Hoy
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => navigate(1)}
+              className="border-slate-700 text-slate-300 hover:bg-slate-800 w-8 h-8"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
           </div>
+          <h2 className="text-lg font-semibold text-white capitalize">{todayLabel}</h2>
+          <div className="ml-auto flex items-center gap-3 text-xs text-slate-400">
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-3 rounded-sm bg-blue-500/30 border border-blue-400 inline-block" />
+              Actividades
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-3 rounded-sm bg-emerald-500/30 border border-emerald-400 inline-block" />
+              Restaurante
+            </span>
+          </div>
+        </div>
 
-          {/* Selected Day Activities */}
-          {selectedDate && (
-            <div className="bg-card rounded-2xl border border-border/50 p-5">
-              <h3 className="font-display font-semibold text-foreground mb-3">
-                {new Date(selectedDate + "T12:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
-              </h3>
-              {getBookingsForDay(parseInt(selectedDate.split("-")[2])).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay actividades este día.</p>
-              ) : (
-                <div className="space-y-3">
-                  {getBookingsForDay(parseInt(selectedDate.split("-")[2])).map((b) => (
-                    <div
-                      key={b.id}
-                      className="border border-border/50 rounded-xl p-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                      onClick={() => setSelectedBooking(b)}
-                    >
-                      <p className="font-medium text-sm text-foreground">{"Actividad"}</p>
-                      <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                        {b.scheduledDate && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(b.scheduledDate).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</span>}
-                        {b.numberOfPersons && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{b.numberOfPersons} pers.</span>}
+        {isLoading ? (
+          <div className="flex items-center justify-center h-64 text-slate-400">
+            <RefreshCw className="w-6 h-6 animate-spin mr-2" />
+            Cargando eventos...
+          </div>
+        ) : (
+          <>
+            {/* DAY VIEW */}
+            {viewMode === "day" && (
+              <div className="bg-[#111827] rounded-xl border border-slate-800 overflow-hidden">
+                <div className="grid" style={{ gridTemplateColumns: "60px 1fr" }}>
+                  {HOURS.map(h => {
+                    const evs = allEvents.filter(
+                      (ev: any) => Math.floor(getEventHour(ev.scheduledDate)) === h
+                    );
+                    return (
+                      <div key={h} className="contents">
+                        <div className="border-b border-slate-800 border-r border-slate-700 px-2 py-3 text-xs text-slate-500 text-right">
+                          {String(h).padStart(2, "0")}:00
+                        </div>
+                        <div className="border-b border-slate-800 px-3 py-2 min-h-[60px]">
+                          {evs.length > 0 && (
+                            <div className="space-y-1">
+                              {evs.map((ev: any, i: number) => (
+                                <div key={i} className="flex items-start gap-2">
+                                  <span className="text-xs text-slate-500 w-12 shrink-0 mt-1">
+                                    {formatTime(ev.scheduledDate)}
+                                  </span>
+                                  <div className="flex-1">
+                                    <EventCard ev={ev} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <Badge className={cn("mt-2 text-xs", statusColors[b.status] ?? "")}>{b.status}</Badge>
+                    );
+                  })}
+                </div>
+                {allEvents.length === 0 && (
+                  <div className="text-center py-16 text-slate-500">
+                    <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>No hay reservas para este día</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* WEEK VIEW */}
+            {viewMode === "week" && (
+              <div className="bg-[#111827] rounded-xl border border-slate-800 overflow-x-auto">
+                <div
+                  className="grid min-w-[900px]"
+                  style={{ gridTemplateColumns: "60px repeat(7, 1fr)" }}
+                >
+                  <div className="border-b border-slate-700 border-r border-slate-700 p-2" />
+                  {weekDays.map((d, i) => {
+                    const isToday = formatDate(d) === formatDate(new Date());
+                    return (
+                      <div
+                        key={i}
+                        className={`border-b border-slate-700 border-r border-slate-800 p-2 text-center text-xs font-medium ${
+                          isToday ? "text-blue-400 bg-blue-500/10" : "text-slate-400"
+                        }`}
+                      >
+                        {formatDayLabel(d)}
+                        <div className="text-slate-500 font-normal mt-0.5">
+                          {(eventsByDay[formatDate(d)] || []).length} ev.
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {HOURS.map(h => (
+                    <div key={h} className="contents">
+                      <div className="border-b border-slate-800 border-r border-slate-700 px-1 py-2 text-xs text-slate-600 text-right">
+                        {String(h).padStart(2, "0")}:00
+                      </div>
+                      {weekDays.map((d, di) => {
+                        const evs = (eventsByDay[formatDate(d)] || []).filter(
+                          (ev: any) => Math.floor(getEventHour(ev.scheduledDate)) === h
+                        );
+                        return (
+                          <div
+                            key={di}
+                            className="border-b border-slate-800 border-r border-slate-800 p-1 min-h-[50px]"
+                          >
+                            {evs.map((ev: any, i: number) => (
+                              <EventCard key={i} ev={ev} compact />
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
 
-          {/* Today's Summary */}
-          <div className="bg-card rounded-2xl border border-border/50 p-5">
-            <h3 className="font-display font-semibold text-foreground mb-3">Resumen del Mes</h3>
-            <div className="space-y-2">
-              {[
-                { label: "Total Actividades", value: (bookings ?? []).length },
-                { label: "Confirmadas", value: (bookings ?? []).filter((b) => b.status === "confirmado").length },
-                { label: "En Curso", value: (bookings ?? []).filter((b) => b.status === "en_curso").length },
-                { label: "Completadas", value: (bookings ?? []).filter((b) => b.status === "completado").length },
-              ].map((s) => (
-                <div key={s.label} className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">{s.label}</span>
-                  <span className="font-semibold text-foreground">{s.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+            {/* TIMELINE VIEW */}
+            {viewMode === "timeline" && (
+              <div className="bg-[#111827] rounded-xl border border-slate-800 overflow-hidden">
+                {allEvents.length === 0 ? (
+                  <div className="text-center py-16 text-slate-500">
+                    <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p>No hay reservas para este día</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-800">
+                    {allEvents.map((ev: any, i: number) => {
+                      const isActivity = ev.eventType === "activity";
+                      const soon =
+                        ev.scheduledDate &&
+                        ev.scheduledDate - Date.now() < 2 * 60 * 60 * 1000 &&
+                        ev.scheduledDate > Date.now();
+                      return (
+                        <div
+                          key={i}
+                          className={`flex items-center gap-4 px-6 py-4 hover:bg-slate-800/50 transition-colors ${
+                            soon ? "bg-amber-500/5" : ""
+                          }`}
+                        >
+                          <div className="w-16 shrink-0 text-center">
+                            <div className="text-lg font-bold text-white">
+                              {formatTime(ev.scheduledDate)}
+                            </div>
+                            <div
+                              className={`text-xs mt-0.5 ${
+                                isActivity ? "text-blue-400" : "text-emerald-400"
+                              }`}
+                            >
+                              {isActivity ? "Actividad" : "Rest."}
+                            </div>
+                          </div>
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                              isActivity ? "bg-blue-500/20" : "bg-emerald-500/20"
+                            }`}
+                          >
+                            {isActivity ? (
+                              <Waves className="w-5 h-5 text-blue-400" />
+                            ) : (
+                              <Utensils className="w-5 h-5 text-emerald-400" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-white truncate">
+                              {ev.activityTitle}
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-slate-400 mt-0.5">
+                              <span className="flex items-center gap-1">
+                                <User className="w-3 h-3" />
+                                {ev.clientName}
+                              </span>
+                              {ev.clientPhone && (
+                                <a
+                                  href={`tel:${ev.clientPhone}`}
+                                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300"
+                                >
+                                  📞 {ev.clientPhone}
+                                </a>
+                              )}
+                              <span className="flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {ev.numberOfPersons} pax
+                              </span>
+                            </div>
+                          </div>
+                          <div className="w-32 shrink-0 text-sm">
+                            {ev.monitorName ? (
+                              <span className="text-slate-300 flex items-center gap-1">
+                                <User className="w-3 h-3 text-slate-500" />
+                                {ev.monitorName}
+                              </span>
+                            ) : isActivity ? (
+                              <span className="text-red-400 flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                Sin monitor
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {soon && (
+                              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500 text-xs">
+                                Próximo
+                              </Badge>
+                            )}
+                            {ev.clientConfirmed ? (
+                              <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500 text-xs">
+                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                Confirmado
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500 text-xs">
+                                <AlertTriangle className="w-3 h-3 mr-1" />
+                                Sin confirmar
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
-
-      {/* Booking Detail Modal */}
-      <Dialog open={!!selectedBooking} onOpenChange={() => setSelectedBooking(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-display">Detalle de Actividad</DialogTitle>
-          </DialogHeader>
-          {selectedBooking && (
-            <div className="space-y-4 mt-2">
-              <div>
-                <h3 className="font-semibold text-foreground text-lg">{selectedBooking.experience?.title ?? "Actividad"}</h3>
-                <Badge className={cn("mt-1", statusColors[selectedBooking.status] ?? "")}>{selectedBooking.status}</Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-xs text-muted-foreground">Fecha</p>
-                  <p className="font-medium">{new Date(selectedBooking.scheduledDate).toLocaleDateString("es-ES")}</p>
-                </div>
-                {selectedBooking.scheduledDate && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Hora</p>
-                    <p className="font-medium">{new Date(selectedBooking.scheduledDate).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</p>
-                  </div>
-                )}
-                {selectedBooking.numberOfPersons && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Personas</p>
-                    <p className="font-medium">{selectedBooking.numberOfPersons}</p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs text-muted-foreground">Reserva</p>
-                  <p className="font-medium">{selectedBooking.bookingNumber}</p>
-                </div>
-              </div>
-
-              {/* Assign Monitor */}
-              <div>
-                <Label className="text-xs">Asignar Monitor</Label>
-                <Select
-                  value={selectedBooking.monitorId ? String(selectedBooking.monitorId) : ""}
-                  onValueChange={(v) => toast.info("Asignación de monitor disponible próximamente")}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Seleccionar monitor..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(monitors ?? []).map((m: any) => (
-                      <SelectItem key={m.id} value={String(m.id)}>{m.name ?? m.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Update Status */}
-              <div>
-                <Label className="text-xs">Actualizar Estado</Label>
-                <Select
-                  value={selectedBooking.status}
-                  onValueChange={(v) => updateStatusMutation.mutate({ id: selectedBooking.id, status: v as any })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pendiente">Pendiente</SelectItem>
-                    <SelectItem value="confirmado">Confirmado</SelectItem>
-                    <SelectItem value="en_curso">En Curso</SelectItem>
-                    <SelectItem value="completado">Completado</SelectItem>
-                    <SelectItem value="cancelado">Cancelado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button
-                className="w-full bg-gold-gradient text-white hover:opacity-90"
-                onClick={() => { setShowOrderModal(true); }}
-              >
-                <Calendar className="w-4 h-4 mr-2" />
-                Generar Orden del Día
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </AdminLayout>
   );
 }

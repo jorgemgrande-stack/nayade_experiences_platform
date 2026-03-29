@@ -1957,3 +1957,87 @@ export const pdfTemplates = mysqlTable("pdf_templates", {
 });
 export type PdfTemplate = typeof pdfTemplates.$inferSelect;
 export type InsertPdfTemplate = typeof pdfTemplates.$inferInsert;
+
+// ─── MONITORS (Personal Operativo) ───────────────────────────────────────────
+export const monitors = mysqlTable("monitors", {
+  id: int("id").autoincrement().primaryKey(),
+  // Datos personales
+  fullName: varchar("full_name", { length: 255 }).notNull(),
+  dni: varchar("dni", { length: 20 }),
+  phone: varchar("phone", { length: 30 }),
+  email: varchar("email", { length: 255 }),
+  address: text("address"),
+  birthDate: timestamp("birth_date"),
+  photoUrl: text("photo_url"),
+  photoKey: varchar("photo_key", { length: 512 }),
+  // Contacto de emergencia
+  emergencyName: varchar("emergency_name", { length: 255 }),
+  emergencyRelation: varchar("emergency_relation", { length: 128 }),
+  emergencyPhone: varchar("emergency_phone", { length: 30 }),
+  // Datos bancarios
+  iban: varchar("iban", { length: 34 }),
+  ibanHolder: varchar("iban_holder", { length: 255 }),
+  // Contrato
+  contractType: mysqlEnum("contract_type", ["indefinido", "temporal", "autonomo", "practicas", "otro"]).default("temporal"),
+  contractStart: timestamp("contract_start"),
+  contractEnd: timestamp("contract_end"),
+  contractConditions: text("contract_conditions"),
+  // Estado
+  isActive: boolean("is_active").default(true).notNull(),
+  notes: text("notes"),
+  // Vínculo con usuario del sistema (opcional)
+  userId: int("user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type Monitor = typeof monitors.$inferSelect;
+export type InsertMonitor = typeof monitors.$inferInsert;
+
+// ─── MONITOR DOCUMENTS ───────────────────────────────────────────────────────
+export const monitorDocuments = mysqlTable("monitor_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  monitorId: int("monitor_id").notNull(),
+  type: mysqlEnum("type", ["dni", "contrato", "certificado", "otro"]).notNull().default("otro"),
+  name: varchar("name", { length: 255 }).notNull(),
+  fileUrl: text("file_url").notNull(),
+  fileKey: varchar("file_key", { length: 512 }).notNull(),
+  uploadedBy: int("uploaded_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type MonitorDocument = typeof monitorDocuments.$inferSelect;
+
+// ─── MONITOR PAYROLL (Nóminas) ───────────────────────────────────────────────
+export const monitorPayroll = mysqlTable("monitor_payroll", {
+  id: int("id").autoincrement().primaryKey(),
+  monitorId: int("monitor_id").notNull(),
+  year: int("year").notNull(),
+  month: int("month").notNull(), // 1-12
+  baseSalary: decimal("base_salary", { precision: 10, scale: 2 }).notNull().default("0"),
+  extras: json("extras").$type<Array<{concept: string; amount: number; type: string}>>().default([]),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  status: mysqlEnum("status", ["pendiente", "pagado"]).default("pendiente").notNull(),
+  paidAt: timestamp("paid_at"),
+  notes: text("notes"),
+  createdBy: int("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type MonitorPayroll = typeof monitorPayroll.$inferSelect;
+
+// ─── RESERVATION OPERATIONAL FIELDS (campos operativos en reservas) ──────────
+export const reservationOperational = mysqlTable("reservation_operational", {
+  id: int("id").autoincrement().primaryKey(),
+  reservationId: int("reservation_id").notNull().unique(),
+  reservationType: mysqlEnum("reservation_type", ["activity", "restaurant", "hotel", "spa", "pack"]).notNull().default("activity"),
+  clientConfirmed: boolean("client_confirmed").default(false).notNull(),
+  clientConfirmedAt: timestamp("client_confirmed_at"),
+  clientConfirmedBy: int("client_confirmed_by"),
+  arrivalTime: varchar("arrival_time", { length: 10 }), // "HH:MM"
+  opNotes: text("op_notes"),
+  monitorId: int("monitor_id"),
+  opStatus: mysqlEnum("op_status", ["pendiente", "confirmado", "incidencia", "completado"]).default("pendiente").notNull(),
+  updatedBy: int("updated_by"),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type ReservationOperational = typeof reservationOperational.$inferSelect;
