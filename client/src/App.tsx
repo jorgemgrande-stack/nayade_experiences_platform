@@ -39,6 +39,7 @@ import Checkout from "./pages/Checkout";
 import PoliticaPrivacidad from "./pages/PoliticaPrivacidad";
 import TerminosCondiciones from "./pages/TerminosCondiciones";
 import PoliticaCookies from "./pages/PoliticaCookies";
+import CondicionesCancelacion from "./pages/CondicionesCancelacion";
 
 // ── ADMIN PAGES (lazy — solo se cargan cuando el usuario navega a /admin) ────
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -157,6 +158,7 @@ function Router() {
       <Route path="/privacidad" component={PoliticaPrivacidad} />
       <Route path="/terminos" component={TerminosCondiciones} />
       <Route path="/cookies" component={PoliticaCookies} />
+      <Route path="/condiciones-cancelacion" component={CondicionesCancelacion} />
       {/* ── DYNAMIC PAGES (CMS) ── */}
       <Route path="/pagina/:slug" component={DynamicPage} />
 

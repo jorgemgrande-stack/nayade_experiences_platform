@@ -2249,3 +2249,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Crear TerminosCondiciones.tsx (ruta /terminos) — 11 secciones con política de cancelación, menores, seguridad, jurisdicción
 - [x] Crear PoliticaCookies.tsx (ruta /cookies) — 8 secciones con tablas de cookies técnicas/analíticas/preferencias
 - [x] Registrar las 3 rutas en App.tsx
+
+## v25.4 — Página Condiciones de Cancelación [COMPLETADO]
+- [x] Crear CondicionesCancelacion.tsx con contenido adaptado a Náyade Experiences (13 secciones)
+- [x] Registrar ruta /condiciones-cancelacion en App.tsx
+- [x] Añadir enlace "Cancelación" en la barra legal del footer
+
+## v25.4 — Página Condiciones de Cancelación
+- [ ] Crear CondicionesCancelacion.tsx con contenido adaptado a Náyade Experiences
+- [ ] Registrar ruta /condiciones-cancelacion en App.tsx
+- [ ] Añadir enlace en el footer (columna legal)

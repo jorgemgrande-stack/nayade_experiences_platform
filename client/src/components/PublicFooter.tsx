@@ -146,6 +146,9 @@ export default function PublicFooter() {
             <Link href="/cookies">
               <span className="text-white/40 hover:text-white/70 text-xs font-display transition-colors cursor-pointer">Cookies</span>
             </Link>
+            <Link href="/condiciones-cancelacion">
+              <span className="text-white/40 hover:text-white/70 text-xs font-display transition-colors cursor-pointer">Cancelación</span>
+            </Link>
             <span className="text-white/20">·</span>
             <Link href="/admin">
               <span className="text-white/25 hover:text-white/60 text-xs font-display transition-colors cursor-pointer flex items-center gap-1">
