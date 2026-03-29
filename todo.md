@@ -2412,3 +2412,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregido previewFromLead: misma lógica de fallback para la previsualización
 - [x] Importada tabla packs en crm.ts
 - [x] Verificado en vivo: Day Pass Náyade — Un día completo en el lago, 1 pax, 45.00€, IVA 21%, TOTAL 54.45€ generado correctamente
+
+## BUG v25.23 — Scroll/Anclaje global: navegación posiciona vista en footer en lugar del header
+- [x] Auditoría: revisar router (wouter), efectos de navegación, CSS global y JS que fuerce scroll
+- [x] Identificar causa raíz exacta (anclas #, scrollIntoView, overflow CSS, efectos post-route)
+- [x] Implementar solución global limpia de scroll-to-top en la SPA
+- [x] Validar: menú, navegación interna, módulos, parámetros, anclas explícitas
