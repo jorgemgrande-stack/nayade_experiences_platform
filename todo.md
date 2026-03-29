@@ -2278,3 +2278,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] EmailTemplatesManager: botón "Nueva plantilla" con formulario de creación
 - [x] PdfTemplatesManager: módulo equivalente para facturas, presupuestos, tickets y bonos
 - [x] Sidebar: añadir "Plantillas PDF" bajo Configuración junto a "Plantillas Email"
+
+## v25.7 — Banner de Consentimiento de Cookies RGPD [COMPLETADO]
+- [x] Crear componente CookieBanner con diseño Náyade (fondo oscuro azul marino, botón naranja)
+- [x] Opciones: Aceptar todas / Solo necesarias / Configurar (panel expandible por categoría)
+- [x] Guardar preferencia en localStorage (nayade_cookie_consent)
+- [x] Integrar en layout público (App.tsx) visible en todas las páginas públicas
+- [x] Enlace directo a /cookies desde el banner
