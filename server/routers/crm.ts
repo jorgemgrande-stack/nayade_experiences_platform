@@ -2,7 +2,7 @@
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
-import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument } from "../db";
+import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation } from "../db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -1321,6 +1321,15 @@ export const crmRouter = router({
         });
         const reservationId = (resResult as { insertId: number }).insertId;
 
+        // Crear/actualizar cliente en el CRM
+        await upsertClientFromReservation({
+          name: lead.name,
+          email: lead.email ?? null,
+          phone: lead.phone ?? null,
+          source: "presupuesto",
+          leadId: lead.id,
+        });
+
         // Update quote
         await db
           .update(quotes)
@@ -1491,6 +1500,15 @@ export const crmRouter = router({
         });
         const reservationId = (resResult as { insertId: number }).insertId;
 
+        // Crear/actualizar cliente en el CRM
+        await upsertClientFromReservation({
+          name: lead.name,
+          email: lead.email ?? null,
+          phone: lead.phone ?? null,
+          source: "presupuesto",
+          leadId: lead.id,
+        });
+
         // Actualizar presupuesto: estado aceptado (ganado comercialmente) pero sin factura
         await db.update(quotes).set({
           status: "aceptado",
@@ -1626,6 +1644,16 @@ export const crmRouter = router({
           paidAt: Date.now(),
         });
         const reservationId = (resResult as { insertId: number }).insertId;
+
+        // Crear/actualizar cliente en el CRM
+        await upsertClientFromReservation({
+          name: lead.name,
+          email: lead.email ?? null,
+          phone: lead.phone ?? null,
+          source: "transferencia",
+          leadId: lead.id,
+        });
+
         await db.update(quotes).set({
           status: "aceptado",
           paidAt: now,

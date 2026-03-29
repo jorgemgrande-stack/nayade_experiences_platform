@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
 import { buildReservationConfirmHtml, buildTpvTicketHtml } from "../emailTemplates";
-import { createReavExpedient, attachReavDocument } from "../db";
+import { createReavExpedient, attachReavDocument, upsertClientFromReservation } from "../db";
 import {
   cashRegisters,
   cashSessions,
@@ -544,6 +544,15 @@ export const tpvRouter = router({
           reservationId = (resResult as any).insertId as number;
           // Actualizar la venta con el ID de reserva
           await db.update(tpvSales).set({ reservationId } as any).where(eq(tpvSales.id, saleId));
+          // Crear/actualizar cliente en el CRM
+          if (input.customerName && input.customerName !== "Cliente TPV") {
+            await upsertClientFromReservation({
+              name: input.customerName,
+              email: input.customerEmail ?? null,
+              phone: input.customerPhone ?? null,
+              source: "tpv",
+            });
+          }
         } catch (e) {
           console.error("[TPV] Error creando reserva automática:", e);
         }

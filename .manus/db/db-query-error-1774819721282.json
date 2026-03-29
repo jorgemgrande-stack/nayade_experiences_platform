@@ -1,0 +1,8 @@
+{
+  "query": "\nINSERT INTO clients (lead_id, source, name, email, phone, company, tags, is_converted, total_bookings, created_at, updated_at)\nVALUES (NULL, 'tpv', 'Carlos Calin', 'jorgemgrande@gmail.com', '+34693026894', '', '[]', 0, 1, NOW(), NOW())\nON DUPLICATE KEY UPDATE\n  name = IF(TRIM(name) = '' OR name IS NULL, 'Carlos Calin', name),\n  phone = IF(TRIM(phone) = '' OR phone IS NULL, '+34693026894', phone),\n  total_bookings = total_bookings + 1,\n  updated_at = NOW();\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nINSERT INTO clients (lead_id, source, name, email, phone, company, tags, is_converted, total_bookings, created_at, updated_at)\nVALUES (NULL, 'tpv', 'Carlos Calin', 'jorgemgrande@gmail.com', '+34693026894', '', '[]', 0, 1, NOW(), NOW())\nON DUPLICATE KEY UPDATE\n  name = IF(TRIM(name) = '' OR name IS NULL, 'Carlos Calin', name),\n  phone = IF(TRIM(phone) = '' OR phone IS NULL, '+34693026894', phone),\n  total_bookings = total_bookings + 1,\n  updated_at = NOW();\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'lead_id' in 'field list'"
+  ]
+}

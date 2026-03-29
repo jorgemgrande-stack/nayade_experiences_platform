@@ -1758,3 +1758,50 @@ export async function deleteReavCost(id: number) {
   await db.delete(reavCosts).where(eq(reavCosts.id, id));
   if (cost) await recalculateReavMargins(cost.expedientId);
 }
+
+// ─── UPSERT CLIENTE DESDE RESERVA ─────────────────────────────────────────────
+// Helper centralizado para crear/actualizar el registro de cliente cuando se
+// genera una reserva desde cualquier canal (TPV, Redsys IPN, CRM manual, etc.)
+// Si el email ya existe → actualiza nombre/teléfono solo si los campos están vacíos.
+// Si no existe → crea cliente nuevo con source = canal indicado.
+export async function upsertClientFromReservation({
+  name,
+  email,
+  phone,
+  source,
+  leadId,
+}: {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  source: string;
+  leadId?: number | null;
+}) {
+  if (!email) return; // Sin email no podemos hacer upsert por clave única
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db.insert(clients).values({
+      leadId: leadId ?? null,
+      source,
+      name,
+      email,
+      phone: phone ?? "",
+      company: "",
+      tags: [],
+      isConverted: false,
+      totalBookings: 0,
+    }).onDuplicateKeyUpdate({
+      set: {
+        // Actualizar leadId si se proporciona uno nuevo
+        ...(leadId ? { leadId } : {}),
+        // Actualizar nombre/teléfono solo si el campo está vacío en el cliente existente
+        name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${name}, ${clients.name})`,
+        phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${phone ?? ''}, ${clients.phone})`,
+        updatedAt: new Date(),
+      },
+    });
+  } catch (e) {
+    console.warn("[upsertClientFromReservation] No se pudo crear/vincular cliente:", e);
+  }
+}

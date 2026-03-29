@@ -1,0 +1,9 @@
+{
+  "query": "\nINSERT INTO clients (leadId, source, name, email, phone, company, tags, isConverted, totalBookings, createdAt, updatedAt)\nVALUES (NULL, 'tpv', 'Carlos Calin', 'jorgemgrande@gmail.com', '+34693026894', '', '[]', 0, 1, NOW(), NOW())\nON DUPLICATE KEY UPDATE\n  name = IF(TRIM(name) = '' OR name IS NULL, 'Carlos Calin', name),\n  phone = IF(TRIM(phone) = '' OR phone IS NULL, '+34693026894', phone),\n  totalBookings = totalBookings + 1,\n  updatedAt = NOW();\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nINSERT INTO clients (leadId, source, name, email, phone, company, tags, isConverted, totalBookings, createdAt, updatedAt)\nVALUES (NULL, 'tpv', 'Carlos Calin', 'jorgemgrande@gmail.com', '+34693026894', '', '[]', 0, 1, NOW(), NOW())\nON DUPLICATE KEY UPDATE\n  name = IF(TRIM(name) = '' OR name IS NULL, 'Carlos Calin', name),\n  phone = IF(TRIM(phone) = '' OR phone IS NULL, '+34693026894', phone),\n  totalBookings = totalBookings + 1,\n  updatedAt = NOW();\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 64
+}

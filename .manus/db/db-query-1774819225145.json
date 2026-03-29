@@ -1,0 +1,16 @@
+{
+  "query": "SELECT 'reservations' as tbl, id, customer_name, customer_email FROM reservations WHERE customer_name LIKE '%Carlos%' OR customer_name LIKE '%Calin%';\nSELECT 'clients' as tbl, id, name, email, createdAt FROM clients WHERE name LIKE '%Carlos%' OR name LIKE '%Calin%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT 'reservations' as tbl, id, customer_name, customer_email FROM reservations WHERE customer_name LIKE '%Carlos%' OR customer_name LIKE '%Calin%';\nSELECT 'clients' as tbl, id, name, email, createdAt FROM clients WHERE name LIKE '%Carlos%' OR name LIKE '%Calin%';",
+  "rows": [
+    {
+      "tbl": "reservations",
+      "id": "450004",
+      "customer_name": "Carlos Calin",
+      "customer_email": "jorgemgrande@gmail.com"
+    }
+  ],
+  "messages": [],
+  "stdout": "tbl\tid\tcustomer_name\tcustomer_email\nreservations\t450004\tCarlos Calin\tjorgemgrande@gmail.com\n",
+  "stderr": "",
+  "execution_time_ms": 72
+}

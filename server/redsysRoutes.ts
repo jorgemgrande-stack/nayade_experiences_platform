@@ -6,7 +6,7 @@
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
-import { updateReservationPayment, getReservationByMerchantOrder, createBookingFromReservation, createReavExpedient, attachReavDocument } from "./db";
+import { updateReservationPayment, getReservationByMerchantOrder, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation } from "./db";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { quotes, leads, invoices, reservations } from "../drizzle/schema";
@@ -86,6 +86,16 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
 
     // Enviar notificaciones según el resultado del pago
     const updatedReservation = await getReservationByMerchantOrder(result.merchantOrder);
+
+    // ── Crear/actualizar cliente en el CRM cuando el pago es exitoso ──────────
+    if (result.isAuthorized && updatedReservation?.customerName) {
+      await upsertClientFromReservation({
+        name: updatedReservation.customerName,
+        email: updatedReservation.customerEmail ?? null,
+        phone: updatedReservation.customerPhone ?? null,
+        source: "redsys",
+      });
+    }
 
     // ── Si la reserva viene de un presupuesto, marcar el presupuesto como pagado ──
     if (result.isAuthorized && updatedReservation?.quoteSource === "presupuesto" && updatedReservation?.quoteId) {

@@ -1,0 +1,8 @@
+{
+  "query": "SELECT 'reservations' as tbl, id, customer_name, customer_email, created_at FROM reservations WHERE customer_name LIKE '%Carlos%' OR customer_name LIKE '%Calin%'\nUNION ALL\nSELECT 'clients' as tbl, id, name, email, created_at FROM clients WHERE name LIKE '%Carlos%' OR name LIKE '%Calin%'\nORDER BY created_at DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT 'reservations' as tbl, id, customer_name, customer_email, created_at FROM reservations WHERE customer_name LIKE '%Carlos%' OR customer_name LIKE '%Calin%'\nUNION ALL\nSELECT 'clients' as tbl, id, name, email, created_at FROM clients WHERE name LIKE '%Carlos%' OR name LIKE '%Calin%'\nORDER BY created_at DESC;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'created_at' in 'field list'"
+  ]
+}

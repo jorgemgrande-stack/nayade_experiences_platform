@@ -2381,3 +2381,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregido: formatDate() en DailyOrders.tsx y DailyActivities.tsx ahora usa getFullYear/getMonth/getDate (hora local)
 - [x] Verificado: simulación Node.js confirma que la clave del evento "2026-03-29" coincide con la clave del mapa de la semana
 - [x] CalendarView.tsx ya tenía el fix aplicado desde v25.12; DailyOrders y DailyActivities ahora también corregidos
+
+## BUG v25.19 — Carlos Calin no aparece como cliente tras crear reserva manual [RESUELTO]
+- [x] Diagnóstico: reserva existe en BD pero ningún flujo de creación de reservas llamaba a upsert de clientes
+- [x] Causa raíz: TPV, Redsys IPN y conversiones de presupuesto no tenían lógica de upsert de cliente
+- [x] Corregido: nuevo helper centralizado upsertClientFromReservation() en db.ts
+- [x] Integrado en: TPV createSale, Redsys IPN (pago autorizado), CRM confirmPayment, CRM convertToReservation, CRM confirmTransfer
+- [x] Carlos Calin creado manualmente en la BD (retroactivo)
+- [x] Verificado: servidor corriendo sin errores TypeScript
