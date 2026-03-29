@@ -1,0 +1,20 @@
+{
+  "query": "\n-- 1. Crear el cliente \"Cañón Colorado\" con su email correcto\nINSERT INTO clients (name, email, phone, source, company, tags, isConverted, totalBookings, createdAt, updatedAt)\nVALUES ('Cañón Colorado', 'hola@efizientia.es', '', 'reserva_online', '', '[]', 0, 1, NOW(), NOW());\n\n-- 2. Actualizar la reserva para usar el email correcto del cliente\nUPDATE reservations \nSET customer_email = 'hola@efizientia.es'\nWHERE id = 450006;\n\n-- 3. Verificar resultado\nSELECT id, name, email, source, totalBookings FROM clients WHERE email = 'hola@efizientia.es';\nSELECT id, customer_name, customer_email, status FROM reservations WHERE id = 450006;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- 1. Crear el cliente \"Cañón Colorado\" con su email correcto\nINSERT INTO clients (name, email, phone, source, company, tags, isConverted, totalBookings, createdAt, updatedAt)\nVALUES ('Cañón Colorado', 'hola@efizientia.es', '', 'reserva_online', '', '[]', 0, 1, NOW(), NOW());\n\n-- 2. Actualizar la reserva para usar el email correcto del cliente\nUPDATE reservations \nSET customer_email = 'hola@efizientia.es'\nWHERE id = 450006;\n\n-- 3. Verificar resultado\nSELECT id, name, email, source, totalBookings FROM clients WHERE email = 'hola@efizientia.es';\nSELECT id, customer_name, customer_email, status FROM reservations WHERE id = 450006;\n",
+  "rows": [
+    {
+      "id": "990011",
+      "name": "Cañón Colorado",
+      "email": "hola@efizientia.es",
+      "source": "reserva_online",
+      "totalBookings": "1"
+    }
+  ],
+  "messages": [
+    "id\tcustomer_name\tcustomer_email\tstatus",
+    "450006\tcañon dolorado\thola@efizientia.es\tpaid"
+  ],
+  "stdout": "id\tname\temail\tsource\ttotalBookings\n990011\tCañón Colorado\thola@efizientia.es\treserva_online\t1\nid\tcustomer_name\tcustomer_email\tstatus\n450006\tcañon dolorado\thola@efizientia.es\tpaid\n",
+  "stderr": "",
+  "execution_time_ms": 96
+}

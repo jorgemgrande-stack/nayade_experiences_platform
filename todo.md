@@ -2445,3 +2445,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Implementar helper centralizado postConfirmOperation() en db.ts (idempotente)
 - [x] Reparar datos retroactivos de Rata Maravillada: booking BK-RETRO-RATA-2026 + transacción TX-RETRO-RATA-2026 + fecha 2026-07-01
 - [x] 22 tests Vitest para postConfirmOperation — 270 tests totales pasando
+
+## BUG v25.25 — Reserva Cañón Colorado: 3 bugs estructurales
+
+- [x] BUG #1: Cliente no creado en CRM tras reserva online (upsertClientFromReservation no llamado en postConfirmOperation)
+- [x] BUG #2: Booking creado en estado 'pendiente' en lugar de 'confirmado' (debe confirmarse al garantizarse el pago)
+- [x] BUG #3: Calendario y Órdenes del Día no muestran bookings 'confirmado' (filtros incorrectos)
+- [x] Reparar datos retroactivos de Cañón Colorado (cliente + booking status)

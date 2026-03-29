@@ -1,0 +1,22 @@
+{
+  "query": "\n-- 1. Corregir op_status de Cañón Colorado a 'confirmado'\nUPDATE reservation_operational \nSET op_status = 'confirmado' \nWHERE reservation_id = 450006 AND op_status = 'pendiente';\n\n-- 2. Verificar el estado final\nSELECT ro.id, ro.reservation_id, ro.op_status, ro.client_confirmed,\n       r.customer_name, r.customer_email, r.status as res_status\nFROM reservation_operational ro\nJOIN reservations r ON r.id = ro.reservation_id\nWHERE ro.reservation_id = 450006;\n\n-- 3. Verificar el cliente en CRM\nSELECT id, name, email, source FROM clients WHERE email = 'jorgemgrande@gmail.com';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- 1. Corregir op_status de Cañón Colorado a 'confirmado'\nUPDATE reservation_operational \nSET op_status = 'confirmado' \nWHERE reservation_id = 450006 AND op_status = 'pendiente';\n\n-- 2. Verificar el estado final\nSELECT ro.id, ro.reservation_id, ro.op_status, ro.client_confirmed,\n       r.customer_name, r.customer_email, r.status as res_status\nFROM reservation_operational ro\nJOIN reservations r ON r.id = ro.reservation_id\nWHERE ro.reservation_id = 450006;\n\n-- 3. Verificar el cliente en CRM\nSELECT id, name, email, source FROM clients WHERE email = 'jorgemgrande@gmail.com';\n",
+  "rows": [
+    {
+      "id": "30001",
+      "reservation_id": "450006",
+      "op_status": "confirmado",
+      "client_confirmed": "0",
+      "customer_name": "cañon dolorado",
+      "customer_email": "jorgemgrande@gmail.com",
+      "res_status": "paid"
+    }
+  ],
+  "messages": [
+    "id\tname\temail\tsource",
+    "990004\tUniverso Dark\tjorgemgrande@gmail.com\tlead"
+  ],
+  "stdout": "id\treservation_id\top_status\tclient_confirmed\tcustomer_name\tcustomer_email\tres_status\n30001\t450006\tconfirmado\t0\tcañon dolorado\tjorgemgrande@gmail.com\tpaid\nid\tname\temail\tsource\n990004\tUniverso Dark\tjorgemgrande@gmail.com\tlead\n",
+  "stderr": "",
+  "execution_time_ms": 79
+}

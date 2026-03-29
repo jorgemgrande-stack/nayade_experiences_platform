@@ -1,0 +1,36 @@
+{
+  "query": "\nSELECT r.id, r.product_name, r.customer_name, r.customer_email, r.booking_date, r.status, r.merchant_order,\n       b.id as booking_id, b.status as booking_status,\n       c.id as client_id, c.name as client_name\nFROM reservations r\nLEFT JOIN bookings b ON b.reservationId = r.id\nLEFT JOIN clients c ON c.email = r.customer_email\nORDER BY r.id DESC LIMIT 10;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT r.id, r.product_name, r.customer_name, r.customer_email, r.booking_date, r.status, r.merchant_order,\n       b.id as booking_id, b.status as booking_status,\n       c.id as client_id, c.name as client_name\nFROM reservations r\nLEFT JOIN bookings b ON b.reservationId = r.id\nLEFT JOIN clients c ON c.email = r.customer_email\nORDER BY r.id DESC LIMIT 10;\n",
+  "rows": [
+    {
+      "id": "450006",
+      "product_name": "Presupuesto Nayade Experiences - cañon dolorado",
+      "customer_name": "cañon dolorado",
+      "customer_email": "jorgemgrande@gmail.com",
+      "booking_date": "2026-04-01",
+      "status": "paid",
+      "merchant_order": "RES-MNCD054G",
+      "booking_id": "60004",
+      "booking_status": "confirmado",
+      "client_id": "990004",
+      "client_name": "Universo Dark"
+    },
+    {
+      "id": "450005",
+      "product_name": "Presupuesto Nayade Experiences - Rata Marravillada",
+      "customer_name": "Rata Marravillada",
+      "customer_email": "jgrande@skicenter.es",
+      "booking_date": "2026-07-01",
+      "status": "paid",
+      "merchant_order": "RES-MNCBJXCW",
+      "booking_id": "60003",
+      "booking_status": "confirmado",
+      "client_id": "990005",
+      "client_name": "Rata Marravillada"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tproduct_name\tcustomer_name\tcustomer_email\tbooking_date\tstatus\tmerchant_order\tbooking_id\tbooking_status\tclient_id\tclient_name\n450006\tPresupuesto Nayade Experiences - cañon dolorado\tcañon dolorado\tjorgemgrande@gmail.com\t2026-04-01\tpaid\tRES-MNCD054G\t60004\tconfirmado\t990004\tUniverso Dark\n450005\tPresupuesto Nayade Experiences - Rata Marravillada\tRata Marravillada\tjgrande@skicenter.es\t2026-07-01\tpaid\tRES-MNCBJXCW\t60003\tconfirmado\t990005\tRata Marravillada\n",
+  "stderr": "",
+  "execution_time_ms": 64
+}

@@ -1,0 +1,8 @@
+{
+  "query": "\n-- 1. Crear el cliente \"cañon dolorado\" con su email correcto\nINSERT INTO clients (name, email, phone, source, company, tags, is_converted, total_bookings, created_at, updated_at)\nVALUES ('Cañón Colorado', 'hola@efizientia.es', '', 'reserva_online', '', '[]', 0, 1, NOW(), NOW());\n\n-- 2. Actualizar la reserva para usar el email correcto del cliente\nUPDATE reservations \nSET customer_email = 'hola@efizientia.es'\nWHERE id = 450006;\n\n-- 3. Verificar resultado\nSELECT id, name, email, source, total_bookings FROM clients WHERE email = 'hola@efizientia.es';\nSELECT id, customer_name, customer_email, status FROM reservations WHERE id = 450006;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- 1. Crear el cliente \"cañon dolorado\" con su email correcto\nINSERT INTO clients (name, email, phone, source, company, tags, is_converted, total_bookings, created_at, updated_at)\nVALUES ('Cañón Colorado', 'hola@efizientia.es', '', 'reserva_online', '', '[]', 0, 1, NOW(), NOW());\n\n-- 2. Actualizar la reserva para usar el email correcto del cliente\nUPDATE reservations \nSET customer_email = 'hola@efizientia.es'\nWHERE id = 450006;\n\n-- 3. Verificar resultado\nSELECT id, name, email, source, total_bookings FROM clients WHERE email = 'hola@efizientia.es';\nSELECT id, customer_name, customer_email, status FROM reservations WHERE id = 450006;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 3: Unknown column 'is_converted' in 'field list'"
+  ]
+}

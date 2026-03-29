@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Buscar la reserva de Cañón Colorado\nSELECT r.id, r.product_name, r.customer_name, r.customer_email, r.customer_phone, r.booking_date, r.status, r.merchant_order\nFROM reservations r\nWHERE r.product_name LIKE '%Ca%on%' OR r.product_name LIKE '%Colorado%' OR r.product_name LIKE '%Canyon%'\nORDER BY r.id DESC LIMIT 5;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Buscar la reserva de Cañón Colorado\nSELECT r.id, r.product_name, r.customer_name, r.customer_email, r.customer_phone, r.booking_date, r.status, r.merchant_order\nFROM reservations r\nWHERE r.product_name LIKE '%Ca%on%' OR r.product_name LIKE '%Colorado%' OR r.product_name LIKE '%Canyon%'\nORDER BY r.id DESC LIMIT 5;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 63
+}

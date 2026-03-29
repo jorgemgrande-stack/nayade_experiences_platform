@@ -31,12 +31,17 @@ function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 
+// STATUS_LABELS cubre tanto el opStatus (reservation_operational) como el status de la reserva (paid, confirmed, etc.)
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pendiente:  { label: "Pendiente",  color: "bg-amber-500/20 text-amber-300 border-amber-500" },
-  confirmado: { label: "Confirmado", color: "bg-blue-500/20 text-blue-300 border-blue-500" },
-  en_curso:   { label: "En curso",   color: "bg-purple-500/20 text-purple-300 border-purple-500" },
-  completado: { label: "Completado", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500" },
-  cancelado:  { label: "Cancelado",  color: "bg-red-500/20 text-red-300 border-red-500" },
+  pendiente:  { label: "Pendiente",   color: "bg-amber-500/20 text-amber-300 border-amber-500" },
+  confirmado: { label: "Confirmada",  color: "bg-blue-500/20 text-blue-300 border-blue-500" },
+  paid:       { label: "Confirmada",  color: "bg-blue-500/20 text-blue-300 border-blue-500" },
+  confirmed:  { label: "Confirmada",  color: "bg-blue-500/20 text-blue-300 border-blue-500" },
+  en_curso:   { label: "En curso",    color: "bg-purple-500/20 text-purple-300 border-purple-500" },
+  completado: { label: "Completado",  color: "bg-emerald-500/20 text-emerald-300 border-emerald-500" },
+  cancelado:  { label: "Cancelado",   color: "bg-red-500/20 text-red-300 border-red-500" },
+  cancelled:  { label: "Cancelada",   color: "bg-red-500/20 text-red-300 border-red-500" },
+  incidencia: { label: "Incidencia",  color: "bg-orange-500/20 text-orange-300 border-orange-500" },
 };
 
 export default function DailyActivities() {

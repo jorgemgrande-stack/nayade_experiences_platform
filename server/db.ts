@@ -19,6 +19,7 @@ import {
   reavExpedients,
   reavDocuments,
   reavCosts,
+  reservationOperational,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1921,6 +1922,56 @@ export async function postConfirmOperation(params: {
     }
   } catch (e) {
     console.error("[postConfirmOperation] Error creando transacción contable:", e);
+  }
+
+  // 3. Crear/actualizar cliente en CRM (idempotente por email)
+  try {
+    if (params.customerEmail) {
+      await upsertClientFromReservation({
+        name: params.customerName,
+        email: params.customerEmail,
+        phone: params.customerPhone ?? null,
+        source: `reserva_${params.saleChannel}`,
+        leadId: null,
+      });
+    }
+  } catch (e) {
+    console.error("[postConfirmOperation] Error en upsertClientFromReservation:", e);
+  }
+
+  // 4. Crear registro en reservation_operational con op_status = 'confirmado'
+  // Una reserva pagada debe aparecer como 'confirmado' en Operaciones desde el primer momento.
+  // El admin puede cambiar a 'incidencia' si hay eventualidades (no-show, etc.).
+  try {
+    const existingOp = await db.select({ id: reservationOperational.id })
+      .from(reservationOperational)
+      .where(and(
+        eq(reservationOperational.reservationId, params.reservationId),
+        eq(reservationOperational.reservationType, "activity")
+      ))
+      .limit(1);
+    if (existingOp.length === 0) {
+      await db.insert(reservationOperational).values({
+        reservationId: params.reservationId,
+        reservationType: "activity",
+        opStatus: "confirmado",
+        clientConfirmed: false, // El cliente aún no ha confirmado asistencia física
+      } as any);
+    } else {
+      // Si ya existe pero está en 'pendiente', actualizar a 'confirmado'
+      const existing = existingOp[0];
+      const [currentOp] = await db.select({ opStatus: reservationOperational.opStatus })
+        .from(reservationOperational)
+        .where(eq(reservationOperational.id, existing.id))
+        .limit(1);
+      if (currentOp && currentOp.opStatus === "pendiente") {
+        await db.update(reservationOperational)
+          .set({ opStatus: "confirmado" } as any)
+          .where(eq(reservationOperational.id, existing.id));
+      }
+    }
+  } catch (e) {
+    console.error("[postConfirmOperation] Error en reservation_operational:", e);
   }
 
   return { bookingId, transactionId };
