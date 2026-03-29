@@ -1,0 +1,8 @@
+{
+  "query": "\n-- Check bookings (operational module)\nSELECT id, bookingNumber, clientName, scheduledDate, numberOfPersons, totalAmount, status, reservationId, sourceChannel\nFROM bookings WHERE clientName LIKE '%Rata%' OR clientEmail = 'jgrande@skicenter.es';\n\n-- Check REAV expedients\nSELECT id, expedientNumber, clientName, serviceDescription, saleAmountTotal, status, invoiceId, reservationId, createdAt\nFROM reav_expedients WHERE clientName LIKE '%Rata%' OR clientEmail = 'jgrande@skicenter.es';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Check bookings (operational module)\nSELECT id, bookingNumber, clientName, scheduledDate, numberOfPersons, totalAmount, status, reservationId, sourceChannel\nFROM bookings WHERE clientName LIKE '%Rata%' OR clientEmail = 'jgrande@skicenter.es';\n\n-- Check REAV expedients\nSELECT id, expedientNumber, clientName, serviceDescription, saleAmountTotal, status, invoiceId, reservationId, createdAt\nFROM reav_expedients WHERE clientName LIKE '%Rata%' OR clientEmail = 'jgrande@skicenter.es';\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 7: Unknown column 'status' in 'field list'"
+  ]
+}

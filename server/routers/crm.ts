@@ -2,7 +2,7 @@
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
-import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation } from "../db";
+import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "../db";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -1328,6 +1328,7 @@ export const crmRouter = router({
           quoteId: z.number(),
           redsysOrderId: z.string().optional(),
           paidAmount: z.number().optional(),
+          paymentMethod: z.enum(["redsys", "transferencia", "efectivo", "otro"]).optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1391,11 +1392,15 @@ export const crmRouter = router({
         const invoiceId = (invResult as { insertId: number }).insertId;
 
         // Create reservation
+        // BUG #1 FIX: usar la fecha preferida del lead como fecha operativa del servicio
+        const serviceDate = lead.preferredDate
+          ? new Date(lead.preferredDate).toISOString().split("T")[0]
+          : now.toISOString().split("T")[0];
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const [resResult] = await db.insert(reservations).values({
           productId: 0, // linked via quote
           productName: quote.title,
-          bookingDate: now.toISOString().split("T")[0],
+          bookingDate: serviceDate, // BUG #1 FIX: fecha preferida del lead, no hoy
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
           amountPaid: Math.round((input.paidAmount ?? total) * 100),
@@ -1550,6 +1555,43 @@ export const crmRouter = router({
           } catch (e) {
             console.error("[confirmPayment] Error al crear expediente REAV:", e);
           }
+        }
+
+        // ── BUG #2 + #3 FIX: Crear booking operativo + transacción contable ─────────
+        try {
+          const generalSubtotalForTx = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+          const reavSubtotalForTx = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
+          const taxAmountForTx = parseFloat((generalSubtotalForTx * 0.21).toFixed(2));
+          const fiscalRegimeForTx = reavSubtotalForTx > 0 && generalSubtotalForTx > 0 ? "mixed"
+            : reavSubtotalForTx > 0 ? "reav" : "general_21";
+          await postConfirmOperation({
+            reservationId,
+            productId: lead.experienceId ?? 0,
+            productName: quote.title,
+            serviceDate,
+            people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
+            amountCents: Math.round((input.paidAmount ?? total) * 100),
+            customerName: lead.name,
+            customerEmail: lead.email,
+            customerPhone: lead.phone,
+            totalAmount: total,
+            paymentMethod: input.paymentMethod ?? "otro",
+            saleChannel: "crm",
+            invoiceNumber,
+            reservationRef,
+            sellerUserId: ctx.user.id,
+            sellerName: ctx.user.name ?? undefined,
+            taxBase: generalSubtotalForTx,
+            taxAmount: taxAmountForTx,
+            reavMargin: reavSubtotalForTx,
+            fiscalRegime: fiscalRegimeForTx,
+            description: `Pago CRM — ${quote.quoteNumber} — ${lead.name}`,
+            quoteId: quote.id,
+            sourceChannel: "otro",
+          });
+          await logActivity("reservation", reservationId, "booking_and_transaction_created", ctx.user.id, ctx.user.name, { invoiceNumber, serviceDate });
+        } catch (e) {
+          console.error("[confirmPayment] Error en postConfirmOperation:", e);
         }
 
         return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl, reavExpedientId, reavExpedientNumber };
@@ -1715,11 +1757,15 @@ export const crmRouter = router({
           updatedAt: now,
         });
         const invoiceId = (invResult as { insertId: number }).insertId;
+        // BUG #1 FIX (confirmTransfer): usar la fecha preferida del lead como fecha operativa
+        const serviceDateTransfer = lead.preferredDate
+          ? new Date(lead.preferredDate).toISOString().split("T")[0]
+          : now.toISOString().split("T")[0];
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const [resResult] = await db.insert(reservations).values({
           productId: 0,
           productName: quote.title,
-          bookingDate: now.toISOString().split("T")[0],
+          bookingDate: serviceDateTransfer, // BUG #1 FIX: fecha preferida del lead
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
           amountPaid: Math.round((input.paidAmount ?? total) * 100),
@@ -1761,22 +1807,39 @@ export const crmRouter = router({
         });
         await logActivity("lead", quote.leadId, "opportunity_won", ctx.user.id, ctx.user.name, { quoteId: quote.id, method: "transferencia" });
         await logActivity("invoice", invoiceId, "invoice_generated", ctx.user.id, ctx.user.name, { pdfUrl });
-        // ── Puente automático reservations → bookings (transferencia) ──────────────────
+        // ── BUG #2 + #3 FIX (confirmTransfer): Crear booking operativo + transacción contable ────
         try {
-          await createBookingFromReservation({
+          const generalSubtotalT = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+          const reavSubtotalT = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
+          const taxAmountT = parseFloat((generalSubtotalT * 0.21).toFixed(2));
+          const fiscalRegimeT = reavSubtotalT > 0 && generalSubtotalT > 0 ? "mixed"
+            : reavSubtotalT > 0 ? "reav" : "general_21";
+          await postConfirmOperation({
             reservationId,
             productId: lead.experienceId ?? 0,
             productName: quote.title,
-            bookingDate: now.toISOString().split("T")[0],
+            serviceDate: serviceDateTransfer,
             people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
             amountCents: Math.round((input.paidAmount ?? total) * 100),
             customerName: lead.name,
             customerEmail: lead.email,
-            customerPhone: lead.phone ?? undefined,
+            customerPhone: lead.phone,
+            totalAmount: total,
+            paymentMethod: "transferencia",
+            saleChannel: "crm",
+            invoiceNumber,
+            reservationRef,
+            sellerUserId: ctx.user.id,
+            sellerName: ctx.user.name ?? undefined,
+            taxBase: generalSubtotalT,
+            taxAmount: taxAmountT,
+            reavMargin: reavSubtotalT,
+            fiscalRegime: fiscalRegimeT,
+            description: `Transferencia CRM — ${quote.quoteNumber} — ${lead.name}`,
             quoteId: quote.id,
             sourceChannel: "transferencia",
           });
-        } catch (e) { console.error("[confirmTransfer] Error al crear booking operativo:", e); }
+        } catch (e) { console.error("[confirmTransfer] Error en postConfirmOperation:", e); }
         try {
           await sendTransferConfirmationEmail({
             clientName: lead.name,
@@ -2979,26 +3042,34 @@ export const crmRouter = router({
           transferProofUrl: input.transferProofUrl,
           notes: input.notes,
         });
-        // ── Puente automático reservations → bookings (pago manual) ──────────────────
+        // ── BUG FIX (confirmManualPayment): Crear booking operativo + transacción contable ─────
         if (invoice.reservationId) {
           try {
             const [res] = await db.select().from(reservations).where(eq(reservations.id, invoice.reservationId));
             if (res) {
-              await createBookingFromReservation({
+              await postConfirmOperation({
                 reservationId: res.id,
                 productId: res.productId,
                 productName: res.productName,
-                bookingDate: res.bookingDate ?? now.toISOString().split("T")[0],
+                serviceDate: res.bookingDate ?? now.toISOString().split("T")[0],
                 people: res.people,
                 amountCents: res.amountPaid ?? res.amountTotal,
                 customerName: res.customerName,
                 customerEmail: res.customerEmail ?? "",
                 customerPhone: res.customerPhone,
+                totalAmount: parseFloat(invoice.total ?? "0"),
+                paymentMethod: input.paymentMethod as "transferencia" | "efectivo" | "otro",
+                saleChannel: "admin",
+                invoiceNumber: invoice.invoiceNumber,
+                reservationRef: invoice.invoiceNumber.replace("FAC", "RES"),
+                sellerUserId: ctx.user.id,
+                sellerName: ctx.user.name ?? undefined,
+                description: `Pago manual — ${invoice.invoiceNumber} — ${res.customerName}`,
                 quoteId: invoice.quoteId ?? null,
                 sourceChannel: input.paymentMethod as "transferencia" | "efectivo" | "otro",
               });
             }
-          } catch (e) { console.error("[confirmManualPayment] Error al crear booking operativo:", e); }
+          } catch (e) { console.error("[confirmManualPayment] Error en postConfirmOperation:", e); }
         }
         return { success: true };
       }),

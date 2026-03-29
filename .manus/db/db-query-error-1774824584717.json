@@ -1,0 +1,8 @@
+{
+  "query": "\n-- 1. Get Rata Maravillada reservation data\nSELECT r.id, r.product_name, r.booking_date, r.people, r.amount_paid, r.amount_total, \n       r.customer_name, r.customer_email, r.customer_phone, r.merchant_order,\n       q.id as quote_id, q.quote_number, q.subtotal, q.total, q.items_json\nFROM reservations r\nJOIN quotes q ON q.id = (\n  SELECT id FROM quotes WHERE lead_id = (\n    SELECT id FROM leads WHERE name LIKE '%Rata Maravillada%' LIMIT 1\n  ) LIMIT 1\n)\nWHERE r.customer_name LIKE '%Rata Maravillada%'\nLIMIT 1;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- 1. Get Rata Maravillada reservation data\nSELECT r.id, r.product_name, r.booking_date, r.people, r.amount_paid, r.amount_total, \n       r.customer_name, r.customer_email, r.customer_phone, r.merchant_order,\n       q.id as quote_id, q.quote_number, q.subtotal, q.total, q.items_json\nFROM reservations r\nJOIN quotes q ON q.id = (\n  SELECT id FROM quotes WHERE lead_id = (\n    SELECT id FROM leads WHERE name LIKE '%Rata Maravillada%' LIMIT 1\n  ) LIMIT 1\n)\nWHERE r.customer_name LIKE '%Rata Maravillada%'\nLIMIT 1;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 3: Unknown column 'lead_id' in 'where clause'"
+  ]
+}

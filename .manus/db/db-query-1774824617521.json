@@ -1,0 +1,14 @@
+{
+  "query": "\nSELECT id, title FROM quotes WHERE title LIKE '%Rata%' LIMIT 3;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, title FROM quotes WHERE title LIKE '%Rata%' LIMIT 3;\n",
+  "rows": [
+    {
+      "id": "420003",
+      "title": "Presupuesto Nayade Experiences - Rata Marravillada"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttitle\n420003\tPresupuesto Nayade Experiences - Rata Marravillada\n",
+  "stderr": "",
+  "execution_time_ms": 76
+}

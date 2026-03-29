@@ -1,0 +1,24 @@
+{
+  "query": "\n-- Find the lead\nSELECT id, name, email, phone, preferredDate, numberOfPersons, numberOfAdults, status, opportunityStatus, selectedCategory, selectedProduct, createdAt\nFROM leads WHERE name LIKE '%Rata%' OR name LIKE '%rata%';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Find the lead\nSELECT id, name, email, phone, preferredDate, numberOfPersons, numberOfAdults, status, opportunityStatus, selectedCategory, selectedProduct, createdAt\nFROM leads WHERE name LIKE '%Rata%' OR name LIKE '%rata%';\n",
+  "rows": [
+    {
+      "id": "1410004",
+      "name": "Rata Marravillada",
+      "email": "jgrande@skicenter.es",
+      "phone": "693026894",
+      "preferredDate": "2026-07-01 00:00:00",
+      "numberOfPersons": "1",
+      "numberOfAdults": "1",
+      "status": "convertido",
+      "opportunityStatus": "ganada",
+      "selectedCategory": "LegoPacks",
+      "selectedProduct": "Day Pass Náyade",
+      "createdAt": "2026-03-29 22:15:44"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\temail\tphone\tpreferredDate\tnumberOfPersons\tnumberOfAdults\tstatus\topportunityStatus\tselectedCategory\tselectedProduct\tcreatedAt\n1410004\tRata Marravillada\tjgrande@skicenter.es\t693026894\t2026-07-01 00:00:00\t1\t1\tconvertido\tganada\tLegoPacks\tDay Pass Náyade\t2026-03-29 22:15:44\n",
+  "stderr": "",
+  "execution_time_ms": 138
+}

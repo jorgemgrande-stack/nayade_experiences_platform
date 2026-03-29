@@ -1,0 +1,22 @@
+{
+  "query": "\nSELECT r.id as res_id, r.product_name, r.booking_date, r.people, r.amount_paid, r.amount_total, \n       r.customer_name, r.customer_email, r.customer_phone, r.merchant_order\nFROM reservations r\nWHERE r.customer_name LIKE '%Rata%'\nLIMIT 5;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT r.id as res_id, r.product_name, r.booking_date, r.people, r.amount_paid, r.amount_total, \n       r.customer_name, r.customer_email, r.customer_phone, r.merchant_order\nFROM reservations r\nWHERE r.customer_name LIKE '%Rata%'\nLIMIT 5;\n",
+  "rows": [
+    {
+      "res_id": "450005",
+      "product_name": "Presupuesto Nayade Experiences - Rata Marravillada",
+      "booking_date": "2026-03-29",
+      "people": "1",
+      "amount_paid": "5445",
+      "amount_total": "5445",
+      "customer_name": "Rata Marravillada",
+      "customer_email": "jgrande@skicenter.es",
+      "customer_phone": "693026894",
+      "merchant_order": "RES-MNCBJXCW"
+    }
+  ],
+  "messages": [],
+  "stdout": "res_id\tproduct_name\tbooking_date\tpeople\tamount_paid\tamount_total\tcustomer_name\tcustomer_email\tcustomer_phone\tmerchant_order\n450005\tPresupuesto Nayade Experiences - Rata Marravillada\t2026-03-29\t1\t5445\t5445\tRata Marravillada\tjgrande@skicenter.es\t693026894\tRES-MNCBJXCW\n",
+  "stderr": "",
+  "execution_time_ms": 61
+}

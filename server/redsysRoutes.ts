@@ -6,7 +6,7 @@
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
-import { updateReservationPayment, getReservationByMerchantOrder, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation } from "./db";
+import { updateReservationPayment, getReservationByMerchantOrder, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "./db";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { quotes, leads, invoices, reservations } from "../drizzle/schema";
@@ -186,27 +186,32 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
       }
     }
-    // ── Puente automático reservations → bookings ──────────────────────────────
-    // Cuando el pago es autorizado, crear un booking operativo para que Operaciones
-    // vea la actividad en su panel sin intervención manual.
+      // ── BUG FIX (Redsys IPN): Crear booking operativo + transacción contable ────────────
+    // postConfirmOperation es idempotente: no duplica si ya existe booking/transacción.
     if (result.isAuthorized && updatedReservation) {
       try {
-        await createBookingFromReservation({
+        const amountEuros = (updatedReservation.amountPaid ?? updatedReservation.amountTotal) / 100;
+        await postConfirmOperation({
           reservationId: updatedReservation.id,
           productId: updatedReservation.productId,
           productName: updatedReservation.productName,
-          bookingDate: updatedReservation.bookingDate ?? new Date().toISOString().split("T")[0],
+          serviceDate: updatedReservation.bookingDate ?? new Date().toISOString().split("T")[0],
           people: updatedReservation.people,
           amountCents: updatedReservation.amountPaid ?? updatedReservation.amountTotal,
           customerName: updatedReservation.customerName,
           customerEmail: updatedReservation.customerEmail ?? "",
           customerPhone: updatedReservation.customerPhone,
+          totalAmount: amountEuros,
+          paymentMethod: "redsys",
+          saleChannel: "online",
+          reservationRef: updatedReservation.merchantOrder,
+          description: `Pago online Redsys — ${updatedReservation.merchantOrder} — ${updatedReservation.productName}`,
           quoteId: updatedReservation.quoteId ?? null,
           sourceChannel: "redsys",
         });
-        console.log(`[Redsys IPN] Booking operativo creado para reserva ${updatedReservation.id}`);
+        console.log(`[Redsys IPN] Booking operativo + transacción creados para reserva ${updatedReservation.id}`);
       } catch (bookingErr) {
-        console.error("[Redsys IPN] Error al crear booking operativo:", bookingErr);
+        console.error("[Redsys IPN] Error en postConfirmOperation:", bookingErr);
       }
     }
 

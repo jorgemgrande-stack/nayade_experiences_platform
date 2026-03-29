@@ -24,6 +24,7 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
+import { postConfirmOperation } from "../db";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -737,6 +738,31 @@ export const ticketingRouter = router({
         subject: `✅ Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
         html: confirmHtml,
       }).catch(console.error);
+
+      // BUG FIX (cupón convertToReservation): Crear booking operativo + transacción contable
+      try {
+        const pvpTotal = parseFloat(resolvedPvpPrice) * input.participants;
+        const netTotal = parseFloat(resolvedNetPrice) * input.participants;
+        await postConfirmOperation({
+          reservationId,
+          productId: resolvedExperienceId ?? 0,
+          productName: resolvedProductName,
+          serviceDate: input.reservationDate ?? new Date().toISOString().split("T")[0],
+          people: input.participants,
+          amountCents: Math.round(netTotal * 100),
+          customerName: item.customerName,
+          customerEmail: item.email,
+          customerPhone: item.phone ?? null,
+          totalAmount: pvpTotal,
+          paymentMethod: "otro",
+          saleChannel: "delegado",
+          reservationRef: merchantOrder,
+          description: `Cupón ${item.provider ?? "externo"} — ${item.couponCode} — ${resolvedProductName}`,
+          sourceChannel: "otro",
+        });
+      } catch (e) {
+        console.error("[Ticketing convertToReservation] Error en postConfirmOperation:", e);
+      }
 
       return { success: true, reservationId, productName: resolvedProductName, pvpPrice: resolvedPvpPrice, netPrice: resolvedNetPrice };
     }),

@@ -1,0 +1,24 @@
+{
+  "query": "\nSELECT id, product_name, booking_date, people, amount_total, amount_paid, status, customer_name, channel, created_at, paid_at, quote_id\nFROM reservations WHERE customer_name LIKE '%Rata%' OR customer_email = 'jgrande@skicenter.es';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, product_name, booking_date, people, amount_total, amount_paid, status, customer_name, channel, created_at, paid_at, quote_id\nFROM reservations WHERE customer_name LIKE '%Rata%' OR customer_email = 'jgrande@skicenter.es';\n",
+  "rows": [
+    {
+      "id": "450005",
+      "product_name": "Presupuesto Nayade Experiences - Rata Marravillada",
+      "booking_date": "2026-03-29",
+      "people": "1",
+      "amount_total": "5445",
+      "amount_paid": "5445",
+      "status": "paid",
+      "customer_name": "Rata Marravillada",
+      "channel": "web",
+      "created_at": "1774822603424",
+      "paid_at": "1774822603424",
+      "quote_id": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tproduct_name\tbooking_date\tpeople\tamount_total\tamount_paid\tstatus\tcustomer_name\tchannel\tcreated_at\tpaid_at\tquote_id\n450005\tPresupuesto Nayade Experiences - Rata Marravillada\t2026-03-29\t1\t5445\t5445\tpaid\tRata Marravillada\tweb\t1774822603424\t1774822603424\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 64
+}

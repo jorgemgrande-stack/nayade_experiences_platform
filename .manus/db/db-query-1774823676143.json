@@ -1,0 +1,22 @@
+{
+  "query": "\nSELECT id, quoteNumber, title, status, subtotal, total, paidAt, payment_method, invoiceNumber, createdAt\nFROM quotes WHERE leadId = 1410004;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, quoteNumber, title, status, subtotal, total, paidAt, payment_method, invoiceNumber, createdAt\nFROM quotes WHERE leadId = 1410004;\n",
+  "rows": [
+    {
+      "id": "420003",
+      "quoteNumber": "PRE-2026-0001",
+      "title": "Presupuesto Nayade Experiences - Rata Marravillada",
+      "status": "aceptado",
+      "subtotal": "45.00",
+      "total": "54.45",
+      "paidAt": "2026-03-29 22:16:43",
+      "payment_method": "NULL",
+      "invoiceNumber": "FAC-2026-0001",
+      "createdAt": "2026-03-29 22:16:02"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tquoteNumber\ttitle\tstatus\tsubtotal\ttotal\tpaidAt\tpayment_method\tinvoiceNumber\tcreatedAt\n420003\tPRE-2026-0001\tPresupuesto Nayade Experiences - Rata Marravillada\taceptado\t45.00\t54.45\t2026-03-29 22:16:43\tNULL\tFAC-2026-0001\t2026-03-29 22:16:02\n",
+  "stderr": "",
+  "execution_time_ms": 64
+}

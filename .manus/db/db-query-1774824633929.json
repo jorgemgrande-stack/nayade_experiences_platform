@@ -1,0 +1,22 @@
+{
+  "query": "\n-- Verify booking\nSELECT id, bookingNumber, scheduledDate, status, notes FROM bookings WHERE reservationId = 450005;\n\n-- Verify transaction\nSELECT id, transactionNumber, amount, status, description, reservationId FROM transactions WHERE reservationId = 450005;\n\n-- Verify reservation date was fixed\nSELECT id, booking_date, customer_name FROM reservations WHERE id = 450005;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Verify booking\nSELECT id, bookingNumber, scheduledDate, status, notes FROM bookings WHERE reservationId = 450005;\n\n-- Verify transaction\nSELECT id, transactionNumber, amount, status, description, reservationId FROM transactions WHERE reservationId = 450005;\n\n-- Verify reservation date was fixed\nSELECT id, booking_date, customer_name FROM reservations WHERE id = 450005;\n",
+  "rows": [
+    {
+      "id": "60003",
+      "bookingNumber": "BK-RETRO-RATA-2026",
+      "scheduledDate": "2026-07-01 10:00:00",
+      "status": "confirmado",
+      "notes": "Booking retroactivo — Pago CRM confirmado — Day Pass Náyade — Reparación BUG v25.24"
+    }
+  ],
+  "messages": [
+    "id\ttransactionNumber\tamount\tstatus\tdescription\treservationId",
+    "120001\tTX-RETRO-RATA-2026\t54.45\tcompletado\tPago CRM — Presupuesto Nayade Experiences - Rata Marravillada — Reparación retroactiva BUG v25.24\t450005",
+    "id\tbooking_date\tcustomer_name",
+    "450005\t2026-07-01\tRata Marravillada"
+  ],
+  "stdout": "id\tbookingNumber\tscheduledDate\tstatus\tnotes\n60003\tBK-RETRO-RATA-2026\t2026-07-01 10:00:00\tconfirmado\tBooking retroactivo — Pago CRM confirmado — Day Pass Náyade — Reparación BUG v25.24\nid\ttransactionNumber\tamount\tstatus\tdescription\treservationId\n120001\tTX-RETRO-RATA-2026\t54.45\tcompletado\tPago CRM — Presupuesto Nayade Experiences - Rata Marravillada — Reparación retroactiva BUG v25.24\t450005\nid\tbooking_date\tcustomer_name\n450005\t2026-07-01\tRata Marravillada\n",
+  "stderr": "",
+  "execution_time_ms": 69
+}

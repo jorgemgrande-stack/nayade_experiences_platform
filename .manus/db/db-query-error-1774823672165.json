@@ -1,0 +1,8 @@
+{
+  "query": "\n-- Find quotes for this lead\nSELECT id, quoteNumber, title, status, subtotal, total, paidAt, paymentMethod, invoiceNumber, createdAt\nFROM quotes WHERE leadId = 1410004;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Find quotes for this lead\nSELECT id, quoteNumber, title, status, subtotal, total, paidAt, paymentMethod, invoiceNumber, createdAt\nFROM quotes WHERE leadId = 1410004;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 3: Unknown column 'paymentmethod' in 'field list'"
+  ]
+}

@@ -2418,3 +2418,30 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Identificar causa raíz exacta (anclas #, scrollIntoView, overflow CSS, efectos post-route)
 - [x] Implementar solución global limpia de scroll-to-top en la SPA
 - [x] Validar: menú, navegación interna, módulos, parámetros, anclas explícitas
+
+## BUG v25.24 — Auditoría forense: flujos CRM→Operaciones, Contabilidad y REAV rotos
+- [x] Auditoría forense completa: revisar confirmPayment, confirmTransfer, TPV, Redsys IPN
+- [x] Trazabilidad caso "Rata Maravillada": identificar qué se guardó y qué faltó
+- [x] BUG #1: confirmPayment usa now() como bookingDate en lugar de lead.preferredDate
+- [x] BUG #2: confirmPayment no llama a createBookingFromReservation (booking operativo ausente)
+- [x] BUG #3: confirmPayment y confirmTransfer no crean transacción contable en tabla transactions
+- [ ] Implementar postConfirmOperation() helper en db.ts (booking + transaction + log)
+- [ ] Corregir confirmPayment: usar preferredDate + llamar postConfirmOperation
+- [ ] Corregir confirmTransfer: usar preferredDate + llamar postConfirmOperation
+- [ ] Corregir Redsys IPN: verificar que usa bookingDate correcto + crea transaction
+- [ ] Corregir cupón→reserva: verificar que llama postConfirmOperation
+- [ ] Reparar datos de "Rata Maravillada": crear booking y transacción retroactivos
+- [ ] Validar todos los flujos con tests Vitest
+
+## BUG v25.24 — Auditoría forense flujos CRM → Operaciones → Contabilidad
+
+- [x] BUG #1: confirmPayment no usaba lead.preferredDate como bookingDate (usaba today)
+- [x] BUG #2: confirmPayment no creaba booking operativo en tabla bookings
+- [x] BUG #3: confirmPayment no creaba transacción contable en tabla transactions
+- [x] BUG #4: confirmTransfer tampoco usaba lead.preferredDate como bookingDate
+- [x] BUG #5: confirmManualPayment no creaba transacción contable
+- [x] BUG #6: Redsys IPN no creaba transacción contable (solo booking)
+- [x] BUG #7: coupon convertToReservation no creaba booking ni transacción
+- [x] Implementar helper centralizado postConfirmOperation() en db.ts (idempotente)
+- [x] Reparar datos retroactivos de Rata Maravillada: booking BK-RETRO-RATA-2026 + transacción TX-RETRO-RATA-2026 + fecha 2026-07-01
+- [x] 22 tests Vitest para postConfirmOperation — 270 tests totales pasando

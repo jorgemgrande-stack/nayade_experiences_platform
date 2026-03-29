@@ -1805,3 +1805,123 @@ export async function upsertClientFromReservation({
     console.warn("[upsertClientFromReservation] No se pudo crear/vincular cliente:", e);
   }
 }
+
+// ─── POST-CONFIRM OPERATION — Capa de consolidación global ─────────────────────
+// Este helper centraliza todos los efectos secundarios que deben ejecutarse
+// cuando una operación queda confirmada/pagada, independientemente del canal:
+//   • CRM (confirmPayment, confirmTransfer, confirmManualPayment)
+//   • TPV (createSale)
+//   • Redsys IPN (pago online)
+//   • Cupones (convertToReservation)
+//
+// Garantiza: booking operativo en tabla bookings + transacción contable en transactions.
+// Es idempotente: si el booking ya existe para la reserva, no lo duplica.
+export async function postConfirmOperation(params: {
+  // Datos de la reserva/operación
+  reservationId: number;
+  productId: number;
+  productName: string;
+  /** Fecha operativa del servicio (YYYY-MM-DD). Si no se pasa, usa hoy. */
+  serviceDate?: string | null;
+  people: number;
+  amountCents: number;
+  // Datos del cliente
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string | null;
+  // Datos de la transacción contable
+  totalAmount: number;         // en euros (no centavos)
+  paymentMethod: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta" | "link_pago";
+  saleChannel: "crm" | "tpv" | "online" | "admin" | "delegado";
+  invoiceNumber?: string | null;
+  reservationRef?: string | null;
+  sellerUserId?: number | null;
+  sellerName?: string | null;
+  taxBase?: number;
+  taxAmount?: number;
+  reavMargin?: number;
+  fiscalRegime?: "reav" | "general_21" | "mixed";
+  description?: string;
+  // Vínculo con presupuesto (CRM)
+  quoteId?: number | null;
+  sourceChannel?: "redsys" | "transferencia" | "efectivo" | "otro";
+  // Vínculo con TPV
+  tpvSaleId?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) return { bookingId: null, transactionId: null };
+
+  const today = new Date().toISOString().split("T")[0];
+  const bookingDate = params.serviceDate ?? today;
+
+  // 1. Crear booking operativo (idempotente)
+  let bookingId: number | null = null;
+  try {
+    const result = await createBookingFromReservation({
+      reservationId: params.reservationId,
+      productId: params.productId,
+      productName: params.productName,
+      bookingDate,
+      people: params.people,
+      amountCents: params.amountCents,
+      customerName: params.customerName,
+      customerEmail: params.customerEmail,
+      customerPhone: params.customerPhone,
+      quoteId: params.quoteId,
+      sourceChannel: params.sourceChannel ?? "otro",
+    });
+    bookingId = result.id;
+  } catch (e) {
+    console.error("[postConfirmOperation] Error creando booking operativo:", e);
+  }
+
+  // 2. Crear transacción contable (idempotente por invoiceNumber si se proporciona)
+  let transactionId: number | null = null;
+  try {
+    // Verificar si ya existe una transacción para esta reserva
+    const existingTx = await db.select({ id: transactions.id })
+      .from(transactions)
+      .where(eq((transactions as any).reservationId, params.reservationId))
+      .limit(1);
+    if (existingTx.length === 0) {
+      const txNumber = `TX-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      const methodMap: Record<string, string> = {
+        redsys: "tarjeta", transferencia: "transferencia", efectivo: "efectivo",
+        tarjeta: "tarjeta", link_pago: "link_pago", otro: "otro",
+      };
+      const [txResult] = await db.insert(transactions).values({
+        transactionNumber: txNumber,
+        type: "ingreso",
+        amount: String(params.totalAmount.toFixed(2)),
+        currency: "EUR",
+        paymentMethod: (methodMap[params.paymentMethod] ?? "otro") as any,
+        status: "completado",
+        description: params.description ?? `Operación confirmada — ${params.productName}`,
+        processedAt: new Date(),
+        clientName: params.customerName,
+        clientEmail: params.customerEmail,
+        clientPhone: params.customerPhone ?? null,
+        productName: params.productName,
+        saleChannel: params.saleChannel as any,
+        sellerUserId: params.sellerUserId ?? null,
+        sellerName: params.sellerName ?? null,
+        taxBase: String((params.taxBase ?? 0).toFixed(2)),
+        taxAmount: String((params.taxAmount ?? 0).toFixed(2)),
+        reavMargin: String((params.reavMargin ?? 0).toFixed(2)),
+        fiscalRegime: (params.fiscalRegime ?? "general_21") as any,
+        tpvSaleId: params.tpvSaleId ?? null,
+        reservationId: params.reservationId,
+        invoiceNumber: params.invoiceNumber ?? null,
+        reservationRef: params.reservationRef ?? null,
+        operationStatus: "confirmada",
+      } as any);
+      transactionId = (txResult as { insertId: number }).insertId;
+    } else {
+      transactionId = existingTx[0].id;
+    }
+  } catch (e) {
+    console.error("[postConfirmOperation] Error creando transacción contable:", e);
+  }
+
+  return { bookingId, transactionId };
+}
