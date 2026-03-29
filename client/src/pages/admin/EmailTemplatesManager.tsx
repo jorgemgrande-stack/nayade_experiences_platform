@@ -4,7 +4,7 @@ import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import {
   Mail,
   Eye,
@@ -53,7 +53,6 @@ const RECIPIENT_COLORS: Record<string, string> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function EmailTemplatesManager() {
-  const { toast } = useToast();
 
   // State
   const [activeCategory, setActiveCategory] = useState<Category>("all");
@@ -79,7 +78,7 @@ export default function EmailTemplatesManager() {
       });
     },
     onError: (err) => {
-      toast({ title: "Error al enviar", description: err.message, variant: "destructive" });
+      toast.error("Error al enviar", { description: err.message });
     },
   });
 
@@ -95,7 +94,7 @@ export default function EmailTemplatesManager() {
     },
     onError: (err) => {
       setSendingAll(false);
-      toast({ title: "Error al enviar", description: err.message, variant: "destructive" });
+      toast.error("Error al enviar", { description: err.message });
     },
   });
 
