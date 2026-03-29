@@ -437,6 +437,12 @@ export default function Home() {
   const { data: heroLegoPacksList } = trpc.legoPacks.listPublic.useQuery(
     undefined, { enabled: heroCategory === "LegoPacks" }
   );
+  const { data: heroEscolarPacksList } = trpc.packs.getTitlesByCategory.useQuery(
+    { category: "escolar" }, { enabled: heroCategory === "Pack colegios" }
+  );
+  const { data: heroEmpresaPacksList } = trpc.packs.getTitlesByCategory.useQuery(
+    { category: "empresa" }, { enabled: heroCategory === "Pack teambuilding" }
+  );
   // Lego Packs de día para la sección 3 de la Home
   const { data: homeLegoPacks } = trpc.legoPacks.listPublicByCategory.useQuery(
     { category: "dia" },
@@ -445,8 +451,10 @@ export default function Home() {
   const heroProducts = useMemo(() => {
     if (heroCategory === "Experiencias" && heroExperiencesList) return heroExperiencesList.map((e: any) => e.title);
     if (heroCategory === "LegoPacks" && heroLegoPacksList) return heroLegoPacksList.map((p: any) => p.title);
+    if (heroCategory === "Pack colegios" && heroEscolarPacksList) return heroEscolarPacksList.map((p: any) => p.title);
+    if (heroCategory === "Pack teambuilding" && heroEmpresaPacksList) return heroEmpresaPacksList.map((p: any) => p.title);
     return HERO_STATIC_PRODUCTS[heroCategory] ?? [];
-  }, [heroCategory, heroExperiencesList, heroLegoPacksList]);
+  }, [heroCategory, heroExperiencesList, heroLegoPacksList, heroEscolarPacksList, heroEmpresaPacksList]);
 
   const submitHeroBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setHeroFormSubmitted(true),

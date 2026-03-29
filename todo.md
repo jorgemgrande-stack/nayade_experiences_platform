@@ -2395,3 +2395,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Diagnosticado: 10 transacciones de ventas TPV del 24-25 marzo sumaban 558.72€
 - [x] Reset completo: transactions, tpv_sales, tpv_sale_items, tpv_sale_payments, reservations, invoices, bookings, booking_monitors, daily_orders, crm_activity_log, quotes, leads, clients, reav_expedients, reav_documents, reav_costs, cash_movements
 - [x] Verificado: todas las tablas a 0 registros
+
+## BUG v25.21 — Info contextual del formulario de presupuesto no se guarda en el lead [RESUELTO]
+- [x] Diagnosticado: ExperienceDetail.tsx no envíaba selectedCategory ni selectedProduct en submitLead
+- [x] Corregido ExperienceDetail.tsx: ahora envía selectedCategory="Experiencias" y selectedProduct=exp.title
+- [x] submitLead en routers.ts: añadidos selectedCategory y selectedProduct al schema Zod y al createLead
+- [x] BudgetRequest.tsx (/presupuesto): colegios y empresas ahora cargan packs dinámicamente desde la BD
+- [x] Home.tsx (hero form): colegios y empresas ahora cargan packs dinámicamente desde la BD
+- [x] Añadido endpoint público packs.getTitlesByCategory para cargar títulos de packs por categoría
+- [x] Verificado: servidor corriendo sin errores, HMR aplicado correctamente

@@ -140,6 +140,8 @@ export default function ExperienceDetail() {
       experienceId: exp.id,
       numberOfPersons: persons,
       preferredDate: formData.date,
+      selectedCategory: "Experiencias",
+      selectedProduct: exp.title,
     });
     setIsSubmitting(false);
   };

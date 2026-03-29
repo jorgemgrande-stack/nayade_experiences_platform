@@ -430,11 +430,19 @@ export default function BudgetRequest() {
   const { data: legoPacksList } = trpc.legoPacks.listPublic.useQuery(
     undefined, { enabled: selectedCategory === "LegoPacks" }
   );
+  const { data: escolarPacksList } = trpc.packs.getTitlesByCategory.useQuery(
+    { category: "escolar" }, { enabled: selectedCategory === "Pack colegios" }
+  );
+  const { data: empresaPacksList } = trpc.packs.getTitlesByCategory.useQuery(
+    { category: "empresa" }, { enabled: selectedCategory === "Pack teambuilding" }
+  );
 
   const products = useMemo(() => {
     if (selectedCategory === "LegoPacks" && legoPacksList) return legoPacksList.map((p: any) => p.title);
+    if (selectedCategory === "Pack colegios" && escolarPacksList) return escolarPacksList.map((p: any) => p.title);
+    if (selectedCategory === "Pack teambuilding" && empresaPacksList) return empresaPacksList.map((p: any) => p.title);
     return STATIC_PRODUCTS[selectedCategory] ?? [];
-  }, [selectedCategory, legoPacksList]);
+  }, [selectedCategory, legoPacksList, escolarPacksList, empresaPacksList]);
 
   const submitBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setSubmitted(true),

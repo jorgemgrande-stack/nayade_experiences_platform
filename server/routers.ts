@@ -126,7 +126,8 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
-import { siteSettings } from "../drizzle/schema";
+import { siteSettings, packs } from "../drizzle/schema";
+import { eq, and } from "drizzle-orm";
 import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
 import { reviewsRouter } from "./routers/reviews";
@@ -250,9 +251,14 @@ export const appRouter = router({
         preferredDate: z.string().optional(),
         numberOfPersons: z.number().optional(),
         budget: z.string().optional(),
+        selectedCategory: z.string().optional(),
+        selectedProduct: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        return createLead(input);
+        return createLead({
+          ...input,
+          source: "web_experiencia",
+        });
       }),
 
     submitBudget: publicProcedure
@@ -1321,7 +1327,18 @@ export const appRouter = router({
   packs: router({
     // NOTE: Public procedures (getByCategory, getBySlug) removed in v22.8.
     // The packs table and admin procedures are preserved for TPV, supplier liquidations, and LegoPacksManager.
-
+    /** Listado público ligero de títulos por categoría (para formulario hero) */
+    getTitlesByCategory: publicProcedure
+      .input(z.object({ category: z.enum(["dia", "escolar", "empresa"]) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return [];
+        const rows = await db.select({ id: packs.id, title: packs.title })
+          .from(packs)
+          .where(and(eq(packs.category, input.category), eq(packs.isActive, true)))
+          .orderBy(packs.sortOrder);
+        return rows;
+      }),
     /** Listado admin */
     getAll: adminProcedure
       .input(z.object({ category: z.string().optional(), search: z.string().optional(), limit: z.number().default(50), offset: z.number().default(0) }))
