@@ -170,4 +170,83 @@ router.post(
   }
 );
 
+// POST /api/upload/monitor-photo — sube foto de perfil de monitor a S3 (admin)
+const monitorPhotoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Solo se admiten imágenes JPG, PNG o WebP."));
+  },
+});
+
+router.post(
+  "/api/upload/monitor-photo",
+  (req, res, next) => requireAdmin(req, res, next),
+  monitorPhotoUpload.single("photo"),
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No se recibió ningún archivo." });
+        return;
+      }
+      const { buffer, mimetype, originalname } = req.file;
+      const ext = originalname.split(".").pop() || "jpg";
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 10);
+      const key = `nayade/monitors/photos/${timestamp}-${random}.${ext}`;
+      const { url } = await storagePut(key, buffer, mimetype);
+      res.json({ url, key });
+    } catch (err: unknown) {
+      console.error("[MonitorPhotoUpload] Error:", err);
+      const message = err instanceof Error ? err.message : "Error al subir la foto";
+      res.status(500).json({ error: message });
+    }
+  }
+);
+
+// POST /api/upload/monitor-doc — sube documento de monitor a S3 (admin)
+const monitorDocUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "image/jpeg", "image/jpg", "image/png", "image/webp",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Tipo no permitido. Se aceptan PDF, imágenes, Word y Excel."));
+  },
+});
+
+router.post(
+  "/api/upload/monitor-doc",
+  (req, res, next) => requireAdmin(req, res, next),
+  monitorDocUpload.single("file"),
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No se recibió ningún archivo." });
+        return;
+      }
+      const { buffer, mimetype, originalname } = req.file;
+      const ext = originalname.split(".").pop() || "bin";
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 10);
+      const key = `nayade/monitors/docs/${timestamp}-${random}.${ext}`;
+      const { url } = await storagePut(key, buffer, mimetype);
+      res.json({ url, key, filename: originalname });
+    } catch (err: unknown) {
+      console.error("[MonitorDocUpload] Error:", err);
+      const message = err instanceof Error ? err.message : "Error al subir el documento";
+      res.status(500).json({ error: message });
+    }
+  }
+);
+
 export default router;

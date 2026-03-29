@@ -2303,3 +2303,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: listado con nombre, tipo, fecha y botones Ver/Eliminar
 - [x] Frontend: spinner de carga durante la subida
 - [x] 0 errores TypeScript
+
+## v25.10 — Foto de perfil en ficha de Monitor [COMPLETADO]
+- [x] Backend: endpoint REST POST /api/upload/monitor-photo (imagen JPG/PNG/WebP, 5 MB)
+- [x] Backend: photoUrl y photoKey añadidos en create y update procedures del router
+- [x] Frontend: avatar con foto en la tarjeta del listado (reemplaza iniciales cuando hay foto)
+- [x] Frontend: bloque de subida de foto en el formulario crear/editar con preview inmediata
+- [x] Frontend: botón Quitar foto para limpiar la selección
+- [x] 0 errores TypeScript

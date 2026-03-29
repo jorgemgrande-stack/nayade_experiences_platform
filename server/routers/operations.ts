@@ -66,6 +66,8 @@ const monitorsRouter = router({
       contractConditions: z.string().optional(),
       notes: z.string().optional(),
       isActive: z.boolean().default(true),
+      photoUrl: z.string().optional(),
+      photoKey: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const [result] = await db.insert(monitors).values({
@@ -86,6 +88,8 @@ const monitorsRouter = router({
         contractConditions: input.contractConditions,
         notes: input.notes,
         isActive: input.isActive,
+        photoUrl: input.photoUrl,
+        photoKey: input.photoKey,
       });
       return { id: (result as any).insertId };
     }),

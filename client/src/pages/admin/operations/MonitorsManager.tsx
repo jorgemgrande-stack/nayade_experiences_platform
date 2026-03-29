@@ -109,6 +109,45 @@ export default function MonitorsManager() {
     onError: () => toast.error("Error al eliminar"),
   });
 
+  // ─── Photo state ────────────────────────────────────────────────────────
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const photoFileRef = useRef<HTMLInputElement>(null);
+
+  // When opening edit modal, pre-fill photo preview from existing monitor
+  function openEditWithPhoto(monitor: any) {
+    setPhotoPreview(monitor.photoUrl || null);
+    openEdit(monitor);
+  }
+
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Show local preview immediately
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function uploadPhotoAndSave(monitorId: number) {
+    const file = photoFileRef.current?.files?.[0];
+    if (!file) return null; // no new photo selected
+    setPhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const res = await fetch("/api/upload/monitor-photo", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Error al subir la foto");
+      }
+      const { url, key } = await res.json();
+      return { url, key };
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
   // ─── Document state ────────────────────────────────────────────────────────
   const [docType, setDocType] = useState<"dni"|"contrato"|"certificado"|"otro">("otro");
   const [docName, setDocName] = useState("");
@@ -201,7 +240,18 @@ export default function MonitorsManager() {
     setShowEditModal(true);
   }
 
-  function handleCreate() {
+  async function handleCreate() {
+    let photoUrl: string | undefined;
+    let photoKey: string | undefined;
+    if (photoFileRef.current?.files?.[0]) {
+      try {
+        const result = await uploadPhotoAndSave(0);
+        if (result) { photoUrl = result.url; photoKey = result.key; }
+      } catch (e: any) {
+        toast.error("Error al subir la foto: " + e.message);
+        return;
+      }
+    }
     createMutation.mutate({
       fullName: form.fullName,
       dni: form.dni || undefined,
@@ -219,11 +269,24 @@ export default function MonitorsManager() {
       contractEnd: form.contractEnd || undefined,
       contractConditions: form.contractConditions || undefined,
       notes: form.notes || undefined,
+      photoUrl,
+      photoKey,
     });
   }
 
-  function handleUpdate() {
+  async function handleUpdate() {
     if (!editingMonitor) return;
+    let photoUrl: string | undefined;
+    let photoKey: string | undefined;
+    if (photoFileRef.current?.files?.[0]) {
+      try {
+        const result = await uploadPhotoAndSave(editingMonitor.id);
+        if (result) { photoUrl = result.url; photoKey = result.key; }
+      } catch (e: any) {
+        toast.error("Error al subir la foto: " + e.message);
+        return;
+      }
+    }
     updateMutation.mutate({
       id: editingMonitor.id,
       fullName: form.fullName,
@@ -243,6 +306,8 @@ export default function MonitorsManager() {
       contractConditions: form.contractConditions || undefined,
       notes: form.notes || undefined,
       isActive: form.isActive,
+      photoUrl,
+      photoKey,
     });
   }
 
@@ -344,10 +409,14 @@ export default function MonitorsManager() {
                 >
                   {/* Monitor row */}
                   <div className="flex items-center gap-4 p-5">
-                    <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                      <span className="text-emerald-300 font-bold text-lg">
-                        {monitor.fullName.charAt(0).toUpperCase()}
-                      </span>
+                    <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0 overflow-hidden border-2 border-slate-700">
+                      {monitor.photoUrl ? (
+                        <img src={monitor.photoUrl} alt={monitor.fullName} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-emerald-300 font-bold text-lg">
+                          {monitor.fullName.charAt(0).toUpperCase()}
+                        </span>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -388,7 +457,7 @@ export default function MonitorsManager() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => openEdit(monitor)}
+                        onClick={() => openEditWithPhoto(monitor)}
                         className="border-slate-600 text-slate-300 hover:bg-slate-700 text-xs"
                       >
                         <Edit3 className="w-3.5 h-3.5 mr-1" />
@@ -666,6 +735,61 @@ export default function MonitorsManager() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-2">
+              {/* Foto de perfil */}
+              <div className="flex items-center gap-5 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                <div className="relative shrink-0">
+                  <div className="w-20 h-20 rounded-full bg-emerald-500/20 border-2 border-slate-600 overflow-hidden flex items-center justify-center">
+                    {photoPreview ? (
+                      <img src={photoPreview} alt="Foto" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-emerald-300 font-bold text-2xl">
+                        {form.fullName ? form.fullName.charAt(0).toUpperCase() : "?"}
+                      </span>
+                    )}
+                  </div>
+                  {photoUploading && (
+                    <div className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center">
+                      <Loader2 className="w-5 h-5 text-white animate-spin" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-white mb-1">Foto del monitor</p>
+                  <p className="text-xs text-slate-400 mb-3">JPG, PNG o WebP · máx. 5 MB</p>
+                  <input
+                    ref={photoFileRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-slate-600 text-slate-300 hover:bg-slate-700 text-xs"
+                    onClick={() => photoFileRef.current?.click()}
+                  >
+                    <Upload className="w-3.5 h-3.5 mr-1.5" />
+                    {photoPreview ? "Cambiar foto" : "Subir foto"}
+                  </Button>
+                  {photoPreview && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="ml-2 border-red-800 text-red-400 hover:bg-red-900/20 text-xs"
+                      onClick={() => {
+                        setPhotoPreview(null);
+                        if (photoFileRef.current) photoFileRef.current.value = "";
+                      }}
+                    >
+                      <X className="w-3.5 h-3.5 mr-1" />Quitar
+                    </Button>
+                  )}
+                </div>
+              </div>
+
               {/* Datos personales */}
               <div>
                 <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Datos personales</h3>
