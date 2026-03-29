@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import {
-  CalendarDays, ChevronLeft, ChevronRight, Users, User,
+  Calendar, CalendarDays, ChevronLeft, ChevronRight, Users, User,
   AlertTriangle, CheckCircle2, Waves, Utensils, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
