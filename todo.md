@@ -2293,3 +2293,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] App.tsx: añadidas rutas /admin/operaciones/actividades y /admin/operaciones/monitores
 - [x] AdminLayout.tsx: corregido enlace "Actividades del Día" → /admin/operaciones/actividades
 - [x] 0 errores TypeScript tras todas las correcciones
+
+## v25.9 — Subida de documentos en Monitores [COMPLETADO]
+- [x] Backend: endpoint REST POST /api/upload/monitor-doc (20 MB, PDF/img/Word/Excel)
+- [x] Backend: procedimiento tRPC monitors.addDocument (guarda metadata en monitor_documents)
+- [x] Backend: procedimiento tRPC monitors.deleteDocument (elimina de BD)
+- [x] Frontend: zona de clic/drop para seleccionar archivo en pestaña Documentos
+- [x] Frontend: campos nombre y tipo de documento antes de subir
+- [x] Frontend: listado con nombre, tipo, fecha y botones Ver/Eliminar
+- [x] Frontend: spinner de carga durante la subida
+- [x] 0 errores TypeScript

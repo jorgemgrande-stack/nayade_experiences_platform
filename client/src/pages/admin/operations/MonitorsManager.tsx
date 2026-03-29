@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import {
   UserCheck, Plus, Search, Phone, Mail, FileText, Euro,
   ChevronDown, ChevronUp, Edit3, Trash2, Save, X,
   AlertCircle, CheckCircle2, RefreshCw, Download,
-  CreditCard, Calendar,
+  CreditCard, Calendar, Upload, Loader2, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -108,6 +108,60 @@ export default function MonitorsManager() {
     },
     onError: () => toast.error("Error al eliminar"),
   });
+
+  // ─── Document state ────────────────────────────────────────────────────────
+  const [docType, setDocType] = useState<"dni"|"contrato"|"certificado"|"otro">("otro");
+  const [docName, setDocName] = useState("");
+  const [docUploading, setDocUploading] = useState(false);
+  const docFileRef = useRef<HTMLInputElement>(null);
+
+  const addDocumentMutation = trpc.operations.monitors.addDocument.useMutation({
+    onSuccess: () => {
+      toast.success("Documento subido correctamente");
+      setDocName("");
+      setDocType("otro");
+      if (docFileRef.current) docFileRef.current.value = "";
+      refetchMonitor();
+    },
+    onError: (e) => toast.error("Error al guardar documento: " + e.message),
+  });
+
+  const deleteDocumentMutation = trpc.operations.monitors.deleteDocument.useMutation({
+    onSuccess: () => {
+      toast.success("Documento eliminado");
+      refetchMonitor();
+    },
+    onError: () => toast.error("Error al eliminar documento"),
+  });
+
+  async function handleDocUpload() {
+    const file = docFileRef.current?.files?.[0];
+    if (!file) { toast.error("Selecciona un archivo"); return; }
+    if (!docName.trim()) { toast.error("Escribe un nombre para el documento"); return; }
+    if (!expandedId) return;
+    setDocUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload/monitor-doc", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Error al subir el archivo");
+      }
+      const { url, key } = await res.json();
+      addDocumentMutation.mutate({
+        monitorId: expandedId,
+        type: docType,
+        name: docName.trim(),
+        fileUrl: url,
+        fileKey: key,
+      });
+    } catch (e: any) {
+      toast.error(e.message || "Error al subir el archivo");
+    } finally {
+      setDocUploading(false);
+    }
+  }
 
   const addPayrollMutation = trpc.operations.monitors.addPayroll.useMutation({
     onSuccess: () => {
@@ -468,39 +522,128 @@ export default function MonitorsManager() {
 
                         {/* DOCS TAB */}
                         {activeTab === "docs" && (
-                          <div>
-                            <div className="flex items-center justify-between mb-4">
-                              <h4 className="font-semibold text-white">Documentos</h4>
-                            </div>
-                            {docs.length === 0 ? (
-                              <div className="text-center py-8 text-slate-500">
-                                <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                <p className="text-sm">Sin documentos adjuntos</p>
-                                <p className="text-xs text-slate-600 mt-1">
-                                  La subida de documentos estará disponible próximamente
-                                </p>
+                          <div className="space-y-5">
+                            {/* Upload box */}
+                            <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-3">
+                              <h4 className="font-semibold text-white flex items-center gap-2">
+                                <Upload className="w-4 h-4 text-emerald-400" />
+                                Subir nuevo documento
+                              </h4>
+                              {/* File picker */}
+                              <div
+                                className="border-2 border-dashed border-slate-600 hover:border-emerald-500 rounded-lg p-5 text-center cursor-pointer transition-colors"
+                                onClick={() => docFileRef.current?.click()}
+                              >
+                                <Upload className="w-7 h-7 mx-auto mb-2 text-slate-500" />
+                                <p className="text-sm text-slate-400">Haz clic para seleccionar un archivo</p>
+                                <p className="text-xs text-slate-600 mt-1">PDF, imágenes, Word, Excel · máx. 20 MB</p>
+                                <input
+                                  ref={docFileRef}
+                                  type="file"
+                                  className="hidden"
+                                  accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx"
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f && !docName) setDocName(f.name.replace(/\.[^.]+$/, ""));
+                                  }}
+                                />
                               </div>
-                            ) : (
-                              <div className="space-y-2">
-                                {docs.map((d: any) => (
-                                  <div key={d.id} className="bg-slate-800 rounded-lg p-3 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                      <FileText className="w-5 h-5 text-blue-400" />
-                                      <div>
-                                        <div className="text-white text-sm font-medium">{d.name}</div>
-                                        <div className="text-slate-400 text-xs">{d.type} · {formatDate(d.createdAt)}</div>
+                              {/* Selected file name preview */}
+                              {docFileRef.current?.files?.[0] && (
+                                <p className="text-xs text-emerald-400 truncate">
+                                  ✓ {docFileRef.current.files[0].name}
+                                </p>
+                              )}
+                              {/* Metadata fields */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="text-xs text-slate-400 mb-1 block">Nombre del documento *</label>
+                                  <Input
+                                    value={docName}
+                                    onChange={(e) => setDocName(e.target.value)}
+                                    placeholder="Ej: Contrato 2026"
+                                    className="bg-slate-700 border-slate-600 text-white text-sm h-8"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-slate-400 mb-1 block">Tipo</label>
+                                  <Select value={docType} onValueChange={(v) => setDocType(v as any)}>
+                                    <SelectTrigger className="bg-slate-700 border-slate-600 text-white text-sm h-8">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                                      <SelectItem value="dni">DNI / Identificación</SelectItem>
+                                      <SelectItem value="contrato">Contrato</SelectItem>
+                                      <SelectItem value="certificado">Certificado</SelectItem>
+                                      <SelectItem value="otro">Otro</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <Button
+                                onClick={handleDocUpload}
+                                disabled={docUploading || addDocumentMutation.isPending}
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm h-9"
+                              >
+                                {docUploading || addDocumentMutation.isPending ? (
+                                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Subiendo...</>
+                                ) : (
+                                  <><Upload className="w-4 h-4 mr-2" />Subir documento</>
+                                )}
+                              </Button>
+                            </div>
+
+                            {/* Document list */}
+                            <div>
+                              <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-blue-400" />
+                                Documentos adjuntos
+                                {docs.length > 0 && (
+                                  <span className="ml-1 text-xs bg-slate-700 text-slate-300 rounded-full px-2 py-0.5">{docs.length}</span>
+                                )}
+                              </h4>
+                              {docs.length === 0 ? (
+                                <div className="text-center py-6 text-slate-500">
+                                  <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                  <p className="text-sm">Sin documentos adjuntos</p>
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {docs.map((d: any) => (
+                                    <div key={d.id} className="bg-slate-800 rounded-lg p-3 flex items-center justify-between gap-3">
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <FileText className="w-5 h-5 text-blue-400 shrink-0" />
+                                        <div className="min-w-0">
+                                          <div className="text-white text-sm font-medium truncate">{d.name}</div>
+                                          <div className="text-slate-400 text-xs">
+                                            <span className="capitalize">{d.type}</span> · {formatDate(d.createdAt)}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <a href={d.fileUrl} target="_blank" rel="noopener noreferrer">
+                                          <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 text-xs h-7 px-2">
+                                            <ExternalLink className="w-3 h-3 mr-1" />Ver
+                                          </Button>
+                                        </a>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="border-red-800 text-red-400 hover:bg-red-900/30 text-xs h-7 px-2"
+                                          onClick={() => {
+                                            if (confirm(`¿Eliminar "${d.name}"?`)) {
+                                              deleteDocumentMutation.mutate({ id: d.id });
+                                            }
+                                          }}
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </Button>
                                       </div>
                                     </div>
-                                    <a href={d.fileUrl} target="_blank" rel="noopener noreferrer">
-                                      <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 text-xs">
-                                        <Download className="w-3.5 h-3.5 mr-1" />
-                                        Ver
-                                      </Button>
-                                    </a>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
