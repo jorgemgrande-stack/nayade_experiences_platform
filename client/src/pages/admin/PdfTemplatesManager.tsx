@@ -462,7 +462,7 @@ export default function PdfTemplatesManager() {
                     />
                     <div className="p-3 border-t bg-gray-50 text-xs text-muted-foreground">
                       <strong>Pie:</strong> {(fullTemplate as Record<string, unknown>).footerText as string}
-                      {(fullTemplate as Record<string, unknown>).legalText && <> &nbsp;·&nbsp; <strong>Legal:</strong> {(fullTemplate as Record<string, unknown>).legalText as string}</>}
+                      {!!(fullTemplate as Record<string, unknown>).legalText && <> &nbsp;·&nbsp; <strong>Legal:</strong> {(fullTemplate as Record<string, unknown>).legalText as string}</>}
                     </div>
                   </div>
                 ) : null}
