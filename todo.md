@@ -2322,3 +2322,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregir Calendario: añadida función parseEventDate() que parsea DATE strings como hora local (T09:00:00)
 - [x] Corregir Órdenes del Día: actualizada formatTime() para manejar DATE strings de MySQL
 - [x] eventsByDay ahora usa sd.slice(0,10) directamente para el key de fecha (sin conversión UTC)
+
+## v25.13 — Correcciones Operaciones [COMPLETADO]
+- [x] Backend: al crear registro en reservation_operational, auto-marcar clientConfirmed=true si la reserva tiene status='paid'
+- [x] BD: actualizada reserva de Simo Blanquez (id=420001) a clientConfirmed=1
+- [x] Backend: todas las consultas de fechas usan input.slice(0,10) en lugar de new Date().toISOString() para evitar desplazamiento UTC-4
+- [x] Calendario getEvents: usa input.from.slice(0,10) y input.to.slice(0,10)
+- [x] Ordenes del Día getForDate: usa input.date.slice(0,10)
+- [x] Actividades del Día getForDate: usa input.date.slice(0,10)
+- [x] getDashboardStats: usa input.date.slice(0,10)
+- [x] 0 errores TypeScript, servidor limpio

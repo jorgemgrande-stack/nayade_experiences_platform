@@ -222,9 +222,10 @@ const calendarRouter = router({
       to: z.string(),   // ISO date string
     }))
     .query(async ({ input }) => {
-      // booking_date is a DATE column — convert from/to to YYYY-MM-DD strings
-      const fromDate = new Date(input.from).toISOString().slice(0, 10);
-      const toDate = new Date(input.to).toISOString().slice(0, 10);
+      // booking_date is a DATE column — use input strings directly (no Date conversion)
+      // NEVER use new Date().toISOString(): the server runs in UTC-4 which shifts dates by 1 day
+      const fromDate = input.from.slice(0, 10);
+      const toDate = input.to.slice(0, 10);
 
       // Query reservations (activities/packs/presupuestos) from the main reservations table
       const [activityRows] = await pool.execute<any[]>(`
@@ -295,8 +296,9 @@ const dailyOrdersRouter = router({
   getForDate: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      // booking_date is a DATE column — use YYYY-MM-DD string for filtering
-      const dateStr = new Date(input.date).toISOString().slice(0, 10);
+      // booking_date is a DATE column — use input string directly (no Date conversion)
+      // NEVER use new Date().toISOString(): the server runs in UTC-4 which shifts dates
+      const dateStr = input.date.slice(0, 10);
 
       const [activityRows] = await pool.execute<any[]>(`
         SELECT
@@ -398,9 +400,17 @@ const dailyOrdersRouter = router({
           .set(updateData)
           .where(eq(reservationOperational.id, existing[0].id));
       } else {
+        // Auto-confirm if the reservation is paid
+        const [[resRow]] = await pool.execute<any[]>(
+          `SELECT status FROM reservations WHERE id = ? UNION SELECT status FROM restaurant_bookings WHERE id = ? LIMIT 1`,
+          [input.reservationId, input.reservationId]
+        );
+        const isPaid = resRow && ['paid','confirmed'].includes(resRow.status);
         await db.insert(reservationOperational).values({
           reservationId: input.reservationId,
           reservationType: input.reservationType,
+          clientConfirmed: isPaid ? true : false,
+          clientConfirmedAt: isPaid ? new Date() : undefined,
           ...updateData,
         });
       }
@@ -410,11 +420,8 @@ const dailyOrdersRouter = router({
   getDashboardStats: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      const date = new Date(input.date);
-      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0).getTime();
-      const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59).getTime();
-
-      const dateStr2 = new Date(input.date).toISOString().slice(0, 10);
+      // Use input string directly to avoid UTC offset issues
+      const dateStr2 = input.date.slice(0, 10);
 
       const [[actStats]] = await pool.execute<any[]>(`
         SELECT
@@ -450,8 +457,8 @@ const activitiesRouter = router({
   getForDate: protectedProcedure
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
-      // booking_date is a DATE column — use YYYY-MM-DD string
-      const actDateStr = new Date(input.date).toISOString().slice(0, 10);
+      // booking_date is a DATE column — use input string directly (no Date conversion)
+      const actDateStr = input.date.slice(0, 10);
 
       const [rows] = await pool.execute<any[]>(`
         SELECT

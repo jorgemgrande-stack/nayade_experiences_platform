@@ -1,0 +1,100 @@
+{
+  "query": "SELECT r.id, r.customer_name AS clientName, r.booking_date AS scheduledDate, r.people AS numberOfPersons, r.status, COALESCE(e.title, r.product_name) AS activityTitle, ro.client_confirmed AS clientConfirmed, ro.id AS opId FROM reservations r LEFT JOIN experiences e ON r.product_id = e.id LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity' WHERE r.booking_date >= '2026-03-23' AND r.booking_date <= '2026-03-30' AND r.status NOT IN ('cancelled','failed') ORDER BY r.booking_date ASC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT r.id, r.customer_name AS clientName, r.booking_date AS scheduledDate, r.people AS numberOfPersons, r.status, COALESCE(e.title, r.product_name) AS activityTitle, ro.client_confirmed AS clientConfirmed, ro.id AS opId FROM reservations r LEFT JOIN experiences e ON r.product_id = e.id LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity' WHERE r.booking_date >= '2026-03-23' AND r.booking_date <= '2026-03-30' AND r.status NOT IN ('cancelled','failed') ORDER BY r.booking_date ASC;",
+  "rows": [
+    {
+      "id": "300001",
+      "clientName": "Faustino",
+      "scheduledDate": "2026-03-25",
+      "numberOfPersons": "2",
+      "status": "paid",
+      "activityTitle": "Banana Ski",
+      "clientConfirmed": "NULL",
+      "opId": "NULL"
+    },
+    {
+      "id": "300002",
+      "clientName": "Caridad martinez",
+      "scheduledDate": "2026-03-25",
+      "numberOfPersons": "4",
+      "status": "paid",
+      "activityTitle": "Entrada General Piscina Club Nautico",
+      "clientConfirmed": "NULL",
+      "opId": "NULL"
+    },
+    {
+      "id": "330001",
+      "clientName": "Cliente TPV",
+      "scheduledDate": "2026-03-25",
+      "numberOfPersons": "3",
+      "status": "paid",
+      "activityTitle": "Banana Ski",
+      "clientConfirmed": "NULL",
+      "opId": "NULL"
+    },
+    {
+      "id": "330002",
+      "clientName": "Cliente TPV",
+      "scheduledDate": "2026-03-25",
+      "numberOfPersons": "8",
+      "status": "paid",
+      "activityTitle": "Paddle Surf",
+      "clientConfirmed": "NULL",
+      "opId": "NULL"
+    },
+    {
+      "id": "360001",
+      "clientName": "Natalia",
+      "scheduledDate": "2026-03-27",
+      "numberOfPersons": "1",
+      "status": "paid",
+      "activityTitle": "Presupuesto Nayade Experiences - Natalia",
+      "clientConfirmed": "NULL",
+      "opId": "NULL"
+    },
+    {
+      "id": "420001",
+      "clientName": "Simo Blanquez",
+      "scheduledDate": "2026-03-29",
+      "numberOfPersons": "2",
+      "status": "paid",
+      "activityTitle": "Presupuesto Nayade Experiences - Simo Blanquez",
+      "clientConfirmed": "0",
+      "opId": "1"
+    },
+    {
+      "id": "390001",
+      "clientName": "Cupon Grande",
+      "scheduledDate": "2026-03-30",
+      "numberOfPersons": "1",
+      "status": "paid",
+      "activityTitle": "Groupon Nayade day",
+      "clientConfirmed": "NULL",
+      "opId": "NULL"
+    },
+    {
+      "id": "390002",
+      "clientName": "Jorge Grande",
+      "scheduledDate": "2026-03-30",
+      "numberOfPersons": "1",
+      "status": "paid",
+      "activityTitle": "Groupon Nayade day",
+      "clientConfirmed": "NULL",
+      "opId": "NULL"
+    },
+    {
+      "id": "390003",
+      "clientName": "Cristina Batistelli",
+      "scheduledDate": "2026-03-30",
+      "numberOfPersons": "1",
+      "status": "paid",
+      "activityTitle": "Groupon Nayade day",
+      "clientConfirmed": "NULL",
+      "opId": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tclientName\tscheduledDate\tnumberOfPersons\tstatus\tactivityTitle\tclientConfirmed\topId\n300001\tFaustino\t2026-03-25\t2\tpaid\tBanana Ski\tNULL\tNULL\n300002\tCaridad martinez\t2026-03-25\t4\tpaid\tEntrada General Piscina Club Nautico\tNULL\tNULL\n330001\tCliente TPV\t2026-03-25\t3\tpaid\tBanana Ski\tNULL\tNULL\n330002\tCliente TPV\t2026-03-25\t8\tpaid\tPaddle Surf\tNULL\tNULL\n360001\tNatalia\t2026-03-27\t1\tpaid\tPresupuesto Nayade Experiences - Natalia\tNULL\tNULL\n420001\tSimo Blanquez\t2026-03-29\t2\tpaid\tPresupuesto Nayade Experiences - Simo Blanquez\t0\t1\n390001\tCupon Grande\t2026-03-30\t1\tpaid\tGroupon Nayade day\tNULL\tNULL\n390002\tJorge Grande\t2026-03-30\t1\tpaid\tGroupon Nayade day\tNULL\tNULL\n390003\tCristina Batistelli\t2026-03-30\t1\tpaid\tGroupon Nayade day\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 112
+}
