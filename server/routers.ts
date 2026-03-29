@@ -138,6 +138,7 @@ import { discountsRouter } from "./routers/discounts";
 import { legoPacksRouter } from "./routers/legoPacks";
 import { expensesModuleRouter } from "./routers/expenses";
 import { ticketingRouter } from "./routers/ticketing";
+import { cancellationsRouter } from "./routers/cancellations";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -157,6 +158,7 @@ const staffProcedure = protectedProcedure.use(({ ctx, next }) => {
 export const appRouter = router({
   system: systemRouter,
   financial: expensesModuleRouter,
+  cancellations: cancellationsRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

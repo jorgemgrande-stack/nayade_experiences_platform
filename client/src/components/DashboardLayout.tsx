@@ -26,7 +26,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Package, FileText, Calendar,
   BarChart3, Settings, Users, Image, BedDouble, Sparkles, UtensilsCrossed,
   Receipt, TrendingDown, RefreshCw, Tag, Building2, TrendingUp,
-  List, FileBarChart, Ticket, Percent,
+  List, FileBarChart, Ticket, Percent, XCircle,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -46,6 +46,8 @@ const menuItems: FlatMenuItem[] = [
   { icon: Image,           label: "CMS",             path: "/admin/cms" },
   { icon: Package,         label: "Productos",       path: "/admin/productos" },
   { icon: FileText,        label: "CRM",             path: "/admin/crm" },
+  { icon: Users,            label: "Clientes",        path: "/admin/crm/clientes",    indent: true },
+  { icon: XCircle,          label: "Anulaciones",     path: "/admin/crm/anulaciones", indent: true },
   { icon: Calendar,        label: "Operaciones",     path: "/admin/operaciones" },
   // ── Contabilidad ──────────────────────────────────────────────────────────
   { icon: BarChart3,    label: "Dashboard Contab.",  path: "/admin/contabilidad/dashboard",        section: "Contabilidad" },

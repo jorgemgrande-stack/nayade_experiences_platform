@@ -1790,3 +1790,118 @@ export const platformSettlements = mysqlTable("platform_settlements", {
 });
 export type PlatformSettlement = typeof platformSettlements.$inferSelect;
 export type InsertPlatformSettlement = typeof platformSettlements.$inferInsert;
+
+// ─── SOLICITUDES DE ANULACIÓN ─────────────────────────────────────────────────
+export const cancellationRequests = mysqlTable("cancellation_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  fullName: varchar("full_name", { length: 256 }).notNull(),
+  email: varchar("email", { length: 320 }),
+  phone: varchar("phone", { length: 32 }),
+  activityDate: varchar("activity_date", { length: 32 }).notNull(),
+  reason: mysqlEnum("reason", [
+    "meteorologicas",
+    "accidente",
+    "enfermedad",
+    "desistimiento",
+    "otra",
+  ]).notNull(),
+  reasonDetail: text("reason_detail"),
+  termsChecked: boolean("terms_checked").default(false).notNull(),
+  source: varchar("source", { length: 64 }).default("landing_publica").notNull(),
+  locator: varchar("locator", { length: 128 }),
+  originUrl: text("origin_url"),
+  ipAddress: varchar("ip_address", { length: 64 }),
+  formLanguage: varchar("form_language", { length: 8 }).default("es"),
+  linkedReservationId: int("linked_reservation_id"),
+  linkedQuoteId: int("linked_quote_id"),
+  linkedInvoiceId: int("linked_invoice_id"),
+  originalAmount: decimal("original_amount", { precision: 10, scale: 2 }),
+  refundableAmount: decimal("refundable_amount", { precision: 10, scale: 2 }),
+  resolvedAmount: decimal("resolved_amount", { precision: 10, scale: 2 }),
+  activityType: varchar("activity_type", { length: 128 }),
+  saleChannel: varchar("sale_channel", { length: 64 }),
+  invoiceRef: varchar("invoice_ref", { length: 128 }),
+  operationalStatus: mysqlEnum("operational_status", [
+    "recibida",
+    "en_revision",
+    "pendiente_documentacion",
+    "pendiente_decision",
+    "resuelta",
+    "cerrada",
+    "incidencia",
+  ]).default("recibida").notNull(),
+  resolutionStatus: mysqlEnum("resolution_status", [
+    "sin_resolver",
+    "rechazada",
+    "aceptada_total",
+    "aceptada_parcial",
+  ]).default("sin_resolver").notNull(),
+  financialStatus: mysqlEnum("financial_status", [
+    "sin_compensacion",
+    "pendiente_devolucion",
+    "devuelta_economicamente",
+    "pendiente_bono",
+    "compensada_bono",
+    "compensacion_mixta",
+    "incidencia_economica",
+  ]).default("sin_compensacion").notNull(),
+  compensationType: mysqlEnum("compensation_type", [
+    "ninguna",
+    "devolucion",
+    "bono",
+    "mixta",
+  ]).default("ninguna"),
+  voucherId: int("voucher_id"),
+  adminNotes: text("admin_notes"),
+  assignedUserId: int("assigned_user_id"),
+  closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type CancellationRequest = typeof cancellationRequests.$inferSelect;
+export type InsertCancellationRequest = typeof cancellationRequests.$inferInsert;
+
+// ─── LOGS / TIMELINE DE SOLICITUDES DE ANULACIÓN ─────────────────────────────
+export const cancellationLogs = mysqlTable("cancellation_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  requestId: int("request_id").notNull(),
+  actionType: varchar("action_type", { length: 64 }).notNull(),
+  oldStatus: varchar("old_status", { length: 64 }),
+  newStatus: varchar("new_status", { length: 64 }),
+  payload: json("payload").$type<Record<string, unknown>>(),
+  adminUserId: int("admin_user_id"),
+  adminUserName: varchar("admin_user_name", { length: 256 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type CancellationLog = typeof cancellationLogs.$inferSelect;
+export type InsertCancellationLog = typeof cancellationLogs.$inferInsert;
+
+// ─── BONOS DE COMPENSACIÓN ────────────────────────────────────────────────────
+export const compensationVouchers = mysqlTable("compensation_vouchers", {
+  id: int("id").autoincrement().primaryKey(),
+  requestId: int("request_id").notNull(),
+  code: varchar("code", { length: 32 }).notNull().unique(),
+  type: mysqlEnum("type", ["actividad", "servicio", "monetario"]).default("actividad").notNull(),
+  activityId: int("activity_id"),
+  activityName: varchar("activity_name", { length: 256 }),
+  value: decimal("value", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  issuedAt: timestamp("issued_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+  status: mysqlEnum("status", [
+    "generado",
+    "enviado",
+    "canjeado",
+    "caducado",
+    "anulado",
+  ]).default("generado").notNull(),
+  pdfUrl: text("pdf_url"),
+  conditions: text("conditions"),
+  notes: text("notes"),
+  sentAt: timestamp("sent_at"),
+  redeemedAt: timestamp("redeemed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type CompensationVoucher = typeof compensationVouchers.$inferSelect;
+export type InsertCompensationVoucher = typeof compensationVouchers.$inferInsert;

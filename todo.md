@@ -2204,3 +2204,22 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Diagnóstico: el contenedor usaba overflow-hidden que cortaba las columnas extra
 - [x] Fix: cambiado a overflow-x-auto + min-w-[1100px] en la tabla para habilitar scroll horizontal y mostrar todas las columnas
 - [x] 235 tests pasando (0 errores TypeScript)
+
+## v24 — Módulo Solicitud de Anulaciones (CRM completo) [COMPLETADO]
+- [x] Schema Drizzle: tablas cancellation_requests, cancellation_logs, compensation_vouchers
+- [x] Migración SQL aplicada a BD (3 tablas con enums, foreign keys e índices)
+- [x] Backend: router cancellations.ts con 11 procedimientos tRPC completos
+- [x] Landing pública /solicitar-anulacion con formulario validado (5 motivos, adjuntos, localizador)
+- [x] Email acuse de recibo al enviar formulario (plantilla HTML con ID de expediente)
+- [x] Módulo CRM CancellationsManager: 10 KPIs, tabla con 3 badges de estado, filtros múltiples
+- [x] Navegación sidebar: items "Clientes" y "Anulaciones" bajo CRM con indent
+- [x] Modal de detalle CancellationDetailModal: Datos, Estado, Timeline, Notas, Acciones operativas
+- [x] Acción Rechazar: email al cliente + cambio de estados + entrada en timeline
+- [x] Acción Aceptar total: flujo devolución económica o bono + estados + email
+- [x] Acción Aceptar parcial: mismo flujo que total con estado parcial + email
+- [x] Acción Solicitar documentación: email al cliente + estado + timeline
+- [x] Acción Marcar incidencia: estado + timeline
+- [x] Acción Cerrar expediente: validación de condiciones + timeline
+- [x] Generación de bonos PDF con ID único (BON-XXXXXX), diseño de marca, descarga desde expediente
+- [x] Emails automáticos: 7 plantillas HTML (acuse, rechazo, aceptación total/parcial devolución/bono, solicitud docs, incidencia)
+- [x] 235 tests pasando (0 errores TypeScript)
