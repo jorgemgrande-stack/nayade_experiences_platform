@@ -2223,3 +2223,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Generación de bonos PDF con ID único (BON-XXXXXX), diseño de marca, descarga desde expediente
 - [x] Emails automáticos: 7 plantillas HTML (acuse, rechazo, aceptación total/parcial devolución/bono, solicitud docs, incidencia)
 - [x] 235 tests pasando (0 errores TypeScript)
+
+## v25 — Páginas Legales (4 páginas)
+- [ ] Scrappear estructura legal de Skicenter (Privacidad + Aviso Legal)
+- [ ] Página /politica-de-privacidad adaptada a Nayade Experiences
+- [ ] Página /aviso-legal adaptada a Nayade Experiences
+- [ ] Página /politica-de-cookies (nueva, RGPD + LSSI)
+- [ ] Página /condiciones-de-cancelacion (con texto base proporcionado)
+- [ ] Integrar rutas en App.tsx
+- [ ] Actualizar footer con enlaces a las 4 páginas legales

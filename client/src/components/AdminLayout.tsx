@@ -59,6 +59,7 @@ const navItems = [
       { label: "Reservas", href: "/admin/crm?tab=reservations", key: "crm-reservas" },
       { label: "Facturas", href: "/admin/crm?tab=invoices", key: "crm-facturas" },
       { label: "Clientes", href: "/admin/crm/clientes", key: "crm-clientes" },
+      { label: "Anulaciones", href: "/admin/crm/anulaciones", key: "crm-anulaciones" },
     ],
   },
   {
