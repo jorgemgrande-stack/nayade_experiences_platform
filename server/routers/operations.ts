@@ -411,6 +411,8 @@ const dailyOrdersRouter = router({
           reservationType: input.reservationType,
           clientConfirmed: isPaid ? true : false,
           clientConfirmedAt: isPaid ? new Date() : undefined,
+          // Paid reservations start as 'confirmado', not 'pendiente'
+          opStatus: isPaid ? 'confirmado' : 'pendiente',
           ...updateData,
         });
       }

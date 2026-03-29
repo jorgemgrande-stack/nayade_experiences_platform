@@ -2332,3 +2332,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Actividades del Día getForDate: usa input.date.slice(0,10)
 - [x] getDashboardStats: usa input.date.slice(0,10)
 - [x] 0 errores TypeScript, servidor limpio
+
+## v25.14 — opStatus auto-confirmado para reservas pagadas [COMPLETADO]
+- [x] BD: actualizada reserva de Simo Blanquez (id=420001) a opStatus='confirmado'
+- [x] Backend: al crear nuevo registro operativo para reserva paid, opStatus='confirmado' por defecto
+- [x] Frontend: la etiqueta de estado refleja el opStatus de la BD directamente

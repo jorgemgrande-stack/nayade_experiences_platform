@@ -1,0 +1,18 @@
+{
+  "query": "UPDATE reservation_operational ro\nJOIN reservations r ON r.id = ro.reservation_id\nSET ro.op_status = 'confirmado'\nWHERE r.status IN ('paid', 'confirmed')\n  AND (ro.op_status = 'pendiente' OR ro.op_status IS NULL);\n\nSELECT ro.id, ro.reservation_id, ro.op_status, ro.client_confirmed, r.customer_name, r.status\nFROM reservation_operational ro\nJOIN reservations r ON r.id = ro.reservation_id\nORDER BY ro.id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute UPDATE reservation_operational ro\nJOIN reservations r ON r.id = ro.reservation_id\nSET ro.op_status = 'confirmado'\nWHERE r.status IN ('paid', 'confirmed')\n  AND (ro.op_status = 'pendiente' OR ro.op_status IS NULL);\n\nSELECT ro.id, ro.reservation_id, ro.op_status, ro.client_confirmed, r.customer_name, r.status\nFROM reservation_operational ro\nJOIN reservations r ON r.id = ro.reservation_id\nORDER BY ro.id;",
+  "rows": [
+    {
+      "id": "1",
+      "reservation_id": "420001",
+      "op_status": "confirmado",
+      "client_confirmed": "1",
+      "customer_name": "Simo Blanquez",
+      "status": "paid"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\treservation_id\top_status\tclient_confirmed\tcustomer_name\tstatus\n1\t420001\tconfirmado\t1\tSimo Blanquez\tpaid\n",
+  "stderr": "",
+  "execution_time_ms": 146
+}
