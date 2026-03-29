@@ -29,6 +29,7 @@ const colServicios = [
   { label: "Galería de Fotos", href: "/galeria" },
   { label: "Ubicación", href: "/ubicacion" },
   { label: "Solicitar Presupuesto", href: "/presupuesto" },
+  { label: "Solicitar Anulación", href: "/solicitar-anulacion" },
 ];
 
 export default function PublicFooter() {

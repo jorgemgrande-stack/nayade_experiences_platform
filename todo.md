@@ -2240,3 +2240,6 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Sidebar link actualizado a /admin/crm?tab=anulaciones (mantiene AdminLayout siempre visible)
 - [x] Ruta separada /admin/crm/anulaciones eliminada (ya no necesaria)
 - [x] Tests de integración escritos y pasando (6/6)
+
+## v25.2 — Enlace Solicitar Anulación en footer
+- [x] Añadir enlace "Solicitar Anulación" → /solicitar-anulacion en columna Servicios del footer público
