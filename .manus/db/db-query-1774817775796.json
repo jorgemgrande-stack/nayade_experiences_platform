@@ -1,0 +1,19 @@
+{
+  "query": "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE '%reav%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE '%reav%';",
+  "rows": [
+    {
+      "table_name": "reav_expedients"
+    },
+    {
+      "table_name": "reav_documents"
+    },
+    {
+      "table_name": "reav_costs"
+    }
+  ],
+  "messages": [],
+  "stdout": "table_name\nreav_expedients\nreav_documents\nreav_costs\n",
+  "stderr": "",
+  "execution_time_ms": 62
+}

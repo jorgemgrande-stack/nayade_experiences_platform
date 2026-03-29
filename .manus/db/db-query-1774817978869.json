@@ -1,0 +1,208 @@
+{
+  "query": "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'invoices' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'invoices' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "invoiceNumber",
+      "COLUMN_TYPE": "varchar(32)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "quoteId",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "reservationId",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "clientName",
+      "COLUMN_TYPE": "varchar(256)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "clientEmail",
+      "COLUMN_TYPE": "varchar(320)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "clientPhone",
+      "COLUMN_TYPE": "varchar(32)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "clientNif",
+      "COLUMN_TYPE": "varchar(32)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "clientAddress",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "itemsJson",
+      "COLUMN_TYPE": "json",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "subtotal",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "taxRate",
+      "COLUMN_TYPE": "decimal(5,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "21"
+    },
+    {
+      "COLUMN_NAME": "taxAmount",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "0"
+    },
+    {
+      "COLUMN_NAME": "total",
+      "COLUMN_TYPE": "decimal(10,2)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "currency",
+      "COLUMN_TYPE": "varchar(8)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "EUR"
+    },
+    {
+      "COLUMN_NAME": "pdfUrl",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "pdfKey",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "status",
+      "COLUMN_TYPE": "enum('generada','enviada','cobrada','anulada','abonada')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "generada"
+    },
+    {
+      "COLUMN_NAME": "issuedAt",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP"
+    },
+    {
+      "COLUMN_NAME": "createdAt",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP"
+    },
+    {
+      "COLUMN_NAME": "updatedAt",
+      "COLUMN_TYPE": "timestamp",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP"
+    },
+    {
+      "COLUMN_NAME": "invoiceType",
+      "COLUMN_TYPE": "enum('factura','abono')",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "factura"
+    },
+    {
+      "COLUMN_NAME": "paymentMethod",
+      "COLUMN_TYPE": "enum('redsys','transferencia','efectivo','otro')",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "redsys"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedBy",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedAt",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "transferProofUrl",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "transferProofKey",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "isAutomatic",
+      "COLUMN_TYPE": "tinyint(1)",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "1"
+    },
+    {
+      "COLUMN_NAME": "creditNoteForId",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "creditNoteReason",
+      "COLUMN_TYPE": "text",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "sentAt",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "lastSentAt",
+      "COLUMN_TYPE": "datetime",
+      "IS_NULLABLE": "YES",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "sentCount",
+      "COLUMN_TYPE": "int",
+      "IS_NULLABLE": "NO",
+      "COLUMN_DEFAULT": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\tCOLUMN_TYPE\tIS_NULLABLE\tCOLUMN_DEFAULT\nid\tint\tNO\tNULL\ninvoiceNumber\tvarchar(32)\tNO\tNULL\nquoteId\tint\tYES\tNULL\nreservationId\tint\tYES\tNULL\nclientName\tvarchar(256)\tNO\tNULL\nclientEmail\tvarchar(320)\tNO\tNULL\nclientPhone\tvarchar(32)\tYES\tNULL\nclientNif\tvarchar(32)\tYES\tNULL\nclientAddress\ttext\tYES\tNULL\nitemsJson\tjson\tYES\tNULL\nsubtotal\tdecimal(10,2)\tNO\tNULL\ntaxRate\tdecimal(5,2)\tYES\t21\ntaxAmount\tdecimal(10,2)\tYES\t0\ntotal\tdecimal(10,2)\tNO\tNULL\ncurrency\tvarchar(8)\tNO\tEUR\npdfUrl\ttext\tYES\tNULL\npdfKey\ttext\tYES\tNULL\nstatus\tenum('generada','enviada','cobrada','anulada','abonada')\tNO\tgenerada\nissuedAt\ttimestamp\tNO\tCURRENT_TIMESTAMP\ncreatedAt\ttimestamp\tNO\tCURRENT_TIMESTAMP\nupdatedAt\ttimestamp\tNO\tCURRENT_TIMESTAMP\ninvoiceType\tenum('factura','abono')\tNO\tfactura\npaymentMethod\tenum('redsys','transferencia','efectivo','otro')\tYES\tredsys\npaymentValidatedBy\tint\tYES\tNULL\npaymentValidatedAt\tdatetime\tYES\tNULL\ntransferProofUrl\ttext\tYES\tNULL\ntransferProofKey\ttext\tYES\tNULL\nisAutomatic\ttinyint(1)\tNO\t1\ncreditNoteForId\tint\tYES\tNULL\ncreditNoteReason\ttext\tYES\tNULL\nsentAt\tdatetime\tYES\tNULL\nlastSentAt\tdatetime\tYES\tNULL\nsentCount\tint\tNO\t0\n",
+  "stderr": "",
+  "execution_time_ms": 67
+}

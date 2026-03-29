@@ -2362,6 +2362,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Dashboard: icono de monitor asignado (azul) vs sin monitor (ámbar) para identificación rápida
 - [x] 0 errores TypeScript
 
+## BUG v25.18 — Error al confirmar pago por transferencia en presupuesto [RESUELTO]
+- [x] Causa raíz: generateInvoiceNumber() usaba COUNT(*); si ya existía FAC-2026-0002 de operación anterior, MySQL lanzaba Duplicate entry en el UNIQUE constraint
+- [x] Corregido: generateInvoiceNumber() ahora usa MAX(invoiceNumber) para obtener el número más alto y sumar 1
+- [x] Mismo fix aplicado a generateQuoteNumber() de forma preventiva
+- [x] Verificado: flujo completo funciona — FAC-2026-0003 generada, reserva creada, ingresos +14.52€, dashboard actualizado
+
 ## BUG v25.17 — Layout incorrecto en pantallas de Contabilidad [RESUELTO]
 - [x] /admin/contabilidad/gastos: unificado con AdminLayout estándar
 - [x] /admin/contabilidad/gastos/recurrentes: unificado con AdminLayout estándar

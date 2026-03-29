@@ -1,0 +1,8 @@
+{
+  "query": "SELECT Tables_in_AV298FS8t5SaTurBBRqhgQ as tbl FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE '%reav%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT Tables_in_AV298FS8t5SaTurBBRqhgQ as tbl FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name LIKE '%reav%';",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'tables_in_av298fs8t5saturbbrqhgq' in 'field list'"
+  ]
+}

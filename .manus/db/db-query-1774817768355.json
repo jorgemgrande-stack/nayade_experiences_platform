@@ -1,0 +1,262 @@
+{
+  "query": "SHOW TABLES;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SHOW TABLES;",
+  "rows": [
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "__drizzle_migrations"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "booking_monitors"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "bookings"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "cancellation_logs"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "cancellation_requests"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "cash_movements"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "cash_registers"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "cash_sessions"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "categories"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "clients"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "compensation_vouchers"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "cost_centers"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "coupon_email_config"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "coupon_redemptions"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "crm_activity_log"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "daily_orders"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "discount_code_uses"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "discount_codes"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "email_templates"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "expense_categories"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "expense_files"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "expense_suppliers"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "expenses"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "experience_variants"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "experiences"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "gallery_items"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "ghl_webhook_logs"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "home_module_items"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "invoices"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "leads"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "lego_pack_lines"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "lego_pack_snapshots"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "lego_packs"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "locations"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "media_files"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "menu_items"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "monitor_documents"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "monitor_payroll"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "monitors"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "pack_cross_sells"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "packs"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "page_blocks"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "password_reset_tokens"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "pdf_templates"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "platform_products"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "platform_settlements"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "platforms"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "quotes"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "reav_costs"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "reav_documents"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "reav_expedients"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "recurring_expenses"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "reservation_operational"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "reservations"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "restaurant_booking_logs"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "restaurant_bookings"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "restaurant_closures"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "restaurant_shifts"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "restaurant_staff"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "restaurants"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "reviews"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "room_blocks"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "room_rate_seasons"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "room_rates"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "room_types"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "settlement_documents"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "settlement_lines"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "settlement_status_log"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "site_settings"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "slideshow_items"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "spa_categories"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "spa_resources"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "spa_schedule_templates"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "spa_slots"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "spa_treatments"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "static_pages"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "supplier_settlements"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "suppliers"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "ticketing_products"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "tpv_sale_items"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "tpv_sale_payments"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "tpv_sales"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "transactions"
+    },
+    {
+      "Tables_in_AV298FS8t5SaTurBBRqhgQ": "users"
+    }
+  ],
+  "messages": [],
+  "stdout": "Tables_in_AV298FS8t5SaTurBBRqhgQ\n__drizzle_migrations\nbooking_monitors\nbookings\ncancellation_logs\ncancellation_requests\ncash_movements\ncash_registers\ncash_sessions\ncategories\nclients\ncompensation_vouchers\ncost_centers\ncoupon_email_config\ncoupon_redemptions\ncrm_activity_log\ndaily_orders\ndiscount_code_uses\ndiscount_codes\nemail_templates\nexpense_categories\nexpense_files\nexpense_suppliers\nexpenses\nexperience_variants\nexperiences\ngallery_items\nghl_webhook_logs\nhome_module_items\ninvoices\nleads\nlego_pack_lines\nlego_pack_snapshots\nlego_packs\nlocations\nmedia_files\nmenu_items\nmonitor_documents\nmonitor_payroll\nmonitors\npack_cross_sells\npacks\npage_blocks\npassword_reset_tokens\npdf_templates\nplatform_products\nplatform_settlements\nplatforms\nquotes\nreav_costs\nreav_documents\nreav_expedients\nrecurring_expenses\nreservation_operational\nreservations\nrestaurant_booking_logs\nrestaurant_bookings\nrestaurant_closures\nrestaurant_shifts\nrestaurant_staff\nrestaurants\nreviews\nroom_blocks\nroom_rate_seasons\nroom_rates\nroom_types\nsettlement_documents\nsettlement_lines\nsettlement_status_log\nsite_settings\nslideshow_items\nspa_categories\nspa_resources\nspa_schedule_templates\nspa_slots\nspa_treatments\nstatic_pages\nsupplier_settlements\nsuppliers\nticketing_products\ntpv_sale_items\ntpv_sale_payments\ntpv_sales\ntransactions\nusers\n",
+  "stderr": "",
+  "execution_time_ms": 66
+}

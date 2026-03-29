@@ -1,0 +1,17 @@
+{
+  "query": "SELECT id, invoiceNumber, quoteId, status, createdAt FROM invoices WHERE invoiceNumber = 'FAC-2026-0002' OR quoteId = 420001;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, invoiceNumber, quoteId, status, createdAt FROM invoices WHERE invoiceNumber = 'FAC-2026-0002' OR quoteId = 420001;",
+  "rows": [
+    {
+      "id": "240001",
+      "invoiceNumber": "FAC-2026-0002",
+      "quoteId": "390001",
+      "status": "generada",
+      "createdAt": "2026-03-29 13:44:17"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tinvoiceNumber\tquoteId\tstatus\tcreatedAt\n240001\tFAC-2026-0002\t390001\tgenerada\t2026-03-29 13:44:17\n",
+  "stderr": "",
+  "execution_time_ms": 68
+}

@@ -1,0 +1,13 @@
+{
+  "query": "SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'quotes' AND COLUMN_NAME = 'status';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'quotes' AND COLUMN_NAME = 'status';",
+  "rows": [
+    {
+      "COLUMN_TYPE": "enum('borrador','enviado','visualizado','aceptado','convertido_carrito','pagado','convertido_reserva','facturado','rechazado','expirado','perdido')"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_TYPE\nenum('borrador','enviado','visualizado','aceptado','convertido_carrito','pagado','convertido_reserva','facturado','rechazado','expirado','perdido')\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}

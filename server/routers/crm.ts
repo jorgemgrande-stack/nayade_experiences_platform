@@ -22,7 +22,7 @@ import {
   tpvSaleItems,
   legoPacks,
 } from "../../drizzle/schema";
-import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
@@ -79,21 +79,35 @@ async function logActivity(
 
 async function generateInvoiceNumber(): Promise<string> {
   const year = new Date().getFullYear();
+  // Use MAX to avoid duplicate key errors when invoices have been deleted or gaps exist
   const result = await db
-    .select({ cnt: count() })
+    .select({ maxNum: max(invoices.invoiceNumber) })
     .from(invoices)
     .where(like(invoices.invoiceNumber, `FAC-${year}-%`));
-  const n = (result[0]?.cnt ?? 0) + 1;
+  const maxVal = result[0]?.maxNum;
+  let n = 1;
+  if (maxVal) {
+    const parts = maxVal.split("-");
+    const lastNum = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(lastNum)) n = lastNum + 1;
+  }
   return `FAC-${year}-${String(n).padStart(4, "0")}`;
 }
 
 async function generateQuoteNumber(): Promise<string> {
   const year = new Date().getFullYear();
+  // Use MAX to avoid duplicate key errors when quotes have been deleted or gaps exist
   const result = await db
-    .select({ cnt: count() })
+    .select({ maxNum: max(quotes.quoteNumber) })
     .from(quotes)
     .where(like(quotes.quoteNumber, `PRE-${year}-%`));
-  const n = (result[0]?.cnt ?? 0) + 1;
+  const maxVal = result[0]?.maxNum;
+  let n = 1;
+  if (maxVal) {
+    const parts = maxVal.split("-");
+    const lastNum = parseInt(parts[parts.length - 1], 10);
+    if (!isNaN(lastNum)) n = lastNum + 1;
+  }
   return `PRE-${year}-${String(n).padStart(4, "0")}`;
 }
 

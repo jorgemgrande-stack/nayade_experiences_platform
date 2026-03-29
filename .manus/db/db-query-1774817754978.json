@@ -1,0 +1,24 @@
+{
+  "query": "SELECT id, quoteNumber, JSON_PRETTY(items) as items_pretty FROM quotes WHERE id = 420001; SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'reavExpedients' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, quoteNumber, JSON_PRETTY(items) as items_pretty FROM quotes WHERE id = 420001; SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'reavExpedients' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "id": "420001",
+      "quoteNumber": "PRE-2026-0002",
+      "items_pretty": "["
+    }
+  ],
+  "messages": [
+    "  {",
+    "    \"description\": \"Aventura Hinchable Acuática\",",
+    "    \"fiscalRegime\": \"general_21\",",
+    "    \"quantity\": 1,",
+    "    \"total\": 12,",
+    "    \"unitPrice\": 12",
+    "  }",
+    "]"
+  ],
+  "stdout": "id\tquoteNumber\titems_pretty\n420001\tPRE-2026-0002\t[\n  {\n    \"description\": \"Aventura Hinchable Acuática\",\n    \"fiscalRegime\": \"general_21\",\n    \"quantity\": 1,\n    \"total\": 12,\n    \"unitPrice\": 12\n  }\n]\n",
+  "stderr": "",
+  "execution_time_ms": 100
+}
