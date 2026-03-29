@@ -2404,3 +2404,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Home.tsx (hero form): colegios y empresas ahora cargan packs dinámicamente desde la BD
 - [x] Añadido endpoint público packs.getTitlesByCategory para cargar títulos de packs por categoría
 - [x] Verificado: servidor corriendo sin errores, HMR aplicado correctamente
+
+## BUG v25.22 — Autogenerador de presupuesto falla con leads de Lego Packs/Packs (sin activitiesJson) [RESUELTO]
+- [x] Diagnosticado: activitiesJson solo se rellena para Experiencias acuáticas; Packs/LegoPacks/Hotel/SPA/Colegios/Empresas lo dejan NULL
+- [x] selectedProduct sí se guardaba correctamente en el lead (columna existe en BD)
+- [x] Corregido generateFromLead: cuando activitiesJson está vacío, busca por selectedProduct en packs → legoPacks → experiences (en ese orden)
+- [x] Corregido previewFromLead: misma lógica de fallback para la previsualización
+- [x] Importada tabla packs en crm.ts
+- [x] Verificado en vivo: Day Pass Náyade — Un día completo en el lago, 1 pax, 45.00€, IVA 21%, TOTAL 54.45€ generado correctamente

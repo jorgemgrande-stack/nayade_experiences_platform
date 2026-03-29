@@ -21,6 +21,7 @@ import {
   tpvSales,
   tpvSaleItems,
   legoPacks,
+  packs,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -719,15 +720,79 @@ export const crmRouter = router({
           details: Record<string, string | number>;
         }[] | null) ?? [];
 
-        if (activities.length === 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Este lead no tiene actividades seleccionadas. Añade actividades desde el formulario antes de generar el presupuesto.",
-          });
-        }
-
         // 2. Resolver precios para cada actividad
         const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[] = [];
+
+        // ── Fallback: si no hay activitiesJson, buscar por selectedProduct en packs/experiences/legoPacks ──
+        if (activities.length === 0) {
+          const productName = lead.selectedProduct;
+          const qty = lead.numberOfPersons ?? 1;
+
+          if (!productName) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Este lead no tiene actividades ni producto seleccionado. Añade los conceptos manualmente.",
+            });
+          }
+
+          // Buscar en packs (día, escolar, empresa)
+          const [foundPack] = await db.select().from(packs)
+            .where(and(eq(packs.title, productName), eq(packs.isActive, true)))
+            .limit(1);
+
+          if (foundPack) {
+            const unitPrice = parseFloat(String(foundPack.basePrice));
+            quoteItems.push({
+              description: `${foundPack.title}${foundPack.subtitle ? ` — ${foundPack.subtitle}` : ""}`,
+              quantity: qty,
+              unitPrice,
+              total: parseFloat((unitPrice * qty).toFixed(2)),
+              fiscalRegime: "general_21",
+            });
+          } else {
+            // Buscar en legoPacks
+            const [foundLego] = await db.select().from(legoPacks)
+              .where(and(eq(legoPacks.title, productName), eq(legoPacks.isActive, true)))
+              .limit(1);
+
+            if (foundLego) {
+              const unitPrice = parseFloat(String((foundLego as any).basePrice ?? (foundLego as any).price ?? 0));
+              quoteItems.push({
+                description: `${foundLego.title}${(foundLego as any).subtitle ? ` — ${(foundLego as any).subtitle}` : ""}`,
+                quantity: qty,
+                unitPrice,
+                total: parseFloat((unitPrice * qty).toFixed(2)),
+                fiscalRegime: "general_21",
+              });
+            } else {
+              // Buscar en experiences
+              const [foundExp] = await db.select().from(experiences)
+                .where(and(eq(experiences.title, productName), eq(experiences.isActive, true)))
+                .limit(1);
+
+              if (foundExp) {
+                const unitPrice = parseFloat(String(foundExp.basePrice));
+                quoteItems.push({
+                  description: foundExp.title,
+                  quantity: qty,
+                  unitPrice,
+                  total: parseFloat((unitPrice * qty).toFixed(2)),
+                  fiscalRegime: foundExp.fiscalRegime === "reav" ? "reav" : "general_21",
+                  productId: foundExp.id,
+                });
+              } else {
+                // Producto no encontrado en BD: crear línea vacía con nombre del producto
+                quoteItems.push({
+                  description: productName,
+                  quantity: qty,
+                  unitPrice: 0,
+                  total: 0,
+                  fiscalRegime: "general_21",
+                });
+              }
+            }
+          }
+        }
 
         for (const act of activities) {
           // Cargar experiencia base
@@ -832,7 +897,32 @@ export const crmRouter = router({
           participants: number;
           details: Record<string, string | number>;
         }[] | null) ?? [];
-        if (activities.length === 0) return { items: [], hasActivities: false };
+        if (activities.length === 0) {
+          // Fallback: buscar por selectedProduct en packs/legoPacks/experiences
+          const productName = lead.selectedProduct;
+          const qty = lead.numberOfPersons ?? 1;
+          if (!productName) return { items: [], hasActivities: false };
+
+          const [foundPack] = await db.select().from(packs)
+            .where(and(eq(packs.title, productName), eq(packs.isActive, true))).limit(1);
+          if (foundPack) {
+            const unitPrice = parseFloat(String(foundPack.basePrice));
+            return { items: [{ description: `${foundPack.title}${foundPack.subtitle ? ` — ${foundPack.subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general_21" as const }], hasActivities: true, fromSelectedProduct: true };
+          }
+          const [foundLego] = await db.select().from(legoPacks)
+            .where(and(eq(legoPacks.title, productName), eq(legoPacks.isActive, true))).limit(1);
+          if (foundLego) {
+            const unitPrice = parseFloat(String((foundLego as any).basePrice ?? (foundLego as any).price ?? 0));
+            return { items: [{ description: `${foundLego.title}${(foundLego as any).subtitle ? ` — ${(foundLego as any).subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general_21" as const }], hasActivities: true, fromSelectedProduct: true };
+          }
+          const [foundExp] = await db.select().from(experiences)
+            .where(and(eq(experiences.title, productName), eq(experiences.isActive, true))).limit(1);
+          if (foundExp) {
+            const unitPrice = parseFloat(String(foundExp.basePrice));
+            return { items: [{ description: foundExp.title, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundExp.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21", productId: foundExp.id }], hasActivities: true, fromSelectedProduct: true };
+          }
+          return { items: [{ description: productName, quantity: qty, unitPrice: 0, total: 0, fiscalRegime: "general_21" as const }], hasActivities: true, fromSelectedProduct: true };
+        }
         const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[] = [];
         for (const act of activities) {
           const [exp] = await db.select().from(experiences).where(eq(experiences.id, act.experienceId));

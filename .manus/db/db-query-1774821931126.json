@@ -1,0 +1,19 @@
+{
+  "query": "SELECT id, name, selectedCategory, selectedProduct, activitiesJson, numberOfPersons, preferredDate FROM leads ORDER BY id DESC LIMIT 2;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, name, selectedCategory, selectedProduct, activitiesJson, numberOfPersons, preferredDate FROM leads ORDER BY id DESC LIMIT 2;",
+  "rows": [
+    {
+      "id": "1410003",
+      "name": "Universo Dark",
+      "selectedCategory": "LegoPacks",
+      "selectedProduct": "Day Pass Náyade",
+      "activitiesJson": "NULL",
+      "numberOfPersons": "1",
+      "preferredDate": "2026-04-01 00:00:00"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tname\tselectedCategory\tselectedProduct\tactivitiesJson\tnumberOfPersons\tpreferredDate\n1410003\tUniverso Dark\tLegoPacks\tDay Pass Náyade\tNULL\t1\t2026-04-01 00:00:00\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}
