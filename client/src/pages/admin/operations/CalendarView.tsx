@@ -11,7 +11,13 @@ import { Badge } from "@/components/ui/badge";
 type ViewMode = "day" | "week" | "timeline";
 const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
 
-function formatDate(d: Date) { return d.toISOString().split("T")[0]; }
+// CRITICAL: use LOCAL date parts — toISOString() converts to UTC and shifts day by -1 in UTC+2 Spain
+function formatDate(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
 function getWeekStart(d: Date) {
   const r = new Date(d);

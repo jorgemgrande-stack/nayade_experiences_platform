@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT \n  r.id, r.reference, r.status, r.booking_date, r.product_id, r.product_name, r.people,\n  ro.id as op_id, ro.op_status, ro.client_confirmed, ro.monitor_id,\n  DATE_FORMAT(r.booking_date, '%Y-%m-%d') as date_formatted\nFROM reservations r\nLEFT JOIN reservation_operational ro ON ro.reservation_id = r.id\nWHERE r.id = 420001 OR r.reference = 'RES-MNBT8XOR';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT \n  r.id, r.reference, r.status, r.booking_date, r.product_id, r.product_name, r.people,\n  ro.id as op_id, ro.op_status, ro.client_confirmed, ro.monitor_id,\n  DATE_FORMAT(r.booking_date, '%Y-%m-%d') as date_formatted\nFROM reservations r\nLEFT JOIN reservation_operational ro ON ro.reservation_id = r.id\nWHERE r.id = 420001 OR r.reference = 'RES-MNBT8XOR';\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'r.reference' in 'where clause'"
+  ]
+}

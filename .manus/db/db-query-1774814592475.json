@@ -1,0 +1,23 @@
+{
+  "query": "\nSELECT r.id, r.status, r.booking_date, r.product_id, r.product_name, r.people, r.customer_name,\n  ro.id as op_id, ro.op_status, ro.client_confirmed, ro.monitor_id\nFROM reservations r\nLEFT JOIN reservation_operational ro ON ro.reservation_id = r.id\nWHERE r.customer_name LIKE '%Simo%' OR r.customer_name LIKE '%Blanquez%'\nLIMIT 5;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT r.id, r.status, r.booking_date, r.product_id, r.product_name, r.people, r.customer_name,\n  ro.id as op_id, ro.op_status, ro.client_confirmed, ro.monitor_id\nFROM reservations r\nLEFT JOIN reservation_operational ro ON ro.reservation_id = r.id\nWHERE r.customer_name LIKE '%Simo%' OR r.customer_name LIKE '%Blanquez%'\nLIMIT 5;\n",
+  "rows": [
+    {
+      "id": "420001",
+      "status": "paid",
+      "booking_date": "2026-03-29",
+      "product_id": "0",
+      "product_name": "Presupuesto Nayade Experiences - Simo Blanquez",
+      "people": "2",
+      "customer_name": "Simo Blanquez",
+      "op_id": "1",
+      "op_status": "confirmado",
+      "client_confirmed": "1",
+      "monitor_id": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tstatus\tbooking_date\tproduct_id\tproduct_name\tpeople\tcustomer_name\top_id\top_status\tclient_confirmed\tmonitor_id\n420001\tpaid\t2026-03-29\t0\tPresupuesto Nayade Experiences - Simo Blanquez\t2\tSimo Blanquez\t1\tconfirmado\t1\t1\n",
+  "stderr": "",
+  "execution_time_ms": 67
+}

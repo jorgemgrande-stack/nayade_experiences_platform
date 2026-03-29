@@ -2361,3 +2361,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Dashboard: muestra nombre de actividad, cliente, pax, monitor asignado y estado operativo
 - [x] Dashboard: icono de monitor asignado (azul) vs sin monitor (ámbar) para identificación rápida
 - [x] 0 errores TypeScript
+
+## BUG v25.16 — Reserva Simo Blanquez sigue sin aparecer en Calendario y Órdenes del Día [RESUELTO]
+- [x] Diagnóstico completo: BD + SQL + frontend
+- [x] Causa raíz: formatDate() en DailyOrders.tsx y DailyActivities.tsx usaba toISOString() que convierte a UTC, causando desfase de -1 día en España (UTC+2)
+- [x] Corregido: formatDate() en DailyOrders.tsx y DailyActivities.tsx ahora usa getFullYear/getMonth/getDate (hora local)
+- [x] Verificado: simulación Node.js confirma que la clave del evento "2026-03-29" coincide con la clave del mapa de la semana
+- [x] CalendarView.tsx ya tenía el fix aplicado desde v25.12; DailyOrders y DailyActivities ahora también corregidos

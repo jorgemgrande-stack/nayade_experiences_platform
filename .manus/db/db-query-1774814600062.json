@@ -1,0 +1,76 @@
+{
+  "query": "\nSELECT \n  r.id, r.product_name as activityTitle, r.booking_date as scheduledDate,\n  r.people as numberOfPersons, r.customer_name as clientName,\n  r.status, ro.op_status as opStatus, ro.client_confirmed as clientConfirmed,\n  ro.monitor_id as monitorId\nFROM reservations r\nLEFT JOIN reservation_operational ro ON ro.reservation_id = r.id\nWHERE r.booking_date >= '2026-03-23' AND r.booking_date <= '2026-03-29'\n  AND r.status NOT IN ('cancelled', 'failed')\nORDER BY r.booking_date, r.id;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT \n  r.id, r.product_name as activityTitle, r.booking_date as scheduledDate,\n  r.people as numberOfPersons, r.customer_name as clientName,\n  r.status, ro.op_status as opStatus, ro.client_confirmed as clientConfirmed,\n  ro.monitor_id as monitorId\nFROM reservations r\nLEFT JOIN reservation_operational ro ON ro.reservation_id = r.id\nWHERE r.booking_date >= '2026-03-23' AND r.booking_date <= '2026-03-29'\n  AND r.status NOT IN ('cancelled', 'failed')\nORDER BY r.booking_date, r.id;\n",
+  "rows": [
+    {
+      "id": "300001",
+      "activityTitle": "Banana Ski (+1 más)",
+      "scheduledDate": "2026-03-25",
+      "numberOfPersons": "2",
+      "clientName": "Faustino",
+      "status": "paid",
+      "opStatus": "NULL",
+      "clientConfirmed": "NULL",
+      "monitorId": "NULL"
+    },
+    {
+      "id": "300002",
+      "activityTitle": "Entrada General Piscina Club Nautico (+3 más)",
+      "scheduledDate": "2026-03-25",
+      "numberOfPersons": "4",
+      "clientName": "Caridad martinez",
+      "status": "paid",
+      "opStatus": "NULL",
+      "clientConfirmed": "NULL",
+      "monitorId": "NULL"
+    },
+    {
+      "id": "330001",
+      "activityTitle": "Banana Ski (+2 más)",
+      "scheduledDate": "2026-03-25",
+      "numberOfPersons": "3",
+      "clientName": "Cliente TPV",
+      "status": "paid",
+      "opStatus": "NULL",
+      "clientConfirmed": "NULL",
+      "monitorId": "NULL"
+    },
+    {
+      "id": "330002",
+      "activityTitle": "Paddle Surf (+7 más)",
+      "scheduledDate": "2026-03-25",
+      "numberOfPersons": "8",
+      "clientName": "Cliente TPV",
+      "status": "paid",
+      "opStatus": "NULL",
+      "clientConfirmed": "NULL",
+      "monitorId": "NULL"
+    },
+    {
+      "id": "360001",
+      "activityTitle": "Presupuesto Nayade Experiences - Natalia",
+      "scheduledDate": "2026-03-27",
+      "numberOfPersons": "1",
+      "clientName": "Natalia",
+      "status": "paid",
+      "opStatus": "NULL",
+      "clientConfirmed": "NULL",
+      "monitorId": "NULL"
+    },
+    {
+      "id": "420001",
+      "activityTitle": "Presupuesto Nayade Experiences - Simo Blanquez",
+      "scheduledDate": "2026-03-29",
+      "numberOfPersons": "2",
+      "clientName": "Simo Blanquez",
+      "status": "paid",
+      "opStatus": "confirmado",
+      "clientConfirmed": "1",
+      "monitorId": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tactivityTitle\tscheduledDate\tnumberOfPersons\tclientName\tstatus\topStatus\tclientConfirmed\tmonitorId\n300001\tBanana Ski (+1 más)\t2026-03-25\t2\tFaustino\tpaid\tNULL\tNULL\tNULL\n300002\tEntrada General Piscina Club Nautico (+3 más)\t2026-03-25\t4\tCaridad martinez\tpaid\tNULL\tNULL\tNULL\n330001\tBanana Ski (+2 más)\t2026-03-25\t3\tCliente TPV\tpaid\tNULL\tNULL\tNULL\n330002\tPaddle Surf (+7 más)\t2026-03-25\t8\tCliente TPV\tpaid\tNULL\tNULL\tNULL\n360001\tPresupuesto Nayade Experiences - Natalia\t2026-03-27\t1\tNatalia\tpaid\tNULL\tNULL\tNULL\n420001\tPresupuesto Nayade Experiences - Simo Blanquez\t2026-03-29\t2\tSimo Blanquez\tpaid\tconfirmado\t1\t1\n",
+  "stderr": "",
+  "execution_time_ms": 64
+}

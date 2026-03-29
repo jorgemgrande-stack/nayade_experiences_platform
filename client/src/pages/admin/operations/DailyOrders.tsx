@@ -17,8 +17,12 @@ function addDays(d: Date, n: number) {
   r.setDate(r.getDate() + n);
   return r;
 }
+// CRITICAL: use LOCAL date parts — toISOString() shifts day by -1 in UTC+2 Spain
 function formatDateStr(d: Date) {
-  return d.toISOString().split("T")[0];
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${mo}-${day}`;
 }
 function formatTime(sd: any) {
   if (!sd) return "—";
