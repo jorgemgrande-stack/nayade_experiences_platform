@@ -2259,3 +2259,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [ ] Crear CondicionesCancelacion.tsx con contenido adaptado a Náyade Experiences
 - [ ] Registrar ruta /condiciones-cancelacion en App.tsx
 - [ ] Añadir enlace en el footer (columna legal)
+
+## v25.5 — Sistema de Plantillas Centralizado + Normalización
+- [ ] Auditar y listar todas las plantillas de email y PDF existentes (12 email + 2 PDF)
+- [ ] Normalizar plantillas de email en ficheros separados (tpv, cancellations, restaurants, ticketing) al diseño base de emailTemplates.ts
+- [ ] Crear tabla email_templates en BD (id, key, name, type, trigger, subject, htmlBody, updatedAt)
+- [ ] Crear procedimientos tRPC: templates.list, templates.get, templates.update, templates.preview, templates.sendTest
+- [ ] Crear TemplatesManager.tsx en Admin > CRM con listado, editor HTML, preview desktop/mobile, envío de test
+- [ ] Registrar ruta /admin/crm/plantillas en App.tsx y sidebar del CRM
+- [ ] Cargar todas las plantillas existentes en la BD al arrancar (seed)
+- [ ] Enviar todas las plantillas de prueba a reservas@nayadeexperiences.es

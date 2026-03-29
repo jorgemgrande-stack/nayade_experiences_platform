@@ -1139,3 +1139,409 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
 
   return emailWrapper(`Pago confirmado — ${d.invoiceNumber} · Náyade Experiences`, body);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLANTILLAS DE ANULACIÓN (normalizadas al diseño base Náyade)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// PLANTILLA 12: Solicitud de anulación recibida
+export function buildCancellationReceivedHtml(d: {
+  fullName: string;
+  requestId: number;
+  locator?: string;
+  reason?: string;
+}): string {
+  const body = `
+    ${emailHeader("Anulación Recibida", "Hemos recibido tu solicitud")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.fullName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Hemos recibido tu solicitud de anulación. Nuestro equipo la revisará y te contactará en el menor tiempo posible.
+      </p>
+      ${statusBlock("warning", "Solicitud en revisión",
+        `Tu solicitud <strong>#${d.requestId}</strong> ha sido registrada y está siendo procesada.`)}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Datos de tu solicitud</p>
+          ${detailRow(SVG.ref, "Número de solicitud", `#${d.requestId}`)}
+          ${d.locator ? detailRow(SVG.tag, "Localizador de reserva", d.locator) : ""}
+          ${d.reason ? detailRow(SVG.alert, "Motivo indicado", d.reason) : ""}
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid #f97316;border-radius:0 8px 8px 0;">
+        <tr><td style="padding:14px 18px;">
+          <p style="color:#374151;font-size:13px;margin:0;line-height:1.8;font-family:Arial,sans-serif;">
+            Si tienes alguna duda, contacta en
+            <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+            indicando tu número de solicitud <strong>#${d.requestId}</strong>.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${emotionalBlock("Entendemos que los imprevistos ocurren. Haremos todo lo posible para resolverlo de la mejor manera.")}
+    ${emailFooter()}`;
+  return emailWrapper(`Solicitud de anulación #${d.requestId} recibida · Náyade Experiences`, body);
+}
+
+// PLANTILLA 13: Resolución de anulación — Rechazo
+export function buildCancellationRejectedHtml(d: {
+  fullName: string;
+  requestId: number;
+  adminText?: string;
+}): string {
+  const body = `
+    ${emailHeader("Resolución de Solicitud", "Resultado de tu anulación")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.fullName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Hemos revisado tu solicitud de anulación <strong>#${d.requestId}</strong>.
+      </p>
+      ${statusBlock("error", "Solicitud no aceptada",
+        "Tras revisar tu solicitud, la reclamación no se encuentra sujeta a los supuestos de devolución recogidos en los términos y condiciones de Náyade Experiences.")}
+    </td></tr>
+    ${d.adminText ? `
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Nota del equipo</p>
+          <p style="color:#374151;font-size:14px;margin:0;line-height:1.7;font-family:Arial,sans-serif;">${d.adminText}</p>
+        </td></tr>
+      </table>
+    </td></tr>` : ""}
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        Si tienes alguna pregunta, escríbenos a
+        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Resolución solicitud #${d.requestId} · Náyade Experiences`, body);
+}
+
+// PLANTILLA 14: Aceptación con devolución económica
+export function buildCancellationAcceptedRefundHtml(d: {
+  fullName: string;
+  requestId: number;
+  amount: string;
+  isPartial: boolean;
+}): string {
+  const tipo = d.isPartial ? "parcial" : "total";
+  const body = `
+    ${emailHeader("Anulación Aceptada", `Devolución ${tipo} aprobada`)}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.fullName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Nos complace informarte que tu solicitud de anulación ha sido <strong>aceptada</strong>.
+      </p>
+      ${statusBlock("success", `Devolución ${tipo} aprobada`,
+        `Devolución de <strong style="color:#f97316;font-size:18px;">${d.amount} €</strong> en 5-10 días hábiles.`)}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          ${detailRow(SVG.ref, "Número de solicitud", `#${d.requestId}`)}
+          ${detailRow(SVG.check, "Tipo de resolución", `Devolución ${tipo}`)}
+          ${detailRow(SVG.tag, "Importe a devolver", `${d.amount} €`)}
+          ${detailRow(SVG.clock, "Plazo estimado", "5-10 días hábiles")}
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        La devolución se realizará por el mismo medio de pago utilizado en la reserva original.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Devolución ${tipo} aprobada — Solicitud #${d.requestId} · Náyade Experiences`, body);
+}
+
+// PLANTILLA 15: Aceptación con bono de compensación
+export function buildCancellationAcceptedVoucherHtml(d: {
+  fullName: string;
+  requestId: number;
+  voucherCode: string;
+  activityName: string;
+  value: string;
+  expiresAt: string;
+  isPartial: boolean;
+}): string {
+  const tipo = d.isPartial ? "parcial" : "total";
+  const body = `
+    ${emailHeader("Bono de Compensación", "Tu anulación ha sido resuelta")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.fullName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Tu solicitud de anulación ha sido resuelta de forma <strong>${tipo}</strong> mediante un bono de actividades.
+      </p>
+      ${statusBlock("success", `Bono de compensación ${tipo}`, "Tu bono está listo para ser utilizado.")}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a1628;border-radius:12px;text-align:center;">
+        <tr><td style="padding:28px 32px;">
+          <p style="color:rgba(255,255,255,0.6);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:3px;margin:0 0 8px;font-family:Arial,sans-serif;">Código de bono</p>
+          <p style="color:#f97316;font-size:32px;font-weight:900;letter-spacing:4px;margin:0 0 12px;font-family:Georgia,serif;">${d.voucherCode}</p>
+          <p style="color:#ffffff;font-size:15px;font-weight:600;margin:0 0 4px;font-family:Arial,sans-serif;">${d.activityName}</p>
+          <p style="color:rgba(255,255,255,0.6);font-size:13px;margin:0;font-family:Arial,sans-serif;">
+            Valor: <strong style="color:#f97316;">${d.value} €</strong> &nbsp;·&nbsp; Caduca: ${d.expiresAt}
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        Para canjear este bono, contacta en
+        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        indicando el código anterior.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Bono de compensación ${d.voucherCode} · Náyade Experiences`, body);
+}
+
+// PLANTILLA 16: Solicitud de documentación adicional
+export function buildCancellationDocumentationHtml(d: {
+  fullName: string;
+  requestId: number;
+  adminText: string;
+}): string {
+  const body = `
+    ${emailHeader("Documentación Requerida", "Necesitamos tu ayuda")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.fullName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Para continuar con la revisión de tu solicitud <strong>#${d.requestId}</strong>, necesitamos la siguiente documentación:
+      </p>
+      ${statusBlock("warning", "Documentación pendiente", "Tu solicitud está en espera de la documentación indicada.")}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Documentación solicitada</p>
+          <p style="color:#374151;font-size:14px;margin:0;line-height:1.7;font-family:Arial,sans-serif;">${d.adminText}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        Envía la documentación a
+        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        indicando tu número de solicitud <strong>#${d.requestId}</strong>.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Documentación requerida — Solicitud #${d.requestId} · Náyade Experiences`, body);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLANTILLA TPV — Ticket de compra presencial
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function buildTpvTicketHtml(d: {
+  ticketNumber: string;
+  customerName?: string;
+  createdAt: Date | number;
+  items: { name: string; quantity: number; unitPrice: number; total: number }[];
+  payments: { method: string; amount: number }[];
+  total: number;
+  subtotal?: number;
+  taxAmount?: number;
+}): string {
+  const METHOD_LABELS: Record<string, string> = {
+    cash: "Efectivo", card: "Tarjeta", bizum: "Bizum", transfer: "Transferencia", mixed: "Pago mixto",
+  };
+  const itemRowsHtml = d.items.map(item => `
+    <tr>
+      <td style="padding:8px 4px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${item.name}</td>
+      <td style="padding:8px 4px;text-align:center;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${item.quantity}</td>
+      <td style="padding:8px 4px;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${item.unitPrice.toFixed(2)} €</td>
+      <td style="padding:8px 4px;text-align:right;color:#374151;font-size:13px;font-weight:600;font-family:Arial,sans-serif;">${item.total.toFixed(2)} €</td>
+    </tr>`).join("");
+  const paymentRowsHtml = d.payments.map(p => `
+    <tr>
+      <td style="padding:6px 4px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${METHOD_LABELS[p.method] ?? p.method}</td>
+      <td style="padding:6px 4px;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${p.amount.toFixed(2)} €</td>
+    </tr>`).join("");
+  const ts = typeof d.createdAt === "number" ? d.createdAt : (d.createdAt as Date).getTime();
+  const dateStr = new Date(ts).toLocaleString("es-ES");
+  const body = `
+    ${emailHeader("Ticket de Compra", "Gracias por tu visita")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">
+        ${d.customerName ? `Hola <strong>${d.customerName}</strong>,` : "¡Gracias por tu compra!"}
+      </p>
+      ${statusBlock("success", "Compra confirmada", `Ticket <strong>${d.ticketNumber}</strong> · ${dateStr}`)}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Detalle de la compra</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <thead><tr>
+              <th style="text-align:left;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Producto</th>
+              <th style="text-align:center;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Uds.</th>
+              <th style="text-align:right;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">P.Unit.</th>
+              <th style="text-align:right;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Total</th>
+            </tr></thead>
+            <tbody>${itemRowsHtml}</tbody>
+          </table>
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;border-top:1px solid #e8eef7;">
+            ${d.subtotal !== undefined ? `<tr><td style="padding:6px 4px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Subtotal</td><td style="padding:6px 4px;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${d.subtotal.toFixed(2)} €</td></tr>` : ""}
+            ${d.taxAmount !== undefined ? `<tr><td style="padding:6px 4px;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA (21%)</td><td style="padding:6px 4px;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${d.taxAmount.toFixed(2)} €</td></tr>` : ""}
+            <tr style="background:#0a1628;">
+              <td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">TOTAL</td>
+              <td style="padding:10px 12px;text-align:right;color:#f97316;font-size:22px;font-weight:900;font-family:Georgia,serif;">${d.total.toFixed(2)} €</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Forma de pago</p>
+          <table width="100%" cellpadding="0" cellspacing="0"><tbody>${paymentRowsHtml}</tbody></table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${emotionalBlock("¡Gracias por tu visita! Esperamos verte pronto de nuevo en el lago.")}
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:11px;margin:0;line-height:1.6;font-family:Arial,sans-serif;text-align:center;">
+        NEXTAIR, S.L. &middot; CIF: B16408031 &middot; C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM &middot; 18006 GRANADA
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Ticket ${d.ticketNumber} · Náyade Experiences`, body);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLANTILLAS TICKETING / CUPONES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export function buildCouponRedemptionReceivedHtml(d: {
+  customerName: string;
+  coupons: { couponCode: string; provider: string }[];
+  submissionId: string;
+  requestedDate?: string;
+}): string {
+  const couponRowsHtml = d.coupons.map(c => `
+    <tr>
+      <td style="padding:8px 4px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${c.provider}</td>
+      <td style="padding:8px 4px;text-align:right;font-family:monospace;color:#f97316;font-size:13px;font-weight:700;">${c.couponCode}</td>
+    </tr>`).join("");
+  const body = `
+    ${emailHeader("Solicitud de Canje", "Hemos recibido tu solicitud")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Hemos registrado tu solicitud de canje correctamente. Nos pondremos en contacto para confirmar la disponibilidad.
+      </p>
+      ${statusBlock("success", "Solicitud registrada",
+        `Referencia: <strong>${d.submissionId}</strong>${d.requestedDate ? ` · Fecha solicitada: <strong>${d.requestedDate}</strong>` : ""}`)}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Cupones incluidos</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <thead><tr>
+              <th style="text-align:left;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Proveedor</th>
+              <th style="text-align:right;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Código</th>
+            </tr></thead>
+            <tbody>${couponRowsHtml}</tbody>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${emotionalBlock("¡Nos vemos pronto en el lago! Tu aventura acuática está a punto de comenzar.")}
+    ${emailFooter()}`;
+  return emailWrapper("Solicitud de canje recibida · Náyade Experiences", body);
+}
+
+export function buildCouponPostponedHtml(d: {
+  customerName: string;
+  couponCode: string;
+  provider: string;
+  productName: string;
+  requestedDate?: string;
+}): string {
+  const body = `
+    ${emailHeader("Información sobre tu Canje", "Actualización de disponibilidad")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Te informamos sobre el estado de tu solicitud de canje para <strong>${d.productName}</strong>.
+      </p>
+      ${statusBlock("warning", "Sin disponibilidad para la fecha solicitada",
+        `No hay disponibilidad${d.requestedDate ? ` para el <strong>${d.requestedDate}</strong>` : ""}. Tu solicitud queda en estado <strong>Pendiente</strong>.`)}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          ${detailRow(SVG.tag, "Código de cupón", d.couponCode)}
+          ${detailRow(SVG.ref, "Proveedor", d.provider)}
+          ${detailRow(SVG.wave, "Actividad", d.productName)}
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        Nos pondremos en contacto para ofrecerte fechas alternativas. Escríbenos a
+        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper("Actualización solicitud de canje · Náyade Experiences", body);
+}
+
+export function buildCouponInternalAlertHtml(d: {
+  customerName: string;
+  email: string;
+  phone?: string;
+  coupons: { couponCode: string; provider: string }[];
+  submissionId: string;
+  requestedDate?: string;
+}): string {
+  const couponRowsHtml = d.coupons.map(c => `
+    <tr>
+      <td style="padding:6px 4px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${c.provider}</td>
+      <td style="padding:6px 4px;text-align:right;font-family:monospace;color:#f97316;font-size:13px;font-weight:700;">${c.couponCode}</td>
+    </tr>`).join("");
+  const body = `
+    ${emailHeader("Alerta Interna", "Nuevo envío de cupones")}
+    <tr><td style="padding:28px 32px 0;">
+      ${statusBlock("warning", "Nuevo envío de cupones recibido",
+        `El cliente <strong>${d.customerName}</strong> ha enviado ${d.coupons.length} cupón${d.coupons.length > 1 ? "es" : ""} para canje.`)}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Datos del cliente</p>
+          ${detailRow(SVG.person, "Nombre", d.customerName)}
+          ${detailRow(SVG.mail, "Email", d.email)}
+          ${d.phone ? detailRow(SVG.phone, "Teléfono", d.phone) : ""}
+          ${d.requestedDate ? detailRow(SVG.clock, "Fecha solicitada", d.requestedDate) : ""}
+          ${detailRow(SVG.ref, "Referencia", d.submissionId)}
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Cupones enviados</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <thead><tr>
+              <th style="text-align:left;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Proveedor</th>
+              <th style="text-align:right;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Código</th>
+            </tr></thead>
+            <tbody>${couponRowsHtml}</tbody>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`[Ticketing] Nuevo envío: ${d.coupons.length} cupón${d.coupons.length > 1 ? "es" : ""} — ${d.customerName}`, body);
+}

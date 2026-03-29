@@ -3,7 +3,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
-import { buildReservationConfirmHtml } from "../emailTemplates";
+import { buildReservationConfirmHtml, buildTpvTicketHtml } from "../emailTemplates";
 import { createReavExpedient, attachReavDocument } from "../db";
 import {
   cashRegisters,
@@ -779,53 +779,23 @@ export const tpvRouter = router({
         cash: "Efectivo", card: "Tarjeta", bizum: "Bizum", other: "Otro",
       };
 
-      const itemsHtml = items.map(item => `
-        <tr>
-          <td style="padding:4px 8px;">${item.productName}</td>
-          <td style="padding:4px 8px;text-align:center;">${item.quantity}</td>
-          <td style="padding:4px 8px;text-align:right;">${parseFloat(String(item.unitPrice)).toFixed(2)}€</td>
-          <td style="padding:4px 8px;text-align:right;">${parseFloat(String(item.subtotal)).toFixed(2)}€</td>
-        </tr>
-      `).join("");
-
-      const paymentsHtml = payments.map(p => `
-        <tr>
-          <td style="padding:4px 8px;">${METHOD_LABELS[p.method] ?? p.method}</td>
-          <td style="padding:4px 8px;text-align:right;">${parseFloat(String(p.amount)).toFixed(2)}€</td>
-        </tr>
-      `).join("");
-
-      const html = `
-        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;">
-          <h2 style="color:#7c3aed;">Náyade Experiences — Ticket ${sale.ticketNumber}</h2>
-          <p style="color:#555;font-size:11px;margin:0 0 2px;">NEXTAIR, S.L. &middot; CIF: B16408031</p>
-          <p style="color:#777;font-size:11px;margin:0 0 10px;">C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM &middot; 18006 GRANADA</p>
-          <p style="color:#666;">Fecha: ${new Date(Number(sale.createdAt)).toLocaleString("es-ES")}</p>
-          ${sale.customerName ? `<p>Cliente: <strong>${sale.customerName}</strong></p>` : ""}
-          <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-            <thead><tr style="background:#f3f0ff;">
-              <th style="padding:6px 8px;text-align:left;">Producto</th>
-              <th style="padding:6px 8px;">Cant.</th>
-              <th style="padding:6px 8px;text-align:right;">Precio</th>
-              <th style="padding:6px 8px;text-align:right;">Total</th>
-            </tr></thead>
-            <tbody>${itemsHtml}</tbody>
-          </table>
-          <table style="width:100%;border-collapse:collapse;margin:8px 0;">
-            <tr style="border-top:2px solid #7c3aed;">
-              <td style="padding:8px;font-weight:bold;">TOTAL</td>
-              <td style="padding:8px;text-align:right;font-weight:bold;font-size:18px;color:#7c3aed;">${parseFloat(String(sale.total)).toFixed(2)}€</td>
-            </tr>
-          </table>
-          <h4 style="margin-top:16px;">Forma de pago</h4>
-          <table style="width:100%;border-collapse:collapse;">
-            <tbody>${paymentsHtml}</tbody>
-          </table>
-          <p style="margin-top:24px;color:#999;font-size:12px;">¡Gracias por su visita! — www.nayadeexperiences.com</p>
-        </div>
-      `;
-
-      const transporter = nodemailer.createTransport({
+      const emailHtml = buildTpvTicketHtml({
+        ticketNumber: sale.ticketNumber,
+        customerName: sale.customerName ?? undefined,
+        createdAt: Number(sale.createdAt),
+        items: items.map(item => ({
+          name: item.productName,
+          quantity: item.quantity,
+          unitPrice: parseFloat(String(item.unitPrice)),
+          total: parseFloat(String(item.subtotal)),
+        })),
+        payments: payments.map(p => ({
+          method: p.method,
+          amount: parseFloat(String(p.amount)),
+        })),
+        total: parseFloat(String(sale.total)),
+      });
+            const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: parseInt(process.env.SMTP_PORT ?? "587"),
         secure: process.env.SMTP_SECURE === "true",
@@ -836,7 +806,7 @@ export const tpvRouter = router({
         from: process.env.SMTP_FROM ?? "noreply@nayadeexperiences.com",
         to: input.email,
         subject: `Tu ticket de compra ${sale.ticketNumber} — Náyade Experiences`,
-        html,
+        html: emailHtml,
       });
 
       return { ok: true };

@@ -15,6 +15,13 @@ import {
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
 import { sendEmail } from "../mailer";
+import {
+  buildCancellationReceivedHtml,
+  buildCancellationRejectedHtml,
+  buildCancellationAcceptedRefundHtml,
+  buildCancellationAcceptedVoucherHtml,
+  buildCancellationDocumentationHtml,
+} from "../emailTemplates";
 import { storagePut } from "../storage";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -52,76 +59,22 @@ async function addLog(
 
 // ─── Email templates ──────────────────────────────────────────────────────────
 
-function emailAcuseRecibo(fullName: string, requestId: number): string {
-  return `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;padding:32px;border-radius:12px;">
-      <div style="text-align:center;margin-bottom:24px;">
-        <img src="https://nayade-shop-av298fs8.manus.space/logo.png" alt="Náyade Experiences" style="height:48px;" />
-      </div>
-      <h2 style="color:#fff;font-size:20px;margin-bottom:8px;">Solicitud de anulación recibida</h2>
-      <p style="color:#aaa;margin-bottom:16px;">Hola <strong style="color:#e5e5e5">${fullName}</strong>,</p>
-      <p style="color:#aaa;line-height:1.6;">Hemos recibido tu solicitud de anulación con el número de referencia <strong style="color:#f97316">#${requestId}</strong>. Nuestro equipo la revisará y te contactará en el menor tiempo posible.</p>
-      <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:16px;margin:24px 0;">
-        <p style="color:#888;font-size:13px;margin:0;">Si tienes alguna duda, puedes contactarnos en <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a></p>
-      </div>
-      <p style="color:#555;font-size:12px;text-align:center;">Náyade Experiences · Los Ángeles de San Rafael, Segovia</p>
-    </div>`;
+function emailAcuseRecibo(fullName: string, requestId: number, locator?: string, reason?: string): string {
+  return buildCancellationReceivedHtml({ fullName, requestId, locator, reason });
 }
 
 function emailRechazo(fullName: string, requestId: number, adminText?: string): string {
-  return `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;padding:32px;border-radius:12px;">
-      <h2 style="color:#fff;font-size:20px;margin-bottom:8px;">Resolución de tu solicitud de anulación #${requestId}</h2>
-      <p style="color:#aaa;margin-bottom:16px;">Hola <strong style="color:#e5e5e5">${fullName}</strong>,</p>
-      <p style="color:#aaa;line-height:1.6;">Tras revisar tu solicitud de anulación, la reclamación no se encuentra sujeta a los supuestos de devolución recogidos en los términos y condiciones de Náyade Experiences.</p>
-      ${adminText ? `<div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:16px;margin:16px 0;"><p style="color:#ccc;margin:0;">${adminText}</p></div>` : ""}
-      <p style="color:#555;font-size:12px;text-align:center;margin-top:24px;">Náyade Experiences · Los Ángeles de San Rafael, Segovia</p>
-    </div>`;
+  return buildCancellationRejectedHtml({ fullName, requestId, adminText });
 }
-
 function emailAceptacionDevolucion(fullName: string, requestId: number, amount: string, isPartial: boolean): string {
-  const tipo = isPartial ? "parcial" : "total";
-  return `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;padding:32px;border-radius:12px;">
-      <h2 style="color:#fff;font-size:20px;margin-bottom:8px;">Aceptación ${tipo} de tu solicitud #${requestId}</h2>
-      <p style="color:#aaa;margin-bottom:16px;">Hola <strong style="color:#e5e5e5">${fullName}</strong>,</p>
-      <p style="color:#aaa;line-height:1.6;">Nos complace informarte que tu solicitud de anulación ha sido aceptada de forma <strong style="color:#22c55e">${tipo}</strong>. Se procederá a la devolución económica de <strong style="color:#f97316">${amount} €</strong>.</p>
-      <p style="color:#aaa;line-height:1.6;">La devolución se realizará por el mismo medio de pago utilizado en la reserva original en un plazo de 5-10 días hábiles.</p>
-      <p style="color:#555;font-size:12px;text-align:center;margin-top:24px;">Náyade Experiences · Los Ángeles de San Rafael, Segovia</p>
-    </div>`;
+  return buildCancellationAcceptedRefundHtml({ fullName, requestId, amount, isPartial });
 }
-
 function emailAceptacionBono(fullName: string, requestId: number, voucherCode: string, activityName: string, value: string, expiresAt: string, isPartial: boolean): string {
-  const tipo = isPartial ? "parcial" : "total";
-  return `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;padding:32px;border-radius:12px;">
-      <h2 style="color:#fff;font-size:20px;margin-bottom:8px;">Bono de compensación — Solicitud #${requestId}</h2>
-      <p style="color:#aaa;margin-bottom:16px;">Hola <strong style="color:#e5e5e5">${fullName}</strong>,</p>
-      <p style="color:#aaa;line-height:1.6;">Tu solicitud de anulación ha sido resuelta de forma <strong style="color:#22c55e">${tipo}</strong> mediante un bono de actividades.</p>
-      <div style="background:#1a1a1a;border:1px solid #f97316;border-radius:8px;padding:20px;margin:20px 0;text-align:center;">
-        <p style="color:#f97316;font-size:24px;font-weight:bold;margin:0 0 8px;">${voucherCode}</p>
-        <p style="color:#ccc;margin:0 0 4px;">${activityName}</p>
-        <p style="color:#888;font-size:14px;margin:0;">Valor: <strong style="color:#e5e5e5">${value} €</strong> · Caduca: ${expiresAt}</p>
-      </div>
-      <p style="color:#aaa;line-height:1.6;font-size:13px;">Para canjear este bono, contacta con nosotros indicando el código anterior.</p>
-      <p style="color:#555;font-size:12px;text-align:center;margin-top:24px;">Náyade Experiences · Los Ángeles de San Rafael, Segovia</p>
-    </div>`;
+  return buildCancellationAcceptedVoucherHtml({ fullName, requestId, voucherCode, activityName, value, expiresAt, isPartial });
 }
-
 function emailSolicitudDocumentacion(fullName: string, requestId: number, adminText: string): string {
-  return `
-    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#0a0a0a;color:#e5e5e5;padding:32px;border-radius:12px;">
-      <h2 style="color:#fff;font-size:20px;margin-bottom:8px;">Documentación requerida — Solicitud #${requestId}</h2>
-      <p style="color:#aaa;margin-bottom:16px;">Hola <strong style="color:#e5e5e5">${fullName}</strong>,</p>
-      <p style="color:#aaa;line-height:1.6;">Para continuar con la revisión de tu solicitud de anulación, necesitamos que nos envíes la siguiente documentación:</p>
-      <div style="background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:16px;margin:16px 0;">
-        <p style="color:#ccc;margin:0;">${adminText}</p>
-      </div>
-      <p style="color:#aaa;line-height:1.6;">Por favor, envía la documentación a <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a> indicando tu número de solicitud <strong>#${requestId}</strong>.</p>
-      <p style="color:#555;font-size:12px;text-align:center;margin-top:24px;">Náyade Experiences · Los Ángeles de San Rafael, Segovia</p>
-    </div>`;
+  return buildCancellationDocumentationHtml({ fullName, requestId, adminText });
 }
-
 // ─── Admin procedure helper ───────────────────────────────────────────────────
 
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {

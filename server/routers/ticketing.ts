@@ -23,7 +23,7 @@ import { eq, desc, and, like, or, sql, count, inArray, sum } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
-import { buildReservationConfirmHtml } from "../emailTemplates";
+import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -205,22 +205,8 @@ function buildRedemptionConfirmationHtml(data: {
   submissionId: string;
   requestedDate?: string;
 }) {
-  const couponRows = data.coupons.map((c) =>
-    `<tr><td style="padding:8px;border-bottom:1px solid #333;">${c.provider}</td><td style="padding:8px;border-bottom:1px solid #333;font-family:monospace;">${c.couponCode}</td></tr>`
-  );
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/></head>
-<body style="background:#0a0a0a;color:#fff;font-family:sans-serif;padding:32px;">
-<h2 style="color:#a78bfa;">Hemos recibido tu solicitud de canje</h2>
-<p>Hola <strong>${data.customerName}</strong>,</p>
-<p>Hemos registrado tu solicitud correctamente. Nos pondremos en contacto contigo para confirmar la disponibilidad.</p>
-<table style="width:100%;border-collapse:collapse;margin:16px 0;">
-<thead><tr><th style="text-align:left;padding:8px;background:#1a1a2e;color:#a78bfa;">Proveedor</th><th style="text-align:left;padding:8px;background:#1a1a2e;color:#a78bfa;">Código</th></tr></thead>
-<tbody>${couponRows.join("")}</tbody></table>
-${data.requestedDate ? `<p>Fecha solicitada: <strong>${data.requestedDate}</strong></p>` : ""}
-<p style="color:#888;font-size:12px;">Referencia: ${data.submissionId}</p>
-</body></html>`;
+  return buildCouponRedemptionReceivedHtml({ customerName: data.customerName, coupons: data.coupons, submissionId: data.submissionId, requestedDate: data.requestedDate });
 }
-
 function buildPostponeEmailHtml(data: {
   customerName: string;
   couponCode: string;
@@ -228,17 +214,8 @@ function buildPostponeEmailHtml(data: {
   productName: string;
   requestedDate?: string;
 }) {
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/></head>
-<body style="background:#0a0a0a;color:#fff;font-family:sans-serif;padding:32px;">
-<h2 style="color:#f59e0b;">Información sobre tu solicitud de canje</h2>
-<p>Hola <strong>${data.customerName}</strong>,</p>
-<p>Actualmente no hay disponibilidad para la fecha solicitada${data.requestedDate ? ` (${data.requestedDate})` : ""} para <strong>${data.productName}</strong>.</p>
-<p>Tu solicitud queda en estado <strong>Pendiente</strong>. Nos pondremos en contacto contigo para ofrecerte fechas alternativas.</p>
-<p>Código de cupón: <code style="background:#1a1a2e;padding:4px 8px;border-radius:4px;">${data.couponCode}</code> (${data.provider})</p>
-<p>Disculpa las molestias. ¡Nos vemos pronto en la nieve!</p>
-</body></html>`;
+  return buildCouponPostponedHtml({ customerName: data.customerName, couponCode: data.couponCode, provider: data.provider, productName: data.productName, requestedDate: data.requestedDate });
 }
-
 function buildInternalAlertHtml(data: {
   customerName: string;
   email: string;
@@ -247,21 +224,8 @@ function buildInternalAlertHtml(data: {
   submissionId: string;
   requestedDate?: string;
 }) {
-  const couponRows = data.coupons.map((c) =>
-    `<tr><td style="padding:6px;border-bottom:1px solid #333;">${c.provider}</td><td style="padding:6px;border-bottom:1px solid #333;font-family:monospace;">${c.couponCode}</td></tr>`
-  );
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"/></head>
-<body style="background:#0a0a0a;color:#fff;font-family:sans-serif;padding:24px;">
-<h3 style="color:#a78bfa;">[Ticketing] Nuevo envío de cupones</h3>
-<p><strong>Cliente:</strong> ${data.customerName} | ${data.email}${data.phone ? ` | ${data.phone}` : ""}</p>
-<table style="width:100%;border-collapse:collapse;margin:12px 0;">
-<thead><tr><th style="text-align:left;padding:6px;background:#1a1a2e;color:#a78bfa;">Proveedor</th><th style="text-align:left;padding:6px;background:#1a1a2e;color:#a78bfa;">Código</th></tr></thead>
-<tbody>${couponRows.join("")}</tbody></table>
-${data.requestedDate ? `<p>Fecha solicitada: <strong>${data.requestedDate}</strong></p>` : ""}
-<p style="color:#888;font-size:12px;">Ref: ${data.submissionId}</p>
-</body></html>`;
+  return buildCouponInternalAlertHtml({ customerName: data.customerName, email: data.email, phone: data.phone, coupons: data.coupons, submissionId: data.submissionId, requestedDate: data.requestedDate });
 }
-
 // ─── ROUTER ───────────────────────────────────────────────────────────────────
 export const ticketingRouter = router({
 

@@ -165,6 +165,10 @@ const navItems = [
     href: "/admin/configuracion",
     icon: Settings,
     roles: ["admin"],
+    children: [
+      { label: "Ajustes generales", href: "/admin/configuracion" },
+      { label: "Plantillas de Email", href: "/admin/plantillas-email" },
+    ],
   },
 ];
 
