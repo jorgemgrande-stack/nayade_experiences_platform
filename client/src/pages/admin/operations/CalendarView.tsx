@@ -19,12 +19,22 @@ function getWeekStart(d: Date) {
   r.setDate(r.getDate() + (day === 0 ? -6 : 1 - day));
   return r;
 }
-function getEventHour(ts: number) {
-  const d = new Date(ts);
+// scheduledDate from MySQL DATE column comes as "YYYY-MM-DD" string.
+// Append T00:00:00 to parse as LOCAL time (not UTC midnight which shifts the day in UTC+2).
+function parseEventDate(sd: any): Date {
+  if (!sd) return new Date();
+  if (typeof sd === "number") return new Date(sd);
+  // "2026-03-29" or "2026-03-29T..." — ensure local parse
+  const s = String(sd);
+  if (s.length === 10) return new Date(s + "T09:00:00"); // default 09:00 local for date-only
+  return new Date(s);
+}
+function getEventHour(sd: any) {
+  const d = parseEventDate(sd);
   return d.getHours() + d.getMinutes() / 60;
 }
-function formatTime(ts: number) {
-  return new Date(ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+function formatTime(sd: any) {
+  return parseEventDate(sd).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 function formatDayLabel(d: Date) {
   return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
@@ -85,7 +95,7 @@ export default function CalendarView() {
     const acts = (data?.activities || []).map((e: any) => ({ ...e, eventType: "activity" }));
     const rests = (data?.restaurants || []).map((e: any) => ({ ...e, eventType: "restaurant" }));
     return [...acts, ...rests].sort(
-      (a: any, b: any) => (a.scheduledDate || 0) - (b.scheduledDate || 0)
+      (a: any, b: any) => parseEventDate(a.scheduledDate).getTime() - parseEventDate(b.scheduledDate).getTime()
     );
   }, [data]);
 
@@ -108,7 +118,9 @@ export default function CalendarView() {
     const map: Record<string, any[]> = {};
     weekDays.forEach(d => { map[formatDate(d)] = []; });
     allEvents.forEach((ev: any) => {
-      const key = formatDate(new Date(ev.scheduledDate));
+      // Use the raw date string directly if it's YYYY-MM-DD, otherwise parse safely
+      const sd = ev.scheduledDate;
+      const key = typeof sd === "string" && sd.length >= 10 ? sd.slice(0, 10) : formatDate(parseEventDate(sd));
       if (map[key]) map[key].push(ev);
     });
     return map;
@@ -307,8 +319,8 @@ export default function CalendarView() {
                       const isActivity = ev.eventType === "activity";
                       const soon =
                         ev.scheduledDate &&
-                        ev.scheduledDate - Date.now() < 2 * 60 * 60 * 1000 &&
-                        ev.scheduledDate > Date.now();
+                        parseEventDate(ev.scheduledDate).getTime() - Date.now() < 2 * 60 * 60 * 1000 &&
+                        parseEventDate(ev.scheduledDate).getTime() > Date.now();
                       return (
                         <div
                           key={i}

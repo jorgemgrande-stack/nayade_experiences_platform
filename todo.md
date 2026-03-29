@@ -2316,3 +2316,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Diagnosticar: las consultas SQL usaban columnas inexistentes (scheduled_date, experience_id, number_of_persons)
 - [x] Corregir: reemplazado por booking_date (DATE), product_id, people; filtro status cambiado a 'cancelled','failed'
 - [x] Calendario, Actividades del Día y Órdenes del Día ahora muestran TODAS las reservas (incluyendo presupuestos con product_id=0)
+
+## BUG v25.12 — Reserva Simo Blanquez no aparece en Calendario ni Órdenes del Día [RESUELTO]
+- [x] Diagnosticar: booking_date es DATE string "YYYY-MM-DD"; el frontend lo trataba como timestamp numérico
+- [x] Corregir Calendario: añadida función parseEventDate() que parsea DATE strings como hora local (T09:00:00)
+- [x] Corregir Órdenes del Día: actualizada formatTime() para manejar DATE strings de MySQL
+- [x] eventsByDay ahora usa sd.slice(0,10) directamente para el key de fecha (sin conversión UTC)

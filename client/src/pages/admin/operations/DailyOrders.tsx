@@ -20,8 +20,13 @@ function addDays(d: Date, n: number) {
 function formatDateStr(d: Date) {
   return d.toISOString().split("T")[0];
 }
-function formatTime(ts: number) {
-  return new Date(ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+function formatTime(sd: any) {
+  if (!sd) return "—";
+  if (typeof sd === "number") return new Date(sd).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  // MySQL DATE string "YYYY-MM-DD" — parse as local time to avoid UTC offset shifting the day
+  const s = String(sd);
+  const d = s.length === 10 ? new Date(s + "T09:00:00") : new Date(s);
+  return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 
 export default function DailyOrders() {

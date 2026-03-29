@@ -1,0 +1,18 @@
+{
+  "query": "SELECT id, customer_name, booking_date, status, people, product_name FROM reservations WHERE customer_name LIKE '%Simo%' OR customer_name LIKE '%Blanquez%' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, customer_name, booking_date, status, people, product_name FROM reservations WHERE customer_name LIKE '%Simo%' OR customer_name LIKE '%Blanquez%' LIMIT 5;",
+  "rows": [
+    {
+      "id": "420001",
+      "customer_name": "Simo Blanquez",
+      "booking_date": "2026-03-29",
+      "status": "paid",
+      "people": "2",
+      "product_name": "Presupuesto Nayade Experiences - Simo Blanquez"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tcustomer_name\tbooking_date\tstatus\tpeople\tproduct_name\n420001\tSimo Blanquez\t2026-03-29\tpaid\t2\tPresupuesto Nayade Experiences - Simo Blanquez\n",
+  "stderr": "",
+  "execution_time_ms": 105
+}
