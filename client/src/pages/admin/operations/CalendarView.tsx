@@ -201,9 +201,8 @@ export default function CalendarView() {
               <ChevronRight className="w-4 h-4" />
             </Button>
             {/* Date Picker nativo */}
-            <label className="flex items-center gap-2 cursor-pointer border border-slate-700 rounded-md px-3 h-8 bg-transparent hover:bg-slate-800 transition-colors ml-1">
+            <div className="flex items-center gap-2 border border-slate-700 rounded-md px-3 h-8 bg-transparent hover:bg-slate-800 transition-colors ml-1">
               <CalendarDays className="w-4 h-4 text-blue-400 shrink-0" />
-              <span className="text-slate-300 text-sm">Ir a fecha</span>
               <input
                 type="date"
                 value={formatDate(currentDate)}
@@ -213,9 +212,9 @@ export default function CalendarView() {
                     setCurrentDate(new Date(y, mo - 1, d));
                   }
                 }}
-                className="opacity-0 absolute w-0 h-0"
+                className="bg-transparent text-slate-300 text-sm border-none outline-none cursor-pointer [color-scheme:dark]"
               />
-            </label>
+            </div>
           </div>
           <h2 className="text-lg font-semibold text-white capitalize">{todayLabel}</h2>
           <div className="ml-auto flex items-center gap-3 text-xs text-slate-400">
