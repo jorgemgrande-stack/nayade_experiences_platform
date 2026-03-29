@@ -1,0 +1,50 @@
+{
+  "query": "\nSELECT 'transactions' as tabla, COUNT(*) as registros FROM transactions\nUNION ALL SELECT 'tpv_sales', COUNT(*) FROM tpv_sales\nUNION ALL SELECT 'reservations', COUNT(*) FROM reservations\nUNION ALL SELECT 'invoices', COUNT(*) FROM invoices\nUNION ALL SELECT 'bookings', COUNT(*) FROM bookings\nUNION ALL SELECT 'quotes', COUNT(*) FROM quotes\nUNION ALL SELECT 'leads', COUNT(*) FROM leads\nUNION ALL SELECT 'clients', COUNT(*) FROM clients\nUNION ALL SELECT 'crm_activity_log', COUNT(*) FROM crm_activity_log\nUNION ALL SELECT 'cash_movements', COUNT(*) FROM cash_movements;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT 'transactions' as tabla, COUNT(*) as registros FROM transactions\nUNION ALL SELECT 'tpv_sales', COUNT(*) FROM tpv_sales\nUNION ALL SELECT 'reservations', COUNT(*) FROM reservations\nUNION ALL SELECT 'invoices', COUNT(*) FROM invoices\nUNION ALL SELECT 'bookings', COUNT(*) FROM bookings\nUNION ALL SELECT 'quotes', COUNT(*) FROM quotes\nUNION ALL SELECT 'leads', COUNT(*) FROM leads\nUNION ALL SELECT 'clients', COUNT(*) FROM clients\nUNION ALL SELECT 'crm_activity_log', COUNT(*) FROM crm_activity_log\nUNION ALL SELECT 'cash_movements', COUNT(*) FROM cash_movements;\n",
+  "rows": [
+    {
+      "tabla": "bookings",
+      "registros": "0"
+    },
+    {
+      "tabla": "transactions",
+      "registros": "0"
+    },
+    {
+      "tabla": "tpv_sales",
+      "registros": "0"
+    },
+    {
+      "tabla": "reservations",
+      "registros": "0"
+    },
+    {
+      "tabla": "clients",
+      "registros": "0"
+    },
+    {
+      "tabla": "leads",
+      "registros": "0"
+    },
+    {
+      "tabla": "quotes",
+      "registros": "0"
+    },
+    {
+      "tabla": "cash_movements",
+      "registros": "0"
+    },
+    {
+      "tabla": "invoices",
+      "registros": "0"
+    },
+    {
+      "tabla": "crm_activity_log",
+      "registros": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "tabla\tregistros\nbookings\t0\ntransactions\t0\ntpv_sales\t0\nreservations\t0\nclients\t0\nleads\t0\nquotes\t0\ncash_movements\t0\ninvoices\t0\ncrm_activity_log\t0\n",
+  "stderr": "",
+  "execution_time_ms": 63
+}

@@ -1,0 +1,130 @@
+{
+  "query": "\nSELECT id, transactionNumber, type, amount, paymentMethod, status, clientName, productName, description, createdAt \nFROM transactions \nORDER BY createdAt DESC;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, transactionNumber, type, amount, paymentMethod, status, clientName, productName, description, createdAt \nFROM transactions \nORDER BY createdAt DESC;\n",
+  "rows": [
+    {
+      "id": "90002",
+      "transactionNumber": "TXN-20260325-67165",
+      "type": "ingreso",
+      "amount": "142.93",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "NULL",
+      "productName": "Paddle Surf",
+      "description": "Venta TPV TPV-20260325-7423 — Paddle Surf",
+      "createdAt": "2026-03-25 17:32:08"
+    },
+    {
+      "id": "90001",
+      "transactionNumber": "TXN-20260325-18254",
+      "type": "ingreso",
+      "amount": "59.86",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "NULL",
+      "productName": "Banana Ski",
+      "description": "Venta TPV TPV-20260325-3994 — Banana Ski",
+      "createdAt": "2026-03-25 17:20:34"
+    },
+    {
+      "id": "60004",
+      "transactionNumber": "TXN-20260325-85011",
+      "type": "ingreso",
+      "amount": "55.93",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "Caridad martinez",
+      "productName": "Entrada General Piscina Club Nautico",
+      "description": "Venta TPV TPV-20260325-8579 — Entrada General Piscina Club Nautico",
+      "createdAt": "2026-03-25 16:51:37"
+    },
+    {
+      "id": "60003",
+      "transactionNumber": "TXN-20260325-93675",
+      "type": "ingreso",
+      "amount": "85.00",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "Manuel Reyes",
+      "productName": "Paddle Surf",
+      "description": "Venta TPV TPV-20260325-7441 — Paddle Surf",
+      "createdAt": "2026-03-25 16:45:17"
+    },
+    {
+      "id": "60002",
+      "transactionNumber": "TXN-20260325-73502",
+      "type": "ingreso",
+      "amount": "51.00",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "Faustino",
+      "productName": "Banana Ski",
+      "description": "Venta TPV TPV-20260325-2402 — Banana Ski",
+      "createdAt": "2026-03-25 16:33:20"
+    },
+    {
+      "id": "60001",
+      "transactionNumber": "TXN-20260325-55828",
+      "type": "ingreso",
+      "amount": "18.50",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "Jorge vieitez",
+      "productName": "Banana Ski",
+      "description": "Venta TPV TPV-20260325-7855 — Banana Ski",
+      "createdAt": "2026-03-25 16:03:21"
+    },
+    {
+      "id": "30001",
+      "transactionNumber": "TXN-20260325-59061",
+      "type": "ingreso",
+      "amount": "36.00",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "carlos Cadaval",
+      "productName": "Cableski & Wakeboard Dia Completo",
+      "description": "Venta TPV TPV-20260325-1686 — Cableski & Wakeboard Dia Completo",
+      "createdAt": "2026-03-25 07:15:50"
+    },
+    {
+      "id": "3",
+      "transactionNumber": "TXN-20260324-28913",
+      "type": "ingreso",
+      "amount": "10.00",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "josito ridruejo",
+      "productName": "Banana Ski",
+      "description": "Venta TPV TPV-20260324-8961 — Banana Ski",
+      "createdAt": "2026-03-24 22:44:55"
+    },
+    {
+      "id": "2",
+      "transactionNumber": "TXN-20260324-44203",
+      "type": "ingreso",
+      "amount": "15.00",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "Tpv Jorge Grande",
+      "productName": "Banana Ski",
+      "description": "Venta TPV TPV-20260324-5767 — Banana Ski",
+      "createdAt": "2026-03-24 22:10:37"
+    },
+    {
+      "id": "1",
+      "transactionNumber": "TXN-20260324-56598",
+      "type": "ingreso",
+      "amount": "84.50",
+      "paymentMethod": "efectivo",
+      "status": "completado",
+      "clientName": "NULL",
+      "productName": "Entrada General Piscina Club Nautico",
+      "description": "Venta TPV TPV-20260324-8450 — Entrada General Piscina Club Nautico",
+      "createdAt": "2026-03-24 21:45:51"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\ttransactionNumber\ttype\tamount\tpaymentMethod\tstatus\tclientName\tproductName\tdescription\tcreatedAt\n90002\tTXN-20260325-67165\tingreso\t142.93\tefectivo\tcompletado\tNULL\tPaddle Surf\tVenta TPV TPV-20260325-7423 — Paddle Surf\t2026-03-25 17:32:08\n90001\tTXN-20260325-18254\tingreso\t59.86\tefectivo\tcompletado\tNULL\tBanana Ski\tVenta TPV TPV-20260325-3994 — Banana Ski\t2026-03-25 17:20:34\n60004\tTXN-20260325-85011\tingreso\t55.93\tefectivo\tcompletado\tCaridad martinez\tEntrada General Piscina Club Nautico\tVenta TPV TPV-20260325-8579 — Entrada General Piscina Club Nautico\t2026-03-25 16:51:37\n60003\tTXN-20260325-93675\tingreso\t85.00\tefectivo\tcompletado\tManuel Reyes\tPaddle Surf\tVenta TPV TPV-20260325-7441 — Paddle Surf\t2026-03-25 16:45:17\n60002\tTXN-20260325-73502\tingreso\t51.00\tefectivo\tcompletado\tFaustino\tBanana Ski\tVenta TPV TPV-20260325-2402 — Banana Ski\t2026-03-25 16:33:20\n60001\tTXN-20260325-55828\tingreso\t18.50\tefectivo\tcompletado\tJorge vieitez\tBanana Ski\tVenta TPV TPV-20260325-7855 — Banana Ski\t2026-03-25 16:03:21\n30001\tTXN-20260325-59061\tingreso\t36.00\tefectivo\tcompletado\tcarlos Cadaval\tCableski & Wakeboard Dia Completo\tVenta TPV TPV-20260325-1686 — Cableski & Wakeboard Dia Completo\t2026-03-25 07:15:50\n3\tTXN-20260324-28913\tingreso\t10.00\tefectivo\tcompletado\tjosito ridruejo\tBanana Ski\tVenta TPV TPV-20260324-8961 — Banana Ski\t2026-03-24 22:44:55\n2\tTXN-20260324-44203\tingreso\t15.00\tefectivo\tcompletado\tTpv Jorge Grande\tBanana Ski\tVenta TPV TPV-20260324-5767 — Banana Ski\t2026-03-24 22:10:37\n1\tTXN-20260324-56598\tingreso\t84.50\tefectivo\tcompletado\tNULL\tEntrada General Piscina Club Nautico\tVenta TPV TPV-20260324-8450 — Entrada General Piscina Club Nautico\t2026-03-24 21:45:51\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

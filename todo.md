@@ -2389,3 +2389,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Integrado en: TPV createSale, Redsys IPN (pago autorizado), CRM confirmPayment, CRM convertToReservation, CRM confirmTransfer
 - [x] Carlos Calin creado manualmente en la BD (retroactivo)
 - [x] Verificado: servidor corriendo sin errores TypeScript
+
+## TAREA v25.20 — Investigar contabilidad con datos de prueba y resetear transacciones [RESUELTO]
+- [x] Verificado: NO es un bug. Las transacciones son registros contables permanentes por diseño (no se borran en cascada con las operaciones)
+- [x] Diagnosticado: 10 transacciones de ventas TPV del 24-25 marzo sumaban 558.72€
+- [x] Reset completo: transactions, tpv_sales, tpv_sale_items, tpv_sale_payments, reservations, invoices, bookings, booking_monitors, daily_orders, crm_activity_log, quotes, leads, clients, reav_expedients, reav_documents, reav_costs, cash_movements
+- [x] Verificado: todas las tablas a 0 registros

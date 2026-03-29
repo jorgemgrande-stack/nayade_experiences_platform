@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Desactivar checks de claves foráneas temporalmente\nSET FOREIGN_KEY_CHECKS = 0;\n\n-- Limpiar tablas de operaciones y contabilidad\nDELETE FROM transactions;\nDELETE FROM tpv_sale_items;\nDELETE FROM tpv_sale_payments;\nDELETE FROM tpv_sales;\nDELETE FROM reservations;\nDELETE FROM invoices;\nDELETE FROM bookings;\nDELETE FROM booking_monitors;\nDELETE FROM daily_orders;\nDELETE FROM crm_activity_log;\nDELETE FROM quotes;\nDELETE FROM leads;\nDELETE FROM clients;\nDELETE FROM reav_expedients;\nDELETE FROM reav_documents;\nDELETE FROM reav_costs;\nDELETE FROM cash_movements;\n\n-- Reactivar checks\nSET FOREIGN_KEY_CHECKS = 1;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Desactivar checks de claves foráneas temporalmente\nSET FOREIGN_KEY_CHECKS = 0;\n\n-- Limpiar tablas de operaciones y contabilidad\nDELETE FROM transactions;\nDELETE FROM tpv_sale_items;\nDELETE FROM tpv_sale_payments;\nDELETE FROM tpv_sales;\nDELETE FROM reservations;\nDELETE FROM invoices;\nDELETE FROM bookings;\nDELETE FROM booking_monitors;\nDELETE FROM daily_orders;\nDELETE FROM crm_activity_log;\nDELETE FROM quotes;\nDELETE FROM leads;\nDELETE FROM clients;\nDELETE FROM reav_expedients;\nDELETE FROM reav_documents;\nDELETE FROM reav_costs;\nDELETE FROM cash_movements;\n\n-- Reactivar checks\nSET FOREIGN_KEY_CHECKS = 1;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 252
+}

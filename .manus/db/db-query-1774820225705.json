@@ -1,0 +1,30 @@
+{
+  "query": "\nSELECT 'transactions' as tabla, COUNT(*) as registros, COALESCE(SUM(amount)/100, 0) as total_euros FROM transactions\nUNION ALL\nSELECT 'reservations', COUNT(*), COALESCE(SUM(amount_paid)/100, 0) FROM reservations\nUNION ALL\nSELECT 'invoices', COUNT(*), COALESCE(SUM(CAST(total AS DECIMAL(10,2))), 0) FROM invoices\nUNION ALL\nSELECT 'expenses', COUNT(*), COALESCE(SUM(amount), 0) FROM expenses;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT 'transactions' as tabla, COUNT(*) as registros, COALESCE(SUM(amount)/100, 0) as total_euros FROM transactions\nUNION ALL\nSELECT 'reservations', COUNT(*), COALESCE(SUM(amount_paid)/100, 0) FROM reservations\nUNION ALL\nSELECT 'invoices', COUNT(*), COALESCE(SUM(CAST(total AS DECIMAL(10,2))), 0) FROM invoices\nUNION ALL\nSELECT 'expenses', COUNT(*), COALESCE(SUM(amount), 0) FROM expenses;\n",
+  "rows": [
+    {
+      "tabla": "reservations",
+      "registros": "0",
+      "total_euros": "0.000000"
+    },
+    {
+      "tabla": "transactions",
+      "registros": "10",
+      "total_euros": "5.587200"
+    },
+    {
+      "tabla": "expenses",
+      "registros": "0",
+      "total_euros": "0.000000"
+    },
+    {
+      "tabla": "invoices",
+      "registros": "0",
+      "total_euros": "0.000000"
+    }
+  ],
+  "messages": [],
+  "stdout": "tabla\tregistros\ttotal_euros\nreservations\t0\t0.000000\ntransactions\t10\t5.587200\nexpenses\t0\t0.000000\ninvoices\t0\t0.000000\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}

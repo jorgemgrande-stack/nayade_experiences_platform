@@ -1,0 +1,306 @@
+{
+  "query": "DESCRIBE transactions;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute DESCRIBE transactions;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "transactionNumber",
+      "Type": "varchar(32)",
+      "Null": "NO",
+      "Key": "UNI",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "bookingId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "quoteId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "type",
+      "Type": "enum('ingreso','reembolso','comision','gasto')",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "ingreso",
+      "Extra": ""
+    },
+    {
+      "Field": "amount",
+      "Type": "decimal(10,2)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "currency",
+      "Type": "varchar(8)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "EUR",
+      "Extra": ""
+    },
+    {
+      "Field": "paymentMethod",
+      "Type": "enum('tarjeta','transferencia','efectivo','link_pago','otro')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "tarjeta",
+      "Extra": ""
+    },
+    {
+      "Field": "status",
+      "Type": "enum('pendiente','completado','fallido','reembolsado')",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "pendiente",
+      "Extra": ""
+    },
+    {
+      "Field": "description",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "externalRef",
+      "Type": "varchar(256)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "processedAt",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "createdAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "updatedAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    },
+    {
+      "Field": "clientName",
+      "Type": "varchar(200)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "clientEmail",
+      "Type": "varchar(200)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "clientPhone",
+      "Type": "varchar(50)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "productName",
+      "Type": "varchar(300)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "operativeCenter",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "sellerUserId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "sellerName",
+      "Type": "varchar(200)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "saleChannel",
+      "Type": "enum('tpv','online','crm','admin','delegado')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "admin",
+      "Extra": ""
+    },
+    {
+      "Field": "taxBase",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "taxAmount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "reavMargin",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "fiscalRegime",
+      "Type": "enum('reav','general_21','mixed')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "general_21",
+      "Extra": ""
+    },
+    {
+      "Field": "tpvSaleId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "reservationId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "invoiceNumber",
+      "Type": "varchar(32)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "reservationRef",
+      "Type": "varchar(32)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "operationStatus",
+      "Type": "enum('confirmada','anulada','reembolsada')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "confirmada",
+      "Extra": ""
+    },
+    {
+      "Field": "fiscalRegime_tx",
+      "Type": "enum('reav','general_21','mixed')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "general_21",
+      "Extra": ""
+    },
+    {
+      "Field": "reservationId_tx",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_code",
+      "Type": "varchar(50)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_percent",
+      "Type": "decimal(5,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_amount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "original_amount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\ntransactionNumber\tvarchar(32)\tNO\tUNI\tNULL\t\nbookingId\tint\tYES\t\tNULL\t\nquoteId\tint\tYES\t\tNULL\t\ntype\tenum('ingreso','reembolso','comision','gasto')\tNO\tMUL\tingreso\t\namount\tdecimal(10,2)\tNO\t\tNULL\t\ncurrency\tvarchar(8)\tNO\t\tEUR\t\npaymentMethod\tenum('tarjeta','transferencia','efectivo','link_pago','otro')\tYES\t\ttarjeta\t\nstatus\tenum('pendiente','completado','fallido','reembolsado')\tNO\tMUL\tpendiente\t\ndescription\ttext\tYES\t\tNULL\t\nexternalRef\tvarchar(256)\tYES\t\tNULL\t\nprocessedAt\ttimestamp\tYES\t\tNULL\t\ncreatedAt\ttimestamp\tNO\tMUL\tCURRENT_TIMESTAMP\t\nupdatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\nclientName\tvarchar(200)\tYES\t\tNULL\t\nclientEmail\tvarchar(200)\tYES\t\tNULL\t\nclientPhone\tvarchar(50)\tYES\t\tNULL\t\nproductName\tvarchar(300)\tYES\t\tNULL\t\noperativeCenter\tvarchar(100)\tYES\t\tNULL\t\nsellerUserId\tint\tYES\t\tNULL\t\nsellerName\tvarchar(200)\tYES\t\tNULL\t\nsaleChannel\tenum('tpv','online','crm','admin','delegado')\tYES\t\tadmin\t\ntaxBase\tdecimal(10,2)\tYES\t\t0\t\ntaxAmount\tdecimal(10,2)\tYES\t\t0\t\nreavMargin\tdecimal(10,2)\tYES\t\t0\t\nfiscalRegime\tenum('reav','general_21','mixed')\tYES\t\tgeneral_21\t\ntpvSaleId\tint\tYES\t\tNULL\t\nreservationId\tint\tYES\t\tNULL\t\ninvoiceNumber\tvarchar(32)\tYES\t\tNULL\t\nreservationRef\tvarchar(32)\tYES\t\tNULL\t\noperationStatus\tenum('confirmada','anulada','reembolsada')\tYES\t\tconfirmada\t\nfiscalRegime_tx\tenum('reav','general_21','mixed')\tYES\t\tgeneral_21\t\nreservationId_tx\tint\tYES\t\tNULL\t\ndiscount_code\tvarchar(50)\tYES\t\tNULL\t\ndiscount_percent\tdecimal(5,2)\tYES\t\t0\t\ndiscount_amount\tdecimal(10,2)\tYES\t\t0\t\noriginal_amount\tdecimal(10,2)\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}
