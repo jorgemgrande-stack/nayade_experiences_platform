@@ -2199,3 +2199,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] PlatformsManager: columna "Clientes" en tabla de productos que muestra nombres de clientes (máx. 3 visibles + contador +N)
 - [x] Backend: getProductStats devuelve customerNames[] por producto (deduplicados)
 - [x] 235 tests pasando (0 errores TypeScript)
+
+## v23.8 — Fix visibilidad columna Clientes en PlatformsManager [COMPLETADO]
+- [x] Diagnóstico: el contenedor usaba overflow-hidden que cortaba las columnas extra
+- [x] Fix: cambiado a overflow-x-auto + min-w-[1100px] en la tabla para habilitar scroll horizontal y mostrar todas las columnas
+- [x] 235 tests pasando (0 errores TypeScript)

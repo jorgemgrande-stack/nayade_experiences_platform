@@ -490,14 +490,14 @@ export default function PlatformsManager() {
                           <Plus className="w-3.5 h-3.5 mr-1" /> Añadir producto
                         </Button>
                       </div>
-                      <div className="rounded-xl border border-white/5 overflow-hidden">
+                      <div className="rounded-xl border border-white/5 overflow-x-auto">
                         {products.length === 0 ? (
                           <div className="p-8 text-center text-white/30 text-sm">
                             <Package className="w-8 h-8 mx-auto mb-2 opacity-30" />
                             No hay productos configurados para esta plataforma.
                           </div>
                         ) : (
-                          <table className="w-full text-sm">
+                          <table className="w-full min-w-[1100px] text-sm">
                             <thead>
                               <tr className="border-b border-white/5 bg-white/[0.03]">
                                 <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Producto</th>
