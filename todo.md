@@ -2452,3 +2452,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] BUG #2: Booking creado en estado 'pendiente' en lugar de 'confirmado' (debe confirmarse al garantizarse el pago)
 - [x] BUG #3: Calendario y Órdenes del Día no muestran bookings 'confirmado' (filtros incorrectos)
 - [x] Reparar datos retroactivos de Cañón Colorado (cliente + booking status)
+
+## FEATURE v25.26 — Date picker en módulos de Operaciones
+
+- [x] Añadir date picker con calendario desplegable en Actividades del Día
+- [x] Añadir date picker con calendario desplegable en Órdenes del Día
+- [x] Añadir date picker con calendario desplegable en Calendario

@@ -9,8 +9,12 @@ import { toast } from "sonner";
 import {
   ClipboardList, User, Users, Phone, Clock, CheckCircle2,
   AlertTriangle, ChevronLeft, ChevronRight, RefreshCw,
-  MessageSquare, Edit3, Save, X, Calendar,
+  MessageSquare, Edit3, Save, X, CalendarDays,
 } from "lucide-react";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 
 function addDays(d: Date, n: number) {
   const r = new Date(d);
@@ -38,6 +42,7 @@ export default function DailyOrders() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [editArrival, setEditArrival] = useState("");
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const dateStr = formatDateStr(currentDate);
 
@@ -101,7 +106,7 @@ export default function DailyOrders() {
         </div>
 
         {/* Date Navigation */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
           <Button variant="outline" size="icon" onClick={() => setCurrentDate(d => addDays(d, -1))} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-8 h-8">
             <ChevronLeft className="w-4 h-4" />
           </Button>
@@ -111,6 +116,33 @@ export default function DailyOrders() {
           <Button variant="outline" size="icon" onClick={() => setCurrentDate(d => addDays(d, 1))} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-8 h-8">
             <ChevronRight className="w-4 h-4" />
           </Button>
+          {/* Date Picker */}
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-slate-700 text-slate-300 hover:bg-slate-800 gap-2"
+              >
+                <CalendarDays className="w-4 h-4 text-blue-400" />
+                Ir a fecha
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 bg-[#111827] border-slate-700" align="start">
+              <Calendar
+                mode="single"
+                selected={currentDate}
+                onSelect={(date) => {
+                  if (date) {
+                    setCurrentDate(date);
+                    setCalendarOpen(false);
+                  }
+                }}
+                initialFocus
+                className="text-white"
+              />
+            </PopoverContent>
+          </Popover>
           <h2 className="text-lg font-semibold text-white capitalize">
             {currentDate.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </h2>
