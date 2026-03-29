@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,6 +154,7 @@ export default function CancellationsManager() {
   const kpis = data?.kpis;
 
   return (
+    <AdminLayout>
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -421,5 +423,6 @@ export default function CancellationsManager() {
         </div>
       )}
     </div>
+    </AdminLayout>
   );
 }

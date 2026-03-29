@@ -1,9 +1,9 @@
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
-import { useState, useEffect } from "react";
 import {
   TrendingUp, TrendingDown, Users, FileText, Calendar, ArrowUpRight, ArrowRight,
   Euro, AlertCircle, Clock, Zap, BarChart3, Banknote, ShoppingBag,
-  ExternalLink, Bell, AlertTriangle, Activity,
+  ExternalLink, Bell, AlertTriangle, Activity, CheckCircle2, UserCheck,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -170,6 +170,19 @@ function Panel({ title, icon: Icon, iconColor, children, action }: {
   );
 }
 
+// ─── Helpers for activities ──────────────────────────────────────────────────
+function opStatusBadge(status: string, clientConfirmed: boolean) {
+  if (!clientConfirmed) return <span className="text-[10px] px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-300 border-amber-500/30">Sin confirmar</span>;
+  const map: Record<string, string> = {
+    confirmado: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+    completado: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+    pendiente:  "bg-amber-500/15 text-amber-300 border-amber-500/30",
+    incidencia: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+  };
+  const labels: Record<string, string> = { confirmado: "Confirmado", completado: "Completado", pendiente: "Pendiente", incidencia: "Incidencia" };
+  return <span className={cn("text-[10px] px-2 py-0.5 rounded-full border font-medium", map[status] ?? "bg-slate-500/15 text-slate-300")}>{labels[status] ?? status}</span>;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const { user, isAuthenticated, loading } = useAuth();
@@ -177,6 +190,17 @@ export default function AdminDashboard() {
     enabled: isAuthenticated,
     refetchInterval: 60_000,
   });
+
+  // Today's date string for operations query
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  const { data: todayActivities, isLoading: activitiesLoading } = trpc.operations.activities.getForDate.useQuery(
+    { date: todayStr },
+    { enabled: isAuthenticated, refetchInterval: 60_000 }
+  );
 
   if (loading) {
     return (
@@ -334,36 +358,47 @@ export default function AdminDashboard() {
             {/* Columna izquierda + centro (2/3) */}
             <div className="lg:col-span-2 space-y-4">
 
-              {/* Actividades de hoy */}
+              {/* Actividades de hoy — usa tabla reservations (módulo Operaciones) */}
               <Panel
                 title="Actividades de hoy"
                 icon={Activity}
                 iconColor="text-blue-400"
                 action={
-                  <Link href="/admin/operaciones/reservas">
+                  <Link href="/admin/operaciones/actividades">
                     <button className="text-[10px] text-white/30 hover:text-white/60 flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
                   </Link>
                 }
               >
-                {isLoading ? (
+                {activitiesLoading ? (
                   <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-11 bg-white/5 rounded-lg animate-pulse" />)}</div>
-                ) : (overview?.todayBookings?.length ?? 0) === 0 ? (
+                ) : (todayActivities?.length ?? 0) === 0 ? (
                   <div className="text-center py-6 text-white/25">
                     <Calendar className="w-7 h-7 mx-auto mb-2 opacity-40" />
                     <p className="text-xs">No hay actividades programadas para hoy</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {overview?.todayBookings?.map(b => (
+                    {todayActivities?.map(b => (
                       <div key={b.id} className="flex items-center gap-3 bg-white/[0.04] hover:bg-white/[0.06] rounded-lg px-3 py-2.5 transition-colors">
                         <div className="w-11 text-center shrink-0">
-                          <p className="text-xs font-black text-blue-300">{fmtTime(b.scheduledDate)}</p>
+                          {b.monitorName ? (
+                            <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-500/40 flex items-center justify-center mx-auto">
+                              <UserCheck className="w-3.5 h-3.5 text-blue-400" />
+                            </div>
+                          ) : (
+                            <div className="w-7 h-7 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center mx-auto">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                            </div>
+                          )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-white truncate">{b.experienceName}</p>
-                          <p className="text-[10px] text-white/40 truncate">{b.clientName} · {b.numberOfPersons} pers.</p>
+                          <p className="text-sm font-semibold text-white truncate">{b.activityTitle}</p>
+                          <p className="text-[10px] text-white/40 truncate">
+                            {b.clientName} · {b.numberOfPersons} pax
+                            {b.monitorName ? ` · ${b.monitorName}` : " · Sin monitor"}
+                          </p>
                         </div>
-                        <BookingBadge status={b.status} />
+                        {opStatusBadge(b.opStatus ?? "pendiente", b.clientConfirmed ?? false)}
                       </div>
                     ))}
                   </div>

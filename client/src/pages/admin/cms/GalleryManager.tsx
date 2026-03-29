@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -171,6 +172,7 @@ export default function GalleryManager() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
+    <AdminLayout>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -349,6 +351,7 @@ export default function GalleryManager() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </AdminLayout>
   );
 }
 

@@ -2337,3 +2337,27 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] BD: actualizada reserva de Simo Blanquez (id=420001) a opStatus='confirmado'
 - [x] Backend: al crear nuevo registro operativo para reserva paid, opStatus='confirmado' por defecto
 - [x] Frontend: la etiqueta de estado refleja el opStatus de la BD directamente
+
+## v25.15 — Consistencia UI + Reconstrucción Dashboard
+- [ ] FASE 1: Auditar todas las rutas y detectar pantallas sin AdminLayout
+- [ ] FASE 1: Unificar layout — envolver pantallas aisladas bajo AdminLayout
+- [ ] FASE 2 Bloque 1: Acciones críticas (leads sin gestionar, presupuestos sin enviar/respuesta, reservas pendientes, anulaciones, incidencias, cupones, órdenes sin confirmar, actividades sin monitor)
+- [ ] FASE 2 Bloque 2: Métricas reales (ingresos día/mes, reservas hoy, ocupación, pendiente cobro, conversión)
+- [ ] FASE 2 Bloque 3: Actividad reciente con trazabilidad (qué, quién, cuándo, enlace)
+- [ ] FASE 2 Bloque 4: Actividades de hoy conectadas a módulo de operaciones
+- [ ] FASE 2 Bloque 5: Inteligencia del sistema (alertas automáticas)
+- [ ] FASE 3: Validación — todas las pantallas usan el mismo layout
+
+## v25.15 — Consistencia UI + Dashboard rediseño [COMPLETADO]
+- [x] Auditoría de layout: detectadas 7 pantallas sin AdminLayout
+- [x] ReavManager: envuelto con AdminLayout (eliminado min-h-screen bg-slate-50)
+- [x] SettlementsManager: envuelto con AdminLayout
+- [x] SuppliersManager: envuelto con AdminLayout
+- [x] GalleryManager: envuelto con AdminLayout (corregido AdminLayout closing tag)
+- [x] CancellationsManager: envuelto con AdminLayout
+- [x] EmailTemplatesManager: envuelto con AdminLayout
+- [x] PdfTemplatesManager: envuelto con AdminLayout
+- [x] Dashboard: bloque "Actividades de hoy" ahora usa trpc.operations.activities.getForDate (tabla reservations real)
+- [x] Dashboard: muestra nombre de actividad, cliente, pax, monitor asignado y estado operativo
+- [x] Dashboard: icono de monitor asignado (azul) vs sin monitor (ámbar) para identificación rápida
+- [x] 0 errores TypeScript

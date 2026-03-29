@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -141,6 +142,7 @@ export default function EmailTemplatesManager() {
   }
 
   return (
+    <AdminLayout>
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b bg-background px-6 py-4 shrink-0">
         <div className="flex items-center gap-3">
@@ -424,5 +426,6 @@ export default function EmailTemplatesManager() {
         </DialogContent>
       </Dialog>
     </div>
+    </AdminLayout>
   );
 }

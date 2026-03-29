@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,6 +193,7 @@ export default function SuppliersManager() {
   };
 
   return (
+    <AdminLayout>
     <div className="flex h-full min-h-screen bg-slate-50">
       {/* ── Left panel: list ── */}
       <div className="w-80 flex-shrink-0 border-r bg-white flex flex-col">
@@ -529,5 +531,6 @@ export default function SuppliersManager() {
         </DialogContent>
       </Dialog>
     </div>
+    </AdminLayout>
   );
 }

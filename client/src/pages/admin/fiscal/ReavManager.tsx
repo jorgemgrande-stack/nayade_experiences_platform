@@ -1,4 +1,5 @@
 import { useState } from "react";
+import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -149,7 +150,8 @@ export default function ReavManager() {
   });
 
   return (
-    <div className="flex h-full min-h-screen bg-slate-50">
+    <AdminLayout>
+    <div className="flex h-full min-h-screen bg-[#080e1c]">
       {/* ── Panel izquierdo: lista de expedientes ── */}
       <div className="w-96 border-r border-slate-200 bg-white flex flex-col">
         <div className="p-4 border-b border-slate-200">
@@ -263,10 +265,10 @@ export default function ReavManager() {
         loading={createMut.isPending}
       />
     </div>
+    </AdminLayout>
   );
 }
-
-// ─── Detalle del expediente ───────────────────────────────────────────────────
+// ─── Detalle del expediente ─────────────────────────────────────────────────
 
 function ExpedientDetail({
   exp,
