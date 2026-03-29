@@ -2243,3 +2243,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 
 ## v25.2 — Enlace Solicitar Anulación en footer
 - [x] Añadir enlace "Solicitar Anulación" → /solicitar-anulacion en columna Servicios del footer público
+
+## v25.3 — Páginas legales completas [COMPLETADO]
+- [x] Revisar/completar PoliticaPrivacidad.tsx (ruta /privacidad)
+- [x] Crear TerminosCondiciones.tsx (ruta /terminos) — 11 secciones con política de cancelación, menores, seguridad, jurisdicción
+- [x] Crear PoliticaCookies.tsx (ruta /cookies) — 8 secciones con tablas de cookies técnicas/analíticas/preferencias
+- [x] Registrar las 3 rutas en App.tsx

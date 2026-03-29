@@ -36,6 +36,9 @@ import HotelRoom from "./pages/HotelRoom";
 import SpaDetail from "./pages/SpaDetail";
 import RestaurantBooking from "./pages/RestaurantBooking";
 import Checkout from "./pages/Checkout";
+import PoliticaPrivacidad from "./pages/PoliticaPrivacidad";
+import TerminosCondiciones from "./pages/TerminosCondiciones";
+import PoliticaCookies from "./pages/PoliticaCookies";
 
 // ── ADMIN PAGES (lazy — solo se cargan cuando el usuario navega a /admin) ────
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
@@ -150,6 +153,10 @@ function Router() {
       <Route path="/recuperar-contrasena" component={ForgotPassword} />
       <Route path="/nueva-contrasena" component={ResetPassword} />
       <Route path="/establecer-contrasena" component={SetPassword} />
+      {/* ── LEGAL PAGES ── */}
+      <Route path="/privacidad" component={PoliticaPrivacidad} />
+      <Route path="/terminos" component={TerminosCondiciones} />
+      <Route path="/cookies" component={PoliticaCookies} />
       {/* ── DYNAMIC PAGES (CMS) ── */}
       <Route path="/pagina/:slug" component={DynamicPage} />
 
