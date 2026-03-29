@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import CancellationDetailModal from "./CancellationDetailModal";
 import {
   Users,
   User,
@@ -60,11 +61,19 @@ import {
   MoreVertical,
   ExternalLink,
   FilePlus,
+  CloudLightning,
+  HeartPulse,
+  HelpCircle,
+  CheckCircle2,
+  FileQuestion,
+  Gift,
+  AlertCircle,
+  Archive,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
-type Tab = "leads" | "quotes" | "reservations" | "invoices";
+type Tab = "leads" | "quotes" | "reservations" | "invoices" | "anulaciones";
 
 type OpportunityStatus = "nueva" | "enviada" | "ganada" | "perdida";
 type Priority = "baja" | "media" | "alta";
@@ -186,6 +195,43 @@ const COUNTER_STYLES = {
     dot: "bg-orange-400",
   },
 };
+
+// ─── Anulaciones badge helpers ───────────────────────────────────────────────
+function AnulOpBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    recibida: { label: "Recibida", cls: "bg-blue-500/15 text-blue-300 border-blue-500/20" },
+    en_revision: { label: "En revisión", cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
+    pendiente_documentacion: { label: "Pend. docs", cls: "bg-orange-500/15 text-orange-300 border-orange-500/20" },
+    pendiente_decision: { label: "Pend. decisión", cls: "bg-yellow-500/15 text-yellow-300 border-yellow-500/20" },
+    resuelta: { label: "Resuelta", cls: "bg-green-500/15 text-green-300 border-green-500/20" },
+    cerrada: { label: "Cerrada", cls: "bg-gray-500/15 text-gray-400 border-gray-500/20" },
+    incidencia: { label: "Incidencia", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
+  };
+  const s = map[status] ?? { label: status, cls: "bg-white/5 text-white/40 border-white/10" };
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
+}
+function AnulResBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    sin_resolver: { label: "Sin resolver", cls: "bg-white/5 text-white/40 border-white/10" },
+    rechazada: { label: "Rechazada", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
+    aceptada_total: { label: "Aceptada total", cls: "bg-green-500/15 text-green-300 border-green-500/20" },
+    aceptada_parcial: { label: "Aceptada parcial", cls: "bg-teal-500/15 text-teal-300 border-teal-500/20" },
+  };
+  const s = map[status] ?? { label: status, cls: "bg-white/5 text-white/40 border-white/10" };
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
+}
+function AnulFinBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    sin_compensacion: { label: "Sin comp.", cls: "bg-white/5 text-white/40 border-white/10" },
+    pendiente_devolucion: { label: "Pend. dev.", cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
+    devuelta_economicamente: { label: "Devuelta", cls: "bg-green-500/15 text-green-300 border-green-500/20" },
+    pendiente_bono: { label: "Pend. bono", cls: "bg-purple-500/15 text-purple-300 border-purple-500/20" },
+    compensada_bono: { label: "Bono enviado", cls: "bg-violet-500/15 text-violet-300 border-violet-500/20" },
+    incidencia_economica: { label: "Incid. ec.", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
+  };
+  const s = map[status] ?? { label: status, cls: "bg-white/5 text-white/40 border-white/10" };
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
+}
 
 function CounterCard({
   label,
@@ -2439,7 +2485,7 @@ export default function CRMDashboard() {
     try {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices") return t;
+      if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones") return t;
     } catch { /* ignore */ }
     return "leads";
   };
@@ -2524,6 +2570,36 @@ export default function CRMDashboard() {
     invoiceFilter,
     { enabled: tab === "invoices" }
   );
+  // ─── Anulaciones state ───────────────────────────────────────────────────────
+  const [anulSearch, setAnulSearch] = useState("");
+  const [anulOpFilter, setAnulOpFilter] = useState("all");
+  const [anulResFilter, setAnulResFilter] = useState("all");
+  const [anulFinFilter, setAnulFinFilter] = useState("all");
+  const [anulReasonFilter, setAnulReasonFilter] = useState("all");
+  const [selectedAnulId, setSelectedAnulId] = useState<number | null>(null);
+  const [deleteAnulId, setDeleteAnulId] = useState<number | null>(null);
+  const { data: anulData, isLoading: anulLoading, refetch: refetchAnul } = trpc.cancellations.listRequests.useQuery({
+    search: anulSearch || undefined,
+    operationalStatus: anulOpFilter !== "all" ? anulOpFilter : undefined,
+    resolutionStatus: anulResFilter !== "all" ? anulResFilter : undefined,
+    financialStatus: anulFinFilter !== "all" ? anulFinFilter : undefined,
+    reason: anulReasonFilter !== "all" ? anulReasonFilter : undefined,
+    limit: 100,
+    offset: 0,
+  }, { enabled: tab === "anulaciones" });
+  const { data: anulCounters } = trpc.cancellations.getCounters.useQuery(undefined, {
+    refetchInterval: 60000,
+  });
+  const deleteAnulMutation = trpc.cancellations.deleteRequest.useMutation({
+    onSuccess: () => {
+      toast.success("Solicitud eliminada");
+      setDeleteAnulId(null);
+      utils.cancellations.listRequests.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const anulRows = anulData?.rows ?? [];
+  const anulKpis = anulData?.kpis;
 
   const utils = trpc.useUtils();
   const deleteLead = trpc.crm.leads.delete.useMutation({
@@ -2872,6 +2948,46 @@ export default function CRMDashboard() {
               />
             </div>
           </div>
+          {/* Grupo 3: Anulaciones */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-red-400 to-red-600" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Anulaciones</span>
+              <div className="flex-1 h-px bg-white/5" />
+              {(anulCounters?.total ?? 0) > 0 && (
+                <span className="text-xs text-white/30">{anulCounters?.total ?? 0} totales</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <CounterCard
+                label="Pendientes"
+                value={anulCounters?.pending ?? 0}
+                icon={AlertTriangle}
+                color="red"
+                subtitle="Sin resolver"
+                active={tab === "anulaciones"}
+                onClick={() => handleTabChange("anulaciones")}
+              />
+              <CounterCard
+                label="Incidencias"
+                value={anulCounters?.incidencias ?? 0}
+                icon={AlertCircle}
+                color="red"
+                subtitle="Requieren atención"
+                active={tab === "anulaciones"}
+                onClick={() => handleTabChange("anulaciones")}
+              />
+              <CounterCard
+                label="Total"
+                value={anulCounters?.total ?? 0}
+                icon={Archive}
+                color="slate"
+                subtitle="Todas las solicitudes"
+                active={tab === "anulaciones"}
+                onClick={() => handleTabChange("anulaciones")}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Barra de ratio de conversión */}
@@ -2954,6 +3070,7 @@ export default function CRMDashboard() {
               { key: "quotes", label: "Presupuestos", icon: FileText, count: quoteCounters?.enviado },
               { key: "reservations", label: "Reservas", icon: CalendarCheck, count: resCounters?.confirmadas },
               { key: "invoices", label: "Facturas", icon: Receipt, count: undefined },
+              { key: "anulaciones", label: "Anulaciones", icon: AlertTriangle, count: anulCounters?.pending },
             ] as const).map(({ key, label, icon: Icon, count }) => (
               <button
                 key={key}
@@ -2974,6 +3091,7 @@ export default function CRMDashboard() {
         </div>
 
         {/* Search & filter */}
+        {tab !== "anulaciones" && (
         <div className="px-6 py-4 flex gap-3 items-center">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
@@ -3017,6 +3135,7 @@ export default function CRMDashboard() {
             </Button>
           )}
         </div>
+        )}
 
         {/* Table */}
         <div className="px-6 pb-8">
@@ -3635,6 +3754,216 @@ export default function CRMDashboard() {
               </div>
             </div>
           )}
+          {/* ─── TAB: ANULACIONES ─────────────────────────────────────────────── */}
+          {tab === "anulaciones" && (
+            <div className="space-y-4">
+              {/* KPIs fila 1 */}
+              {anulKpis && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {[
+                    { label: "Total", value: anulKpis.total, color: "border-white/5" },
+                    { label: "Recibidas", value: anulKpis.recibidas, color: "border-blue-500/20" },
+                    { label: "En revisión", value: anulKpis.enRevision, color: "border-amber-500/20" },
+                    { label: "Pend. docs", value: anulKpis.pendienteDocumentacion, color: "border-orange-500/20" },
+                    { label: "Incidencias", value: anulKpis.incidencias, color: "border-red-500/20" },
+                    { label: "Cerradas", value: anulKpis.cerradas, color: "border-gray-500/20" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className={`bg-white/3 border ${color} rounded-xl p-4`}>
+                      <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
+                      <p className="text-2xl font-bold text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* KPIs fila 2 */}
+              {anulKpis && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: "Aceptadas total", value: anulKpis.resueltasTotal, color: "border-green-500/20" },
+                    { label: "Aceptadas parcial", value: anulKpis.resueltasParcial, color: "border-teal-500/20" },
+                    { label: "Rechazadas", value: anulKpis.rechazadas, color: "border-red-500/20" },
+                    { label: "Bonos enviados", value: anulKpis.compensadasBono, color: "border-purple-500/20" },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} className={`bg-white/3 border ${color} rounded-xl p-4`}>
+                      <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
+                      <p className="text-2xl font-bold text-white">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Filtros */}
+              <div className="flex flex-wrap gap-3">
+                <Select value={anulOpFilter} onValueChange={setAnulOpFilter}>
+                  <SelectTrigger className="w-44 bg-white/5 border-white/10 text-white/70 text-xs h-9">
+                    <SelectValue placeholder="Estado operativo" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0d1520] border-white/10">
+                    <SelectItem value="all" className="text-white/70 text-xs">Todos los estados</SelectItem>
+                    <SelectItem value="recibida" className="text-white/70 text-xs">Recibida</SelectItem>
+                    <SelectItem value="en_revision" className="text-white/70 text-xs">En revisión</SelectItem>
+                    <SelectItem value="pendiente_documentacion" className="text-white/70 text-xs">Pend. documentación</SelectItem>
+                    <SelectItem value="pendiente_decision" className="text-white/70 text-xs">Pend. decisión</SelectItem>
+                    <SelectItem value="resuelta" className="text-white/70 text-xs">Resuelta</SelectItem>
+                    <SelectItem value="cerrada" className="text-white/70 text-xs">Cerrada</SelectItem>
+                    <SelectItem value="incidencia" className="text-white/70 text-xs">Incidencia</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={anulResFilter} onValueChange={setAnulResFilter}>
+                  <SelectTrigger className="w-44 bg-white/5 border-white/10 text-white/70 text-xs h-9">
+                    <SelectValue placeholder="Resolución" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0d1520] border-white/10">
+                    <SelectItem value="all" className="text-white/70 text-xs">Toda resolución</SelectItem>
+                    <SelectItem value="sin_resolver" className="text-white/70 text-xs">Sin resolver</SelectItem>
+                    <SelectItem value="rechazada" className="text-white/70 text-xs">Rechazada</SelectItem>
+                    <SelectItem value="aceptada_total" className="text-white/70 text-xs">Aceptada total</SelectItem>
+                    <SelectItem value="aceptada_parcial" className="text-white/70 text-xs">Aceptada parcial</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={anulFinFilter} onValueChange={setAnulFinFilter}>
+                  <SelectTrigger className="w-44 bg-white/5 border-white/10 text-white/70 text-xs h-9">
+                    <SelectValue placeholder="Estado financiero" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0d1520] border-white/10">
+                    <SelectItem value="all" className="text-white/70 text-xs">Todo financiero</SelectItem>
+                    <SelectItem value="sin_compensacion" className="text-white/70 text-xs">Sin compensación</SelectItem>
+                    <SelectItem value="pendiente_devolucion" className="text-white/70 text-xs">Pend. devolución</SelectItem>
+                    <SelectItem value="devuelta_economicamente" className="text-white/70 text-xs">Devuelta</SelectItem>
+                    <SelectItem value="pendiente_bono" className="text-white/70 text-xs">Pend. bono</SelectItem>
+                    <SelectItem value="compensada_bono" className="text-white/70 text-xs">Bono enviado</SelectItem>
+                    <SelectItem value="incidencia_economica" className="text-white/70 text-xs">Incidencia ec.</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={anulReasonFilter} onValueChange={setAnulReasonFilter}>
+                  <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white/70 text-xs h-9">
+                    <SelectValue placeholder="Motivo" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0d1520] border-white/10">
+                    <SelectItem value="all" className="text-white/70 text-xs">Todos los motivos</SelectItem>
+                    <SelectItem value="meteorologicas" className="text-white/70 text-xs">Meteorológicas</SelectItem>
+                    <SelectItem value="accidente" className="text-white/70 text-xs">Accidente</SelectItem>
+                    <SelectItem value="enfermedad" className="text-white/70 text-xs">Enfermedad</SelectItem>
+                    <SelectItem value="desistimiento" className="text-white/70 text-xs">Desistimiento</SelectItem>
+                    <SelectItem value="otra" className="text-white/70 text-xs">Otra</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchAnul()}
+                  className="gap-1.5 border-white/10 text-white/40 hover:text-white h-9"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Actualizar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => window.open("/solicitar-anulacion", "_blank")}
+                  className="gap-1.5 bg-orange-500/80 hover:bg-orange-600 text-white h-9 ml-auto"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Ver formulario público
+                </Button>
+              </div>
+              {/* Tabla */}
+              <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px]">
+                    <thead>
+                      <tr className="border-b border-white/8 bg-white/5">
+                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">#</th>
+                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Solicitante</th>
+                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Motivo</th>
+                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Fecha actividad</th>
+                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado op.</th>
+                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Resolución</th>
+                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Financiero</th>
+                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Fecha</th>
+                        <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {anulLoading && (
+                        <tr>
+                          <td colSpan={9} className="text-center py-12 text-white/30">
+                            <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
+                          </td>
+                        </tr>
+                      )}
+                      {!anulLoading && anulRows.length === 0 && (
+                        <tr>
+                          <td colSpan={9} className="text-center py-12">
+                            <AlertTriangle className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                            <p className="text-white/30 text-sm">No hay solicitudes que coincidan con los filtros</p>
+                          </td>
+                        </tr>
+                      )}
+                      {anulRows.map((row) => (
+                        <tr
+                          key={row.id}
+                          className="border-b border-white/5 hover:bg-white/3 transition-colors cursor-pointer"
+                          onClick={() => setSelectedAnulId(row.id)}
+                        >
+                          <td className="px-4 py-3 text-white/40 text-sm font-mono">#{row.id}</td>
+                          <td className="px-4 py-3">
+                            <p className="text-white text-sm font-medium">{row.fullName}</p>
+                            {row.email && <p className="text-white/40 text-xs">{row.email}</p>}
+                            {row.locator && <p className="text-white/30 text-xs font-mono">{row.locator}</p>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              {row.reason === "meteorologicas" && <CloudLightning className="w-4 h-4 text-blue-400" />}
+                              {row.reason === "accidente" && <AlertTriangle className="w-4 h-4 text-red-400" />}
+                              {row.reason === "enfermedad" && <HeartPulse className="w-4 h-4 text-pink-400" />}
+                              {row.reason === "desistimiento" && <XCircle className="w-4 h-4 text-white/40" />}
+                              {row.reason === "otra" && <HelpCircle className="w-4 h-4 text-white/40" />}
+                              <span className="text-white/60 text-xs capitalize">{row.reason}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-white/60 text-sm">{row.activityDate}</td>
+                          <td className="px-4 py-3">
+                            <AnulOpBadge status={row.operationalStatus} />
+                          </td>
+                          <td className="px-4 py-3">
+                            <AnulResBadge status={row.resolutionStatus} />
+                          </td>
+                          <td className="px-4 py-3">
+                            <AnulFinBadge status={row.financialStatus} />
+                          </td>
+                          <td className="px-4 py-3 text-white/40 text-xs">
+                            {new Date(row.createdAt).toLocaleDateString("es-ES")}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => setSelectedAnulId(row.id)}
+                                className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+                                title="Ver detalle"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteAnulId(row.id)}
+                                className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {anulRows.length > 0 && (
+                  <div className="px-4 py-3 border-t border-white/5 text-xs text-white/30">
+                    {anulRows.length} solicitud{anulRows.length !== 1 ? "es" : ""}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -4052,6 +4381,40 @@ export default function CRMDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AdminLayout>
+
+      {/* ─── MODALES DE ANULACIONES ──────────────────────────────────────────── */}
+      {/* Modal detalle anulación */}
+      {selectedAnulId !== null && (
+        <CancellationDetailModal
+          requestId={selectedAnulId}
+          onClose={() => {
+            setSelectedAnulId(null);
+            utils.cancellations.listRequests.invalidate();
+          }}
+        />
+      )}
+      {/* Confirmar eliminación anulación */}
+      <Dialog open={deleteAnulId !== null} onOpenChange={(o) => !o && setDeleteAnulId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle>Eliminar solicitud</DialogTitle>
+          </DialogHeader>
+          <p className="text-white/60 text-sm">¿Seguro que quieres eliminar esta solicitud de anulación? Esta acción no se puede deshacer.</p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDeleteAnulId(null)} className="border-white/10 text-white/60">
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => deleteAnulId && deleteAnulMutation.mutate({ id: deleteAnulId })}
+              disabled={deleteAnulMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleteAnulMutation.isPending ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+        </AdminLayout>
   );
 }

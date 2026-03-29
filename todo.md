@@ -2232,3 +2232,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [ ] Página /condiciones-de-cancelacion (con texto base proporcionado)
 - [ ] Integrar rutas en App.tsx
 - [ ] Actualizar footer con enlaces a las 4 páginas legales
+
+## v25.1 — Integrar Anulaciones en CRMDashboard (coherencia visual y sidebar) [COMPLETADO]
+- [x] Añadir pestaña "Anulaciones" en CRMDashboard (junto a Leads/Presupuestos/Reservas/Facturas)
+- [x] KPIs de anulaciones visibles en el dashboard principal del CRM (Grupo 3 en sidebar + KPIs en tab)
+- [x] Contenido del pipeline de anulaciones integrado como tab dentro del CRMDashboard
+- [x] Sidebar link actualizado a /admin/crm?tab=anulaciones (mantiene AdminLayout siempre visible)
+- [x] Ruta separada /admin/crm/anulaciones eliminada (ya no necesaria)
+- [x] Tests de integración escritos y pasando (6/6)

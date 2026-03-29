@@ -86,7 +86,6 @@ const Settings = lazy(() => import("./pages/admin/settings/Settings"));
 // CRM
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
 const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
-const CancellationsManager = lazy(() => import("./pages/admin/crm/CancellationsManager"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
 
 // Fiscal REAV
@@ -243,7 +242,6 @@ function Router() {
       <Route path="/admin/crm/presupuestos">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/clientes">{() => <Suspense fallback={<AdminLoadingFallback />}><ClientsManager /></Suspense>}</Route>
-      <Route path="/admin/crm/anulaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><CancellationsManager /></Suspense>}</Route>
 
       {/* Users & Settings */}
       <Route path="/admin/usuarios">{() => <Suspense fallback={<AdminLoadingFallback />}><UsersManager /></Suspense>}</Route>

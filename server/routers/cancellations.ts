@@ -660,6 +660,19 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
+  // ── Contadores para sidebar badge ──────────────────────────────────────────
+  getCounters: adminProcedure
+    .query(async () => {
+      const all = await db.select().from(cancellationRequests);
+      return {
+        total: all.length,
+        pending: all.filter((r: CancellationRequest) =>
+          ["recibida", "en_revision", "pendiente_documentacion", "pendiente_decision"].includes(r.operationalStatus)
+        ).length,
+        incidencias: all.filter((r: CancellationRequest) => r.operationalStatus === "incidencia").length,
+      };
+    }),
+
   // ── Subir PDF de bono a S3 ────────────────────────────────────────────────
   uploadVoucherPdf: adminProcedure
     .input(

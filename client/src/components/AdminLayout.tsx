@@ -59,7 +59,7 @@ const navItems = [
       { label: "Reservas", href: "/admin/crm?tab=reservations", key: "crm-reservas" },
       { label: "Facturas", href: "/admin/crm?tab=invoices", key: "crm-facturas" },
       { label: "Clientes", href: "/admin/crm/clientes", key: "crm-clientes" },
-      { label: "Anulaciones", href: "/admin/crm/anulaciones", key: "crm-anulaciones" },
+      { label: "Anulaciones", href: "/admin/crm?tab=anulaciones", key: "crm-anulaciones" },
     ],
   },
   {
@@ -391,7 +391,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                           <Link key={(child as any).key ?? child.href} href={child.href}>
                             <div className={cn(
                               "block px-3 py-2 rounded-lg text-xs font-medium transition-all",
-                              location === child.href
+                              (child.href.includes("?")
+                              ? (location + window.location.search) === child.href || window.location.href.includes(child.href.split("?")[1])
+                              : location === child.href)
                                 ? "bg-sidebar-accent text-amber-400"
                                 : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                             )}>
