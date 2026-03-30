@@ -2027,6 +2027,110 @@ function QuoteBuilderModal({
 
 // ─── QUOTE EDIT MODAL ────────────────────────────────────────────────────────
 
+// ─── PRODUCT AUTOCOMPLETE FIELD ─────────────────────────────────────────────
+function ProductAutocompleteInput({
+  value,
+  onChange,
+  onSelect,
+  placeholder = "Descripción o busca un producto...",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSelect: (product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general_21" }) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sincronizar query cuando value cambia externamente
+  useEffect(() => { setQuery(value); }, [value]);
+
+  const { data, isFetching } = trpc.crm.catalog.search.useQuery(
+    { q: query },
+    { enabled: open && query.trim().length >= 1, staleTime: 2000 }
+  );
+
+  const results = data?.results ?? [];
+
+  // Cerrar al hacer clic fuera
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const TYPE_LABELS: Record<string, string> = {
+    experience: "Actividad",
+    pack: "Pack",
+    legopack: "Lego Pack",
+  };
+  const TYPE_COLORS: Record<string, string> = {
+    experience: "text-blue-400",
+    pack: "text-emerald-400",
+    legopack: "text-violet-400",
+  };
+
+  return (
+    <div ref={containerRef} className="relative col-span-4">
+      <Input
+        className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
+        placeholder={placeholder}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onChange(e.target.value);
+          setOpen(e.target.value.trim().length >= 1);
+        }}
+        onFocus={() => { if (query.trim().length >= 1) setOpen(true); }}
+      />
+      {open && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-2xl overflow-hidden">
+          {isFetching && (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs text-white/40">
+              <RefreshCw className="w-3 h-3 animate-spin" /> Buscando...
+            </div>
+          )}
+          {!isFetching && results.length === 0 && (
+            <div className="px-3 py-2 text-xs text-white/30">Sin resultados para "{query}"</div>
+          )}
+          {results.map((r) => (
+            <button
+              key={`${r.type}-${r.id}`}
+              type="button"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-white/10 transition-colors text-left group"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setQuery(r.title);
+                onChange(r.title);
+                onSelect({ title: r.title, unitPrice: r.unitPrice, fiscalRegime: r.fiscalRegime });
+                setOpen(false);
+              }}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`text-[10px] font-semibold shrink-0 ${TYPE_COLORS[r.type] ?? "text-white/40"}`}>
+                  {TYPE_LABELS[r.type] ?? r.type}
+                </span>
+                <span className="text-sm text-white truncate group-hover:text-orange-300 transition-colors">{r.title}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {r.fiscalRegime === "reav" && (
+                  <span className="text-[10px] text-amber-400 font-semibold">REAV</span>
+                )}
+                <span className="text-sm font-semibold text-orange-400">{r.unitPrice.toFixed(2)} €</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QuoteEditModal({
   quoteId,
   onClose,
@@ -2067,6 +2171,21 @@ function QuoteEditModal({
       const updated = { ...item, [field]: value };
       if (field === "quantity" || field === "unitPrice") updated.total = Number(updated.quantity) * Number(updated.unitPrice);
       return updated;
+    }));
+  };
+
+  // Seleccionar producto del catálogo: rellena descripción, precio y régimen
+  const selectCatalogProduct = (idx: number, product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general_21" }) => {
+    setItems((prev) => prev.map((item, i) => {
+      if (i !== idx) return item;
+      const qty = item.quantity || 1;
+      return {
+        ...item,
+        description: product.title,
+        unitPrice: product.unitPrice,
+        fiscalRegime: product.fiscalRegime,
+        total: qty * product.unitPrice,
+      };
     }));
   };
 
@@ -2137,8 +2256,11 @@ function QuoteEditModal({
           <div className="space-y-2">
             {items.map((item, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                <Input className="col-span-4 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm" placeholder="Descripción"
-                  value={item.description} onChange={(e) => updateItem(idx, "description", e.target.value)} />
+                <ProductAutocompleteInput
+                  value={item.description}
+                  onChange={(v) => updateItem(idx, "description", v)}
+                  onSelect={(product) => selectCatalogProduct(idx, product)}
+                />
                 <select
                   className="col-span-2 bg-white/5 border border-white/10 text-white text-xs rounded-md px-1 py-1.5 h-9"
                   value={item.fiscalRegime ?? "general_21"}

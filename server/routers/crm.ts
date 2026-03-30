@@ -3854,4 +3854,69 @@ export const crmRouter = router({
         return { success: true };
       }),
   }),
+
+  // ─── CATALOG SEARCH (autocomplete en líneas de presupuesto) ──────────────────
+  catalog: router({
+    search: staff
+      .input(z.object({ q: z.string().min(1) }))
+      .query(async ({ input }) => {
+        const term = `%${input.q}%`;
+        // Buscar en experiences
+        const expRows = await db
+          .select({
+            id: experiences.id,
+            title: experiences.title,
+            basePrice: experiences.basePrice,
+            fiscalRegime: experiences.fiscalRegime,
+          })
+          .from(experiences)
+          .where(and(eq(experiences.isActive, true), like(experiences.title, term)))
+          .limit(8);
+        // Buscar en packs
+        const packRows = await db
+          .select({
+            id: packs.id,
+            title: packs.title,
+            basePrice: packs.basePrice,
+            fiscalRegime: packs.fiscalRegime,
+          })
+          .from(packs)
+          .where(like(packs.title, term))
+          .limit(6);
+        // Buscar en legoPacks (sin basePrice — precio 0 por defecto, se edita manualmente)
+        const legoRows = await db
+          .select({
+            id: legoPacks.id,
+            title: legoPacks.title,
+            priceLabel: legoPacks.priceLabel,
+          })
+          .from(legoPacks)
+          .where(and(eq(legoPacks.isActive, true), like(legoPacks.title, term)))
+          .limit(6);
+        const results = [
+          ...expRows.map(r => ({
+            id: r.id,
+            title: r.title,
+            unitPrice: parseFloat(String(r.basePrice ?? "0")),
+            fiscalRegime: (r.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+            type: "experience" as const,
+          })),
+          ...packRows.map(r => ({
+            id: r.id,
+            title: r.title,
+            unitPrice: parseFloat(String(r.basePrice ?? "0")),
+            fiscalRegime: (r.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+            type: "pack" as const,
+          })),
+          ...legoRows.map(r => ({
+            id: r.id,
+            title: r.title,
+            unitPrice: 0,
+            fiscalRegime: "general_21" as "reav" | "general_21",
+            type: "legopack" as const,
+          })),
+        ];
+        return { results };
+      }),
+  }),
 });

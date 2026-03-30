@@ -2628,3 +2628,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Tests schema reservations/invoices: flujos confirmación 4 canales con datos correctos
 - [x] Ejecutar suite completa: 565 tests pasando (30 archivos)
 - [x] Checkpoint v25.40
+
+## Autocomplete de Productos en Editar Presupuesto (v25.46)
+- [x] Procedimiento tRPC crm.catalog.search que busca en experiences, packs y legoPacks
+- [x] Componente ProductAutocompleteInput con dropdown de resultados en tiempo real
+- [x] Al seleccionar producto: rellena automáticamente descripción, precio unitario y régimen fiscal
+- [x] Etiquetas de tipo (Actividad / Pack / Lego Pack) con colores diferenciados en el dropdown
+- [x] Cierre del dropdown al hacer clic fuera del campo
