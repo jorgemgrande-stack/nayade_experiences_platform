@@ -537,14 +537,20 @@ export const crmRouter = router({
           selectedProduct: z.string().optional(),
           numberOfAdults: z.number().optional(),
           numberOfChildren: z.number().optional(),
-          preferredDate: z.string().optional(),
+           preferredDate: z.string().optional(),
+          activitiesJson: z.array(z.object({
+            experienceId: z.number(),
+            experienceTitle: z.string(),
+            family: z.string(),
+            participants: z.number(),
+            details: z.record(z.string(), z.union([z.string(), z.number()])),
+          })).optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
         const { id, ...data } = input;
         const updateData: Record<string, unknown> = { ...data, updatedAt: new Date() };
         if (data.preferredDate) updateData.preferredDate = new Date(data.preferredDate);
-
         await db.update(leads).set(updateData).where(eq(leads.id, id));
         await logActivity("lead", id, "lead_updated", ctx.user.id, ctx.user.name, { changes: Object.keys(data) });
         return { success: true };
@@ -922,13 +928,24 @@ export const crmRouter = router({
         selectedCategory: z.string().optional(),
         selectedProduct: z.string().optional(),
         source: z.string().optional(),
+        activitiesJson: z.array(z.object({
+          experienceId: z.number(),
+          experienceTitle: z.string(),
+          family: z.string(),
+          participants: z.number(),
+          details: z.record(z.string(), z.union([z.string(), z.number()])),
+        })).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         // Usar createLead de db.ts para que se cree el cliente automáticamente
+        const { source: _source, activitiesJson: _acts, ...leadInput } = input;
         const result = await createLead({
-          ...input,
-          source: input.source ?? "admin",
+          ...leadInput,
         });
+        // Si hay actividades, guardarlas en el lead
+        if (input.activitiesJson && input.activitiesJson.length > 0) {
+          await db.update(leads).set({ activitiesJson: input.activitiesJson }).where(eq(leads.id, result.id));
+        }
         await logActivity("lead", result.id, "lead_created_admin", ctx.user.id, ctx.user.name, { name: input.name });
         return result;
       }),

@@ -414,7 +414,7 @@ function LeadDetailModal({
           )}
           {lead.preferredDate && (
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Fecha preferida</span>
+              <span className="text-white/50">Fecha de la actividad</span>
               <span className="text-white font-medium">{new Date(lead.preferredDate).toLocaleDateString("es-ES")}</span>
             </div>
           )}
@@ -547,22 +547,7 @@ function LeadDetailModal({
         >
           <XCircle className="w-4 h-4 mr-1" /> Marcar perdido
         </Button>
-        {/* Botón Generar presupuesto automático — solo visible si hay actividades */}
-        {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/60"
-            onClick={() => generateQuote.mutate({ leadId })}
-            disabled={generateQuote.isPending}
-            title="Genera automáticamente las líneas del presupuesto con los precios de las variantes seleccionadas"
-          >
-            {generateQuote.isPending
-              ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-              : <Sparkles className="w-4 h-4 mr-1" />}
-            Generar presupuesto
-          </Button>
-        )}
+        {/* Botón 'Generar presupuesto' eliminado — flujo correcto es 'Crear Presupuesto' que abre el modal */}
         <Button
           size="sm"
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
@@ -587,25 +572,81 @@ function LeadEditModal({
 }) {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.crm.leads.get.useQuery({ id: leadId });
-  const [form, setForm] = useState<{
-    name: string; email: string; phone: string; selectedCategory: string;
-    selectedProduct: string; message: string; priority: string; opportunityStatus: string;
+
+  type ActivityLine = {
+    id: string;
+    experienceId: number | null;
+    experienceTitle: string;
+    family: string;
+    participants: number;
+    search: string;
+    showSuggestions: boolean;
+  };
+
+  const [form, setForm] = React.useState<{
+    name: string; email: string; phone: string; company: string;
+    selectedCategory: string; selectedProduct: string;
+    message: string; priority: string; opportunityStatus: string;
+    preferredDate: string; numberOfAdults: number; numberOfChildren: number;
   } | null>(null);
+  const [activityLines, setActivityLines] = React.useState<ActivityLine[]>([]);
+  const [activeLineIdx, setActiveLineIdx] = React.useState<number>(0);
+  const [initialized, setInitialized] = React.useState(false);
 
   // Populate form once data loads
-  if (data && !form) {
-    const { lead } = data;
-    setForm({
-      name: lead.name ?? "",
-      email: lead.email ?? "",
-      phone: lead.phone ?? "",
-      selectedCategory: lead.selectedCategory ?? "",
-      selectedProduct: lead.selectedProduct ?? "",
-      message: lead.message ?? "",
-      priority: lead.priority ?? "media",
-      opportunityStatus: lead.opportunityStatus ?? "nueva",
-    });
-  }
+  React.useEffect(() => {
+    if (data && !initialized) {
+      const { lead } = data;
+      setForm({
+        name: lead.name ?? "",
+        email: lead.email ?? "",
+        phone: lead.phone ?? "",
+        company: (lead as any).company ?? "",
+        selectedCategory: lead.selectedCategory ?? "",
+        selectedProduct: lead.selectedProduct ?? "",
+        message: lead.message ?? "",
+        priority: lead.priority ?? "media",
+        opportunityStatus: lead.opportunityStatus ?? "nueva",
+        preferredDate: lead.preferredDate ? new Date(lead.preferredDate).toISOString().split("T")[0] : "",
+        numberOfAdults: (lead as any).numberOfAdults ?? 2,
+        numberOfChildren: (lead as any).numberOfChildren ?? 0,
+      });
+      const existingActivities = (lead as any).activitiesJson as ActivityLine[] | null;
+      if (existingActivities && existingActivities.length > 0) {
+        setActivityLines(existingActivities.map((a: any, i: number) => ({
+          id: String(i + 1),
+          experienceId: a.experienceId ?? null,
+          experienceTitle: a.experienceTitle ?? "",
+          family: a.family ?? "general",
+          participants: a.participants ?? 2,
+          search: "",
+          showSuggestions: false,
+        })));
+      } else {
+        setActivityLines([{ id: "1", experienceId: null, experienceTitle: "", family: "", participants: 2, search: "", showSuggestions: false }]);
+      }
+      setInitialized(true);
+    }
+  }, [data, initialized]);
+
+  const activeSearch = activityLines[activeLineIdx]?.search ?? "";
+  const { data: productSuggestions } = trpc.crm.products.search.useQuery(
+    { q: activeSearch, limit: 8 },
+    { enabled: activeSearch.length >= 2 }
+  );
+
+  const updateLine = (idx: number, patch: Partial<ActivityLine>) => {
+    setActivityLines(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l));
+  };
+  const addLine = () => {
+    setActivityLines(prev => [...prev, { id: String(Date.now()), experienceId: null, experienceTitle: "", family: "", participants: 2, search: "", showSuggestions: false }]);
+    setActiveLineIdx(activityLines.length);
+  };
+  const removeLine = (idx: number) => {
+    if (activityLines.length === 1) return;
+    setActivityLines(prev => prev.filter((_, i) => i !== idx));
+    setActiveLineIdx(Math.max(0, activeLineIdx - 1));
+  };
 
   const updateLead = trpc.crm.leads.update.useMutation({
     onSuccess: () => {
@@ -619,7 +660,7 @@ function LeadEditModal({
 
   if (isLoading || !form) {
     return (
-      <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white">
+      <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -627,21 +668,54 @@ function LeadEditModal({
     );
   }
 
+  const handleSave = () => {
+    if (!form.name.trim() || !form.email.trim()) {
+      toast.error("Nombre y email son obligatorios");
+      return;
+    }
+    const validActivities = activityLines.filter(l => l.experienceTitle.trim());
+    updateLead.mutate({
+      id: leadId,
+      name: form.name,
+      email: form.email,
+      phone: form.phone,
+      company: form.company || undefined,
+      selectedCategory: form.selectedCategory || undefined,
+      selectedProduct: validActivities.length > 0 ? validActivities[0].experienceTitle : form.selectedProduct,
+      message: form.message,
+      priority: form.priority as "baja" | "media" | "alta",
+      opportunityStatus: form.opportunityStatus as "nueva" | "enviada" | "ganada" | "perdida",
+      preferredDate: form.preferredDate || undefined,
+      numberOfAdults: form.numberOfAdults,
+      numberOfChildren: form.numberOfChildren,
+      activitiesJson: validActivities.length > 0
+        ? validActivities.map(l => ({
+            experienceId: l.experienceId ?? 0,
+            experienceTitle: l.experienceTitle,
+            family: l.family || "general",
+            participants: l.participants,
+            details: {},
+          }))
+        : undefined,
+    });
+  };
+
   return (
-    <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <Pencil className="w-4 h-4 text-orange-400" /> Editar Lead
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
+        {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-white/60 text-xs">Nombre</Label>
+            <Label className="text-white/60 text-xs">Nombre <span className="text-red-400">*</span></Label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Email</Label>
+            <Label className="text-white/60 text-xs">Email <span className="text-red-400">*</span></Label>
             <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
           </div>
           <div>
@@ -649,13 +723,93 @@ function LeadEditModal({
             <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Categoría</Label>
-            <Input value={form.selectedCategory} onChange={(e) => setForm({ ...form, selectedCategory: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-white/60 text-xs">Empresa / Grupo</Label>
+            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
           </div>
-          <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Producto / Experiencia</Label>
-            <Input value={form.selectedProduct} onChange={(e) => setForm({ ...form, selectedProduct: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+        </div>
+
+        {/* Líneas de actividad */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-white/60 text-xs">Actividades de interés</Label>
+            <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 transition-colors">
+              <Plus className="w-3 h-3" /> Añadir actividad
+            </button>
           </div>
+          <div className="space-y-2">
+            {activityLines.map((line, idx) => (
+              <div key={line.id} className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/30 w-4">{idx + 1}.</span>
+                  <div className="relative flex-1">
+                    <Input
+                      value={line.experienceTitle || line.search}
+                      onChange={e => { updateLine(idx, { search: e.target.value, experienceTitle: "", experienceId: null }); setActiveLineIdx(idx); }}
+                      onFocus={() => { updateLine(idx, { showSuggestions: true }); setActiveLineIdx(idx); }}
+                      onBlur={() => setTimeout(() => updateLine(idx, { showSuggestions: false }), 200)}
+                      placeholder="Buscar experiencia o pack..."
+                      className="bg-white/5 border-white/10 text-white placeholder:text-white/25 text-sm h-8"
+                    />
+                    {line.showSuggestions && productSuggestions && productSuggestions.length > 0 && activeLineIdx === idx && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                        {(productSuggestions as any[]).map((p: any) => (
+                          <button key={`${p.productType}-${p.id}`} type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-white/8 text-xs text-white flex items-center gap-2"
+                            onMouseDown={() => updateLine(idx, {
+                              experienceId: p.id,
+                              experienceTitle: p.title,
+                              family: p.productType === "experience" ? "experience" : "pack",
+                              search: "",
+                              showSuggestions: false,
+                            })}>
+                            <span className="text-white/40">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                            <span>{p.title}</span>
+                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-white/40">{Number(p.basePrice).toFixed(2)}€</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-xs text-white/40">Pax</span>
+                    <Input
+                      type="number" min={1} value={line.participants}
+                      onChange={e => updateLine(idx, { participants: Math.max(1, Number(e.target.value)) })}
+                      className="bg-white/5 border-white/10 text-white w-14 h-8 text-xs text-center"
+                    />
+                    {activityLines.length > 1 && (
+                      <button type="button" onClick={() => removeLine(idx)} className="text-white/30 hover:text-red-400 transition-colors ml-1">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {line.experienceTitle && (
+                  <p className="text-xs text-emerald-400 pl-6">✓ {line.experienceTitle}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Fecha y participantes */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-3 sm:col-span-1">
+            <Label className="text-white/60 text-xs">Fecha de la actividad</Label>
+            <Input type="date" value={form.preferredDate} onChange={e => setForm({ ...form, preferredDate: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Adultos</Label>
+            <Input type="number" min={1} value={form.numberOfAdults} onChange={e => setForm({ ...form, numberOfAdults: Number(e.target.value) })} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-white/60 text-xs">Niños</Label>
+            <Input type="number" min={0} value={form.numberOfChildren} onChange={e => setForm({ ...form, numberOfChildren: Number(e.target.value) })} className="bg-white/5 border-white/10 text-white mt-1" />
+          </div>
+        </div>
+
+        {/* Prioridad y estado */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-white/60 text-xs">Prioridad</Label>
             <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
@@ -679,27 +833,19 @@ function LeadEditModal({
               </SelectContent>
             </Select>
           </div>
-          <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Mensaje / Comentarios</Label>
-            <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-16 text-sm" />
-          </div>
+        </div>
+
+        {/* Notas */}
+        <div>
+          <Label className="text-white/60 text-xs">Mensaje / Comentarios</Label>
+          <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-16 text-sm" />
         </div>
       </div>
       <DialogFooter>
         <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
         <Button
           size="sm"
-          onClick={() => updateLead.mutate({
-              id: leadId,
-              name: form.name,
-              email: form.email,
-              phone: form.phone,
-              selectedCategory: form.selectedCategory,
-              selectedProduct: form.selectedProduct,
-              message: form.message,
-              priority: form.priority as "baja" | "media" | "alta",
-              opportunityStatus: form.opportunityStatus as "nueva" | "enviada" | "ganada" | "perdida",
-            })}
+          onClick={handleSave}
           disabled={updateLead.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
@@ -773,14 +919,48 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
   const [source, setSource] = useState("admin");
-  const [productSearch, setProductSearch] = useState("");
-  const [selectedProductName, setSelectedProductName] = useState("");
-  const [showProductSuggestions, setShowProductSuggestions] = useState(false);
 
+  // ── Líneas de actividad ──────────────────────────────────────────────────
+  type ActivityLine = {
+    id: string;
+    experienceId: number | null;
+    experienceTitle: string;
+    family: string;
+    participants: number;
+    search: string;
+    showSuggestions: boolean;
+  };
+  const [activityLines, setActivityLines] = useState<ActivityLine[]>([
+    { id: "1", experienceId: null, experienceTitle: "", family: "", participants: 2, search: "", showSuggestions: false },
+  ]);
+  const [activeLineIdx, setActiveLineIdx] = useState<number>(0);
+
+  const activeSearch = activityLines[activeLineIdx]?.search ?? "";
   const { data: productSuggestions } = trpc.crm.products.search.useQuery(
-    { q: productSearch, limit: 8 },
-    { enabled: productSearch.length >= 2 }
+    { q: activeSearch, limit: 8 },
+    { enabled: activeSearch.length >= 2 }
   );
+
+  const updateLine = (idx: number, patch: Partial<ActivityLine>) => {
+    setActivityLines(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l));
+  };
+  const addLine = () => {
+    setActivityLines(prev => [...prev, {
+      id: String(Date.now()),
+      experienceId: null,
+      experienceTitle: "",
+      family: "",
+      participants: 2,
+      search: "",
+      showSuggestions: false,
+    }]);
+    setActiveLineIdx(activityLines.length);
+  };
+  const removeLine = (idx: number) => {
+    if (activityLines.length === 1) return;
+    setActivityLines(prev => prev.filter((_, i) => i !== idx));
+    setActiveLineIdx(Math.max(0, activeLineIdx - 1));
+  };
 
   const createLead = trpc.crm.leads.create.useMutation({
     onSuccess: () => {
@@ -797,6 +977,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
       toast.error("Nombre y email son obligatorios");
       return;
     }
+    const validActivities = activityLines.filter(l => l.experienceTitle.trim());
     createLead.mutate({
       name: name.trim(),
       email: email.trim(),
@@ -806,63 +987,116 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
       preferredDate: preferredDate || undefined,
       numberOfAdults: adults,
       numberOfChildren: children,
-      selectedProduct: selectedProductName || undefined,
+      selectedProduct: validActivities.length > 0 ? validActivities[0].experienceTitle : undefined,
       source,
+      activitiesJson: validActivities.length > 0
+        ? validActivities.map(l => ({
+            experienceId: l.experienceId ?? 0,
+            experienceTitle: l.experienceTitle,
+            family: l.family || "general",
+            participants: l.participants,
+            details: {},
+          }))
+        : undefined,
     });
   };
 
   return (
-    <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
-          <User className="w-5 h-5 text-violet-400" /> Nuevo Lead
+          <Users className="w-4 h-4 text-violet-400" /> Nuevo Lead
         </DialogTitle>
       </DialogHeader>
-      <div className="space-y-4 py-2">
+      <div className="space-y-4">
+        {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <Label className="text-xs text-white/50 mb-1 block">Nombre completo *</Label>
+          <div>
+            <Label className="text-xs text-white/50 mb-1 block">Nombre <span className="text-red-400">*</span></Label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
           </div>
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Email *</Label>
-            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@email.com" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            <Label className="text-xs text-white/50 mb-1 block">Email <span className="text-red-400">*</span></Label>
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
           </div>
           <div>
             <Label className="text-xs text-white/50 mb-1 block">Teléfono</Label>
             <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
           </div>
-          <div className="col-span-2">
+          <div>
             <Label className="text-xs text-white/50 mb-1 block">Empresa / Grupo</Label>
             <Input value={company} onChange={e => setCompany(e.target.value)} placeholder="Empresa S.L." className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
           </div>
         </div>
-        <div className="relative">
-          <Label className="text-xs text-white/50 mb-1 block">Producto de interés</Label>
-          <Input
-            value={selectedProductName || productSearch}
-            onChange={e => { setProductSearch(e.target.value); setSelectedProductName(""); setShowProductSuggestions(true); }}
-            onFocus={() => setShowProductSuggestions(true)}
-            placeholder="Buscar experiencia o pack..."
-            className="bg-white/5 border-white/10 text-white placeholder:text-white/25"
-          />
-          {showProductSuggestions && productSuggestions && productSuggestions.length > 0 && (
-            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-              {(productSuggestions as any[]).map((p: any) => (
-                <button key={`${p.productType}-${p.id}`} type="button" className="w-full text-left px-3 py-2 hover:bg-white/8 text-sm text-white flex items-center gap-2"
-                  onClick={() => { setSelectedProductName(p.title); setProductSearch(""); setShowProductSuggestions(false); }}>
-                  <span className="text-white/40 text-xs">{p.productType === "experience" ? "🏊" : "📦"}</span>
-                  <span>{p.title}</span>
-                  {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-white/40 text-xs">{Number(p.basePrice).toFixed(2)}€</span>}
-                </button>
-              ))}
-            </div>
-          )}
-          {selectedProductName && <p className="text-xs text-emerald-400 mt-1">✓ {selectedProductName}</p>}
+
+        {/* Líneas de actividad */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <Label className="text-xs text-white/50">Actividades de interés</Label>
+            <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
+              <Plus className="w-3 h-3" /> Añadir actividad
+            </button>
+          </div>
+          <div className="space-y-2">
+            {activityLines.map((line, idx) => (
+              <div key={line.id} className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/30 w-4">{idx + 1}.</span>
+                  <div className="relative flex-1">
+                    <Input
+                      value={line.experienceTitle || line.search}
+                      onChange={e => { updateLine(idx, { search: e.target.value, experienceTitle: "", experienceId: null }); setActiveLineIdx(idx); }}
+                      onFocus={() => { updateLine(idx, { showSuggestions: true }); setActiveLineIdx(idx); }}
+                      onBlur={() => setTimeout(() => updateLine(idx, { showSuggestions: false }), 200)}
+                      placeholder="Buscar experiencia o pack..."
+                      className="bg-white/5 border-white/10 text-white placeholder:text-white/25 text-sm h-8"
+                    />
+                    {line.showSuggestions && productSuggestions && productSuggestions.length > 0 && activeLineIdx === idx && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                        {(productSuggestions as any[]).map((p: any) => (
+                          <button key={`${p.productType}-${p.id}`} type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-white/8 text-xs text-white flex items-center gap-2"
+                            onMouseDown={() => updateLine(idx, {
+                              experienceId: p.id,
+                              experienceTitle: p.title,
+                              family: p.productType === "experience" ? "experience" : "pack",
+                              search: "",
+                              showSuggestions: false,
+                            })}>
+                            <span className="text-white/40">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                            <span>{p.title}</span>
+                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-white/40">{Number(p.basePrice).toFixed(2)}€</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-xs text-white/40">Pax</span>
+                    <Input
+                      type="number" min={1} value={line.participants}
+                      onChange={e => updateLine(idx, { participants: Math.max(1, Number(e.target.value)) })}
+                      className="bg-white/5 border-white/10 text-white w-14 h-8 text-xs text-center"
+                    />
+                    {activityLines.length > 1 && (
+                      <button type="button" onClick={() => removeLine(idx)} className="text-white/30 hover:text-red-400 transition-colors ml-1">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {line.experienceTitle && (
+                  <p className="text-xs text-emerald-400 pl-6">✓ {line.experienceTitle}</p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
+
+        {/* Fecha y participantes globales */}
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
-            <Label className="text-xs text-white/50 mb-1 block">Fecha preferida</Label>
+            <Label className="text-xs text-white/50 mb-1 block">Fecha de la actividad</Label>
             <Input type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-white/5 border-white/10 text-white" />
           </div>
           <div>
@@ -874,6 +1108,8 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
             <Input type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-white/5 border-white/10 text-white" />
           </div>
         </div>
+
+        {/* Canal y notas */}
         <div>
           <Label className="text-xs text-white/50 mb-1 block">Canal de origen</Label>
           <Select value={source} onValueChange={setSource}>
@@ -3601,7 +3837,7 @@ export default function CRMDashboard() {
                   <tr className="border-b border-white/8 bg-white/5">
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Producto</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">Fecha pref.</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">Fecha actividad</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Recibido</th>
                     <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
