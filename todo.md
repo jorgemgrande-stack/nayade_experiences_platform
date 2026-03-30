@@ -2458,3 +2458,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir date picker con calendario desplegable en Actividades del Día
 - [x] Añadir date picker con calendario desplegable en Órdenes del Día
 - [x] Añadir date picker con calendario desplegable en Calendario
+
+## REAV Global v25.29 — Reestructuración completa
+
+- [x] Crear helper centralizado calcularREAV() en server/reav.ts con fórmulas correctas y validación
+- [x] Corregir CRM confirmPayment: reemplazar porcentajes hardcodeados por calcularREAV() con datos del producto
+- [x] Corregir CRM confirmTransfer: misma corrección
+- [x] Corregir CRM confirmManualPayment: misma corrección
+- [x] Integrar REAV en TPV createSale: detectar líneas REAV y crear expediente
+- [x] Integrar REAV en canal Online (Redsys IPN): detectar producto REAV y crear expediente
+- [ ] Rehacer panel económico REAV con totales basados en margen calculado
+- [ ] Tests Vitest: caso online, TPV y CRM

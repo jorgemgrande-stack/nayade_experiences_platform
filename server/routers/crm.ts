@@ -3,6 +3,7 @@
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "../db";
+import { calcularREAVSimple, validarConfiguracionREAV } from "../reav";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -1487,6 +1488,29 @@ export const crmRouter = router({
         if (reavLines.length > 0) {
           try {
             const reavSaleAmount = reavLines.reduce((s, i) => s + i.total, 0);
+            // ── Obtener porcentajes REAV desde el producto (origen único de verdad) ──
+            // Si la línea tiene productId, buscar el producto para obtener sus porcentajes
+            let reavCostePct = 60; // fallback conservador
+            let reavMargenPct = 40;
+            const firstReavLine = reavLines[0] as any;
+            const reavProductId = firstReavLine?.productId ?? (lead as any).experienceId;
+            if (reavProductId) {
+              const [reavProduct] = await db.select({
+                providerPercent: experiences.providerPercent,
+                agencyMarginPercent: experiences.agencyMarginPercent,
+                fiscalRegime: experiences.fiscalRegime,
+              }).from(experiences).where(eq(experiences.id, reavProductId)).limit(1);
+              if (reavProduct && reavProduct.fiscalRegime === "reav") {
+                const errores = validarConfiguracionREAV(reavProduct);
+                if (errores.length === 0) {
+                  reavCostePct = parseFloat(String(reavProduct.providerPercent ?? 60));
+                  reavMargenPct = parseFloat(String(reavProduct.agencyMarginPercent ?? 40));
+                } else {
+                  console.warn("[confirmPayment] Configuración REAV inválida, usando fallback 60/40:", errores);
+                }
+              }
+            }
+            const reavCalc = calcularREAVSimple(reavSaleAmount, reavCostePct, reavMargenPct);
             // Obtener datos del cliente del lead
             const clientName = lead.name ?? undefined;
             const clientEmail = lead.email ?? undefined;
@@ -1498,11 +1522,11 @@ export const crmRouter = router({
               reservationId,
               quoteId: quote.id,
               serviceDescription: reavLines.map(i => i.description).join(" | "),
-              serviceDate: now.toISOString().split("T")[0],
+              serviceDate: serviceDate,
               numberOfPax: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
               saleAmountTotal: String(reavSaleAmount),
-              providerCostEstimated: String((reavSaleAmount * 0.6).toFixed(2)),
-              agencyMarginEstimated: String((reavSaleAmount * 0.4).toFixed(2)),
+              providerCostEstimated: String(reavCalc.costeProveedor),
+              agencyMarginEstimated: String(reavCalc.margenAgencia),
               // Datos del cliente
               clientName,
               clientEmail,
@@ -1877,6 +1901,28 @@ export const crmRouter = router({
         if (reavLinesTransfer.length > 0) {
           try {
             const reavSaleAmountT = reavLinesTransfer.reduce((s, i) => s + i.total, 0);
+            // ── Obtener porcentajes REAV desde el producto (origen único de verdad) ──
+            let reavCostePctT = 60; // fallback conservador
+            let reavMargenPctT = 40;
+            const firstReavLineT = reavLinesTransfer[0] as any;
+            const reavProductIdT = firstReavLineT?.productId ?? (lead as any).experienceId;
+            if (reavProductIdT) {
+              const [reavProductT] = await db.select({
+                providerPercent: experiences.providerPercent,
+                agencyMarginPercent: experiences.agencyMarginPercent,
+                fiscalRegime: experiences.fiscalRegime,
+              }).from(experiences).where(eq(experiences.id, reavProductIdT)).limit(1);
+              if (reavProductT && reavProductT.fiscalRegime === "reav") {
+                const erroresT = validarConfiguracionREAV(reavProductT);
+                if (erroresT.length === 0) {
+                  reavCostePctT = parseFloat(String(reavProductT.providerPercent ?? 60));
+                  reavMargenPctT = parseFloat(String(reavProductT.agencyMarginPercent ?? 40));
+                } else {
+                  console.warn("[confirmTransfer] Configuración REAV inválida, usando fallback 60/40:", erroresT);
+                }
+              }
+            }
+            const reavCalcT = calcularREAVSimple(reavSaleAmountT, reavCostePctT, reavMargenPctT);
             const clientNameT = lead.name ?? undefined;
             const clientEmailT = lead.email ?? undefined;
             const clientPhoneT = lead.phone ?? undefined;
@@ -1887,11 +1933,11 @@ export const crmRouter = router({
               reservationId,
               quoteId: quote.id,
               serviceDescription: reavLinesTransfer.map(i => i.description).join(" | "),
-              serviceDate: now.toISOString().split("T")[0],
+              serviceDate: serviceDateTransfer,
               numberOfPax: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
               saleAmountTotal: String(reavSaleAmountT),
-              providerCostEstimated: String((reavSaleAmountT * 0.6).toFixed(2)),
-              agencyMarginEstimated: String((reavSaleAmountT * 0.4).toFixed(2)),
+              providerCostEstimated: String(reavCalcT.costeProveedor),
+              agencyMarginEstimated: String(reavCalcT.margenAgencia),
               clientName: clientNameT,
               clientEmail: clientEmailT,
               clientPhone: clientPhoneT,

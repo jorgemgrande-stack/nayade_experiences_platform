@@ -7,6 +7,7 @@
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
 import { updateReservationPayment, getReservationByMerchantOrder, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "./db";
+import { calcularREAVSimple } from "./reav";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { quotes, leads, invoices, reservations } from "../drizzle/schema";
@@ -224,14 +225,18 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         const product = await getExpById(updatedReservation.productId);
         if (product && (product as any).fiscalRegime === "reav") {
           const amountEuros = (updatedReservation.amountPaid ?? updatedReservation.amountTotal) / 100;
+          // ── Usar porcentajes del producto (origen único de verdad) ──
+          const reavProviderPct = parseFloat(String((product as any).providerPercent ?? 60));
+          const reavMargenPct = parseFloat(String((product as any).agencyMarginPercent ?? 40));
+          const reavCalcOnline = calcularREAVSimple(amountEuros, reavProviderPct, reavMargenPct);
           const reavResult = await createReavExpedient({
             reservationId: updatedReservation.id,
             serviceDescription: updatedReservation.productName,
             serviceDate: updatedReservation.bookingDate ?? new Date().toISOString().split("T")[0],
             numberOfPax: updatedReservation.people,
             saleAmountTotal: String(amountEuros.toFixed(2)),
-            providerCostEstimated: String((amountEuros * 0.6).toFixed(2)),
-            agencyMarginEstimated: String((amountEuros * 0.4).toFixed(2)),
+            providerCostEstimated: String(reavCalcOnline.costeProveedor),
+            agencyMarginEstimated: String(reavCalcOnline.margenAgencia),
             // Datos del cliente
             clientName: updatedReservation.customerName ?? undefined,
             clientEmail: updatedReservation.customerEmail ?? undefined,
