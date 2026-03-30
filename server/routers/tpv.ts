@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
 import { buildReservationConfirmHtml, buildTpvTicketHtml } from "../emailTemplates";
-import { createReavExpedient, attachReavDocument, upsertClientFromReservation } from "../db";
+import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "../db";
 import { calcularREAVSimple } from "../reav";
 import {
   cashRegisters,
@@ -649,6 +649,48 @@ export const tpvRouter = router({
         } catch (e) {
           console.error("[TPV] Error creando expediente REAV:", e);
         }
+      }
+
+      // ── 8b. Registrar en calendario de operaciones (reservation_operational) ──────
+      // Esto permite que las ventas TPV aparezcan en el calendario del día y en
+      // las órdenes del día de los monitores, igual que las ventas CRM y Redsys.
+      try {
+        const serviceDate = mainItem?.eventDate ?? new Date().toISOString().split("T")[0];
+        const people = input.items.reduce((sum, it) => sum + (it.participants ?? 1), 0);
+        const fiscalRegimeForOp = fiscalSummary === "iva_only" ? "general_21"
+          : fiscalSummary === "reav_only" ? "reav" : "mixed";
+        const paymentMethodForOp = primaryPaymentMethod === "cash" ? "efectivo"
+          : primaryPaymentMethod === "card" ? "tarjeta" : "otro";
+        // Mapear método de pago TPV al enum de postConfirmOperation
+        const opPaymentMethod: "efectivo" | "otro" =
+          primaryPaymentMethod === "cash" ? "efectivo" : "otro";
+        await postConfirmOperation({
+          reservationId: reservationId ?? 0,
+          productId: mainItem?.productId ?? 0,
+          productName: mainItem?.productName ?? input.items.map(i => i.productName).join(", "),
+          serviceDate,
+          people,
+          amountCents: Math.round(total * 100),
+          customerName: input.customerName || "Cliente TPV",
+          customerEmail: input.customerEmail || "",
+          customerPhone: input.customerPhone || "",
+          totalAmount: total,
+          paymentMethod: opPaymentMethod,
+          saleChannel: "tpv",
+          invoiceNumber: ticketNumber,
+          reservationRef: reservationId ? `TPV-RES-${saleId}` : ticketNumber,
+          sellerUserId: sellerUserId ?? undefined,
+          sellerName: sellerName ?? undefined,
+          taxBase: totalTaxBase,
+          taxAmount: totalTaxAmount,
+          reavMargin: totalReavMargin,
+          fiscalRegime: fiscalRegimeForOp,
+          description: `Venta TPV ${ticketNumber}${mainItem ? ` — ${mainItem.productName}` : ""}`,
+          quoteId: null,
+          sourceChannel: opPaymentMethod,
+        });
+      } catch (e) {
+        console.error("[TPV] Error registrando en operaciones:", e);
       }
 
       // ── 9. Email de confirmación (cliente si hay email + siempre a reservas@) ─

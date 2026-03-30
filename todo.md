@@ -2543,3 +2543,15 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregir postConfirmOperation: añadir taxBase, taxAmount, reavMargin y fiscalRegime correctos
 - [x] 14 nuevos tests Vitest en confirmManualPayment.parity.test.ts
 - [x] 348 tests Vitest pasando — 0 errores TypeScript
+
+## Fase 2 — TPV en Operaciones (Crítico) v25.35
+
+- [x] Auditar createSale en tpv.ts: datos disponibles, estructura de items y fecha de actividad
+- [x] Añadir import postConfirmOperation a tpv.ts
+- [x] Implementar postConfirmOperation en createSale (paso 8b, entre REAV y email, envuelto en try/catch)
+- [x] Mapeo correcto de paymentMethod: cash → efectivo, card/bizum/other → otro
+- [x] Mapeo correcto de fiscalRegime: iva_only → general_21, reav_only → reav, mixed → mixed
+- [x] serviceDate = mainItem.eventDate ?? hoy (igual que bloque REAV)
+- [x] people = suma de participants de todos los items
+- [x] 18 nuevos tests Vitest en tpv.operations.test.ts
+- [x] 366 tests Vitest pasando — 0 errores TypeScript
