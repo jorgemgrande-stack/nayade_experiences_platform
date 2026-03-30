@@ -2861,8 +2861,205 @@ export const crmRouter = router({
         await db.delete(reservations).where(eq(reservations.id, input.id));
         return { ok: true };
       }),
-  }),
+    // ─── Crear reserva manual (admin) ─────────────────────────────────────────────────────────────────────────────
+    // Crea una reserva directa sin pasar por presupuesto, ejecutando el mismo
+    // postConfirmOperation que los flujos automáticos (CRM, Redsys, Ticketing, TPV).
+    createManual: staff
+      .input(
+        z.object({
+          // Cliente
+          customerName: z.string().min(2),
+          customerEmail: z.string().email(),
+          customerPhone: z.string().optional(),
+          // Producto
+          productId: z.number(),
+          productName: z.string().min(1),
+          // Servicio
+          bookingDate: z.string().min(1),   // YYYY-MM-DD
+          people: z.number().min(1),
+          // Económico
+          amountTotal: z.number().min(0),    // en euros
+          amountPaid: z.number().min(0),     // en euros
+          paymentMethod: z.enum(["efectivo", "transferencia", "redsys", "otro"]).default("efectivo"),
+          // Opcionales
+          notes: z.string().optional(),
+          channel: z.enum(["crm", "telefono", "email", "otro"]).default("crm"),
+          sendConfirmationEmail: z.boolean().default(true),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        const now = new Date();
+        const merchantOrder = `MAN-${Date.now().toString(36).toUpperCase()}`;
 
+        // 1. Upsert cliente
+        await upsertClientFromReservation({
+          name: input.customerName,
+          email: input.customerEmail,
+          phone: input.customerPhone ?? null,
+          source: "admin",
+        });
+
+        // 2. Generar número de factura
+        const invoiceNumber = await generateInvoiceNumber("crm:manual", String(ctx.user.id));
+
+        // 3. Construir líneas de factura
+        const unitPrice = input.people > 0 ? input.amountTotal / input.people : input.amountTotal;
+        const items = [{
+          description: input.productName,
+          quantity: input.people,
+          unitPrice,
+          total: input.amountTotal,
+          fiscalRegime: "general_21" as const,
+        }];
+        const subtotal = input.amountTotal;
+        const taxRate = 21;
+        const taxAmount = parseFloat((subtotal * (taxRate / 100)).toFixed(2));
+        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+
+        // 4. Generar PDF de factura
+        let pdfUrl: string | null = null;
+        let pdfKey: string | null = null;
+        try {
+          const pdf = await generateInvoicePdf({
+            invoiceNumber,
+            clientName: input.customerName,
+            clientEmail: input.customerEmail,
+            clientPhone: input.customerPhone ?? null,
+            itemsJson: items,
+            subtotal: String(subtotal),
+            taxRate: String(taxRate),
+            taxAmount: String(taxAmount),
+            total: String(total),
+            issuedAt: now,
+          });
+          pdfUrl = pdf.url;
+          pdfKey = pdf.key;
+        } catch (e) {
+          console.error("[createManual] PDF generation failed:", e);
+        }
+
+        // 5. Insertar factura
+        const [invResult] = await db.insert(invoices).values({
+          invoiceNumber,
+          clientName: input.customerName,
+          clientEmail: input.customerEmail,
+          clientPhone: input.customerPhone ?? null,
+          itemsJson: items,
+          subtotal: String(subtotal),
+          taxRate: String(taxRate),
+          taxAmount: String(taxAmount),
+          total: String(total),
+          pdfUrl,
+          pdfKey,
+          isAutomatic: false,
+          status: "generada",
+          issuedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
+        const invoiceId = (invResult as { insertId: number }).insertId;
+
+        // 6. Insertar reserva
+        const [resResult] = await db.insert(reservations).values({
+          productId: input.productId,
+          productName: input.productName,
+          bookingDate: input.bookingDate,
+          people: input.people,
+          amountTotal: Math.round(input.amountTotal * 100),
+          amountPaid: Math.round(input.amountPaid * 100),
+          status: "paid",
+          customerName: input.customerName,
+          customerEmail: input.customerEmail,
+          customerPhone: input.customerPhone ?? "",
+          channel: input.channel,
+          paymentMethod: input.paymentMethod,
+          merchantOrder,
+          invoiceId,
+          invoiceNumber,
+          notes: input.notes ?? `Reserva creada manualmente por ${ctx.user.name ?? ctx.user.id}`,
+          createdAt: now.getTime(),
+          updatedAt: now.getTime(),
+        });
+        const reservationId = (resResult as { insertId: number }).insertId;
+
+        // 7. Actualizar reservationId en la factura
+        await db.update(invoices).set({ reservationId }).where(eq(invoices.id, invoiceId));
+
+        // 8. postConfirmOperation: booking + transacción + reservation_operational
+        try {
+          await postConfirmOperation({
+            reservationId,
+            productId: input.productId,
+            productName: input.productName,
+            serviceDate: input.bookingDate,
+            people: input.people,
+            amountCents: Math.round(input.amountPaid * 100),
+            customerName: input.customerName,
+            customerEmail: input.customerEmail,
+            customerPhone: input.customerPhone ?? null,
+            totalAmount: input.amountPaid,
+            paymentMethod: input.paymentMethod === "redsys" ? "redsys" : input.paymentMethod === "transferencia" ? "transferencia" : input.paymentMethod === "efectivo" ? "efectivo" : "otro",
+            saleChannel: "admin",
+            invoiceNumber,
+            reservationRef: merchantOrder,
+          });
+        } catch (e) {
+          console.error("[createManual] postConfirmOperation error:", e);
+        }
+
+        // 9. Email de confirmación al cliente
+        if (input.sendConfirmationEmail && input.customerEmail) {
+          try {
+            const html = buildConfirmationHtml({
+              clientName: input.customerName,
+              reservationRef: merchantOrder,
+              quoteTitle: input.productName,
+              items: [{ description: input.productName, quantity: input.people, unitPrice, total: input.amountTotal }],
+              total: `${input.amountTotal.toFixed(2)} €`,
+              bookingDate: input.bookingDate,
+              contactEmail: "reservas@nayadeexperiences.es",
+              contactPhone: "+34 930 34 77 91",
+            });
+            await sendEmail({
+              to: input.customerEmail,
+              subject: `✅ Confirmación de reserva — ${input.productName} · Náyade Experiences`,
+              html,
+            });
+          } catch (e) {
+            console.error("[createManual] Email send error:", e);
+          }
+        }
+
+        // 10. Registrar actividad
+        await logActivity(
+          "reservation",
+          reservationId,
+          "reservation_created",
+          ctx.user.id,
+          ctx.user.name,
+          {
+            productName: input.productName,
+            customerName: input.customerName,
+            bookingDate: input.bookingDate,
+            people: input.people,
+            amountPaid: input.amountPaid,
+            invoiceNumber,
+            merchantOrder,
+            channel: input.channel,
+            createdBy: ctx.user.name ?? ctx.user.id,
+          }
+        ).catch(() => {});
+
+         return {
+          ok: true,
+          reservationId,
+          invoiceId,
+          invoiceNumber,
+          merchantOrder,
+          pdfUrl,
+        };
+      }),
+  }),
   // ─── INVOICES ──────────────────────────────────────────────────────────────
 
   invoices: router({

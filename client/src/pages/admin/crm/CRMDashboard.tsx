@@ -760,6 +760,364 @@ function ProductSearchInput({
 
 // ─── DIRECT QUOTE MODAL (sin lead previo) ───────────────────────────────────
 
+// ─── NEW LEAD MODAL (creación manual de lead por admin) ──────────────────────
+
+function NewLeadModal({ onClose }: { onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [company, setCompany] = useState("");
+  const [messageText, setMessageText] = useState("");
+  const [preferredDate, setPreferredDate] = useState("");
+  const [adults, setAdults] = useState(2);
+  const [children, setChildren] = useState(0);
+  const [source, setSource] = useState("admin");
+  const [productSearch, setProductSearch] = useState("");
+  const [selectedProductName, setSelectedProductName] = useState("");
+  const [showProductSuggestions, setShowProductSuggestions] = useState(false);
+
+  const { data: productSuggestions } = trpc.crm.products.search.useQuery(
+    { q: productSearch, limit: 8 },
+    { enabled: productSearch.length >= 2 }
+  );
+
+  const createLead = trpc.crm.leads.create.useMutation({
+    onSuccess: () => {
+      toast.success(`Lead de ${name} creado correctamente`);
+      utils.crm.leads.list.invalidate();
+      utils.crm.leads.counters.invalidate();
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleSubmit = () => {
+    if (!name.trim() || !email.trim()) {
+      toast.error("Nombre y email son obligatorios");
+      return;
+    }
+    createLead.mutate({
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim() || undefined,
+      company: company.trim() || undefined,
+      message: messageText.trim() || undefined,
+      preferredDate: preferredDate || undefined,
+      numberOfAdults: adults,
+      numberOfChildren: children,
+      selectedProduct: selectedProductName || undefined,
+      source,
+    });
+  };
+
+  return (
+    <DialogContent className="max-w-lg bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="text-white flex items-center gap-2">
+          <User className="w-5 h-5 text-violet-400" /> Nuevo Lead
+        </DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 py-2">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <Label className="text-xs text-white/50 mb-1 block">Nombre completo *</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+          </div>
+          <div>
+            <Label className="text-xs text-white/50 mb-1 block">Email *</Label>
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@email.com" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+          </div>
+          <div>
+            <Label className="text-xs text-white/50 mb-1 block">Teléfono</Label>
+            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+          </div>
+          <div className="col-span-2">
+            <Label className="text-xs text-white/50 mb-1 block">Empresa / Grupo</Label>
+            <Input value={company} onChange={e => setCompany(e.target.value)} placeholder="Empresa S.L." className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+          </div>
+        </div>
+        <div className="relative">
+          <Label className="text-xs text-white/50 mb-1 block">Producto de interés</Label>
+          <Input
+            value={selectedProductName || productSearch}
+            onChange={e => { setProductSearch(e.target.value); setSelectedProductName(""); setShowProductSuggestions(true); }}
+            onFocus={() => setShowProductSuggestions(true)}
+            placeholder="Buscar experiencia o pack..."
+            className="bg-white/5 border-white/10 text-white placeholder:text-white/25"
+          />
+          {showProductSuggestions && productSuggestions && productSuggestions.length > 0 && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+              {(productSuggestions as any[]).map((p: any) => (
+                <button key={`${p.productType}-${p.id}`} type="button" className="w-full text-left px-3 py-2 hover:bg-white/8 text-sm text-white flex items-center gap-2"
+                  onClick={() => { setSelectedProductName(p.title); setProductSearch(""); setShowProductSuggestions(false); }}>
+                  <span className="text-white/40 text-xs">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                  <span>{p.title}</span>
+                  {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-white/40 text-xs">{Number(p.basePrice).toFixed(2)}€</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {selectedProductName && <p className="text-xs text-emerald-400 mt-1">✓ {selectedProductName}</p>}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-3 sm:col-span-1">
+            <Label className="text-xs text-white/50 mb-1 block">Fecha preferida</Label>
+            <Input type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-white/5 border-white/10 text-white" />
+          </div>
+          <div>
+            <Label className="text-xs text-white/50 mb-1 block">Adultos</Label>
+            <Input type="number" min={1} value={adults} onChange={e => setAdults(Number(e.target.value))} className="bg-white/5 border-white/10 text-white" />
+          </div>
+          <div>
+            <Label className="text-xs text-white/50 mb-1 block">Niños</Label>
+            <Input type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-white/5 border-white/10 text-white" />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs text-white/50 mb-1 block">Canal de origen</Label>
+          <Select value={source} onValueChange={setSource}>
+            <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue /></SelectTrigger>
+            <SelectContent className="bg-[#0d1526] border-white/10">
+              <SelectItem value="admin" className="text-white text-xs">💼 Admin (manual)</SelectItem>
+              <SelectItem value="telefono" className="text-white text-xs">📞 Teléfono</SelectItem>
+              <SelectItem value="email" className="text-white text-xs">📧 Email</SelectItem>
+              <SelectItem value="whatsapp" className="text-white text-xs">💬 WhatsApp</SelectItem>
+              <SelectItem value="presencial" className="text-white text-xs">👤 Presencial</SelectItem>
+              <SelectItem value="otro" className="text-white text-xs">❓ Otro</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs text-white/50 mb-1 block">Mensaje / notas</Label>
+          <Textarea value={messageText} onChange={e => setMessageText(e.target.value)} placeholder="Información adicional del cliente..." rows={3} className="bg-white/5 border-white/10 text-white placeholder:text-white/25 resize-none" />
+        </div>
+      </div>
+      <DialogFooter className="gap-2">
+        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button size="sm" onClick={handleSubmit} disabled={createLead.isPending} className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white">
+          {createLead.isPending ? "Creando..." : "Crear Lead"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+// ─── NEW RESERVATION MODAL (creación manual de reserva por admin) ─────────────
+
+function NewReservationModal({ onClose }: { onClose: () => void }) {
+  const utils = trpc.useUtils();
+
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [clientSearch, setClientSearch] = useState("");
+  const [showClientSugg, setShowClientSugg] = useState(false);
+
+  const [productSearch, setProductSearch] = useState("");
+  const [productId, setProductId] = useState<number | null>(null);
+  const [productName, setProductName] = useState("");
+  const [showProductSugg, setShowProductSugg] = useState(false);
+
+  const [bookingDate, setBookingDate] = useState("");
+  const [people, setPeople] = useState(2);
+
+  const [amountTotal, setAmountTotal] = useState("");
+  const [amountPaid, setAmountPaid] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "transferencia" | "redsys" | "otro">("efectivo");
+  const [channel, setChannel] = useState<"crm" | "telefono" | "email" | "otro">("crm");
+  const [notes, setNotes] = useState("");
+  const [sendEmailConfirm, setSendEmailConfirm] = useState(true);
+
+  const { data: clientSuggestionsRaw } = trpc.crm.clients.list.useQuery(
+    { search: clientSearch, limit: 6 },
+    { enabled: clientSearch.length >= 2 }
+  );
+  const clientSuggestions = clientSuggestionsRaw?.items ?? [];
+
+  const { data: productSuggestions } = trpc.crm.products.search.useQuery(
+    { q: productSearch, limit: 8 },
+    { enabled: productSearch.length >= 2 }
+  );
+
+  const createManual = trpc.crm.reservations.createManual.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Reserva ${data.merchantOrder} creada — Factura ${data.invoiceNumber}`);
+      utils.crm.reservations.list.invalidate();
+      utils.crm.reservations.counters.invalidate();
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleSubmit = () => {
+    if (!customerName.trim() || !customerEmail.trim()) { toast.error("Nombre y email del cliente son obligatorios"); return; }
+    if (!productId || !productName) { toast.error("Selecciona un producto"); return; }
+    if (!bookingDate) { toast.error("La fecha del servicio es obligatoria"); return; }
+    const total = parseFloat(amountTotal);
+    const paid = parseFloat(amountPaid || amountTotal);
+    if (isNaN(total) || total < 0) { toast.error("El importe total debe ser un número válido"); return; }
+    createManual.mutate({
+      customerName: customerName.trim(),
+      customerEmail: customerEmail.trim(),
+      customerPhone: customerPhone.trim() || undefined,
+      productId,
+      productName,
+      bookingDate,
+      people,
+      amountTotal: total,
+      amountPaid: isNaN(paid) ? total : paid,
+      paymentMethod,
+      notes: notes.trim() || undefined,
+      channel,
+      sendConfirmationEmail: sendEmailConfirm,
+    });
+  };
+
+  return (
+    <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="text-white flex items-center gap-2">
+          <CalendarCheck className="w-5 h-5 text-emerald-400" /> Nueva Reserva
+        </DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 py-2">
+        {/* Cliente */}
+        <div className="bg-white/3 border border-white/8 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">Cliente</p>
+          <div className="relative">
+            <Label className="text-xs text-white/50 mb-1 block">Nombre completo *</Label>
+            <Input
+              value={customerName || clientSearch}
+              onChange={e => { setClientSearch(e.target.value); setCustomerName(""); setShowClientSugg(true); }}
+              onFocus={() => setShowClientSugg(true)}
+              placeholder="Buscar cliente existente o escribir nuevo..."
+              className="bg-white/5 border-white/10 text-white placeholder:text-white/25"
+            />
+            {showClientSugg && clientSuggestions.length > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                {clientSuggestions.map((c) => (
+                  <button key={c.id} type="button" className="w-full text-left px-3 py-2 hover:bg-white/8 text-sm text-white"
+                    onClick={() => { setCustomerName(c.name); setCustomerEmail(c.email ?? ""); setCustomerPhone(c.phone ?? ""); setClientSearch(""); setShowClientSugg(false); }}>
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-white/40 ml-2 text-xs">{c.email}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {customerName && <p className="text-xs text-emerald-400 mt-1">✓ {customerName}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-white/50 mb-1 block">Email *</Label>
+              <Input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            </div>
+            <div>
+              <Label className="text-xs text-white/50 mb-1 block">Teléfono</Label>
+              <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            </div>
+          </div>
+        </div>
+        {/* Producto */}
+        <div className="bg-white/3 border border-white/8 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">Producto / Servicio</p>
+          <div className="relative">
+            <Label className="text-xs text-white/50 mb-1 block">Experiencia o pack *</Label>
+            <Input
+              value={productName || productSearch}
+              onChange={e => { setProductSearch(e.target.value); setProductId(null); setProductName(""); setShowProductSugg(true); }}
+              onFocus={() => setShowProductSugg(true)}
+              placeholder="Buscar producto..."
+              className="bg-white/5 border-white/10 text-white placeholder:text-white/25"
+            />
+            {showProductSugg && productSuggestions && (productSuggestions as any[]).length > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                {(productSuggestions as any[]).map((p: any) => (
+                  <button key={`${p.productType}-${p.id}`} type="button" className="w-full text-left px-3 py-2 hover:bg-white/8 text-sm text-white flex items-center gap-2"
+                    onClick={() => {
+                      setProductId(p.id); setProductName(p.title);
+                      if (p.basePrice && Number(p.basePrice) > 0) { const base = Number(p.basePrice) * people; setAmountTotal(base.toFixed(2)); setAmountPaid(base.toFixed(2)); }
+                      setProductSearch(""); setShowProductSugg(false);
+                    }}>
+                    <span className="text-white/40 text-xs">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                    <span>{p.title}</span>
+                    {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-white/40 text-xs">{Number(p.basePrice).toFixed(2)}€/pers</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+            {productName && <p className="text-xs text-emerald-400 mt-1">✓ {productName}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-white/50 mb-1 block">Fecha del servicio *</Label>
+              <Input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="bg-white/5 border-white/10 text-white" />
+            </div>
+            <div>
+              <Label className="text-xs text-white/50 mb-1 block">Nº personas</Label>
+              <Input type="number" min={1} value={people} onChange={e => setPeople(Number(e.target.value))} className="bg-white/5 border-white/10 text-white" />
+            </div>
+          </div>
+        </div>
+        {/* Económico */}
+        <div className="bg-white/3 border border-white/8 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">Datos económicos</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-white/50 mb-1 block">Importe total (€) *</Label>
+              <Input type="number" min={0} step="0.01" value={amountTotal} onChange={e => setAmountTotal(e.target.value)} placeholder="0.00" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            </div>
+            <div>
+              <Label className="text-xs text-white/50 mb-1 block">Importe cobrado (€)</Label>
+              <Input type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="Igual al total si pagado" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs text-white/50 mb-1 block">Método de pago</Label>
+              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as typeof paymentMethod)}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-[#0d1526] border-white/10">
+                  <SelectItem value="efectivo" className="text-white text-xs">💵 Efectivo</SelectItem>
+                  <SelectItem value="transferencia" className="text-white text-xs">🏦 Transferencia</SelectItem>
+                  <SelectItem value="redsys" className="text-white text-xs">💳 Tarjeta (Redsys)</SelectItem>
+                  <SelectItem value="otro" className="text-white text-xs">❓ Otro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-white/50 mb-1 block">Canal</Label>
+              <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-[#0d1526] border-white/10">
+                  <SelectItem value="crm" className="text-white text-xs">💼 CRM (admin)</SelectItem>
+                  <SelectItem value="telefono" className="text-white text-xs">📞 Teléfono</SelectItem>
+                  <SelectItem value="email" className="text-white text-xs">📧 Email</SelectItem>
+                  <SelectItem value="otro" className="text-white text-xs">❓ Otro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs text-white/50 mb-1 block">Notas internas</Label>
+          <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo..." rows={2} className="bg-white/5 border-white/10 text-white placeholder:text-white/25 resize-none" />
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={sendEmailConfirm} onChange={e => setSendEmailConfirm(e.target.checked)} className="rounded" />
+          <span className="text-sm text-white/60">Enviar email de confirmación al cliente</span>
+        </label>
+      </div>
+      <DialogFooter className="gap-2">
+        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button size="sm" onClick={handleSubmit} disabled={createManual.isPending} className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
+          {createManual.isPending ? "Creando reserva..." : "Crear Reserva"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
 function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const utils = trpc.useUtils();
 
@@ -800,10 +1158,11 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
 
   // Búsqueda de clientes existentes
-  const { data: clientSuggestions } = trpc.crm.clients.list.useQuery(
+  const { data: clientSuggestionsRaw } = trpc.crm.clients.list.useQuery(
     { search: clientSearch, limit: 6 },
     { enabled: clientSearch.length >= 2 }
   );
+  const clientSuggestions = clientSuggestionsRaw?.items ?? [];
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) =>
@@ -904,9 +1263,9 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                 onBlur={() => setTimeout(() => setShowClientSuggestions(false), 200)}
               />
             </div>
-            {showClientSuggestions && (clientSuggestions?.items?.length ?? 0) > 0 && (
+            {showClientSuggestions && clientSuggestions.length > 0 && (
               <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/10 rounded-lg shadow-xl max-h-40 overflow-y-auto">
-                {clientSuggestions!.items.map((c: any) => (
+                {clientSuggestions.map((c) => (
                   <button
                     key={c.id}
                     type="button"
@@ -2581,6 +2940,8 @@ export default function CRMDashboard() {
   const [convertReservationId, setConvertReservationId] = useState<number | null>(null);
   const [markLostQuoteId, setMarkLostQuoteId] = useState<number | null>(null);
   const [showDirectQuoteModal, setShowDirectQuoteModal] = useState(false);
+  const [showNewLeadModal, setShowNewLeadModal] = useState(false);
+  const [showNewReservationModal, setShowNewReservationModal] = useState(false);
   // ─── Estado dropdown acciones reservas ────────────────────────────────────────────────────
   const [resChannelFilter, setResChannelFilter] = useState<string>("all");
   const [resActionMenuId, setResActionMenuId] = useState<number | null>(null);
@@ -3200,7 +3561,25 @@ export default function CRMDashboard() {
               </SelectContent>
             </Select>
           )}
-          {/* Botón Nuevo Presupuesto — visible solo en el tab de presupuestos */}
+          {/* Botones de creación manual — visibles según el tab activo */}
+          {tab === "leads" && (
+            <Button
+              size="sm"
+              onClick={() => setShowNewLeadModal(true)}
+              className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white ml-auto"
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> Nuevo Lead
+            </Button>
+          )}
+          {tab === "reservations" && (
+            <Button
+              size="sm"
+              onClick={() => setShowNewReservationModal(true)}
+              className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white ml-auto"
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> Nueva Reserva
+            </Button>
+          )}
           {tab === "quotes" && (
             <Button
               size="sm"
@@ -4142,6 +4521,18 @@ export default function CRMDashboard() {
       <Dialog open={showDirectQuoteModal} onOpenChange={(o) => !o && setShowDirectQuoteModal(false)}>
         {showDirectQuoteModal && (
           <DirectQuoteModal onClose={() => setShowDirectQuoteModal(false)} />
+        )}
+      </Dialog>
+      {/* Nuevo Lead Manual */}
+      <Dialog open={showNewLeadModal} onOpenChange={(o) => !o && setShowNewLeadModal(false)}>
+        {showNewLeadModal && (
+          <NewLeadModal onClose={() => setShowNewLeadModal(false)} />
+        )}
+      </Dialog>
+      {/* Nueva Reserva Manual */}
+      <Dialog open={showNewReservationModal} onOpenChange={(o) => !o && setShowNewReservationModal(false)}>
+        {showNewReservationModal && (
+          <NewReservationModal onClose={() => setShowNewReservationModal(false)} />
         )}
       </Dialog>
 
