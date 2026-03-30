@@ -2589,3 +2589,25 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Nombre de línea: '[Cupón Groupon GRP-ABC123] Nombre producto'
 - [x] 12 nuevos tests Vitest en suppliers.source4.test.ts
 - [x] 428 tests Vitest pasando — 0 errores TypeScript
+
+## Fase 8 — Limpieza tabla bookings v25.39
+
+- [ ] Auditar schema bookings y reservation_operational: columnas, tipos, índices
+- [ ] Auditar escritores: qué funciones insertan en bookings vs reservation_operational
+- [ ] Auditar lectores: qué queries/procedures leen de bookings vs reservation_operational
+- [ ] Decidir y documentar: fuente de verdad o eliminación
+- [ ] Ejecutar la limpieza según la decisión
+- [ ] Tests Vitest y checkpoint
+
+## Fase 8 — Limpieza tabla bookings v25.39
+
+- [x] Auditar: bookings tiene 4 filas, reservation_operational tiene 4 filas, 3 con datos reales
+- [x] Auditar escritores: createBookingFromReservation importado pero NUNCA llamado; postConfirmOperation es el único escritor activo de reservation_operational
+- [x] Auditar lectores: calendar/dailyOrders usan reservation_operational; BookingsList.tsx y KPIs del dashboard usan bookings
+- [x] Decisión: reservation_operational es la fuente de verdad; bookings es legacy sin escritores activos
+- [x] Migrar KPIs del dashboard (bookingsThisMonth, bookingsPending, bookingsConfirmed) a reservations
+- [x] Migrar funnel (fBookingsCompleted) a reservationOperational
+- [x] Migrar todayBookings y upcomingBookings a reservations (con merchantOrder como bookingNumber)
+- [x] Migrar bookings.getAll procedure a reservations + reservation_operational (con mapeo de status legacy)
+- [x] Tabla bookings mantenida en BD (datos históricos) pero sin escritores activos
+- [x] 428 tests Vitest pasando — 0 errores TypeScript

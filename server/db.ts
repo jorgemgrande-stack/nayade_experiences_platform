@@ -1473,10 +1473,10 @@ export async function getDashboardOverview() {
       db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfMonth}`),
       db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`),
       db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada'`),
-      // KPIs: Bookings
-      db.select({ count: sql<number>`count(*)` }).from(bookings).where(sql`createdAt >= ${startOfMonth}`),
-      db.select({ count: sql<number>`count(*)` }).from(bookings).where(eq(bookings.status, "pendiente")),
-      db.select({ count: sql<number>`count(*)` }).from(bookings).where(eq(bookings.status, "confirmado")),
+      // KPIs: Reservas (migrado desde bookings → reservations)
+      db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status IN ('paid','pending_payment') AND created_at >= ${startOfMonthMs}`),
+      db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'pending_payment'`),
+      db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'paid'`),
       // KPIs: Leads
       db.select({ count: sql<number>`count(*)` }).from(leads).where(sql`createdAt >= ${startOfMonth}`),
       db.select({ count: sql<number>`count(*)` }).from(leads),
@@ -1492,14 +1492,14 @@ export async function getDashboardOverview() {
       db.select({ count: sql<number>`count(*)` }).from(leads),
       db.select({ count: sql<number>`count(*)` }).from(quotes),
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(eq(reservations.status, "paid")),
-      db.select({ count: sql<number>`count(*)` }).from(bookings).where(eq(bookings.status, "completado")),
+      db.select({ count: sql<number>`count(*)` }).from(reservationOperational).where(eq(reservationOperational.opStatus, "completado")),
       db.select({ count: sql<number>`count(*)` }).from(invoices),
       // Recent activity
       db.select({ id: crmActivityLog.id, entityType: crmActivityLog.entityType, action: crmActivityLog.action, actorName: crmActivityLog.actorName, entityId: crmActivityLog.entityId, details: crmActivityLog.details, createdAt: crmActivityLog.createdAt }).from(crmActivityLog).orderBy(desc(crmActivityLog.createdAt)).limit(10),
-      // Today's bookings
-      db.select({ id: bookings.id, bookingNumber: bookings.bookingNumber, clientName: bookings.clientName, scheduledDate: bookings.scheduledDate, numberOfPersons: bookings.numberOfPersons, status: bookings.status, experienceId: bookings.experienceId }).from(bookings).where(sql`scheduledDate >= ${startOfToday} AND scheduledDate <= ${endOfToday} AND status NOT IN ('cancelado')`).orderBy(bookings.scheduledDate).limit(10),
-      // Upcoming bookings
-      db.select({ id: bookings.id, bookingNumber: bookings.bookingNumber, clientName: bookings.clientName, scheduledDate: bookings.scheduledDate, numberOfPersons: bookings.numberOfPersons, status: bookings.status, experienceId: bookings.experienceId }).from(bookings).where(sql`scheduledDate > ${endOfToday} AND scheduledDate <= ${in7Days} AND status NOT IN ('cancelado')`).orderBy(bookings.scheduledDate).limit(5),
+      // Today's bookings (migrado desde bookings → reservations)
+      db.select({ id: reservations.id, bookingNumber: reservations.merchantOrder, clientName: reservations.customerName, scheduledDate: reservations.bookingDate, numberOfPersons: reservations.people, status: reservations.status, experienceId: reservations.productId }).from(reservations).where(sql`booking_date >= ${startOfToday.toISOString().slice(0,10)} AND booking_date <= ${endOfToday.toISOString().slice(0,10)} AND status NOT IN ('cancelled','failed')`).orderBy(reservations.bookingDate).limit(10),
+      // Upcoming bookings (migrado desde bookings → reservations)
+      db.select({ id: reservations.id, bookingNumber: reservations.merchantOrder, clientName: reservations.customerName, scheduledDate: reservations.bookingDate, numberOfPersons: reservations.people, status: reservations.status, experienceId: reservations.productId }).from(reservations).where(sql`booking_date > ${endOfToday.toISOString().slice(0,10)} AND booking_date <= ${in7Days.toISOString().slice(0,10)} AND status NOT IN ('cancelled','failed')`).orderBy(reservations.bookingDate).limit(5),
       // Top experiencias
       db.select({ productId: reservations.productId, productName: reservations.productName, count: sql<number>`count(*)`, revenue: sql<string>`COALESCE(SUM(amount_total), 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`).groupBy(reservations.productId, reservations.productName).orderBy(sql`count(*) DESC`).limit(5),
       // Alertas
@@ -1508,16 +1508,16 @@ export async function getDashboardOverview() {
       db.select({ count: sql<number>`count(*)` }).from(invoices).where(sql`status IN ('generada', 'enviada') AND issuedAt <= ${thirtyDaysAgo}`),
     ]);
 
-    // Enriquecer bookings con nombres de experiencias
-    const allExpIds = Array.from(new Set([...todayBookingsRaw, ...upcomingRaw].map(b => b.experienceId)));
+    // Enriquecer reservas con nombres de experiencias
+    const allExpIds = Array.from(new Set([...todayBookingsRaw, ...upcomingRaw].map(b => b.experienceId ?? 0).filter(id => id > 0)));
     let expMap: Record<number, string> = {};
     if (allExpIds.length > 0) {
       const exps = await db.select({ id: experiences.id, title: experiences.title })
         .from(experiences).where(inArray(experiences.id, allExpIds));
       expMap = Object.fromEntries(exps.map(e => [e.id, e.title]));
     }
-    const todayBookings = todayBookingsRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId] ?? "Actividad" }));
-    const upcomingBookings = upcomingRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId] ?? "Actividad" }));
+    const todayBookings = todayBookingsRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId ?? 0] ?? "Actividad" }));
+    const upcomingBookings = upcomingRaw.map(b => ({ ...b, experienceName: expMap[b.experienceId ?? 0] ?? "Actividad" }));
     const topExperiences = topRaw.map(r => ({ experienceId: r.productId, experienceName: r.productName, count: Number(r.count), revenue: Math.round(parseFloat(r.revenue ?? "0")) / 100 }));
 
     return {

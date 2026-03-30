@@ -1,0 +1,8 @@
+{
+  "query": "SELECT b.id AS bookingId, b.bookingNumber, b.reservationId, b.status AS bookingStatus, b.scheduledDate, ro.id AS opId, ro.opStatus FROM bookings b LEFT JOIN reservation_operational ro ON ro.reservationId = b.reservationId ORDER BY b.id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT b.id AS bookingId, b.bookingNumber, b.reservationId, b.status AS bookingStatus, b.scheduledDate, ro.id AS opId, ro.opStatus FROM bookings b LEFT JOIN reservation_operational ro ON ro.reservationId = b.reservationId ORDER BY b.id;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'ro.reservationid' in 'on clause'"
+  ]
+}

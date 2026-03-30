@@ -126,8 +126,8 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
-import { siteSettings, packs } from "../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import { siteSettings, packs, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema } from "../drizzle/schema";
+import { eq, and, desc, inArray, sql as sqlDrizzle } from "drizzle-orm";
 import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
 import { reviewsRouter } from "./routers/reviews";
@@ -855,6 +855,7 @@ export const appRouter = router({
 
   // ─── ADMIN: BOOKINGS & CALENDAR───────────────────────────────────────────
   bookings: router({
+    // Migrado: ahora devuelve reservations + reservation_operational en lugar de la tabla bookings legacy
     getAll: protectedProcedure
       .input(z.object({
         status: z.string().optional(),
@@ -864,7 +865,57 @@ export const appRouter = router({
         offset: z.number().default(0),
       }))
       .query(async ({ input }) => {
-        return getAllBookings(input);
+        const db = await getDb();
+        if (!db) return [];
+        // Map legacy status filter to reservations status
+        let statusWhere: any = undefined;
+        if (input.status && input.status !== "all") {
+          const legacyMap: Record<string, string[]> = {
+            pendiente: ["pending_payment"],
+            confirmado: ["paid"],
+            completado: ["paid"],
+            cancelado: ["cancelled"],
+          };
+          const mapped = legacyMap[input.status];
+          if (mapped) statusWhere = inArray(reservationsSchema.status, mapped as any[]);
+        }
+        const rows = await db.select({
+          id: reservationsSchema.id,
+          bookingNumber: reservationsSchema.merchantOrder,
+          clientName: reservationsSchema.customerName,
+          clientEmail: reservationsSchema.customerEmail,
+          scheduledDate: reservationsSchema.bookingDate,
+          numberOfPersons: reservationsSchema.people,
+          totalAmount: reservationsSchema.amountTotal,
+          status: reservationsSchema.status,
+          experienceId: reservationsSchema.productId,
+          reservationId: reservationsSchema.id,
+          sourceChannel: reservationsSchema.paymentMethod,
+          opStatus: reservationOperationalSchema.opStatus,
+        })
+          .from(reservationsSchema)
+          .leftJoin(reservationOperationalSchema, and(
+            eq(reservationOperationalSchema.reservationId, reservationsSchema.id),
+            eq(reservationOperationalSchema.reservationType, "activity")
+          ))
+          .where(statusWhere ?? sqlDrizzle`1=1`)
+          .orderBy(desc(reservationsSchema.bookingDate))
+          .limit(input.limit)
+          .offset(input.offset);
+        // Map to legacy shape expected by BookingsList.tsx
+        return rows.map(r => ({
+          id: r.id,
+          bookingNumber: r.bookingNumber ?? `RES-${r.id}`,
+          clientName: r.clientName,
+          clientEmail: r.clientEmail,
+          scheduledDate: r.scheduledDate ? new Date(`${r.scheduledDate}T10:00:00Z`) : new Date(),
+          numberOfPersons: r.numberOfPersons,
+          totalAmount: r.totalAmount ? (r.totalAmount / 100).toFixed(2) : "0.00",
+          status: r.opStatus ?? (r.status === "paid" ? "confirmado" : r.status === "pending_payment" ? "pendiente" : "cancelado"),
+          experienceId: r.experienceId ?? 0,
+          reservationId: r.reservationId,
+          sourceChannel: r.sourceChannel ?? "otro",
+        }));
       }),
 
     create: staffProcedure

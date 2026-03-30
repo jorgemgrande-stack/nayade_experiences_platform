@@ -1,0 +1,42 @@
+{
+  "query": "SELECT b.id AS bookingId, b.bookingNumber, b.reservationId, b.status AS bookingStatus, ro.id AS opId, ro.op_status AS opStatus FROM bookings b LEFT JOIN reservation_operational ro ON ro.reservation_id = b.reservationId ORDER BY b.id;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT b.id AS bookingId, b.bookingNumber, b.reservationId, b.status AS bookingStatus, ro.id AS opId, ro.op_status AS opStatus FROM bookings b LEFT JOIN reservation_operational ro ON ro.reservation_id = b.reservationId ORDER BY b.id;",
+  "rows": [
+    {
+      "bookingId": "60003",
+      "bookingNumber": "BK-RETRO-RATA-2026",
+      "reservationId": "450005",
+      "bookingStatus": "confirmado",
+      "opId": "NULL",
+      "opStatus": "NULL"
+    },
+    {
+      "bookingId": "60004",
+      "bookingNumber": "BK-1774825043716-21QE",
+      "reservationId": "450006",
+      "bookingStatus": "confirmado",
+      "opId": "30001",
+      "opStatus": "confirmado"
+    },
+    {
+      "bookingId": "60005",
+      "bookingNumber": "BK-1774827005011-_5RC",
+      "reservationId": "450008",
+      "bookingStatus": "confirmado",
+      "opId": "30002",
+      "opStatus": "confirmado"
+    },
+    {
+      "bookingId": "90001",
+      "bookingNumber": "BK-1774857115454-QVJV",
+      "reservationId": "480001",
+      "bookingStatus": "confirmado",
+      "opId": "60001",
+      "opStatus": "confirmado"
+    }
+  ],
+  "messages": [],
+  "stdout": "bookingId\tbookingNumber\treservationId\tbookingStatus\topId\topStatus\n60003\tBK-RETRO-RATA-2026\t450005\tconfirmado\tNULL\tNULL\n60004\tBK-1774825043716-21QE\t450006\tconfirmado\t30001\tconfirmado\n60005\tBK-1774827005011-_5RC\t450008\tconfirmado\t30002\tconfirmado\n90001\tBK-1774857115454-QVJV\t480001\tconfirmado\t60001\tconfirmado\n",
+  "stderr": "",
+  "execution_time_ms": 68
+}

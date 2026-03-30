@@ -1,0 +1,18 @@
+{
+  "query": "SELECT 'bookings' AS tabla, COUNT(*) AS filas FROM bookings UNION ALL SELECT 'reservation_operational', COUNT(*) FROM reservation_operational;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT 'bookings' AS tabla, COUNT(*) AS filas FROM bookings UNION ALL SELECT 'reservation_operational', COUNT(*) FROM reservation_operational;",
+  "rows": [
+    {
+      "tabla": "reservation_operational",
+      "filas": "4"
+    },
+    {
+      "tabla": "bookings",
+      "filas": "4"
+    }
+  ],
+  "messages": [],
+  "stdout": "tabla\tfilas\nreservation_operational\t4\nbookings\t4\n",
+  "stderr": "",
+  "execution_time_ms": 169
+}

@@ -41,8 +41,8 @@ export default function BookingsList() {
 
   const filtered = bookings?.filter(b =>
     b.clientName.toLowerCase().includes(search.toLowerCase()) ||
-    b.clientEmail.toLowerCase().includes(search.toLowerCase()) ||
-    b.bookingNumber.toLowerCase().includes(search.toLowerCase())
+    (b.clientEmail ?? '').toLowerCase().includes(search.toLowerCase()) ||
+    (b.bookingNumber ?? '').toLowerCase().includes(search.toLowerCase())
   ) ?? [];
 
   return (
