@@ -2578,3 +2578,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] 0 usos de execSync/manus-md-to-pdf restantes en el proyecto
 - [x] 29 nuevos tests Vitest en pdfGenerator.test.ts
 - [x] 415 tests Vitest pasando — 0 errores TypeScript
+
+## Fase 7 — Plataformas externas en liquidaciones (SOURCE 4) v25.38
+
+- [x] Auditar schema platform_settlements, couponRedemptions, platformProducts y recalculate()
+- [x] Añadir imports platformSettlements, platforms, platformProducts, couponRedemptions a suppliers.ts
+- [x] Implementar SOURCE 4 dentro del bloque if(productIds.length>0): busca liquidaciones pagadas en periodo
+- [x] Resolución de productId: productRealId directo o via platformProductId.experienceId
+- [x] Importe: realAmount del cupón o netPrice del platform_product como fallback
+- [x] Nombre de línea: '[Cupón Groupon GRP-ABC123] Nombre producto'
+- [x] 12 nuevos tests Vitest en suppliers.source4.test.ts
+- [x] 428 tests Vitest pasando — 0 errores TypeScript

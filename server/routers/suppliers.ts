@@ -17,6 +17,10 @@ import {
   packs,
   invoices,
   reservations,
+  platformSettlements,
+  platforms,
+  platformProducts,
+  couponRedemptions,
 } from "../../drizzle/schema";
 import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
@@ -921,7 +925,78 @@ export const settlementsRouter = router({
             }
           }
         }
-      }
+
+        // SOURCE 4: Liquidaciones de plataformas externas (Groupon, Smartbox, etc.) pagadas en el periodo
+        // Vinculación: platform_settlements.paidAt en periodo + cupón.productRealId o platformProductId.experienceId del proveedor
+        const paidPlatformSettlements = await db
+          .select()
+          .from(platformSettlements)
+          .where(and(
+            eq(platformSettlements.status, "pagada"),
+            gte(platformSettlements.paidAt, new Date(periodFrom)),
+            lte(platformSettlements.paidAt, new Date(periodTo + "T23:59:59"))
+          ));
+
+        for (const ps of paidPlatformSettlements) {
+          // Obtener los cupones de esta liquidación de plataforma
+          const couponIds = (ps.couponIds as number[]) ?? [];
+          if (couponIds.length === 0) continue;
+
+          const coupons = await db
+            .select()
+            .from(couponRedemptions)
+            .where(inArray(couponRedemptions.id, couponIds));
+
+          for (const coupon of coupons) {
+            // Determinar el productId del proveedor: primero productRealId, luego via platformProductId
+            let matchProductId: number | null = coupon.productRealId ?? null;
+
+            if (!matchProductId && coupon.platformProductId) {
+              // Buscar el experienceId del platform_product
+              const [pp] = await db
+                .select({ experienceId: platformProducts.experienceId })
+                .from(platformProducts)
+                .where(eq(platformProducts.id, coupon.platformProductId));
+              matchProductId = pp?.experienceId ?? null;
+            }
+
+            if (!matchProductId || !productIdSet.has(matchProductId)) continue;
+
+            const match = productIds.find((p) => p.id === matchProductId);
+            if (!match) continue;
+
+            // El importe de venta es el precio neto recibido de la plataforma (realAmount)
+            // Si no hay realAmount, usar el netPrice del platform_product
+            let saleAmount = parseFloat(String(coupon.realAmount ?? "0"));
+            if (saleAmount <= 0 && coupon.platformProductId) {
+              const [pp] = await db
+                .select({ netPrice: platformProducts.netPrice })
+                .from(platformProducts)
+                .where(eq(platformProducts.id, coupon.platformProductId));
+              saleAmount = parseFloat(String(pp?.netPrice ?? "0"));
+            }
+            if (saleAmount <= 0) continue;
+
+            const commissionAmount = (saleAmount * match.commissionPercent) / 100;
+            const serviceDate = coupon.requestedDate ?? ps.periodFrom ?? periodFrom;
+
+            newLines.push({
+              reservationId: coupon.reservationId ?? undefined,
+              productId: match.id,
+              productName: coupon.couponCode
+                ? `[Cupón ${coupon.provider ?? "Plataforma"} ${coupon.couponCode}] ${match.title}`
+                : match.title,
+              serviceDate: typeof serviceDate === "string" ? serviceDate.slice(0, 10) : periodFrom,
+              paxCount: coupon.participants ?? 1,
+              saleAmount,
+              commissionPercent: match.commissionPercent,
+              commissionAmount,
+              netAmountProvider: saleAmount - commissionAmount,
+              costType: match.costType,
+            });
+          }
+        }
+      } // end if (productIds.length > 0)
 
       // Delete existing lines
       await db.delete(settlementLines).where(eq(settlementLines.settlementId, input.id));
