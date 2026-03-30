@@ -1,0 +1,133 @@
+{
+  "query": "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_NAME = 'reservations' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_NAME = 'reservations' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "product_id"
+    },
+    {
+      "COLUMN_NAME": "product_name"
+    },
+    {
+      "COLUMN_NAME": "booking_date"
+    },
+    {
+      "COLUMN_NAME": "people"
+    },
+    {
+      "COLUMN_NAME": "extras_json"
+    },
+    {
+      "COLUMN_NAME": "amount_total"
+    },
+    {
+      "COLUMN_NAME": "amount_paid"
+    },
+    {
+      "COLUMN_NAME": "status"
+    },
+    {
+      "COLUMN_NAME": "customer_name"
+    },
+    {
+      "COLUMN_NAME": "customer_email"
+    },
+    {
+      "COLUMN_NAME": "customer_phone"
+    },
+    {
+      "COLUMN_NAME": "merchant_order"
+    },
+    {
+      "COLUMN_NAME": "redsys_response"
+    },
+    {
+      "COLUMN_NAME": "redsys_ds_response"
+    },
+    {
+      "COLUMN_NAME": "notes"
+    },
+    {
+      "COLUMN_NAME": "created_at"
+    },
+    {
+      "COLUMN_NAME": "updated_at"
+    },
+    {
+      "COLUMN_NAME": "paid_at"
+    },
+    {
+      "COLUMN_NAME": "quoteSource"
+    },
+    {
+      "COLUMN_NAME": "quote_id"
+    },
+    {
+      "COLUMN_NAME": "quoteId"
+    },
+    {
+      "COLUMN_NAME": "invoiceId"
+    },
+    {
+      "COLUMN_NAME": "invoiceNumber"
+    },
+    {
+      "COLUMN_NAME": "paymentMethod"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedBy"
+    },
+    {
+      "COLUMN_NAME": "paymentValidatedAt"
+    },
+    {
+      "COLUMN_NAME": "transferProofUrl"
+    },
+    {
+      "COLUMN_NAME": "channel"
+    },
+    {
+      "COLUMN_NAME": "discount_code"
+    },
+    {
+      "COLUMN_NAME": "discount_percent"
+    },
+    {
+      "COLUMN_NAME": "discount_amount"
+    },
+    {
+      "COLUMN_NAME": "original_amount"
+    },
+    {
+      "COLUMN_NAME": "origin_source"
+    },
+    {
+      "COLUMN_NAME": "platform_name"
+    },
+    {
+      "COLUMN_NAME": "redemption_id"
+    },
+    {
+      "COLUMN_NAME": "channel_detail"
+    },
+    {
+      "COLUMN_NAME": "status_reservation"
+    },
+    {
+      "COLUMN_NAME": "status_payment"
+    },
+    {
+      "COLUMN_NAME": "date_changed_reason"
+    },
+    {
+      "COLUMN_NAME": "date_modified"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\nproduct_id\nproduct_name\nbooking_date\npeople\nextras_json\namount_total\namount_paid\nstatus\ncustomer_name\ncustomer_email\ncustomer_phone\nmerchant_order\nredsys_response\nredsys_ds_response\nnotes\ncreated_at\nupdated_at\npaid_at\nquoteSource\nquote_id\nquoteId\ninvoiceId\ninvoiceNumber\npaymentMethod\npaymentValidatedBy\npaymentValidatedAt\ntransferProofUrl\nchannel\ndiscount_code\ndiscount_percent\ndiscount_amount\noriginal_amount\norigin_source\nplatform_name\nredemption_id\nchannel_detail\nstatus_reservation\nstatus_payment\ndate_changed_reason\ndate_modified\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

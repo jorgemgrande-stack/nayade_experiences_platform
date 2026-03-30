@@ -486,10 +486,35 @@ export const reservations = mysqlTable("reservations", {
   paymentValidatedAt: bigint("paymentValidatedAt", { mode: "number" }),
   transferProofUrl: text("transferProofUrl"),
   // Channel & metadata
-  channel: mysqlEnum("channel", ["web", "crm", "telefono", "email", "otro", "tpv", "groupon"]).default("web"),
+  channel: mysqlEnum("channel", [
+    "ONLINE_DIRECTO", "ONLINE_ASISTIDO", "VENTA_DELEGADA", "TPV_FISICO",
+    "PARTNER", "MANUAL", "API",
+    // legacy values kept for backward compat
+    "web", "crm", "telefono", "email", "otro", "tpv", "groupon"
+  ]).default("ONLINE_DIRECTO"),
+  channelDetail: varchar("channel_detail", { length: 128 }), // e.g. "Groupon", "Smartbox"
   originSource: varchar("origin_source", { length: 64 }), // 'coupon_redemption' | null
   platformName: varchar("platform_name", { length: 128 }), // Nombre de plataforma (Groupon, Smartbox, etc.)
   redemptionId: int("redemption_id"), // FK → coupon_redemptions.id
+  // ─── Separación de estados (Fase 3) ─────────────────────────────────────────
+  statusReservation: mysqlEnum("status_reservation", [
+    "PENDIENTE_CONFIRMACION", "CONFIRMADA", "EN_CURSO", "FINALIZADA", "NO_SHOW", "ANULADA"
+  ]).default("PENDIENTE_CONFIRMACION"),
+  statusPayment: mysqlEnum("status_payment", [
+    "PENDIENTE", "PAGO_PARCIAL", "PENDIENTE_VALIDACION", "PAGADO"
+  ]).default("PENDIENTE"),
+  // ─── Cambio de fecha ──────────────────────────────────────────────────────
+  dateChangedReason: text("date_changed_reason"),
+  dateModified: boolean("date_modified").default(false),
+  // ─── Trazabilidad ─────────────────────────────────────────────────────────
+  changesLog: json("changes_log").$type<Array<{
+    ts: number;
+    actor: string;
+    action: string;
+    from?: string;
+    to?: string;
+    reason?: string;
+  }>>().default([]),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   paidAt: bigint("paid_at", { mode: "number" }),

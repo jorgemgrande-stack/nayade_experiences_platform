@@ -2649,14 +2649,20 @@ export const crmRouter = router({
         notes: z.string().optional(),
         bookingDate: z.string().optional(),
         people: z.number().optional(),
+        channel: z.string().optional(),
+        channelDetail: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const { id, ...fields } = input;
+        const [current] = await db.select().from(reservations).where(eq(reservations.id, id));
+        if (!current) throw new TRPCError({ code: "NOT_FOUND" });
         const updateData: Record<string, unknown> = { updatedAt: Date.now() };
         if (fields.status !== undefined) updateData.status = fields.status;
         if (fields.notes !== undefined) updateData.notes = fields.notes;
         if (fields.bookingDate !== undefined) updateData.bookingDate = fields.bookingDate;
         if (fields.people !== undefined) updateData.people = fields.people;
+        if (fields.channel !== undefined) updateData.channel = fields.channel;
+        if (fields.channelDetail !== undefined) updateData.channelDetail = fields.channelDetail;
         await db.update(reservations).set(updateData).where(eq(reservations.id, id));
         await db.insert(crmActivityLog).values({
           entityType: "reservation",
@@ -2665,6 +2671,87 @@ export const crmRouter = router({
           actorId: ctx.user.id,
           actorName: ctx.user.name ?? null,
           details: { fields: Object.keys(fields) },
+          createdAt: new Date(),
+        });
+        return { ok: true };
+      }),
+
+    // ─── Actualizar estados separados (statusReservation + statusPayment) ───────────────
+    updateStatuses: staff
+      .input(z.object({
+        id: z.number(),
+        statusReservation: z.enum(["PENDIENTE_CONFIRMACION", "CONFIRMADA", "EN_CURSO", "FINALIZADA", "NO_SHOW", "ANULADA"]).optional(),
+        statusPayment: z.enum(["PENDIENTE", "PAGO_PARCIAL", "PENDIENTE_VALIDACION", "PAGADO"]).optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [current] = await db.select().from(reservations).where(eq(reservations.id, input.id));
+        if (!current) throw new TRPCError({ code: "NOT_FOUND" });
+        const now = Date.now();
+        const logEntry = {
+          ts: now,
+          actor: ctx.user.name ?? String(ctx.user.id),
+          action: "status_change",
+          from: JSON.stringify({ statusReservation: current.statusReservation, statusPayment: current.statusPayment }),
+          to: JSON.stringify({ statusReservation: input.statusReservation, statusPayment: input.statusPayment }),
+        };
+        const existingLog = Array.isArray(current.changesLog) ? current.changesLog : [];
+        const updateData: Record<string, unknown> = { updatedAt: now, changesLog: [...existingLog, logEntry] };
+        if (input.statusReservation !== undefined) updateData.statusReservation = input.statusReservation;
+        if (input.statusPayment !== undefined) updateData.statusPayment = input.statusPayment;
+        // Si se anula la reserva, sincronizar con status legacy
+        if (input.statusReservation === "ANULADA") updateData.status = "cancelled";
+        // Si se paga, sincronizar con status legacy y statusPayment
+        if (input.statusPayment === "PAGADO") {
+          updateData.status = "paid";
+          updateData.paidAt = now;
+        }
+        await db.update(reservations).set(updateData).where(eq(reservations.id, input.id));
+        await db.insert(crmActivityLog).values({
+          entityType: "reservation",
+          entityId: input.id,
+          action: "status_updated",
+          actorId: ctx.user.id,
+          actorName: ctx.user.name ?? null,
+          details: { from: logEntry.from, to: logEntry.to },
+          createdAt: new Date(),
+        });
+        return { ok: true };
+      }),
+
+    // ─── Cambio de fecha con motivo obligatorio + trazabilidad ─────────────────────
+    changeDate: staff
+      .input(z.object({
+        id: z.number(),
+        newDate: z.string().min(1, "La nueva fecha es obligatoria"),
+        reason: z.string().min(3, "El motivo del cambio es obligatorio"),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [current] = await db.select().from(reservations).where(eq(reservations.id, input.id));
+        if (!current) throw new TRPCError({ code: "NOT_FOUND" });
+        const now = Date.now();
+        const logEntry = {
+          ts: now,
+          actor: ctx.user.name ?? String(ctx.user.id),
+          action: "date_change",
+          from: String(current.bookingDate),
+          to: input.newDate,
+          reason: input.reason,
+        };
+        const existingLog = Array.isArray(current.changesLog) ? current.changesLog : [];
+        await db.update(reservations).set({
+          bookingDate: input.newDate,
+          dateChangedReason: input.reason,
+          dateModified: true,
+          changesLog: [...existingLog, logEntry],
+          updatedAt: now,
+        }).where(eq(reservations.id, input.id));
+        await db.insert(crmActivityLog).values({
+          entityType: "reservation",
+          entityId: input.id,
+          action: "date_changed",
+          actorId: ctx.user.id,
+          actorName: ctx.user.name ?? null,
+          details: { from: current.bookingDate, to: input.newDate, reason: input.reason },
           createdAt: new Date(),
         });
         return { ok: true };
@@ -3078,6 +3165,83 @@ export const crmRouter = router({
           merchantOrder,
           pdfUrl,
         };
+      }),
+
+    // ─── Descargar PDF de reserva ──────────────────────────────────────────────────
+    downloadPdf: staff
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const [res] = await db.select().from(reservations).where(eq(reservations.id, input.id));
+        if (!res) throw new TRPCError({ code: "NOT_FOUND" });
+        const amountEur = (res.amountPaid ?? res.amountTotal) / 100;
+        const channelLabels: Record<string, string> = {
+          ONLINE_DIRECTO: "Online Directo", ONLINE_ASISTIDO: "Online Asistido",
+          VENTA_DELEGADA: "Venta Delegada", TPV_FISICO: "TPV Físico",
+          PARTNER: "Partner", MANUAL: "Manual", API: "API",
+          web: "Web", crm: "CRM", telefono: "Teléfono", email: "Email",
+          otro: "Otro", tpv: "TPV", groupon: "Groupon",
+        };
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+          body{font-family:Arial,sans-serif;color:#1a1a2e;margin:0;padding:32px;}
+          .header{background:#1a3a5c;color:#fff;padding:24px 32px;border-radius:8px 8px 0 0;}
+          .header h1{margin:0;font-size:22px;} .header p{margin:4px 0;font-size:13px;opacity:.8;}
+          .section{padding:20px 0;border-bottom:1px solid #e5e7eb;}
+          .section h2{font-size:14px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;}
+          .row{display:flex;justify-content:space-between;margin:6px 0;font-size:13px;}
+          .label{color:#6b7280;} .value{font-weight:600;color:#1a1a2e;}
+          .badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;}
+          .badge-blue{background:#dbeafe;color:#1d4ed8;} .badge-green{background:#dcfce7;color:#15803d;}
+          .badge-amber{background:#fef3c7;color:#92400e;} .badge-red{background:#fee2e2;color:#b91c1c;}
+          .badge-gray{background:#f3f4f6;color:#374151;}
+          .total-box{background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:16px 20px;margin-top:16px;}
+          .total-box .amount{font-size:28px;font-weight:800;color:#1a3a5c;}
+          .footer{margin-top:32px;text-align:center;font-size:11px;color:#9ca3af;}
+          .tag{display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-left:8px;}
+        </style></head><body>
+          <div class="header">
+            <h1>Reserva #${res.merchantOrder}${res.dateModified ? '<span class="tag">⚠️ FECHA MODIFICADA</span>' : ""}</h1>
+            <p>Náyade Experiences • Los Ángeles de San Rafael, Segovia</p>
+          </div>
+          <div style="padding:0 0 0 0;">
+            <div class="section">
+              <h2>Cliente</h2>
+              <div class="row"><span class="label">Nombre</span><span class="value">${res.customerName}</span></div>
+              ${res.customerEmail ? `<div class="row"><span class="label">Email</span><span class="value">${res.customerEmail}</span></div>` : ""}
+              ${res.customerPhone ? `<div class="row"><span class="label">Teléfono</span><span class="value">${res.customerPhone}</span></div>` : ""}
+            </div>
+            <div class="section">
+              <h2>Actividad</h2>
+              <div class="row"><span class="label">Producto</span><span class="value">${res.productName}</span></div>
+              <div class="row"><span class="label">Fecha actividad</span><span class="value">${res.bookingDate}</span></div>
+              <div class="row"><span class="label">Personas</span><span class="value">${res.people}</span></div>
+              ${res.dateModified && res.dateChangedReason ? `<div class="row"><span class="label">Motivo cambio fecha</span><span class="value" style="color:#92400e">${res.dateChangedReason}</span></div>` : ""}
+            </div>
+            <div class="section">
+              <h2>Estado</h2>
+              <div class="row">
+                <span class="label">Estado reserva</span>
+                <span class="value">${res.statusReservation ?? "PENDIENTE_CONFIRMACION"}</span>
+              </div>
+              <div class="row">
+                <span class="label">Estado pago</span>
+                <span class="value">${res.statusPayment ?? "PENDIENTE"}</span>
+              </div>
+              <div class="row"><span class="label">Canal</span><span class="value">${channelLabels[res.channel ?? ""] ?? res.channel ?? ""}${res.channelDetail ? " — " + res.channelDetail : ""}</span></div>
+              <div class="row"><span class="label">Método de pago</span><span class="value">${res.paymentMethod ?? "—"}</span></div>
+              <div class="row"><span class="label">Fecha de compra</span><span class="value">${new Date(res.createdAt).toLocaleDateString("es-ES")}</span></div>
+            </div>
+            <div class="total-box">
+              <div class="row"><span class="label">Importe total</span></div>
+              <div class="amount">${amountEur.toFixed(2)} €</div>
+              ${res.invoiceNumber ? `<div style="margin-top:8px;font-size:12px;color:#6b7280;">Factura: ${res.invoiceNumber}</div>` : ""}
+            </div>
+          </div>
+          <div class="footer">Generado por Náyade Experiences CRM • ${new Date().toLocaleDateString("es-ES")}</div>
+        </body></html>`;
+        const pdfBuffer = await htmlToPdf(html);
+        const key = `reservations/pdf-${res.merchantOrder}-${Date.now()}.pdf`;
+        const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+        return { url };
       }),
   }),
   // ─── INVOICES ──────────────────────────────────────────────────────────────

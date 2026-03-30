@@ -3440,9 +3440,17 @@ export default function CRMDashboard() {
   const [resActionMenuId, setResActionMenuId] = useState<number | null>(null);
   const [viewResId, setViewResId] = useState<number | null>(null);
   const [editResId, setEditResId] = useState<number | null>(null);
+  const [editResData, setEditResData] = useState<any>(null);
   const [deleteResId, setDeleteResId] = useState<number | null>(null);
   const [editResStatus, setEditResStatus] = useState<string>("");
   const [editResNotes, setEditResNotes] = useState<string>("");
+  const [editResStatusReservation, setEditResStatusReservation] = useState<string>("");
+  const [editResStatusPayment, setEditResStatusPayment] = useState<string>("");
+  const [editResChannel, setEditResChannel] = useState<string>("");
+  const [editResChannelDetail, setEditResChannelDetail] = useState<string>("");
+  const [editResNewDate, setEditResNewDate] = useState<string>("");
+  const [editResDateReason, setEditResDateReason] = useState<string>("");
+  const [showChangeDateSection, setShowChangeDateSection] = useState(false);
   const { data: leadCounters } = trpc.crm.leads.counters.useQuery();
   const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery();
   const { data: resCounters } = trpc.crm.reservations.counters.useQuery();
@@ -3633,6 +3641,33 @@ export default function CRMDashboard() {
       setDeleteResId(null);
       utils.crm.reservations.list.invalidate();
       utils.crm.reservations.counters.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateStatusesMutation = trpc.crm.reservations.updateStatuses.useMutation({
+    onSuccess: () => {
+      toast.success("Estados actualizados");
+      utils.crm.reservations.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const changeDateMutation = trpc.crm.reservations.changeDate.useMutation({
+    onSuccess: () => {
+      toast.success("Fecha de actividad actualizada");
+      setShowChangeDateSection(false);
+      setEditResNewDate("");
+      setEditResDateReason("");
+      utils.crm.reservations.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const downloadResPdfMutation = trpc.crm.reservations.downloadPdf.useMutation({
+    onSuccess: (data) => {
+      window.open(data.url, "_blank");
+      toast.success("PDF generado correctamente");
     },
     onError: (e) => toast.error(e.message),
   });
@@ -4358,34 +4393,66 @@ export default function CRMDashboard() {
                   <tr className="border-b border-white/8 bg-white/5">
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Producto</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">Factura</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Est. Reserva</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Est. Pago</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden xl:table-cell">Canal</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">F. Compra</th>
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">F. Actividad</th>
                     <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Importe</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Fecha</th>
                     <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {resLoading ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={9} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !resData?.length ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-white/30 text-sm">No hay reservas</td></tr>
+                    <tr><td colSpan={9} className="text-center py-12 text-white/30 text-sm">No hay reservas</td></tr>
                   ) : resData.map((res: any) => (
                     <tr key={res.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                      {/* Cliente */}
                       <td className="px-4 py-3">
                         <div className="text-sm font-medium text-white">{res.customerName}</div>
                         <div className="text-xs text-white/40">{res.customerEmail}</div>
-                        {res.reservationRef && <div className="text-xs font-mono text-white/30 mt-0.5">{res.reservationRef}</div>}
+                        {res.customerPhone && <div className="text-xs text-white/30 mt-0.5">{res.customerPhone}</div>}
+                        {res.merchantOrder && <div className="text-xs font-mono text-white/20 mt-0.5">{res.merchantOrder}</div>}
                       </td>
+                      {/* Producto */}
                       <td className="px-4 py-3 hidden md:table-cell">
                         <div className="text-sm text-white/60 truncate max-w-[200px]">{res.productName}</div>
                         {res.paymentMethod && (
                           <div className="text-xs text-white/30 mt-0.5">{getPaymentMethodLabel(res.paymentMethod)}</div>
                         )}
+                        {res.invoiceNumber && (
+                          <button
+                            onClick={() => { setTab("invoices"); setInvoiceSearch(res.invoiceNumber); }}
+                            className="text-xs font-mono text-sky-400/60 hover:text-sky-300 transition-colors flex items-center gap-1 mt-0.5">
+                            <Receipt className="w-2.5 h-2.5" />{res.invoiceNumber}
+                          </button>
+                        )}
                       </td>
+                      {/* Estado Reserva */}
                       <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
+                        {res.statusReservation ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            res.statusReservation === "CONFIRMADA" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                            res.statusReservation === "PENDIENTE_CONFIRMACION" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                            res.statusReservation === "EN_CURSO" ? "bg-blue-500/15 text-blue-400 border-blue-500/30" :
+                            res.statusReservation === "FINALIZADA" ? "bg-slate-500/15 text-slate-400 border-slate-500/30" :
+                            res.statusReservation === "NO_SHOW" ? "bg-orange-500/15 text-orange-400 border-orange-500/30" :
+                            res.statusReservation === "ANULADA" ? "bg-red-500/15 text-red-400 border-red-500/30" :
+                            "bg-slate-500/15 text-slate-400 border-slate-500/30"
+                          }`}>
+                            {res.statusReservation === "PENDIENTE_CONFIRMACION" ? "Pend. conf." :
+                             res.statusReservation === "CONFIRMADA" ? "✅ Confirmada" :
+                             res.statusReservation === "EN_CURSO" ? "▶ En curso" :
+                             res.statusReservation === "FINALIZADA" ? "Finalizada" :
+                             res.statusReservation === "NO_SHOW" ? "⚠️ No show" :
+                             res.statusReservation === "ANULADA" ? "❌ Anulada" :
+                             res.statusReservation}
+                          </span>
+                        ) : (
+                          // Fallback al status legacy
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                             res.status === "paid" || res.status === "confirmed" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
                             res.status === "pending_payment" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
                             res.status === "cancelled" ? "bg-red-500/15 text-red-400 border-red-500/30" :
@@ -4395,51 +4462,78 @@ export default function CRMDashboard() {
                              res.status === "pending_payment" ? "⏳ Pendiente" :
                              res.status === "cancelled" ? "❌ Cancelada" : res.status}
                           </span>
-                          {res.channel === "tpv" && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-1.5 py-0.5 rounded-full">
-                              🖥️ TPV Presencial
-                            </span>
-                          )}
-                          {res.channel === "crm" && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 rounded-full">
-                              💼 CRM Delegado
-                            </span>
-                          )}
-                          {(res.channel === "web" || !res.channel) && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 rounded-full">
-                              🌐 Online
-                            </span>
-                          )}
-                          {res.channel === "telefono" && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full">
-                              📞 Teléfono
-                            </span>
-                          )}
-                          {res.originSource === "coupon_redemption" && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-300 bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.5 rounded-full">
-                              🎫 {res.platformName ?? "Cupón"}
-                            </span>
-                          )}
-                        </div>
+                        )}
+                        {res.dateModified && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center text-[9px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">⚠️ FECHA MOD.</span>
+                          </div>
+                        )}
                       </td>
+                      {/* Estado Pago */}
+                      <td className="px-4 py-3">
+                        {res.statusPayment ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            res.statusPayment === "PAGADO" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                            res.statusPayment === "PAGO_PARCIAL" ? "bg-sky-500/15 text-sky-400 border-sky-500/30" :
+                            res.statusPayment === "PENDIENTE_VALIDACION" ? "bg-violet-500/15 text-violet-400 border-violet-500/30" :
+                            "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                          }`}>
+                            {res.statusPayment === "PAGADO" ? "💰 Pagado" :
+                             res.statusPayment === "PAGO_PARCIAL" ? "⚡ Parcial" :
+                             res.statusPayment === "PENDIENTE_VALIDACION" ? "🔍 Validación" :
+                             "⏳ Pendiente"}
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            res.status === "paid" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                            "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                          }`}>
+                            {res.status === "paid" ? "💰 Pagado" : "⏳ Pendiente"}
+                          </span>
+                        )}
+                      </td>
+                      {/* Canal */}
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+                          res.channel === "tpv" || res.channel === "TPV_FISICO" ? "text-violet-300 bg-violet-500/15 border-violet-500/30" :
+                          res.channel === "crm" || res.channel === "VENTA_DELEGADA" ? "text-purple-300 bg-purple-500/15 border-purple-500/30" :
+                          res.channel === "web" || res.channel === "ONLINE_DIRECTO" ? "text-sky-300 bg-sky-500/15 border-sky-500/30" :
+                          res.channel === "ONLINE_ASISTIDO" ? "text-blue-300 bg-blue-500/15 border-blue-500/30" :
+                          res.channel === "telefono" ? "text-amber-300 bg-amber-500/15 border-amber-500/30" :
+                          res.channel === "PARTNER" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
+                          res.channel === "groupon" || res.originSource === "coupon_redemption" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
+                          "text-white/40 bg-white/5 border-white/10"
+                        }`}>
+                          {res.channel === "tpv" || res.channel === "TPV_FISICO" ? "🖥️ TPV" :
+                           res.channel === "crm" || res.channel === "VENTA_DELEGADA" ? "💼 Delegada" :
+                           res.channel === "web" || res.channel === "ONLINE_DIRECTO" ? "🌐 Online" :
+                           res.channel === "ONLINE_ASISTIDO" ? "🤝 Asistido" :
+                           res.channel === "telefono" ? "📞 Tel." :
+                           res.channel === "PARTNER" ? "🤝 Partner" :
+                           res.channel === "groupon" || res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? "Cupón"}` :
+                           res.channel ?? "—"}
+                        </span>
+                        {res.channelDetail && (
+                          <div className="text-[9px] text-white/30 mt-0.5 truncate max-w-[80px]">{res.channelDetail}</div>
+                        )}
+                      </td>
+                      {/* F. Compra */}
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        {res.invoiceNumber ? (
-                          <button
-                            onClick={() => { setTab("invoices"); setInvoiceSearch(res.invoiceNumber); }}
-                            className="text-xs font-mono text-sky-400 hover:text-sky-300 transition-colors flex items-center gap-1">
-                            <Receipt className="w-3 h-3" />{res.invoiceNumber}
-                          </button>
+                        <div className="text-xs text-white/50">{new Date(res.createdAt).toLocaleDateString("es-ES")}</div>
+                      </td>
+                      {/* F. Actividad */}
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {res.bookingDate ? (
+                          <div className="text-xs text-white/70 font-medium">{res.bookingDate}</div>
                         ) : (
                           <span className="text-xs text-white/20">—</span>
                         )}
                       </td>
+                      {/* Importe */}
                       <td className="px-4 py-3 text-right">
                         <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-xs text-white/40">{new Date(res.createdAt).toLocaleDateString("es-ES")}</div>
-                        {res.arrivalDate && (
-                          <div className="text-xs text-white/25">✈️ {new Date(res.arrivalDate).toLocaleDateString("es-ES")}</div>
+                        {res.amountPaid !== res.amountTotal && (
+                          <div className="text-xs text-white/30">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</div>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -4452,7 +4546,19 @@ export default function CRMDashboard() {
                           </Button>
                           {/* Editar */}
                           <Button size="sm" variant="ghost" className="text-white/40 hover:text-amber-300 h-7 w-7 p-0"
-                            onClick={() => { setEditResStatus(res.status); setEditResNotes(""); setEditResId(res.id); }}
+                            onClick={() => {
+                              setEditResData(res);
+                              setEditResStatus(res.status ?? "");
+                              setEditResNotes(res.notes ?? "");
+                              setEditResStatusReservation("");
+                              setEditResStatusPayment("");
+                              setEditResChannel("");
+                              setEditResChannelDetail("");
+                              setEditResNewDate("");
+                              setEditResDateReason("");
+                              setShowChangeDateSection(false);
+                              setEditResId(res.id);
+                            }}
                             title="Editar reserva">
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
@@ -5228,52 +5334,209 @@ export default function CRMDashboard() {
           <ReservationDetailModal
             reservationId={viewResId}
             onClose={() => setViewResId(null)}
-            onEdit={(id, status) => { setViewResId(null); setEditResStatus(status); setEditResNotes(""); setEditResId(id); }}
+            onEdit={(id, status) => {
+              const resRow = resData?.find((r: any) => r.id === id);
+              setViewResId(null);
+              setEditResData(resRow ?? null);
+              setEditResStatus(status);
+              setEditResNotes("");
+              setEditResStatusReservation("");
+              setEditResStatusPayment("");
+              setEditResChannel("");
+              setEditResChannelDetail("");
+              setEditResNewDate("");
+              setEditResDateReason("");
+              setShowChangeDateSection(false);
+              setEditResId(id);
+            }}
           />
         )}
       </Dialog>
 
-      {/* ─── EDITAR RESERVA ────────────────────────────────────────────────────────── */}
-      <Dialog open={editResId !== null} onOpenChange={(o) => !o && setEditResId(null)}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
+      {/* ─── EDITAR RESERVA (Fase 3) ──────────────────────────────────────────── */}
+      <Dialog open={editResId !== null} onOpenChange={(o) => { if (!o) { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); } }}>
+        <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Pencil className="w-5 h-5 text-amber-400" /> Editar reserva
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <label className="block text-xs text-white/50 mb-1.5">Estado</label>
-              <select
-                value={editResStatus}
-                onChange={(e) => setEditResStatus(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
-                <option value="pending_payment">Pendiente de pago</option>
-                <option value="paid">Confirmada (pagada)</option>
-                <option value="cancelled">Cancelada</option>
-                <option value="completed">Completada</option>
-              </select>
+
+          {/* ── Cabecera con datos del cliente ── */}
+          {editResData && (
+            <div className="bg-white/5 rounded-xl p-3 mb-2 flex flex-col gap-1">
+              <div className="font-semibold text-white text-sm">{editResData.customerName}</div>
+              {editResData.customerEmail && (
+                <div className="flex items-center gap-1.5 text-xs text-white/50">
+                  <Mail className="w-3 h-3" />{editResData.customerEmail}
+                </div>
+              )}
+              {editResData.customerPhone && (
+                <div className="flex items-center gap-1.5 text-xs text-white/50">
+                  <Phone className="w-3 h-3" />{editResData.customerPhone}
+                </div>
+              )}
+              <div className="text-xs text-white/30 font-mono mt-0.5">{editResData.merchantOrder}</div>
             </div>
+          )}
+
+          <div className="space-y-4 py-1">
+
+            {/* ── Estados separados ── */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">Estado de reserva</label>
+                <select
+                  value={editResStatusReservation}
+                  onChange={(e) => setEditResStatusReservation(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  <option value="">-- Sin cambiar --</option>
+                  <option value="PENDIENTE_CONFIRMACION">Pendiente confirmación</option>
+                  <option value="CONFIRMADA">Confirmada</option>
+                  <option value="EN_CURSO">En curso</option>
+                  <option value="FINALIZADA">Finalizada</option>
+                  <option value="NO_SHOW">No show</option>
+                  <option value="ANULADA">Anulada</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">Estado de pago</label>
+                <select
+                  value={editResStatusPayment}
+                  onChange={(e) => setEditResStatusPayment(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  <option value="">-- Sin cambiar --</option>
+                  <option value="PENDIENTE">Pendiente</option>
+                  <option value="PAGO_PARCIAL">Pago parcial</option>
+                  <option value="PENDIENTE_VALIDACION">Pendiente validación</option>
+                  <option value="PAGADO">Pagado</option>
+                </select>
+              </div>
+            </div>
+
+            {/* ── Canal ── */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">Canal</label>
+                <select
+                  value={editResChannel}
+                  onChange={(e) => setEditResChannel(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  <option value="">-- Sin cambiar --</option>
+                  <option value="ONLINE_DIRECTO">Online Directo</option>
+                  <option value="ONLINE_ASISTIDO">Online Asistido</option>
+                  <option value="VENTA_DELEGADA">Venta Delegada</option>
+                  <option value="TPV_FISICO">TPV Físico</option>
+                  <option value="PARTNER">Partner</option>
+                  <option value="MANUAL">Manual</option>
+                  <option value="API">API</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">Detalle canal (ej: Groupon)</label>
+                <input
+                  type="text"
+                  value={editResChannelDetail}
+                  onChange={(e) => setEditResChannelDetail(e.target.value)}
+                  placeholder="Ej: Groupon, Booking..."
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50" />
+              </div>
+            </div>
+
+            {/* ── Notas internas ── */}
             <div>
               <label className="block text-xs text-white/50 mb-1.5">Notas internas (opcional)</label>
               <textarea
                 value={editResNotes}
                 onChange={(e) => setEditResNotes(e.target.value)}
-                rows={3}
+                rows={2}
                 placeholder="Añade notas internas sobre esta reserva..."
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50 resize-none" />
             </div>
+
+            {/* ── Cambio de fecha ── */}
+            <div className="border border-amber-500/20 rounded-xl p-3 bg-amber-500/5">
+              <button
+                type="button"
+                onClick={() => setShowChangeDateSection(!showChangeDateSection)}
+                className="flex items-center gap-2 text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors w-full text-left">
+                <Calendar className="w-4 h-4" />
+                Cambiar fecha de actividad
+                <span className="ml-auto text-xs text-white/30">{showChangeDateSection ? "▲ Ocultar" : "▼ Expandir"}</span>
+              </button>
+              {showChangeDateSection && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="block text-xs text-white/50 mb-1.5">Nueva fecha de actividad *</label>
+                    <input
+                      type="date"
+                      value={editResNewDate}
+                      onChange={(e) => setEditResNewDate(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-white/50 mb-1.5">Motivo del cambio * (obligatorio)</label>
+                    <textarea
+                      value={editResDateReason}
+                      onChange={(e) => setEditResDateReason(e.target.value)}
+                      rows={2}
+                      placeholder="Ej: Solicitud del cliente por condiciones meteorológicas..."
+                      className="w-full bg-white/5 border border-amber-500/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-amber-500/50 resize-none" />
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => editResId !== null && changeDateMutation.mutate({ id: editResId, newDate: editResNewDate, reason: editResDateReason })}
+                    disabled={changeDateMutation.isPending || !editResNewDate || editResDateReason.trim().length < 3}
+                    className="bg-amber-600 hover:bg-amber-700 text-white w-full">
+                    {changeDateMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Calendar className="w-4 h-4 mr-1" />}
+                    Confirmar cambio de fecha
+                  </Button>
+                </div>
+              )}
+            </div>
+
           </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setEditResId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+
+          <DialogFooter className="flex-wrap gap-2 pt-2">
+            {/* Descargar PDF */}
             <Button
+              variant="outline"
               size="sm"
-              onClick={() => editResId !== null && updateResMutation.mutate({ id: editResId, status: editResStatus as any, notes: editResNotes || undefined })}
-              disabled={updateResMutation.isPending}
-              className="bg-amber-600 hover:bg-amber-700 text-white">
-              {updateResMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Pencil className="w-4 h-4 mr-1" />}
-              Guardar cambios
+              onClick={() => editResId !== null && downloadResPdfMutation.mutate({ id: editResId })}
+              disabled={downloadResPdfMutation.isPending}
+              className="border-sky-500/30 text-sky-400 hover:bg-sky-500/10">
+              {downloadResPdfMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileDown className="w-4 h-4 mr-1" />}
+              Descargar reserva PDF
             </Button>
+            <div className="flex gap-2 ml-auto">
+              <Button variant="outline" size="sm" onClick={() => { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); }} className="border-white/15 text-white/60">Cancelar</Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (editResId === null) return;
+                  // Guardar estados separados si se han cambiado
+                  if (editResStatusReservation || editResStatusPayment) {
+                    updateStatusesMutation.mutate({
+                      id: editResId,
+                      statusReservation: editResStatusReservation as any || undefined,
+                      statusPayment: editResStatusPayment as any || undefined,
+                    });
+                  }
+                  // Guardar campos generales
+                  updateResMutation.mutate({
+                    id: editResId,
+                    status: editResStatus as any || undefined,
+                    notes: editResNotes || undefined,
+                    channel: editResChannel || undefined,
+                    channelDetail: editResChannelDetail || undefined,
+                  });
+                }}
+                disabled={updateResMutation.isPending || updateStatusesMutation.isPending}
+                className="bg-amber-600 hover:bg-amber-700 text-white">
+                {(updateResMutation.isPending || updateStatusesMutation.isPending) ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Pencil className="w-4 h-4 mr-1" />}
+                Guardar cambios
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

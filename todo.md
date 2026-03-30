@@ -2635,3 +2635,22 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Al seleccionar producto: rellena automáticamente descripción, precio unitario y régimen fiscal
 - [x] Etiquetas de tipo (Actividad / Pack / Lego Pack) con colores diferenciados en el dropdown
 - [x] Cierre del dropdown al hacer clic fuera del campo
+
+## Fase 3 Reservas — Reestructuración CRM (v25.47)
+- [x] Schema BD: añadir channel (enum), channel_detail, status_reservation (enum), status_payment (enum)
+- [x] Schema BD: añadir date_changed_reason y changes_log (JSON) a tabla reservations
+- [x] Migración SQL aplicada vía webdev_execute_sql
+- [x] Backend: procedimiento crm.reservations.list con nuevos campos
+- [x] Backend: procedimiento crm.reservations.get con detalle completo
+- [x] Backend: procedimiento crm.reservations.update (edición básica)
+- [x] Backend: procedimiento crm.reservations.changeDate con motivo + histórico
+- [x] Backend: procedimiento crm.reservations.downloadPdf (genera PDF de reserva)
+- [x] Backend: sincronización status_payment=PENDIENTE → módulo pending_payments
+- [x] Frontend: listado reservas con columnas canal, fecha compra, fecha actividad, estados separados
+- [x] Frontend: badges de canal y estados (status_reservation + status_payment) sin mezclar
+- [x] Frontend: modal reserva con cabecera email+teléfono, badges dobles de estado
+- [x] Frontend: modal cambio de fecha con campo motivo obligatorio + etiqueta FECHA MODIFICADA
+- [x] Frontend: botón Descargar PDF de reserva
+- [x] Frontend: botón Anular reserva (usa sistema de anulaciones existente)
+- [x] Trazabilidad: cada cambio de estado/fecha registrado en changes_log y crm_activity_log
+- [x] Tests de regresión actualizados (565 tests pasando)

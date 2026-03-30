@@ -1,0 +1,338 @@
+{
+  "query": "SHOW COLUMNS FROM reservations;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SHOW COLUMNS FROM reservations;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "product_id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "product_name",
+      "Type": "varchar(255)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "booking_date",
+      "Type": "date",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "people",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "1",
+      "Extra": ""
+    },
+    {
+      "Field": "extras_json",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "amount_total",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "amount_paid",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "status",
+      "Type": "enum('draft','pending_payment','paid','failed','cancelled')",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "draft",
+      "Extra": ""
+    },
+    {
+      "Field": "customer_name",
+      "Type": "varchar(255)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customer_email",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "MUL",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "customer_phone",
+      "Type": "varchar(50)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "merchant_order",
+      "Type": "varchar(30)",
+      "Null": "NO",
+      "Key": "UNI",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "redsys_response",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "redsys_ds_response",
+      "Type": "varchar(10)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "notes",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "created_at",
+      "Type": "bigint",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "updated_at",
+      "Type": "bigint",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "paid_at",
+      "Type": "bigint",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "quoteSource",
+      "Type": "varchar(32)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "quote_id",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "quoteId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "invoiceId",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "invoiceNumber",
+      "Type": "varchar(32)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "paymentMethod",
+      "Type": "enum('redsys','transferencia','efectivo','otro')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "paymentValidatedBy",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "paymentValidatedAt",
+      "Type": "bigint",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "transferProofUrl",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "channel",
+      "Type": "enum('ONLINE_DIRECTO','ONLINE_ASISTIDO','VENTA_DELEGADA','TPV_FISICO','PARTNER','MANUAL','API','web','crm','telefono','email','otro','tpv','groupon')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "ONLINE_DIRECTO",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_code",
+      "Type": "varchar(50)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_percent",
+      "Type": "decimal(5,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "discount_amount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "original_amount",
+      "Type": "decimal(10,2)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "origin_source",
+      "Type": "varchar(64)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "platform_name",
+      "Type": "varchar(128)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "redemption_id",
+      "Type": "int",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "channel_detail",
+      "Type": "varchar(128)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "status_reservation",
+      "Type": "enum('PENDIENTE_CONFIRMACION','CONFIRMADA','EN_CURSO','FINALIZADA','NO_SHOW','ANULADA')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "PENDIENTE_CONFIRMACION",
+      "Extra": ""
+    },
+    {
+      "Field": "status_payment",
+      "Type": "enum('PENDIENTE','PAGO_PARCIAL','PENDIENTE_VALIDACION','PAGADO')",
+      "Null": "YES",
+      "Key": "",
+      "Default": "PENDIENTE",
+      "Extra": ""
+    },
+    {
+      "Field": "date_changed_reason",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "date_modified",
+      "Type": "tinyint(1)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\nproduct_id\tint\tNO\tMUL\tNULL\t\nproduct_name\tvarchar(255)\tNO\t\tNULL\t\nbooking_date\tdate\tNO\t\tNULL\t\npeople\tint\tNO\t\t1\t\nextras_json\ttext\tYES\t\tNULL\t\namount_total\tint\tNO\t\tNULL\t\namount_paid\tint\tYES\t\t0\t\nstatus\tenum('draft','pending_payment','paid','failed','cancelled')\tNO\tMUL\tdraft\t\ncustomer_name\tvarchar(255)\tNO\t\tNULL\t\ncustomer_email\tvarchar(255)\tYES\tMUL\tNULL\t\ncustomer_phone\tvarchar(50)\tYES\t\tNULL\t\nmerchant_order\tvarchar(30)\tNO\tUNI\tNULL\t\nredsys_response\ttext\tYES\t\tNULL\t\nredsys_ds_response\tvarchar(10)\tYES\t\tNULL\t\nnotes\ttext\tYES\t\tNULL\t\ncreated_at\tbigint\tNO\tMUL\tNULL\t\nupdated_at\tbigint\tNO\t\tNULL\t\npaid_at\tbigint\tYES\t\tNULL\t\nquoteSource\tvarchar(32)\tYES\t\tNULL\t\nquote_id\tint\tYES\t\tNULL\t\nquoteId\tint\tYES\t\tNULL\t\ninvoiceId\tint\tYES\t\tNULL\t\ninvoiceNumber\tvarchar(32)\tYES\t\tNULL\t\npaymentMethod\tenum('redsys','transferencia','efectivo','otro')\tYES\t\tNULL\t\npaymentValidatedBy\tint\tYES\t\tNULL\t\npaymentValidatedAt\tbigint\tYES\t\tNULL\t\ntransferProofUrl\ttext\tYES\t\tNULL\t\nchannel\tenum('ONLINE_DIRECTO','ONLINE_ASISTIDO','VENTA_DELEGADA','TPV_FISICO','PARTNER','MANUAL','API','web','crm','telefono','email','otro','tpv','groupon')\tYES\t\tONLINE_DIRECTO\t\ndiscount_code\tvarchar(50)\tYES\t\tNULL\t\ndiscount_percent\tdecimal(5,2)\tYES\t\t0\t\ndiscount_amount\tdecimal(10,2)\tYES\t\t0\t\noriginal_amount\tdecimal(10,2)\tYES\t\tNULL\t\norigin_source\tvarchar(64)\tYES\t\tNULL\t\nplatform_name\tvarchar(128)\tYES\t\tNULL\t\nredemption_id\tint\tYES\t\tNULL\t\nchannel_detail\tvarchar(128)\tYES\t\tNULL\t\nstatus_reservation\tenum('PENDIENTE_CONFIRMACION','CONFIRMADA','EN_CURSO','FINALIZADA','NO_SHOW','ANULADA')\tYES\t\tPENDIENTE_CONFIRMACION\t\nstatus_payment\tenum('PENDIENTE','PAGO_PARCIAL','PENDIENTE_VALIDACION','PAGADO')\tYES\t\tPENDIENTE\t\ndate_changed_reason\ttext\tYES\t\tNULL\t\ndate_modified\ttinyint(1)\tYES\t\t0\t\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}
