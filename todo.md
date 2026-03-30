@@ -2566,3 +2566,15 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Email al cliente ya existía y ya incluye el código canjeable
 - [x] 20 nuevos tests Vitest en voucher.discountcode.test.ts
 - [x] 386 tests Vitest pasando — 0 errores TypeScript
+
+## Fase 6 — PDF en producción (reemplazar execSync) v25.37
+
+- [x] Auditar: 3 puntos con execSync(manus-md-to-pdf) en crm.ts (facturas + presupuestos) y suppliers.ts (liquidaciones)
+- [x] Instalar puppeteer-core + verificar Chromium del sistema (/usr/bin/chromium-browser v128)
+- [x] Crear helper centralizado htmlToPdf() en server/pdfGenerator.ts con singleton de browser y reutilización
+- [x] Reemplazar execSync en generateInvoicePdf() en crm.ts
+- [x] Reemplazar execSync en bloque de generación de presupuesto PDF en crm.ts
+- [x] Reemplazar execSync en generateSettlementPdfAndUpload() en suppliers.ts
+- [x] 0 usos de execSync/manus-md-to-pdf restantes en el proyecto
+- [x] 29 nuevos tests Vitest en pdfGenerator.test.ts
+- [x] 415 tests Vitest pasando — 0 errores TypeScript

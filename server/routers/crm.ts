@@ -28,6 +28,7 @@ import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max } from 
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { generateDocumentNumber } from "../documentNumbers";
+import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut } from "../storage";
 import {
@@ -261,36 +262,19 @@ async function generateInvoicePdf(invoice: {
 </body>
 </html>`;
 
-  // Store HTML invoice (PDF generation via server-side rendering)
+  // Generar PDF con puppeteer-core (funciona en producción desplegada)
   try {
-    // Try using the built-in manus PDF generation if available
-    const { execSync } = await import("child_process");
-    const { writeFileSync, readFileSync, unlinkSync } = await import("fs");
-    const { tmpdir } = await import("os");
-    const { join } = await import("path");
-    
-    const tmpHtml = join(tmpdir(), `invoice-${Date.now()}.html`);
-    const tmpPdf = join(tmpdir(), `invoice-${Date.now()}.pdf`);
-    writeFileSync(tmpHtml, html);
-    
-    try {
-      execSync(`manus-md-to-pdf ${tmpHtml} ${tmpPdf} 2>/dev/null || chromium-browser --headless --no-sandbox --disable-gpu --print-to-pdf=${tmpPdf} ${tmpHtml} 2>/dev/null`, { timeout: 15000 });
-      const pdfBuffer = readFileSync(tmpPdf);
-      unlinkSync(tmpHtml);
-      unlinkSync(tmpPdf);
-      const key = `invoices/${invoice.invoiceNumber}-${Date.now()}.pdf`;
-      const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-      return { url, key };
-    } catch {
-      unlinkSync(tmpHtml);
-      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
-    }
-  } catch { /* ignore */ }
-  
-  // Fallback: store HTML
-  const key = `invoices/${invoice.invoiceNumber}-${Date.now()}.html`;
-  const { url } = await storagePut(key, Buffer.from(html), "text/html");
-  return { url, key };
+    const pdfBuffer = await htmlToPdf(html);
+    const key = `invoices/${invoice.invoiceNumber}-${Date.now()}.pdf`;
+    const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+    return { url, key };
+  } catch (pdfErr) {
+    console.error("[PDF] Error generando factura PDF, guardando HTML como fallback:", pdfErr);
+    // Fallback: guardar HTML (el cliente puede imprimir desde el navegador)
+    const key = `invoices/${invoice.invoiceNumber}-${Date.now()}.html`;
+    const { url } = await storagePut(key, Buffer.from(html), "text/html");
+    return { url, key };
+  }
 }
 
 // ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
@@ -2064,50 +2048,27 @@ export const crmRouter = router({
           issuerAddress: `${legalQ.address}, ${legalQ.zip} ${legalQ.city} (${legalQ.province})`,
         });
 
-        // Generate PDF using manus-md-to-pdf (same as invoices)
+        // Generar PDF con puppeteer-core (funciona en producción desplegada)
+        const ts = Date.now();
         try {
-          const { execSync } = await import("child_process");
-          const { writeFileSync, readFileSync, unlinkSync } = await import("fs");
-          const { tmpdir } = await import("os");
-          const { join } = await import("path");
-
-          const ts = Date.now();
-          const tmpHtml = join(tmpdir(), `quote-${input.id}-${ts}.html`);
-          const tmpPdf = join(tmpdir(), `quote-${input.id}-${ts}.pdf`);
-          writeFileSync(tmpHtml, html);
-
-          try {
-            execSync(
-              `manus-md-to-pdf ${tmpHtml} ${tmpPdf} 2>/dev/null || chromium-browser --headless --no-sandbox --disable-gpu --print-to-pdf=${tmpPdf} ${tmpHtml} 2>/dev/null`,
-              { timeout: 20000 }
-            );
-            const pdfBuffer = readFileSync(tmpPdf);
-            unlinkSync(tmpHtml);
-            try { unlinkSync(tmpPdf); } catch { /* ignore */ }
-
-            // Upload to S3 and return URL for direct download
-            const key = `quotes/${quote.quoteNumber}-${ts}.pdf`;
-            const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-            return {
-              success: true,
-              pdfUrl: url,
-              filename: `Presupuesto-${quote.quoteNumber}.pdf`,
-            };
-          } catch {
-            unlinkSync(tmpHtml);
-            try { unlinkSync(tmpPdf); } catch { /* ignore */ }
-            // Fallback: store HTML and return URL
-            const key = `quotes/${quote.quoteNumber}-${ts}.html`;
-            const { url } = await storagePut(key, Buffer.from(html), "text/html");
-            return {
-              success: true,
-              pdfUrl: url,
-              filename: `Presupuesto-${quote.quoteNumber}.html`,
-            };
-          }
-        } catch (err) {
-          console.error("PDF generation failed:", err);
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo generar el PDF. Inténtalo de nuevo." });
+          const pdfBuffer = await htmlToPdf(html);
+          const key = `quotes/${quote.quoteNumber}-${ts}.pdf`;
+          const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+          return {
+            success: true,
+            pdfUrl: url,
+            filename: `Presupuesto-${quote.quoteNumber}.pdf`,
+          };
+        } catch (pdfErr) {
+          console.error("[PDF] Error generando presupuesto PDF, guardando HTML como fallback:", pdfErr);
+          // Fallback: guardar HTML
+          const key = `quotes/${quote.quoteNumber}-${ts}.html`;
+          const { url } = await storagePut(key, Buffer.from(html), "text/html");
+          return {
+            success: true,
+            pdfUrl: url,
+            filename: `Presupuesto-${quote.quoteNumber}.html`,
+          };
         }
       }),
 

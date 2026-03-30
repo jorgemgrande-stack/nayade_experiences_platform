@@ -22,6 +22,7 @@ import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
+import { htmlToPdf } from "../pdfGenerator";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -172,32 +173,19 @@ async function generateSettlementPdfAndUpload(data: {
 </body>
 </html>`;
 
+  // Generar PDF con puppeteer-core (funciona en producción desplegada)
   try {
-    const { execSync } = await import("child_process");
-    const { writeFileSync, readFileSync, unlinkSync } = await import("fs");
-    const { tmpdir } = await import("os");
-    const { join } = await import("path");
-    const tmpHtml = join(tmpdir(), `settlement-${Date.now()}.html`);
-    const tmpPdf = join(tmpdir(), `settlement-${Date.now()}.pdf`);
-    writeFileSync(tmpHtml, html);
-    try {
-      execSync(`manus-md-to-pdf ${tmpHtml} ${tmpPdf} 2>/dev/null || chromium-browser --headless --no-sandbox --disable-gpu --print-to-pdf=${tmpPdf} ${tmpHtml} 2>/dev/null`, { timeout: 15000 });
-      const pdfBuffer = readFileSync(tmpPdf);
-      unlinkSync(tmpHtml);
-      unlinkSync(tmpPdf);
-      const key = `settlements/${data.settlementNumber}-${Date.now()}.pdf`;
-      const { url } = await storagePut(key, pdfBuffer, "application/pdf");
-      return { url, key };
-    } catch {
-      unlinkSync(tmpHtml);
-      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
-    }
-  } catch { /* ignore */ }
-
-  // Fallback: store HTML
-  const key = `settlements/${data.settlementNumber}-${Date.now()}.html`;
-  const { url } = await storagePut(key, Buffer.from(html), "text/html");
-  return { url, key };
+    const pdfBuffer = await htmlToPdf(html);
+    const key = `settlements/${data.settlementNumber}-${Date.now()}.pdf`;
+    const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+    return { url, key };
+  } catch (pdfErr) {
+    console.error("[PDF] Error generando liquidación PDF, guardando HTML como fallback:", pdfErr);
+    // Fallback: guardar HTML
+    const key = `settlements/${data.settlementNumber}-${Date.now()}.html`;
+    const { url } = await storagePut(key, Buffer.from(html), "text/html");
+    return { url, key };
+  }
 }
 
 async function getNextSettlementSeq(year: number): Promise<number> {
