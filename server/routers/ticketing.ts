@@ -24,7 +24,7 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
-import { postConfirmOperation } from "../db";
+import { postConfirmOperation, logActivity } from "../db";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -763,6 +763,23 @@ export const ticketingRouter = router({
       } catch (e) {
         console.error("[Ticketing convertToReservation] Error en postConfirmOperation:", e);
       }
+
+      // Registrar en el log de actividad del dashboard
+      await logActivity(
+        "reservation",
+        reservationId,
+        "coupon_converted_to_reservation",
+        ctx.user.id,
+        ctx.user.name,
+        {
+          couponCode: item.couponCode,
+          provider: item.provider,
+          productName: resolvedProductName,
+          customerName: item.customerName,
+          participants: input.participants,
+          merchantOrder,
+        }
+      ).catch(() => {});
 
       return { success: true, reservationId, productName: resolvedProductName, pvpPrice: resolvedPvpPrice, netPrice: resolvedNetPrice };
     }),

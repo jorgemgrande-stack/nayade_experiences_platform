@@ -205,6 +205,33 @@ function activityLabel(action: string, details: Record<string, unknown> | null):
     booking_created:      "Actividad programada",
     booking_confirmed:    "Actividad confirmada",
     booking_completed:    "Actividad completada",
+    // Nuevos canales
+    lead_created_admin:   `Nuevo lead (admin)${d.name ? ` — ${d.name}` : ""}`,
+    lead_created_from_quote: `Lead creado desde presupuesto${d.name ? ` — ${d.name}` : ""}`,
+    lead_deleted:         "Lead eliminado",
+    marked_lost:          "Lead marcado como perdido",
+    note_added:           "Nota añadida al lead",
+    auto_quote_generated: `Presupuesto automático generado${d.quoteNumber ? ` ${d.quoteNumber}` : ""}`,
+    quote_created_direct: `Presupuesto directo creado${d.quoteNumber ? ` ${d.quoteNumber}` : ""}`,
+    quote_updated:        "Presupuesto actualizado",
+    quote_resent:         "Presupuesto reenviado",
+    quote_duplicated:     "Presupuesto duplicado",
+    quote_lost:           "Presupuesto marcado como perdido",
+    opportunity_won:      `Oportunidad ganada${d.method ? ` (${d.method})` : ""}`,
+    opportunity_won_manual: "Oportunidad ganada (manual)",
+    converted_to_reservation_manual: "Convertido a reserva (manual)",
+    transfer_payment_confirmed: "Pago por transferencia confirmado",
+    booking_and_transaction_created: "Reserva operativa + transacción creadas",
+    reav_expedient_created: "Expediente REAV creado",
+    // Redsys (online)
+    redsys_payment_confirmed: `Pago online confirmado${d.productName ? ` — ${d.productName}` : ""}${d.amount ? ` (${d.amount}€)` : ""}`,
+    redsys_payment_failed:    `Pago online fallido${d.productName ? ` — ${d.productName}` : ""}`,
+    // TPV (caja)
+    tpv_sale_created:     `Venta TPV${d.ticketNumber ? ` ${d.ticketNumber}` : ""}${d.total ? ` — ${Number(d.total).toFixed(2)}€` : ""}${d.customerName && d.customerName !== "Cliente TPV" ? ` — ${d.customerName}` : ""}`,
+    // Ticketing (cupones)
+    coupon_converted_to_reservation: `Cupón canjeado${d.provider ? ` (${d.provider})` : ""}${d.productName ? ` — ${d.productName}` : ""}${d.customerName ? ` — ${d.customerName}` : ""}`,
+    // Anulaciones
+    cancellation_request_received: `Solicitud de anulación${d.fullName ? ` — ${d.fullName}` : ""}${d.reason ? ` (${d.reason})` : ""}`,
   };
   return map[action] ?? action.replace(/_/g, " ");
 }

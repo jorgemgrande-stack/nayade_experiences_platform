@@ -62,24 +62,8 @@ function staffProcedure() {
   });
 }
 
-async function logActivity(
-  entityType: "lead" | "quote" | "reservation" | "invoice",
-  entityId: number,
-  action: string,
-  actorId: number | null,
-  actorName: string | null,
-  details: Record<string, unknown> = {}
-) {
-  await db.insert(crmActivityLog).values({
-    entityType,
-    entityId,
-    action,
-    actorId,
-    actorName,
-    details,
-    createdAt: new Date(),
-  });
-}
+// logActivity ahora viene de db.ts (centralizado)
+import { logActivity } from "../db";
 
 // generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
 // Ver server/documentNumbers.ts

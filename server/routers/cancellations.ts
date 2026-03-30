@@ -30,7 +30,7 @@ import {
 } from "../emailTemplates";
 import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
-
+import { logActivity } from "../db";
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
@@ -270,10 +270,25 @@ export const cancellationsRouter = router({
                <p><strong>Fecha actividad:</strong> ${input.activityDate}</p>`,
       }).catch(() => {});
 
+      // Registrar en el log de actividad del dashboard
+      await logActivity(
+        "reservation",
+        requestId,
+        "cancellation_request_received",
+        null,
+        "Sistema (web pública)",
+        {
+          fullName: input.fullName,
+          reason: input.reason,
+          activityDate: input.activityDate,
+          locator: input.locator ?? null,
+        }
+      ).catch(() => {});
+
       return { success: true, requestId };
     }),
 
-  // ── Listado (admin) ───────────────────────────────────────────────────────
+  // ── Listado (admin) ─────────────────────────────────────────────────────────────────────────────
   listRequests: adminProcedure
     .input(
       z.object({

@@ -15,6 +15,7 @@ import { eq } from "drizzle-orm";
 import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
 import { getBookingByMerchantOrder, updateBooking, addBookingLog } from "./restaurantsDb";
 import { notifyOwner } from "./_core/notification";
+import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
 import { createTransporter } from "./mailer";
 import { generateDocumentNumber } from "./documentNumbers";
@@ -325,6 +326,24 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           status: newStatus,
         }, result.responseCode).catch(err => console.error("[Redsys IPN] Error en notificaciones de fallo:", err));
       }
+    }
+
+    // Registrar en el log de actividad del dashboard
+    if (updatedReservation) {
+      await logActivity(
+        "reservation",
+        updatedReservation.id,
+        result.isAuthorized ? "redsys_payment_confirmed" : "redsys_payment_failed",
+        null,
+        "Sistema (Redsys)",
+        {
+          merchantOrder: result.merchantOrder,
+          amount: (updatedReservation.amountPaid ?? updatedReservation.amountTotal) / 100,
+          productName: updatedReservation.productName,
+          customerName: updatedReservation.customerName,
+          responseCode: result.responseCode,
+        }
+      ).catch(() => {});
     }
 
     // Redsys espera "OK" en texto plano para confirmar recepción

@@ -37,6 +37,40 @@ export async function getDb() {
   return _db;
 }
 
+// ─── ACTIVITY LOG ────────────────────────────────────────────────────────────
+
+/**
+ * Registra una acción en crm_activity_log.
+ * Función centralizada para que TODOS los flujos del sistema
+ * (CRM, web pública, Redsys, TPV, Ticketing, Anulaciones) puedan
+ * escribir en el mismo log y aparecer en "Actividad reciente" del dashboard.
+ */
+export async function logActivity(
+  entityType: "lead" | "quote" | "reservation" | "invoice",
+  entityId: number,
+  action: string,
+  actorId: number | null = null,
+  actorName: string | null = null,
+  details: Record<string, unknown> = {}
+) {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    await db.insert(crmActivityLog).values({
+      entityType,
+      entityId,
+      action,
+      actorId,
+      actorName,
+      details,
+      createdAt: new Date(),
+    });
+  } catch (e) {
+    // No bloquear el flujo principal si el log falla
+    console.warn("[logActivity] Error registrando actividad:", action, e);
+  }
+}
+
 // ─── USERS ────────────────────────────────────────────────────────────────────
 
 export async function upsertUser(user: InsertUser): Promise<void> {
@@ -223,6 +257,12 @@ export async function createLead(data: {
     // No bloquear el lead si falla la creación del cliente
     console.warn("[createLead] No se pudo crear/vincular cliente:", e);
   }
+
+  // 3. Registrar en el log de actividad
+  await logActivity("lead", leadId, "lead_created", null, null, {
+    name: data.name,
+    source: data.source ?? "web",
+  });
 
   return { id: leadId, success: true };
 }

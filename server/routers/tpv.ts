@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import nodemailer from "nodemailer";
 import { buildReservationConfirmHtml, buildTpvTicketHtml } from "../emailTemplates";
-import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "../db";
+import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity } from "../db";
 import { calcularREAVSimple } from "../reav";
 import {
   cashRegisters,
@@ -730,7 +730,23 @@ export const tpvRouter = router({
         console.error("[TPV] Error enviando email de confirmación:", e);
       }
 
-      // ── 9. Devolver venta completa ───────────────────────────────────────────
+      // ── 9. Registrar en el log de actividad del dashboard ─────────────────────────────────
+      await logActivity(
+        "reservation",
+        reservationId ?? saleId,
+        "tpv_sale_created",
+        sellerUserId,
+        sellerName,
+        {
+          ticketNumber,
+          total,
+          customerName: input.customerName ?? "Cliente TPV",
+          items: input.items.map(i => i.productName).join(", "),
+          paymentMethod: input.payments.map(p => p.method).join("+"),
+        }
+      ).catch(() => {});
+
+      // ── 10. Devolver venta completa ───────────────────────────────────────────────────────────
       const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));
       const items = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, saleId));
       const payments = await db.select().from(tpvSalePayments).where(eq(tpvSalePayments.saleId, saleId));
