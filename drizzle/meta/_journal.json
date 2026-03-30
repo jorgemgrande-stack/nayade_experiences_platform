@@ -211,6 +211,13 @@
       "when": 1774861068817,
       "tag": "0029_daffy_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1774881076178,
+      "tag": "0030_common_killer_shrike",
+      "breakpoints": true
     }
   ]
 }

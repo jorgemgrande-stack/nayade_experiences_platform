@@ -1852,6 +1852,7 @@ export const cancellationRequests = mysqlTable("cancellation_requests", {
     "mixta",
   ]).default("ninguna"),
   voucherId: int("voucher_id"),
+  cancellationNumber: varchar("cancellation_number", { length: 32 }),
   adminNotes: text("admin_notes"),
   assignedUserId: int("assigned_user_id"),
   closedAt: timestamp("closed_at"),
@@ -2035,7 +2036,7 @@ export const reservationOperational = mysqlTable("reservation_operational", {
   arrivalTime: varchar("arrival_time", { length: 10 }), // "HH:MM"
   opNotes: text("op_notes"),
   monitorId: int("monitor_id"),
-  opStatus: mysqlEnum("op_status", ["pendiente", "confirmado", "incidencia", "completado"]).default("pendiente").notNull(),
+  opStatus: mysqlEnum("op_status", ["pendiente", "confirmado", "incidencia", "completado", "anulado"]).default("pendiente").notNull(),
   updatedBy: int("updated_by"),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

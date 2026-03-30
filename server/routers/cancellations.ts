@@ -11,6 +11,11 @@ import {
   cancellationRequests,
   cancellationLogs,
   compensationVouchers,
+  reservations,
+  transactions,
+  reservationOperational,
+  reavExpedients,
+  couponRedemptions,
   type CancellationRequest,
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
@@ -23,6 +28,7 @@ import {
   buildCancellationDocumentationHtml,
 } from "../emailTemplates";
 import { storagePut } from "../storage";
+import { generateDocumentNumber } from "../documentNumbers";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -55,6 +61,113 @@ async function addLog(
     adminUserId,
     adminUserName,
   });
+}
+
+// ─── Propagación transversal al aprobar una anulación ───────────────────────
+/**
+ * Propaga el impacto de una anulación aprobada a todos los módulos del sistema:
+ * 1. Reserva → status = "cancelled"
+ * 2. Contabilidad → transacción de devolución (importe negativo) si refundAmount > 0
+ * 3. Operaciones → reservation_operational.opStatus = "anulado"
+ * 4. REAV → expediente fiscalStatus = "anulado", operativeStatus = "anulado"
+ * 5. Numeración → genera número ANU- y lo guarda en cancellation_requests
+ */
+async function propagateCancellation(params: {
+  requestId: number;
+  req: CancellationRequest;
+  refundAmount?: number;       // Solo para devoluciones monetarias
+  compensationType: "devolucion" | "bono";
+  adminUserId: number;
+  adminUserName: string;
+}): Promise<{ cancellationNumber: string }> {
+  const { requestId, req, refundAmount, compensationType, adminUserId, adminUserName } = params;
+
+  // ── 1. Generar número ANU- ────────────────────────────────────────────────
+  const cancellationNumber = await generateDocumentNumber(
+    "anulacion",
+    `cancellations:acceptRequest:${compensationType}`,
+    String(adminUserId)
+  );
+
+  // Guardar el número ANU en la solicitud
+  await db.update(cancellationRequests)
+    .set({ cancellationNumber })
+    .where(eq(cancellationRequests.id, requestId));
+
+  // ── 2. Cancelar la reserva vinculada ─────────────────────────────────────
+  const reservationId = req.linkedReservationId;
+  if (reservationId) {
+    await db.update(reservations)
+      .set({ status: "cancelled" })
+      .where(eq(reservations.id, reservationId));
+
+    // ── 3. Actualizar estado operativo ──────────────────────────────────────
+    await db.update(reservationOperational)
+      .set({ opStatus: "anulado", updatedBy: adminUserId })
+      .where(eq(reservationOperational.reservationId, reservationId));
+
+    // ── 4. Cerrar expediente REAV si existe ──────────────────────────────────
+    const [reavExp] = await db.select({ id: reavExpedients.id })
+      .from(reavExpedients)
+      .where(eq(reavExpedients.reservationId, reservationId))
+      .limit(1);
+    if (reavExp) {
+      await db.update(reavExpedients)
+        .set({
+          fiscalStatus: "anulado",
+          operativeStatus: "anulado",
+          closedAt: new Date(),
+          internalNotes: `Anulado por expediente ${cancellationNumber} el ${new Date().toLocaleDateString("es-ES")}`,
+        })
+        .where(eq(reavExpedients.id, reavExp.id));
+    }
+  }
+
+  // ── 5. Transacción contable de devolución (solo si hay importe a devolver) ─
+  if (compensationType === "devolucion" && refundAmount && refundAmount > 0) {
+    const txNumber = await generateDocumentNumber(
+      "factura",
+      `cancellations:refundTransaction:${requestId}`,
+      String(adminUserId)
+    );
+    // Usamos un prefijo especial para distinguir las transacciones de devolución
+    const refundTxNumber = txNumber.replace("FAC-", "DEV-");
+    await db.insert(transactions).values({
+      transactionNumber: refundTxNumber,
+      type: "reembolso",
+      amount: String(-Math.abs(refundAmount)),
+      currency: "EUR",
+      paymentMethod: "transferencia",
+      status: "completado",
+      description: `Devolución por anulación ${cancellationNumber} — ${req.fullName}`,
+      processedAt: new Date(),
+      clientName: req.fullName,
+      clientEmail: req.email ?? undefined,
+      clientPhone: req.phone ?? undefined,
+      saleChannel: (req.saleChannel as any) ?? "admin",
+      operationStatus: "anulada",
+      reservationId: req.linkedReservationId ?? undefined,
+      invoiceNumber: req.invoiceRef ?? cancellationNumber,
+      sellerUserId: adminUserId,
+      sellerName: adminUserName,
+    } as any);
+  }
+
+  // ── 6. Log de propagación ─────────────────────────────────────────────────
+  await addLog(
+    requestId,
+    "system_propagation",
+    {
+      cancellationNumber,
+      reservationCancelled: !!reservationId,
+      reavClosed: !!reservationId,
+      refundTransactionCreated: compensationType === "devolucion" && !!refundAmount,
+    },
+    adminUserId,
+    adminUserName
+  );
+
+  return { cancellationNumber };
 }
 
 // ─── Email templates ──────────────────────────────────────────────────────────
@@ -434,7 +547,17 @@ export const cancellationsRouter = router({
         }
       }
 
-      return { success: true, voucherId };
+      // ── Propagación transversal (reserva, operaciones, REAV, contabilidad, número ANU-) ──
+      const { cancellationNumber } = await propagateCancellation({
+        requestId: input.id,
+        req,
+        refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
+        compensationType: input.compensationType,
+        adminUserId: ctx.user.id,
+        adminUserName: ctx.user.name ?? "Admin",
+      });
+
+      return { success: true, voucherId, cancellationNumber };
     }),
 
   // ── ACCIÓN: Solicitar documentación ──────────────────────────────────────
@@ -642,5 +765,44 @@ export const cancellationsRouter = router({
 
       await db.update(compensationVouchers).set({ pdfUrl: url }).where(eq(compensationVouchers.id, input.voucherId));
       return { url };
+    }),
+
+  // ── Consultar impacto de una anulación (preview antes de aprobar) ────────────
+  getImpact: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND" });
+
+      let reservation = null;
+      let reservationOp = null;
+      let reavExpedient = null;
+
+      if (req.linkedReservationId) {
+        const [r] = await db.select().from(reservations).where(eq(reservations.id, req.linkedReservationId));
+        reservation = r ?? null;
+
+        const [op] = await db.select().from(reservationOperational)
+          .where(eq(reservationOperational.reservationId, req.linkedReservationId))
+          .limit(1);
+        reservationOp = op ?? null;
+
+        const [exp] = await db.select().from(reavExpedients)
+          .where(eq(reavExpedients.reservationId, req.linkedReservationId))
+          .limit(1);
+        reavExpedient = exp ?? null;
+      }
+
+      return {
+        request: req,
+        propagation: {
+          willCancelReservation: !!reservation && reservation.status !== "cancelled",
+          willUpdateOperational: !!reservationOp && reservationOp.opStatus !== "anulado",
+          willCloseReav: !!reavExpedient && reavExpedient.operativeStatus !== "anulado",
+          willCreateRefundTransaction: !!req.resolvedAmount && parseFloat(String(req.resolvedAmount)) > 0,
+          reservationRef: reservation ? (reservation as any).reservationRef ?? null : null,
+          reavExpedientNumber: reavExpedient ? reavExpedient.expedientNumber : null,
+        },
+      };
     }),
 });

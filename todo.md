@@ -2510,3 +2510,25 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir enlace 'Series Numer.' en sidebar DashboardLayout
 - [x] 16 tests Vitest para el sistema de numeración en documentNumbers.test.ts
 - [x] 317 tests Vitest pasando — 0 errores TypeScript
+
+## Fase 1 — Propagación completa de anulaciones v25.33
+
+- [ ] approveRefund: actualizar reservations.status a "cancelled"
+- [ ] approveRefund: crear transacción de devolución en transactions (importe negativo)
+- [ ] approveRefund: actualizar reservation_operational.opStatus a "anulado"
+- [ ] approveRefund: cerrar expediente REAV si existe (fiscalStatus="anulado")
+- [ ] approveRefund: generar número ANU- y guardarlo en cancellationRequests
+- [ ] approveVoucher: mismos pasos de cancelación/operaciones/REAV (bono no es devolución monetaria)
+- [ ] approveVoucher: registrar bono en coupon_redemptions para que sea canjeable
+- [ ] Tests Vitest para propagación de anulaciones
+
+## Fase 1 — Propagación completa de anulaciones (Crítico) v25.33
+
+- [x] Auditar cancellations.ts, schema y módulos relacionados
+- [x] Añadir 'anulado' al enum opStatus de reservation_operational (migración aplicada)
+- [x] Añadir columna cancellationNumber a cancellation_requests (migración aplicada)
+- [x] Implementar propagateCancellation() en cancellations.ts: cancela reserva, actualiza opStatus, cierra REAV, crea transacción devolución, genera número ANU-
+- [x] Integrar propagación en acceptRequest (devolución y bono) — ambas ramas cubiertas
+- [x] Añadir procedure getImpact para preview antes de aprobar
+- [x] 18 nuevos tests Vitest en cancellations.propagation.test.ts
+- [x] 335 tests Vitest pasando — 0 errores TypeScript

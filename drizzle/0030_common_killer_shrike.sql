@@ -1,0 +1,2 @@
+ALTER TABLE `reservation_operational` MODIFY COLUMN `op_status` enum('pendiente','confirmado','incidencia','completado','anulado') NOT NULL DEFAULT 'pendiente';--> statement-breakpoint
+ALTER TABLE `cancellation_requests` ADD `cancellation_number` varchar(32);

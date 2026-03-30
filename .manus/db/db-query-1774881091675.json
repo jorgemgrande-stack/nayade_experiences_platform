@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `reservation_operational` MODIFY COLUMN `op_status` enum('pendiente','confirmado','incidencia','completado','anulado') NOT NULL DEFAULT 'pendiente';\nALTER TABLE `cancellation_requests` ADD `cancellation_number` varchar(32);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute ALTER TABLE `reservation_operational` MODIFY COLUMN `op_status` enum('pendiente','confirmado','incidencia','completado','anulado') NOT NULL DEFAULT 'pendiente';\nALTER TABLE `cancellation_requests` ADD `cancellation_number` varchar(32);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1139
+}
