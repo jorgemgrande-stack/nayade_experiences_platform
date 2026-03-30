@@ -1,0 +1,8 @@
+{
+  "query": "\n-- 1. Find the settlement\nSELECT * FROM settlements WHERE settlement_number = 'LIQ-2026-0001';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- 1. Find the settlement\nSELECT * FROM settlements WHERE settlement_number = 'LIQ-2026-0001';\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1146 (42S02) at line 3: Table 'av298fs8t5saturbbrqhgq.settlements' doesn't exist"
+  ]
+}

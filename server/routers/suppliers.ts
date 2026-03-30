@@ -18,7 +18,7 @@ import {
   invoices,
   reservations,
 } from "../../drizzle/schema";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
 import { storagePut } from "../storage";
 
@@ -784,13 +784,13 @@ export const settlementsRouter = router({
         costType: string;
       }> = [];
 
-      // SOURCE 1: Facturas cobradas
+      // SOURCE 1: Facturas cobradas o validadas manualmente en el periodo
       if (productIds.length > 0) {
         const paidInvoices = await db
           .select()
           .from(invoices)
           .where(and(
-            eq(invoices.status, "cobrada"),
+            inArray(invoices.status, ["cobrada", "enviada"]),
             gte(invoices.createdAt, new Date(periodFrom)),
             lte(invoices.createdAt, new Date(periodTo + "T23:59:59"))
           ));
@@ -859,6 +859,77 @@ export const settlementsRouter = router({
               netAmountProvider: saleAmount - commissionAmount,
               costType: match.costType,
             });
+          }
+        }
+
+        // SOURCE 3: Reservas CRM/manual pagadas (crm, transferencia, efectivo, telefono, email, web)
+        // Incluye reservas cuya factura asociada tiene líneas de productos del proveedor
+        const crmReservations = await db
+          .select()
+          .from(reservations)
+          .where(and(
+            eq(reservations.status, "paid"),
+            inArray(reservations.channel, ["crm", "web", "telefono", "email", "otro"]),
+            gte(reservations.paidAt, periodFromMs),
+            lte(reservations.paidAt, periodToMs)
+          ));
+
+        for (const res of crmReservations) {
+          if (res.invoiceId && processedInvoiceIds.has(res.invoiceId)) continue;
+
+          // Check direct product_id match
+          if (res.productId && productIdSet.has(res.productId)) {
+            const match = productIds.find((p) => p.id === res.productId);
+            if (match) {
+              const saleAmount = (res.amountTotal ?? 0) / 100;
+              if (saleAmount > 0) {
+                const commissionAmount = (saleAmount * match.commissionPercent) / 100;
+                newLines.push({
+                  reservationId: res.id,
+                  invoiceId: res.invoiceId ?? undefined,
+                  productId: match.id,
+                  productName: res.productName ?? match.title,
+                  serviceDate: res.bookingDate ?? periodFrom,
+                  paxCount: res.people ?? 1,
+                  saleAmount,
+                  commissionPercent: match.commissionPercent,
+                  commissionAmount,
+                  netAmountProvider: saleAmount - commissionAmount,
+                  costType: match.costType,
+                });
+                continue;
+              }
+            }
+          }
+
+          // Check via linked invoice itemsJson (multi-product reservations)
+          if (res.invoiceId) {
+            const [inv] = await db.select().from(invoices).where(eq(invoices.id, res.invoiceId));
+            if (inv) {
+              processedInvoiceIds.add(inv.id);
+              const items = (inv.itemsJson as any[]) ?? [];
+              for (const item of items) {
+                const productId = item.productId ?? item.experienceId ?? item.packId;
+                const match = productIds.find((p) => p.id === productId);
+                if (!match) continue;
+                const saleAmount = parseFloat(String(item.unitPrice ?? item.price ?? "0")) * (item.quantity ?? 1);
+                if (saleAmount <= 0) continue;
+                const commissionAmount = (saleAmount * match.commissionPercent) / 100;
+                newLines.push({
+                  reservationId: res.id,
+                  invoiceId: inv.id,
+                  productId: match.id,
+                  productName: item.description ?? match.title,
+                  serviceDate: res.bookingDate ?? periodFrom,
+                  paxCount: item.quantity ?? 1,
+                  saleAmount,
+                  commissionPercent: match.commissionPercent,
+                  commissionAmount,
+                  netAmountProvider: saleAmount - commissionAmount,
+                  costType: match.costType,
+                });
+              }
+            }
           }
         }
       }

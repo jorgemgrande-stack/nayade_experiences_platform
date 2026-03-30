@@ -2394,6 +2394,82 @@ function ReservationDetailModal({
             </div>
           )}
 
+          {/* Líneas del pedido */}
+          {(() => {
+            const allItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string }[] = [];
+            for (const inv of relatedInvoices) {
+              const items = (inv.itemsJson as any[]) ?? [];
+              allItems.push(...items);
+            }
+            if (allItems.length === 0) return null;
+            const generalItems = allItems.filter(i => !i.fiscalRegime || i.fiscalRegime === "general_21");
+            const reavItems = allItems.filter(i => i.fiscalRegime === "reav");
+            return (
+              <div className="bg-white/[0.04] border border-white/8 rounded-xl p-4">
+                <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Líneas del pedido</h4>
+                <div className="space-y-1">
+                  {/* Header */}
+                  <div className="grid grid-cols-12 gap-2 text-xs text-white/30 font-medium pb-1 border-b border-white/8">
+                    <div className="col-span-6">Concepto</div>
+                    <div className="col-span-2 text-center">Cant.</div>
+                    <div className="col-span-2 text-right">P.Unit.</div>
+                    <div className="col-span-2 text-right">Total</div>
+                  </div>
+                  {/* General items */}
+                  {generalItems.length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold text-white/50 pt-1 pb-0.5">Régimen General (IVA 21%)</div>
+                      {generalItems.map((item, i) => (
+                        <div key={`g-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
+                          <div className="col-span-6 text-white/80">{item.description}</div>
+                          <div className="col-span-2 text-center text-white/60">{item.quantity}</div>
+                          <div className="col-span-2 text-right text-white/60">{Number(item.unitPrice).toFixed(2)} €</div>
+                          <div className="col-span-2 text-right text-orange-400 font-medium">{Number(item.total).toFixed(2)} €</div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {/* REAV items */}
+                  {reavItems.length > 0 && (
+                    <>
+                      <div className="text-xs font-semibold text-amber-400/70 pt-1 pb-0.5">REAV — Sin IVA (Régimen Especial Agencias de Viaje)</div>
+                      {reavItems.map((item, i) => (
+                        <div key={`r-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
+                          <div className="col-span-6 text-white/80 flex items-center gap-1.5">
+                            {item.description}
+                            <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1 py-0.5 rounded">REAV</span>
+                          </div>
+                          <div className="col-span-2 text-center text-white/60">{item.quantity}</div>
+                          <div className="col-span-2 text-right text-white/60">{Number(item.unitPrice).toFixed(2)} €</div>
+                          <div className="col-span-2 text-right text-orange-400 font-medium">{Number(item.total).toFixed(2)} €</div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {/* Totals */}
+                  <div className="border-t border-white/8 pt-2 mt-1 space-y-1">
+                    {generalItems.length > 0 && reavItems.length > 0 && (
+                      <div className="flex justify-between text-xs text-white/40">
+                        <span>Subtotal rég. general</span>
+                        <span>{generalItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
+                      </div>
+                    )}
+                    {reavItems.length > 0 && (
+                      <div className="flex justify-between text-xs text-amber-400/60">
+                        <span>Subtotal REAV (sin IVA)</span>
+                        <span>{reavItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm font-bold text-white">
+                      <span>Total</span>
+                      <span className="text-orange-400">{allItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Facturas asociadas */}
           {relatedInvoices.length > 0 && (
             <div>

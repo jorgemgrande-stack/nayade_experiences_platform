@@ -1,0 +1,9 @@
+{
+  "query": "\n-- All paid reservations for Wakeboardcenter experiences (using correct column names)\nSELECT id, product_id, product_name, customer_name, customer_email, status, amount_total, booking_date, created_at\nFROM reservations\nWHERE product_id IN (30001, 30002, 30003, 30004, 30005, 30006, 30007, 30008, 90001)\nAND status IN ('paid', 'confirmed', 'completed')\nORDER BY created_at DESC;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- All paid reservations for Wakeboardcenter experiences (using correct column names)\nSELECT id, product_id, product_name, customer_name, customer_email, status, amount_total, booking_date, created_at\nFROM reservations\nWHERE product_id IN (30001, 30002, 30003, 30004, 30005, 30006, 30007, 30008, 90001)\nAND status IN ('paid', 'confirmed', 'completed')\nORDER BY created_at DESC;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 58
+}

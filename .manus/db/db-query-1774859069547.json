@@ -1,0 +1,9 @@
+{
+  "query": "\n-- 1. Update invoice FAC-2026-0004: add productId to Cableski line, link to reservation, set status cobrada\nUPDATE invoices \nSET \n  reservationId = 480001,\n  status = 'cobrada',\n  paymentValidatedAt = NOW(),\n  itemsJson = JSON_SET(\n    JSON_SET(\n      itemsJson,\n      '$[1].productId', 30003\n    ),\n    '$[0].productId', 30004\n  )\nWHERE invoiceNumber = 'FAC-2026-0004';\n\n-- 2. Update reservation 480001: fix product_id and link to invoice\nUPDATE reservations \nSET \n  product_id = 30003,\n  invoiceId = 300001,\n  invoiceNumber = 'FAC-2026-0004'\nWHERE id = 480001;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- 1. Update invoice FAC-2026-0004: add productId to Cableski line, link to reservation, set status cobrada\nUPDATE invoices \nSET \n  reservationId = 480001,\n  status = 'cobrada',\n  paymentValidatedAt = NOW(),\n  itemsJson = JSON_SET(\n    JSON_SET(\n      itemsJson,\n      '$[1].productId', 30003\n    ),\n    '$[0].productId', 30004\n  )\nWHERE invoiceNumber = 'FAC-2026-0004';\n\n-- 2. Update reservation 480001: fix product_id and link to invoice\nUPDATE reservations \nSET \n  product_id = 30003,\n  invoiceId = 300001,\n  invoiceNumber = 'FAC-2026-0004'\nWHERE id = 480001;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 73
+}

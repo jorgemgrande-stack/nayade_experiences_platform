@@ -1,0 +1,8 @@
+{
+  "query": "\n-- Find all reservations with Wakeboardcenter experiences in the period 2026-03-01 to 2026-04-02\nSELECT r.id, r.bookingRef, r.clientName, r.clientEmail, r.experienceId, r.status, r.totalAmount, r.bookingDate, r.createdAt\nFROM reservations r\nWHERE r.experienceId IN (30001, 30002, 30003, 30004, 30005, 30006, 30007, 30008, 90001)\nAND r.status IN ('paid', 'confirmed', 'completed')\nORDER BY r.createdAt DESC;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Find all reservations with Wakeboardcenter experiences in the period 2026-03-01 to 2026-04-02\nSELECT r.id, r.bookingRef, r.clientName, r.clientEmail, r.experienceId, r.status, r.totalAmount, r.bookingDate, r.createdAt\nFROM reservations r\nWHERE r.experienceId IN (30001, 30002, 30003, 30004, 30005, 30006, 30007, 30008, 90001)\nAND r.status IN ('paid', 'confirmed', 'completed')\nORDER BY r.createdAt DESC;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 3: Unknown column 'r.createdAt' in 'order clause'"
+  ]
+}

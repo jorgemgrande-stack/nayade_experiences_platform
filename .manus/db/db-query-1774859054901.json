@@ -1,0 +1,24 @@
+{
+  "query": "\n-- Check reservation 480001\nSELECT id, status, channel, product_id, product_name, amount_paid, paid_at, booking_date, invoiceId\nFROM reservations\nWHERE id = 480001;\n\n-- Find the Cableski & Wakeboard product\nSELECT id, title, supplierId, supplierCommissionPercent, providerPercent, agencyMarginPercent\nFROM experiences\nWHERE title LIKE '%Cableski%' OR title LIKE '%Wakeboard%';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Check reservation 480001\nSELECT id, status, channel, product_id, product_name, amount_paid, paid_at, booking_date, invoiceId\nFROM reservations\nWHERE id = 480001;\n\n-- Find the Cableski & Wakeboard product\nSELECT id, title, supplierId, supplierCommissionPercent, providerPercent, agencyMarginPercent\nFROM experiences\nWHERE title LIKE '%Cableski%' OR title LIKE '%Wakeboard%';\n",
+  "rows": [
+    {
+      "id": "480001",
+      "status": "paid",
+      "channel": "web",
+      "product_id": "0",
+      "product_name": "Presupuesto Nayade Experiences - Leo",
+      "amount_paid": "8778",
+      "paid_at": "1774857111072",
+      "booking_date": "2026-04-01",
+      "invoiceId": "NULL"
+    }
+  ],
+  "messages": [
+    "id\ttitle\tsupplierId\tsupplierCommissionPercent\tproviderPercent\tagencyMarginPercent",
+    "30003\tCableski & Wakeboard Dia Completo\t1\t20.00\t80.00\t20.00"
+  ],
+  "stdout": "id\tstatus\tchannel\tproduct_id\tproduct_name\tamount_paid\tpaid_at\tbooking_date\tinvoiceId\n480001\tpaid\tweb\t0\tPresupuesto Nayade Experiences - Leo\t8778\t1774857111072\t2026-04-01\tNULL\nid\ttitle\tsupplierId\tsupplierCommissionPercent\tproviderPercent\tagencyMarginPercent\n30003\tCableski & Wakeboard Dia Completo\t1\t20.00\t80.00\t20.00\n",
+  "stderr": "",
+  "execution_time_ms": 70
+}

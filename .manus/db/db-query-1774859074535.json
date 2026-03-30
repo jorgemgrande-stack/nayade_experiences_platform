@@ -1,0 +1,21 @@
+{
+  "query": "\n-- Verify invoice FAC-2026-0004\nSELECT id, invoiceNumber, status, reservationId, total, itemsJson \nFROM invoices \nWHERE invoiceNumber = 'FAC-2026-0004';\n\n-- Verify reservation 480001\nSELECT id, status, channel, product_id, product_name, paid_at, booking_date, invoiceId, invoiceNumber\nFROM reservations\nWHERE id = 480001;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Verify invoice FAC-2026-0004\nSELECT id, invoiceNumber, status, reservationId, total, itemsJson \nFROM invoices \nWHERE invoiceNumber = 'FAC-2026-0004';\n\n-- Verify reservation 480001\nSELECT id, status, channel, product_id, product_name, paid_at, booking_date, invoiceId, invoiceNumber\nFROM reservations\nWHERE id = 480001;\n",
+  "rows": [
+    {
+      "id": "300001",
+      "invoiceNumber": "FAC-2026-0004",
+      "status": "cobrada",
+      "reservationId": "480001",
+      "total": "87.78",
+      "itemsJson": "[{\"description\": \"Canoas & Kayaks\", \"fiscalRegime\": \"reav\", \"productId\": 30004, \"quantity\": 2, \"total\": 24.86, \"unitPrice\": 12.43}, {\"description\": \"Cableski & Wakeboard Dia Completo\", \"fiscalRegime\": \"general_21\", \"productId\": 30003, \"quantity\": 1, \"total\": 45, \"unitPrice\": 45}, {\"description\": \"Entrada General Piscina Club Nautico\", \"fiscalRegime\": \"general_21\", \"quantity\": 1, \"total\": 7, \"unitPrice\": 7}]"
+    }
+  ],
+  "messages": [
+    "id\tstatus\tchannel\tproduct_id\tproduct_name\tpaid_at\tbooking_date\tinvoiceId\tinvoiceNumber",
+    "480001\tpaid\tweb\t30003\tPresupuesto Nayade Experiences - Leo\t1774857111072\t2026-04-01\t300001\tFAC-2026-0004"
+  ],
+  "stdout": "id\tinvoiceNumber\tstatus\treservationId\ttotal\titemsJson\n300001\tFAC-2026-0004\tcobrada\t480001\t87.78\t[{\"description\": \"Canoas & Kayaks\", \"fiscalRegime\": \"reav\", \"productId\": 30004, \"quantity\": 2, \"total\": 24.86, \"unitPrice\": 12.43}, {\"description\": \"Cableski & Wakeboard Dia Completo\", \"fiscalRegime\": \"general_21\", \"productId\": 30003, \"quantity\": 1, \"total\": 45, \"unitPrice\": 45}, {\"description\": \"Entrada General Piscina Club Nautico\", \"fiscalRegime\": \"general_21\", \"quantity\": 1, \"total\": 7, \"unitPrice\": 7}]\nid\tstatus\tchannel\tproduct_id\tproduct_name\tpaid_at\tbooking_date\tinvoiceId\tinvoiceNumber\n480001\tpaid\tweb\t30003\tPresupuesto Nayade Experiences - Leo\t1774857111072\t2026-04-01\t300001\tFAC-2026-0004\n",
+  "stderr": "",
+  "execution_time_ms": 65
+}

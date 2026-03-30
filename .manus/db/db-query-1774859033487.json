@@ -1,0 +1,18 @@
+{
+  "query": "\nSELECT id, invoiceNumber, status, reservationId, total, itemsJson \nFROM invoices \nWHERE invoiceNumber = 'FAC-2026-0004';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, invoiceNumber, status, reservationId, total, itemsJson \nFROM invoices \nWHERE invoiceNumber = 'FAC-2026-0004';\n",
+  "rows": [
+    {
+      "id": "300001",
+      "invoiceNumber": "FAC-2026-0004",
+      "status": "generada",
+      "reservationId": "NULL",
+      "total": "87.78",
+      "itemsJson": "[{\"description\": \"Canoas & Kayaks\", \"fiscalRegime\": \"reav\", \"productId\": 30004, \"quantity\": 2, \"total\": 24.86, \"unitPrice\": 12.43}, {\"description\": \"Cableski & Wakeboard Dia Completo\", \"fiscalRegime\": \"general_21\", \"quantity\": 1, \"total\": 45, \"unitPrice\": 45}, {\"description\": \"Entrada General Piscina Club Nautico\", \"fiscalRegime\": \"general_21\", \"quantity\": 1, \"total\": 7, \"unitPrice\": 7}]"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tinvoiceNumber\tstatus\treservationId\ttotal\titemsJson\n300001\tFAC-2026-0004\tgenerada\tNULL\t87.78\t[{\"description\": \"Canoas & Kayaks\", \"fiscalRegime\": \"reav\", \"productId\": 30004, \"quantity\": 2, \"total\": 24.86, \"unitPrice\": 12.43}, {\"description\": \"Cableski & Wakeboard Dia Completo\", \"fiscalRegime\": \"general_21\", \"quantity\": 1, \"total\": 45, \"unitPrice\": 45}, {\"description\": \"Entrada General Piscina Club Nautico\", \"fiscalRegime\": \"general_21\", \"quantity\": 1, \"total\": 7, \"unitPrice\": 7}]\n",
+  "stderr": "",
+  "execution_time_ms": 60
+}

@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT id, invoice_number, status, reservation_id, amount_total, items_json \nFROM invoices \nWHERE invoice_number = 'FAC-2026-0004';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, invoice_number, status, reservation_id, amount_total, items_json \nFROM invoices \nWHERE invoice_number = 'FAC-2026-0004';\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'invoice_number' in 'where clause'"
+  ]
+}

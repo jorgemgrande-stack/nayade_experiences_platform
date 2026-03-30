@@ -2469,3 +2469,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Integrar REAV en canal Online (Redsys IPN): detectar producto REAV y crear expediente
 - [ ] Rehacer panel económico REAV con totales basados en margen calculado
 - [ ] Tests Vitest: caso online, TPV y CRM
+
+## Liquidaciones v25.30 — Auditoría y corrección
+- [x] BUG: LIQ-2026-0001 muestra 0 líneas — la operación de Leo Grande en Wakeboardcenter no aparece
+- [x] Auditar lógica de cálculo de líneas de liquidación y su conexión con bookings/reservas
+- [x] Auditar coherencia del flujo CRM completo desde comisión de venta hasta liquidación
+- [x] Corregir error TypeScript en suppliers.ts: import inArray faltante
+- [x] Ampliar recalculate() para incluir reservas CRM (SOURCE 3) y facturas generadas/enviadas con paymentValidatedAt
+- [x] Reparar datos retroactivos de Leo Grande (FAC-2026-0004): productId=30003, reservationId=480001, status=cobrada
+- [x] Reparar datos retroactivos de reserva 480001: product_id=30003, invoiceId=300001
+- [x] Sección "Líneas del pedido" en modal de detalle de reserva ya existía — ahora funciona al estar la factura vinculada
+- [x] 284 tests Vitest pasando — 0 errores TypeScript

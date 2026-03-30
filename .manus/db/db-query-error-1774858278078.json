@@ -1,0 +1,8 @@
+{
+  "query": "\n-- Experiences linked to supplier id=1 (Wakeboardcenter)\nSELECT id, name, supplierId, supplierCommissionPercent, supplierCostType, isSettlable FROM experiences WHERE supplierId = 1;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Experiences linked to supplier id=1 (Wakeboardcenter)\nSELECT id, name, supplierId, supplierCommissionPercent, supplierCostType, isSettlable FROM experiences WHERE supplierId = 1;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 3: Unknown column 'name' in 'field list'"
+  ]
+}

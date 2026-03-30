@@ -1,0 +1,17 @@
+{
+  "query": "\n-- Supplier id=1\nSELECT id, fiscalName, commercialName, standardCommissionPercent, status FROM suppliers WHERE id = 1;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Supplier id=1\nSELECT id, fiscalName, commercialName, standardCommissionPercent, status FROM suppliers WHERE id = 1;\n",
+  "rows": [
+    {
+      "id": "1",
+      "fiscalName": "Pablo Ibañez Colmenar ",
+      "commercialName": "Wakeboardcenter",
+      "standardCommissionPercent": "50.00",
+      "status": "activo"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tfiscalName\tcommercialName\tstandardCommissionPercent\tstatus\n1\tPablo Ibañez Colmenar \tWakeboardcenter\t50.00\tactivo\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

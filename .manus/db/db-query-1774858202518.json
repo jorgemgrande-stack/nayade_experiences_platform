@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Find settlement lines for settlement id=60001\nSELECT * FROM settlement_lines WHERE settlementId = 60001;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Find settlement lines for settlement id=60001\nSELECT * FROM settlement_lines WHERE settlementId = 60001;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 57
+}

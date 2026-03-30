@@ -1,0 +1,8 @@
+{
+  "query": "\n-- Check invoice FAC-2026-0004\nSELECT id, invoiceNumber, status, reservationId, amountTotal, itemsJson \nFROM invoices \nWHERE invoiceNumber = 'FAC-2026-0004';\n\n-- Check reservation 480001\nSELECT id, status, channel, productId, productName, amountTotal, paidAt, bookingDate\nFROM reservations\nWHERE id = 480001;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Check invoice FAC-2026-0004\nSELECT id, invoiceNumber, status, reservationId, amountTotal, itemsJson \nFROM invoices \nWHERE invoiceNumber = 'FAC-2026-0004';\n\n-- Check reservation 480001\nSELECT id, status, channel, productId, productName, amountTotal, paidAt, bookingDate\nFROM reservations\nWHERE id = 480001;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 3: Unknown column 'amounttotal' in 'field list'"
+  ]
+}

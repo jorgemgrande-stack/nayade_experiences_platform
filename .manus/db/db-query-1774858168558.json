@@ -1,0 +1,21 @@
+{
+  "query": "\nSELECT id, settlementNumber, supplierId, periodFrom, periodTo, grossAmount, commissionAmount, netAmountProvider, status\nFROM supplier_settlements WHERE settlementNumber = 'LIQ-2026-0001';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \nSELECT id, settlementNumber, supplierId, periodFrom, periodTo, grossAmount, commissionAmount, netAmountProvider, status\nFROM supplier_settlements WHERE settlementNumber = 'LIQ-2026-0001';\n",
+  "rows": [
+    {
+      "id": "60001",
+      "settlementNumber": "LIQ-2026-0001",
+      "supplierId": "1",
+      "periodFrom": "2026-03-01",
+      "periodTo": "2026-04-02",
+      "grossAmount": "0.00",
+      "commissionAmount": "0.00",
+      "netAmountProvider": "0.00",
+      "status": "emitida"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tsettlementNumber\tsupplierId\tperiodFrom\tperiodTo\tgrossAmount\tcommissionAmount\tnetAmountProvider\tstatus\n60001\tLIQ-2026-0001\t1\t2026-03-01\t2026-04-02\t0.00\t0.00\t0.00\temitida\n",
+  "stderr": "",
+  "execution_time_ms": 62
+}
