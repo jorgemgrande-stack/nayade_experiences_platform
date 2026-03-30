@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE `discount_codes` MODIFY COLUMN `discount_percent` decimal(5,2) NOT NULL DEFAULT '0';\nALTER TABLE `discount_codes` ADD `discount_type` enum('percent','fixed') DEFAULT 'percent' NOT NULL;\nALTER TABLE `discount_codes` ADD `discount_amount` decimal(10,2);\nALTER TABLE `discount_codes` ADD `origin` enum('manual','voucher') DEFAULT 'manual' NOT NULL;\nALTER TABLE `discount_codes` ADD `compensation_voucher_id` int;\nALTER TABLE `discount_codes` ADD `client_email` varchar(256);\nALTER TABLE `discount_codes` ADD `client_name` varchar(256);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute ALTER TABLE `discount_codes` MODIFY COLUMN `discount_percent` decimal(5,2) NOT NULL DEFAULT '0';\nALTER TABLE `discount_codes` ADD `discount_type` enum('percent','fixed') DEFAULT 'percent' NOT NULL;\nALTER TABLE `discount_codes` ADD `discount_amount` decimal(10,2);\nALTER TABLE `discount_codes` ADD `origin` enum('manual','voucher') DEFAULT 'manual' NOT NULL;\nALTER TABLE `discount_codes` ADD `compensation_voucher_id` int;\nALTER TABLE `discount_codes` ADD `client_email` varchar(256);\nALTER TABLE `discount_codes` ADD `client_name` varchar(256);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 7843
+}

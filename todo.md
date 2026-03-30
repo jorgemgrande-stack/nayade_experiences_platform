@@ -2555,3 +2555,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] people = suma de participants de todos los items
 - [x] 18 nuevos tests Vitest en tpv.operations.test.ts
 - [x] 366 tests Vitest pasando — 0 errores TypeScript
+
+## Fase 5 — Bono compensatorio canjeable v25.36
+
+- [x] Auditar schema discount_codes: solo tenía discountPercent, faltaba soporte para importe fijo
+- [x] Añadir columnas discountType, discountAmount, origin, compensationVoucherId, clientEmail, clientName a discount_codes
+- [x] Migración SQL aplicada (0031_familiar_dorian_gray.sql)
+- [x] Implementar creación de discount_code tipo 'fixed' al aprobar bono compensatorio
+- [x] Mismo código BONO-XXXX-XXXX en compensation_vouchers y discount_codes (uso único, maxUses=1)
+- [x] Email al cliente ya existía y ya incluye el código canjeable
+- [x] 20 nuevos tests Vitest en voucher.discountcode.test.ts
+- [x] 386 tests Vitest pasando — 0 errores TypeScript

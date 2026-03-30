@@ -1394,12 +1394,22 @@ export const discountCodes = mysqlTable("discount_codes", {
   code: varchar("code", { length: 50 }).notNull().unique(),
   name: varchar("name", { length: 200 }).notNull(),
   description: text("description"),
-  discountPercent: decimal("discount_percent", { precision: 5, scale: 2 }).notNull(),
+  // Tipo de descuento: percent = porcentaje, fixed = importe fijo en euros
+  discountType: mysqlEnum("discount_type", ["percent", "fixed"]).default("percent").notNull(),
+  discountPercent: decimal("discount_percent", { precision: 5, scale: 2 }).notNull().default("0"),
+  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }),
   expiresAt: timestamp("expires_at"),
   status: mysqlEnum("status", ["active", "inactive", "expired"]).default("active").notNull(),
   maxUses: int("max_uses"),
   currentUses: int("current_uses").default(0).notNull(),
   observations: text("observations"),
+  // Origen del código: manual (creado por admin), voucher (bono compensatorio de anulación)
+  origin: mysqlEnum("origin", ["manual", "voucher"]).default("manual").notNull(),
+  // FK al bono compensatorio que originó este código (solo si origin=voucher)
+  compensationVoucherId: int("compensation_voucher_id"),
+  // Email del cliente al que se emitió (para uso exclusivo)
+  clientEmail: varchar("client_email", { length: 256 }),
+  clientName: varchar("client_name", { length: 256 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });

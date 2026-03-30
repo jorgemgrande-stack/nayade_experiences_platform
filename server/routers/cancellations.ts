@@ -16,6 +16,7 @@ import {
   reservationOperational,
   reavExpedients,
   couponRedemptions,
+  discountCodes,
   type CancellationRequest,
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
@@ -512,6 +513,38 @@ export const cancellationsRouter = router({
           status: "generado",
         });
         voucherId = (vResult as { insertId: number }).insertId;
+
+        // ── Registrar en discount_codes para que sea canjeable en reservas ──────
+        // El bono compensatorio se convierte en un código de descuento de importe
+        // fijo (tipo 'fixed') con uso único, vinculado al cliente y al voucher.
+        try {
+          const discountName = `Bono compensatorio #${input.id} — ${input.activityName ?? "Náyade Experiences"}`;
+          const discountDescription = [
+            `Bono emitido como compensación por anulación de reserva.`,
+            input.activityName ? `Actividad: ${input.activityName}.` : null,
+            input.voucherConditions ? `Condiciones: ${input.voucherConditions}` : null,
+          ].filter(Boolean).join(" ");
+          await db.insert(discountCodes).values({
+            code,
+            name: discountName,
+            description: discountDescription,
+            discountType: "fixed",
+            discountPercent: "0",
+            discountAmount: String(input.voucherValue!.toFixed(2)),
+            expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
+            status: "active",
+            maxUses: 1,
+            currentUses: 0,
+            observations: `Generado automáticamente desde anulación #${input.id}. Voucher ID: ${voucherId}.`,
+            origin: "voucher",
+            compensationVoucherId: voucherId,
+            clientEmail: req.email ?? undefined,
+            clientName: req.fullName ?? undefined,
+          } as any);
+          await addLog(input.id, "voucher_generated", { discountCodeCreated: true, code }, ctx.user.id, ctx.user.name ?? "Admin");
+        } catch (e) {
+          console.error("[Cancellations] Error creando discount_code para bono:", e);
+        }
 
         await db.update(cancellationRequests).set({
           operationalStatus: "resuelta",
