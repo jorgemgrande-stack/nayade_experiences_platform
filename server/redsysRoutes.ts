@@ -113,10 +113,14 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           const subtotal = Number(quote.subtotal);
           const taxAmount = subtotal * 0.21;
 
+          // Determinar productId principal desde las líneas del presupuesto
+          const mainProductIdRedsys = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? updatedReservation.productId ?? 0;
+
           // Insert invoice
-          await _db.insert(invoices).values({
+          const [invResRedsys] = await _db.insert(invoices).values({
             invoiceNumber,
             quoteId: quote.id,
+            reservationId: updatedReservation.id, // FIX: vincular a la reserva desde el inicio
             clientName: lead?.name ?? updatedReservation.customerName,
             clientEmail: lead?.email ?? updatedReservation.customerEmail,
             clientPhone: lead?.phone ?? updatedReservation.customerPhone,
@@ -125,11 +129,21 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             taxRate: "21",
             taxAmount: String(taxAmount),
             total: String(total),
-            status: "generada",
+            status: "cobrada", // FIX: Redsys confirma pago, debe ser cobrada
+            paymentMethod: "redsys",
             issuedAt: now,
             createdAt: now,
             updatedAt: now,
           });
+          const invoiceIdRedsys = (invResRedsys as { insertId: number }).insertId;
+
+          // FIX: Actualizar reserva con invoiceId e invoiceNumber
+          await _db.update(reservations).set({
+            productId: mainProductIdRedsys,
+            invoiceId: invoiceIdRedsys,
+            invoiceNumber,
+            updatedAt: Date.now(),
+          } as any).where(eq(reservations.id, updatedReservation.id));
 
           // Update quote to paid
           await _db.update(quotes).set({

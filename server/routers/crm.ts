@@ -748,7 +748,8 @@ export const crmRouter = router({
               quantity: qty,
               unitPrice,
               total: parseFloat((unitPrice * qty).toFixed(2)),
-              fiscalRegime: "general_21",
+              fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+              productId: foundPack.id,
             });
           } else {
             // Buscar en legoPacks
@@ -764,6 +765,7 @@ export const crmRouter = router({
                 unitPrice,
                 total: parseFloat((unitPrice * qty).toFixed(2)),
                 fiscalRegime: "general_21",
+                productId: foundLego.id,
               });
             } else {
               // Buscar en experiences
@@ -908,13 +910,13 @@ export const crmRouter = router({
             .where(and(eq(packs.title, productName), eq(packs.isActive, true))).limit(1);
           if (foundPack) {
             const unitPrice = parseFloat(String(foundPack.basePrice));
-            return { items: [{ description: `${foundPack.title}${foundPack.subtitle ? ` — ${foundPack.subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general_21" as const }], hasActivities: true, fromSelectedProduct: true };
+            return { items: [{ description: `${foundPack.title}${foundPack.subtitle ? ` — ${foundPack.subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21", productId: foundPack.id }], hasActivities: true, fromSelectedProduct: true };
           }
           const [foundLego] = await db.select().from(legoPacks)
             .where(and(eq(legoPacks.title, productName), eq(legoPacks.isActive, true))).limit(1);
           if (foundLego) {
             const unitPrice = parseFloat(String((foundLego as any).basePrice ?? (foundLego as any).price ?? 0));
-            return { items: [{ description: `${foundLego.title}${(foundLego as any).subtitle ? ` — ${(foundLego as any).subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general_21" as const }], hasActivities: true, fromSelectedProduct: true };
+            return { items: [{ description: `${foundLego.title}${(foundLego as any).subtitle ? ` — ${(foundLego as any).subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general_21" as const, productId: foundLego.id }], hasActivities: true, fromSelectedProduct: true };
           }
           const [foundExp] = await db.select().from(experiences)
             .where(and(eq(experiences.title, productName), eq(experiences.isActive, true))).limit(1);
@@ -1371,6 +1373,9 @@ export const crmRouter = router({
           console.error("PDF generation failed:", e);
         }
         // Insert invoice record
+        // Determinar productId principal desde las líneas del presupuesto
+        const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
+
         const [invResult] = await db.insert(invoices).values({
           invoiceNumber,
           quoteId: quote.id,
@@ -1399,7 +1404,7 @@ export const crmRouter = router({
           : now.toISOString().split("T")[0];
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const [resResult] = await db.insert(reservations).values({
-          productId: 0, // linked via quote
+          productId: mainProductId, // FIX: usar el productId principal del presupuesto
           productName: quote.title,
           bookingDate: serviceDate, // BUG #1 FIX: fecha preferida del lead, no hoy
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
@@ -1416,6 +1421,10 @@ export const crmRouter = router({
           paidAt: Date.now(),
         });
         const reservationId = (resResult as { insertId: number }).insertId;
+
+        // FIX: Vincular factura ↔ reserva recién creadas
+        await db.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
+        await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
 
         // Crear/actualizar cliente en el CRM
         await upsertClientFromReservation({
@@ -1590,7 +1599,7 @@ export const crmRouter = router({
             : reavSubtotalForTx > 0 ? "reav" : "general_21";
           await postConfirmOperation({
             reservationId,
-            productId: lead.experienceId ?? 0,
+            productId: mainProductId, // FIX: usar el productId principal del presupuesto
             productName: quote.title,
             serviceDate,
             people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
@@ -1759,6 +1768,9 @@ export const crmRouter = router({
         } catch (e) {
           console.error("PDF generation failed:", e);
         }
+        // Determinar productId principal desde las líneas del presupuesto
+        const mainProductIdT = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead.experienceId ?? 0;
+
         const [invResult] = await db.insert(invoices).values({
           invoiceNumber,
           quoteId: quote.id,
@@ -1787,7 +1799,7 @@ export const crmRouter = router({
           : now.toISOString().split("T")[0];
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const [resResult] = await db.insert(reservations).values({
-          productId: 0,
+          productId: mainProductIdT, // FIX: usar el productId principal del presupuesto
           productName: quote.title,
           bookingDate: serviceDateTransfer, // BUG #1 FIX: fecha preferida del lead
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
@@ -1804,6 +1816,10 @@ export const crmRouter = router({
           paidAt: Date.now(),
         });
         const reservationId = (resResult as { insertId: number }).insertId;
+
+        // FIX: Vincular factura ↔ reserva recién creadas
+        await db.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
+        await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
 
         // Crear/actualizar cliente en el CRM
         await upsertClientFromReservation({
@@ -1840,7 +1856,7 @@ export const crmRouter = router({
             : reavSubtotalT > 0 ? "reav" : "general_21";
           await postConfirmOperation({
             reservationId,
-            productId: lead.experienceId ?? 0,
+            productId: mainProductIdT, // FIX: usar el productId principal del presupuesto
             productName: quote.title,
             serviceDate: serviceDateTransfer,
             people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,

@@ -2480,3 +2480,17 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Reparar datos retroactivos de reserva 480001: product_id=30003, invoiceId=300001
 - [x] Sección "Líneas del pedido" en modal de detalle de reserva ya existía — ahora funciona al estar la factura vinculada
 - [x] 284 tests Vitest pasando — 0 errores TypeScript
+
+## Auditoría estructural v25.31 — Trazabilidad completa ventas → liquidaciones
+
+- [x] Auditar flujo CRM confirmPayment: factura sin reservationId y productId:0 en reserva
+- [x] Auditar flujo CRM confirmTransfer: mismo bug
+- [x] Auditar flujo TPV createSale: correcto, productId del item principal en reserva + extrasJson
+- [x] Auditar flujo Online Redsys IPN: factura sin reservationId y status generada en lugar de cobrada
+- [x] Corregir flujo CRM confirmPayment: factura vinculada a reserva (reservationId), reserva vinculada a factura (invoiceId+invoiceNumber), productId correcto desde presupuesto
+- [x] Corregir flujo CRM confirmTransfer: mismas correcciones
+- [x] Corregir flujo Redsys IPN: factura con reservationId desde el inicio, status=cobrada, reserva actualizada con invoiceId+invoiceNumber+productId
+- [x] Corregir packs y legoPacks en presupuestos: añadir productId en itemsJson (ambos bloques de generación)
+- [x] Corregir postConfirmOperation en confirmPayment y confirmTransfer: usar mainProductId en lugar de lead.experienceId
+- [x] Tests Vitest: 17 nuevos tests de trazabilidad en traceability.test.ts
+- [x] 301 tests Vitest pasando — 0 errores TypeScript
