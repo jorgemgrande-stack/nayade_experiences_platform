@@ -2611,3 +2611,20 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Migrar bookings.getAll procedure a reservations + reservation_operational (con mapeo de status legacy)
 - [x] Tabla bookings mantenida en BD (datos históricos) pero sin escritores activos
 - [x] 428 tests Vitest pasando — 0 errores TypeScript
+
+## Suite de Tests de Regresión Integral v25.40
+
+- [x] Auditar cobertura actual: mapear flujos críticos con tests vs sin tests
+- [x] Tests postConfirmOperation canal CRM confirmPayment: booking + transacción + cliente + reservation_operational
+- [x] Tests postConfirmOperation canal CRM confirmTransfer: mismos 4 artefactos
+- [x] Tests postConfirmOperation canal Redsys IPN: mismos 4 artefactos
+- [x] Tests postConfirmOperation canal Ticketing convertToReservation: mismos 4 artefactos
+- [x] Tests recalculate canal CRM (facturas vinculadas a reservas): líneas correctas con importes
+- [x] Tests recalculate canal TPV (tpv_sales): líneas correctas con importes
+- [x] Tests recalculate canal online (platform_settlements): líneas correctas con importes
+- [x] Tests módulo anulaciones: reserva cancelada no aparece en calendar/liquidaciones, transacción devolución signo negativo
+- [x] Tests emailTemplates: confirmación reserva, presupuesto, ticket TPV, canje cupón, anulación
+- [x] Tests documentNumbers mutex: no duplicados bajo concurrencia paralela
+- [x] Tests schema reservations/invoices: flujos confirmación 4 canales con datos correctos
+- [x] Ejecutar suite completa: 565 tests pasando (30 archivos)
+- [x] Checkpoint v25.40
