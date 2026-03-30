@@ -23,6 +23,7 @@ import {
   tpvSaleItems,
   legoPacks,
   packs,
+  pendingPayments,
 } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -36,6 +37,8 @@ import {
   buildConfirmationHtml,
   buildTransferConfirmationHtml,
   buildQuotePdfHtml,
+  buildPendingPaymentHtml,
+  buildPendingPaymentReminderHtml,
 } from "../emailTemplates";
 
 // DB helper — usa la misma pool que el resto del servidor
@@ -3699,5 +3702,156 @@ export const crmRouter = router({
 
       return { leads: leadsData, quotes: quotesData, reservations: reservationsData };
     }),
+  }),
+
+  // ─── PAGOS PENDIENTES ──────────────────────────────────────────────────────
+  pendingPayments: router({
+    create: staff
+      .input(z.object({
+        quoteId: z.number(),
+        reservationId: z.number().optional(),
+        clientName: z.string(),
+        clientEmail: z.string().optional(),
+        clientPhone: z.string().optional(),
+        productName: z.string(),
+        amountCents: z.number(),
+        dueDate: z.string(),
+        reason: z.string(),
+        origin: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const now = Date.now();
+        const [result] = await db.insert(pendingPayments).values({
+          quoteId: input.quoteId,
+          reservationId: input.reservationId,
+          clientName: input.clientName,
+          clientEmail: input.clientEmail,
+          clientPhone: input.clientPhone,
+          productName: input.productName,
+          amountCents: input.amountCents,
+          dueDate: input.dueDate,
+          reason: input.reason,
+          status: "pending",
+          createdBy: ctx.user.id,
+          createdAt: now,
+          updatedAt: now,
+        });
+        const ppId = (result as { insertId: number }).insertId;
+        if (input.clientEmail) {
+          const legal = await getLegalCompanySettings();
+          const dueDateFormatted = new Date(input.dueDate + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+          const html = buildPendingPaymentHtml({
+            clientName: input.clientName,
+            productName: input.productName,
+            amountFormatted: (input.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
+            dueDate: dueDateFormatted,
+            ibanInfo: legal.iban ? `Banco: Nayade Experiences\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
+            origin: input.origin ?? "",
+          });
+          await sendEmail({ to: input.clientEmail, subject: `Reserva confirmada — Pago pendiente hasta el ${dueDateFormatted}`, html });
+        }
+        await logActivity("quote", input.quoteId, "pending_payment_created", ctx.user.id, ctx.user.name, { ppId, dueDate: input.dueDate, amountCents: input.amountCents });
+        return { success: true, id: ppId };
+      }),
+
+    list: staff
+      .input(z.object({
+        status: z.enum(["pending", "paid", "cancelled", "incidentado"]).optional(),
+        search: z.string().optional(),
+        limit: z.number().default(50),
+        offset: z.number().default(0),
+      }))
+      .query(async ({ input }) => {
+        const conditions = [];
+        if (input.status) conditions.push(eq(pendingPayments.status, input.status));
+        if (input.search) {
+          conditions.push(or(
+            like(pendingPayments.clientName, `%${input.search}%`),
+            like(pendingPayments.clientEmail ?? "", `%${input.search}%`),
+            like(pendingPayments.productName ?? "", `%${input.search}%`),
+          ) as ReturnType<typeof and>);
+        }
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+        const [items, [{ total }]] = await Promise.all([
+          db.select().from(pendingPayments).where(whereClause).orderBy(desc(pendingPayments.createdAt)).limit(input.limit).offset(input.offset),
+          db.select({ total: count() }).from(pendingPayments).where(whereClause),
+        ]);
+        const [kpis] = await db.select({ totalPending: count(), totalAmountCents: sum(pendingPayments.amountCents) }).from(pendingPayments).where(eq(pendingPayments.status, "pending"));
+        return { items, total, kpis };
+      }),
+
+    confirm: staff
+      .input(z.object({
+        id: z.number(),
+        paymentMethod: z.enum(["efectivo", "transferencia", "tarjeta"]),
+        paymentNote: z.string().optional(),
+        transferProofUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, input.id));
+        if (!pp) throw new TRPCError({ code: "NOT_FOUND" });
+        if (pp.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Este pago ya no está pendiente" });
+        await db.update(pendingPayments).set({
+          status: "paid",
+          paymentMethod: input.paymentMethod,
+          paymentNote: input.paymentNote,
+          transferProofUrl: input.transferProofUrl,
+          paidAt: Date.now(),
+          updatedAt: Date.now(),
+        }).where(eq(pendingPayments.id, input.id));
+        if (pp.reservationId) {
+          await db.update(reservations).set({ status: "paid", amountPaid: pp.amountCents, updatedAt: Date.now() }).where(eq(reservations.id, pp.reservationId));
+        }
+        await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod });
+        return { success: true };
+      }),
+
+    cancel: staff
+      .input(z.object({
+        id: z.number(),
+        reason: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, input.id));
+        if (!pp) throw new TRPCError({ code: "NOT_FOUND" });
+        await db.update(pendingPayments).set({ status: "cancelled", paymentNote: input.reason, updatedAt: Date.now() }).where(eq(pendingPayments.id, input.id));
+        await logActivity("quote", pp.quoteId, "pending_payment_cancelled", ctx.user.id, ctx.user.name, { ppId: input.id });
+        return { success: true };
+      }),
+
+    resendReminder: staff
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, input.id));
+        if (!pp) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!pp.clientEmail) throw new TRPCError({ code: "BAD_REQUEST", message: "El cliente no tiene email registrado" });
+        const legal = await getLegalCompanySettings();
+        const dueDateFormatted = new Date(pp.dueDate + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
+        const html = buildPendingPaymentReminderHtml({
+          clientName: pp.clientName,
+          productName: pp.productName ?? "Actividad Nayade",
+          amountFormatted: (pp.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
+          dueDate: dueDateFormatted,
+          ibanInfo: legal.iban ? `Banco: Nayade Experiences\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
+          origin: "",
+        });
+        await sendEmail({ to: pp.clientEmail, subject: `Recordatorio urgente: pago pendiente hasta el ${dueDateFormatted}`, html });
+        await db.update(pendingPayments).set({ reminderSentAt: Date.now(), updatedAt: Date.now() }).where(eq(pendingPayments.id, input.id));
+        await logActivity("quote", pp.quoteId, "pending_payment_reminder_sent", ctx.user.id, ctx.user.name, { ppId: input.id });
+        return { success: true };
+      }),
+
+    markIncident: staff
+      .input(z.object({
+        id: z.number(),
+        note: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, input.id));
+        if (!pp) throw new TRPCError({ code: "NOT_FOUND" });
+        await db.update(pendingPayments).set({ status: "incidentado", paymentNote: input.note, updatedAt: Date.now() }).where(eq(pendingPayments.id, input.id));
+        await logActivity("quote", pp.quoteId, "pending_payment_incident", ctx.user.id, ctx.user.name, { ppId: input.id, note: input.note });
+        return { success: true };
+      }),
   }),
 });

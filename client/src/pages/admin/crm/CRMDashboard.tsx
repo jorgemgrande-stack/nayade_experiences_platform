@@ -73,7 +73,7 @@ import {
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
-type Tab = "leads" | "quotes" | "reservations" | "invoices" | "anulaciones";
+type Tab = "leads" | "quotes" | "reservations" | "invoices" | "anulaciones" | "pagos_pendientes";
 
 type OpportunityStatus = "nueva" | "enviada" | "ganada" | "perdida";
 type Priority = "baja" | "media" | "alta";
@@ -2295,6 +2295,13 @@ function QuoteDetailModal({
   const [transferFile, setTransferFile] = useState<File | null>(null);
   const [transferProofUrl, setTransferProofUrl] = useState<string | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
+  // Unified payment modal state
+  const [showConfirmPaymentModal, setShowConfirmPaymentModal] = useState(false);
+  const [paymentMethodSelected, setPaymentMethodSelected] = useState<"tarjeta" | "transferencia" | "efectivo">("tarjeta");
+  // Pending payment modal state
+  const [showPendingPaymentModal, setShowPendingPaymentModal] = useState(false);
+  const [pendingDueDate, setPendingDueDate] = useState("");
+  const [pendingReason, setPendingReason] = useState("");
 
   const sendQuote = trpc.crm.quotes.send.useMutation({
     onSuccess: () => {
@@ -2373,6 +2380,33 @@ function QuoteDetailModal({
     },
     onError: (e) => toast.error(e.message),
   });
+  const createPendingPayment = trpc.crm.pendingPayments.create.useMutation({
+    onSuccess: () => {
+      toast.success("Pago pendiente registrado · Email enviado al cliente");
+      utils.crm.quotes.get.invalidate({ id: quoteId });
+      utils.crm.quotes.counters.invalidate();
+      setShowPendingPaymentModal(false);
+      setPendingDueDate("");
+      setPendingReason("");
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const confirmPaymentWithMethod = trpc.crm.quotes.confirmPayment.useMutation({
+    onSuccess: (data) => {
+      const label = paymentMethodSelected === "transferencia" ? "transferencia" : paymentMethodSelected === "efectivo" ? "efectivo" : "tarjeta";
+      toast.success(`Pago confirmado (${label}) · Factura ${(data as { invoiceNumber?: string })?.invoiceNumber ?? ""} generada`);
+      utils.crm.quotes.get.invalidate({ id: quoteId });
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+      utils.crm.reservations.counters.invalidate();
+      setShowConfirmPaymentModal(false);
+      onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const handleTransferFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -2606,26 +2640,14 @@ function QuoteDetailModal({
 
       </div>
       <DialogFooter className="flex gap-2 flex-wrap pt-3 pb-4 px-6 border-t border-white/10 shrink-0">
-        {/* Confirmar Transferencia Bancaria */}
+        {/* Confirmar Pago — botón unificado */}
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
           <Button
             size="sm"
-            className="bg-blue-700 hover:bg-blue-800 text-white text-xs"
-            onClick={() => setShowTransferModal(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
+            onClick={() => setShowConfirmPaymentModal(true)}
           >
-            <Banknote className="w-3.5 h-3.5 mr-1" />
-            Confirmar Transferencia
-          </Button>
-        )}
-        {/* Confirmar Pago Redsys */}
-        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
-          <Button
-            size="sm"
-            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-            onClick={() => confirmPayment.mutate({ quoteId })}
-            disabled={confirmPayment.isPending}
-          >
-            {confirmPayment.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5 mr-1" />}
+            <CheckCircle className="w-3.5 h-3.5 mr-1" />
             Confirmar Pago
           </Button>
         )}
@@ -2657,17 +2679,16 @@ function QuoteDetailModal({
             Reenviar
           </Button>
         )}
-        {/* Convertir a Reserva sin pago */}
+        {/* Pago Pendiente */}
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
           <Button
             size="sm"
             variant="outline"
-            className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10 text-xs"
-            onClick={() => convertToReservation.mutate({ quoteId })}
-            disabled={convertToReservation.isPending}
+            className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs"
+            onClick={() => setShowPendingPaymentModal(true)}
           >
-            {convertToReservation.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <CalendarCheck className="w-3.5 h-3.5 mr-1" />}
-            Reserva s/pago
+            <Clock className="w-3.5 h-3.5 mr-1" />
+            Pago Pendiente
           </Button>
         )}
         {/* Descargar PDF */}
@@ -2760,6 +2781,120 @@ function QuoteDetailModal({
                 <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Confirmando...</>
               ) : (
                 <><CheckCircle className="w-4 h-4 mr-2" /> Validar pago y generar factura</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── MODAL: Confirmar Pago (método unificado) ─── */}
+      <Dialog open={showConfirmPaymentModal} onOpenChange={setShowConfirmPaymentModal}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-400" />
+              Confirmar pago
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-white/60 text-sm">Selecciona el método de pago recibido para generar la factura y confirmar la reserva.</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setPaymentMethodSelected(m)}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
+                    paymentMethodSelected === m
+                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+                      : "border-white/10 bg-white/5 text-white/50 hover:border-white/25 hover:text-white/80"
+                  }`}
+                >
+                  {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
+                  {m === "transferencia" && <Banknote className="w-5 h-5" />}
+                  {m === "efectivo" && <Receipt className="w-5 h-5" />}
+                  {m === "tarjeta" ? "Tarjeta" : m === "transferencia" ? "Transferencia" : "Efectivo"}
+                </button>
+              ))}
+            </div>
+            {paymentMethodSelected === "transferencia" && (
+              <p className="text-amber-400/80 text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+                Para adjuntar justificante bancario, usa el flujo de “Confirmar Transferencia” desde el menú de acciones del presupuesto.
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" className="text-white/60 hover:text-white" onClick={() => setShowConfirmPaymentModal(false)}>Cancelar</Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={confirmPaymentWithMethod.isPending}
+              onClick={() => confirmPaymentWithMethod.mutate({ quoteId })}
+            >
+              {confirmPaymentWithMethod.isPending ? (
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Procesando...</>
+              ) : (
+                <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y generar factura</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── MODAL: Pago Pendiente ─── */}
+      <Dialog open={showPendingPaymentModal} onOpenChange={setShowPendingPaymentModal}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Clock className="w-5 h-5 text-amber-400" />
+              Registrar pago pendiente
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-white/60 text-sm">Se creará un registro de pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
+            <div className="space-y-1.5">
+              <Label className="text-white/70 text-xs">Fecha límite de pago *</Label>
+              <Input
+                type="date"
+                value={pendingDueDate}
+                onChange={(e) => setPendingDueDate(e.target.value)}
+                className="bg-white/5 border-white/10 text-white text-sm"
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-white/70 text-xs">Motivo / nota interna (opcional)</Label>
+              <Textarea
+                value={pendingReason}
+                onChange={(e) => setPendingReason(e.target.value)}
+                placeholder="Ej: Cliente confirma pago por transferencia la próxima semana..."
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" className="text-white/60 hover:text-white" onClick={() => setShowPendingPaymentModal(false)}>Cancelar</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={!pendingDueDate || createPendingPayment.isPending}
+              onClick={() => {
+                if (!data || !pendingDueDate) return;
+                createPendingPayment.mutate({
+                  quoteId,
+                  clientName: data.lead?.name ?? data.quote.title ?? "",
+                  clientEmail: data.lead?.email ?? undefined,
+                  clientPhone: data.lead?.phone ?? undefined,
+                  productName: (data.quote.items as Array<{title?: string; description?: string}>)?.[0]?.title ?? (data.quote.items as Array<{title?: string; description?: string}>)?.[0]?.description ?? data.quote.title ?? "Experiencia",
+                  amountCents: Math.round((Number(data.quote.total) || 0) * 100),
+                  dueDate: pendingDueDate,
+                  reason: pendingReason,
+                  origin: window.location.origin,
+                });
+              }}
+            >
+              {createPendingPayment.isPending ? (
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Registrando...</>
+              ) : (
+                <><Clock className="w-4 h-4 mr-2" /> Registrar pago pendiente</>
               )}
             </Button>
           </DialogFooter>
@@ -3156,7 +3291,7 @@ export default function CRMDashboard() {
     try {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones") return t;
+      if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones" || t === "pagos_pendientes") return t;
     } catch { /* ignore */ }
     return "leads";
   };
@@ -3744,6 +3879,7 @@ export default function CRMDashboard() {
               { key: "reservations", label: "Reservas", icon: CalendarCheck, count: resCounters?.confirmadas },
               { key: "invoices", label: "Facturas", icon: Receipt, count: undefined },
               { key: "anulaciones", label: "Anulaciones", icon: AlertTriangle, count: anulCounters?.pending },
+              { key: "pagos_pendientes", label: "Pagos Pendientes", icon: Clock, count: undefined },
             ] as const).map(({ key, label, icon: Icon, count }) => (
               <button
                 key={key}
@@ -4655,6 +4791,11 @@ export default function CRMDashboard() {
               </div>
             </div>
           )}
+
+          {/* ─── TAB: Pagos Pendientes ─── */}
+          {tab === "pagos_pendientes" && (
+            <PagosPendientesTab />
+          )}
         </div>
       </div>
 
@@ -5119,5 +5260,266 @@ export default function CRMDashboard() {
         </DialogContent>
       </Dialog>
         </AdminLayout>
+  );
+}
+
+// ─── PAGOS PENDIENTES TAB ────────────────────────────────────────────────────
+function PagosPendientesTab() {
+  const utils = trpc.useUtils();
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [confirmMethod, setConfirmMethod] = useState<"transferencia" | "efectivo" | "tarjeta">("transferencia");
+  const [cancelId, setCancelId] = useState<number | null>(null);
+
+  const { data, isLoading, refetch } = trpc.crm.pendingPayments.list.useQuery({
+    status: filterStatus === "all" ? undefined : filterStatus as "pending" | "paid" | "cancelled" | "incidentado",
+    limit: 50,
+    offset: 0,
+  });
+
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  const confirmMut = trpc.crm.pendingPayments.confirm.useMutation({
+    onSuccess: () => {
+      toast.success("Pago confirmado correctamente");
+      setConfirmId(null);
+      utils.crm.pendingPayments.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const resendMut = trpc.crm.pendingPayments.resendReminder.useMutation({
+    onSuccess: () => toast.success("Email de recordatorio enviado"),
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const cancelMut = trpc.crm.pendingPayments.cancel.useMutation({
+    onSuccess: () => {
+      toast.success("Pago pendiente cancelado");
+      setCancelId(null);
+      utils.crm.pendingPayments.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, { label: string; cls: string }> = {
+      pending:   { label: "Pendiente",  cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+      overdue:   { label: "Vencido",    cls: "bg-red-500/15 text-red-400 border-red-500/30" },
+      confirmed: { label: "Confirmado", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+      cancelled: { label: "Cancelado",  cls: "bg-white/10 text-white/40 border-white/10" },
+    };
+    const s = map[status] ?? { label: status, cls: "bg-white/10 text-white/40 border-white/10" };
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium ${s.cls}`}>
+        {s.label}
+      </span>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-white font-semibold text-lg">Pagos Pendientes</h2>
+          <p className="text-white/40 text-sm">{total} registro{total !== 1 ? "s" : ""} en total</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="bg-white/5 border-white/10 text-white h-8 text-xs w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-[#0d1526] border-white/10">
+              <SelectItem value="all" className="text-white text-xs">Todos</SelectItem>
+              <SelectItem value="pending" className="text-white text-xs">Pendiente</SelectItem>
+              <SelectItem value="overdue" className="text-white text-xs">Vencido</SelectItem>
+              <SelectItem value="confirmed" className="text-white text-xs">Confirmado</SelectItem>
+              <SelectItem value="cancelled" className="text-white text-xs">Cancelado</SelectItem>
+            </SelectContent>
+          </Select>
+          <button
+            onClick={() => refetch()}
+            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="rounded-xl border border-white/8 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/8 bg-white/5">
+                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">#</th>
+                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
+                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Presupuesto</th>
+                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Importe</th>
+                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Vencimiento</th>
+                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Motivo</th>
+                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
+                <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr>
+                  <td colSpan={8} className="text-center py-12 text-white/30">
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
+                  </td>
+                </tr>
+              )}
+              {!isLoading && rows.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center py-12">
+                    <Clock className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                    <p className="text-white/30 text-sm">No hay pagos pendientes</p>
+                  </td>
+                </tr>
+              )}
+              {rows.map((row) => {
+                const dueDate = row.dueDate ? new Date(row.dueDate) : null;
+                const isOverdue = dueDate && dueDate < new Date() && row.status === "pending";
+                return (
+                  <tr
+                    key={row.id}
+                    className="border-b border-white/5 hover:bg-white/3 transition-colors"
+                  >
+                    <td className="px-4 py-3 text-white/40 text-sm font-mono">#{row.id}</td>
+                    <td className="px-4 py-3">
+                      <p className="text-white text-sm font-medium">{row.clientName}</p>
+                      {row.clientEmail && <p className="text-white/40 text-xs">{row.clientEmail}</p>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.quoteId ? (
+                        <span className="text-white/60 text-xs font-mono">PRES-{row.quoteId}</span>
+                      ) : (
+                        <span className="text-white/20 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-white font-semibold text-sm">
+                        {(row.amountCents / 100).toFixed(2)} €
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {dueDate ? (
+                        <span className={`text-xs ${isOverdue ? "text-red-400 font-semibold" : "text-white/60"}`}>
+                          {dueDate.toLocaleDateString("es-ES")}
+                          {isOverdue && " ⚠"}
+                        </span>
+                      ) : (
+                        <span className="text-white/20 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-white/50 text-xs max-w-[160px] truncate">
+                      {row.reason ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">{statusBadge(row.status)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {row.status === "pending" && (
+                          <>
+                            <button
+                              onClick={() => { setConfirmId(row.id); setConfirmMethod("transferencia"); }}
+                              title="Confirmar pago"
+                              className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 transition-colors"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => resendMut.mutate({ id: row.id })}
+                              title="Reenviar recordatorio"
+                              className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 transition-colors"
+                              disabled={resendMut.isPending}
+                            >
+                              <Mail className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setCancelId(row.id)}
+                              title="Cancelar"
+                              className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Confirm payment modal */}
+      <Dialog open={confirmId !== null} onOpenChange={(o) => !o && setConfirmId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-400" /> Confirmar pago recibido
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-white/60 text-xs mb-1.5 block">Método de pago</Label>
+              <Select value={confirmMethod} onValueChange={(v) => setConfirmMethod(v as any)}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0d1526] border-white/10">
+                  <SelectItem value="transferencia" className="text-white">🏦 Transferencia bancaria</SelectItem>
+                  <SelectItem value="tarjeta" className="text-white">💳 Tarjeta</SelectItem>
+                  <SelectItem value="efectivo" className="text-white">💵 Efectivo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-white/40">Se marcará el pago como confirmado y se actualizará la reserva asociada.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setConfirmId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => confirmId !== null && confirmMut.mutate({ id: confirmId, paymentMethod: confirmMethod })}
+              disabled={confirmMut.isPending}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {confirmMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
+              Confirmar cobro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel modal */}
+      <Dialog open={cancelId !== null} onOpenChange={(o) => !o && setCancelId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <XCircle className="w-5 h-5 text-red-400" /> Cancelar pago pendiente
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-white/60 text-sm py-2">¿Seguro que quieres cancelar este pago pendiente? El cliente no recibirá más recordatorios.</p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setCancelId(null)} className="border-white/15 text-white/60">Volver</Button>
+            <Button
+              size="sm"
+              onClick={() => cancelId !== null && cancelMut.mutate({ id: cancelId })}
+              disabled={cancelMut.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {cancelMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
+              Cancelar pago
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

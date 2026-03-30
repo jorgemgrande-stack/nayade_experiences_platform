@@ -1,0 +1,22 @@
+CREATE TABLE `pending_payments` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`quote_id` int NOT NULL,
+	`reservation_id` int,
+	`client_name` varchar(255) NOT NULL,
+	`client_email` varchar(255),
+	`client_phone` varchar(64),
+	`product_name` varchar(255),
+	`amount_cents` int NOT NULL,
+	`due_date` varchar(32) NOT NULL,
+	`reason` text NOT NULL,
+	`pp_status` enum('pending','paid','cancelled','incidentado') NOT NULL DEFAULT 'pending',
+	`payment_method` varchar(32),
+	`payment_note` text,
+	`transfer_proof_url` text,
+	`paid_at` bigint,
+	`reminder_sent_at` bigint,
+	`created_by` int,
+	`created_at` bigint NOT NULL,
+	`updated_at` bigint NOT NULL,
+	CONSTRAINT `pending_payments_id` PRIMARY KEY(`id`)
+);

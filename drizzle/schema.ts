@@ -2076,3 +2076,27 @@ export const documentNumberLogs = mysqlTable("document_number_logs", {
   context: varchar("context", { length: 128 }), // e.g. 'crm:confirmPayment', 'tpv:createSale'
 });
 export type DocumentNumberLog = typeof documentNumberLogs.$inferSelect;
+
+// ─── PENDING PAYMENTS (pagos pendientes de cobro) ────────────────────────────
+export const pendingPayments = mysqlTable("pending_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  quoteId: int("quote_id").notNull(),
+  reservationId: int("reservation_id"),
+  clientName: varchar("client_name", { length: 255 }).notNull(),
+  clientEmail: varchar("client_email", { length: 255 }),
+  clientPhone: varchar("client_phone", { length: 64 }),
+  productName: varchar("product_name", { length: 255 }),
+  amountCents: int("amount_cents").notNull(),
+  dueDate: varchar("due_date", { length: 32 }).notNull(),
+  reason: text("reason").notNull(),
+  status: mysqlEnum("pp_status", ["pending", "paid", "cancelled", "incidentado"]).default("pending").notNull(),
+  paymentMethod: varchar("payment_method", { length: 32 }),
+  paymentNote: text("payment_note"),
+  transferProofUrl: text("transfer_proof_url"),
+  paidAt: bigint("paid_at", { mode: "number" }),
+  reminderSentAt: bigint("reminder_sent_at", { mode: "number" }),
+  createdBy: int("created_by"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
+});
+export type PendingPayment = typeof pendingPayments.$inferSelect;

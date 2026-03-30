@@ -1545,3 +1545,114 @@ export function buildCouponInternalAlertHtml(d: {
     ${emailFooter()}`;
   return emailWrapper(`[Ticketing] Nuevo envío: ${d.coupons.length} cupón${d.coupons.length > 1 ? "es" : ""} — ${d.customerName}`, body);
 }
+
+// ─── PAGO PENDIENTE: Email inicial al cliente ─────────────────────────────────
+export interface PendingPaymentEmailData {
+  clientName: string;
+  productName: string;
+  amountFormatted: string;
+  dueDate: string;
+  reason?: string;
+  ibanInfo?: string;
+  origin: string;
+}
+
+export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
+  const body = `
+    <tr><td style="padding:28px 32px 8px;">
+      <h2 style="color:#1e3a6e;font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
+        Reserva confirmada — Pago pendiente
+      </h2>
+      <p style="color:#64748b;font-size:14px;margin:0;font-family:Arial,sans-serif;">
+        Hola ${d.clientName}, tu reserva está confirmada. El pago queda pendiente hasta la fecha indicada.
+      </p>
+    </td></tr>
+    <tr><td style="padding:16px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border-radius:10px;border:1px solid #bfdbfe;">
+        <tr><td style="padding:20px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Detalle de la reserva</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Actividad</td>
+              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.productName}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Importe total</td>
+              <td style="color:#1e3a6e;font-size:15px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.amountFormatted}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Fecha límite de pago</td>
+              <td style="color:#f97316;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.dueDate}</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${d.ibanInfo ? `
+    <tr><td style="padding:8px 32px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos para el pago</p>
+          <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;white-space:pre-line;">${d.ibanInfo}</p>
+        </td></tr>
+      </table>
+    </td></tr>` : ""}
+    <tr><td style="padding:8px 32px 20px;">
+      <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
+        Si tienes alguna duda, contacta con nosotros en <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a>
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Reserva confirmada — Pago pendiente hasta el ${d.dueDate}`, body);
+}
+
+// ─── PAGO PENDIENTE: Recordatorio 5 días antes ────────────────────────────────
+export function buildPendingPaymentReminderHtml(d: PendingPaymentEmailData): string {
+  const body = `
+    <tr><td style="padding:28px 32px 8px;">
+      <h2 style="color:#dc2626;font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
+        Recordatorio urgente de pago
+      </h2>
+      <p style="color:#64748b;font-size:14px;margin:0;font-family:Arial,sans-serif;">
+        Hola ${d.clientName}, quedan <strong>5 días</strong> para la fecha límite de pago de tu reserva.
+        Si no se recibe el pago antes del <strong>${d.dueDate}</strong>, la reserva podría ser cancelada.
+      </p>
+    </td></tr>
+    <tr><td style="padding:16px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff5f5;border-radius:10px;border:1px solid #fecaca;">
+        <tr><td style="padding:20px 22px;">
+          <p style="color:#dc2626;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Pago pendiente</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Actividad</td>
+              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.productName}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Importe pendiente</td>
+              <td style="color:#dc2626;font-size:15px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.amountFormatted}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Fecha límite</td>
+              <td style="color:#dc2626;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.dueDate}</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${d.ibanInfo ? `
+    <tr><td style="padding:8px 32px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos para el pago</p>
+          <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;white-space:pre-line;">${d.ibanInfo}</p>
+        </td></tr>
+      </table>
+    </td></tr>` : ""}
+    <tr><td style="padding:8px 32px 20px;">
+      <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
+        Para cualquier consulta urgente: <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a>
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Recordatorio: pago pendiente hasta el ${d.dueDate} — ${d.productName}`, body);
+}

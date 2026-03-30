@@ -225,6 +225,13 @@
       "when": 1774884675841,
       "tag": "0031_familiar_dorian_gray",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1774910717084,
+      "tag": "0032_massive_boomer",
+      "breakpoints": true
     }
   ]
 }

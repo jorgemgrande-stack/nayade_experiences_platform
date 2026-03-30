@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `pending_payments` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`quote_id` int NOT NULL,\n\t`reservation_id` int,\n\t`client_name` varchar(255) NOT NULL,\n\t`client_email` varchar(255),\n\t`client_phone` varchar(64),\n\t`product_name` varchar(255),\n\t`amount_cents` int NOT NULL,\n\t`due_date` varchar(32) NOT NULL,\n\t`reason` text NOT NULL,\n\t`pp_status` enum('pending','paid','cancelled','incidentado') NOT NULL DEFAULT 'pending',\n\t`payment_method` varchar(32),\n\t`payment_note` text,\n\t`transfer_proof_url` text,\n\t`paid_at` bigint,\n\t`reminder_sent_at` bigint,\n\t`created_by` int,\n\t`created_at` bigint NOT NULL,\n\t`updated_at` bigint NOT NULL,\n\tCONSTRAINT `pending_payments_id` PRIMARY KEY(`id`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute CREATE TABLE `pending_payments` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`quote_id` int NOT NULL,\n\t`reservation_id` int,\n\t`client_name` varchar(255) NOT NULL,\n\t`client_email` varchar(255),\n\t`client_phone` varchar(64),\n\t`product_name` varchar(255),\n\t`amount_cents` int NOT NULL,\n\t`due_date` varchar(32) NOT NULL,\n\t`reason` text NOT NULL,\n\t`pp_status` enum('pending','paid','cancelled','incidentado') NOT NULL DEFAULT 'pending',\n\t`payment_method` varchar(32),\n\t`payment_note` text,\n\t`transfer_proof_url` text,\n\t`paid_at` bigint,\n\t`reminder_sent_at` bigint,\n\t`created_by` int,\n\t`created_at` bigint NOT NULL,\n\t`updated_at` bigint NOT NULL,\n\tCONSTRAINT `pending_payments_id` PRIMARY KEY(`id`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 204
+}
