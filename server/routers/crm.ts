@@ -3080,11 +3080,141 @@ export const crmRouter = router({
           transferProofUrl: input.transferProofUrl,
           notes: input.notes,
         });
-        // ── BUG FIX (confirmManualPayment): Crear booking operativo + transacción contable ─────
+        // ── PARIDAD: Generar PDF de factura si no existe ya ──────────────────────
+        const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[]) ?? [];
+        let finalPdfUrl = invoice.pdfUrl ?? null;
+        let finalPdfKey = invoice.pdfKey ?? null;
+        if (!finalPdfUrl) {
+          try {
+            const pdf = await generateInvoicePdf({
+              invoiceNumber: invoice.invoiceNumber,
+              clientName: invoice.clientName ?? "Cliente",
+              clientEmail: invoice.clientEmail ?? undefined,
+              clientPhone: invoice.clientPhone ?? undefined,
+              itemsJson: items,
+              subtotal: invoice.subtotal ?? "0",
+              taxRate: invoice.taxRate ?? "21",
+              taxAmount: invoice.taxAmount ?? "0",
+              total: invoice.total ?? "0",
+              issuedAt: now,
+            });
+            finalPdfUrl = pdf.url;
+            finalPdfKey = pdf.key;
+            await db.update(invoices).set({ pdfUrl: finalPdfUrl, pdfKey: finalPdfKey, updatedAt: now }).where(eq(invoices.id, input.invoiceId));
+            await logActivity("invoice", invoice.id, "pdf_generated", ctx.user.id, ctx.user.name, { pdfUrl: finalPdfUrl });
+          } catch (pdfErr) {
+            console.error("[confirmManualPayment] PDF generation failed:", pdfErr);
+          }
+        }
+
+        // ── PARIDAD: Crear expediente REAV si hay líneas REAV ─────────────────────
+        const reavLines = items.filter(i => i.fiscalRegime === "reav");
+        let reavExpedientId: number | undefined;
+        let reavExpedientNumber: string | undefined;
+        if (reavLines.length > 0 && invoice.reservationId) {
+          try {
+            // Comprobar si ya existe un expediente REAV para esta reserva (evitar duplicados)
+            const [existingReav] = await db.select({ id: reavExpedients.id })
+              .from(reavExpedients)
+              .where(eq(reavExpedients.reservationId, invoice.reservationId))
+              .limit(1);
+            if (!existingReav) {
+              const reavSaleAmount = reavLines.reduce((s, i) => s + i.total, 0);
+              let reavCostePct = 60;
+              let reavMargenPct = 40;
+              const firstReavLine = reavLines[0] as any;
+              const reavProductId = firstReavLine?.productId;
+              if (reavProductId) {
+                const [reavProduct] = await db.select({
+                  providerPercent: experiences.providerPercent,
+                  agencyMarginPercent: experiences.agencyMarginPercent,
+                  fiscalRegime: experiences.fiscalRegime,
+                }).from(experiences).where(eq(experiences.id, reavProductId)).limit(1);
+                if (reavProduct && reavProduct.fiscalRegime === "reav") {
+                  const errores = validarConfiguracionREAV(reavProduct);
+                  if (errores.length === 0) {
+                    reavCostePct = parseFloat(String(reavProduct.providerPercent ?? 60));
+                    reavMargenPct = parseFloat(String(reavProduct.agencyMarginPercent ?? 40));
+                  } else {
+                    console.warn("[confirmManualPayment] Configuración REAV inválida, usando fallback 60/40:", errores);
+                  }
+                }
+              }
+              const reavCalc = calcularREAVSimple(reavSaleAmount, reavCostePct, reavMargenPct);
+              const [res] = await db.select().from(reservations).where(eq(reservations.id, invoice.reservationId));
+              const serviceDate = res?.bookingDate ?? now.toISOString().split("T")[0];
+              const reavResult = await createReavExpedient({
+                invoiceId: invoice.id,
+                reservationId: invoice.reservationId,
+                quoteId: invoice.quoteId ?? undefined,
+                serviceDescription: reavLines.map(i => i.description).join(" | "),
+                serviceDate,
+                numberOfPax: res?.people ?? 1,
+                saleAmountTotal: String(reavSaleAmount),
+                providerCostEstimated: String(reavCalc.costeProveedor),
+                agencyMarginEstimated: String(reavCalc.margenAgencia),
+                clientName: invoice.clientName ?? undefined,
+                clientEmail: invoice.clientEmail ?? undefined,
+                clientPhone: invoice.clientPhone ?? undefined,
+                channel: "crm",
+                sourceRef: invoice.invoiceNumber,
+                internalNotes: [
+                  `Expediente creado automáticamente al confirmar pago manual de la factura ${invoice.invoiceNumber}.`,
+                  invoice.clientName ? `Cliente: ${invoice.clientName}` : null,
+                  invoice.clientEmail ? `Email: ${invoice.clientEmail}` : null,
+                  invoice.clientPhone ? `Teléfono: ${invoice.clientPhone}` : null,
+                  `Importe REAV: ${reavSaleAmount.toFixed(2)}€`,
+                  `Agente: ${ctx.user.name ?? ctx.user.email}`,
+                ].filter(Boolean).join(" · "),
+              });
+              reavExpedientId = reavResult.id;
+              reavExpedientNumber = reavResult.expedientNumber;
+              // Adjuntar factura PDF al expediente
+              if (finalPdfUrl && reavExpedientId) {
+                await attachReavDocument({
+                  expedientId: reavExpedientId,
+                  side: "client",
+                  docType: "factura_emitida",
+                  title: `Factura ${invoice.invoiceNumber}`,
+                  fileUrl: finalPdfUrl,
+                  mimeType: "application/pdf",
+                  notes: `Factura generada al confirmar pago manual. Método: ${input.paymentMethod}.`,
+                  uploadedBy: ctx.user.id,
+                });
+              }
+              // Adjuntar presupuesto PDF al expediente si existe
+              const [linkedQuoteForReav] = invoice.quoteId
+                ? await db.select().from(quotes).where(eq(quotes.id, invoice.quoteId))
+                : [null];
+              if (linkedQuoteForReav && (linkedQuoteForReav as any).pdfUrl && reavExpedientId) {
+                await attachReavDocument({
+                  expedientId: reavExpedientId,
+                  side: "client",
+                  docType: "otro",
+                  title: `Presupuesto ${(linkedQuoteForReav as any).quoteNumber ?? invoice.quoteId}`,
+                  fileUrl: (linkedQuoteForReav as any).pdfUrl,
+                  mimeType: "application/pdf",
+                  notes: `Presupuesto original aceptado por el cliente.`,
+                  uploadedBy: ctx.user.id,
+                });
+              }
+              await logActivity("invoice", invoice.id, "reav_expedient_created", ctx.user.id, ctx.user.name, { expedientId: reavExpedientId, expedientNumber: reavExpedientNumber });
+            }
+          } catch (reavErr) {
+            console.error("[confirmManualPayment] Error al crear expediente REAV:", reavErr);
+          }
+        }
+
+        // ── Crear booking operativo + transacción contable ────────────────────────
         if (invoice.reservationId) {
           try {
             const [res] = await db.select().from(reservations).where(eq(reservations.id, invoice.reservationId));
             if (res) {
+              const generalSubtotalForTx = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
+              const reavSubtotalForTx = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
+              const taxAmountForTx = parseFloat((generalSubtotalForTx * 0.21).toFixed(2));
+              const fiscalRegimeForTx = reavSubtotalForTx > 0 && generalSubtotalForTx > 0 ? "mixed"
+                : reavSubtotalForTx > 0 ? "reav" : "general_21";
               await postConfirmOperation({
                 reservationId: res.id,
                 productId: res.productId,
@@ -3102,6 +3232,10 @@ export const crmRouter = router({
                 reservationRef: invoice.invoiceNumber.replace("FAC", "RES"),
                 sellerUserId: ctx.user.id,
                 sellerName: ctx.user.name ?? undefined,
+                taxBase: generalSubtotalForTx,
+                taxAmount: taxAmountForTx,
+                reavMargin: reavSubtotalForTx,
+                fiscalRegime: fiscalRegimeForTx,
                 description: `Pago manual — ${invoice.invoiceNumber} — ${res.customerName}`,
                 quoteId: invoice.quoteId ?? null,
                 sourceChannel: input.paymentMethod as "transferencia" | "efectivo" | "otro",
@@ -3109,7 +3243,7 @@ export const crmRouter = router({
             }
           } catch (e) { console.error("[confirmManualPayment] Error en postConfirmOperation:", e); }
         }
-        return { success: true };
+        return { success: true, pdfUrl: finalPdfUrl, reavExpedientId, reavExpedientNumber };
       }),
     // ─── Generar factura de abonono (rectificativa) ──────────────────────────────
     createCreditNote: staff

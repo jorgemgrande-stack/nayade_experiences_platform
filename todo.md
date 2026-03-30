@@ -2532,3 +2532,14 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir procedure getImpact para preview antes de aprobar
 - [x] 18 nuevos tests Vitest en cancellations.propagation.test.ts
 - [x] 335 tests Vitest pasando — 0 errores TypeScript
+
+## Fase 4 — confirmManualPayment: REAV y PDF (paridad de canales) v25.34
+
+- [x] Auditar confirmPayment y confirmTransfer: PDF + REAV + adjuntar documentos + postConfirmOperation
+- [x] Auditar confirmManualPayment: faltaban PDF y REAV; postConfirmOperation ya existía pero sin fiscalRegime
+- [x] Implementar generateInvoicePdf en confirmManualPayment (solo si no existe ya, evita regeneración)
+- [x] Implementar createReavExpedient en confirmManualPayment (solo si no existe ya, evita duplicados)
+- [x] Adjuntar factura PDF y presupuesto PDF al expediente REAV
+- [x] Corregir postConfirmOperation: añadir taxBase, taxAmount, reavMargin y fiscalRegime correctos
+- [x] 14 nuevos tests Vitest en confirmManualPayment.parity.test.ts
+- [x] 348 tests Vitest pasando — 0 errores TypeScript
