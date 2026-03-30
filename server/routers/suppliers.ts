@@ -21,14 +21,17 @@ import {
 import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
 import { storagePut } from "../storage";
+import { generateDocumentNumber } from "../documentNumbers";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function generateSettlementNumber(year: number, seq: number): string {
-  return `LIQ-${year}-${String(seq).padStart(4, "0")}`;
+// generateSettlementNumber reemplazada por el helper centralizado
+// Ver server/documentNumbers.ts
+async function generateSettlementNumber(userId?: string): Promise<string> {
+  return generateDocumentNumber("liquidacion", "suppliers:createSettlement", userId ?? "system");
 }
 
 async function generateSettlementPdfAndUpload(data: {
@@ -631,9 +634,7 @@ export const settlementsRouter = router({
       internalNotes: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const year = new Date().getFullYear();
-      const seq = await getNextSettlementSeq(year);
-      const settlementNumber = generateSettlementNumber(year, seq);
+      const settlementNumber = await generateSettlementNumber(String(ctx.user.id));
 
       // Calculate totals
       const grossAmount = input.lines.reduce((s, l) => s + l.saleAmount, 0);

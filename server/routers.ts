@@ -143,6 +143,8 @@ import { cancellationsRouter } from "./routers/cancellations";
 import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
 import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { operationsRouter } from "./routers/operations";
+import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
+import type { DocumentType } from "./documentNumbers";
 // Admin middlewaree
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
@@ -1634,6 +1636,48 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await reorderGalleryItems(input.orderedIds);
         return { success: true };
+      }),
+  }),
+
+  // ─── SERIES DE NUMERACIÓN ─────────────────────────────────────────────────
+  documentNumbers: router({
+    /** Obtener todos los contadores actuales */
+    getCounters: adminProcedure.query(async () => {
+      return getAllCounters();
+    }),
+
+    /** Actualizar el prefijo de una serie */
+    updatePrefix: adminProcedure
+      .input(z.object({
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]),
+        year: z.number().int().min(2020).max(2099),
+        newPrefix: z.string().min(1).max(16).regex(/^[A-Z0-9-]+$/, "Solo mayúsculas, números y guiones"),
+      }))
+      .mutation(async ({ input }) => {
+        await updateCounterPrefix(input.documentType as DocumentType, input.year, input.newPrefix);
+        return { success: true };
+      }),
+
+    /** Resetear manualmente un contador (solo para correcciones de inicio de año) */
+    resetCounter: adminProcedure
+      .input(z.object({
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]),
+        year: z.number().int().min(2020).max(2099),
+        newValue: z.number().int().min(0),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        await resetCounter(input.documentType as DocumentType, input.year, input.newValue, String(ctx.user.id));
+        return { success: true };
+      }),
+
+    /** Historial de generación de números */
+    getLogs: adminProcedure
+      .input(z.object({
+        documentType: z.enum(["presupuesto", "factura", "reserva", "tpv", "cupon", "liquidacion", "anulacion"]).optional(),
+        limit: z.number().int().min(1).max(500).default(100),
+      }))
+      .query(async ({ input }) => {
+        return getDocumentNumberLogs(input.documentType as DocumentType | undefined, input.limit);
       }),
   }),
 });

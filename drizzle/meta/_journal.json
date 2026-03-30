@@ -204,6 +204,13 @@
       "when": 1774781684543,
       "tag": "0028_add_template_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1774861068817,
+      "tag": "0029_daffy_professor_monster",
+      "breakpoints": true
     }
   ]
 }

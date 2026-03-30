@@ -27,6 +27,7 @@ import {
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
+import { generateDocumentNumber } from "../documentNumbers";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { storagePut } from "../storage";
 import {
@@ -79,38 +80,13 @@ async function logActivity(
   });
 }
 
-async function generateInvoiceNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  // Use MAX to avoid duplicate key errors when invoices have been deleted or gaps exist
-  const result = await db
-    .select({ maxNum: max(invoices.invoiceNumber) })
-    .from(invoices)
-    .where(like(invoices.invoiceNumber, `FAC-${year}-%`));
-  const maxVal = result[0]?.maxNum;
-  let n = 1;
-  if (maxVal) {
-    const parts = maxVal.split("-");
-    const lastNum = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(lastNum)) n = lastNum + 1;
-  }
-  return `FAC-${year}-${String(n).padStart(4, "0")}`;
+// generateInvoiceNumber y generateQuoteNumber reemplazadas por el helper centralizado
+// Ver server/documentNumbers.ts
+async function generateInvoiceNumber(context?: string, userId?: string): Promise<string> {
+  return generateDocumentNumber("factura", context ?? "crm:invoice", userId ?? "system");
 }
-
-async function generateQuoteNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  // Use MAX to avoid duplicate key errors when quotes have been deleted or gaps exist
-  const result = await db
-    .select({ maxNum: max(quotes.quoteNumber) })
-    .from(quotes)
-    .where(like(quotes.quoteNumber, `PRE-${year}-%`));
-  const maxVal = result[0]?.maxNum;
-  let n = 1;
-  if (maxVal) {
-    const parts = maxVal.split("-");
-    const lastNum = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(lastNum)) n = lastNum + 1;
-  }
-  return `PRE-${year}-${String(n).padStart(4, "0")}`;
+async function generateQuoteNumber(context?: string, userId?: string): Promise<string> {
+  return generateDocumentNumber("presupuesto", context ?? "crm:quote", userId ?? "system");
 }
 
 // ─── LEGAL COMPANY SETTINGS ─────────────────────────────────────────────────
@@ -666,7 +642,7 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, input.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
 
-        const quoteNumber = await generateQuoteNumber();
+        const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
         const taxAmount = (input.subtotal - input.discount) * (input.taxRate / 100);
 
         const [result] = await db.insert(quotes).values({
@@ -853,7 +829,7 @@ export const crmRouter = router({
         const total = parseFloat((subtotal + taxAmount).toFixed(2));;
 
         // 4. Crear el presupuesto en borrador
-        const quoteNumber = await generateQuoteNumber();
+        const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
         const validUntil = new Date();
         validUntil.setDate(validUntil.getDate() + 15); // válido 15 días
 
@@ -1283,7 +1259,7 @@ export const crmRouter = router({
         const [original] = await db.select().from(quotes).where(eq(quotes.id, input.id));
         if (!original) throw new TRPCError({ code: "NOT_FOUND" });
 
-        const quoteNumber = await generateQuoteNumber();
+        const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
         const [result] = await db.insert(quotes).values({
           quoteNumber,
           leadId: original.leadId,
@@ -1343,7 +1319,7 @@ export const crmRouter = router({
         const now = new Date();
 
         // Generate invoice
-         const invoiceNumber = await generateInvoiceNumber();
+         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
         const taxRate = 21;
         const subtotal = Number(quote.subtotal);
@@ -1740,7 +1716,7 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
         const now = new Date();
-        const invoiceNumber = await generateInvoiceNumber();
+        const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
         const taxRate = 21;
         const subtotal = Number(quote.subtotal);
@@ -2224,7 +2200,7 @@ export const crmRouter = router({
         }
 
         // 3. Crear el presupuesto
-        const quoteNumber = await generateQuoteNumber();
+        const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
         const taxAmount = (input.subtotal - input.discount) * (input.taxRate / 100);
 
         const [quoteResult] = await db.insert(quotes).values({
@@ -2829,7 +2805,7 @@ export const crmRouter = router({
         }
 
         const now = new Date();
-        const invoiceNumber = await generateInvoiceNumber();
+        const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const subtotal = items.reduce((s, i) => s + i.total, 0);
         const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
         const taxRate = 21;

@@ -2041,3 +2041,27 @@ export const reservationOperational = mysqlTable("reservation_operational", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type ReservationOperational = typeof reservationOperational.$inferSelect;
+
+// ─── DOCUMENT COUNTERS (sistema de numeración correlativa centralizado) ───────
+export const documentCounters = mysqlTable("document_counters", {
+  id: int("id").autoincrement().primaryKey(),
+  documentType: varchar("document_type", { length: 32 }).notNull(), // presupuesto, factura, reserva, tpv, cupon, liquidacion, anulacion
+  year: int("year").notNull(),
+  currentNumber: int("current_number").notNull().default(0),
+  prefix: varchar("prefix", { length: 16 }).notNull(), // PRES, FAC, RES, TPV, CUP, LIQ, ANU
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type DocumentCounter = typeof documentCounters.$inferSelect;
+
+// ─── DOCUMENT NUMBER LOGS (auditoría de generación de números) ────────────────
+export const documentNumberLogs = mysqlTable("document_number_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  documentType: varchar("document_type", { length: 32 }).notNull(),
+  documentNumber: varchar("document_number", { length: 64 }).notNull(),
+  year: int("year").notNull(),
+  sequence: int("sequence").notNull(),
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  generatedBy: varchar("generated_by", { length: 64 }), // userId o 'system'
+  context: varchar("context", { length: 128 }), // e.g. 'crm:confirmPayment', 'tpv:createSale'
+});
+export type DocumentNumberLog = typeof documentNumberLogs.$inferSelect;

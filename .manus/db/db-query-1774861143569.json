@@ -1,0 +1,52 @@
+{
+  "query": "SELECT document_type, year, current_number, prefix FROM document_counters ORDER BY document_type;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT document_type, year, current_number, prefix FROM document_counters ORDER BY document_type;",
+  "rows": [
+    {
+      "document_type": "anulacion",
+      "year": "2026",
+      "current_number": "0",
+      "prefix": "ANU"
+    },
+    {
+      "document_type": "cupon",
+      "year": "2026",
+      "current_number": "0",
+      "prefix": "CUP"
+    },
+    {
+      "document_type": "factura",
+      "year": "2026",
+      "current_number": "4",
+      "prefix": "FAC"
+    },
+    {
+      "document_type": "liquidacion",
+      "year": "2026",
+      "current_number": "1",
+      "prefix": "LIQ"
+    },
+    {
+      "document_type": "presupuesto",
+      "year": "2026",
+      "current_number": "1",
+      "prefix": "PRES"
+    },
+    {
+      "document_type": "reserva",
+      "year": "2026",
+      "current_number": "0",
+      "prefix": "RES"
+    },
+    {
+      "document_type": "tpv",
+      "year": "2026",
+      "current_number": "0",
+      "prefix": "TPV"
+    }
+  ],
+  "messages": [],
+  "stdout": "document_type\tyear\tcurrent_number\tprefix\nanulacion\t2026\t0\tANU\ncupon\t2026\t0\tCUP\nfactura\t2026\t4\tFAC\nliquidacion\t2026\t1\tLIQ\npresupuesto\t2026\t1\tPRES\nreserva\t2026\t0\tRES\ntpv\t2026\t0\tTPV\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

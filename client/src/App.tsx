@@ -116,6 +116,9 @@ const TpvBackoffice = lazy(() => import("./pages/admin/tpv/TpvBackoffice"));
 const EmailTemplatesManager = lazy(() => import("./pages/admin/EmailTemplatesManager"));
 const PdfTemplatesManager = lazy(() => import("./pages/admin/PdfTemplatesManager"));
 
+// Series de numeración
+const DocumentNumbersAdmin = lazy(() => import("./pages/admin/DocumentNumbersAdmin"));
+
 // Fallback de carga para páginas admin
 function AdminLoadingFallback() {
   return (
@@ -266,6 +269,7 @@ function Router() {
       {/* Users & Settings */}
       <Route path="/admin/usuarios">{() => <Suspense fallback={<AdminLoadingFallback />}><UsersManager /></Suspense>}</Route>
       <Route path="/admin/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
+      <Route path="/admin/numeracion">{() => <Suspense fallback={<AdminLoadingFallback />}><DocumentNumbersAdmin /></Suspense>}</Route>
 
       {/* 404 */}
       <Route path="/404" component={NotFound} />

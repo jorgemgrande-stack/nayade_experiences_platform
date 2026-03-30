@@ -23,24 +23,18 @@ import {
 } from "../../drizzle/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { generateDocumentNumber } from "../documentNumbers";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-
-function generateTicketNumber(): string {
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10).replace(/-/g, "");
-  const rand = Math.floor(Math.random() * 9000) + 1000;
-  return `TPV-${date}-${rand}`;
+// generateTicketNumber y generateReservationRef reemplazadas por el helper centralizado
+async function generateTicketNumber(userId?: string): Promise<string> {
+  return generateDocumentNumber("tpv", "tpv:createSale", userId ?? "system");
 }
-
-function generateReservationRef(): string {
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10).replace(/-/g, "");
-  const rand = Math.floor(Math.random() * 90000) + 10000;
-  return `TPV-RES-${date}-${rand}`;
+async function generateReservationRef(userId?: string): Promise<string> {
+  return generateDocumentNumber("reserva", "tpv:createSale", userId ?? "system");
 }
 
 function generateTransactionNumber(): string {
@@ -419,7 +413,7 @@ export const tpvRouter = router({
       const hasIva  = linesFiscal.some(l => l.fiscalRegime === "general_21");
       const fiscalSummary = hasReav && hasIva ? "mixed" : hasReav ? "reav_only" : "iva_only";
 
-      const ticketNumber = generateTicketNumber();
+      const ticketNumber = await generateTicketNumber(String((ctx as any).user?.id ?? "system"));
       const sellerName = (ctx as any).user?.name ?? null;
       const sellerUserId = (ctx as any).user?.id ?? null;
 
@@ -502,7 +496,7 @@ export const tpvRouter = router({
       const mainItem = input.items[0];
       if (mainItem) {
         try {
-          const merchantOrder = generateReservationRef();
+          const merchantOrder = await generateReservationRef(String((ctx as any).user?.id ?? "system"));
           const amountCents = Math.round(total * 100);
           // Construir resumen de todos los ítems del ticket para extrasJson
           const extrasForReservation = input.items.map(it => ({

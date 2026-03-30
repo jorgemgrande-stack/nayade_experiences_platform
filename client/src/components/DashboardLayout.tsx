@@ -26,7 +26,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Package, FileText, Calendar,
   BarChart3, Settings, Users, Image, BedDouble, Sparkles, UtensilsCrossed,
   Receipt, TrendingDown, RefreshCw, Tag, Building2, TrendingUp,
-  List, FileBarChart, Ticket, Percent, XCircle,
+  List, FileBarChart, Ticket, Percent, XCircle, Hash,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -68,6 +68,7 @@ const menuItems: FlatMenuItem[] = [
   { icon: UtensilsCrossed,  label: "Restaurantes",  path: "/admin/restaurantes" },
   { icon: Users,            label: "Usuarios",      path: "/admin/usuarios" },
   { icon: Settings,         label: "Configuración", path: "/admin/configuracion" },
+  { icon: Hash,             label: "Series Numer.",  path: "/admin/numeracion",   indent: true },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

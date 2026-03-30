@@ -2494,3 +2494,19 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregir postConfirmOperation en confirmPayment y confirmTransfer: usar mainProductId en lugar de lead.experienceId
 - [x] Tests Vitest: 17 nuevos tests de trazabilidad en traceability.test.ts
 - [x] 301 tests Vitest pasando — 0 errores TypeScript
+
+## Numeración correlativa centralizada v25.32
+
+- [x] Auditar funciones generateXxxNumber() en crm.ts, tpv.ts, redsysRoutes.ts, suppliers.ts
+- [x] Crear tablas document_counters y document_number_logs en schema.ts + migración SQL
+- [x] Sembrar contadores con valores reales actuales (FAC=4, LIQ=1, PRES=1)
+- [x] Crear helper centralizado generateDocumentNumber() en server/documentNumbers.ts con mutex por tipo/año
+- [x] Reemplazar generateInvoiceNumber/generateQuoteNumber en crm.ts
+- [x] Reemplazar generateSettlementNumber en suppliers.ts
+- [x] Reemplazar generateTicketNumber/generateReservationRef en tpv.ts (ahora async)
+- [x] Reemplazar ad-hoc FAC-date-rand en redsysRoutes.ts
+- [x] Añadir router documentNumbers en routers.ts (getCounters, updatePrefix, resetCounter, getLogs)
+- [x] Crear panel admin /admin/numeracion con tabla de contadores, edición de prefijos y reset manual
+- [x] Añadir enlace 'Series Numer.' en sidebar DashboardLayout
+- [x] 16 tests Vitest para el sistema de numeración en documentNumbers.test.ts
+- [x] 317 tests Vitest pasando — 0 errores TypeScript

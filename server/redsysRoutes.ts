@@ -17,6 +17,7 @@ import { getBookingByMerchantOrder, updateBooking, addBookingLog } from "./resta
 import { notifyOwner } from "./_core/notification";
 import { buildConfirmationHtml } from "./emailTemplates";
 import { createTransporter } from "./mailer";
+import { generateDocumentNumber } from "./documentNumbers";
 
 const redsysRouter = express.Router();
 
@@ -107,7 +108,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         if (quote && !quote.paidAt) {
           const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
           const now = new Date();
-          const invoiceNumber = `FAC-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}-${Date.now().toString(36).toUpperCase()}`;
+          const invoiceNumber = await generateDocumentNumber("factura", "redsys:ipn", "system");
           const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
           const total = Number(quote.total);
           const subtotal = Number(quote.subtotal);
