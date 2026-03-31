@@ -1,0 +1,9 @@
+{
+  "query": "\n-- Resetear contadores CRM (presupuesto, factura, reserva, anulacion)\n-- NO resetear TPV ni liquidacion ni cupon\nUPDATE document_counters SET current_number = 0 \nWHERE document_type IN ('presupuesto', 'factura', 'reserva', 'anulacion');\n\n-- Limpiar reservation_operational huérfanos (sin reserva vinculada)\nDELETE FROM reservation_operational WHERE reservation_id NOT IN (SELECT id FROM reservations);\n\n-- Limpiar transacciones que no son de TPV y quedaron huérfanas\nDELETE FROM transactions WHERE tpvSaleId IS NULL;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Resetear contadores CRM (presupuesto, factura, reserva, anulacion)\n-- NO resetear TPV ni liquidacion ni cupon\nUPDATE document_counters SET current_number = 0 \nWHERE document_type IN ('presupuesto', 'factura', 'reserva', 'anulacion');\n\n-- Limpiar reservation_operational huérfanos (sin reserva vinculada)\nDELETE FROM reservation_operational WHERE reservation_id NOT IN (SELECT id FROM reservations);\n\n-- Limpiar transacciones que no son de TPV y quedaron huérfanas\nDELETE FROM transactions WHERE tpvSaleId IS NULL;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 85
+}
