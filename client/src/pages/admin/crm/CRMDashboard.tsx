@@ -2420,6 +2420,11 @@ function QuoteDetailModal({
   // Unified payment modal state
   const [showConfirmPaymentModal, setShowConfirmPaymentModal] = useState(false);
   const [paymentMethodSelected, setPaymentMethodSelected] = useState<"tarjeta" | "transferencia" | "efectivo">("tarjeta");
+  const [viewTpvOp, setViewTpvOp] = useState("");
+  const [viewPayNote, setViewPayNote] = useState("");
+  const [viewProofUrl, setViewProofUrl] = useState<string | null>(null);
+  const [viewProofKey, setViewProofKey] = useState<string | null>(null);
+  const [isUploadingViewProof, setIsUploadingViewProof] = useState(false);
   // Pending payment modal state
   const [showPendingPaymentModal, setShowPendingPaymentModal] = useState(false);
   const [pendingDueDate, setPendingDueDate] = useState("");
@@ -2528,6 +2533,38 @@ function QuoteDetailModal({
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const uploadProofOnly = trpc.crm.quotes.uploadProofOnly.useMutation({
+    onError: (e) => toast.error(`Error al subir el justificante: ${e.message}`),
+  });
+
+  const handleViewProofFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/png", "application/pdf"];
+    if (!allowed.includes(file.type)) { toast.error("Solo se permiten archivos JPG, PNG o PDF"); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error("El archivo no puede superar 10 MB"); return; }
+    setIsUploadingViewProof(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const base64 = (ev.target?.result as string).split(",")[1];
+        const result = await uploadProofOnly.mutateAsync({
+          quoteId,
+          fileBase64: base64,
+          fileName: file.name,
+          mimeType: file.type as "image/jpeg" | "image/png" | "application/pdf",
+        });
+        setViewProofUrl(result.url);
+        setViewProofKey(result.fileKey);
+        setIsUploadingViewProof(false);
+        toast.success("Justificante subido correctamente");
+      };
+      reader.readAsDataURL(file);
+    } catch (_) {
+      setIsUploadingViewProof(false);
+    }
+  };
 
   const handleTransferFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2909,26 +2946,26 @@ function QuoteDetailModal({
         </DialogContent>
       </Dialog>
 
-      {/* ─── MODAL: Confirmar Pago (método unificado) ─── */}
-      <Dialog open={showConfirmPaymentModal} onOpenChange={setShowConfirmPaymentModal}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+      {/* ─── MODAL: Confirmar Pago (método unificado con campos específicos) ─── */}
+      <Dialog open={showConfirmPaymentModal} onOpenChange={(o) => {
+        if (!o) { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }
+      }}>
+        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-emerald-400" />
-              Confirmar pago
+              Confirmar pago recibido
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-white/60 text-sm">Selecciona el método de pago recibido para generar la factura y confirmar la reserva.</p>
+            <p className="text-white/60 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
+            {/* Selector de método */}
             <div className="grid grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setPaymentMethodSelected(m)}
+                <button key={m}
+                  onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
-                    paymentMethodSelected === m
-                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
-                      : "border-white/10 bg-white/5 text-white/50 hover:border-white/25 hover:text-white/80"
+                    paymentMethodSelected === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-white/5 text-white/50 hover:border-white/25 hover:text-white/80"
                   }`}
                 >
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
@@ -2938,18 +2975,65 @@ function QuoteDetailModal({
                 </button>
               ))}
             </div>
+            {/* Campo específico por método */}
+            {paymentMethodSelected === "tarjeta" && (
+              <div className="space-y-1.5">
+                <Label className="text-white/70 text-xs">Nº operación TPV *</Label>
+                <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder="Ej: 000123456789" className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm" />
+              </div>
+            )}
             {paymentMethodSelected === "transferencia" && (
-              <p className="text-amber-400/80 text-xs bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
-                Para adjuntar justificante bancario, usa el flujo de “Confirmar Transferencia” desde el menú de acciones del presupuesto.
-              </p>
+              <div className="space-y-2">
+                <Label className="text-white/70 text-xs">Justificante de transferencia *</Label>
+                {!viewProofUrl ? (
+                  <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
+                    isUploadingViewProof ? "border-white/20 bg-white/5" : "border-white/20 bg-white/5 hover:border-emerald-500/50 hover:bg-emerald-500/5"
+                  }`}>
+                    <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleViewProofFileChange} disabled={isUploadingViewProof} />
+                    {isUploadingViewProof ? (
+                      <><RefreshCw className="w-5 h-5 text-white/40 animate-spin" /><span className="text-xs text-white/40">Subiendo...</span></>
+                    ) : (
+                      <><Upload className="w-5 h-5 text-white/40" /><span className="text-xs text-white/50">Haz clic o arrastra el justificante (PDF, JPG, PNG)</span></>
+                    )}
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="text-xs text-emerald-300 flex-1 truncate">Justificante subido correctamente</span>
+                    <a href={viewProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
+                    <button onClick={() => { setViewProofUrl(null); setViewProofKey(null); }} className="text-white/30 hover:text-white/60 ml-1">×</button>
+                  </div>
+                )}
+              </div>
+            )}
+            {paymentMethodSelected === "efectivo" && (
+              <div className="space-y-1.5">
+                <Label className="text-white/70 text-xs">Justificación *</Label>
+                <Textarea value={viewPayNote} onChange={(e) => setViewPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 31/03/2026" className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none" rows={2} />
+              </div>
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="text-white/60 hover:text-white" onClick={() => setShowConfirmPaymentModal(false)}>Cancelar</Button>
+            <Button variant="ghost" className="text-white/60 hover:text-white" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }}>Cancelar</Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={confirmPaymentWithMethod.isPending}
-              onClick={() => confirmPaymentWithMethod.mutate({ quoteId })}
+              disabled={
+                confirmPaymentWithMethod.isPending ||
+                (paymentMethodSelected === "tarjeta" && !viewTpvOp.trim()) ||
+                (paymentMethodSelected === "transferencia" && !viewProofUrl) ||
+                (paymentMethodSelected === "efectivo" && !viewPayNote.trim())
+              }
+              onClick={() => {
+                const payMethod = paymentMethodSelected === "transferencia" ? "transferencia" : paymentMethodSelected === "efectivo" ? "efectivo" : "redsys";
+                confirmPaymentWithMethod.mutate({
+                  quoteId,
+                  paymentMethod: payMethod,
+                  tpvOperationNumber: paymentMethodSelected === "tarjeta" ? viewTpvOp : undefined,
+                  paymentNote: paymentMethodSelected === "efectivo" ? viewPayNote : undefined,
+                  transferProofUrl: paymentMethodSelected === "transferencia" ? viewProofUrl ?? undefined : undefined,
+                  transferProofKey: paymentMethodSelected === "transferencia" ? viewProofKey ?? undefined : undefined,
+                });
+              }}
             >
               {confirmPaymentWithMethod.isPending ? (
                 <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Procesando...</>
@@ -3433,6 +3517,9 @@ export default function CRMDashboard() {
   const [confirmPayMethodRow, setConfirmPayMethodRow] = useState<"tarjeta" | "transferencia" | "efectivo">("tarjeta");
   const [confirmPayTpvOp, setConfirmPayTpvOp] = useState("");
   const [confirmPayNote, setConfirmPayNote] = useState("");
+  const [confirmPayRowProofUrl, setConfirmPayRowProofUrl] = useState<string | null>(null);
+  const [confirmPayRowProofKey, setConfirmPayRowProofKey] = useState<string | null>(null);
+  const [isUploadingRowProof, setIsUploadingRowProof] = useState(false);
   const [convertReservationId, setConvertReservationId] = useState<number | null>(null);
   // Estado para el modal de pago pendiente desde fila (icono 5)
   const [rowPendingPayQuoteId, setRowPendingPayQuoteId] = useState<number | null>(null);
@@ -3589,6 +3676,38 @@ export default function CRMDashboard() {
     },
     onError: (e) => toast.error(e.message),
   });
+
+  const uploadProofOnlyRow = trpc.crm.quotes.uploadProofOnly.useMutation({
+    onError: (e) => toast.error(`Error al subir el justificante: ${e.message}`),
+  });
+
+  const handleRowProofFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/png", "application/pdf"];
+    if (!allowed.includes(file.type)) { toast.error("Solo se permiten archivos JPG, PNG o PDF"); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error("El archivo no puede superar 10 MB"); return; }
+    setIsUploadingRowProof(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const base64 = (ev.target?.result as string).split(",")[1];
+        const result = await uploadProofOnlyRow.mutateAsync({
+          quoteId: confirmPaymentId!,
+          fileBase64: base64,
+          fileName: file.name,
+          mimeType: file.type as "image/jpeg" | "image/png" | "application/pdf",
+        });
+        setConfirmPayRowProofUrl(result.url);
+        setConfirmPayRowProofKey(result.fileKey);
+        setIsUploadingRowProof(false);
+        toast.success("Justificante subido correctamente");
+      };
+      reader.readAsDataURL(file);
+    } catch (_) {
+      setIsUploadingRowProof(false);
+    }
+  };
 
   const convertReservationMutation = trpc.crm.quotes.convertToReservation.useMutation({
     onSuccess: () => {
@@ -5288,8 +5407,8 @@ export default function CRMDashboard() {
       </Dialog>
 
       {/* Confirm Payment — con paso previo por método */}
-      <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => { if (!o) { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); } }}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+      <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => { if (!o) { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); } }}>
+        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-emerald-400" /> Confirmar pago recibido
@@ -5302,11 +5421,9 @@ export default function CRMDashboard() {
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button
                   key={m}
-                  onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); }}
+                  onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
-                    confirmPayMethodRow === m
-                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
-                      : "border-white/10 bg-white/5 text-white/50 hover:border-white/25 hover:text-white/80"
+                    confirmPayMethodRow === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-white/5 text-white/50 hover:border-white/25 hover:text-white/80"
                   }`}
                 >
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
@@ -5320,40 +5437,48 @@ export default function CRMDashboard() {
             {confirmPayMethodRow === "tarjeta" && (
               <div className="space-y-1.5">
                 <Label className="text-white/70 text-xs">Nº operación TPV *</Label>
-                <Input
-                  value={confirmPayTpvOp}
-                  onChange={(e) => setConfirmPayTpvOp(e.target.value)}
-                  placeholder="Ej: 000123456789"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
-                />
+                <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder="Ej: 000123456789" className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm" />
               </div>
             )}
             {confirmPayMethodRow === "transferencia" && (
-              <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300 space-y-1">
-                <p className="font-medium">Adjuntar comprobante bancario</p>
-                <p className="text-amber-300/70">Para adjuntar el justificante de transferencia usa el botón <strong>"Confirmar Transferencia"</strong> desde el modal de detalle del presupuesto, que permite subir el archivo PDF/imagen.</p>
+              <div className="space-y-2">
+                <Label className="text-white/70 text-xs">Justificante de transferencia *</Label>
+                {!confirmPayRowProofUrl ? (
+                  <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
+                    isUploadingRowProof ? "border-white/20 bg-white/5" : "border-white/20 bg-white/5 hover:border-emerald-500/50 hover:bg-emerald-500/5"
+                  }`}>
+                    <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleRowProofFileChange} disabled={isUploadingRowProof} />
+                    {isUploadingRowProof ? (
+                      <><RefreshCw className="w-5 h-5 text-white/40 animate-spin" /><span className="text-xs text-white/40">Subiendo...</span></>
+                    ) : (
+                      <><Upload className="w-5 h-5 text-white/40" /><span className="text-xs text-white/50">Haz clic o arrastra el justificante (PDF, JPG, PNG)</span></>
+                    )}
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="text-xs text-emerald-300 flex-1 truncate">Justificante subido correctamente</span>
+                    <a href={confirmPayRowProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
+                    <button onClick={() => { setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="text-white/30 hover:text-white/60 ml-1">×</button>
+                  </div>
+                )}
               </div>
             )}
             {confirmPayMethodRow === "efectivo" && (
               <div className="space-y-1.5">
                 <Label className="text-white/70 text-xs">Justificación *</Label>
-                <Textarea
-                  value={confirmPayNote}
-                  onChange={(e) => setConfirmPayNote(e.target.value)}
-                  placeholder="Ej: Cobrado en recepción el 31/03/2026"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none"
-                  rows={2}
-                />
+                <Textarea value={confirmPayNote} onChange={(e) => setConfirmPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 31/03/2026" className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); }} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="border-white/15 text-white/60">Cancelar</Button>
             <Button
               size="sm"
               disabled={
                 confirmPaymentMutation.isPending ||
                 (confirmPayMethodRow === "tarjeta" && !confirmPayTpvOp.trim()) ||
+                (confirmPayMethodRow === "transferencia" && !confirmPayRowProofUrl) ||
                 (confirmPayMethodRow === "efectivo" && !confirmPayNote.trim())
               }
               onClick={() => {
@@ -5364,6 +5489,8 @@ export default function CRMDashboard() {
                   paymentMethod: payMethod,
                   tpvOperationNumber: confirmPayMethodRow === "tarjeta" ? confirmPayTpvOp : undefined,
                   paymentNote: confirmPayMethodRow === "efectivo" ? confirmPayNote : undefined,
+                  transferProofUrl: confirmPayMethodRow === "transferencia" ? confirmPayRowProofUrl ?? undefined : undefined,
+                  transferProofKey: confirmPayMethodRow === "transferencia" ? confirmPayRowProofKey ?? undefined : undefined,
                 });
               }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"

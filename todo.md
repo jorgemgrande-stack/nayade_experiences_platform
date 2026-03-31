@@ -2674,3 +2674,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Aplicar el mismo paso previo al 4º icono de fila (confirmar pago recibido)
 - [x] Unificar 5º icono de fila con el flujo del botón Pago Pendiente (fecha límite + nota + genera pendingPayment + reserva + factura)
 - [x] Tests de regresión (565 tests pasando)
+
+## Corrección modal Confirmar Pago — Transferencia con subida de justificante (v25.51)
+- [ ] Eliminar mensaje de redirección en Transferencia — subir justificante directamente en el modal
+- [ ] Subida de archivo PDF/imagen a S3 en el modal Confirmar Pago (Transferencia)
+- [ ] Justificante disponible en documentos asociados a la reserva
+- [ ] Unificar el flujo del botón "Confirmar Pago" del QuoteViewModal (icono ojo) con el mismo modal de 3 variantes
+- [ ] Tests de regresión (565+ tests pasando)

@@ -1298,6 +1298,8 @@ export const crmRouter = router({
           paymentMethod: z.enum(["redsys", "transferencia", "efectivo", "otro"]).optional(),
           tpvOperationNumber: z.string().optional(), // Nº operación TPV (tarjeta)
           paymentNote: z.string().optional(),        // Justificación (efectivo) o nota interna
+          transferProofUrl: z.string().optional(),   // URL S3 del justificante de transferencia
+          transferProofKey: z.string().optional(),   // Key S3 del justificante de transferencia
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1385,10 +1387,13 @@ export const crmRouter = router({
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
           merchantOrder: reservationRef.substring(0, 12),
+          paymentMethod: input.paymentMethod ?? "efectivo",
+          transferProofUrl: input.transferProofUrl ?? null,
           notes: [
             `Generado desde presupuesto ${quote.quoteNumber}`,
             input.tpvOperationNumber ? `Nº operación TPV: ${input.tpvOperationNumber}` : null,
             input.paymentNote ? `Nota: ${input.paymentNote}` : null,
+            input.transferProofUrl ? `Justificante transferencia adjunto` : null,
           ].filter(Boolean).join(" — "),
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -1689,6 +1694,24 @@ export const crmRouter = router({
           transferProofKey: fileKey,
           updatedAt: new Date(),
         } as Record<string, unknown>).where(eq(quotes.id, input.quoteId));
+        return { url, fileKey };
+      }),
+
+    // Subir justificante de transferencia sin modificar el presupuesto (para el modal Confirmar Pago)
+    uploadProofOnly: staff
+      .input(
+        z.object({
+          quoteId: z.number(),
+          fileBase64: z.string(),
+          fileName: z.string(),
+          mimeType: z.enum(["image/jpeg", "image/png", "application/pdf"]),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const buffer = Buffer.from(input.fileBase64, "base64");
+        const ext = input.mimeType === "application/pdf" ? "pdf" : input.mimeType === "image/png" ? "png" : "jpg";
+        const fileKey = `transfer-proofs/pay-${input.quoteId}-${Date.now()}.${ext}`;
+        const { url } = await storagePut(fileKey, buffer, input.mimeType);
         return { url, fileKey };
       }),
 
