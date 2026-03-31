@@ -2654,3 +2654,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Frontend: botón Anular reserva (usa sistema de anulaciones existente)
 - [x] Trazabilidad: cada cambio de estado/fecha registrado en changes_log y crm_activity_log
 - [x] Tests de regresión actualizados (565 tests pasando)
+
+## Sincronización automática Presupuesto cobrado → Reserva CONFIRMADA+PAGADO (v25.48)
+- [x] Auditar todos los puntos de cobro de presupuesto en el backend (confirmPayment, confirmTransfer, IPN Redsys, TPV, pendingPayments.confirm)
+- [x] Añadir sincronización automática: al cobrar presupuesto → reserva vinculada pasa a status_reservation=CONFIRMADA + status_payment=PAGADO
+- [x] Aplicar de forma global sin romper otros flujos (REAV, facturación, anulaciones)
+- [x] Tests de regresión actualizados (565 tests pasando)

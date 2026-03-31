@@ -1375,6 +1375,8 @@ export const crmRouter = router({
           amountTotal: Math.round(total * 100),
           amountPaid: Math.round((input.paidAmount ?? total) * 100),
           status: "paid",
+          statusReservation: "CONFIRMADA",
+          statusPayment: "PAGADO",
           customerName: lead.name,
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
@@ -1770,6 +1772,8 @@ export const crmRouter = router({
           amountTotal: Math.round(total * 100),
           amountPaid: Math.round((input.paidAmount ?? total) * 100),
           status: "paid",
+          statusReservation: "CONFIRMADA",
+          statusPayment: "PAGADO",
           customerName: lead.name,
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
@@ -3964,7 +3968,14 @@ export const crmRouter = router({
           updatedAt: Date.now(),
         }).where(eq(pendingPayments.id, input.id));
         if (pp.reservationId) {
-          await db.update(reservations).set({ status: "paid", amountPaid: pp.amountCents, updatedAt: Date.now() }).where(eq(reservations.id, pp.reservationId));
+          await db.update(reservations).set({
+            status: "paid",
+            amountPaid: pp.amountCents,
+            statusReservation: "CONFIRMADA",
+            statusPayment: "PAGADO",
+            paidAt: Date.now(),
+            updatedAt: Date.now(),
+          }).where(eq(reservations.id, pp.reservationId));
         }
         await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod });
         return { success: true };

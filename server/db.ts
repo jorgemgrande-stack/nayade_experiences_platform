@@ -880,7 +880,11 @@ export async function updateReservationPayment(
     redsysDsResponse,
     amountPaid: amountPaid ?? 0,
     updatedAt: now,
-    ...(status === "paid" ? { paidAt: now } : {}),
+    ...(status === "paid" ? {
+      paidAt: now,
+      statusReservation: "CONFIRMADA",
+      statusPayment: "PAGADO",
+    } : {}),
   }).where(eq(reservations.merchantOrder, merchantOrder));
   return { success: true };
 }

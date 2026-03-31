@@ -1,0 +1,22 @@
+{
+  "query": "SELECT status, status_reservation, status_payment, COUNT(*) as cnt FROM reservations GROUP BY status, status_reservation, status_payment ORDER BY status;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT status, status_reservation, status_payment, COUNT(*) as cnt FROM reservations GROUP BY status, status_reservation, status_payment ORDER BY status;",
+  "rows": [
+    {
+      "status": "pending_payment",
+      "status_reservation": "PENDIENTE_CONFIRMACION",
+      "status_payment": "PENDIENTE",
+      "cnt": "4"
+    },
+    {
+      "status": "paid",
+      "status_reservation": "CONFIRMADA",
+      "status_payment": "PAGADO",
+      "cnt": "6"
+    }
+  ],
+  "messages": [],
+  "stdout": "status\tstatus_reservation\tstatus_payment\tcnt\npending_payment\tPENDIENTE_CONFIRMACION\tPENDIENTE\t4\npaid\tCONFIRMADA\tPAGADO\t6\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}
