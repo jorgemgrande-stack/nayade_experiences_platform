@@ -2698,3 +2698,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Bug: Error lego_packs category='dia' en página principal — investigado: ocurre en servidor de producción por estado de BD diferente; query funciona correctamente en dev
 - [x] Actividades del Día: añadir campo hora de llegada (arrival_time) editable
 - [x] Actividades del Día: añadir campo notas (op_notes) editable
+
+## Bugs v25.55
+
+- [x] Bug: Etiqueta "Sin confirmar" aparece en actividades que ya tienen monitor asignado — RESUELTO: no era duplicidad sino lógica de visualización; ahora se oculta cuando op_status es confirmado/en_curso/completado
+- [x] Fix: Ocultar etiqueta "Sin confirmar" cuando op_status es confirmado/en_curso/completado
