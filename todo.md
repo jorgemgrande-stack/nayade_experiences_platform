@@ -2676,8 +2676,18 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Tests de regresión (565 tests pasando)
 
 ## Corrección modal Confirmar Pago — Transferencia con subida de justificante (v25.51)
-- [ ] Eliminar mensaje de redirección en Transferencia — subir justificante directamente en el modal
-- [ ] Subida de archivo PDF/imagen a S3 en el modal Confirmar Pago (Transferencia)
-- [ ] Justificante disponible en documentos asociados a la reserva
-- [ ] Unificar el flujo del botón "Confirmar Pago" del QuoteViewModal (icono ojo) con el mismo modal de 3 variantes
-- [ ] Tests de regresión (565+ tests pasando)
+- [x] Eliminar mensaje de redirección en Transferencia — subir justificante directamente en el modal
+- [x] Subida de archivo PDF/imagen a S3 en el modal Confirmar Pago (Transferencia)
+- [x] Justificante disponible en documentos asociados a la reserva
+- [x] Unificar el flujo del botón "Confirmar Pago" del QuoteViewModal (icono ojo) con el mismo modal de 3 variantes
+- [x] Tests de regresión (565 tests pasando)
+
+## Módulo Operaciones — Reestructuración (v25.52)
+- [x] Calendario: reescribir como vista mensual con celdas por día que muestren actividades del CRM
+- [x] Calendario: clic en día abre panel de detalle con KPIs, lista de actividades y botón a Actividades del Día
+- [x] Calendario: badge de alerta en días con actividades sin monitor asignado
+- [x] Actividades del día: añadir campo hora de llegada del cliente (arrival_time)
+- [x] Actividades del día: añadir campo notas de la actividad (op_notes)
+- [x] Actividades del día: mostrar arrival_time y op_notes en las tarjetas del listado
+- [x] Eliminar Órdenes del Día del sidebar y las rutas de App.tsx
+- [x] Tests de regresión (565 tests pasando)

@@ -64,7 +64,6 @@ const LegoPacksManager = lazy(() => import("./pages/admin/products/LegoPacksMana
 // Operations
 const CalendarView = lazy(() => import("./pages/admin/operations/CalendarView"));
 const BookingsList = lazy(() => import("./pages/admin/operations/BookingsList"));
-const DailyOrders = lazy(() => import("./pages/admin/operations/DailyOrders"));
 const DailyActivities = lazy(() => import("./pages/admin/operations/DailyActivities"));
 const MonitorsManager = lazy(() => import("./pages/admin/operations/MonitorsManager"));
 
@@ -209,7 +208,6 @@ function Router() {
       <Route path="/admin/operaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><CalendarView /></Suspense>}</Route>
       <Route path="/admin/operaciones/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><CalendarView /></Suspense>}</Route>
       <Route path="/admin/operaciones/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><BookingsList /></Suspense>}</Route>
-      <Route path="/admin/operaciones/ordenes">{() => <Suspense fallback={<AdminLoadingFallback />}><DailyOrders /></Suspense>}</Route>
       <Route path="/admin/operaciones/actividades">{() => <Suspense fallback={<AdminLoadingFallback />}><DailyActivities /></Suspense>}</Route>
       <Route path="/admin/operaciones/monitores">{() => <Suspense fallback={<AdminLoadingFallback />}><MonitorsManager /></Suspense>}</Route>
       <Route path="/admin/operaciones/reservas-redsys">{() => { window.location.replace("/admin/crm?tab=reservations"); return null; }}</Route>

@@ -70,7 +70,6 @@ const navItems = [
     children: [
       { label: "Calendario", href: "/admin/operaciones/calendario" },
       { label: "Actividades del Día", href: "/admin/operaciones/actividades" },
-      { label: "Órdenes del Día", href: "/admin/operaciones/ordenes" },
       { label: "Monitores", href: "/admin/operaciones/monitores" },
       { label: "Reseñas", href: "/admin/operaciones/resenas" },
     ],

@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import {
   Waves, User, Users, Phone, Clock, AlertTriangle, CheckCircle2,
   Calendar, ChevronLeft, ChevronRight, RefreshCw, UserCheck, CalendarDays,
+  StickyNote, ArrowDownToLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 function addDays(d: Date, n: number) {
@@ -32,7 +34,6 @@ function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
 }
 
-// STATUS_LABELS cubre tanto el opStatus (reservation_operational) como el status de la reserva (paid, confirmed, etc.)
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pendiente:  { label: "Pendiente",   color: "bg-amber-500/20 text-amber-300 border-amber-500" },
   confirmado: { label: "Confirmada",  color: "bg-blue-500/20 text-blue-300 border-blue-500" },
@@ -46,11 +47,22 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function DailyActivities() {
-  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [currentDate, setCurrentDate] = useState(() => {
+    // Support navigation from CalendarView via sessionStorage
+    const stored = sessionStorage.getItem("activitiesDate");
+    if (stored) {
+      sessionStorage.removeItem("activitiesDate");
+      const [y, m, d] = stored.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    }
+    return new Date();
+  });
+
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string>("");
-
+  const [arrivalTime, setArrivalTime] = useState<string>("");
+  const [opNotes, setOpNotes] = useState<string>("");
 
   const dateStr = formatDate(currentDate);
 
@@ -66,12 +78,20 @@ export default function DailyActivities() {
 
   const assignMonitorMutation = trpc.operations.activities.assignMonitor.useMutation({
     onSuccess: () => {
-      toast.success("Monitor asignado correctamente");
+      toast.success("Actividad actualizada correctamente");
       setShowAssignModal(false);
       setSelectedActivity(null);
       refetch();
     },
-    onError: () => toast.error("Error al asignar monitor"),
+    onError: () => toast.error("Error al actualizar la actividad"),
+  });
+
+  // Also use dailyOrders.updateOperational to save arrivalTime and opNotes
+  const updateOperationalMutation = trpc.operations.dailyOrders.updateOperational.useMutation({
+    onSuccess: () => {
+      // Silently succeed — assignMonitor handles the toast
+    },
+    onError: () => toast.error("Error al guardar hora/notas"),
   });
 
   const activities = (data as any[]) || [];
@@ -84,7 +104,29 @@ export default function DailyActivities() {
   function openAssign(act: any) {
     setSelectedActivity(act);
     setSelectedMonitorId(act.monitorId ? String(act.monitorId) : "");
+    setArrivalTime(act.arrivalTime || "");
+    setOpNotes(act.opNotes || "");
     setShowAssignModal(true);
+  }
+
+  async function handleSave() {
+    if (!selectedActivity) return;
+
+    // 1. Assign monitor (existing procedure)
+    assignMonitorMutation.mutate({
+      reservationId: selectedActivity.id,
+      monitorId: selectedMonitorId ? parseInt(selectedMonitorId) : null,
+    });
+
+    // 2. Save arrivalTime and opNotes via updateOperational
+    if (arrivalTime !== (selectedActivity.arrivalTime || "") || opNotes !== (selectedActivity.opNotes || "")) {
+      updateOperationalMutation.mutate({
+        reservationId: selectedActivity.id,
+        reservationType: "activity",
+        arrivalTime: arrivalTime || undefined,
+        opNotes: opNotes || undefined,
+      });
+    }
   }
 
   return (
@@ -98,7 +140,7 @@ export default function DailyActivities() {
               Actividades del Día
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              Gestión operativa de actividades y asignación de monitores
+              Gestión operativa · asignación de monitores · hora de llegada
             </p>
           </div>
           <Button
@@ -137,7 +179,6 @@ export default function DailyActivities() {
           >
             <ChevronRight className="w-4 h-4" />
           </Button>
-          {/* Date Picker nativo */}
           <div className="flex items-center gap-2 border border-slate-700 rounded-md px-3 h-8 bg-transparent hover:bg-slate-800 transition-colors">
             <CalendarDays className="w-4 h-4 text-blue-400 shrink-0" />
             <input
@@ -269,6 +310,21 @@ export default function DailyActivities() {
                             </span>
                           )}
                         </div>
+                        {/* Arrival time + notes badges */}
+                        <div className="flex items-center gap-3 mt-2 flex-wrap">
+                          {act.arrivalTime && (
+                            <span className="flex items-center gap-1 text-xs text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 rounded px-2 py-0.5">
+                              <ArrowDownToLine className="w-3 h-3" />
+                              Llegada: {act.arrivalTime}
+                            </span>
+                          )}
+                          {act.opNotes && (
+                            <span className="flex items-center gap-1 text-xs text-slate-400 bg-slate-700/50 border border-slate-600 rounded px-2 py-0.5 max-w-xs truncate">
+                              <StickyNote className="w-3 h-3 shrink-0" />
+                              {act.opNotes}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -301,7 +357,7 @@ export default function DailyActivities() {
                         onClick={() => openAssign(act)}
                         className="mt-2 border-slate-600 text-slate-300 hover:bg-slate-700 text-xs"
                       >
-                        {act.monitorName ? "Cambiar monitor" : "Asignar monitor"}
+                        {act.monitorName ? "Editar actividad" : "Asignar monitor"}
                       </Button>
                     </div>
                   </div>
@@ -312,14 +368,15 @@ export default function DailyActivities() {
         )}
       </div>
 
-      {/* Assign Monitor Modal */}
+      {/* Assign / Edit Modal */}
       <Dialog open={showAssignModal} onOpenChange={setShowAssignModal}>
         <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Asignar Monitor</DialogTitle>
+            <DialogTitle className="text-white">Editar actividad</DialogTitle>
           </DialogHeader>
           {selectedActivity && (
             <div className="space-y-4 mt-2">
+              {/* Activity summary */}
               <div className="bg-slate-800 rounded-lg p-3">
                 <p className="font-semibold text-white">{selectedActivity.activityTitle}</p>
                 <p className="text-slate-400 text-sm mt-1">
@@ -327,13 +384,16 @@ export default function DailyActivities() {
                   {selectedActivity.clientName} · {selectedActivity.numberOfPersons} pax
                 </p>
               </div>
+
+              {/* Monitor selector */}
               <div>
-                <label className="text-sm text-slate-400 mb-2 block">Seleccionar monitor</label>
+                <label className="text-sm text-slate-400 mb-2 block">Monitor asignado</label>
                 <Select value={selectedMonitorId} onValueChange={setSelectedMonitorId}>
                   <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
                     <SelectValue placeholder="Seleccionar monitor..." />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-800 border-slate-700">
+                    <SelectItem value="none" className="text-slate-400">Sin monitor</SelectItem>
                     {monitors.map((m: any) => (
                       <SelectItem key={m.id} value={String(m.id)} className="text-white">
                         {m.fullName}
@@ -345,6 +405,37 @@ export default function DailyActivities() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Arrival time */}
+              <div>
+                <label className="text-sm text-slate-400 mb-2 block flex items-center gap-1">
+                  <ArrowDownToLine className="w-3.5 h-3.5 text-cyan-400" />
+                  Hora de llegada del cliente
+                </label>
+                <Input
+                  type="time"
+                  value={arrivalTime}
+                  onChange={(e) => setArrivalTime(e.target.value)}
+                  className="bg-slate-800 border-slate-600 text-white [color-scheme:dark]"
+                  placeholder="HH:MM"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-sm text-slate-400 mb-2 block flex items-center gap-1">
+                  <StickyNote className="w-3.5 h-3.5 text-amber-400" />
+                  Notas de la actividad
+                </label>
+                <Textarea
+                  value={opNotes}
+                  onChange={(e) => setOpNotes(e.target.value)}
+                  placeholder="Notas internas para el equipo operativo..."
+                  className="bg-slate-800 border-slate-600 text-white resize-none"
+                  rows={3}
+                />
+              </div>
+
               <div className="flex gap-2 justify-end">
                 <Button
                   variant="outline"
@@ -354,16 +445,11 @@ export default function DailyActivities() {
                   Cancelar
                 </Button>
                 <Button
-                  disabled={!selectedMonitorId || assignMonitorMutation.isPending}
-                  onClick={() =>
-                    assignMonitorMutation.mutate({
-                      reservationId: selectedActivity.id,
-                      monitorId: parseInt(selectedMonitorId),
-                    })
-                  }
+                  disabled={assignMonitorMutation.isPending || updateOperationalMutation.isPending}
+                  onClick={handleSave}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
-                  {assignMonitorMutation.isPending ? "Guardando..." : "Asignar"}
+                  {assignMonitorMutation.isPending ? "Guardando..." : "Guardar"}
                 </Button>
               </div>
             </div>
