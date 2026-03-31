@@ -1354,6 +1354,7 @@ export const tpvSales = mysqlTable("tpv_sales", {
   total: decimal("total", { precision: 10, scale: 2 }).notNull().default("0"),
   status: mysqlEnum("status_ts", ["pending", "paid", "cancelled", "refunded"]).default("pending").notNull(),
   notes: text("notes"),
+  serviceDate: varchar("serviceDate", { length: 10 }), // YYYY-MM-DD fecha de la actividad
   createdAt: bigint("createdAt", { mode: "number" }).notNull().$defaultFn(() => Date.now()),
   paidAt: bigint("paidAt", { mode: "number" }),
   // Fiscalidad

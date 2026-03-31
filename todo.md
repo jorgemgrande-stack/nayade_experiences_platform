@@ -2714,3 +2714,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 
 - [x] Bug: pendingPayments.confirm no llama a postConfirmOperation — CORREGIDO: ahora llama a postConfirmOperation tras actualizar la reserva, registrando transacción contable + booking operativo
 - [x] Fix BD: transacción contable faltante de PRES-2026-0017 insertada manualmente (TX-PP-...-PRES0017, 90€, Natalia, reserva 630003)
+
+## Features v25.59
+
+- [x] TPV: añadir campo "fecha de actividad" (serviceDate) al crear un pedido — en modal de checkout, backend createSale y listado de ventas

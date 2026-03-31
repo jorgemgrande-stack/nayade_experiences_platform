@@ -346,6 +346,7 @@ export const tpvRouter = router({
         discountReason: z.string().optional(),
         discountCodeId: z.number().optional(),
         notes: z.string().optional(),
+        serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // YYYY-MM-DD fecha de la actividad
         items: z.array(
           z.object({
             productType: z.enum(["experience", "pack", "spa", "hotel", "restaurant", "extra", "legoPack"]),
@@ -418,6 +419,7 @@ export const tpvRouter = router({
       const sellerUserId = (ctx as any).user?.id ?? null;
 
       // ── 3. Insertar venta con datos fiscales ─────────────────────────────────
+      const mainItemForDate = input.items[0]; // usado para serviceDate fallback
       const [saleResult] = await db.insert(tpvSales).values({
         ticketNumber,
         sessionId: input.sessionId,
@@ -431,6 +433,7 @@ export const tpvRouter = router({
         total: String(total.toFixed(2)),
         status: "paid",
         notes: input.notes,
+        serviceDate: input.serviceDate ?? mainItemForDate?.eventDate ?? new Date().toISOString().slice(0, 10),
         createdAt: Date.now(),
         paidAt: Date.now(),
         taxBase:        String(totalTaxBase.toFixed(2)),
@@ -493,7 +496,7 @@ export const tpvRouter = router({
 
       // ── 6. Generar reserva automática siempre que haya producto principal ────
       let reservationId: number | null = null;
-      const mainItem = input.items[0];
+      const mainItem = mainItemForDate;
       if (mainItem) {
         try {
           const merchantOrder = await generateReservationRef(String((ctx as any).user?.id ?? "system"));

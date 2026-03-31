@@ -213,6 +213,11 @@ export default function TpvBackoffice() {
                                   {sale.customerName}
                                 </>
                               )}
+                              {sale.serviceDate && (
+                                <span className="ml-1 text-violet-300 font-medium">
+                                  📅 {sale.serviceDate}
+                                </span>
+                              )}
                             </div>
                             <div className="flex gap-1 mt-1">
                               {sale.payments?.map((p: any, i: number) => (

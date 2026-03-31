@@ -122,6 +122,7 @@ export default function TpvScreen() {
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [showDiscountForm, setShowDiscountForm] = useState(false);
   const [editingItem, setEditingItem] = useState<string | null>(null);
+  const [serviceDate, setServiceDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
   // Check active session
   const { data: activeSession, refetch: refetchSession } = trpc.tpv.getActiveSession.useQuery(
@@ -268,6 +269,7 @@ export default function TpvScreen() {
       customerName: customerName || undefined,
       customerEmail: customerEmail || undefined,
       customerPhone: customerPhone || undefined,
+      serviceDate,
       discountAmount: discountAmount + promoDiscount,
       discountReason: promoCodeData ? `Código ${promoCodeData.code} (-${promoCodeData.discountPercent}%)${discountReason ? ` + ${discountReason}` : ""}` : discountReason || undefined,
       discountCodeId: promoCodeData?.id ?? undefined,
@@ -662,6 +664,19 @@ export default function TpvScreen() {
               </div>
             )}
           </ScrollArea>
+
+          {/* Fecha de actividad */}
+          <div className="px-4 py-2 border-t border-gray-800">
+            <label className="text-xs text-gray-400 block mb-1 flex items-center gap-1">
+              <span>📅</span> Fecha de actividad
+            </label>
+            <input
+              type="date"
+              value={serviceDate}
+              onChange={(e) => setServiceDate(e.target.value)}
+              className="w-full h-8 text-xs bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-violet-500"
+            />
+          </div>
 
           {/* Totals — siempre visible */}
           <div className="px-4 py-3 border-t border-gray-800 space-y-1">
