@@ -2703,3 +2703,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 
 - [x] Bug: Etiqueta "Sin confirmar" aparece en actividades que ya tienen monitor asignado — RESUELTO: no era duplicidad sino lógica de visualización; ahora se oculta cuando op_status es confirmado/en_curso/completado
 - [x] Fix: Ocultar etiqueta "Sin confirmar" cuando op_status es confirmado/en_curso/completado
+
+## Bugs v25.56
+
+- [x] Bug: Al convertir presupuesto a reserva con "pago pendiente", la reserva queda en "pend.conf" — CORREGIDO: convertToReservation ahora crea statusReservation="CONFIRMADA" siempre
+- [x] Bug: Al confirmar cobro de pago pendiente, la reserva no se actualizaba — CORREGIDO: pendingPayments.create ahora crea reserva CONFIRMADA automáticamente si no existe, vinculándola al pago pendiente
+- [x] Fix BD: PRES-2026-0017 reserva 630003 corregida a CONFIRMADA/PAGADO y vinculada al pago pendiente 30001

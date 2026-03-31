@@ -1624,7 +1624,7 @@ export const crmRouter = router({
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const total = Number(quote.total);
 
-        // Crear reserva con estado pending_payment (no pagada)
+        // Crear reserva CONFIRMADA: el admin siempre confirma al convertir, independientemente del pago
         const [resResult] = await db.insert(reservations).values({
           productId: 0,
           productName: quote.title,
@@ -1632,11 +1632,16 @@ export const crmRouter = router({
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
           amountPaid: 0,
-          status: "pending_payment",
+          status: "pending_payment",         // pago pendiente
+          statusReservation: "CONFIRMADA",    // reserva SIEMPRE confirmada por el admin
+          statusPayment: "PENDIENTE",          // pago pendiente hasta que se cobre
           customerName: lead.name,
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
           merchantOrder: reservationRef.substring(0, 12),
+          channel: "ONLINE_ASISTIDO",
+          quoteId: input.quoteId,
+          quoteSource: "presupuesto",
           notes: input.notes ?? `Convertido manualmente desde presupuesto ${quote.quoteNumber}`,
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -3921,9 +3926,39 @@ export const crmRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const now = Date.now();
+
+        // Si no se pasa reservationId, crear la reserva automáticamente como CONFIRMADA
+        let resolvedReservationId = input.reservationId;
+        if (!resolvedReservationId) {
+          const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
+          const reservationRef = `PP-${Date.now().toString(36).toUpperCase()}`;
+          const [resResult] = await db.insert(reservations).values({
+            productId: 0,
+            productName: input.productName,
+            bookingDate: new Date().toISOString().split("T")[0],
+            people: 1,
+            amountTotal: input.amountCents,
+            amountPaid: 0,
+            status: "pending_payment",
+            statusReservation: "CONFIRMADA",
+            statusPayment: "PENDIENTE",
+            customerName: input.clientName,
+            customerEmail: input.clientEmail,
+            customerPhone: input.clientPhone,
+            merchantOrder: reservationRef.substring(0, 12),
+            channel: "ONLINE_ASISTIDO",
+            quoteId: input.quoteId,
+            quoteSource: "presupuesto",
+            notes: `Pago pendiente desde presupuesto ${quote?.quoteNumber ?? input.quoteId}`,
+            createdAt: now,
+            updatedAt: now,
+          });
+          resolvedReservationId = (resResult as { insertId: number }).insertId;
+        }
+
         const [result] = await db.insert(pendingPayments).values({
           quoteId: input.quoteId,
-          reservationId: input.reservationId,
+          reservationId: resolvedReservationId,
           clientName: input.clientName,
           clientEmail: input.clientEmail,
           clientPhone: input.clientPhone,
