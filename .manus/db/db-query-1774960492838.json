@@ -1,0 +1,24 @@
+{
+  "query": "SELECT id, customer_name, booking_date, status, product_name FROM reservations WHERE booking_date LIKE '2026-03-31%' OR booking_date = '2026-03-31' LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute SELECT id, customer_name, booking_date, status, product_name FROM reservations WHERE booking_date LIKE '2026-03-31%' OR booking_date = '2026-03-31' LIMIT 20;",
+  "rows": [
+    {
+      "id": "540001",
+      "customer_name": "natalia matute",
+      "booking_date": "2026-03-31",
+      "status": "pending_payment",
+      "product_name": "Presupuesto Nayade Experiences - natalia matute"
+    },
+    {
+      "id": "570001",
+      "customer_name": "Cliente TPV",
+      "booking_date": "2026-03-31",
+      "status": "paid",
+      "product_name": "Banana Ski (+2 más)"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tcustomer_name\tbooking_date\tstatus\tproduct_name\n540001\tnatalia matute\t2026-03-31\tpending_payment\tPresupuesto Nayade Experiences - natalia matute\n570001\tCliente TPV\t2026-03-31\tpaid\tBanana Ski (+2 más)\n",
+  "stderr": "",
+  "execution_time_ms": 77
+}

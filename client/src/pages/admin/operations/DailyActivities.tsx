@@ -76,20 +76,19 @@ export default function DailyActivities() {
     { refetchOnWindowFocus: false }
   );
 
+  const utils = trpc.useUtils();
+
   const assignMonitorMutation = trpc.operations.activities.assignMonitor.useMutation({
     onSuccess: () => {
-      toast.success("Actividad actualizada correctamente");
-      setShowAssignModal(false);
-      setSelectedActivity(null);
-      refetch();
+      utils.operations.activities.getForDate.invalidate();
     },
-    onError: () => toast.error("Error al actualizar la actividad"),
+    onError: () => toast.error("Error al asignar monitor"),
   });
 
-  // Also use dailyOrders.updateOperational to save arrivalTime and opNotes
-  const updateOperationalMutation = trpc.operations.dailyOrders.updateOperational.useMutation({
+  // Save arrivalTime and opNotes via the dedicated updateDetails procedure
+  const updateDetailsMutation = trpc.operations.activities.updateDetails.useMutation({
     onSuccess: () => {
-      // Silently succeed — assignMonitor handles the toast
+      utils.operations.activities.getForDate.invalidate();
     },
     onError: () => toast.error("Error al guardar hora/notas"),
   });
@@ -112,20 +111,44 @@ export default function DailyActivities() {
   async function handleSave() {
     if (!selectedActivity) return;
 
-    // 1. Assign monitor (existing procedure)
-    assignMonitorMutation.mutate({
-      reservationId: selectedActivity.id,
-      monitorId: selectedMonitorId ? parseInt(selectedMonitorId) : null,
-    });
+    const monitorChanged = selectedMonitorId !== (selectedActivity.monitorId ? String(selectedActivity.monitorId) : "");
+    const detailsChanged = arrivalTime !== (selectedActivity.arrivalTime || "") || opNotes !== (selectedActivity.opNotes || "");
 
-    // 2. Save arrivalTime and opNotes via updateOperational
-    if (arrivalTime !== (selectedActivity.arrivalTime || "") || opNotes !== (selectedActivity.opNotes || "")) {
-      updateOperationalMutation.mutate({
-        reservationId: selectedActivity.id,
-        reservationType: "activity",
-        arrivalTime: arrivalTime || undefined,
-        opNotes: opNotes || undefined,
-      });
+    const promises: Promise<any>[] = [];
+
+    if (monitorChanged) {
+      promises.push(
+        assignMonitorMutation.mutateAsync({
+          reservationId: selectedActivity.id,
+          monitorId: selectedMonitorId && selectedMonitorId !== "none" ? parseInt(selectedMonitorId) : null,
+        })
+      );
+    }
+
+    if (detailsChanged) {
+      promises.push(
+        updateDetailsMutation.mutateAsync({
+          reservationId: selectedActivity.id,
+          arrivalTime: arrivalTime || undefined,
+          opNotes: opNotes || undefined,
+        })
+      );
+    }
+
+    if (promises.length === 0) {
+      // Nothing changed — just close
+      setShowAssignModal(false);
+      setSelectedActivity(null);
+      return;
+    }
+
+    try {
+      await Promise.all(promises);
+      toast.success("Actividad actualizada correctamente");
+      setShowAssignModal(false);
+      setSelectedActivity(null);
+    } catch {
+      // Errors handled in individual mutation onError
     }
   }
 
@@ -279,7 +302,7 @@ export default function DailyActivities() {
                         <div className="flex items-center gap-4 mt-2 text-sm text-slate-400 flex-wrap">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5" />
-                            {act.scheduledDate ? formatTime(act.scheduledDate) : "—"}
+                            {act.scheduledDate || "—"}
                           </span>
                           <span className="flex items-center gap-1">
                             <User className="w-3.5 h-3.5" />
@@ -380,7 +403,7 @@ export default function DailyActivities() {
               <div className="bg-slate-800 rounded-lg p-3">
                 <p className="font-semibold text-white">{selectedActivity.activityTitle}</p>
                 <p className="text-slate-400 text-sm mt-1">
-                  {selectedActivity.scheduledDate ? formatTime(selectedActivity.scheduledDate) : "—"} ·{" "}
+                  {selectedActivity.scheduledDate || "—"} ·{" "}
                   {selectedActivity.clientName} · {selectedActivity.numberOfPersons} pax
                 </p>
               </div>
@@ -445,7 +468,7 @@ export default function DailyActivities() {
                   Cancelar
                 </Button>
                 <Button
-                  disabled={assignMonitorMutation.isPending || updateOperationalMutation.isPending}
+                  disabled={assignMonitorMutation.isPending || updateDetailsMutation.isPending}
                   onClick={handleSave}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >

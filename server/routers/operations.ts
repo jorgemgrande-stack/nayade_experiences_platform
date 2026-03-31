@@ -218,23 +218,26 @@ const monitorsRouter = router({
 const calendarRouter = router({
   getEvents: protectedProcedure
     .input(z.object({
-      from: z.string(), // ISO date string
-      to: z.string(),   // ISO date string
+      from: z.string(), // ISO date string YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+      to: z.string(),   // ISO date string YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
     }))
     .query(async ({ input }) => {
-      // booking_date is a DATE column — use input strings directly (no Date conversion)
-      // NEVER use new Date().toISOString(): the server runs in UTC-4 which shifts dates by 1 day
+      // Always extract only the date portion (YYYY-MM-DD) to avoid mismatch with time-suffixed strings.
+      // CRITICAL: Use DATE_FORMAT(booking_date, '%Y-%m-%d') in SELECT to return dates as plain strings.
+      // Without DATE_FORMAT, MySQL DATE columns are returned as JS Date objects with UTC midnight
+      // (e.g. "2026-03-31T04:00:00.000Z"), which can shift by 1 day when parsed in the browser's
+      // local timezone. DATE_FORMAT forces a string like "2026-03-31" that is timezone-safe.
       const fromDate = input.from.slice(0, 10);
       const toDate = input.to.slice(0, 10);
 
-      // Query reservations (activities/packs/presupuestos) from the main reservations table
+      // Query reservations (activities/packs) from the main reservations table
       const [activityRows] = await pool.execute<any[]>(`
         SELECT
           r.id,
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
-          r.booking_date AS scheduledDate,
+          DATE_FORMAT(r.booking_date, '%Y-%m-%d') AS scheduledDate,
           r.people AS numberOfPersons,
           r.status,
           r.channel,
@@ -263,7 +266,7 @@ const calendarRouter = router({
           rb.guestFirstName AS clientName,
           rb.guestEmail AS clientEmail,
           rb.guestPhone AS clientPhone,
-          rb.bookingDate AS scheduledDate,
+          DATE_FORMAT(rb.bookingDate, '%Y-%m-%d') AS scheduledDate,
           rb.numberOfGuests AS numberOfPersons,
           rb.status,
           'manual' AS channel,
@@ -306,7 +309,7 @@ const dailyOrdersRouter = router({
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
-          r.booking_date AS scheduledDate,
+          DATE_FORMAT(r.booking_date, '%Y-%m-%d') AS scheduledDate,
           r.people AS numberOfPersons,
           r.status,
           COALESCE(e.title, r.product_name) AS activityTitle,
@@ -334,7 +337,7 @@ const dailyOrdersRouter = router({
           CONCAT(rb.guestFirstName, ' ', COALESCE(rb.guestLastName, '')) AS clientName,
           rb.guestEmail AS clientEmail,
           rb.guestPhone AS clientPhone,
-          rb.bookingDate AS scheduledDate,
+          DATE_FORMAT(rb.bookingDate, '%Y-%m-%d') AS scheduledDate,
           rb.numberOfGuests AS numberOfPersons,
           rb.status,
           CONCAT(rest.name, ' - ', rb.bookingTime) AS activityTitle,
@@ -460,6 +463,7 @@ const activitiesRouter = router({
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
       // booking_date is a DATE column — use input string directly (no Date conversion)
+      // Use DATE_FORMAT to return as plain string to avoid timezone offset issues
       const actDateStr = input.date.slice(0, 10);
 
       const [rows] = await pool.execute<any[]>(`
@@ -468,7 +472,7 @@ const activitiesRouter = router({
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
-          r.booking_date AS scheduledDate,
+          DATE_FORMAT(r.booking_date, '%Y-%m-%d') AS scheduledDate,
           r.people AS numberOfPersons,
           r.status,
           r.channel,
@@ -516,6 +520,38 @@ const activitiesRouter = router({
           reservationType: "activity",
           monitorId: input.monitorId,
           updatedBy: ctx.user.id,
+        });
+      }
+      return { ok: true };
+    }),
+
+  // Update arrival time and/or op notes for an activity
+  updateDetails: adminProcedure
+    .input(z.object({
+      reservationId: z.number(),
+      arrivalTime: z.string().optional(),
+      opNotes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await db.select().from(reservationOperational)
+        .where(and(
+          eq(reservationOperational.reservationId, input.reservationId),
+          eq(reservationOperational.reservationType, "activity")
+        ));
+
+      const updateData: any = { updatedBy: ctx.user.id };
+      if (input.arrivalTime !== undefined) updateData.arrivalTime = input.arrivalTime;
+      if (input.opNotes !== undefined) updateData.opNotes = input.opNotes;
+
+      if (existing.length > 0) {
+        await db.update(reservationOperational)
+          .set(updateData)
+          .where(eq(reservationOperational.id, existing[0].id));
+      } else {
+        await db.insert(reservationOperational).values({
+          reservationId: input.reservationId,
+          reservationType: "activity",
+          ...updateData,
         });
       }
       return { ok: true };

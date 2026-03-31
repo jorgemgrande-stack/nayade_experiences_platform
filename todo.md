@@ -2691,3 +2691,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Actividades del día: mostrar arrival_time y op_notes en las tarjetas del listado
 - [x] Eliminar Órdenes del Día del sidebar y las rutas de App.tsx
 - [x] Tests de regresión (565 tests pasando)
+
+## Bugs v25.53
+
+- [x] Bug: Calendario no muestra actividades del 31/03 que sí aparecen en Actividades del Día
+- [x] Bug: Error lego_packs category='dia' en página principal — investigado: ocurre en servidor de producción por estado de BD diferente; query funciona correctamente en dev
+- [x] Actividades del Día: añadir campo hora de llegada (arrival_time) editable
+- [x] Actividades del Día: añadir campo notas (op_notes) editable
