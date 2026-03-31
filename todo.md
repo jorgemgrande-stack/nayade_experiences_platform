@@ -2709,3 +2709,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Bug: Al convertir presupuesto a reserva con "pago pendiente", la reserva queda en "pend.conf" — CORREGIDO: convertToReservation ahora crea statusReservation="CONFIRMADA" siempre
 - [x] Bug: Al confirmar cobro de pago pendiente, la reserva no se actualizaba — CORREGIDO: pendingPayments.create ahora crea reserva CONFIRMADA automáticamente si no existe, vinculándola al pago pendiente
 - [x] Fix BD: PRES-2026-0017 reserva 630003 corregida a CONFIRMADA/PAGADO y vinculada al pago pendiente 30001
+
+## Bugs v25.57
+
+- [x] Bug: pendingPayments.confirm no llama a postConfirmOperation — CORREGIDO: ahora llama a postConfirmOperation tras actualizar la reserva, registrando transacción contable + booking operativo
+- [x] Fix BD: transacción contable faltante de PRES-2026-0017 insertada manualmente (TX-PP-...-PRES0017, 90€, Natalia, reserva 630003)

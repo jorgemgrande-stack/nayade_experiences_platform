@@ -4035,11 +4035,13 @@ export const crmRouter = router({
           updatedAt: Date.now(),
         }).where(eq(pendingPayments.id, input.id));
         if (pp.reservationId) {
-          // Obtener canal actual de la reserva para no sobreescribir si ya tiene uno válido
-          const [existingRes] = await db.select({ channel: reservations.channel }).from(reservations).where(eq(reservations.id, pp.reservationId));
+          // Obtener datos completos de la reserva para postConfirmOperation
+          const [existingRes] = await db.select().from(reservations).where(eq(reservations.id, pp.reservationId));
           const legacyChannels = ["web", "crm", "telefono", "email", "otro", "tpv", "groupon", null, undefined];
           const currentChannel = existingRes?.channel;
           const channelToSet = legacyChannels.includes(currentChannel as string) ? "ONLINE_ASISTIDO" : currentChannel;
+
+          // 1. Actualizar estado de la reserva
           await db.update(reservations).set({
             status: "paid",
             amountPaid: pp.amountCents,
@@ -4049,6 +4051,30 @@ export const crmRouter = router({
             paidAt: Date.now(),
             updatedAt: Date.now(),
           }).where(eq(reservations.id, pp.reservationId));
+
+          // 2. Registrar transacción contable + booking operativo (igual que todos los demás flujos de cobro)
+          try {
+            await postConfirmOperation({
+              reservationId: pp.reservationId,
+              productId: existingRes?.productId ?? 0,
+              productName: pp.productName ?? "Experiencia",
+              serviceDate: existingRes?.bookingDate ?? new Date().toISOString().split("T")[0],
+              people: existingRes?.people ?? 1,
+              amountCents: pp.amountCents,
+              customerName: pp.clientName,
+              customerEmail: pp.clientEmail ?? "",  // postConfirmOperation requiere string
+              customerPhone: pp.clientPhone ?? null,
+              totalAmount: pp.amountCents / 100,
+              paymentMethod: input.paymentMethod,
+              saleChannel: "crm",
+              quoteId: pp.quoteId ?? null,
+              description: `Pago pendiente confirmado — ${pp.productName} — ${pp.clientName}`,
+              sellerUserId: ctx.user.id,
+              sellerName: ctx.user.name,
+            });
+          } catch (e) {
+            console.error("[pendingPayments.confirm] Error en postConfirmOperation:", e);
+          }
         }
         await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod });
         return { success: true };
