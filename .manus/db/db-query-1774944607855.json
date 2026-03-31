@@ -1,0 +1,18 @@
+{
+  "query": "\n-- Reservas de cupones/plataformas → PARTNER\nUPDATE reservations SET channel = 'PARTNER' WHERE channel = 'groupon' OR origin_source = 'coupon_redemption';\n\n-- Reservas del TPV → TPV_FISICO\nUPDATE reservations SET channel = 'TPV_FISICO' WHERE channel = 'tpv' AND origin_source IS NULL;\n\n-- Reservas web directas (checkout online) → ONLINE_DIRECTO\nUPDATE reservations SET channel = 'ONLINE_DIRECTO' WHERE channel = 'web';\n\n-- Reservas creadas por el equipo CRM (email, teléfono, crm, otro) → ONLINE_ASISTIDO\nUPDATE reservations SET channel = 'ONLINE_ASISTIDO' WHERE channel IN ('crm', 'email', 'telefono', 'otro');\n\n-- Reservas sin canal asignado que tienen status=paid y no son TPV ni partner → ONLINE_ASISTIDO\nUPDATE reservations SET channel = 'ONLINE_ASISTIDO' WHERE (channel IS NULL OR channel = '') AND status = 'paid';\n\nSELECT channel, COUNT(*) as cnt FROM reservations GROUP BY channel ORDER BY cnt DESC;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- Reservas de cupones/plataformas → PARTNER\nUPDATE reservations SET channel = 'PARTNER' WHERE channel = 'groupon' OR origin_source = 'coupon_redemption';\n\n-- Reservas del TPV → TPV_FISICO\nUPDATE reservations SET channel = 'TPV_FISICO' WHERE channel = 'tpv' AND origin_source IS NULL;\n\n-- Reservas web directas (checkout online) → ONLINE_DIRECTO\nUPDATE reservations SET channel = 'ONLINE_DIRECTO' WHERE channel = 'web';\n\n-- Reservas creadas por el equipo CRM (email, teléfono, crm, otro) → ONLINE_ASISTIDO\nUPDATE reservations SET channel = 'ONLINE_ASISTIDO' WHERE channel IN ('crm', 'email', 'telefono', 'otro');\n\n-- Reservas sin canal asignado que tienen status=paid y no son TPV ni partner → ONLINE_ASISTIDO\nUPDATE reservations SET channel = 'ONLINE_ASISTIDO' WHERE (channel IS NULL OR channel = '') AND status = 'paid';\n\nSELECT channel, COUNT(*) as cnt FROM reservations GROUP BY channel ORDER BY cnt DESC;\n",
+  "rows": [
+    {
+      "channel": "ONLINE_DIRECTO",
+      "cnt": "9"
+    },
+    {
+      "channel": "TPV_FISICO",
+      "cnt": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "channel\tcnt\nONLINE_DIRECTO\t9\nTPV_FISICO\t1\n",
+  "stderr": "",
+  "execution_time_ms": 179
+}

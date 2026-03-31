@@ -844,6 +844,10 @@ export async function createReservation(data: {
     amountTotal: data.amountTotal,
     amountPaid: 0,
     status: "pending_payment",
+    // Canal: reserva iniciada desde el checkout web → ONLINE_DIRECTO
+    channel: "ONLINE_DIRECTO",
+    statusReservation: "PENDIENTE_CONFIRMACION",
+    statusPayment: "PENDIENTE",
     customerName: data.customerName,
     customerEmail: data.customerEmail,
     customerPhone: data.customerPhone ?? null,

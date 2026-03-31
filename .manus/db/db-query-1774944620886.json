@@ -1,0 +1,60 @@
+{
+  "query": "\n-- \"Convertido manualmente desde presupuesto\" también es asistido por el equipo\nUPDATE reservations \nSET channel = 'ONLINE_ASISTIDO' \nWHERE channel = 'ONLINE_DIRECTO' \n  AND notes LIKE '%Convertido manualmente desde presupuesto%';\n\nSELECT channel, notes, customer_name FROM reservations ORDER BY created_at DESC LIMIT 15;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway04.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2rp6zCMfN7Vv5FK.root --database AV298FS8t5SaTurBBRqhgQ --execute \n-- \"Convertido manualmente desde presupuesto\" también es asistido por el equipo\nUPDATE reservations \nSET channel = 'ONLINE_ASISTIDO' \nWHERE channel = 'ONLINE_DIRECTO' \n  AND notes LIKE '%Convertido manualmente desde presupuesto%';\n\nSELECT channel, notes, customer_name FROM reservations ORDER BY created_at DESC LIMIT 15;\n",
+  "rows": [
+    {
+      "channel": "ONLINE_ASISTIDO",
+      "notes": "Generado desde presupuesto PRES-2026-0011",
+      "customer_name": "Paula Garcia"
+    },
+    {
+      "channel": "TPV_FISICO",
+      "notes": "[ORIGEN_TPV] Ticket: TPV-2026-0001 · Productos: Banana Ski, Cableski & Wakeboard Dia Completo, Blob Jump",
+      "customer_name": "Cliente TPV"
+    },
+    {
+      "channel": "ONLINE_DIRECTO",
+      "notes": "Pago desde enlace de presupuesto PRES-2026-0009",
+      "customer_name": "natalia matute"
+    },
+    {
+      "channel": "ONLINE_ASISTIDO",
+      "notes": "Convertido manualmente desde presupuesto PRES-2026-0010",
+      "customer_name": "chrisyu huertez"
+    },
+    {
+      "channel": "ONLINE_ASISTIDO",
+      "notes": "Convertido manualmente desde presupuesto PRES-2026-0009",
+      "customer_name": "natalia matute"
+    },
+    {
+      "channel": "ONLINE_ASISTIDO",
+      "notes": "Generado desde presupuesto PRES-2026-0008",
+      "customer_name": "paco palotes"
+    },
+    {
+      "channel": "ONLINE_ASISTIDO",
+      "notes": "Convertido manualmente desde presupuesto PRES-2026-0006",
+      "customer_name": "Manolo Rueda"
+    },
+    {
+      "channel": "ONLINE_ASISTIDO",
+      "notes": "Generado desde presupuesto PRES-2026-0005",
+      "customer_name": "Manolo Rueda"
+    },
+    {
+      "channel": "ONLINE_ASISTIDO",
+      "notes": "Convertido manualmente desde presupuesto PRES-2026-0002",
+      "customer_name": "Cristina Battistelli"
+    },
+    {
+      "channel": "ONLINE_ASISTIDO",
+      "notes": "Generado desde presupuesto PRE-2026-0001",
+      "customer_name": "Leo"
+    }
+  ],
+  "messages": [],
+  "stdout": "channel\tnotes\tcustomer_name\nONLINE_ASISTIDO\tGenerado desde presupuesto PRES-2026-0011\tPaula Garcia\nTPV_FISICO\t[ORIGEN_TPV] Ticket: TPV-2026-0001 · Productos: Banana Ski, Cableski & Wakeboard Dia Completo, Blob Jump\tCliente TPV\nONLINE_DIRECTO\tPago desde enlace de presupuesto PRES-2026-0009\tnatalia matute\nONLINE_ASISTIDO\tConvertido manualmente desde presupuesto PRES-2026-0010\tchrisyu huertez\nONLINE_ASISTIDO\tConvertido manualmente desde presupuesto PRES-2026-0009\tnatalia matute\nONLINE_ASISTIDO\tGenerado desde presupuesto PRES-2026-0008\tpaco palotes\nONLINE_ASISTIDO\tConvertido manualmente desde presupuesto PRES-2026-0006\tManolo Rueda\nONLINE_ASISTIDO\tGenerado desde presupuesto PRES-2026-0005\tManolo Rueda\nONLINE_ASISTIDO\tConvertido manualmente desde presupuesto PRES-2026-0002\tCristina Battistelli\nONLINE_ASISTIDO\tGenerado desde presupuesto PRE-2026-0001\tLeo\n",
+  "stderr": "",
+  "execution_time_ms": 67
+}

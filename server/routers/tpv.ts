@@ -535,7 +535,9 @@ export const tpvRouter = router({
             ].filter(Boolean).join(' · '),
             paymentMethod: primaryPaymentMethod === "card" ? "redsys" :
                            primaryPaymentMethod === "cash" ? "efectivo" : "otro",
-            channel: "tpv",
+            channel: "TPV_FISICO",
+            statusReservation: "CONFIRMADA",
+            statusPayment: "PAGADO",
             createdAt: Date.now(),
             updatedAt: Date.now(),
             paidAt: Date.now(),

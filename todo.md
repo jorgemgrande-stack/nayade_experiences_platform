@@ -2660,3 +2660,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir sincronización automática: al cobrar presupuesto → reserva vinculada pasa a status_reservation=CONFIRMADA + status_payment=PAGADO
 - [x] Aplicar de forma global sin romper otros flujos (REAV, facturación, anulaciones)
 - [x] Tests de regresión actualizados (565 tests pasando)
+
+## Canal automático en reservas desde presupuestos (v25.49)
+- [x] Auditar por qué el canal no se asigna al crear reserva desde presupuesto
+- [x] Definir lógica de canal: confirmPayment/confirmTransfer CRM → ONLINE_ASISTIDO; IPN Redsys directo → ONLINE_DIRECTO; pendingPayments → heredar canal del presupuesto o MANUAL
+- [x] Corregir los 4 flujos de cobro para asignar canal automáticamente
+- [x] Migrar reservas existentes sin canal asignado
+- [x] Tests de regresión (565 tests pasando)

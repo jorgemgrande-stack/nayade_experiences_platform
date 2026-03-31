@@ -1377,6 +1377,8 @@ export const crmRouter = router({
           status: "paid",
           statusReservation: "CONFIRMADA",
           statusPayment: "PAGADO",
+          // Canal: presupuesto cobrado manualmente por el equipo → siempre ONLINE_ASISTIDO
+          channel: "ONLINE_ASISTIDO",
           customerName: lead.name,
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
@@ -1774,6 +1776,8 @@ export const crmRouter = router({
           status: "paid",
           statusReservation: "CONFIRMADA",
           statusPayment: "PAGADO",
+          // Canal: transferencia confirmada manualmente por el equipo → ONLINE_ASISTIDO
+          channel: "ONLINE_ASISTIDO",
           customerName: lead.name,
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
@@ -3968,11 +3972,17 @@ export const crmRouter = router({
           updatedAt: Date.now(),
         }).where(eq(pendingPayments.id, input.id));
         if (pp.reservationId) {
+          // Obtener canal actual de la reserva para no sobreescribir si ya tiene uno válido
+          const [existingRes] = await db.select({ channel: reservations.channel }).from(reservations).where(eq(reservations.id, pp.reservationId));
+          const legacyChannels = ["web", "crm", "telefono", "email", "otro", "tpv", "groupon", null, undefined];
+          const currentChannel = existingRes?.channel;
+          const channelToSet = legacyChannels.includes(currentChannel as string) ? "ONLINE_ASISTIDO" : currentChannel;
           await db.update(reservations).set({
             status: "paid",
             amountPaid: pp.amountCents,
             statusReservation: "CONFIRMADA",
             statusPayment: "PAGADO",
+            channel: channelToSet as "ONLINE_ASISTIDO",
             paidAt: Date.now(),
             updatedAt: Date.now(),
           }).where(eq(reservations.id, pp.reservationId));
