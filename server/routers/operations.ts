@@ -231,6 +231,9 @@ const calendarRouter = router({
       const toDate = input.to.slice(0, 10);
 
       // Query reservations (activities/packs) from the main reservations table
+      // CRITICAL: booking_date is stored as UTC timestamp (e.g. 2026-03-31T04:00:00Z for Spain UTC+2).
+      // Using <= toDate compares against 2026-03-31T00:00:00Z which EXCLUDES the last day.
+      // Fix: use < DATE_ADD(toDate, INTERVAL 1 DAY) to include the full last day.
       const [activityRows] = await pool.execute<any[]>(`
         SELECT
           r.id,
@@ -254,24 +257,25 @@ const calendarRouter = router({
         LEFT JOIN experiences e ON r.product_id = e.id
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
-        WHERE r.booking_date >= ? AND r.booking_date <= ?
+        WHERE r.booking_date >= ? AND r.booking_date < DATE_ADD(?, INTERVAL 1 DAY)
           AND r.status NOT IN ('cancelled','failed')
         ORDER BY r.booking_date ASC
       `, [fromDate, toDate]);
 
       // Query restaurant bookings
+      // restaurant_bookings uses: date (varchar), time (varchar), guests (int), guestName, guestLastName
       const [restaurantRows] = await pool.execute<any[]>(`
         SELECT
           rb.id,
-          rb.guestFirstName AS clientName,
+          CONCAT(rb.guestName, ' ', rb.guestLastName) AS clientName,
           rb.guestEmail AS clientEmail,
           rb.guestPhone AS clientPhone,
-          DATE_FORMAT(rb.bookingDate, '%Y-%m-%d') AS scheduledDate,
-          rb.numberOfGuests AS numberOfPersons,
+          rb.date AS scheduledDate,
+          rb.guests AS numberOfPersons,
           rb.status,
-          'manual' AS channel,
-          CONCAT(rest.name, ' - ', rb.bookingTime) AS activityTitle,
-          rb.bookingTime AS bookingTime,
+          rb.channel,
+          CONCAT(rest.name, ' - ', rb.time) AS activityTitle,
+          rb.time AS bookingTime,
           'restaurant' AS eventType,
           ro.client_confirmed AS clientConfirmed,
           ro.arrival_time AS arrivalTime,
@@ -282,9 +286,9 @@ const calendarRouter = router({
         FROM restaurant_bookings rb
         LEFT JOIN restaurants rest ON rest.id = rb.restaurantId
         LEFT JOIN reservation_operational ro ON ro.reservation_id = rb.id AND ro.reservation_type = 'restaurant'
-        WHERE rb.bookingDate >= ? AND rb.bookingDate <= ?
+        WHERE rb.date >= ? AND rb.date < DATE_ADD(?, INTERVAL 1 DAY)
           AND rb.status NOT IN ('cancelled','failed')
-        ORDER BY rb.bookingDate ASC, rb.bookingTime ASC
+        ORDER BY rb.date ASC, rb.time ASC
       `, [fromDate, toDate]);
 
       return {

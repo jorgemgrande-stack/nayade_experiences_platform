@@ -2694,7 +2694,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 
 ## Bugs v25.53
 
-- [x] Bug: Calendario no muestra actividades del 31/03 que sí aparecen en Actividades del Día
+- [x] Bug: Calendario no muestra actividades del 31/03 — CORREGIDO: dos bugs: (1) WHERE usaba <= toDate que excluía el último día por offset UTC, corregido con DATE_ADD(toDate, INTERVAL 1 DAY); (2) query de restaurantes usaba nombres de columna incorrectos (bookingDate/numberOfGuests), corregido con nombres reales (date/guests/guestName)
 - [x] Bug: Error lego_packs category='dia' en página principal — investigado: ocurre en servidor de producción por estado de BD diferente; query funciona correctamente en dev
 - [x] Actividades del Día: añadir campo hora de llegada (arrival_time) editable
 - [x] Actividades del Día: añadir campo notas (op_notes) editable
