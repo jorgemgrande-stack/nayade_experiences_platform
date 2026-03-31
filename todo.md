@@ -2667,3 +2667,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregir los 4 flujos de cobro para asignar canal automáticamente
 - [x] Migrar reservas existentes sin canal asignado
 - [x] Tests de regresión (565 tests pasando)
+
+## Mejora flujo Confirmar Pago y Pago Pendiente en presupuestos (v25.50)
+- [x] Auditar QuoteViewModal: botón Confirmar Pago, botón Pago Pendiente, iconos de fila (4º y 5º)
+- [x] Añadir paso previo en modal Confirmar Pago: Tarjeta→nº operación TPV, Transferencia→adjuntar comprobante, Efectivo→justificación
+- [x] Aplicar el mismo paso previo al 4º icono de fila (confirmar pago recibido)
+- [x] Unificar 5º icono de fila con el flujo del botón Pago Pendiente (fecha límite + nota + genera pendingPayment + reserva + factura)
+- [x] Tests de regresión (565 tests pasando)

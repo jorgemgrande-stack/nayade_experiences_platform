@@ -3430,7 +3430,14 @@ export default function CRMDashboard() {
   const [deleteQuoteId, setDeleteQuoteId] = useState<number | null>(null);
   const [sendQuoteId, setSendQuoteId] = useState<number | null>(null);
   const [confirmPaymentId, setConfirmPaymentId] = useState<number | null>(null);
+  const [confirmPayMethodRow, setConfirmPayMethodRow] = useState<"tarjeta" | "transferencia" | "efectivo">("tarjeta");
+  const [confirmPayTpvOp, setConfirmPayTpvOp] = useState("");
+  const [confirmPayNote, setConfirmPayNote] = useState("");
   const [convertReservationId, setConvertReservationId] = useState<number | null>(null);
+  // Estado para el modal de pago pendiente desde fila (icono 5)
+  const [rowPendingPayQuoteId, setRowPendingPayQuoteId] = useState<number | null>(null);
+  const [rowPendingPayDueDate, setRowPendingPayDueDate] = useState("");
+  const [rowPendingPayReason, setRowPendingPayReason] = useState("");
   const [markLostQuoteId, setMarkLostQuoteId] = useState<number | null>(null);
   const [showDirectQuoteModal, setShowDirectQuoteModal] = useState(false);
   const [showNewLeadModal, setShowNewLeadModal] = useState(false);
@@ -3591,6 +3598,22 @@ export default function CRMDashboard() {
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // Mutación de pago pendiente desde fila (icono 5 — mismo flujo que el botón del modal)
+  const rowPendingPayMutation = trpc.crm.pendingPayments.create.useMutation({
+    onSuccess: () => {
+      toast.success("Pago pendiente registrado · Reserva creada · Email enviado al cliente");
+      setRowPendingPayQuoteId(null);
+      setRowPendingPayDueDate("");
+      setRowPendingPayReason("");
+      utils.crm.quotes.list.invalidate();
+      utils.crm.quotes.counters.invalidate();
+      utils.crm.leads.counters.invalidate();
+      utils.crm.reservations.list.invalidate();
+      utils.crm.pendingPayments.list.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -4350,10 +4373,19 @@ export default function CRMDashboard() {
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Convertir a reserva sin pago (enviado) */}
+                          {/* Convertir a reserva pendiente de cobro (icono 5 — usa flujo Pago Pendiente) */}
                           {quote.status === "enviado" && (
-                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-purple-300 h-7 w-7 p-0" onClick={() => setConvertReservationId(quote.id)} title="Convertir a reserva (pendiente cobro)">
-                              <CalendarCheck className="w-3.5 h-3.5" />
+                            <Button
+                              size="sm" variant="ghost"
+                              className="text-white/40 hover:text-amber-300 h-7 w-7 p-0"
+                              onClick={() => {
+                                setRowPendingPayQuoteId(quote.id);
+                                setRowPendingPayDueDate("");
+                                setRowPendingPayReason("");
+                              }}
+                              title="Convertir a reserva pendiente de cobro"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Marcar perdido */}
@@ -5255,49 +5287,156 @@ export default function CRMDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Confirm Payment */}
-      <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => !o && setConfirmPaymentId(null)}>
+      {/* Confirm Payment — con paso previo por método */}
+      <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => { if (!o) { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); } }}>
         <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-emerald-400" /> Confirmar pago recibido
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-white/60 py-2">Se marcará el presupuesto como pagado, se generará la reserva y la factura PDF automáticamente.</p>
+          <div className="space-y-4 py-2">
+            <p className="text-white/60 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
+            {/* Selector de método */}
+            <div className="grid grid-cols-3 gap-2">
+              {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); }}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
+                    confirmPayMethodRow === m
+                      ? "border-emerald-500 bg-emerald-500/15 text-emerald-300"
+                      : "border-white/10 bg-white/5 text-white/50 hover:border-white/25 hover:text-white/80"
+                  }`}
+                >
+                  {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
+                  {m === "transferencia" && <Banknote className="w-5 h-5" />}
+                  {m === "efectivo" && <Receipt className="w-5 h-5" />}
+                  {m === "tarjeta" ? "Tarjeta" : m === "transferencia" ? "Transferencia" : "Efectivo"}
+                </button>
+              ))}
+            </div>
+            {/* Campo específico por método */}
+            {confirmPayMethodRow === "tarjeta" && (
+              <div className="space-y-1.5">
+                <Label className="text-white/70 text-xs">Nº operación TPV *</Label>
+                <Input
+                  value={confirmPayTpvOp}
+                  onChange={(e) => setConfirmPayTpvOp(e.target.value)}
+                  placeholder="Ej: 000123456789"
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
+                />
+              </div>
+            )}
+            {confirmPayMethodRow === "transferencia" && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300 space-y-1">
+                <p className="font-medium">Adjuntar comprobante bancario</p>
+                <p className="text-amber-300/70">Para adjuntar el justificante de transferencia usa el botón <strong>"Confirmar Transferencia"</strong> desde el modal de detalle del presupuesto, que permite subir el archivo PDF/imagen.</p>
+              </div>
+            )}
+            {confirmPayMethodRow === "efectivo" && (
+              <div className="space-y-1.5">
+                <Label className="text-white/70 text-xs">Justificación *</Label>
+                <Textarea
+                  value={confirmPayNote}
+                  onChange={(e) => setConfirmPayNote(e.target.value)}
+                  placeholder="Ej: Cobrado en recepción el 31/03/2026"
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none"
+                  rows={2}
+                />
+              </div>
+            )}
+          </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConfirmPaymentId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); }} className="border-white/15 text-white/60">Cancelar</Button>
             <Button
               size="sm"
-              onClick={() => confirmPaymentId !== null && confirmPaymentMutation.mutate({ quoteId: confirmPaymentId })}
-              disabled={confirmPaymentMutation.isPending}
+              disabled={
+                confirmPaymentMutation.isPending ||
+                (confirmPayMethodRow === "tarjeta" && !confirmPayTpvOp.trim()) ||
+                (confirmPayMethodRow === "efectivo" && !confirmPayNote.trim())
+              }
+              onClick={() => {
+                if (confirmPaymentId === null) return;
+                const payMethod = confirmPayMethodRow === "tarjeta" ? "redsys" : confirmPayMethodRow === "transferencia" ? "transferencia" : "efectivo";
+                confirmPaymentMutation.mutate({
+                  quoteId: confirmPaymentId,
+                  paymentMethod: payMethod,
+                  tpvOperationNumber: confirmPayMethodRow === "tarjeta" ? confirmPayTpvOp : undefined,
+                  paymentNote: confirmPayMethodRow === "efectivo" ? confirmPayNote : undefined,
+                });
+              }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {confirmPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-              Confirmar pago
+              Confirmar y generar factura
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Convert to Reservation (no payment) */}
-      <Dialog open={convertReservationId !== null} onOpenChange={(o) => !o && setConvertReservationId(null)}>
+      {/* Pago Pendiente desde fila (icono 5) — mismo flujo que el botón del modal de detalle */}
+      <Dialog
+        open={rowPendingPayQuoteId !== null}
+        onOpenChange={(o) => { if (!o) { setRowPendingPayQuoteId(null); setRowPendingPayDueDate(""); setRowPendingPayReason(""); } }}
+      >
         <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <CalendarCheck className="w-5 h-5 text-purple-400" /> Convertir a reserva
+              <Clock className="w-5 h-5 text-amber-400" /> Registrar pago pendiente
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-white/60 py-2">Se creará una reserva con estado <strong className="text-amber-400">pendiente de cobro</strong>. La oportunidad se marcará como ganada. Podrás confirmar el pago más adelante.</p>
+          <div className="space-y-4 py-2">
+            <p className="text-white/60 text-sm">Se creará la reserva en estado <strong className="text-amber-400">pendiente de cobro</strong>, se registrará el pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
+            <div className="space-y-1.5">
+              <Label className="text-white/70 text-xs">Fecha límite de pago *</Label>
+              <Input
+                type="date"
+                value={rowPendingPayDueDate}
+                onChange={(e) => setRowPendingPayDueDate(e.target.value)}
+                className="bg-white/5 border-white/10 text-white text-sm"
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-white/70 text-xs">Motivo / nota interna (opcional)</Label>
+              <Textarea
+                value={rowPendingPayReason}
+                onChange={(e) => setRowPendingPayReason(e.target.value)}
+                placeholder="Ej: Cliente confirma pago por transferencia la próxima semana..."
+                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none"
+                rows={3}
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConvertReservationId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setRowPendingPayQuoteId(null); setRowPendingPayDueDate(""); setRowPendingPayReason(""); }} className="border-white/15 text-white/60">Cancelar</Button>
             <Button
               size="sm"
-              onClick={() => convertReservationId !== null && convertReservationMutation.mutate({ quoteId: convertReservationId })}
-              disabled={convertReservationMutation.isPending}
-              className="bg-purple-600 hover:bg-purple-700 text-white"
+              disabled={!rowPendingPayDueDate || rowPendingPayMutation.isPending}
+              onClick={() => {
+                if (!rowPendingPayQuoteId || !rowPendingPayDueDate) return;
+                // Buscamos el quote en la lista para obtener los datos del cliente
+                const q = quotesData?.find((x: any) => x.id === rowPendingPayQuoteId);
+                rowPendingPayMutation.mutate({
+                  quoteId: rowPendingPayQuoteId,
+                  clientName: (q as any)?.clientName ?? (q as any)?.title ?? "Cliente",
+                  clientEmail: (q as any)?.clientEmail ?? undefined,
+                  clientPhone: (q as any)?.clientPhone ?? undefined,
+                  productName: (q as any)?.title ?? "Experiencia",
+                  amountCents: Math.round((Number((q as any)?.total) || 0) * 100),
+                  dueDate: rowPendingPayDueDate,
+                  reason: rowPendingPayReason,
+                  origin: window.location.origin,
+                });
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
             >
-              {convertReservationMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CalendarCheck className="w-4 h-4 mr-1" />}
-              Crear reserva
+              {rowPendingPayMutation.isPending ? (
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Registrando...</>
+              ) : (
+                <><Clock className="w-4 h-4 mr-2" /> Registrar pago pendiente</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

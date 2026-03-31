@@ -1296,6 +1296,8 @@ export const crmRouter = router({
           redsysOrderId: z.string().optional(),
           paidAmount: z.number().optional(),
           paymentMethod: z.enum(["redsys", "transferencia", "efectivo", "otro"]).optional(),
+          tpvOperationNumber: z.string().optional(), // Nº operación TPV (tarjeta)
+          paymentNote: z.string().optional(),        // Justificación (efectivo) o nota interna
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1383,14 +1385,17 @@ export const crmRouter = router({
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
           merchantOrder: reservationRef.substring(0, 12),
-          notes: `Generado desde presupuesto ${quote.quoteNumber}`,
+          notes: [
+            `Generado desde presupuesto ${quote.quoteNumber}`,
+            input.tpvOperationNumber ? `Nº operación TPV: ${input.tpvOperationNumber}` : null,
+            input.paymentNote ? `Nota: ${input.paymentNote}` : null,
+          ].filter(Boolean).join(" — "),
           createdAt: Date.now(),
           updatedAt: Date.now(),
           paidAt: Date.now(),
         });
         const reservationId = (resResult as { insertId: number }).insertId;
-
-        // FIX: Vincular factura ↔ reserva recién creadas
+        // FIX: Vincular factura ↔ reserva recién creadass
         await db.update(invoices).set({ reservationId, updatedAt: now }).where(eq(invoices.id, invoiceId));
         await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, reservationId));
 
