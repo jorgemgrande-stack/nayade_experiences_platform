@@ -21,6 +21,9 @@ import {
   platforms,
   platformProducts,
   couponRedemptions,
+  roomTypes,
+  spaTreatments,
+  quotes,
 } from "../../drizzle/schema";
 import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
@@ -466,7 +469,7 @@ export const settlementsRouter = router({
       periodTo: z.string(),
     }))
     .query(async ({ input }) => {
-      // Get all products (experiences + packs) linked to this supplier that are settlable
+      // Get all products (experiences + packs + roomTypes + spaTreatments) linked to this supplier that are settlable
       const supplierExps = await db
         .select({ id: experiences.id, title: experiences.title, supplierCommissionPercent: experiences.supplierCommissionPercent, supplierCostType: experiences.supplierCostType })
         .from(experiences)
@@ -477,9 +480,21 @@ export const settlementsRouter = router({
         .from(packs)
         .where(and(eq(packs.supplierId, input.supplierId), eq(packs.isSettlable, true)));
 
+      const supplierRooms = await db
+        .select({ id: roomTypes.id, title: roomTypes.name, supplierCommissionPercent: roomTypes.supplierCommissionPercent, supplierCostType: roomTypes.supplierCostType })
+        .from(roomTypes)
+        .where(and(eq(roomTypes.supplierId, input.supplierId), eq(roomTypes.isSettlable, true)));
+
+      const supplierSpa = await db
+        .select({ id: spaTreatments.id, title: spaTreatments.name, supplierCommissionPercent: spaTreatments.supplierCommissionPercent, supplierCostType: spaTreatments.supplierCostType })
+        .from(spaTreatments)
+        .where(and(eq(spaTreatments.supplierId, input.supplierId), eq(spaTreatments.isSettlable, true)));
+
       const productIds = [
         ...supplierExps.map((e) => ({ id: e.id, type: "experience" as const, title: e.title, commissionPercent: parseFloat(e.supplierCommissionPercent ?? "0"), costType: e.supplierCostType ?? "comision_sobre_venta" })),
         ...supplierPacks.map((p) => ({ id: p.id, type: "pack" as const, title: p.title, commissionPercent: parseFloat(p.supplierCommissionPercent ?? "0"), costType: p.supplierCostType ?? "comision_sobre_venta" })),
+        ...supplierRooms.map((r) => ({ id: r.id, type: "room" as const, title: r.title, commissionPercent: parseFloat(r.supplierCommissionPercent ?? "0"), costType: r.supplierCostType ?? "comision_sobre_venta" })),
+        ...supplierSpa.map((s) => ({ id: s.id, type: "spa" as const, title: s.title, commissionPercent: parseFloat(s.supplierCommissionPercent ?? "0"), costType: s.supplierCostType ?? "comision_sobre_venta" })),
       ];
 
       if (productIds.length === 0) return { lines: [], totals: { grossAmount: 0, commissionAmount: 0, netAmountProvider: 0 } };
@@ -501,7 +516,7 @@ export const settlementsRouter = router({
         commissionAmount: number;
         netAmountProvider: number;
         costType: string;
-        source: "invoice" | "tpv_reservation";
+        source: "invoice" | "tpv_reservation" | "crm_reservation";
       }> = [];
 
       // ── SOURCE 1: Facturas cobradas en el periodo ──────────────────────────
@@ -558,12 +573,14 @@ export const settlementsRouter = router({
           )
         );
 
-      // Track which invoice IDs we already processed to avoid double-counting
+      // Track which invoice IDs and reservation IDs we already processed to avoid double-counting
       const processedInvoiceIds = new Set(paidInvoices.map((i) => i.id));
+      const processedReservationIds = new Set<number>();
 
       for (const res of tpvReservations) {
         // Skip if this reservation already has a formal invoice that was processed above
         if (res.invoiceId && processedInvoiceIds.has(res.invoiceId)) continue;
+        processedReservationIds.add(res.id);
 
         let items: any[] = [];
         try {
@@ -601,6 +618,134 @@ export const settlementsRouter = router({
             costType: match.costType,
             source: "tpv_reservation",
           });
+        }
+      }
+
+      // ── SOURCE 3: Reservas CRM confirmadas+pagadas (cualquier canal) ──────────
+      // CRM reservations (ONLINE_ASISTIDO, ONLINE_DIRECTO, PARTNER, etc.) that are confirmed & paid
+      // We look at booking_date (service date) to determine if they fall within the period
+      const crmReservations = await db
+        .select()
+        .from(reservations)
+        .where(
+          and(
+            eq(reservations.statusReservation, "CONFIRMADA"),
+            eq(reservations.statusPayment, "PAGADO"),
+            gte(reservations.bookingDate, input.periodFrom),
+            lte(reservations.bookingDate, input.periodTo)
+          )
+        );
+
+      // Load any invoices for CRM reservations that weren't in the period-based paidInvoices set
+      const crmInvoiceIds = crmReservations
+        .filter((r) => r.invoiceId && !processedInvoiceIds.has(r.invoiceId))
+        .map((r) => r.invoiceId as number);
+      const extraInvoices = crmInvoiceIds.length > 0
+        ? await db.select().from(invoices).where(inArray(invoices.id, crmInvoiceIds))
+        : [];
+      const allInvoicesMap = new Map([...paidInvoices, ...extraInvoices].map((i) => [i.id, i]));
+
+      for (const res of crmReservations) {
+        // Skip if already processed (e.g., via invoice or TPV)
+        if (processedReservationIds.has(res.id)) continue;
+        if (res.invoiceId && processedInvoiceIds.has(res.invoiceId)) continue;
+
+        // If the reservation has an invoice, get items from the invoice
+        if (res.invoiceId) {
+          const invoice = allInvoicesMap.get(res.invoiceId);
+          if (invoice) {
+            const items = (invoice.itemsJson as any[]) ?? [];
+            for (const item of items) {
+              const productId = item.productId ?? item.experienceId ?? item.packId;
+              const match = productIds.find((p) => p.id === productId);
+              if (!match) continue;
+
+              const saleAmount = parseFloat(String(item.unitPrice ?? item.price ?? "0")) * (item.quantity ?? 1);
+              const commissionAmount = (saleAmount * match.commissionPercent) / 100;
+              const netAmountProvider = saleAmount - commissionAmount;
+
+              lines.push({
+                reservationId: res.id,
+                invoiceId: invoice.id,
+                productId: match.id,
+                productName: item.description ?? match.title,
+                serviceDate: res.bookingDate ?? input.periodFrom,
+                paxCount: item.quantity ?? 1,
+                saleAmount,
+                commissionPercent: match.commissionPercent,
+                commissionAmount,
+                netAmountProvider,
+                costType: match.costType,
+                source: "crm_reservation",
+              });
+            }
+            processedReservationIds.add(res.id);
+            continue;
+          }
+        }
+
+        // If no invoice, try to match via quote items (presupuesto multi-línea)
+        if (res.quoteId) {
+          const [quoteRow] = await db
+            .select({ items: quotes.items })
+            .from(quotes)
+            .where(eq(quotes.id, res.quoteId));
+          if (quoteRow) {
+            const quoteItems: any[] = Array.isArray(quoteRow.items) ? quoteRow.items : [];
+            let addedAny = false;
+            for (const item of quoteItems) {
+              const productId = item.productId ?? item.experienceId ?? item.packId;
+              const match = productIds.find((p) => p.id === productId);
+              if (!match) continue;
+              const saleAmount = parseFloat(String(item.total ?? item.unitPrice ?? "0"));
+              if (saleAmount <= 0) continue;
+              const commissionAmount = (saleAmount * match.commissionPercent) / 100;
+              const netAmountProvider = saleAmount - commissionAmount;
+              lines.push({
+                reservationId: res.id,
+                productId: match.id,
+                productName: item.description ?? match.title,
+                serviceDate: res.bookingDate ?? input.periodFrom,
+                paxCount: item.quantity ?? 1,
+                saleAmount,
+                commissionPercent: match.commissionPercent,
+                commissionAmount,
+                netAmountProvider,
+                costType: match.costType,
+                source: "crm_reservation",
+              });
+              addedAny = true;
+            }
+            if (addedAny) { processedReservationIds.add(res.id); continue; }
+          }
+        }
+
+        // Fallback: try to match the main product directly
+        if (productIdSet.has(res.productId)) {
+          const match = productIds.find((p) => p.id === res.productId);
+          if (match) {
+            const saleAmount = (res.amountPaid ?? 0) / 100;
+            if (saleAmount > 0) {
+              const commissionAmount = (saleAmount * match.commissionPercent) / 100;
+              const netAmountProvider = saleAmount - commissionAmount;
+
+              lines.push({
+                reservationId: res.id,
+                invoiceId: res.invoiceId ?? undefined,
+                productId: match.id,
+                productName: res.productName ?? match.title,
+                serviceDate: res.bookingDate ?? input.periodFrom,
+                paxCount: res.people ?? 1,
+                saleAmount,
+                commissionPercent: match.commissionPercent,
+                commissionAmount,
+                netAmountProvider,
+                costType: match.costType,
+                source: "crm_reservation",
+              });
+              processedReservationIds.add(res.id);
+            }
+          }
         }
       }
 
@@ -754,9 +899,21 @@ export const settlementsRouter = router({
         .from(packs)
         .where(and(eq(packs.supplierId, supplierId), eq(packs.isSettlable, true)));
 
+      const supplierRooms = await db
+        .select({ id: roomTypes.id, title: roomTypes.name, supplierCommissionPercent: roomTypes.supplierCommissionPercent, supplierCostType: roomTypes.supplierCostType })
+        .from(roomTypes)
+        .where(and(eq(roomTypes.supplierId, supplierId), eq(roomTypes.isSettlable, true)));
+
+      const supplierSpa = await db
+        .select({ id: spaTreatments.id, title: spaTreatments.name, supplierCommissionPercent: spaTreatments.supplierCommissionPercent, supplierCostType: spaTreatments.supplierCostType })
+        .from(spaTreatments)
+        .where(and(eq(spaTreatments.supplierId, supplierId), eq(spaTreatments.isSettlable, true)));
+
       const productIds = [
         ...supplierExps.map((e) => ({ id: e.id, title: e.title, commissionPercent: parseFloat(e.supplierCommissionPercent ?? "0"), costType: e.supplierCostType ?? "comision_sobre_venta" })),
         ...supplierPacks.map((p) => ({ id: p.id, title: p.title, commissionPercent: parseFloat(p.supplierCommissionPercent ?? "0"), costType: p.supplierCostType ?? "comision_sobre_venta" })),
+        ...supplierRooms.map((r) => ({ id: r.id, title: r.title, commissionPercent: parseFloat(r.supplierCommissionPercent ?? "0"), costType: r.supplierCostType ?? "comision_sobre_venta" })),
+        ...supplierSpa.map((s) => ({ id: s.id, title: s.title, commissionPercent: parseFloat(s.supplierCommissionPercent ?? "0"), costType: s.supplierCostType ?? "comision_sobre_venta" })),
       ];
 
       const productIdSet = new Set(productIds.map((p) => p.id));
@@ -855,52 +1012,39 @@ export const settlementsRouter = router({
           }
         }
 
-        // SOURCE 3: Reservas CRM/manual pagadas (crm, transferencia, efectivo, telefono, email, web)
-        // Incluye reservas cuya factura asociada tiene líneas de productos del proveedor
+        // SOURCE 3: Reservas confirmadas+pagadas (cualquier canal) con booking_date en el periodo
+        // Usa statusReservation/statusPayment (campos nuevos) y booking_date (fecha de servicio)
         const crmReservations = await db
           .select()
           .from(reservations)
           .where(and(
-            eq(reservations.status, "paid"),
-            inArray(reservations.channel, ["crm", "web", "telefono", "email", "otro"]),
-            gte(reservations.paidAt, periodFromMs),
-            lte(reservations.paidAt, periodToMs)
+            eq(reservations.statusReservation, "CONFIRMADA"),
+            eq(reservations.statusPayment, "PAGADO"),
+            gte(reservations.bookingDate, periodFrom),
+            lte(reservations.bookingDate, periodTo)
           ));
 
+        // Load invoices for CRM reservations not already processed
+        const crmInvoiceIds = crmReservations
+          .filter((r) => r.invoiceId && !processedInvoiceIds.has(r.invoiceId))
+          .map((r) => r.invoiceId as number);
+        const extraInvoices = crmInvoiceIds.length > 0
+          ? await db.select().from(invoices).where(inArray(invoices.id, crmInvoiceIds))
+          : [];
+        const allInvoicesMap = new Map([...paidInvoices, ...extraInvoices].map((i) => [i.id, i]));
+
+        const processedReservationIds = new Set<number>();
+
         for (const res of crmReservations) {
+          if (processedReservationIds.has(res.id)) continue;
           if (res.invoiceId && processedInvoiceIds.has(res.invoiceId)) continue;
 
-          // Check direct product_id match
-          if (res.productId && productIdSet.has(res.productId)) {
-            const match = productIds.find((p) => p.id === res.productId);
-            if (match) {
-              const saleAmount = (res.amountTotal ?? 0) / 100;
-              if (saleAmount > 0) {
-                const commissionAmount = (saleAmount * match.commissionPercent) / 100;
-                newLines.push({
-                  reservationId: res.id,
-                  invoiceId: res.invoiceId ?? undefined,
-                  productId: match.id,
-                  productName: res.productName ?? match.title,
-                  serviceDate: res.bookingDate ?? periodFrom,
-                  paxCount: res.people ?? 1,
-                  saleAmount,
-                  commissionPercent: match.commissionPercent,
-                  commissionAmount,
-                  netAmountProvider: saleAmount - commissionAmount,
-                  costType: match.costType,
-                });
-                continue;
-              }
-            }
-          }
-
-          // Check via linked invoice itemsJson (multi-product reservations)
+          // Priority 1: Decompose via linked invoice itemsJson (multi-product reservations)
           if (res.invoiceId) {
-            const [inv] = await db.select().from(invoices).where(eq(invoices.id, res.invoiceId));
+            const inv = allInvoicesMap.get(res.invoiceId);
             if (inv) {
-              processedInvoiceIds.add(inv.id);
               const items = (inv.itemsJson as any[]) ?? [];
+              let addedAny = false;
               for (const item of items) {
                 const productId = item.productId ?? item.experienceId ?? item.packId;
                 const match = productIds.find((p) => p.id === productId);
@@ -921,6 +1065,67 @@ export const settlementsRouter = router({
                   netAmountProvider: saleAmount - commissionAmount,
                   costType: match.costType,
                 });
+                addedAny = true;
+              }
+              if (addedAny) { processedReservationIds.add(res.id); continue; }
+            }
+          }
+
+          // Priority 2: Decompose via linked quote itemsJson (presupuesto multi-producto)
+          if (res.quoteId) {
+            const [quoteRow] = await db
+              .select({ items: quotes.items })
+              .from(quotes)
+              .where(eq(quotes.id, res.quoteId));
+            if (quoteRow) {
+              const quoteItems: any[] = Array.isArray(quoteRow.items) ? quoteRow.items : [];
+              let addedAny = false;
+              for (const item of quoteItems) {
+                const productId = item.productId ?? item.experienceId ?? item.packId;
+                const match = productIds.find((p) => p.id === productId);
+                if (!match) continue;
+                const saleAmount = parseFloat(String(item.total ?? item.unitPrice ?? "0"));
+                if (saleAmount <= 0) continue;
+                const commissionAmount = (saleAmount * match.commissionPercent) / 100;
+                newLines.push({
+                  reservationId: res.id,
+                  productId: match.id,
+                  productName: item.description ?? match.title,
+                  serviceDate: res.bookingDate ?? periodFrom,
+                  paxCount: item.quantity ?? 1,
+                  saleAmount,
+                  commissionPercent: match.commissionPercent,
+                  commissionAmount,
+                  netAmountProvider: saleAmount - commissionAmount,
+                  costType: match.costType,
+                });
+                addedAny = true;
+              }
+              if (addedAny) { processedReservationIds.add(res.id); continue; }
+            }
+          }
+
+          // Priority 3: Direct product_id match (single-product reservation)
+          if (res.productId && productIdSet.has(res.productId)) {
+            const match = productIds.find((p) => p.id === res.productId);
+            if (match) {
+              const saleAmount = (res.amountPaid ?? 0) / 100;
+              if (saleAmount > 0) {
+                const commissionAmount = (saleAmount * match.commissionPercent) / 100;
+                newLines.push({
+                  reservationId: res.id,
+                  invoiceId: res.invoiceId ?? undefined,
+                  productId: match.id,
+                  productName: res.productName ?? match.title,
+                  serviceDate: res.bookingDate ?? periodFrom,
+                  paxCount: res.people ?? 1,
+                  saleAmount,
+                  commissionPercent: match.commissionPercent,
+                  commissionAmount,
+                  netAmountProvider: saleAmount - commissionAmount,
+                  costType: match.costType,
+                });
+                processedReservationIds.add(res.id);
               }
             }
           }

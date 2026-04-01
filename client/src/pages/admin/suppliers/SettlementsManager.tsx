@@ -87,7 +87,7 @@ type PreviewLine = {
   commissionAmount: number;
   netAmountProvider: number;
   costType: string;
-  source?: "invoice" | "tpv_reservation";
+  source?: "invoice" | "tpv_reservation" | "crm_reservation";
 };
 
 // ─── Status helpers ───────────────────────────────────────────────────────────

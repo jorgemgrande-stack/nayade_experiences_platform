@@ -2718,3 +2718,16 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 ## Features v25.59
 
 - [x] TPV: añadir campo "fecha de actividad" (serviceDate) al crear un pedido — en modal de checkout, backend createSale y listado de ventas
+
+## Bugs v25.60
+
+- [ ] Bug: Liquidaciones no incluyen operaciones confirmadas+pagadas de productos con proveedor — auditar lógica de cálculo de líneas y corregir para que compute todas las reservas del periodo con producto.providerId != null
+
+## Corrección Motor de Liquidaciones - Todos los productos (v9.x)
+- [x] Liquidaciones: preview() soporta todos los tipos de producto (experiences, packs, roomTypes, spaTreatments)
+- [x] Liquidaciones: recalculate() soporta todos los tipos de producto (experiences, packs, roomTypes, spaTreatments)
+- [x] Liquidaciones: recalculate() usa statusReservation/statusPayment y bookingDate (no status/paidAt)
+- [x] Liquidaciones: recalculate() descompone quotes multi-línea en líneas individuales (prioridad: factura > quote > producto directo)
+- [x] Liquidaciones: recalculate() incluye SOURCE 3 con lógica consistente con preview()
+- [x] Liquidaciones: vincular reservas existentes a sus quotes (quote_id actualizado en BD)
+- [x] Liquidaciones: 565 tests pasando, TypeScript sin errores
