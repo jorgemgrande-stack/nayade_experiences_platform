@@ -162,7 +162,7 @@ export const experiences = mysqlTable("experiences", {
   discountExpiresAt: timestamp("discountExpiresAt"),
   // Fiscal regime (REAV module)
   fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
-  productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
+  productType: mysqlEnum("productType", ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"]).default("actividad").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
   // Supplier / Liquidaciones module
@@ -577,7 +577,7 @@ export const packs = mysqlTable("packs", {
   discountExpiresAt: timestamp("discountExpiresAt"),
   // Fiscal regime (REAV module)
   fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
-  productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
+  productType: mysqlEnum("productType", ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"]).default("pack").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
   // Supplier / Liquidaciones module
@@ -667,7 +667,7 @@ export const roomTypes = mysqlTable("room_types", {
   discountExpiresAt: timestamp("discountExpiresAt"),
   // Régimen fiscal
   fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
-  productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
+  productType: mysqlEnum("productType", ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"]).default("alojamiento").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
   // Proveedor y liquidaciones
@@ -769,7 +769,7 @@ export const spaTreatments = mysqlTable("spa_treatments", {
   discountExpiresAt: timestamp("discountExpiresAt"),
   // Régimen fiscal
   fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
-  productType: mysqlEnum("productType", ["own", "semi_own", "third_party"]).default("own").notNull(),
+  productType: mysqlEnum("productType", ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"]).default("actividad").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
   // Proveedor y liquidaciones
