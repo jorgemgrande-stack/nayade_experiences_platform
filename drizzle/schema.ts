@@ -1174,6 +1174,17 @@ export const suppliers = mysqlTable("suppliers", {
   ]).default("transferencia").notNull(),
   // Datos operativos
   standardCommissionPercent: decimal("standardCommissionPercent", { precision: 5, scale: 2 }).default("0.00"),
+  // Configuración de liquidaciones
+  settlementFrequency: mysqlEnum("settlementFrequency", [
+    "quincenal",
+    "mensual",
+    "trimestral",
+    "semestral",
+    "anual",
+    "manual",
+  ]).default("manual").notNull(),
+  settlementDayOfMonth: int("settlementDayOfMonth").default(1), // Día del mes para liquidar (1-28)
+  autoGenerateSettlements: boolean("autoGenerateSettlements").default(false).notNull(),
   internalNotes: text("internalNotes"),
   status: mysqlEnum("status", ["activo", "inactivo", "bloqueado"]).default("activo").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -1201,6 +1212,7 @@ export const supplierSettlements = mysqlTable("supplier_settlements", {
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
   // Workflow de estados
   status: mysqlEnum("status", [
+    "borrador",
     "emitida",
     "pendiente_abono",
     "abonada",

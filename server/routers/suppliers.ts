@@ -222,6 +222,10 @@ const supplierSchema = z.object({
   iban: z.string().optional(),
   paymentMethod: z.enum(["transferencia", "confirming", "efectivo", "compensacion"]).default("transferencia"),
   standardCommissionPercent: z.number().min(0).max(100).default(0),
+  // Configuración de liquidaciones
+  settlementFrequency: z.enum(["quincenal", "mensual", "trimestral", "semestral", "anual", "manual"]).default("manual"),
+  settlementDayOfMonth: z.number().int().min(1).max(28).default(1),
+  autoGenerateSettlements: z.boolean().default(false),
   internalNotes: z.string().optional(),
   status: z.enum(["activo", "inactivo", "bloqueado"]).default("activo"),
 });
@@ -289,6 +293,9 @@ export const suppliersRouter = router({
         iban: input.iban ?? null,
         paymentMethod: input.paymentMethod,
         standardCommissionPercent: String(input.standardCommissionPercent),
+        settlementFrequency: input.settlementFrequency,
+        settlementDayOfMonth: input.settlementDayOfMonth,
+        autoGenerateSettlements: input.autoGenerateSettlements,
         internalNotes: input.internalNotes ?? null,
         status: input.status,
       });
@@ -311,6 +318,9 @@ export const suppliersRouter = router({
         iban: data.iban ?? null,
         paymentMethod: data.paymentMethod,
         standardCommissionPercent: String(data.standardCommissionPercent),
+        settlementFrequency: data.settlementFrequency,
+        settlementDayOfMonth: data.settlementDayOfMonth,
+        autoGenerateSettlements: data.autoGenerateSettlements,
         internalNotes: data.internalNotes ?? null,
         status: data.status,
       }).where(eq(suppliers.id, id));
@@ -323,6 +333,194 @@ export const suppliersRouter = router({
     .mutation(async ({ input }) => {
       await db.delete(suppliers).where(eq(suppliers.id, input.id));
       return { ok: true };
+    }),
+
+  // ── Get next settlement periods for a supplier ────────────────────────────
+  getNextPeriods: protectedProcedure
+    .input(z.object({ supplierId: z.number() }))
+    .query(async ({ input }) => {
+      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, input.supplierId));
+      if (!supplier) throw new TRPCError({ code: "NOT_FOUND", message: "Proveedor no encontrado" });
+
+      const freq = supplier.settlementFrequency;
+      const dayOfMonth = supplier.settlementDayOfMonth ?? 1;
+
+      // Obtener la última liquidación del proveedor
+      const lastSettlements = await db
+        .select({ periodTo: supplierSettlements.periodTo })
+        .from(supplierSettlements)
+        .where(eq(supplierSettlements.supplierId, input.supplierId))
+        .orderBy(desc(supplierSettlements.periodTo))
+        .limit(1);
+
+      const today = new Date();
+      const todayStr = today.toISOString().split("T")[0];
+
+      // Aritmética de fechas sin zona horaria (opera sobre partes YYYY-MM-DD)
+      function _dateAddDays(dateStr: string, days: number): string {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        const dt = new Date(Date.UTC(y, m - 1, d + days));
+        return dt.toISOString().split("T")[0];
+      }
+      function _lastDayOfMonth(y: number, m: number): string {
+        // Date.UTC(y, m, 0) = último día del mes m (1-indexed)
+        const dt = new Date(Date.UTC(y, m, 0));
+        return dt.toISOString().split("T")[0];
+      }
+      function addPeriod(dateStr: string, freq: string): string {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        switch (freq) {
+          case "quincenal": return _dateAddDays(dateStr, 15);
+          case "mensual":   { const dt = new Date(Date.UTC(y, m, d)); return dt.toISOString().split("T")[0]; }
+          case "trimestral": { const dt = new Date(Date.UTC(y, m + 2, d)); return dt.toISOString().split("T")[0]; }
+          case "semestral": { const dt = new Date(Date.UTC(y, m + 5, d)); return dt.toISOString().split("T")[0]; }
+          case "anual":     { const dt = new Date(Date.UTC(y + 1, m - 1, d)); return dt.toISOString().split("T")[0]; }
+          default: return dateStr;
+        }
+      }
+      function getPeriodEnd(fromStr: string, freq: string): string {
+        const [y, m] = fromStr.split("-").map(Number);
+        switch (freq) {
+          case "quincenal": return _dateAddDays(fromStr, 14);
+          case "mensual":   return _lastDayOfMonth(y, m);
+          case "trimestral": return _lastDayOfMonth(y, m + 2);
+          case "semestral": return _lastDayOfMonth(y, m + 5);
+          case "anual":     return _lastDayOfMonth(y, m + 11);
+          default: return fromStr;
+        }
+      }
+
+      if (freq === "manual") {
+        return { frequency: freq, dayOfMonth, pendingPeriods: [], nextPeriodFrom: null, nextPeriodTo: null };
+      }
+
+      // Determinar inicio del primer periodo pendiente
+      let currentFrom: string;
+      if (lastSettlements.length > 0) {
+        // El siguiente periodo empieza el día después del último periodTo
+        const lastTo = new Date(lastSettlements[0].periodTo + "T00:00:00Z");
+        lastTo.setDate(lastTo.getDate() + 1);
+        currentFrom = lastTo.toISOString().split("T")[0];
+      } else {
+        // Sin liquidaciones previas: empezar desde el primer día del mes actual
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        currentFrom = firstDay.toISOString().split("T")[0];
+      }
+
+      // Calcular hasta máximo 12 periodos pendientes (hasta hoy)
+      const pendingPeriods: { from: string; to: string }[] = [];
+      let iterations = 0;
+      while (iterations < 24) {
+        const periodTo = getPeriodEnd(currentFrom, freq);
+        if (periodTo > todayStr) break; // El periodo no ha terminado aún
+        pendingPeriods.push({ from: currentFrom, to: periodTo });
+        currentFrom = addPeriod(currentFrom, freq);
+        iterations++;
+      }
+
+      // Próximo periodo futuro
+      const nextPeriodFrom = currentFrom;
+      const nextPeriodTo = getPeriodEnd(currentFrom, freq);
+
+      return { frequency: freq, dayOfMonth, pendingPeriods, nextPeriodFrom, nextPeriodTo };
+    }),
+
+  // ── Generate pending settlements automatically ───────────────────────────
+  generatePending: protectedProcedure
+    .input(z.object({ supplierId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, input.supplierId));
+      if (!supplier) throw new TRPCError({ code: "NOT_FOUND", message: "Proveedor no encontrado" });
+      if (supplier.settlementFrequency === "manual") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Este proveedor tiene periodicidad manual. Crea las liquidaciones manualmente." });
+      }
+
+      // Reutilizar la lógica de getNextPeriods para calcular periodos pendientes
+      const freq = supplier.settlementFrequency;
+      const today = new Date();
+      const todayStr = today.toISOString().split("T")[0];
+
+      // Aritmética de fechas sin zona horaria
+      function _dateAddDays2(dateStr: string, days: number): string {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split("T")[0];
+      }
+      function _lastDayOfMonth2(y: number, m: number): string {
+        return new Date(Date.UTC(y, m, 0)).toISOString().split("T")[0];
+      }
+      function getPeriodEnd(fromStr: string, freq: string): string {
+        const [y, m] = fromStr.split("-").map(Number);
+        switch (freq) {
+          case "quincenal": return _dateAddDays2(fromStr, 14);
+          case "mensual":   return _lastDayOfMonth2(y, m);
+          case "trimestral": return _lastDayOfMonth2(y, m + 2);
+          case "semestral": return _lastDayOfMonth2(y, m + 5);
+          case "anual":     return _lastDayOfMonth2(y, m + 11);
+          default: return fromStr;
+        }
+      }
+      function addPeriod(dateStr: string, freq: string): string {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        switch (freq) {
+          case "quincenal": return _dateAddDays2(dateStr, 15);
+          case "mensual":   return new Date(Date.UTC(y, m, d)).toISOString().split("T")[0];
+          case "trimestral": return new Date(Date.UTC(y, m + 2, d)).toISOString().split("T")[0];
+          case "semestral": return new Date(Date.UTC(y, m + 5, d)).toISOString().split("T")[0];
+          case "anual":     return new Date(Date.UTC(y + 1, m - 1, d)).toISOString().split("T")[0];
+          default: return dateStr;
+        }
+      }
+
+      const lastSettlements = await db
+        .select({ periodTo: supplierSettlements.periodTo })
+        .from(supplierSettlements)
+        .where(eq(supplierSettlements.supplierId, input.supplierId))
+        .orderBy(desc(supplierSettlements.periodTo))
+        .limit(1);
+
+      let currentFrom: string;
+      if (lastSettlements.length > 0) {
+        const lastTo = new Date(lastSettlements[0].periodTo + "T00:00:00Z");
+        lastTo.setDate(lastTo.getDate() + 1);
+        currentFrom = lastTo.toISOString().split("T")[0];
+      } else {
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        currentFrom = firstDay.toISOString().split("T")[0];
+      }
+
+      const pendingPeriods: { from: string; to: string }[] = [];
+      let iterations = 0;
+      while (iterations < 24) {
+        const periodTo = getPeriodEnd(currentFrom, freq);
+        if (periodTo > todayStr) break;
+        pendingPeriods.push({ from: currentFrom, to: periodTo });
+        currentFrom = addPeriod(currentFrom, freq);
+        iterations++;
+      }
+
+      if (pendingPeriods.length === 0) {
+        return { created: 0, message: "No hay periodos pendientes de liquidar." };
+      }
+
+      // Crear una liquidación borrador por cada periodo pendiente
+      const created: string[] = [];
+      for (const period of pendingPeriods) {
+        const settlementNumber = await generateSettlementNumber(String(ctx.user.id));
+        await db.insert(supplierSettlements).values({
+          settlementNumber,
+          supplierId: input.supplierId,
+          periodFrom: period.from,
+          periodTo: period.to,
+          status: "borrador",
+          grossAmount: "0.00",
+          commissionAmount: "0.00",
+          netAmountProvider: "0.00",
+          internalNotes: `Generada automáticamente (${freq})`,
+        });
+        created.push(settlementNumber);
+      }
+
+      return { created: created.length, settlementNumbers: created, message: `${created.length} liquidación(es) creada(s) correctamente.` };
     }),
 
   // ── Get products linked to supplier ─────────────────────────────────────────

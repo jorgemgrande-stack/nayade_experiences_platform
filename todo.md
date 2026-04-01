@@ -2740,3 +2740,26 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Limpiar referencias en PublicFooter.tsx (columna de experiencias)
 - [x] Limpiar referencias en BudgetRequest.tsx (FAMILY_MAP)
 - [x] Limpiar referencias en Home.tsx (HERO_FAMILY_MAP y array actividades)
+
+## Periodicidad de Liquidaciones en Fichas de Proveedor
+
+- [ ] Añadir campos settlementFrequency, settlementDayOfMonth y autoGenerateSettlements al schema de suppliers
+- [ ] Migrar la BD con los nuevos campos
+- [ ] Actualizar supplierSchema tRPC con los nuevos campos
+- [ ] Actualizar procedimientos create/update de suppliers
+- [ ] Nuevo procedimiento generatePendingSettlements: calcula periodos sin liquidación y los crea
+- [ ] Actualizar SuppliersManager: selector de periodicidad, día del mes y toggle de auto-generación
+- [ ] Botón "Generar liquidaciones pendientes" en la ficha de proveedor
+- [ ] Mostrar próxima fecha de liquidación en la ficha de proveedor
+
+## Periodicidad de Liquidaciones (completado 2026-04-01)
+- [x] Añadir campo settlementFrequency (quincenal/mensual/trimestral/semestral/anual/manual) al schema de suppliers
+- [x] Añadir campo settlementDayOfMonth y autoGenerateSettlements al schema de suppliers
+- [x] Migrar BD: ALTER TABLE suppliers + ALTER TABLE supplier_settlements (añadir borrador al enum status)
+- [x] Actualizar supplierSchema tRPC con los nuevos campos
+- [x] Nuevo procedimiento getNextPeriods: calcula periodos pendientes sin zona horaria
+- [x] Nuevo procedimiento generatePending: crea liquidaciones borrador por cada periodo pendiente
+- [x] Actualizar SuppliersManager frontend: selector de periodicidad, día del mes, switch auto-generación
+- [x] Panel SettlementPeriodsPanel en ficha de proveedor con periodos pendientes y botón generar
+- [x] Tests unitarios: 25 tests de getPeriodEnd, addPeriod y calcPendingPeriods (todos pasan)
+- [x] Corrección lógica de fechas sin zona horaria (Date.UTC) para evitar desfases UTC+2

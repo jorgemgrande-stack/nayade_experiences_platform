@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +15,7 @@ import { toast } from "sonner";
 import {
   Building2, Plus, Search, Phone, Mail, CreditCard, User, MapPin,
   Edit, Trash2, Package, BarChart3, AlertTriangle, CheckCircle2, XCircle,
-  ChevronRight, Percent
+  ChevronRight, Percent, Calendar, RefreshCw, Clock, Zap
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -31,6 +32,9 @@ type Supplier = {
   iban?: string | null;
   paymentMethod: string;
   standardCommissionPercent: string;
+  settlementFrequency: "quincenal" | "mensual" | "trimestral" | "semestral" | "anual" | "manual";
+  settlementDayOfMonth?: number | null;
+  autoGenerateSettlements: boolean;
   internalNotes?: string | null;
   status: "activo" | "inactivo" | "bloqueado";
 };
@@ -46,6 +50,9 @@ type SupplierForm = {
   iban: string;
   paymentMethod: "transferencia" | "confirming" | "efectivo" | "compensacion";
   standardCommissionPercent: number;
+  settlementFrequency: "quincenal" | "mensual" | "trimestral" | "semestral" | "anual" | "manual";
+  settlementDayOfMonth: number;
+  autoGenerateSettlements: boolean;
   internalNotes: string;
   status: "activo" | "inactivo" | "bloqueado";
 };
@@ -61,11 +68,32 @@ const defaultForm: SupplierForm = {
   iban: "",
   paymentMethod: "transferencia",
   standardCommissionPercent: 0,
+  settlementFrequency: "manual",
+  settlementDayOfMonth: 1,
+  autoGenerateSettlements: false,
   internalNotes: "",
   status: "activo",
 };
 
-// ─── Status helpers ───────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const FREQ_LABELS: Record<string, string> = {
+  quincenal: "Quincenal",
+  mensual: "Mensual",
+  trimestral: "Trimestral",
+  semestral: "Semestral",
+  anual: "Anual",
+  manual: "Manual",
+};
+
+const FREQ_COLORS: Record<string, string> = {
+  quincenal: "bg-purple-100 text-purple-800 border-purple-200",
+  mensual: "bg-blue-100 text-blue-800 border-blue-200",
+  trimestral: "bg-cyan-100 text-cyan-800 border-cyan-200",
+  semestral: "bg-teal-100 text-teal-800 border-teal-200",
+  anual: "bg-green-100 text-green-800 border-green-200",
+  manual: "bg-slate-100 text-slate-600 border-slate-200",
+};
 
 function StatusBadge({ status }: { status: string }) {
   if (status === "activo") return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200"><CheckCircle2 className="w-3 h-3 mr-1" />Activo</Badge>;
@@ -81,6 +109,133 @@ function PaymentBadge({ method }: { method: string }) {
     compensacion: "Compensación",
   };
   return <Badge variant="outline" className="text-xs">{map[method] ?? method}</Badge>;
+}
+
+function FreqBadge({ freq }: { freq: string }) {
+  return (
+    <Badge className={`text-xs border ${FREQ_COLORS[freq] ?? FREQ_COLORS.manual}`}>
+      <Calendar className="w-3 h-3 mr-1" />
+      {FREQ_LABELS[freq] ?? freq}
+    </Badge>
+  );
+}
+
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr + "T00:00:00Z");
+  return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+// ─── Settlement Periods Panel ─────────────────────────────────────────────────
+
+function SettlementPeriodsPanel({ supplier }: { supplier: Supplier }) {
+  const utils = trpc.useUtils();
+
+  const { data: periods, isLoading: loadingPeriods } = trpc.suppliers.getNextPeriods.useQuery(
+    { supplierId: supplier.id },
+    { enabled: supplier.settlementFrequency !== "manual" }
+  );
+
+  const generateMutation = trpc.suppliers.generatePending.useMutation({
+    onSuccess: (data) => {
+      utils.suppliers.getNextPeriods.invalidate({ supplierId: supplier.id });
+      utils.settlements.list.invalidate();
+      toast.success(data.message ?? `${data.created} liquidación(es) creada(s)`);
+    },
+    onError: (e) => toast.error(`Error: ${e.message}`),
+  });
+
+  if (supplier.settlementFrequency === "manual") {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-blue-500" />
+            Liquidaciones automáticas
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-slate-400 text-center py-3">
+            Este proveedor tiene periodicidad <strong>manual</strong>. Las liquidaciones se crean manualmente desde el módulo de Liquidaciones.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-blue-500" />
+            Liquidaciones automáticas
+            <FreqBadge freq={supplier.settlementFrequency} />
+          </CardTitle>
+          {supplier.autoGenerateSettlements && (
+            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs">
+              <Zap className="w-3 h-3 mr-1" />Auto-generación activa
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loadingPeriods ? (
+          <p className="text-sm text-slate-400 text-center py-2">Calculando periodos...</p>
+        ) : (
+          <>
+            {/* Periodos pendientes */}
+            {periods && periods.pendingPeriods.length > 0 ? (
+              <div>
+                <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  {periods.pendingPeriods.length} periodo(s) pendiente(s) de liquidar
+                </p>
+                <div className="space-y-1.5 mb-3">
+                  {periods.pendingPeriods.map((p, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs bg-amber-50 border border-amber-200 rounded px-3 py-1.5">
+                      <span className="text-amber-800 font-medium">
+                        {formatDate(p.from)} — {formatDate(p.to)}
+                      </span>
+                      <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-xs">Pendiente</Badge>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => generateMutation.mutate({ supplierId: supplier.id })}
+                  disabled={generateMutation.isPending}
+                >
+                  {generateMutation.isPending ? (
+                    <><RefreshCw className="w-3 h-3 mr-2 animate-spin" />Generando...</>
+                  ) : (
+                    <><Zap className="w-3 h-3 mr-2" />Generar {periods.pendingPeriods.length} liquidación(es) pendiente(s)</>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Al día — no hay periodos pendientes de liquidar
+              </div>
+            )}
+
+            {/* Próximo periodo */}
+            {periods && periods.nextPeriodFrom && (
+              <div className="border-t pt-3">
+                <p className="text-xs text-slate-500 mb-1">Próximo periodo a liquidar:</p>
+                <div className="flex items-center gap-2 text-sm text-slate-700">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="font-medium">{formatDate(periods.nextPeriodFrom)} — {formatDate(periods.nextPeriodTo)}</span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -118,11 +273,19 @@ export default function SuppliersManager() {
   });
 
   const updateMutation = trpc.suppliers.update.useMutation({
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       utils.suppliers.list.invalidate();
+      utils.suppliers.get.invalidate({ id: vars.id });
+      utils.suppliers.getNextPeriods.invalidate({ supplierId: vars.id });
       setShowForm(false);
       setEditingId(null);
       setForm(defaultForm);
+      // Actualizar el selected con los nuevos datos
+      setSelected((prev) => prev ? {
+        ...prev,
+        ...vars,
+        standardCommissionPercent: String(vars.standardCommissionPercent ?? prev.standardCommissionPercent),
+      } as Supplier : prev);
       toast.success("Proveedor actualizado correctamente");
     },
     onError: (e) => toast.error(`Error al actualizar: ${e.message}`),
@@ -157,6 +320,9 @@ export default function SuppliersManager() {
       iban: s.iban ?? "",
       paymentMethod: s.paymentMethod as SupplierForm["paymentMethod"],
       standardCommissionPercent: parseFloat(s.standardCommissionPercent ?? "0"),
+      settlementFrequency: s.settlementFrequency ?? "manual",
+      settlementDayOfMonth: s.settlementDayOfMonth ?? 1,
+      autoGenerateSettlements: s.autoGenerateSettlements ?? false,
       internalNotes: s.internalNotes ?? "",
       status: s.status,
     });
@@ -175,6 +341,9 @@ export default function SuppliersManager() {
       iban: form.iban || undefined,
       paymentMethod: form.paymentMethod,
       standardCommissionPercent: form.standardCommissionPercent,
+      settlementFrequency: form.settlementFrequency,
+      settlementDayOfMonth: form.settlementDayOfMonth,
+      autoGenerateSettlements: form.autoGenerateSettlements,
       internalNotes: form.internalNotes || undefined,
       status: form.status,
     };
@@ -245,8 +414,11 @@ export default function SuppliersManager() {
                 className={`w-full text-left px-4 py-3 border-b hover:bg-slate-50 transition-colors flex items-center gap-3 ${selected?.id === s.id ? "bg-blue-50 border-l-2 border-l-blue-500" : ""}`}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm text-slate-800 truncate">{s.commercialName || s.fiscalName}</div>
+                  <div className="font-medium text-sm text-slate-800 truncate">{(s as any).commercialName || s.fiscalName}</div>
                   <div className="text-xs text-slate-500 truncate">{s.nif ?? "Sin NIF"} · {s.adminEmail ?? "Sin email"}</div>
+                  <div className="mt-1">
+                    <FreqBadge freq={(s as any).settlementFrequency ?? "manual"} />
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <StatusBadge status={s.status} />
@@ -276,13 +448,14 @@ export default function SuppliersManager() {
                 {selected.commercialName && (
                   <p className="text-sm text-slate-500">{selected.fiscalName}</p>
                 )}
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <StatusBadge status={selected.status} />
                   <PaymentBadge method={selected.paymentMethod} />
                   <Badge variant="outline" className="text-xs">
                     <Percent className="w-3 h-3 mr-1" />
                     {selected.standardCommissionPercent}% comisión estándar
                   </Badge>
+                  <FreqBadge freq={selected.settlementFrequency ?? "manual"} />
                 </div>
               </div>
               <div className="flex gap-2">
@@ -347,6 +520,9 @@ export default function SuppliersManager() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Panel de liquidaciones automáticas */}
+            <SettlementPeriodsPanel supplier={selected} />
 
             {/* Productos vinculados */}
             <Card>
@@ -476,6 +652,59 @@ export default function SuppliersManager() {
                 />
               </div>
             </div>
+
+            <Separator />
+
+            {/* Configuración de liquidaciones */}
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+              <Calendar className="w-3.5 h-3.5" />
+              Configuración de liquidaciones
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Periodicidad de liquidación</Label>
+                <Select
+                  value={form.settlementFrequency}
+                  onValueChange={(v) => setForm({ ...form, settlementFrequency: v as SupplierForm["settlementFrequency"] })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual">Manual (sin automatización)</SelectItem>
+                    <SelectItem value="quincenal">Quincenal (cada 15 días)</SelectItem>
+                    <SelectItem value="mensual">Mensual</SelectItem>
+                    <SelectItem value="trimestral">Trimestral (cada 3 meses)</SelectItem>
+                    <SelectItem value="semestral">Semestral (cada 6 meses)</SelectItem>
+                    <SelectItem value="anual">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.settlementFrequency !== "manual" && form.settlementFrequency !== "quincenal" && (
+                <div>
+                  <Label>Día del mes para liquidar</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={28}
+                    value={form.settlementDayOfMonth}
+                    onChange={(e) => setForm({ ...form, settlementDayOfMonth: parseInt(e.target.value) || 1 })}
+                    placeholder="1-28"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Día en que se genera la liquidación del periodo anterior</p>
+                </div>
+              )}
+            </div>
+            {form.settlementFrequency !== "manual" && (
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Auto-generación de liquidaciones</p>
+                  <p className="text-xs text-slate-500">Crear automáticamente borradores de liquidación al inicio de cada periodo</p>
+                </div>
+                <Switch
+                  checked={form.autoGenerateSettlements}
+                  onCheckedChange={(v) => setForm({ ...form, autoGenerateSettlements: v })}
+                />
+              </div>
+            )}
 
             <Separator />
 
