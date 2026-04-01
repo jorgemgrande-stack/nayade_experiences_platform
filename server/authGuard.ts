@@ -117,6 +117,35 @@ const PUBLIC_TRPC_ROUTES = new Set([
 
   // ── Sistema ───────────────────────────────────────────────────────────────
   "system.notifyOwner",
+
+  // ── Lego Packs (páginas públicas /lego-packs/*) ─────────────────────────────
+  "legoPacks.listPublic",
+  "legoPacks.listPublicByCategory",
+  "legoPacks.getBySlug",
+  "legoPacks.calculatePrice",
+
+  // ── Packs (páginas públicas /packs/*) ──────────────────────────────────────
+  "packs.getTitlesByCategory",
+  "packs.getBySlug",
+  "packs.getAll",
+
+  // ── Time Slots (selector de horarios en fichas públicas) ─────────────────
+  "timeSlots.getByProduct",
+
+  // ── Descuentos y cupones (validación pública en carrito/checkout) ──────────
+  "discounts.validate",
+
+  // ── Ticketing (formularios públicos de incidencias/solicitudes) ─────────
+  "ticketing.listActiveProducts",
+  "ticketing.createSubmission",
+
+  // ── Cancelaciones (solicitud pública de cancelación) ─────────────────────
+  "cancellations.createRequest",
+
+  // ── Reservas Redsys (pago online público) ────────────────────────────────
+  "reservations.createAndPay",
+  "reservations.getStatus",
+  "reservations.getByLocator",
 ]);
 
 // ─── Parsear el nombre del procedimiento desde la URL de tRPC ─────────────────

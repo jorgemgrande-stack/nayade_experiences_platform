@@ -2839,3 +2839,10 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir metadata de 'estancia' al CATEGORY_META de LegoPacksList
 - [x] Añadir filtro 'Hotel' al backoffice de Lego Packs (LegoPacksManager)
 - [x] Añadir opción 'Hotel + Actividades' al selector de categoría del formulario del backoffice
+
+## Corrección authGuard — Error 401 en páginas públicas (v4.7)
+- [x] Identificar que legoPacks.listPublicByCategory no estaba en PUBLIC_TRPC_ROUTES
+- [x] Añadir legoPacks.listPublic, listPublicByCategory, getBySlug, calculatePrice
+- [x] Añadir packs.getTitlesByCategory, getBySlug, getAll
+- [x] Añadir timeSlots.getByProduct, discounts.validate, ticketing.*, cancellations.createRequest
+- [x] 611 tests pasando tras la corrección
