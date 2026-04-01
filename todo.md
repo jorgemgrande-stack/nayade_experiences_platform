@@ -2846,3 +2846,28 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Añadir packs.getTitlesByCategory, getBySlug, getAll
 - [x] Añadir timeSlots.getByProduct, discounts.validate, ticketing.*, cancellations.createRequest
 - [x] 611 tests pasando tras la corrección
+
+## Menú Lego Packs — Añadir Hotel + Actividades (v4.8)
+- [ ] Añadir enlace /lego-packs/estancia al submenú desplegable de Lego Packs en PublicNav
+
+## Rediseño UI Módulo Fiscal REAV (v4.9) — Solo UI/UX, sin tocar lógica
+- [ ] Eliminar fondo negro dominante, usar fondo claro (#F7F7F7 / blanco)
+- [ ] Corregir overflow horizontal en todos los contenedores
+- [ ] Organizar en cards claras (datos cliente, info general, detalle económico, líneas, estado REAV)
+- [ ] Aplicar tipografía con jerarquía clara (labels gris 12px, valores oscuros 14-16px)
+- [ ] Botones coherentes con el CRM (primario naranja, secundario outline)
+- [ ] Responsive: columnas en stack vertical en móvil, sin scroll horizontal
+- [ ] Coherencia visual con CRM, Reservas y Presupuestos
+
+## Rediseño UI Módulo Fiscal REAV (v4.9)
+- [x] Eliminar fondo negro (bg-[#080e1c]) del contenedor principal
+- [x] Rediseñar layout: panel izquierdo blanco + panel derecho bg-slate-50
+- [x] Mejorar cards de expediente: shadow-sm, bordes sutiles, tipografía clara
+- [x] Añadir semáforo visual (rojo/ámbar/verde) con leyenda en el panel izquierdo
+- [x] Añadir bloque "Datos del Cliente" con iconos (nombre, email, teléfono, DNI, dirección)
+- [x] Añadir badges de canal de origen (TPV, Online, CRM) en el header del expediente
+- [x] Mejorar KPIs económicos: colores diferenciados por tipo (rojo costes, verde margen)
+- [x] Mejorar resumen fiscal REAV: mini-cards con base imponible e IVA
+- [x] Corregir overflow horizontal en DocBlock (flex-wrap en inputs)
+- [x] Responsive: grid 1 col en móvil, 2-3 cols en desktop
+- [x] 611 tests pasando, 0 errores TypeScript
