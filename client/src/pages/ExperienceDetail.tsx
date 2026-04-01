@@ -70,25 +70,25 @@ export default function ExperienceDetail() {
   // Precio efectivo: variante seleccionada > precio base
   const selectedVariant = variants.find(v => v.id === selectedVariantId);
   const effectivePricePerPerson = selectedVariant
-    ? parseFloat(String(selectedVariant.priceModifier ?? exp.basePrice))
-    : parseFloat(String(exp.basePrice));
+    ? parseFloat(String(selectedVariant.priceModifier ?? exp?.basePrice ?? "0"))
+    : parseFloat(String(exp?.basePrice ?? "0"));
 
   // Precio "desde": mínimo de todas las variantes (o basePrice si no hay variantes)
   const minVariantPrice = variants.length > 0
     ? Math.min(...variants.map(v => parseFloat(String(v.priceModifier ?? exp.basePrice))))
-    : parseFloat(String(exp.basePrice));
-  const displayFromPrice = Math.min(minVariantPrice, parseFloat(String(exp.basePrice)));
+    : parseFloat(String(exp?.basePrice ?? "0"));
+  const displayFromPrice = Math.min(minVariantPrice, parseFloat(String(exp?.basePrice ?? "0")));
 
   // Construir galería desde image1..4 (BD) o gallery (legacy) o fallback estático
   const dbGallery = [
-    (exp as Record<string, unknown>).image1,
-    (exp as Record<string, unknown>).image2,
-    (exp as Record<string, unknown>).image3,
-    (exp as Record<string, unknown>).image4,
+    (exp as Record<string, unknown> | undefined)?.image1,
+    (exp as Record<string, unknown> | undefined)?.image2,
+    (exp as Record<string, unknown> | undefined)?.image3,
+    (exp as Record<string, unknown> | undefined)?.image4,
   ].filter((img): img is string => typeof img === "string" && img.length > 0);
   const gallery = dbGallery.length > 0
     ? dbGallery
-    : ((exp as Record<string, unknown>).gallery as string[] | undefined) ?? [];
+    : ((exp as Record<string, unknown> | undefined)?.gallery as string[] | undefined) ?? [];
   const includes = (exp?.includes as string[] | undefined) ?? [];
   const excludes = (exp?.excludes as string[] | undefined) ?? [];
   const totalPrice = effectivePricePerPerson * persons;
@@ -96,8 +96,8 @@ export default function ExperienceDetail() {
   // Descuento activo en la experiencia
   const discountedFromPrice = getDiscountedPrice(
     displayFromPrice,
-    (exp as Record<string, unknown>).discountPercent as string | number | null,
-    (exp as Record<string, unknown>).discountExpiresAt as string | null
+    (exp as Record<string, unknown> | undefined)?.discountPercent as string | number | null,
+    (exp as Record<string, unknown> | undefined)?.discountExpiresAt as string | null
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,11 +108,11 @@ export default function ExperienceDetail() {
       email: formData.email,
       phone: formData.phone,
       message: formData.message,
-      experienceId: exp.id,
+      experienceId: exp?.id ?? 0,
       numberOfPersons: persons,
       preferredDate: formData.date,
       selectedCategory: "Experiencias",
-      selectedProduct: exp.title,
+      selectedProduct: exp?.title ?? "",
     });
     setIsSubmitting(false);
   };
@@ -306,8 +306,8 @@ export default function ExperienceDetail() {
               <div className="bg-card rounded-2xl border border-border/50 shadow-lg p-6 relative overflow-hidden">
                 {/* Ribbon de descuento */}
                 <DiscountRibbon
-                  discountPercent={(exp as Record<string, unknown>).discountPercent as number | null}
-                  discountExpiresAt={(exp as Record<string, unknown>).discountExpiresAt as string | null}
+                  discountPercent={(exp as Record<string, unknown> | undefined)?.discountPercent as number | null}
+                  discountExpiresAt={(exp as Record<string, unknown> | undefined)?.discountExpiresAt as string | null}
                   variant="card"
                 />
 
@@ -332,8 +332,8 @@ export default function ExperienceDetail() {
                 {discountedFromPrice && (
                   <div className="mb-4">
                     <DiscountRibbon
-                      discountPercent={(exp as Record<string, unknown>).discountPercent as number | null}
-                      discountExpiresAt={(exp as Record<string, unknown>).discountExpiresAt as string | null}
+                      discountPercent={(exp as Record<string, unknown> | undefined)?.discountPercent as number | null}
+                      discountExpiresAt={(exp as Record<string, unknown> | undefined)?.discountExpiresAt as string | null}
                       variant="detail"
                     />
                   </div>
@@ -359,7 +359,7 @@ export default function ExperienceDetail() {
                           )}
                         >
                           <span>Estándar</span>
-                          <span className="font-bold">{parseFloat(String(exp.basePrice)).toFixed(0)}€/p.</span>
+                          <span className="font-bold">{parseFloat(String(exp?.basePrice ?? "0")).toFixed(0)}€/p.</span>
                         </button>
                       )}
                       {variants.map(v => (
@@ -434,7 +434,7 @@ export default function ExperienceDetail() {
                   />
                 </div>
                 {/* CTA principal: Añadir al carrito (único botón de compra) */}
-                {exp.basePrice && parseFloat(String(exp.basePrice)) > 0 ? (
+                {exp.basePrice && parseFloat(String(exp?.basePrice ?? "0")) > 0 ? (
                   <Button
                     onClick={() => {
                       if (!selectedDate) {
