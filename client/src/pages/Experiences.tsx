@@ -24,35 +24,20 @@ const difficultyLabels: Record<string, string> = {
   experto: "Experto",
 };
 
-// Static fallback data
-const staticExperiences = [
-  { id: 1, slug: "esqui-pirineos", title: "Esquí en los Pirineos", shortDescription: "Una jornada completa de esquí en las mejores pistas", categoryId: 1, locationId: 1, coverImageUrl: "https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=600&q=80", basePrice: "89.00", duration: "1 día", minPersons: 2, maxPersons: 10, difficulty: "moderado", isFeatured: true, isActive: true },
-  { id: 2, slug: "kayak-mediterraneo", title: "Kayak en el Mediterráneo", shortDescription: "Explora las calas más hermosas desde el agua", categoryId: 2, locationId: 2, coverImageUrl: "https://images.unsplash.com/photo-1530866495561-507c9faab2ed?w=600&q=80", basePrice: "65.00", duration: "Medio día", minPersons: 2, maxPersons: 8, difficulty: "facil", isFeatured: true, isActive: true },
-  { id: 3, slug: "escalada-roca", title: "Escalada en Roca", shortDescription: "Aprende técnicas de escalada con instructores certificados", categoryId: 3, locationId: 3, coverImageUrl: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=600&q=80", basePrice: "75.00", duration: "1 día", minPersons: 1, maxPersons: 6, difficulty: "dificil", isFeatured: false, isActive: true },
-  { id: 4, slug: "ruta-helicoptero", title: "Ruta en Helicóptero", shortDescription: "Vistas panorámicas únicas desde las alturas", categoryId: 4, locationId: 4, coverImageUrl: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&q=80", basePrice: "450.00", duration: "2 horas", minPersons: 2, maxPersons: 4, difficulty: "facil", isFeatured: true, isActive: true },
-  { id: 5, slug: "rafting-noguera", title: "Rafting en el Noguera", shortDescription: "Adrenalina pura en las aguas bravas del Pirineo", categoryId: 2, locationId: 1, coverImageUrl: "https://images.unsplash.com/photo-1530866495561-507c9faab2ed?w=600&q=80", basePrice: "55.00", duration: "3 horas", minPersons: 4, maxPersons: 12, difficulty: "moderado", isFeatured: false, isActive: true },
-  { id: 6, slug: "senderismo-guadarrama", title: "Senderismo en Guadarrama", shortDescription: "Rutas de montaña con guías expertos en la Sierra", categoryId: 3, locationId: 3, coverImageUrl: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=600&q=80", basePrice: "45.00", duration: "1 día", minPersons: 2, maxPersons: 15, difficulty: "facil", isFeatured: false, isActive: true },
-];
 
-const staticCategories = [
-  { id: 1, slug: "nieve-ski", name: "Nieve & Ski", iconName: "⛷️" },
-  { id: 2, slug: "aventura-acuatica", name: "Aventura Acuática", iconName: "🏄" },
-  { id: 3, slug: "multiaventura", name: "Multiaventura", iconName: "🧗" },
-  { id: 4, slug: "premium", name: "Premium", iconName: "✨" },
-];
 
 export default function Experiences() {
   const params = useParams<{ category?: string }>();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string | null>(null);
-  const [cartProduct, setCartProduct] = useState<(typeof staticExperiences)[0] | null>(null);
+  const [cartProduct, setCartProduct] = useState<Record<string, unknown> | null>(null);
 
   const { data: dbExperiences } = trpc.public.getExperiences.useQuery({ limit: 50, offset: 0 });
   const { data: dbCategories } = trpc.public.getCategories.useQuery();
 
-  const experiences = dbExperiences?.length ? dbExperiences : staticExperiences;
-  const categories = dbCategories?.length ? dbCategories : staticCategories;
+  const experiences = dbExperiences ?? [];
+  const categories = dbCategories ?? [];
 
   const filtered = experiences.filter((exp) => {
     const matchSearch = !search || exp.title.toLowerCase().includes(search.toLowerCase());
@@ -293,13 +278,13 @@ export default function Experiences() {
           isOpen={!!cartProduct}
           onClose={() => setCartProduct(null)}
           product={{
-            id: cartProduct.id,
-            title: cartProduct.title,
-            basePrice: cartProduct.basePrice,
-            image1: (cartProduct as any).image1 ?? cartProduct.coverImageUrl,
-            slug: cartProduct.slug,
-            minPersons: cartProduct.minPersons ?? 1,
-            maxPersons: cartProduct.maxPersons ?? 100,
+            id: (cartProduct as any).id,
+            title: (cartProduct as any).title,
+            basePrice: (cartProduct as any).basePrice,
+            image1: (cartProduct as any).image1 ?? (cartProduct as any).coverImageUrl,
+            slug: (cartProduct as any).slug,
+            minPersons: (cartProduct as any).minPersons ?? 1,
+            maxPersons: (cartProduct as any).maxPersons ?? 100,
             discountPercent: (cartProduct as any).discountPercent,
             discountExpiresAt: (cartProduct as any).discountExpiresAt,
           }}

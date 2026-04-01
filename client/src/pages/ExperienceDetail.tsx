@@ -19,35 +19,6 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const staticExperience = {
-  id: 1,
-  slug: "esqui-pirineos",
-  title: "Esquí en los Pirineos",
-  shortDescription: "Una jornada completa de esquí en las mejores pistas del Pirineo español",
-  description: `Vive una experiencia única en las impresionantes pistas del Pirineo. Nuestros monitores certificados te guiarán desde los primeros pasos hasta las pistas más emocionantes, adaptando siempre el nivel a tus capacidades.
-
-La jornada incluye traslado desde el punto de encuentro, alquiler completo de material, clases con instructor y almuerzo en el refugio de montaña. Una experiencia completa para disfrutar de la nieve en familia, con amigos o en pareja.`,
-  categoryId: 1,
-  locationId: 1,
-  coverImageUrl: "https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=1200&q=80",
-  gallery: [
-    "https://images.unsplash.com/photo-1551698618-1dfe5d97d256?w=800&q=80",
-    "https://images.unsplash.com/photo-1530866495561-507c9faab2ed?w=800&q=80",
-    "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800&q=80",
-    "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&q=80",
-  ],
-  basePrice: "89.00",
-  duration: "1 día completo",
-  minPersons: 2,
-  maxPersons: 10,
-  difficulty: "moderado",
-  includes: ["Traslado incluido", "Alquiler de material completo", "Monitor certificado", "Almuerzo en refugio", "Seguro de actividad"],
-  excludes: ["Forfait de esquí (opcional +35€)", "Bebidas adicionales", "Transporte desde tu ciudad"],
-  requirements: "Se recomienda buena condición física. No es necesaria experiencia previa.",
-  isFeatured: true,
-  isActive: true,
-};
-
 const difficultyColors: Record<string, string> = {
   facil: "bg-emerald-100 text-emerald-700",
   moderado: "bg-amber-100 text-amber-700",
@@ -73,7 +44,7 @@ export default function ExperienceDetail() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
 
-  const { data: dbExp } = trpc.public.getExperienceBySlug.useQuery(
+  const { data: dbExp, isLoading: isLoadingExp } = trpc.public.getExperienceBySlug.useQuery(
     { slug: slug ?? "" },
     { enabled: !!slug, retry: false }
   );
@@ -94,7 +65,7 @@ export default function ExperienceDetail() {
     },
   });
 
-  const exp = dbExp ?? staticExperience;
+  const exp = dbExp;
 
   // Precio efectivo: variante seleccionada > precio base
   const selectedVariant = variants.find(v => v.id === selectedVariantId);
@@ -117,9 +88,9 @@ export default function ExperienceDetail() {
   ].filter((img): img is string => typeof img === "string" && img.length > 0);
   const gallery = dbGallery.length > 0
     ? dbGallery
-    : ((exp as Record<string, unknown>).gallery as string[] | undefined) ?? staticExperience.gallery;
-  const includes = (exp.includes as string[]) ?? staticExperience.includes;
-  const excludes = (exp.excludes as string[]) ?? staticExperience.excludes;
+    : ((exp as Record<string, unknown>).gallery as string[] | undefined) ?? [];
+  const includes = (exp?.includes as string[] | undefined) ?? [];
+  const excludes = (exp?.excludes as string[] | undefined) ?? [];
   const totalPrice = effectivePricePerPerson * persons;
 
   // Descuento activo en la experiencia
@@ -145,6 +116,40 @@ export default function ExperienceDetail() {
     });
     setIsSubmitting(false);
   };
+
+  // Mostrar skeleton mientras carga
+  if (isLoadingExp) {
+    return (
+      <PublicLayout>
+        <div className="container py-20 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">Cargando experiencia...</p>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
+
+  // Mostrar 404 si el slug no existe en la BD
+  if (!exp) {
+    return (
+      <PublicLayout>
+        <div className="container py-20 flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <div className="text-6xl mb-4">🌊</div>
+            <h1 className="text-2xl font-bold mb-2">Experiencia no encontrada</h1>
+            <p className="text-muted-foreground mb-6">Esta experiencia no está disponible o ha sido eliminada del catálogo.</p>
+            <Link href="/experiencias">
+              <Button className="bg-accent hover:bg-accent/90">
+                Ver todas las experiencias
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </PublicLayout>
+    );
+  }
 
   return (
     <PublicLayout>
