@@ -7,8 +7,6 @@ const colExperiencias = [
   { label: "Cableski & Wakeboard", href: "/experiencias/cableski-wakeboard" },
   { label: "Canoas & Kayaks", href: "/experiencias/canoas-kayaks" },
   { label: "Paddle Surf", href: "/experiencias/paddle-surf" },
-  { label: "Paseos en Barco", href: "/experiencias/paseos-barco" },
-  { label: "Minimotos Eléctricas", href: "/experiencias/minimotos" },
   { label: "Aventura Hinchable", href: "/experiencias/aventura-hinchable" },
 ];
 

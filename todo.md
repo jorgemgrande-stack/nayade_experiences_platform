@@ -2731,3 +2731,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Liquidaciones: recalculate() incluye SOURCE 3 con lógica consistente con preview()
 - [x] Liquidaciones: vincular reservas existentes a sus quotes (quote_id actualizado en BD)
 - [x] Liquidaciones: 565 tests pasando, TypeScript sin errores
+
+## Eliminación de Productos Hardcodeados
+
+- [x] Eliminar producto "Minimotos Eléctricas Acuáticas" (id=30007, slug=minimotos) de la BD y del código
+- [x] Eliminar producto "Paseos en Barco" (id=30008, slug=paseos-barco) de la BD y del código
+- [x] Limpiar referencias en PublicNav.tsx (fallback nav)
+- [x] Limpiar referencias en PublicFooter.tsx (columna de experiencias)
+- [x] Limpiar referencias en BudgetRequest.tsx (FAMILY_MAP)
+- [x] Limpiar referencias en Home.tsx (HERO_FAMILY_MAP y array actividades)

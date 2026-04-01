@@ -18,8 +18,6 @@ const FALLBACK_NAV = [
       { label: "Canoas & Kayaks", href: "/experiencias/canoas-kayaks" },
       { label: "Paddle Surf", href: "/experiencias/paddle-surf" },
       { label: "Hidropedales & Hidrobicis", href: "/experiencias/hidropedales" },
-      { label: "Minimotos Eléctricas", href: "/experiencias/minimotos" },
-      { label: "Paseos en Barco", href: "/experiencias/paseos-barco" },
       { label: "Aventura Hinchable", href: "/experiencias/aventura-hinchable" },
     ],
   },

@@ -44,8 +44,6 @@ const FAMILY_MAP: Record<string, string> = {
   "canoas": "alquiler",
   "paddle-surf": "alquiler",
   "hidrobicis": "alquiler",
-  "minimotos": "alquiler",
-  "paseos-barco": "barco",
   "aventura-hinchable": "alquiler",
   "circuito-spa": "spa",
   "donuts-ski": "remolcado",

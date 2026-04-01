@@ -40,8 +40,6 @@ const HERO_FAMILY_MAP: Record<string, string> = {
   "canoas": "alquiler",
   "paddle-surf": "alquiler",
   "hidrobicis": "alquiler",
-  "minimotos": "alquiler",
-  "paseos-barco": "barco",
   "aventura-hinchable": "alquiler",
   "circuito-spa": "spa",
   "donuts-ski": "remolcado",
@@ -86,7 +84,6 @@ const actividades = [
   { icon: "💥", name: "Blob Jump", desc: "Adrenalina pura en el lago", price: "6,50€/salto", img: CDN.blob, slug: "blob-jump", badge: "" },
   { icon: "🛶", name: "Canoas & Kayaks", desc: "Ruta guiada por el embalse", price: "25€/hora", img: CDN.canoa, slug: "canoas-kayaks", badge: "" },
   { icon: "🏄‍♀️", name: "Paddle Surf", desc: "Equilibrio sobre el agua", price: "20€/hora", img: CDN.paddle, slug: "paddle-surf", badge: "" },
-  { icon: "🚢", name: "Paseos en Barco", desc: "Descubre el embalse", price: "Desde 110€/hora", img: CDN.hero1, slug: "paseos-barco", badge: "Premium" },
 ];
 
 const habitaciones = [
