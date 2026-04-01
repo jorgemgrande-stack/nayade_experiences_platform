@@ -2880,3 +2880,7 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [ ] Actualizar la ficha pública del pack para mostrar precio con etiqueta 'desde X€/noche' en líneas de alojamiento
 - [ ] Actualizar el backoffice LegoPacksManager: campo de precio override en el formulario de líneas
 - [ ] Aplicar overridePrice a los 6 packs de estancia ya creados (Doble Estándar = 85€)
+
+## overridePrice afecta al precio real del pack (v4.9)
+- [x] Usar overridePrice como basePrice en calculateLegoPackPrice cuando el producto no tiene precio base
+- [x] El precio del carrito y el total del pack deben incluir la habitación Doble Estándar

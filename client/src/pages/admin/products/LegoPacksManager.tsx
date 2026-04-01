@@ -945,7 +945,7 @@ export default function LegoPacksManager() {
                   <Input value={lineForm.overridePriceLabel} onChange={(e) => setLineForm({ ...lineForm, overridePriceLabel: e.target.value })} placeholder="Ej: / noche" />
                 </div>
               </div>
-              <p className="text-xs text-amber-600 mt-1">Este precio es solo visual en la ficha del pack. No afecta al cálculo del carrito ni a las reservas.</p>
+              <p className="text-xs text-amber-600 mt-1">Este precio se usa como precio base cuando el producto no tiene precio configurado (ej: habitación de hotel). Sí afecta al total del carrito y a las reservas.</p>
             </div>
 
             {/* Flags */}

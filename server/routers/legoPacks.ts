@@ -115,7 +115,7 @@ async function calculateLegoPackPrice(
     supplierCommissionPercent?: number;
     parentLegoPackId: number;
     parentLegoPackName: string;
-    // Override price fields (visual only, does not affect cart calculation)
+    // Override price: used as basePrice fallback when product has no price (e.g. accommodation)
     overridePrice?: number | null;
     overridePriceLabel?: string | null;
     frontendNote?: string | null;
@@ -173,6 +173,14 @@ async function calculateLegoPackPrice(
       }
     }
 
+    // If no product was found (e.g. accommodation line with no linked experience)
+    // or product has no price, fall back to overridePrice as the base price.
+    // This ensures accommodation/external lines are correctly priced in the cart.
+    if (basePrice === 0 && line.overridePrice) {
+      basePrice = parseFloat(String(line.overridePrice));
+      if (!sourceName) sourceName = line.internalName ?? "Alojamiento";
+    }
+
     const quantity = line.defaultQuantity ?? 1;
     const lineTotalBase = basePrice * quantity;
     const discountValue = parseFloat(String(line.discountValue ?? "0"));
@@ -208,7 +216,7 @@ async function calculateLegoPackPrice(
       supplierCommissionPercent,
       parentLegoPackId: legoPackId,
       parentLegoPackName: packTitle,
-      // Visual-only override price (does not affect cart/reservation calculations)
+      // Override price: used as basePrice fallback when product has no price (e.g. accommodation)
       overridePrice: line.overridePrice ? parseFloat(String(line.overridePrice)) : null,
       overridePriceLabel: line.overridePriceLabel ?? null,
       frontendNote: line.frontendNote ?? null,
