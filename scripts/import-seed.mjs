@@ -10,6 +10,8 @@ import mysql from "mysql2/promise";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { config } from "dotenv";
+config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const seedPath = path.join(__dirname, "../data/seed.json");

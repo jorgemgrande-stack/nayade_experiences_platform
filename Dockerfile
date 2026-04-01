@@ -28,15 +28,11 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-RUN npm install -g pnpm
-
-# Solo dependencias de producción
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile --prod
-
-# Copiar artefactos del build
+# Copiar node_modules y artefactos del builder (evita reinstalar)
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/drizzle ./drizzle
+COPY package.json ./
 
 # Directorio para almacenamiento local de fallback
 RUN mkdir -p /tmp/local-storage
