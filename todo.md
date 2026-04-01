@@ -2812,3 +2812,9 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [ ] Añadir variable de entorno GHL_API_KEY al proyecto (pendiente de credenciales del usuario)
 - [ ] Añadir variable de entorno GHL_LOCATION_ID al proyecto (pendiente de credenciales del usuario)
 - [x] Test unitario para la integración GHL (8 tests nuevos, 611 total)
+
+## Rediseño página /contacto (v4.4)
+- [x] Rediseñar formulario con estilo Nayade: fondo oscuro, tarjeta con glassmorphism, inputs estilizados
+- [x] Botón de enviar grande, naranja, prominente y siempre visible
+- [x] Añadir elementos visuales: iconos, gradientes, decoración de fondo
+- [x] Mejorar las tarjetas de info de contacto (teléfono, email, ubicación, horario)
