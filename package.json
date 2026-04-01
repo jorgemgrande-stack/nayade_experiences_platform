@@ -13,8 +13,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
-    "seed": "node scripts/seed-data.mjs",
-    "seed:export": "node scripts/export-to-seed.mjs"
+    "seed": "node scripts/import-seed.mjs",
+    "seed:export": "node scripts/export-seed.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
