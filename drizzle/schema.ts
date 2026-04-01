@@ -1569,6 +1569,10 @@ export const legoPackLines = mysqlTable("lego_pack_lines", {
   // Descuento específico por pack
   discountType: mysqlEnum("discountType", ["percent", "fixed"]).default("percent").notNull(),
   discountValue: decimal("discountValue", { precision: 10, scale: 2 }).default("0").notNull(),
+  // Precio override para líneas de alojamiento u otros productos sin precio estático
+  // Solo visual — NO afecta al cálculo final del carrito ni a reservas reales
+  overridePrice: decimal("overridePrice", { precision: 10, scale: 2 }),
+  overridePriceLabel: varchar("overridePriceLabel", { length: 64 }),  // ej: "/ noche", "/ persona", "estimado"
   // Texto informativo para frontend
   frontendNote: text("frontendNote"),
   // Timestamps

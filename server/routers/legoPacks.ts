@@ -70,6 +70,8 @@ const legoPackLineInput = z.object({
   isQuantityEditable: z.boolean().default(false),
   discountType: z.enum(["percent", "fixed"]).default("percent"),
   discountValue: z.number().default(0),
+  overridePrice: z.number().optional().nullable(),
+  overridePriceLabel: z.string().max(64).optional().nullable(),
   frontendNote: z.string().optional().nullable(),
 });
 
@@ -113,6 +115,10 @@ async function calculateLegoPackPrice(
     supplierCommissionPercent?: number;
     parentLegoPackId: number;
     parentLegoPackName: string;
+    // Override price fields (visual only, does not affect cart calculation)
+    overridePrice?: number | null;
+    overridePriceLabel?: string | null;
+    frontendNote?: string | null;
   }> = [];
 
   // Load the pack title
@@ -202,6 +208,10 @@ async function calculateLegoPackPrice(
       supplierCommissionPercent,
       parentLegoPackId: legoPackId,
       parentLegoPackName: packTitle,
+      // Visual-only override price (does not affect cart/reservation calculations)
+      overridePrice: line.overridePrice ? parseFloat(String(line.overridePrice)) : null,
+      overridePriceLabel: line.overridePriceLabel ?? null,
+      frontendNote: line.frontendNote ?? null,
     });
   }
 
@@ -380,6 +390,7 @@ export const legoPacksRouter = router({
       const [result] = await db.insert(legoPackLines).values({
         ...input,
         discountValue: String(input.discountValue),
+        overridePrice: input.overridePrice != null ? String(input.overridePrice) : null,
       });
       return { id: (result as any).insertId };
     }),
@@ -392,6 +403,7 @@ export const legoPacksRouter = router({
       await db.update(legoPackLines).set({
         ...data,
         discountValue: String(data.discountValue),
+        overridePrice: data.overridePrice != null ? String(data.overridePrice) : null,
       }).where(eq(legoPackLines.id, id));
       return { ok: true };
     }),

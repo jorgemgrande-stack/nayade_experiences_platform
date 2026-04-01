@@ -123,13 +123,17 @@ type LineForm = {
   sourceType: "experience" | "pack"; sourceId: string; internalName: string; groupLabel: string;
   isActive: boolean; isRequired: boolean; isOptional: boolean; isClientEditable: boolean;
   isClientVisible: boolean; defaultQuantity: string; isQuantityEditable: boolean;
-  discountType: "percent" | "fixed"; discountValue: string; frontendNote: string;
+  discountType: "percent" | "fixed"; discountValue: string;
+  overridePrice: string; overridePriceLabel: string;
+  frontendNote: string;
 };
 
 const emptyLineForm: LineForm = {
   sourceType: "experience", sourceId: "", internalName: "", groupLabel: "",
   isActive: true, isRequired: true, isOptional: false, isClientEditable: false, isClientVisible: true,
-  defaultQuantity: "1", isQuantityEditable: false, discountType: "percent", discountValue: "0", frontendNote: "",
+  defaultQuantity: "1", isQuantityEditable: false, discountType: "percent", discountValue: "0",
+  overridePrice: "", overridePriceLabel: "",
+  frontendNote: "",
 };
 
 // ─── Main Component ────────────────────────────────────────────────────────────
@@ -301,6 +305,8 @@ export default function LegoPacksManager() {
       isQuantityEditable: line.isQuantityEditable,
       discountType: line.discountType as "percent" | "fixed",
       discountValue: String(line.discountValue),
+      overridePrice: line.overridePrice != null ? String(line.overridePrice) : "",
+      overridePriceLabel: line.overridePriceLabel ?? "",
       frontendNote: line.frontendNote ?? "",
     });
     // Pre-fill the search box with the product name from pricing data or internal name
@@ -327,6 +333,8 @@ export default function LegoPacksManager() {
       isQuantityEditable: lineForm.isQuantityEditable,
       discountType: lineForm.discountType,
       discountValue: parseFloat(lineForm.discountValue) || 0,
+      overridePrice: lineForm.overridePrice ? parseFloat(lineForm.overridePrice) : null,
+      overridePriceLabel: lineForm.overridePriceLabel || null,
       frontendNote: lineForm.frontendNote || null,
     };
     if (editLineId) updateLineMutation.mutate({ id: editLineId, ...payload });
@@ -923,6 +931,21 @@ export default function LegoPacksManager() {
             <div>
               <Label>Nota para el cliente (frontend)</Label>
               <Textarea rows={2} value={lineForm.frontendNote} onChange={(e) => setLineForm({ ...lineForm, frontendNote: e.target.value })} placeholder="Texto informativo visible al cliente..." />
+            </div>
+            {/* Override price for accommodation/external lines */}
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-xs font-semibold text-amber-700 mb-2">Precio de referencia visual (solo para alojamiento u otros sin precio estático)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Precio override (€)</Label>
+                  <Input type="number" min={0} step="0.01" value={lineForm.overridePrice} onChange={(e) => setLineForm({ ...lineForm, overridePrice: e.target.value })} placeholder="Ej: 99" />
+                </div>
+                <div>
+                  <Label>Etiqueta del precio</Label>
+                  <Input value={lineForm.overridePriceLabel} onChange={(e) => setLineForm({ ...lineForm, overridePriceLabel: e.target.value })} placeholder="Ej: / noche" />
+                </div>
+              </div>
+              <p className="text-xs text-amber-600 mt-1">Este precio es solo visual en la ficha del pack. No afecta al cálculo del carrito ni a las reservas.</p>
             </div>
 
             {/* Flags */}

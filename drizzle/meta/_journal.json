@@ -267,6 +267,13 @@
       "when": 1775080684897,
       "tag": "0037_eager_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1775082960729,
+      "tag": "0038_worthless_black_cat",
+      "breakpoints": true
     }
   ]
 }

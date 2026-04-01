@@ -67,6 +67,10 @@ export default function LegoPackDetail() {
       basePrice: number;
       discountAmount: number;
       finalPrice: number;
+      // Visual-only override price for accommodation lines
+      overridePrice?: number | null;
+      overridePriceLabel?: string | null;
+      frontendNote?: string | null;
     }>;
     totalOriginal: number;
     totalDiscount: number;
@@ -241,7 +245,18 @@ export default function LegoPackDetail() {
                         {line.isOptional && (
                           <Badge variant="outline" className="text-xs">Opcional</Badge>
                         )}
-                        {line.finalPrice > 0 && (
+                        {/* Override price for accommodation/hotel lines (visual only) */}
+                        {line.overridePrice != null && line.overridePrice > 0 ? (
+                          <div className="text-right">
+                            <p className={`text-sm font-bold ${meta.text}`}>
+                              desde {line.overridePrice.toFixed(0)} €
+                              {line.overridePriceLabel && (
+                                <span className="text-xs font-normal text-slate-500 ml-1">{line.overridePriceLabel}</span>
+                              )}
+                            </p>
+                            <p className="text-xs text-slate-400 italic">precio estimado</p>
+                          </div>
+                        ) : line.finalPrice > 0 ? (
                           <div className="text-right">
                             {line.discountAmount > 0 ? (
                               <div>
@@ -258,7 +273,7 @@ export default function LegoPackDetail() {
                               </p>
                             )}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   ))}

@@ -2871,3 +2871,12 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Corregir overflow horizontal en DocBlock (flex-wrap en inputs)
 - [x] Responsive: grid 1 col en móvil, 2-3 cols en desktop
 - [x] 611 tests pasando, 0 errores TypeScript
+
+## Precio en líneas de Lego Pack — Opción B: overridePrice (v5.0)
+- [ ] Diagnosticar por qué la línea 'Doble Estándar' no muestra precio
+- [ ] Añadir campo overridePrice (decimal, nullable) a lego_pack_lines en schema.ts
+- [ ] Generar y aplicar migración SQL
+- [ ] Actualizar el router de legoPacks para incluir overridePrice en las líneas
+- [ ] Actualizar la ficha pública del pack para mostrar precio con etiqueta 'desde X€/noche' en líneas de alojamiento
+- [ ] Actualizar el backoffice LegoPacksManager: campo de precio override en el formulario de líneas
+- [ ] Aplicar overridePrice a los 6 packs de estancia ya creados (Doble Estándar = 85€)
