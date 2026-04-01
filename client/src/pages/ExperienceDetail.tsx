@@ -75,7 +75,7 @@ export default function ExperienceDetail() {
 
   // Precio "desde": mínimo de todas las variantes (o basePrice si no hay variantes)
   const minVariantPrice = variants.length > 0
-    ? Math.min(...variants.map(v => parseFloat(String(v.priceModifier ?? exp.basePrice))))
+    ? Math.min(...variants.map(v => parseFloat(String(v.priceModifier ?? exp?.basePrice ?? "0"))))
     : parseFloat(String(exp?.basePrice ?? "0"));
   const displayFromPrice = Math.min(minVariantPrice, parseFloat(String(exp?.basePrice ?? "0")));
 
