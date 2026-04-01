@@ -173,6 +173,7 @@ export const experiences = mysqlTable("experiences", {
   isSettlable: boolean("isSettlable").default(false).notNull(),
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
+  isPublished: boolean("isPublished").default(true).notNull(),
   isPresentialSale: boolean("isPresentialSale").default(false).notNull(),
   // Time slots module (optional, retrocompatible)
   hasTimeSlots: boolean("has_time_slots").default(false).notNull(),

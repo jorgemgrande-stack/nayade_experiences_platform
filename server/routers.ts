@@ -577,6 +577,7 @@ export const appRouter = router({
         difficulty: z.enum(["facil", "moderado", "dificil", "experto"]).optional(),
         isFeatured: z.boolean().default(false),
         isActive: z.boolean().default(true),
+        isPublished: z.boolean().default(true),
         isPresentialSale: z.boolean().default(false),
         supplierId: z.number().optional(),
         supplierCommissionPercent: z.string().optional(),
@@ -648,6 +649,7 @@ export const appRouter = router({
         settlementFrequency: z.string().optional(),
         isSettlable: z.boolean().optional(),
         isPresentialSale: z.boolean().optional(),
+        isPublished: z.boolean().optional(),
         hasTimeSlots: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {

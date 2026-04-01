@@ -123,7 +123,7 @@ export async function getFeaturedExperiences() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(experiences)
-    .where(and(eq(experiences.isFeatured, true), eq(experiences.isActive, true)))
+    .where(and(eq(experiences.isFeatured, true), eq(experiences.isActive, true), eq(experiences.isPublished, true)))
     .orderBy(experiences.sortOrder)
     .limit(8);
 }
@@ -137,7 +137,7 @@ export async function getPublicExperiences(params: {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(experiences)
-    .where(eq(experiences.isActive, true))
+    .where(and(eq(experiences.isActive, true), eq(experiences.isPublished, true)))
     .orderBy(experiences.sortOrder)
     .limit(params.limit ?? 12)
     .offset(params.offset ?? 0);
@@ -146,7 +146,10 @@ export async function getPublicExperiences(params: {
 export async function getExperienceBySlug(slug: string) {
   const db = await getDb();
   if (!db) return null;
-  const result = await db.select().from(experiences).where(eq(experiences.slug, slug)).limit(1);
+  // Solo devuelve la experiencia si está publicada (isPublished=true)
+  const result = await db.select().from(experiences)
+    .where(and(eq(experiences.slug, slug), eq(experiences.isPublished, true)))
+    .limit(1);
   return result[0] ?? null;
 }
 

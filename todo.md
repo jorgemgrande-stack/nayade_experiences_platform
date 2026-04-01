@@ -2818,3 +2818,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Botón de enviar grande, naranja, prominente y siempre visible
 - [x] Añadir elementos visuales: iconos, gradientes, decoración de fondo
 - [x] Mejorar las tarjetas de info de contacto (teléfono, email, ubicación, horario)
+
+## Campo isPublished en Experiencias (v4.5)
+- [x] Añadir columna isPublished (boolean, default true) a la tabla experiences en schema.ts
+- [x] Generar y aplicar migración SQL
+- [x] Añadir toggle "Publicado/No publicado" en el formulario de creación/edición de experiencias
+- [x] Filtrar por isPublished=true en getFeaturedExperiences, getPublicExperiences y getExperienceBySlug
+- [x] Mostrar badge "Publicado/No publicado" en el listado de admin
+- [x] 611 tests pasando, 0 errores TypeScript

@@ -1,0 +1,5 @@
+ALTER TABLE `experiences` MODIFY COLUMN `productType` enum('own','semi_own','third_party','actividad','alojamiento','restauracion','transporte','pack') NOT NULL DEFAULT 'actividad';--> statement-breakpoint
+ALTER TABLE `packs` MODIFY COLUMN `productType` enum('own','semi_own','third_party','actividad','alojamiento','restauracion','transporte','pack') NOT NULL DEFAULT 'pack';--> statement-breakpoint
+ALTER TABLE `room_types` MODIFY COLUMN `productType` enum('own','semi_own','third_party','actividad','alojamiento','restauracion','transporte','pack') NOT NULL DEFAULT 'alojamiento';--> statement-breakpoint
+ALTER TABLE `spa_treatments` MODIFY COLUMN `productType` enum('own','semi_own','third_party','actividad','alojamiento','restauracion','transporte','pack') NOT NULL DEFAULT 'actividad';--> statement-breakpoint
+ALTER TABLE `experiences` ADD `isPublished` boolean DEFAULT true NOT NULL;

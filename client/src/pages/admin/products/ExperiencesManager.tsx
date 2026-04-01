@@ -35,7 +35,7 @@ type ExpForm = {
   categoryId: string; locationId: string;
   image1: string; image2: string; image3: string; image4: string;
   basePrice: string; duration: string; minPersons: string; maxPersons: string;
-  difficulty: string; isFeatured: boolean; isActive: boolean; isPresentialSale: boolean;
+  difficulty: string; isFeatured: boolean; isActive: boolean; isPublished: boolean; isPresentialSale: boolean;
   includes: string[]; excludes: string[];
   discountPercent: string; discountExpiresAt: string;
   fiscalRegime: string; productType: string;
@@ -53,7 +53,7 @@ const emptyForm: ExpForm = {
   categoryId: "", locationId: "",
   image1: "", image2: "", image3: "", image4: "",
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
-  difficulty: "facil", isFeatured: false, isActive: true, isPresentialSale: false,
+  difficulty: "facil", isFeatured: false, isActive: true, isPublished: true, isPresentialSale: false,
   includes: [], excludes: [],
   discountPercent: "", discountExpiresAt: "",
   fiscalRegime: "general", productType: "actividad",
@@ -204,6 +204,7 @@ export default function ExperiencesManager() {
       difficulty: String(exp.difficulty ?? "facil"),
       isFeatured: Boolean(exp.isFeatured),
       isActive: Boolean(exp.isActive),
+      isPublished: (exp as Record<string,unknown>).isPublished !== undefined ? Boolean((exp as Record<string,unknown>).isPublished) : true,
       includes: Array.isArray(exp.includes) ? (exp.includes as string[]) : [],
       excludes: Array.isArray(exp.excludes) ? (exp.excludes as string[]) : [],
       discountPercent: exp.discountPercent != null ? String(exp.discountPercent) : "",
@@ -248,6 +249,7 @@ export default function ExperiencesManager() {
       difficulty: form.difficulty as "facil" | "moderado" | "dificil" | "experto",
       isFeatured: form.isFeatured,
       isActive: form.isActive,
+      isPublished: form.isPublished,
       includes: form.includes.filter(s => s.trim() !== ""),
       excludes: form.excludes.filter(s => s.trim() !== ""),
       discountPercent: form.discountPercent ? form.discountPercent : undefined,
@@ -393,9 +395,14 @@ export default function ExperiencesManager() {
                       )}
                     </td>
                     <td className="px-4 py-4">
-                      <Badge className={exp.isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}>
-                        {exp.isActive ? "Activo" : "Inactivo"}
-                      </Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge className={exp.isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-700"}>
+                          {exp.isActive ? "Activo" : "Inactivo"}
+                        </Badge>
+                        <Badge className={(exp as Record<string,unknown>).isPublished !== false ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"}>
+                          {(exp as Record<string,unknown>).isPublished !== false ? "Publicado" : "No publicado"}
+                        </Badge>
+                      </div>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1 justify-end">
@@ -523,6 +530,18 @@ export default function ExperiencesManager() {
               <div className="flex items-center gap-3">
                 <Switch checked={form.isActive} onCheckedChange={(v) => setForm({ ...form, isActive: v })} />
                 <Label>Activo</Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={form.isPublished}
+                  onCheckedChange={(v) => setForm({ ...form, isPublished: v })}
+                  className={form.isPublished ? "data-[state=checked]:bg-emerald-500" : ""}
+                />
+                <Label className="flex items-center gap-1.5">
+                  <span className={`inline-block w-2 h-2 rounded-full ${form.isPublished ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                  {form.isPublished ? 'Publicado' : 'No publicado'}
+                  <span className="text-xs text-muted-foreground font-normal">(visible en la web pública)</span>
+                </Label>
               </div>
               <div className="flex items-center gap-3">
                 <Switch checked={form.isPresentialSale} onCheckedChange={(v) => setForm({ ...form, isPresentialSale: v })} />
