@@ -582,13 +582,35 @@ export const appRouter = router({
         supplierCostType: z.string().optional(),
         settlementFrequency: z.string().optional(),
         isSettlable: z.boolean().optional(),
-        fiscalRegime: z.enum(["general", "reav"]).default("general"),
+        hasTimeSlots: z.boolean().optional(),
+        fiscalRegime: z.enum(["general", "reav", "general_21", "mixed"]).default("general_21"),
         productType: z.string().optional(),
         providerPercent: z.string().optional(),
         agencyMarginPercent: z.string().optional(),
+        includes: z.array(z.string()).optional(),
+        excludes: z.array(z.string()).optional(),
+        discountPercent: z.string().optional(),
+        discountExpiresAt: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        return createExperience(input as any);
+        // Map legacy "general" -> "general_21" for DB enum compatibility
+        const fiscalRegime = (input.fiscalRegime === "general" ? "general_21" : input.fiscalRegime) as "reav" | "general_21" | "mixed";
+        const processedData: Record<string, unknown> = {
+          ...input,
+          fiscalRegime,
+          coverImageUrl: input.image1 ?? undefined,
+        };
+        if (processedData.discountExpiresAt && typeof processedData.discountExpiresAt === "string") {
+          processedData.discountExpiresAt = new Date(processedData.discountExpiresAt as string);
+        }
+        if (processedData.discountPercent === "") processedData.discountPercent = null;
+        if (processedData.providerPercent && processedData.providerPercent !== "") {
+          processedData.providerPercent = parseFloat(processedData.providerPercent as string);
+        }
+        if (processedData.agencyMarginPercent && processedData.agencyMarginPercent !== "") {
+          processedData.agencyMarginPercent = parseFloat(processedData.agencyMarginPercent as string);
+        }
+        return createExperience(processedData as any);
       }),
 
     update: adminProcedure
@@ -615,7 +637,7 @@ export const appRouter = router({
         excludes: z.array(z.string()).optional(),
         discountPercent: z.string().optional(),
         discountExpiresAt: z.string().optional(),
-        fiscalRegime: z.enum(["general", "reav"]).optional(),
+        fiscalRegime: z.enum(["general", "reav", "general_21", "mixed"]).optional(),
         productType: z.string().optional(),
         providerPercent: z.string().optional(),
         agencyMarginPercent: z.string().optional(),
@@ -625,11 +647,16 @@ export const appRouter = router({
         settlementFrequency: z.string().optional(),
         isSettlable: z.boolean().optional(),
         isPresentialSale: z.boolean().optional(),
+        hasTimeSlots: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
         // Sync coverImageUrl with image1
         if (data.image1 !== undefined) (data as Record<string, unknown>).coverImageUrl = data.image1;
+        // Map legacy "general" -> "general_21" for DB enum compatibility
+        if ((data as Record<string, unknown>).fiscalRegime === "general") {
+          (data as Record<string, unknown>).fiscalRegime = "general_21";
+        }
         // Convert discountExpiresAt string to Date for Drizzle timestamp column
         const processedData: Record<string, unknown> = { ...data };
         if (processedData.discountExpiresAt && typeof processedData.discountExpiresAt === "string") {
