@@ -174,6 +174,8 @@ export const experiences = mysqlTable("experiences", {
   isFeatured: boolean("isFeatured").default(false).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   isPresentialSale: boolean("isPresentialSale").default(false).notNull(),
+  // Time slots module (optional, retrocompatible)
+  hasTimeSlots: boolean("has_time_slots").default(false).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
   metaTitle: varchar("metaTitle", { length: 256 }),
   metaDescription: text("metaDescription"),
@@ -518,7 +520,31 @@ export const reservations = mysqlTable("reservations", {
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   paidAt: bigint("paid_at", { mode: "number" }),
+  // Time slots (optional, retrocompatible - null = no time slot required)
+  selectedTimeSlotId: int("selected_time_slot_id"),
+  selectedTime: varchar("selected_time", { length: 10 }),
 });
+
+// ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────
+
+export const productTimeSlots = mysqlTable("product_time_slots", {
+  id: int("id").autoincrement().primaryKey(),
+  productId: int("product_id").notNull(),
+  type: mysqlEnum("type", ["fixed", "flexible", "range"]).notNull().default("fixed"),
+  label: varchar("label", { length: 128 }).notNull(),
+  startTime: varchar("start_time", { length: 10 }),   // e.g. "10:00"
+  endTime: varchar("end_time", { length: 10 }),         // e.g. "14:00"
+  daysOfWeek: varchar("days_of_week", { length: 32 }), // e.g. "1,2,3,4,5" (Mon-Fri)
+  capacity: int("capacity"),
+  priceOverride: decimal("price_override", { precision: 10, scale: 2 }),
+  sortOrder: int("sort_order").default(0).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ProductTimeSlot = typeof productTimeSlots.$inferSelect;
+export type InsertProductTimeSlot = typeof productTimeSlots.$inferInsert;
 
 // ─── PACKS ──────────────────────────────────────────────────────────────────
 

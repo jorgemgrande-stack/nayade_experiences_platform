@@ -23,6 +23,7 @@ interface BookingModalProps {
     minPersons?: number;
     maxPersons?: number;
     image1?: string;
+    hasTimeSlots?: boolean;
   };
   /** Extras disponibles para este producto (opcional) */
   extras?: Extra[];
@@ -49,12 +50,24 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Time slots (optional, retrocompatible)
+  const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<number | null>(null);
+  const [selectedTime, setSelectedTime] = useState<string>("");
 
   // Cargar variantes del producto
   const { data: variants } = trpc.public.getVariantsByExperience.useQuery(
     { experienceId: product.id },
     { enabled: isOpen }
   );
+
+  // Cargar time slots (solo si el producto los tiene)
+  const { data: timeSlots } = trpc.timeSlots.getByProduct.useQuery(
+    { productId: product.id },
+    { enabled: isOpen && !!product.hasTimeSlots }
+  );
+  const hasTimeSlotConfig = !!product.hasTimeSlots && (timeSlots?.length ?? 0) > 0;
+  // Detectar el tipo de slot (todos deben ser del mismo tipo para un producto)
+  const slotType = timeSlots?.[0]?.type ?? "fixed";
 
   const hasVariants = (variants?.length ?? 0) > 0;
   const selectedVariant = variants?.find(v => v.id === selectedVariantId) ?? null;
@@ -104,6 +117,9 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
         customerPhone: customerPhone || undefined,
         notes: notes || undefined,
         origin: window.location.origin,
+        // Time slots (optional, retrocompatible)
+        selectedTimeSlotId: selectedTimeSlotId ?? undefined,
+        selectedTime: selectedTime || undefined,
       });
 
       // Construir y enviar el formulario Redsys automáticamente
@@ -141,6 +157,14 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
       // Si hay variantes obligatorias, debe seleccionarse una
       const hasRequired = variants?.some(v => v.isRequired);
       if (hasRequired && !selectedVariantId) return false;
+      // Si el producto tiene time slots, debe seleccionarse uno
+      if (hasTimeSlotConfig) {
+        if (slotType === "fixed" || slotType === "range") {
+          if (!selectedTimeSlotId) return false;
+        } else if (slotType === "flexible") {
+          if (!selectedTime) return false;
+        }
+      }
       return true;
     }
     if (step === "extras") return true;
@@ -365,6 +389,63 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                 </div>
               )}
 
+              {/* Time Slots Selector (solo si el producto los tiene) */}
+              {hasTimeSlotConfig && (
+                <div>
+                  <label style={{ display: "block", fontWeight: 600, marginBottom: "0.5rem", color: "#374151" }}>
+                    Horario *
+                  </label>
+                  {slotType === "flexible" ? (
+                    // Tipo flexible: input de hora libre
+                    <div>
+                      <input
+                        type="time"
+                        value={selectedTime}
+                        onChange={e => setSelectedTime(e.target.value)}
+                        style={{
+                          width: "100%", padding: "0.75rem", border: "1.5px solid #d1d5db",
+                          borderRadius: "0.5rem", fontSize: "1rem", outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <p style={{ margin: "0.25rem 0 0", fontSize: "0.8rem", color: "#6b7280" }}>
+                        Elige la hora a la que deseas realizar la actividad
+                      </p>
+                    </div>
+                  ) : (
+                    // Tipo fixed o range: botones de selección
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {timeSlots?.map(slot => {
+                        const isSelected = selectedTimeSlotId === slot.id;
+                        const slotLabel = slot.startTime
+                          ? (slot.endTime ? `${slot.label} (${slot.startTime}–${slot.endTime})` : `${slot.label} (${slot.startTime})`)
+                          : slot.label;
+                        return (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            onClick={() => setSelectedTimeSlotId(slot.id)}
+                            style={{
+                              padding: "0.6rem 1rem",
+                              border: `1.5px solid ${isSelected ? "#f97316" : "#d1d5db"}`,
+                              borderRadius: "0.5rem",
+                              background: isSelected ? "#fff7ed" : "#fff",
+                              color: isSelected ? "#c2410c" : "#374151",
+                              fontWeight: isSelected ? 700 : 400,
+                              fontSize: "0.9rem",
+                              cursor: "pointer",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {slotLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{
                 background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: "0.5rem",
                 padding: "0.75rem 1rem",
@@ -517,6 +598,13 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                   <Row label="Actividad" value={product.title} />
                   <Row label="Fecha" value={bookingDate} />
                   <Row label="Personas" value={`${people} persona${people !== 1 ? "s" : ""}`} />
+                  {/* Mostrar horario si está seleccionado */}
+                  {hasTimeSlotConfig && selectedTimeSlotId && (
+                    <Row label="Horario" value={timeSlots?.find(s => s.id === selectedTimeSlotId)?.label ?? ""} />
+                  )}
+                  {hasTimeSlotConfig && slotType === "flexible" && selectedTime && (
+                    <Row label="Hora elegida" value={selectedTime} />
+                  )}
                   {selectedVariant && (
                     <Row label="Tarifa" value={selectedVariant.name} />
                   )}

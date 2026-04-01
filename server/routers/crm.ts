@@ -311,6 +311,8 @@ async function sendConfirmationEmail(data: {
   items: { description: string; quantity: number; unitPrice: number; total: number }[];
   total: string;
   invoiceUrl?: string | null;
+  bookingDate?: string | null;
+  selectedTime?: string | null;
 }) {
   const html = buildConfirmationHtml({
     clientName: data.clientName,
@@ -319,6 +321,8 @@ async function sendConfirmationEmail(data: {
     items: data.items,
     total: data.total,
     invoiceUrl: data.invoiceUrl ?? undefined,
+    bookingDate: data.bookingDate ?? undefined,
+    selectedTime: data.selectedTime ?? undefined,
   });
 
   await sendEmail({
@@ -1448,6 +1452,7 @@ export const crmRouter = router({
             items,
             total: String(total),
             invoiceUrl: pdfUrl,
+            bookingDate: serviceDate ?? undefined,
           });
         } catch (e) {
           console.error("Confirmation email failed:", e);

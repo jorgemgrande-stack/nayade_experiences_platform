@@ -813,6 +813,7 @@ export interface ConfirmationEmailData {
   total: string;
   invoiceUrl?: string;
   bookingDate?: string;     // fecha del evento si aplica
+  selectedTime?: string;     // horario seleccionado (time slot) - opcional
   contactPhone?: string;
   contactEmail?: string;
 }
@@ -847,7 +848,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     ? `<tr><td style="padding:0 32px 12px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
           <tr><td style="padding:12px 18px;">
-            <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;">&#128197; <strong>Fecha de la actividad:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.bookingDate}</span></p>
+            <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;">&#128197; <strong>Fecha de la actividad:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.bookingDate}</span>${d.selectedTime ? ` &nbsp;&#128336; <strong>Horario:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.selectedTime}</span>` : ""}</p>
           </td></tr>
         </table>
       </td></tr>`

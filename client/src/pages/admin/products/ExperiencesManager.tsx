@@ -14,6 +14,7 @@ import SupplierSelect from "@/components/SupplierSelect";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import TimeSlotsPanel from "@/components/TimeSlotsPanel";
 
 const difficultyColors: Record<string, string> = {
   facil: "bg-emerald-100 text-emerald-700",
@@ -44,6 +45,7 @@ type ExpForm = {
   supplierCostType: string;
   settlementFrequency: string;
   isSettlable: boolean;
+  hasTimeSlots: boolean;
 };
 
 const emptyForm: ExpForm = {
@@ -59,6 +61,7 @@ const emptyForm: ExpForm = {
   supplierId: "", supplierCommissionPercent: "",
   supplierCostType: "comision_sobre_venta", settlementFrequency: "mensual",
   isSettlable: false,
+  hasTimeSlots: false,
 };
 
 // ── Componente de zona de upload de imagen ──────────────────────────────────
@@ -217,6 +220,7 @@ export default function ExperiencesManager() {
       settlementFrequency: String(exp.settlementFrequency ?? "mensual"),
       isSettlable: Boolean(exp.isSettlable),
       isPresentialSale: Boolean((exp as Record<string,unknown>).isPresentialSale),
+      hasTimeSlots: Boolean((exp as Record<string,unknown>).hasTimeSlots),
     });
     setShowModal(true);
   };
@@ -258,6 +262,7 @@ export default function ExperiencesManager() {
       settlementFrequency: form.settlementFrequency || undefined,
       isSettlable: form.isSettlable,
       isPresentialSale: form.isPresentialSale,
+      // hasTimeSlots is managed separately via TimeSlotsPanel toggle
     };
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...data });
@@ -692,6 +697,15 @@ export default function ExperiencesManager() {
                   <Label className="text-sm text-slate-600">Incluir en liquidaciones automáticas</Label>
                 </div>
               </div>
+
+              {/* Time Slots Panel */}
+              {editingId && (
+                <TimeSlotsPanel
+                  productId={editingId}
+                  hasTimeSlots={form.hasTimeSlots}
+                  onToggle={(enabled) => setForm(f => ({ ...f, hasTimeSlots: enabled }))}
+                />
+              )}
 
               {/* Incluye */}
               <div className="col-span-2">

@@ -2763,3 +2763,29 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Panel SettlementPeriodsPanel en ficha de proveedor con periodos pendientes y botón generar
 - [x] Tests unitarios: 25 tests de getPeriodEnd, addPeriod y calcPendingPeriods (todos pasan)
 - [x] Corrección lógica de fechas sin zona horaria (Date.UTC) para evitar desfases UTC+2
+
+## Sistema de Time Slots (horarios por producto)
+- [ ] Schema BD: añadir has_time_slots a experiences (default false)
+- [ ] Schema BD: crear tabla product_time_slots (id, product_id, type, label, start_time, end_time, days_of_week, capacity, price_override, active)
+- [ ] Schema BD: añadir selected_time_slot_id (nullable) y selected_time (nullable) a reservations
+- [ ] Migrar BD con los nuevos campos y tabla
+- [ ] Backend tRPC: getTimeSlots, createTimeSlot, updateTimeSlot, deleteTimeSlot, reorderTimeSlots
+- [ ] Backend tRPC: actualizar reservations.create para aceptar selectedTimeSlotId y selectedTime (opcionales)
+- [ ] Backoffice: panel TimeSlotsManager en ficha de producto (ExperiencesManager)
+- [ ] Frontend público: selector de horario en BookingModal (fixed=botones, range=turnos, flexible=input)
+- [ ] Frontend: validación obligatoria de horario si has_time_slots=true
+- [ ] Outputs: mostrar horario en PDF de reserva si existe
+- [ ] Outputs: mostrar horario en email de confirmación si existe
+- [ ] Outputs: mostrar horario en panel admin de reservas si existe
+- [ ] Tests unitarios del sistema de time slots
+
+## Sistema de Time Slots (v7.0)
+- [x] Schema BD: has_time_slots en experiences, tabla product_time_slots, selectedTimeSlotId/selectedTime en reservations
+- [x] Backend: router timeSlotsRouter con CRUD completo (getByProduct, create, update, delete, reorder, toggleActive, toggleHasTimeSlots)
+- [x] Backend: createAndPay acepta selectedTimeSlotId y selectedTime (opcionales, retrocompatibles)
+- [x] Backoffice: TimeSlotsPanel en ExperiencesManager (activar/desactivar, crear/editar/eliminar/reordenar slots)
+- [x] Frontend público: selector dinámico en BookingModal (fixed=botones, range=botones, flexible=input hora)
+- [x] Frontend público: validación obligatoria antes de avanzar al siguiente paso
+- [x] Outputs: selectedTime en email de confirmación (Redsys IPN + CRM confirmPayment)
+- [x] Outputs: selectedTime en panel admin de reservas (ReservationsManager)
+- [x] Tests: 13 tests unitarios para time slots (32 archivos, 603 tests en total)

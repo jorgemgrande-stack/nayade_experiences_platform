@@ -831,6 +831,9 @@ export async function createReservation(data: {
   customerPhone?: string;
   merchantOrder: string;
   notes?: string;
+  // Time slots (optional, retrocompatible)
+  selectedTimeSlotId?: number;
+  selectedTime?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -855,6 +858,9 @@ export async function createReservation(data: {
     notes: data.notes ?? null,
     createdAt: now,
     updatedAt: now,
+    // Time slots (optional, retrocompatible)
+    selectedTimeSlotId: data.selectedTimeSlotId ?? null,
+    selectedTime: data.selectedTime ?? null,
   });
   return { id: Number(result[0].insertId), merchantOrder: data.merchantOrder };
 }

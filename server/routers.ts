@@ -134,6 +134,7 @@ import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
+import { timeSlotsRouter } from "./routers/timeSlots";
 import { tpvRouter } from "./routers/tpv";
 import { discountsRouter } from "./routers/discounts";
 import { legoPacksRouter } from "./routers/legoPacks";
@@ -1155,6 +1156,9 @@ export const appRouter = router({
         notes: z.string().optional(),
         /** URL base del frontend para construir las URLs de retorno */
         origin: z.string().url(),
+        // Time slots (optional, retrocompatible)
+        selectedTimeSlotId: z.number().int().optional().nullable(),
+        selectedTime: z.string().max(10).optional().nullable(),
       }))
       .mutation(async ({ input }) => {
         // 1. Obtener el producto y validar que existe y tiene precio
@@ -1162,6 +1166,11 @@ export const appRouter = router({
         const product = await getExperienceById(input.productId);
         if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado" });
         if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto no tiene precio fijo" });
+
+        // 1b. Validar time slot si el producto lo requiere
+        if ((product as any).hasTimeSlots && !input.selectedTimeSlotId && !input.selectedTime) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto requiere seleccionar un horario" });
+        }
 
         // 2. Calcular el importe total en backend (nunca confiar en el frontend)
         const basePrice = parseFloat(String(product.basePrice));
@@ -1204,6 +1213,9 @@ export const appRouter = router({
           customerPhone: input.customerPhone,
           merchantOrder,
           notes: input.notes,
+          // Time slots (optional, retrocompatible)
+          selectedTimeSlotId: input.selectedTimeSlotId ?? undefined,
+          selectedTime: input.selectedTime ?? undefined,
         });
 
         // 5. Construir el formulario Redsys
@@ -1524,6 +1536,7 @@ export const appRouter = router({
   restaurants: restaurantsRouter,
   crm: crmRouter,
   suppliers: suppliersRouter,
+  timeSlots: timeSlotsRouter,
   tpv: tpvRouter,
   discounts: discountsRouter,
   settlements: settlementsRouter,

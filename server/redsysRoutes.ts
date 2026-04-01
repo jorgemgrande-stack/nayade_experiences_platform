@@ -181,6 +181,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   taxAmount: String(taxAmount),
                   total: String(total),
                   bookingDate: updatedReservation.bookingDate ?? undefined,
+                  selectedTime: (updatedReservation as any).selectedTime ?? undefined,
                   contactEmail: COPY_EMAIL,
                   contactPhone: "+34 930 34 77 91",
                 });

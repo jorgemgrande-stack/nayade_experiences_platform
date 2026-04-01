@@ -246,6 +246,13 @@
       "when": 1775037757780,
       "tag": "0034_typical_black_bird",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "5",
+      "when": 1775039097263,
+      "tag": "0035_tired_sinister_six",
+      "breakpoints": true
     }
   ]
 }

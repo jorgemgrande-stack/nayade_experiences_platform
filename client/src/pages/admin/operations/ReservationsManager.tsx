@@ -182,6 +182,12 @@ function ReservationDetailModal({ id, onClose }: { id: number; onClose: () => vo
                 <span style={{ fontWeight: 500 }}>{data.productName}</span>
                 <span style={{ color: "#6b7280" }}>Fecha actividad</span>
                 <span style={{ fontWeight: 500 }}>{data.bookingDate}</span>
+                {(data as any).selectedTime && (
+                  <>
+                    <span style={{ color: "#6b7280" }}>Horario</span>
+                    <span style={{ fontWeight: 500, color: "#f97316" }}>{(data as any).selectedTime}</span>
+                  </>
+                )}
                 <span style={{ color: "#6b7280" }}>Personas</span>
                 <span style={{ fontWeight: 500 }}>{data.people}</span>
                 <span style={{ color: "#6b7280" }}>Total</span>
