@@ -2804,3 +2804,11 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Mostrar precio mínimo con banda visual "Desde X€" en tarjetas de /lego-packs/dia, /escolar y /empresa
 - [x] Usar priceLabel si existe, o calcular desde las líneas del pack (calculateLegoPackPrice)
 - [x] Añadir campo minPrice calculado en el endpoint listPublicByCategory
+
+## Formulario /contacto + Integración GHL CRM (v4.3)
+- [x] Verificar que el botón de enviar es visible y funcional en /contacto
+- [x] Crear helper ghl.ts en server/ para enviar contactos a GoHighLevel via API
+- [x] Integrar envío a GHL en createLead (todos los canales: contacto, presupuesto, reserva)
+- [ ] Añadir variable de entorno GHL_API_KEY al proyecto (pendiente de credenciales del usuario)
+- [ ] Añadir variable de entorno GHL_LOCATION_ID al proyecto (pendiente de credenciales del usuario)
+- [x] Test unitario para la integración GHL (8 tests nuevos, 611 total)

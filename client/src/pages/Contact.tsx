@@ -25,6 +25,7 @@ export default function Contact() {
       email: formData.email,
       phone: formData.phone || undefined,
       message: `Asunto: ${formData.subject}\n\n${formData.message}`,
+      source: "web_contacto",
     });
   };
 

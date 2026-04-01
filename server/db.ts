@@ -22,6 +22,7 @@ import {
   reservationOperational,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { createGHLContact, getGHLTagsFromSource } from "./ghl";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -263,6 +264,20 @@ export async function createLead(data: {
     name: data.name,
     source: data.source ?? "web",
   });
+
+  // 4. Sincronizar con GoHighLevel CRM (fire-and-forget, no bloquea el flujo)
+  const ghlSource = data.source ?? "web";
+  createGHLContact({
+    name: data.name,
+    email: data.email,
+    phone: data.phone,
+    companyName: data.company,
+    source: ghlSource,
+    tags: getGHLTagsFromSource(ghlSource),
+    notes: data.message
+      ? `[Lead #${leadId}] ${data.message}`
+      : `[Lead #${leadId}] Origen: ${ghlSource}`,
+  }).catch((err) => console.warn("[GHL] Error en fire-and-forget:", err));
 
   return { id: leadId, success: true };
 }

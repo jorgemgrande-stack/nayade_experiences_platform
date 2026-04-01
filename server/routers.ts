@@ -256,11 +256,12 @@ export const appRouter = router({
         budget: z.string().optional(),
         selectedCategory: z.string().optional(),
         selectedProduct: z.string().optional(),
+        source: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         return createLead({
           ...input,
-          source: "web_experiencia",
+          source: input.source ?? "web_experiencia",
         });
       }),
 
