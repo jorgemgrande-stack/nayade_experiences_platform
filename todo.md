@@ -2789,3 +2789,13 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Outputs: selectedTime en email de confirmación (Redsys IPN + CRM confirmPayment)
 - [x] Outputs: selectedTime en panel admin de reservas (ReservationsManager)
 - [x] Tests: 13 tests unitarios para time slots (32 archivos, 603 tests en total)
+
+## Time Slots en todos los canales de venta (v4.1)
+- [x] Ficha pública: mostrar selector de horarios cuando el producto tiene time slots activos
+- [x] Ficha pública: guardar selectedTimeSlotId y selectedTime en el carrito
+- [x] TPV: añadir hasTimeSlots al catálogo (getCatalog en tpv.ts)
+- [x] TPV: mostrar selector de horario al añadir un producto con time slots al carrito
+- [x] TPV: pasar selectedTimeSlotId y selectedTime al createSale
+- [x] BookingModal (backoffice): ya tenía selector de time slots — verificado y funcional
+- [x] CartContext: añadir campos selectedTimeSlotId y selectedTime a CartItem
+- [x] CartDrawer: mostrar horario seleccionado en el panel lateral del carrito

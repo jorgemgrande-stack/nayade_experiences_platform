@@ -11,7 +11,7 @@
  */
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { X, Trash2, ShoppingCart, Calendar, Users, Tag, ArrowRight, Lock, Minus, Plus, ChevronDown } from "lucide-react";
+import { X, Trash2, ShoppingCart, Calendar, Users, Tag, ArrowRight, Lock, Minus, Plus, ChevronDown, AlarmClock } from "lucide-react";
 import { useCart, type CartItem } from "@/contexts/CartContext";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
@@ -91,6 +91,14 @@ function CartItemRow({ item }: { item: CartItem }) {
             <Calendar className="w-3 h-3" />
             {formatDate(item.bookingDate)}
           </div>
+          {/* Horario seleccionado (time slot) */}
+          {item.selectedTimeSlotLabel && (
+            <div className="flex items-center gap-1 mt-0.5 text-xs text-orange-600 font-medium">
+              <AlarmClock className="w-3 h-3" />
+              {item.selectedTimeSlotLabel}
+              {item.selectedTime && ` · ${item.selectedTime}`}
+            </div>
+          )}
         </div>
       </div>
 

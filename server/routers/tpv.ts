@@ -288,6 +288,7 @@ export const tpvRouter = router({
         discountPercent: experiences.discountPercent,
         categoryId: experiences.categoryId,
         isActive: experiences.isActive,
+        hasTimeSlots: experiences.hasTimeSlots,
       }).from(experiences).where(and(eq(experiences.isActive, true), eq(experiences.isPresentialSale, true))),
 
       db.select({

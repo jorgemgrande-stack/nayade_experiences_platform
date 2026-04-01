@@ -3,7 +3,7 @@ import { Link, useParams } from "wouter";
 import {
   ChevronRight, Star, Clock, Users, MapPin, Shield, CheckCircle,
   XCircle, Calendar, Phone, Mail, ArrowRight, ChevronLeft, ChevronRight as ChevronRightIcon,
-  ShoppingCart, Tag, ChevronDown,
+  ShoppingCart, Tag, ChevronDown, AlarmClock,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon";
@@ -43,6 +43,8 @@ export default function ExperienceDetail() {
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", date: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
+  const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<number | null>(null);
+  const [selectedTime, setSelectedTime] = useState("");
 
   const { data: dbExp, isLoading: isLoadingExp } = trpc.public.getExperienceBySlug.useQuery(
     { slug: slug ?? "" },
@@ -53,6 +55,14 @@ export default function ExperienceDetail() {
     { experienceId: dbExp?.id ?? 0 },
     { enabled: !!dbExp?.id }
   );
+
+  // Time slots: solo se cargan si el producto tiene hasTimeSlots activo
+  const hasTimeSlotsEnabled = !!(dbExp as Record<string, unknown> | undefined)?.hasTimeSlots;
+  const { data: timeSlots = [] } = trpc.timeSlots.getByProduct.useQuery(
+    { productId: dbExp?.id ?? 0 },
+    { enabled: !!dbExp?.id && hasTimeSlotsEnabled }
+  );
+  const slotType = timeSlots[0]?.type ?? "fixed";
 
   const submitLead = trpc.public.submitLead.useMutation({
     onSuccess: () => {
@@ -422,6 +432,83 @@ export default function ExperienceDetail() {
                   </div>
                 </div>
 
+                {/* Selector de horarios (time slots) — solo si el producto los tiene configurados */}
+                {hasTimeSlotsEnabled && timeSlots.length > 0 && (
+                  <div className="mb-5">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                      <AlarmClock className="w-3 h-3 text-orange-500" /> Horario disponible
+                    </p>
+                    {slotType === "flexible" ? (
+                      // Tipo flexible: el cliente escribe la hora
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {timeSlots.map(slot => (
+                            <button
+                              key={slot.id}
+                              type="button"
+                              onClick={() => setSelectedTimeSlotId(slot.id)}
+                              className={cn(
+                                "px-3 py-2 rounded-xl border text-sm transition-all text-left",
+                                selectedTimeSlotId === slot.id
+                                  ? "border-orange-400 bg-orange-50 text-orange-700 font-semibold"
+                                  : "border-border text-muted-foreground hover:border-orange-200 hover:bg-orange-50/40"
+                              )}
+                            >
+                              <span className="block text-xs font-medium">{slot.label}</span>
+                              {slot.startTime && slot.endTime && (
+                                <span className="text-xs opacity-70">{slot.startTime}–{slot.endTime}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        {selectedTimeSlotId && (
+                          <div>
+                            <label className="block text-xs text-muted-foreground mb-1">Hora preferida</label>
+                            <input
+                              type="time"
+                              value={selectedTime}
+                              onChange={(e) => setSelectedTime(e.target.value)}
+                              className="w-full border border-border rounded-lg px-3 py-1.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      // Tipo fixed o range: el cliente elige un slot
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {timeSlots.map(slot => (
+                          <button
+                            key={slot.id}
+                            type="button"
+                            onClick={() => setSelectedTimeSlotId(slot.id === selectedTimeSlotId ? null : slot.id)}
+                            className={cn(
+                              "px-3 py-2 rounded-xl border text-sm transition-all text-left",
+                              selectedTimeSlotId === slot.id
+                                ? "border-orange-400 bg-orange-50 text-orange-700 font-semibold"
+                                : "border-border text-muted-foreground hover:border-orange-200 hover:bg-orange-50/40"
+                            )}
+                          >
+                            <span className="block text-xs font-medium">{slot.label}</span>
+                            {slot.startTime && (
+                              <span className="text-xs opacity-70">
+                                {slot.startTime}{slot.endTime ? `–${slot.endTime}` : ""}
+                              </span>
+                            )}
+                            {slot.priceOverride && (
+                              <span className="block text-xs text-orange-600 font-bold mt-0.5">
+                                {parseFloat(slot.priceOverride).toFixed(0)}€/p.
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {hasTimeSlotsEnabled && timeSlots.length > 0 && !selectedTimeSlotId && (
+                      <p className="text-xs text-orange-500 mt-1.5">Selecciona un horario para continuar</p>
+                    )}
+                  </div>
+                )}
+
                 {/* Selector de fecha para el carrito */}
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-foreground mb-1.5">Fecha preferida</label>
@@ -445,6 +532,15 @@ export default function ExperienceDetail() {
                         toast.info("Selecciona una modalidad antes de añadir al carrito");
                         return;
                       }
+                      if (hasTimeSlotsEnabled && timeSlots.length > 0 && !selectedTimeSlotId) {
+                        toast.info("Selecciona un horario antes de añadir al carrito");
+                        return;
+                      }
+                      if (hasTimeSlotsEnabled && slotType === "flexible" && selectedTimeSlotId && !selectedTime) {
+                        toast.info("Indica la hora preferida");
+                        return;
+                      }
+                      const selectedSlot = timeSlots.find(s => s.id === selectedTimeSlotId);
                       addItem({
                         productId: exp.id,
                         productName: exp.title,
@@ -459,6 +555,9 @@ export default function ExperienceDetail() {
                         pricePerPerson: effectivePricePerPerson,
                         estimatedTotal: effectivePricePerPerson * persons,
                         extras: [],
+                        selectedTimeSlotId: selectedSlot?.id,
+                        selectedTimeSlotLabel: selectedSlot?.label,
+                        selectedTime: slotType === "flexible" ? selectedTime : undefined,
                       });
                       openCart();
                     }}

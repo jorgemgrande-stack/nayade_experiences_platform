@@ -48,6 +48,12 @@ export interface CartItem {
   discountPercent?: number;
   /** Total estimado del artículo (sin servidor) */
   estimatedTotal: number;
+  /** ID del time slot seleccionado (opcional) */
+  selectedTimeSlotId?: number;
+  /** Etiqueta del time slot seleccionado (para mostrar) */
+  selectedTimeSlotLabel?: string;
+  /** Hora elegida por el cliente (solo para slots tipo flexible) */
+  selectedTime?: string;
 }
 
 interface CartContextValue {

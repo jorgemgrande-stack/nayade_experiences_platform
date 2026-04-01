@@ -17,7 +17,7 @@ import {
   ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone,
   Layers, X, User, Calendar, Clock, Users, Tag, ChevronDown, ChevronUp,
   Zap, Waves, Baby, Sparkles, Star, Sun, Filter, LogOut, Settings,
-  Receipt, ArrowLeft, SplitSquareHorizontal,
+  Receipt, ArrowLeft, SplitSquareHorizontal, AlarmClock,
 } from "lucide-react";
 import { Link } from "wouter";
 import TpvOpenSession from "./TpvOpenSession";
@@ -38,6 +38,7 @@ interface CatalogProduct {
   discountPercent: string | null;
   productType: ProductType;
   categoryId?: number | null;
+  hasTimeSlots?: boolean | null;
 }
 
 interface CartItem {
@@ -50,6 +51,9 @@ interface CartItem {
   eventTime?: string;
   participants: number;
   notes?: string;
+  selectedTimeSlotId?: number;
+  selectedTimeSlotLabel?: string;
+  selectedTime?: string;
 }
 
 type PaymentMethod = "cash" | "card" | "bizum" | "other";
@@ -123,6 +127,11 @@ export default function TpvScreen() {
   const [showDiscountForm, setShowDiscountForm] = useState(false);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [serviceDate, setServiceDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  // Modal de time slots: se abre cuando se añade un producto con hasTimeSlots
+  const [pendingProduct, setPendingProduct] = useState<CatalogProduct | null>(null);
+  const [showTimeSlotsModal, setShowTimeSlotsModal] = useState(false);
+  const [tpvSelectedSlotId, setTpvSelectedSlotId] = useState<number | null>(null);
+  const [tpvSelectedTime, setTpvSelectedTime] = useState("");
 
   // Check active session
   const { data: activeSession, refetch: refetchSession } = trpc.tpv.getActiveSession.useQuery(
@@ -190,10 +199,23 @@ export default function TpvScreen() {
 
   // ── Cart helpers ────────────────────────────────────────────────────────────
   const addToCart = useCallback((product: CatalogProduct) => {
+    // Si el producto tiene time slots, abrir modal de selección antes de añadir
+    if (product.hasTimeSlots) {
+      setPendingProduct(product);
+      setTpvSelectedSlotId(null);
+      setTpvSelectedTime("");
+      setShowTimeSlotsModal(true);
+      return;
+    }
+    _addToCartDirect(product, undefined, undefined, undefined);
+  }, [cart]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const _addToCartDirect = useCallback((product: CatalogProduct, slotId?: number, slotLabel?: string, slotTime?: string) => {
     const price = parseFloat(String(product.basePrice ?? "0"));
     const discount = parseFloat(String(product.discountPercent ?? "0"));
     const existing = cart.find(
       (i) => i.product.id === product.id && i.product.productType === product.productType
+        && i.selectedTimeSlotId === slotId
     );
     if (existing) {
       setCart((prev) =>
@@ -211,6 +233,9 @@ export default function TpvScreen() {
           unitPrice: price,
           discountPercent: discount,
           participants: 1,
+          selectedTimeSlotId: slotId,
+          selectedTimeSlotLabel: slotLabel,
+          selectedTime: slotTime,
         },
       ]);
     }
@@ -281,9 +306,11 @@ export default function TpvScreen() {
         unitPrice: item.unitPrice,
         discountPercent: item.discountPercent,
         eventDate: item.eventDate,
-        eventTime: item.eventTime,
+        eventTime: item.eventTime ?? (item.selectedTimeSlotLabel ? item.selectedTimeSlotLabel : undefined),
         participants: item.participants,
-        notes: item.notes,
+        notes: item.notes ?? (item.selectedTimeSlotLabel
+          ? `Horario: ${item.selectedTimeSlotLabel}${item.selectedTime ? ` (${item.selectedTime})` : ""}`
+          : undefined),
       })),
       payments: [{ method, amount: cartTotal }],
     });
@@ -568,6 +595,13 @@ export default function TpvScreen() {
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-white line-clamp-1">{item.product.title}</p>
                           <p className="text-xs text-gray-400">{item.unitPrice.toFixed(2)}€/ud</p>
+                          {item.selectedTimeSlotLabel && (
+                            <p className="text-xs text-violet-400 flex items-center gap-0.5 mt-0.5">
+                              <AlarmClock className="w-2.5 h-2.5" />
+                              {item.selectedTimeSlotLabel}
+                              {item.selectedTime && ` · ${item.selectedTime}`}
+                            </p>
+                          )}
                         </div>
                         <button
                           onClick={() => removeItem(item.id)}
@@ -806,6 +840,130 @@ export default function TpvScreen() {
           onClose={() => setShowTicket(false)}
         />
       )}
+
+      {/* Modal de selección de horario (time slots) para el TPV */}
+      {showTimeSlotsModal && pendingProduct && (
+        <TpvTimeSlotsModal
+          product={pendingProduct}
+          onConfirm={(slotId, slotLabel, slotTime) => {
+            _addToCartDirect(pendingProduct, slotId, slotLabel, slotTime);
+            setShowTimeSlotsModal(false);
+            setPendingProduct(null);
+          }}
+          onCancel={() => {
+            setShowTimeSlotsModal(false);
+            setPendingProduct(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── Sub-componente: Modal de selección de horario ───────────────────────────
+
+function TpvTimeSlotsModal({
+  product,
+  onConfirm,
+  onCancel,
+}: {
+  product: CatalogProduct;
+  onConfirm: (slotId: number, slotLabel: string, slotTime?: string) => void;
+  onCancel: () => void;
+}) {
+  const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
+  const [selectedTime, setSelectedTime] = useState("");
+
+  const { data: timeSlots = [] } = trpc.timeSlots.getByProduct.useQuery(
+    { productId: product.id },
+    { enabled: true }
+  );
+
+  const slotType = timeSlots[0]?.type ?? "fixed";
+
+  const handleConfirm = () => {
+    if (!selectedSlotId) {
+      toast.error("Selecciona un horario");
+      return;
+    }
+    if (slotType === "flexible" && !selectedTime) {
+      toast.error("Indica la hora preferida");
+      return;
+    }
+    const slot = timeSlots.find(s => s.id === selectedSlotId);
+    onConfirm(selectedSlotId, slot?.label ?? "", slotType === "flexible" ? selectedTime : undefined);
+  };
+
+  return (
+    <Dialog open onOpenChange={onCancel}>
+      <DialogContent className="max-w-sm bg-gray-900 border-gray-700 text-white">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-white">
+            <AlarmClock className="w-5 h-5 text-violet-400" />
+            Seleccionar horario
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-400">{product.title}</p>
+          {timeSlots.length === 0 ? (
+            <p className="text-sm text-gray-500">No hay horarios configurados.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {timeSlots.map(slot => (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => setSelectedSlotId(slot.id)}
+                  className={`px-3 py-2.5 rounded-xl border text-sm transition-all text-left ${
+                    selectedSlotId === slot.id
+                      ? "border-violet-500 bg-violet-900/40 text-violet-200 font-semibold"
+                      : "border-gray-700 text-gray-300 hover:border-violet-500/50 hover:bg-gray-800"
+                  }`}
+                >
+                  <span className="block text-xs font-medium">{slot.label}</span>
+                  {slot.startTime && (
+                    <span className="text-xs opacity-60">
+                      {slot.startTime}{slot.endTime ? `–${slot.endTime}` : ""}
+                    </span>
+                  )}
+                  {slot.priceOverride && (
+                    <span className="block text-xs text-violet-400 font-bold mt-0.5">
+                      {parseFloat(slot.priceOverride).toFixed(0)}€
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+          {slotType === "flexible" && selectedSlotId && (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Hora preferida</label>
+              <input
+                type="time"
+                value={selectedTime}
+                onChange={(e) => setSelectedTime(e.target.value)}
+                className="w-full h-8 text-sm bg-gray-800 border border-gray-700 text-white rounded px-2 focus:outline-none focus:border-violet-500"
+              />
+            </div>
+          )}
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="outline"
+              className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800"
+              onClick={onCancel}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-violet-700 hover:bg-violet-600 text-white"
+              onClick={handleConfirm}
+              disabled={!selectedSlotId}
+            >
+              Confirmar
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
