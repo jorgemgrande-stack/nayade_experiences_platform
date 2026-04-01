@@ -245,6 +245,35 @@ export default function LegoPacksList() {
                             Lego Pack
                           </span>
                         </div>
+
+                        {/* Banda de precio mínimo */}
+                        {(pack.minPrice || pack.priceLabel) && (
+                          <div className="absolute bottom-3 right-3">
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.2rem",
+                                background: "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+                                color: "#fff",
+                                fontWeight: 800,
+                                fontSize: "0.82rem",
+                                padding: "0.3rem 0.75rem",
+                                borderRadius: "999px",
+                                boxShadow: "0 2px 10px rgba(249,115,22,0.55)",
+                                letterSpacing: "0.01em",
+                                backdropFilter: "blur(4px)",
+                                border: "1.5px solid rgba(255,255,255,0.25)",
+                              }}
+                            >
+                              <span style={{ fontSize: "0.7rem", fontWeight: 600, opacity: 0.9 }}>Desde</span>
+                              {pack.minPrice
+                                ? <><strong style={{ fontSize: "0.95rem" }}>{Math.round(pack.minPrice)}</strong><span style={{ fontSize: "0.8rem" }}>€</span></>
+                                : <strong>{pack.priceLabel}</strong>
+                              }
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Contenido */}
@@ -261,7 +290,22 @@ export default function LegoPacksList() {
                           </p>
                         )}
 
-                        {/* Precio */}
+                        {/* Precio en el área de contenido */}
+                        {(pack.minPrice || pack.priceLabel) && (
+                          <div className="flex items-baseline gap-1.5 mb-3">
+                            <span className="text-xs text-muted-foreground font-medium">Desde</span>
+                            <span className="text-2xl font-extrabold text-orange-500">
+                              {pack.minPrice
+                                ? `${Math.round(pack.minPrice)}€`
+                                : pack.priceLabel
+                              }
+                            </span>
+                            {pack.minPrice && (
+                              <span className="text-xs text-muted-foreground">/ persona</span>
+                            )}
+                          </div>
+                        )}
+
                         {/* CTAs */}
                         <div className="mt-auto pt-3 border-t border-border/50 flex gap-2">
                           {pack.isOnlineSale ? (
@@ -272,8 +316,8 @@ export default function LegoPacksList() {
                                 setCartPack({
                                   id: pack.id,
                                   title: pack.title,
-                                  // legoPacks use priceLabel (text), parse numeric part or default to 0
-                                  basePrice: pack.priceLabel ? parseFloat(pack.priceLabel.replace(/[^0-9.,]/g, "").replace(",", ".")) || 0 : 0,
+                                  // Usar minPrice calculado si está disponible, si no parsear priceLabel
+                                  basePrice: pack.minPrice ?? (pack.priceLabel ? parseFloat(pack.priceLabel.replace(/[^0-9.,]/g, "").replace(",", ".")) || 0 : 0),
                                   image1: pack.image1 || pack.coverImageUrl,
                                   slug: pack.slug,
                                   discountPercent: pack.discountPercent ? parseFloat(String(pack.discountPercent)) : null,

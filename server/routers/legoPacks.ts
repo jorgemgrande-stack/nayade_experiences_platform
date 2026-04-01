@@ -261,7 +261,7 @@ export const legoPacksRouter = router({
   listPublicByCategory: publicProcedure
     .input(z.object({ category: z.enum(["dia", "escolar", "empresa"]) }))
     .query(async ({ input }) => {
-      return db
+      const packsList = await db
         .select()
         .from(legoPacks)
         .where(and(
@@ -270,6 +270,22 @@ export const legoPacksRouter = router({
           eq(legoPacks.category, input.category),
         ))
         .orderBy(asc(legoPacks.sortOrder));
+
+      // Calcular precio mínimo para cada pack (solo líneas requeridas activas)
+      const withPricing = await Promise.all(
+        packsList.map(async (pack) => {
+          try {
+            const pricing = await calculateLegoPackPrice(pack.id);
+            // Precio mínimo = total de líneas requeridas con descuento
+            const minPrice = pricing.totalFinal > 0 ? pricing.totalFinal : null;
+            return { ...pack, minPrice };
+          } catch {
+            return { ...pack, minPrice: null };
+          }
+        })
+      );
+
+      return withPricing;
     }),
 
   // ── Get single Lego Pack with lines ───────────────────────────────────────

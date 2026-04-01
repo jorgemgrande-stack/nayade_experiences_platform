@@ -2799,3 +2799,8 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] BookingModal (backoffice): ya tenía selector de time slots — verificado y funcional
 - [x] CartContext: añadir campos selectedTimeSlotId y selectedTime a CartItem
 - [x] CartDrawer: mostrar horario seleccionado en el panel lateral del carrito
+
+## Precio "Desde X€" en tarjetas de Lego Packs (v4.2)
+- [x] Mostrar precio mínimo con banda visual "Desde X€" en tarjetas de /lego-packs/dia, /escolar y /empresa
+- [x] Usar priceLabel si existe, o calcular desde las líneas del pack (calculateLegoPackPrice)
+- [x] Añadir campo minPrice calculado en el endpoint listPublicByCategory
