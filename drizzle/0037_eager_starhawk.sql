@@ -1,0 +1,1 @@
+ALTER TABLE `lego_packs` MODIFY COLUMN `category` enum('dia','escolar','empresa','estancia') NOT NULL DEFAULT 'dia';

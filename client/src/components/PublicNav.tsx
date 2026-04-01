@@ -27,6 +27,7 @@ const FALLBACK_NAV = [
       { label: "Lego Packs de Día", href: "/lego-packs/dia" },
       { label: "Lego Packs Escolares", href: "/lego-packs/escolar" },
       { label: "Lego Packs Empresas", href: "/lego-packs/empresa" },
+      { label: "Hotel + Actividades", href: "/lego-packs/estancia" },
     ],
   },
   { label: "Hotel", href: "/hotel" },

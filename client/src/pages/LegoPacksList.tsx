@@ -63,6 +63,17 @@ const CATEGORY_META: Record<string, {
     breadcrumb: "Lego Packs Empresas",
     badgeOptions: ["Más Popular", "Premium", "Recomendado"],
   },
+  estancia: {
+    title: "Hotel + Actividades",
+    subtitle: "Packs con alojamiento y actividades acuáticas incluidas",
+    description: "Combina tu estancia en el Hotel Náyade con las mejores actividades del lago. Pack completo para 2 personas con 10% de descuento.",
+    icon: Layers,
+    gradient: "from-amber-600 to-orange-800",
+    text: "text-amber-700",
+    image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1600&q=70",
+    breadcrumb: "Hotel + Actividades",
+    badgeOptions: ["Más Popular", "Premium", "Recomendado", "Pareja", "Novedad"],
+  },
 };
 
 export default function LegoPacksList() {
@@ -75,7 +86,7 @@ export default function LegoPacksList() {
     discountPercent?: number | null; discountExpiresAt?: string | Date | null;
   } | null>(null);
 
-  const validCategory = (["dia", "escolar", "empresa"].includes(category ?? "") ? category : "dia") as "dia" | "escolar" | "empresa";
+  const validCategory = (["dia", "escolar", "empresa", "estancia"].includes(category ?? "") ? category : "dia") as "dia" | "escolar" | "empresa" | "estancia";
   const meta = CATEGORY_META[validCategory] ?? CATEGORY_META["dia"];
   const Icon = meta.icon;
 

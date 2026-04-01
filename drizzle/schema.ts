@@ -1520,7 +1520,7 @@ export const legoPacks = mysqlTable("lego_packs", {
   priceLabel: varchar("priceLabel", { length: 128 }),
   // Categorías / filtros
   categoryId: int("categoryId"),
-  category: mysqlEnum("category", ["dia", "escolar", "empresa"]).default("dia").notNull(),
+  category: mysqlEnum("category", ["dia", "escolar", "empresa", "estancia"]).default("dia").notNull(),
   targetAudience: varchar("targetAudience", { length: 256 }),
   // Disponibilidad
   availabilityMode: mysqlEnum("availabilityMode", ["strict", "flexible"]).default("strict").notNull(),

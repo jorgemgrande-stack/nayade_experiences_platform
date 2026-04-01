@@ -102,7 +102,7 @@ type PackForm = {
   slug: string; title: string; subtitle: string; shortDescription: string; description: string;
   coverImageUrl: string; image1: string; image2: string; image3: string; image4: string;
   badge: string; priceLabel: string; targetAudience: string;
-  category: "dia" | "escolar" | "empresa";
+  category: "dia" | "escolar" | "empresa" | "estancia";
   availabilityMode: "strict" | "flexible";
   discountPercent: string; discountExpiresAt: string;
   isActive: boolean; isPublished: boolean; isFeatured: boolean; isPresentialSale: boolean; isOnlineSale: boolean;
@@ -135,7 +135,7 @@ const emptyLineForm: LineForm = {
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function LegoPacksManager() {
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"todos" | "dia" | "escolar" | "empresa">("todos");
+  const [categoryFilter, setCategoryFilter] = useState<"todos" | "dia" | "escolar" | "empresa" | "estancia">("todos");
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<PackForm>(emptyForm);
@@ -355,7 +355,7 @@ export default function LegoPacksManager() {
             <Input placeholder="Buscar Lego Pack..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
           <div className="flex gap-1">
-            {(["todos", "dia", "escolar", "empresa"] as const).map((cat) => (
+            {(["todos", "dia", "escolar", "empresa", "estancia"] as const).map((cat) => (
               <button
                 key={cat}
                 type="button"
@@ -367,7 +367,7 @@ export default function LegoPacksManager() {
                     : "bg-muted/40 text-muted-foreground border-border hover:border-primary/40"
                 )}
               >
-                {cat === "todos" ? "Todos" : cat === "dia" ? "☀️ Día" : cat === "escolar" ? "🏫 Escolar" : "🏢 Empresa"}
+                {cat === "todos" ? "Todos" : cat === "dia" ? "☀️ Día" : cat === "escolar" ? "🏫 Escolar" : cat === "empresa" ? "🏢 Empresa" : "🏨 Hotel"}
               </button>
             ))}
           </div>
@@ -408,9 +408,10 @@ export default function LegoPacksManager() {
                   <Badge variant="outline" className={cn("text-xs",
                     p.category === "dia" ? "border-blue-300 bg-blue-50 text-blue-700" :
                     p.category === "escolar" ? "border-green-300 bg-green-50 text-green-700" :
+                    p.category === "estancia" ? "border-amber-300 bg-amber-50 text-amber-700" :
                     "border-purple-300 bg-purple-50 text-purple-700"
                   )}>
-                    {p.category === "dia" ? "☀️ Día" : p.category === "escolar" ? "🏫 Escolar" : "🏢 Empresa"}
+                    {p.category === "dia" ? "☀️ Día" : p.category === "escolar" ? "🏫 Escolar" : p.category === "estancia" ? "🏨 Hotel" : "🏢 Empresa"}
                   </Badge>
                   {(p as any).discountPercent && (
                     <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">
@@ -515,11 +516,11 @@ export default function LegoPacksManager() {
               <div>
                 <Label className="text-sm font-semibold">Categoría *</Label>
                 <p className="text-xs text-muted-foreground mb-2">Determina en qué sección pública aparece este Lego Pack</p>
-                <div className="grid grid-cols-3 gap-3">
-                  {([
+                <div className="grid grid-cols-3 gap-3">                  {([
                     { value: "dia", label: "Día Completo", icon: "☀️", desc: "Packs para un día en el lago", color: "border-blue-400 bg-blue-50 text-blue-700" },
                     { value: "escolar", label: "Escolar", icon: "🏫", desc: "Packs para grupos escolares", color: "border-green-400 bg-green-50 text-green-700" },
                     { value: "empresa", label: "Empresa", icon: "🏢", desc: "Packs para equipos y empresas", color: "border-purple-400 bg-purple-50 text-purple-700" },
+                    { value: "estancia", label: "Hotel + Actividades", icon: "🏨", desc: "Packs con alojamiento incluido", color: "border-amber-400 bg-amber-50 text-amber-700" },
                   ] as const).map((cat) => (
                     <button
                       key={cat.value}

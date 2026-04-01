@@ -2826,3 +2826,16 @@ Unificar el estilo visual de todos los emails enviados por el sistema CRM al mis
 - [x] Filtrar por isPublished=true en getFeaturedExperiences, getPublicExperiences y getExperienceBySlug
 - [x] Mostrar badge "Publicado/No publicado" en el listado de admin
 - [x] 611 tests pasando, 0 errores TypeScript
+
+## LEGOPacks con Estancia (v4.6)
+- [x] Añadir valor 'estancia' al ENUM category de lego_packs en schema.ts
+- [x] Generar y aplicar migración SQL del ENUM
+- [x] Clonar los 6 packs de 'Packs de Día' con prefijo 'Hotel + '
+- [x] Añadir línea 'Doble Estándar' (habitación hotel) a cada pack clonado
+- [x] Aplicar 10% de descuento en todas las líneas de los packs de estancia
+- [x] Configurar defaultQuantity=2 para los packs de estancia
+- [x] Añadir 'Hotel + Actividades' al menú de navegación (PublicNav)
+- [x] Añadir 'Hotel + Actividades' al footer (PublicFooter)
+- [x] Añadir metadata de 'estancia' al CATEGORY_META de LegoPacksList
+- [x] Añadir filtro 'Hotel' al backoffice de Lego Packs (LegoPacksManager)
+- [x] Añadir opción 'Hotel + Actividades' al selector de categoría del formulario del backoffice

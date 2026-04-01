@@ -14,6 +14,7 @@ const colLegoPacks = [
   { label: "Lego Packs de Día", href: "/lego-packs/dia" },
   { label: "Lego Packs Escolares", href: "/lego-packs/escolar" },
   { label: "Lego Packs Empresas", href: "/lego-packs/empresa" },
+  { label: "Hotel + Actividades", href: "/lego-packs/estancia" },
   { label: "Solicitar Presupuesto", href: "/presupuesto" },
 ];
 

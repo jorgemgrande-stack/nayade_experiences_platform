@@ -39,7 +39,7 @@ const legoPackInput = z.object({
   badge: z.string().max(64).optional().nullable(),
   priceLabel: z.string().max(128).optional().nullable(),
   categoryId: z.number().optional().nullable(),
-  category: z.enum(["dia", "escolar", "empresa"]).default("dia"),
+  category: z.enum(["dia", "escolar", "empresa", "estancia"]).default("dia"),
   targetAudience: z.string().max(256).optional().nullable(),
   availabilityMode: z.enum(["strict", "flexible"]).default("strict"),
   discountPercent: z.string().optional().nullable(),
@@ -259,7 +259,7 @@ export const legoPacksRouter = router({
 
   // ── Public list by category ───────────────────────────────────────────────
   listPublicByCategory: publicProcedure
-    .input(z.object({ category: z.enum(["dia", "escolar", "empresa"]) }))
+    .input(z.object({ category: z.enum(["dia", "escolar", "empresa", "estancia"]) }))
     .query(async ({ input }) => {
       const packsList = await db
         .select()
