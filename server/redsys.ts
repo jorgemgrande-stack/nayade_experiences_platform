@@ -33,7 +33,9 @@ export function getMerchantKey(): string {
 }
 
 export function getMerchantTerminal(): string {
-  return process.env.REDSYS_MERCHANT_TERMINAL ?? "001";
+  const t = process.env.REDSYS_MERCHANT_TERMINAL ?? "001";
+  // Redsys requires terminal as 3-digit zero-padded string (e.g. "001")
+  return t.padStart(3, "0");
 }
 
 // ─── Utilidades de cifrado ────────────────────────────────────────────────────
