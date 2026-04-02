@@ -45,7 +45,7 @@ export function getMerchantTerminal(): string {
  * Esto garantiza que cada pedido tenga una clave única.
  */
 function deriveKey(merchantOrder: string): Buffer {
-  const keyBase64 = getMerchantKey();
+  const keyBase64 = getMerchantKey().trim();
   const keyBuffer = Buffer.from(keyBase64, "base64");
 
   // Padding del merchantOrder a 8 bytes con ceros
@@ -133,6 +133,8 @@ export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
   // Generar firma
   const signature = signParams(merchantParamsBase64, params.merchantOrder);
 
+  const rawKey = getMerchantKey();
+  const decodedKeyBytes = Buffer.from(rawKey.trim(), "base64");
   console.log("[Redsys] buildRedsysForm →", {
     amount: params.amount,
     merchantOrder: params.merchantOrder,
@@ -142,7 +144,9 @@ export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
     paramsJson: merchantParamsJson,
     paramsBase64: merchantParamsBase64.slice(0, 40) + "...",
     signature: signature.slice(0, 20) + "...",
-    keyConfigured: !!getMerchantKey(),
+    keyRawLength: rawKey.trim().length,
+    keyDecodedBytes: decodedKeyBytes.length,
+    keyValid3DES: decodedKeyBytes.length === 16 || decodedKeyBytes.length === 24,
   });
 
   return {
