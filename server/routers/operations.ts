@@ -476,6 +476,7 @@ const activitiesRouter = router({
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
+          r.merchant_order AS merchantOrder,
           DATE_FORMAT(r.booking_date, '%Y-%m-%d') AS scheduledDate,
           r.people AS numberOfPersons,
           r.status,
@@ -523,6 +524,32 @@ const activitiesRouter = router({
           reservationId: input.reservationId,
           reservationType: "activity",
           monitorId: input.monitorId,
+          updatedBy: ctx.user.id,
+        });
+      }
+      return { ok: true };
+    }),
+
+  // Confirm client arrival directly from the card
+  confirmArrival: adminProcedure
+    .input(z.object({ reservationId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await db.select().from(reservationOperational)
+        .where(and(
+          eq(reservationOperational.reservationId, input.reservationId),
+          eq(reservationOperational.reservationType, "activity")
+        ));
+      if (existing.length > 0) {
+        await db.update(reservationOperational)
+          .set({ clientConfirmed: true, clientConfirmedAt: new Date(), clientConfirmedBy: ctx.user.id, updatedBy: ctx.user.id })
+          .where(eq(reservationOperational.id, existing[0].id));
+      } else {
+        await db.insert(reservationOperational).values({
+          reservationId: input.reservationId,
+          reservationType: "activity",
+          clientConfirmed: true,
+          clientConfirmedAt: new Date(),
+          clientConfirmedBy: ctx.user.id,
           updatedBy: ctx.user.id,
         });
       }
