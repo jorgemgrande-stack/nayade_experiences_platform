@@ -144,6 +144,7 @@ const PUBLIC_TRPC_ROUTES = new Set([
 
   // ── Reservas Redsys (pago online público) ────────────────────────────────
   "reservations.createAndPay",
+  "reservations.cartCheckout",
   "reservations.getStatus",
   "reservations.getByLocator",
 ]);
