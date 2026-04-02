@@ -229,7 +229,9 @@ export function validateRedsysNotification(
  * Formato: NY + timestamp reducido + random (evita duplicados).
  */
 export function generateMerchantOrder(): string {
-  const ts = Date.now().toString(36).toUpperCase().slice(-6);
-  const rand = Math.random().toString(36).toUpperCase().slice(2, 6);
-  return `NY${ts}${rand}`.slice(0, 12);
+  // Redsys exige que los primeros 4 caracteres sean numéricos
+  const now = Date.now();
+  const numeric = String(now).slice(-6); // 6 dígitos numéricos del timestamp
+  const rand = Math.random().toString(36).toUpperCase().slice(2, 6); // 4 alfanum
+  return `${numeric}${rand}`.slice(0, 12); // máx 12 chars, empieza por dígitos
 }
