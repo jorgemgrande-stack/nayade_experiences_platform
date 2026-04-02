@@ -1,4 +1,4 @@
-import { eq, desc, and, like, sql, isNull, inArray } from "drizzle-orm";
+import { eq, desc, and, like, sql, isNull, inArray, or, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { nanoid } from "nanoid";
 import {
@@ -20,6 +20,8 @@ import {
   reavDocuments,
   reavCosts,
   reservationOperational,
+  spaSlots,
+  restaurantBookings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { createGHLContact, getGHLTagsFromSource } from "./ghl";
@@ -1538,6 +1540,15 @@ export async function getDashboardOverview() {
       quotesExpiringSoon: 0,
       invoicesOverdue: 0,
     },
+    todayComplex: {
+      hotelReservations: 0,
+      hotelGuests: 0,
+      spaBookedSlots: 0,
+      spaPax: 0,
+      restaurantReservations: 0,
+      restaurantCovers: 0,
+      leadsAging: 0,
+    },
   };
 
   if (!db) return empty;
@@ -1555,6 +1566,9 @@ export async function getDashboardOverview() {
 
     // ── Ejecutar TODAS las queries en paralelo con Promise.all ──────────────
     // Antes: 26 queries secuenciales (~2-4s). Ahora: 1 ronda paralela (~200-400ms)
+    const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+
     const [
       [revTotal], [revLastMonth], [revAllTime],
       [bookingsThisMonth], [bookingsPending], [bookingsConfirmed],
@@ -1568,6 +1582,11 @@ export async function getDashboardOverview() {
       upcomingRaw,
       topRaw,
       [transfersToValidate], [quotesExpiring], [invoicesOverdue],
+      // Hoy en el complejo
+      [hotelToday],
+      [spaToday],
+      [restaurantToday],
+      [leadsAgingRow],
     ] = await Promise.all([
       // KPIs: Ingresos
       db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfMonth}`),
@@ -1606,6 +1625,18 @@ export async function getDashboardOverview() {
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`paymentMethod = 'transferencia' AND status = 'pending_payment'`),
       db.select({ count: sql<number>`count(*)` }).from(quotes).where(sql`validUntil IS NOT NULL AND validUntil <= ${in7Days} AND validUntil >= ${now} AND status IN ('enviado', 'visualizado')`),
       db.select({ count: sql<number>`count(*)` }).from(invoices).where(sql`status IN ('generada', 'enviada') AND issuedAt <= ${thirtyDaysAgo}`),
+      // Hoy en el complejo — Hotel (reservations con extrasJson que contiene checkIn, indica reserva hotelera)
+      db.select({ count: sql<number>`count(*)`, guests: sql<string>`COALESCE(SUM(people), 0)` }).from(reservations)
+        .where(sql`booking_date = ${todayISO} AND status NOT IN ('cancelled','failed','draft') AND extras_json LIKE '%"checkIn"%'`),
+      // Hoy en el complejo — SPA (slots con reservas hoy)
+      db.select({ slots: sql<number>`count(*)`, pax: sql<string>`COALESCE(SUM(booked_count), 0)` }).from(spaSlots)
+        .where(sql`date = ${todayISO} AND booked_count > 0 AND status != 'bloqueado'`),
+      // Hoy en el complejo — Restaurantes (reservas de hoy activas)
+      db.select({ count: sql<number>`count(*)`, covers: sql<string>`COALESCE(SUM(guests), 0)` }).from(restaurantBookings)
+        .where(sql`date = ${todayISO} AND status NOT IN ('cancelled','payment_failed','no_show')`),
+      // Leads sin atender hace más de 3 días (activos, no cerrados)
+      db.select({ count: sql<number>`count(*)` }).from(leads)
+        .where(sql`status NOT IN ('convertido','perdido') AND (lastContactAt IS NULL OR lastContactAt < ${threeDaysAgo})`),
     ]);
 
     // Enriquecer reservas con nombres de experiencias
@@ -1650,6 +1681,15 @@ export async function getDashboardOverview() {
         transfersToValidate: Number(transfersToValidate?.count ?? 0),
         quotesExpiringSoon: Number(quotesExpiring?.count ?? 0),
         invoicesOverdue: Number(invoicesOverdue?.count ?? 0),
+      },
+      todayComplex: {
+        hotelReservations: Number(hotelToday?.count ?? 0),
+        hotelGuests: parseInt(hotelToday?.guests ?? "0", 10),
+        spaBookedSlots: Number(spaToday?.slots ?? 0),
+        spaPax: parseInt(spaToday?.pax ?? "0", 10),
+        restaurantReservations: Number(restaurantToday?.count ?? 0),
+        restaurantCovers: parseInt(restaurantToday?.covers ?? "0", 10),
+        leadsAging: Number(leadsAgingRow?.count ?? 0),
       },
     };
   } catch (err) {

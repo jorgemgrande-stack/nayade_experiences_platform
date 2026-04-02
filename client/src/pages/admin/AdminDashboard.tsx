@@ -6,6 +6,7 @@ import {
   ExternalLink, Bell, AlertTriangle, Activity, CheckCircle2, UserCheck,
   XCircle, Building2, Ticket, ShoppingCart, CreditCard, Package, Star,
   Tag, Gift, ChevronRight, RefreshCw, Loader2, CheckCircle,
+  BedDouble, Sparkles, UtensilsCrossed, UserClock,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -350,13 +351,16 @@ export default function AdminDashboard() {
   const ticketingIncidencias = ticketingStats?.incidencias ?? 0;
   const ticketingPendientes = ticketingStats?.pendientes ?? 0;
   const liquidacionesPendientes = suppliersKpis?.pendingCount ?? 0;
+  const leadsAging = overview?.todayComplex?.leadsAging ?? 0;
+  const complex = overview?.todayComplex;
 
   const totalAlerts =
     (alerts?.transfersToValidate ?? 0) +
     (alerts?.quotesExpiringSoon ?? 0) +
     (alerts?.invoicesOverdue ?? 0) +
     cancellacionesPendientes +
-    ticketingIncidencias;
+    ticketingIncidencias +
+    (leadsAging > 0 ? 1 : 0);
 
   return (
     <AdminLayout title="Dashboard">
@@ -476,6 +480,18 @@ export default function AdminDashboard() {
                     </div>
                   </Link>
                 )}
+                {leadsAging > 0 && (
+                  <Link href="/admin/crm?tab=leads">
+                    <div className="flex items-center gap-2 bg-violet-500/10 border border-violet-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-violet-500/15 transition-colors">
+                      <UserClock className="w-4 h-4 text-violet-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-violet-300">{leadsAging} lead{leadsAging > 1 ? "s" : ""} sin contactar +3 días</p>
+                        <p className="text-[10px] text-violet-400/60">CRM → Leads activos</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
               </div>
             </div>
           )}
@@ -524,6 +540,113 @@ export default function AdminDashboard() {
                 subLabel={`${fmtDec(suppliersKpis?.pendingAmount ?? 0)} a pagar`}
                 icon={Building2} color="orange" href="/admin/proveedores"
               />
+            </div>
+          </div>
+
+          {/* ── HOY EN EL COMPLEJO ─────────────────────────────────────── */}
+          <div>
+            <SectionLabel label="Hoy en el complejo" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+
+              {/* Hotel */}
+              <Link href="/admin/hotel">
+                <div className="group rounded-xl border border-sky-700/30 hover:border-sky-500/50 bg-gradient-to-br from-sky-950/60 to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-110">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-sky-500/20">
+                      <BedDouble className="w-4 h-4 text-sky-400" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-sky-400 transition-colors" />
+                  </div>
+                  <p className="text-xs font-semibold text-white/70 mb-2">Hotel hoy</p>
+                  {isLoading ? (
+                    <div className="h-7 bg-white/5 rounded animate-pulse" />
+                  ) : (complex?.hotelReservations ?? 0) === 0 ? (
+                    <p className="text-sm text-white/25">Sin reservas hoy</p>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-black text-sky-300">{complex?.hotelReservations}</p>
+                      <p className="text-[10px] text-white/40 mt-0.5">{complex?.hotelGuests} huéspedes · check-in</p>
+                    </>
+                  )}
+                </div>
+              </Link>
+
+              {/* SPA */}
+              <Link href="/admin/spa">
+                <div className="group rounded-xl border border-purple-700/30 hover:border-purple-500/50 bg-gradient-to-br from-purple-950/60 to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-110">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-purple-500/20">
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-purple-400 transition-colors" />
+                  </div>
+                  <p className="text-xs font-semibold text-white/70 mb-2">SPA hoy</p>
+                  {isLoading ? (
+                    <div className="h-7 bg-white/5 rounded animate-pulse" />
+                  ) : (complex?.spaBookedSlots ?? 0) === 0 ? (
+                    <p className="text-sm text-white/25">Sin citas hoy</p>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-black text-purple-300">{complex?.spaBookedSlots}</p>
+                      <p className="text-[10px] text-white/40 mt-0.5">{complex?.spaPax} personas · slots activos</p>
+                    </>
+                  )}
+                </div>
+              </Link>
+
+              {/* Restaurantes */}
+              <Link href="/admin/restaurantes">
+                <div className="group rounded-xl border border-rose-700/30 hover:border-rose-500/50 bg-gradient-to-br from-rose-950/60 to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-110">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-rose-500/20">
+                      <UtensilsCrossed className="w-4 h-4 text-rose-400" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-rose-400 transition-colors" />
+                  </div>
+                  <p className="text-xs font-semibold text-white/70 mb-2">Restaurantes hoy</p>
+                  {isLoading ? (
+                    <div className="h-7 bg-white/5 rounded animate-pulse" />
+                  ) : (complex?.restaurantReservations ?? 0) === 0 ? (
+                    <p className="text-sm text-white/25">Sin reservas hoy</p>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-black text-rose-300">{complex?.restaurantCovers}</p>
+                      <p className="text-[10px] text-white/40 mt-0.5">{complex?.restaurantReservations} reservas · cubiertos</p>
+                    </>
+                  )}
+                </div>
+              </Link>
+
+              {/* Leads sin atender */}
+              <Link href="/admin/crm?tab=leads">
+                <div className={cn(
+                  "group rounded-xl border p-4 cursor-pointer transition-all hover:brightness-110",
+                  leadsAging > 0
+                    ? "border-violet-600/50 bg-gradient-to-br from-violet-950/70 to-[#080e1c]/80"
+                    : "border-violet-700/20 bg-gradient-to-br from-violet-950/30 to-[#080e1c]/80"
+                )}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-violet-500/20">
+                      <UserClock className="w-4 h-4 text-violet-400" />
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-violet-400 transition-colors" />
+                  </div>
+                  <p className="text-xs font-semibold text-white/70 mb-2">Leads sin atender</p>
+                  {isLoading ? (
+                    <div className="h-7 bg-white/5 rounded animate-pulse" />
+                  ) : leadsAging === 0 ? (
+                    <>
+                      <p className="text-2xl font-black text-emerald-400">0</p>
+                      <p className="text-[10px] text-emerald-400/60 mt-0.5">Todos atendidos</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-black text-violet-300">{leadsAging}</p>
+                      <p className="text-[10px] text-amber-400/80 mt-0.5">+3 días sin contacto</p>
+                    </>
+                  )}
+                </div>
+              </Link>
             </div>
           </div>
 
