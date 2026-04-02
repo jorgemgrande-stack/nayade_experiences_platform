@@ -10,7 +10,7 @@
  * El archivo se sirve como descarga directa (Content-Disposition: attachment).
  */
 
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import * as XLSX from "xlsx";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
@@ -20,11 +20,35 @@ import {
   settlementLines,
   suppliers,
 } from "../drizzle/schema";
+import { verifySessionToken } from "./localAuth";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
 const settlementExportRouter = Router();
+
+// ─── Auth middleware ──────────────────────────────────────────────────────────
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const raw = req.headers.cookie ?? "";
+  const cookies = Object.fromEntries(
+    raw.split(";").map(c => {
+      const idx = c.indexOf("=");
+      if (idx === -1) return [c.trim(), ""];
+      return [c.slice(0, idx).trim(), decodeURIComponent(c.slice(idx + 1).trim())];
+    })
+  );
+  const token = cookies["nayade_session"];
+  if (!token) {
+    res.status(401).json({ error: "No autenticado" });
+    return;
+  }
+  const userId = await verifySessionToken(token);
+  if (!userId) {
+    res.status(401).json({ error: "Sesión inválida o expirada" });
+    return;
+  }
+  next();
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -80,6 +104,7 @@ const S_PCT = { numFmt: '0.00"%"' };
 
 settlementExportRouter.get(
   "/api/settlements/:id/export-excel",
+  requireAuth,
   async (req: Request, res: Response) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {

@@ -126,7 +126,7 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
-import { siteSettings, packs, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema } from "../drizzle/schema";
+import { siteSettings, packs, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes } from "../drizzle/schema";
 import { eq, and, desc, inArray, sql as sqlDrizzle } from "drizzle-orm";
 import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
@@ -1331,7 +1331,7 @@ export const appRouter = router({
         customerPhone: z.string().optional(),
         origin: z.string().url(),
         discountCodeId: z.number().optional(),
-        discountPercent: z.number().min(0).max(100).optional(),
+        // discountPercent ya no se acepta del cliente — se consulta en BD por discountCodeId
       }))
       .mutation(async ({ input }) => {
         const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
@@ -1389,11 +1389,24 @@ export const appRouter = router({
             notes: `Carrito: ${productNames.join(", ")}`,
           });
         }
-        // 3b. Aplicar descuento por código si se proporcionó
+        // 3b. Aplicar descuento por código si se proporcionó — validar SIEMPRE en servidor
         let finalAmountCents = totalAmountCents;
-        if (input.discountPercent && input.discountPercent > 0) {
-          const discountCents = Math.round(totalAmountCents * input.discountPercent / 100);
-          finalAmountCents = Math.max(0, totalAmountCents - discountCents);
+        if (input.discountCodeId) {
+          const db = await getDb();
+          const [discountRow] = await db!
+            .select({ discountPercent: discountCodes.discountPercent, status: discountCodes.status, expiresAt: discountCodes.expiresAt, maxUses: discountCodes.maxUses, currentUses: discountCodes.currentUses })
+            .from(discountCodes)
+            .where(eq(discountCodes.id, input.discountCodeId))
+            .limit(1);
+          if (discountRow && discountRow.status === "active") {
+            const expired = (discountRow.expiresAt && new Date(discountRow.expiresAt) < new Date())
+              || (discountRow.maxUses !== null && discountRow.currentUses >= discountRow.maxUses);
+            if (!expired) {
+              const pct = parseFloat(discountRow.discountPercent as unknown as string);
+              const discountCents = Math.round(totalAmountCents * pct / 100);
+              finalAmountCents = Math.max(0, totalAmountCents - discountCents);
+            }
+          }
         }
         // 4. Construir el formulario Redsys con el importe total
         const description = productNames.length === 1

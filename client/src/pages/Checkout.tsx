@@ -90,7 +90,6 @@ export default function Checkout() {
         customerPhone: phone.trim() || undefined,
         origin: window.location.origin,
         discountCodeId: promoData?.id,
-        discountPercent: promoData?.discountPercent,
       });
 
       // Vaciar carrito antes de redirigir
