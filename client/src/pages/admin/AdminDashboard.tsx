@@ -6,7 +6,7 @@ import {
   ExternalLink, Bell, AlertTriangle, Activity, CheckCircle2, UserCheck,
   XCircle, Building2, Ticket, ShoppingCart, CreditCard, Package, Star,
   Tag, Gift, ChevronRight, RefreshCw, Loader2, CheckCircle,
-  BedDouble, Sparkles, UtensilsCrossed, UserClock,
+  BedDouble, Sparkles, UtensilsCrossed,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
@@ -483,7 +483,7 @@ export default function AdminDashboard() {
                 {leadsAging > 0 && (
                   <Link href="/admin/crm?tab=leads">
                     <div className="flex items-center gap-2 bg-violet-500/10 border border-violet-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-violet-500/15 transition-colors">
-                      <UserClock className="w-4 h-4 text-violet-400 shrink-0" />
+                      <Clock className="w-4 h-4 text-violet-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-violet-300">{leadsAging} lead{leadsAging > 1 ? "s" : ""} sin contactar +3 días</p>
                         <p className="text-[10px] text-violet-400/60">CRM → Leads activos</p>
@@ -627,7 +627,7 @@ export default function AdminDashboard() {
                 )}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-violet-500/20">
-                      <UserClock className="w-4 h-4 text-violet-400" />
+                      <Clock className="w-4 h-4 text-violet-400" />
                     </div>
                     <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-violet-400 transition-colors" />
                   </div>
