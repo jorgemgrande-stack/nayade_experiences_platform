@@ -3532,7 +3532,13 @@ export default function CRMDashboard() {
   // ─── Estado dropdown acciones reservas ────────────────────────────────────────────────────
   const [resChannelFilter, setResChannelFilter] = useState<string>("all");
   const [resActionMenuId, setResActionMenuId] = useState<number | null>(null);
-  const [viewResId, setViewResId] = useState<number | null>(null);
+  const [viewResId, setViewResId] = useState<number | null>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const id = p.get("resId");
+      return id ? parseInt(id, 10) : null;
+    } catch { return null; }
+  });
   const [editResId, setEditResId] = useState<number | null>(null);
   const [editResData, setEditResData] = useState<any>(null);
   const [deleteResId, setDeleteResId] = useState<number | null>(null);

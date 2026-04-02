@@ -408,14 +408,12 @@ export default function DailyActivities() {
                                     {act.merchantOrder}
                                   </span>
                                 )}
-                                {act.clientEmail && (
-                                  <Link href={`/admin/crm?search=${encodeURIComponent(act.clientEmail)}`}>
-                                    <span className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 border border-violet-500/20 rounded px-2 py-0.5 cursor-pointer transition-colors">
-                                      <ExternalLink className="w-3 h-3 shrink-0" />
-                                      Ver en CRM
-                                    </span>
-                                  </Link>
-                                )}
+                                <Link href={`/admin/crm?tab=reservations&resId=${act.id}`}>
+                                  <span className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 border border-violet-500/20 rounded px-2 py-0.5 cursor-pointer transition-colors">
+                                    <ExternalLink className="w-3 h-3 shrink-0" />
+                                    Ver reserva CRM
+                                  </span>
+                                </Link>
                                 {act.clientConfirmed ? (
                                   <span className="flex items-center gap-1 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-2 py-0.5">
                                     <CheckCircle2 className="w-3 h-3" />
@@ -557,6 +555,13 @@ export default function DailyActivities() {
                     <Hash className="w-3 h-3" />{selectedActivity.merchantOrder}
                   </p>
                 )}
+                <Link href={`/admin/crm?tab=reservations&resId=${selectedActivity.id}`}
+                  onClick={() => setShowAssignModal(false)}>
+                  <span className="inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 bg-violet-500/10 border border-violet-500/20 rounded px-2 py-0.5 cursor-pointer transition-colors mt-1">
+                    <ExternalLink className="w-3 h-3" />
+                    Abrir reserva en CRM
+                  </span>
+                </Link>
               </div>
 
               {/* Monitor selector */}
