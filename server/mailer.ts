@@ -19,14 +19,26 @@ export function createTransporter() {
   const pass = process.env.SMTP_PASS;
   const secure = process.env.SMTP_SECURE === "true";
 
-  if (!host || !user || !pass) return null;
+  if (!host || !user || !pass) {
+    console.warn("[Mailer] SMTP no configurado — faltan SMTP_HOST, SMTP_USER o SMTP_PASS");
+    return null;
+  }
+
+  console.log(`[Mailer] Transporter creado → ${host}:${port} secure=${secure}`);
 
   return nodemailer.createTransport({
     host,
     port,
-    secure,
+    secure,           // true = SSL directo (puerto 465); false = STARTTLS (puerto 587)
     auth: { user, pass },
-    tls: { rejectUnauthorized: false },
+    tls: {
+      rejectUnauthorized: false,  // compatibilidad con certificados de hosting compartido
+      minVersion: "TLSv1.2",
+    },
+    // Timeouts explícitos para Railway (evita connection timeout silencioso)
+    connectionTimeout: 10000,   // 10s para establecer conexión
+    greetingTimeout: 10000,     // 10s para EHLO/HELO
+    socketTimeout: 30000,       // 30s para operaciones
   });
 }
 
