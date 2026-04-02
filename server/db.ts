@@ -892,6 +892,14 @@ export async function getReservationByMerchantOrder(merchantOrder: string) {
   return result[0] ?? null;
 }
 
+/** Devuelve TODAS las reservas de un merchantOrder (útil para carrito multi-artículo) */
+export async function getAllReservationsByMerchantOrder(merchantOrder: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(reservations)
+    .where(eq(reservations.merchantOrder, merchantOrder));
+}
+
 export async function updateReservationPayment(
   merchantOrder: string,
   status: "paid" | "failed",
