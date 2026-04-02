@@ -4,13 +4,18 @@ import AdminLayout from "@/components/AdminLayout";
 import {
   Waves, User, Users, Phone, Clock, AlertTriangle, CheckCircle2,
   Calendar, ChevronLeft, ChevronRight, RefreshCw, UserCheck, CalendarDays,
-  StickyNote, ArrowDownToLine,
+  StickyNote, ArrowDownToLine, XCircle, ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -63,6 +68,7 @@ export default function DailyActivities() {
   const [selectedMonitorId, setSelectedMonitorId] = useState<string>("");
   const [arrivalTime, setArrivalTime] = useState<string>("");
   const [opNotes, setOpNotes] = useState<string>("");
+  const [cancelTarget, setCancelTarget] = useState<{ id: number; title: string } | null>(null);
 
   const dateStr = formatDate(currentDate);
 
@@ -91,6 +97,15 @@ export default function DailyActivities() {
       utils.operations.activities.getForDate.invalidate();
     },
     onError: () => toast.error("Error al guardar hora/notas"),
+  });
+
+  const cancelActivityMutation = trpc.operations.activities.cancelActivity.useMutation({
+    onSuccess: () => {
+      utils.operations.activities.getForDate.invalidate();
+      setCancelTarget(null);
+      toast.success("Actividad anulada");
+    },
+    onError: () => toast.error("Error al anular la actividad"),
   });
 
   const activities = (data as any[]) || [];
@@ -374,14 +389,26 @@ export default function DailyActivities() {
                           </div>
                         </div>
                       )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openAssign(act)}
-                        className="mt-2 border-slate-600 text-slate-300 hover:bg-slate-700 text-xs"
-                      >
-                        {act.monitorName ? "Editar actividad" : "Asignar monitor"}
-                      </Button>
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openAssign(act)}
+                          className="border-slate-600 text-slate-300 hover:bg-slate-700 text-xs gap-1.5"
+                        >
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          {act.monitorName ? "Editar actividad" : "Añadir detalles receptivo"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setCancelTarget({ id: act.id, title: act.activityTitle || "Actividad" })}
+                          className="border-red-700/50 text-red-400 hover:bg-red-500/10 text-xs gap-1.5"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Anular
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -390,6 +417,27 @@ export default function DailyActivities() {
           </div>
         )}
       </div>
+
+      {/* Cancel Activity Confirm */}
+      <AlertDialog open={!!cancelTarget} onOpenChange={() => setCancelTarget(null)}>
+        <AlertDialogContent className="bg-[#111827] border-slate-700 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">¿Anular actividad?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-400">
+              Se anulará <strong className="text-white">{cancelTarget?.title}</strong>. La reserva quedará marcada como cancelada y desaparecerá del listado de actividades y del calendario.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-600 text-slate-300 hover:bg-slate-800">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => cancelTarget && cancelActivityMutation.mutate({ reservationId: cancelTarget.id })}
+            >
+              Anular actividad
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Assign / Edit Modal */}
       <Dialog open={showAssignModal} onOpenChange={setShowAssignModal}>

@@ -529,6 +529,17 @@ const activitiesRouter = router({
       return { ok: true };
     }),
 
+  // Cancel an activity (sets reservation status = 'cancelled')
+  cancelActivity: adminProcedure
+    .input(z.object({ reservationId: z.number() }))
+    .mutation(async ({ input }) => {
+      await pool.execute(
+        `UPDATE reservations SET status = 'cancelled' WHERE id = ?`,
+        [input.reservationId]
+      );
+      return { ok: true };
+    }),
+
   // Update arrival time and/or op notes for an activity
   updateDetails: adminProcedure
     .input(z.object({
