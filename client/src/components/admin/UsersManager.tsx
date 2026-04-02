@@ -33,6 +33,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   UserPlus,
@@ -254,6 +255,11 @@ export default function UsersManager() {
       toast.success("Invitación reenviada", { description: "Se ha enviado un nuevo enlace por email." });
     },
     onError: (e) => toast.error("Error", { description: e.message }),
+  });
+
+  const purgeTestReservations = trpc.admin.purgeTestReservations.useMutation({
+    onSuccess: (r) => toast.success("Reservas de prueba eliminadas", { description: `Registros borrados: ${r.deleted}` }),
+    onError: (e) => toast.error("Error al purgar", { description: e.message }),
   });
 
   const setUserPassword = trpc.admin.setUserPassword.useMutation({
@@ -544,6 +550,39 @@ export default function UsersManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── MANTENIMIENTO (bloque temporal — borrar tras usar) ──────── */}
+      <div className="mt-8 rounded-xl border border-red-900/40 bg-red-950/10 p-4">
+        <p className="text-xs font-bold text-red-400 uppercase tracking-widest mb-2">Mantenimiento · Uso único</p>
+        <p className="text-xs text-red-300/70 mb-3">
+          Borra TODAS las reservas y datos operativos de la base de datos. Solo para limpieza de entorno de pruebas.
+        </p>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" size="sm" className="border-red-700 text-red-400 hover:bg-red-500/10 text-xs">
+              Purgar todas las reservas de prueba
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Borrar TODAS las reservas?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción eliminará permanentemente todas las reservas y datos operativos. No se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => purgeTestReservations.mutate()}
+                disabled={purgeTestReservations.isPending}
+              >
+                {purgeTestReservations.isPending ? "Borrando..." : "Borrar todo"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
 
       {/* Change Password Dialog */}
       <Dialog

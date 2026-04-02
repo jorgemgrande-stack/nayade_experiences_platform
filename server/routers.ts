@@ -1090,6 +1090,14 @@ export const appRouter = router({
       await setUserPassword(input.userId, passwordHash);
       return { success: true };
     }),
+    purgeTestReservations: adminProcedure.mutation(async () => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB no disponible" });
+      const { sql } = await import("drizzle-orm");
+      const result = await db.execute(sql`DELETE FROM reservations`);
+      await db.execute(sql`DELETE FROM reservation_operational`);
+      return { deleted: (result as any).rowsAffected ?? "ok" };
+    }),
     deleteUser: adminProcedure.input(z.object({
       userId: z.number(),
     })).mutation(async ({ input, ctx }) => {
