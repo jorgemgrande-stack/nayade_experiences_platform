@@ -437,15 +437,13 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 <p className={cn("text-xs font-medium capitalize", roleMeta.color)}>{roleMeta.label}</p>
               </div>
             )}
-            {sidebarOpen && (
-              <button
-                onClick={logout}
-                className="w-7 h-7 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/50 hover:text-red-400 transition-colors"
-                title="Cerrar sesión"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <button
+              onClick={logout}
+              className="w-7 h-7 rounded-lg hover:bg-sidebar-accent flex items-center justify-center text-sidebar-foreground/50 hover:text-red-400 transition-colors shrink-0"
+              title="Cerrar sesión"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </aside>

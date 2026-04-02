@@ -1070,6 +1070,7 @@ export const appRouter = router({
       userId: z.number(),
       email: z.string().email(),
       name: z.string(),
+      role: z.string().optional(),
       origin: z.string(),
     })).mutation(async ({ input }) => {
       const { nanoid } = await import("nanoid");
@@ -1077,7 +1078,16 @@ export const appRouter = router({
       const expiry = new Date(Date.now() + 72 * 60 * 60 * 1000);
       await resendUserInvite(input.userId, token, expiry);
       const setPasswordUrl = `${input.origin}/establecer-contrasena?token=${token}`;
-      await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: "user" });
+      await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: input.role ?? "user" });
+      return { success: true };
+    }),
+    setUserPassword: adminProcedure.input(z.object({
+      userId: z.number(),
+      password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+    })).mutation(async ({ input }) => {
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(input.password, 12);
+      await setUserPassword(input.userId, passwordHash);
       return { success: true };
     }),
     deleteUser: adminProcedure.input(z.object({

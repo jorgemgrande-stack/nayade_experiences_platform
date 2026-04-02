@@ -50,6 +50,7 @@ import {
   ChevronUp,
   Plus,
   Minus,
+  KeyRound,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -255,6 +256,15 @@ export default function UsersManager() {
     onError: (e) => toast.error("Error", { description: e.message }),
   });
 
+  const setUserPassword = trpc.admin.setUserPassword.useMutation({
+    onSuccess: () => {
+      setPasswordTarget(null);
+      setNewPassword("");
+      toast.success("Contraseña actualizada", { description: "La contraseña ha sido cambiada correctamente." });
+    },
+    onError: (e) => toast.error("Error", { description: e.message }),
+  });
+
   const deleteUser = trpc.admin.deleteUser.useMutation({
     onSuccess: () => {
       utils.admin.getUsers.invalidate();
@@ -268,6 +278,8 @@ export default function UsersManager() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "user" as Role });
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<{ id: number; name: string } | null>(null);
+  const [newPassword, setNewPassword] = useState("");
 
   const handleCreate = () => {
     if (!form.name.trim() || !form.email.trim()) {
@@ -385,6 +397,7 @@ export default function UsersManager() {
                               userId: user.id,
                               email: user.email ?? "",
                               name: user.name ?? "",
+                              role: user.role,
                               origin: window.location.origin,
                             })
                           }
@@ -394,6 +407,13 @@ export default function UsersManager() {
                           Reenviar invitación
                         </DropdownMenuItem>
                       )}
+                      <DropdownMenuItem
+                        onClick={() => { setPasswordTarget({ id: user.id, name: user.name ?? user.email ?? "este usuario" }); setNewPassword(""); }}
+                        className="gap-2"
+                      >
+                        <KeyRound className="w-4 h-4 text-violet-600" />
+                        Cambiar contraseña
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => toggleActive.mutate({ userId: user.id })}
                         className="gap-2"
@@ -524,6 +544,50 @@ export default function UsersManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Change Password Dialog */}
+      <Dialog
+        open={!!passwordTarget}
+        onOpenChange={() => { setPasswordTarget(null); setNewPassword(""); }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-violet-600" />
+              Cambiar contraseña — {passwordTarget?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="new-password">Nueva contraseña (mínimo 8 caracteres)</Label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="new-password"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setPasswordTarget(null); setNewPassword(""); }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() =>
+                passwordTarget &&
+                setUserPassword.mutate({ userId: passwordTarget.id, password: newPassword })
+              }
+              disabled={newPassword.length < 8 || setUserPassword.isPending}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              {setUserPassword.isPending ? "Guardando..." : "Guardar contraseña"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

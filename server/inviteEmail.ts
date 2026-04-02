@@ -1,23 +1,5 @@
-import nodemailer from "nodemailer";
+import { createTransporter } from "./mailer";
 import { buildInviteHtml } from "./emailTemplates";
-
-function getTransporter() {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || "465", 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!host || !user || !pass) {
-    console.warn("[InviteEmail] SMTP not configured, skipping email send");
-    return null;
-  }
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-  });
-}
 
 export async function sendInviteEmail(params: {
   name: string;
@@ -25,7 +7,7 @@ export async function sendInviteEmail(params: {
   setPasswordUrl: string;
   role: string;
 }) {
-  const transporter = getTransporter();
+  const transporter = createTransporter();
   if (!transporter) return false;
 
   const from = process.env.SMTP_FROM || `"Náyade Experiences" <${process.env.SMTP_USER}>`;
