@@ -131,6 +131,18 @@ export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
   // Generar firma
   const signature = signParams(merchantParamsBase64, params.merchantOrder);
 
+  console.log("[Redsys] buildRedsysForm →", {
+    amount: params.amount,
+    merchantOrder: params.merchantOrder,
+    merchantCode,
+    terminal,
+    url: getRedsysUrl(),
+    paramsJson: merchantParamsJson,
+    paramsBase64: merchantParamsBase64.slice(0, 40) + "...",
+    signature: signature.slice(0, 20) + "...",
+    keyConfigured: !!getMerchantKey(),
+  });
+
   return {
     url: getRedsysUrl(),
     Ds_MerchantParameters: merchantParamsBase64,
