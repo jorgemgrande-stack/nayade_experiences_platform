@@ -26,6 +26,7 @@ export function createTransporter() {
     port,
     secure,
     auth: { user, pass },
+    tls: { rejectUnauthorized: false },
   });
 }
 

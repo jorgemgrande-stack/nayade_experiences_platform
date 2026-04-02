@@ -20,6 +20,10 @@ import { buildConfirmationHtml } from "./emailTemplates";
 import { createTransporter } from "./mailer";
 import { generateDocumentNumber } from "./documentNumbers";
 
+// Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
+const _sharedPool = mysql.createPool(process.env.DATABASE_URL!);
+const _db = drizzle(_sharedPool);
+
 const redsysRouter = express.Router();
 
 /**
@@ -103,8 +107,6 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     // ── Si la reserva viene de un presupuesto, marcar el presupuesto como pagado ──
     if (result.isAuthorized && updatedReservation?.quoteSource === "presupuesto" && updatedReservation?.quoteId) {
       try {
-        const _pool = mysql.createPool(process.env.DATABASE_URL!);
-        const _db = drizzle(_pool);
         const [quote] = await _db.select().from(quotes).where(eq(quotes.id, updatedReservation.quoteId));
         if (quote && !quote.paidAt) {
           const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
@@ -199,7 +201,6 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             }
           }
         }
-        await _pool.end();
       } catch (e) {
         console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
       }
@@ -269,10 +270,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   `Importe: ${amountEuros.toFixed(2)}€`,
                 ].filter(Boolean).join(" · "),
               });
-              const _pool2 = mysql.createPool(process.env.DATABASE_URL!);
-              const _db2 = drizzle(_pool2);
-              await _db2.update(reservations).set({ reavExpedientId: reavResult.id } as any).where(eq(reservations.id, resv.id));
-              await _pool2.end();
+              await _db.update(reservations).set({ reavExpedientId: reavResult.id } as any).where(eq(reservations.id, resv.id));
               await attachReavDocument({
                 expedientId: reavResult.id,
                 side: "client",

@@ -77,14 +77,34 @@ export async function generateDocumentNumber(
   const affected = (updateResult as unknown as { affectedRows: number }[])?.[0]?.affectedRows ?? 0;
 
   if (affected === 0) {
-    // No existe el contador para este año → crear con valor 1
+    // No existe el contador para este año → crear con valor 1.
+    // En caso de inserción concurrente (dos peticiones simultáneas al inicio de año),
+    // el segundo INSERT fallará con ER_DUP_ENTRY — en ese caso reintentamos el UPDATE.
     const prefix = DEFAULT_PREFIXES[documentType];
-    await db.insert(documentCounters).values({
-      documentType,
-      year,
-      currentNumber: 1,
-      prefix,
-    });
+    try {
+      await db.insert(documentCounters).values({
+        documentType,
+        year,
+        currentNumber: 1,
+        prefix,
+      });
+    } catch (insertErr: unknown) {
+      const mysqlErr = insertErr as { code?: string };
+      if (mysqlErr?.code === "ER_DUP_ENTRY") {
+        // Otra petición concurrente ya creó el contador — reintentar el incremento
+        await db
+          .update(documentCounters)
+          .set({ currentNumber: sql`current_number + 1` })
+          .where(
+            and(
+              eq(documentCounters.documentType, documentType),
+              eq(documentCounters.year, year)
+            )
+          );
+      } else {
+        throw insertErr;
+      }
+    }
   }
 
   // Paso 2: Leer el valor actual tras el incremento

@@ -5,31 +5,9 @@
  * 1. Notificación interna al equipo Náyade (Manus Notification Service) — siempre activo
  * 2. Email al cliente via SMTP — activo si SMTP_HOST está configurado
  */
-import nodemailer from "nodemailer";
 import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
-
-// ─── Transporter SMTP ────────────────────────────────────────────────────────
-
-function createTransporter() {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT ?? "587", 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const secure = process.env.SMTP_SECURE === "true";
-
-  if (!host || !user || !pass) {
-    return null;
-  }
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-  });
-}
+import { createTransporter } from "./mailer";
 
 export interface ReservationEmailData {
   id: number;
