@@ -1629,8 +1629,8 @@ export async function getDashboardOverview() {
       db.select({ count: sql<number>`count(*)`, guests: sql<string>`COALESCE(SUM(people), 0)` }).from(reservations)
         .where(sql`booking_date = ${todayISO} AND status NOT IN ('cancelled','failed','draft') AND extras_json LIKE '%"checkIn"%'`),
       // Hoy en el complejo — SPA (slots con reservas hoy)
-      db.select({ slots: sql<number>`count(*)`, pax: sql<string>`COALESCE(SUM(booked_count), 0)` }).from(spaSlots)
-        .where(sql`date = ${todayISO} AND booked_count > 0 AND status != 'bloqueado'`),
+      db.select({ slots: sql<number>`count(*)`, pax: sql<string>`COALESCE(SUM(bookedCount), 0)` }).from(spaSlots)
+        .where(sql`date = ${todayISO} AND bookedCount > 0 AND status != 'bloqueado'`),
       // Hoy en el complejo — Restaurantes (reservas de hoy activas)
       db.select({ count: sql<number>`count(*)`, covers: sql<string>`COALESCE(SUM(guests), 0)` }).from(restaurantBookings)
         .where(sql`date = ${todayISO} AND status NOT IN ('cancelled','payment_failed','no_show')`),
