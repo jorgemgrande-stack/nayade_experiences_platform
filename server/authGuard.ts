@@ -53,7 +53,6 @@ const PUBLIC_TRPC_ROUTES = new Set([
 
   // ── Módulos de la home ────────────────────────────────────────────────────
   "homeModules.getModule",
-  "homeModules.getAllModules",
 
   // ── Experiencias y productos (router legacy) ──────────────────────────────
   "experiences.getAll",
@@ -98,10 +97,6 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "restaurantes.getAll",
   "restaurantes.getBySlug",
 
-  // ── Leads y presupuestos (formularios públicos) ───────────────────────────
-  "public.submitLead",
-  "public.submitBudget",
-
   // ── Presupuestos por token (página pública /presupuesto/:token) ───────────
   "crm.quotes.getByToken",
   "crm.quotes.rejectByToken",
@@ -110,10 +105,6 @@ const PUBLIC_TRPC_ROUTES = new Set([
   // ── Galería pública ──────────────────────────────────────────────────────
   "gallery.getItems",
   "gallery.getCategories",
-
-  // ── Reservas (estado público) ─────────────────────────────────────────────
-  "reservations.getStatus",
-  "reservations.getByLocator",
 
   // ── Sistema ───────────────────────────────────────────────────────────────
   "system.notifyOwner",

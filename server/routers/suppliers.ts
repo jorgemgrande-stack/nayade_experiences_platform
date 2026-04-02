@@ -24,6 +24,7 @@ import {
   roomTypes,
   spaTreatments,
   quotes,
+  siteSettings,
 } from "../../drizzle/schema";
 import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
@@ -56,6 +57,7 @@ async function generateSettlementPdfAndUpload(data: {
   lines: { productName: string | null; serviceDate: string | null; paxCount: number; saleAmount: string; commissionPercent: string; commissionAmount: string; netAmountProvider: string; notes: string | null }[];
   issuedAt: Date;
   internalNotes?: string | null;
+  companyData?: { name: string; cif: string; address: string; email: string; phone: string };
 }): Promise<{ url: string; key: string }> {
   const lineRows = data.lines.map((l) => `
     <tr>
@@ -118,9 +120,9 @@ async function generateSettlementPdfAndUpload(data: {
       </div>
     </div>
     <div class="company-info">
-      <strong>Náyade Experiences S.L.</strong>
-      Los Ángeles de San Rafael, Segovia<br/>
-      reservas@nayadeexperiences.es &middot; +34 930 34 77 91
+      <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
+      ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
+      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 930 34 77 91"}
     </div>
   </div>
   <div class="doc-type-band">
@@ -132,9 +134,9 @@ async function generateSettlementPdfAndUpload(data: {
   <div class="parties">
     <div class="party">
       <h3>Emisor</h3>
-      <p><strong>Náyade Experiences S.L.</strong><br/>
-      Los Ángeles de San Rafael, Segovia<br/>
-      CIF: [CIF_EMPRESA]</p>
+      <p><strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong><br/>
+      ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
+      CIF: ${data.companyData?.cif ?? ""}</p>
     </div>
     <div class="party">
       <h3>Proveedor</h3>
@@ -174,7 +176,7 @@ async function generateSettlementPdfAndUpload(data: {
 
   </div>
   <div class="footer">
-    <p>Náyade Experiences S.L. &middot; www.nayadeexperiences.es</p>
+    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.nayadeexperiences.es</p>
     <p>Documento de liquidación de servicios prestados por el proveedor durante el período indicado.</p>
   </div>
 </body>
@@ -1594,6 +1596,18 @@ export const settlementsRouter = router({
         .from(settlementLines)
         .where(eq(settlementLines.settlementId, input.id));
 
+      // Leer datos de empresa desde siteSettings
+      const settingsRows = await db.select().from(siteSettings)
+        .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyEmail','legalCompanyPhone')`);
+      const s: Record<string, string> = Object.fromEntries(settingsRows.map(r => [r.key, r.value ?? ""]));
+      const companyData = {
+        name: s.legalCompanyName || "Náyade Experiences S.L.",
+        cif: s.legalCompanyCif || "",
+        address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
+        email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
+        phone: s.legalCompanyPhone || "+34 930 34 77 91",
+      };
+
       const { url, key } = await generateSettlementPdfAndUpload({
         settlementNumber: settlement.settlementNumber,
         supplierName: settlement.supplierName ?? "—",
@@ -1617,6 +1631,7 @@ export const settlementsRouter = router({
         })),
         issuedAt: new Date(settlement.createdAt),
         internalNotes: settlement.internalNotes,
+        companyData,
       });
 
       // Save PDF URL to settlement record
