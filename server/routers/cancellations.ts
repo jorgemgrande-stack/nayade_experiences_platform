@@ -340,20 +340,30 @@ export const cancellationsRouter = router({
         .limit(input.limit)
         .offset(input.offset);
 
-      // KPIs
-      const all = await db.select().from(cancellationRequests);
+      // KPIs — agregados en BD con COUNT GROUP BY, sin cargar toda la tabla en memoria
+      const [kpiByOpStatus, kpiByResStatus, kpiByFinStatus] = await Promise.all([
+        db.select({ status: cancellationRequests.operationalStatus, count: sql<number>`COUNT(*)` })
+          .from(cancellationRequests).groupBy(cancellationRequests.operationalStatus),
+        db.select({ status: cancellationRequests.resolutionStatus, count: sql<number>`COUNT(*)` })
+          .from(cancellationRequests).groupBy(cancellationRequests.resolutionStatus),
+        db.select({ status: cancellationRequests.financialStatus, count: sql<number>`COUNT(*)` })
+          .from(cancellationRequests).groupBy(cancellationRequests.financialStatus),
+      ]);
+      const opCount = (s: string) => Number(kpiByOpStatus.find(r => r.status === s)?.count ?? 0);
+      const resCount = (s: string) => Number(kpiByResStatus.find(r => r.status === s)?.count ?? 0);
+      const finCount = (s: string) => Number(kpiByFinStatus.find(r => r.status === s)?.count ?? 0);
       const kpis = {
-        total: all.length,
-        recibidas: all.filter((r: CancellationRequest) => r.operationalStatus === "recibida").length,
-        enRevision: all.filter((r: CancellationRequest) => r.operationalStatus === "en_revision").length,
-        pendienteDocumentacion: all.filter((r: CancellationRequest) => r.operationalStatus === "pendiente_documentacion").length,
-        resueltasTotal: all.filter((r: CancellationRequest) => r.resolutionStatus === "aceptada_total").length,
-        resueltasParcial: all.filter((r: CancellationRequest) => r.resolutionStatus === "aceptada_parcial").length,
-        rechazadas: all.filter((r: CancellationRequest) => r.resolutionStatus === "rechazada").length,
-        devueltas: all.filter((r: CancellationRequest) => r.financialStatus === "devuelta_economicamente").length,
-        compensadasBono: all.filter((r: CancellationRequest) => r.financialStatus === "compensada_bono").length,
-        cerradas: all.filter((r: CancellationRequest) => r.operationalStatus === "cerrada").length,
-        incidencias: all.filter((r: CancellationRequest) => r.operationalStatus === "incidencia").length,
+        total: kpiByOpStatus.reduce((s, r) => s + Number(r.count), 0),
+        recibidas: opCount("recibida"),
+        enRevision: opCount("en_revision"),
+        pendienteDocumentacion: opCount("pendiente_documentacion"),
+        resueltasTotal: resCount("aceptada_total"),
+        resueltasParcial: resCount("aceptada_parcial"),
+        rechazadas: resCount("rechazada"),
+        devueltas: finCount("devuelta_economicamente"),
+        compensadasBono: finCount("compensada_bono"),
+        cerradas: opCount("cerrada"),
+        incidencias: opCount("incidencia"),
       };
 
       return { rows, kpis };
@@ -787,13 +797,15 @@ export const cancellationsRouter = router({
   // ── Contadores para sidebar badge ──────────────────────────────────────────
   getCounters: adminProcedure
     .query(async () => {
-      const all = await db.select().from(cancellationRequests);
+      const countsByStatus = await db
+        .select({ status: cancellationRequests.operationalStatus, count: sql<number>`COUNT(*)` })
+        .from(cancellationRequests)
+        .groupBy(cancellationRequests.operationalStatus);
+      const get = (s: string) => Number(countsByStatus.find(r => r.status === s)?.count ?? 0);
       return {
-        total: all.length,
-        pending: all.filter((r: CancellationRequest) =>
-          ["recibida", "en_revision", "pendiente_documentacion", "pendiente_decision"].includes(r.operationalStatus)
-        ).length,
-        incidencias: all.filter((r: CancellationRequest) => r.operationalStatus === "incidencia").length,
+        total: countsByStatus.reduce((s, r) => s + Number(r.count), 0),
+        pending: get("recibida") + get("en_revision") + get("pendiente_documentacion") + get("pendiente_decision"),
+        incidencias: get("incidencia"),
       };
     }),
 

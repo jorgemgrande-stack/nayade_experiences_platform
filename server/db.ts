@@ -530,19 +530,39 @@ export async function getDashboardMetrics() {
     revenueThisMonth: 0, bookingsThisMonth: 0, conversionRate: 0,
   };
 
-  const [totalBookingsResult] = await db.select({ count: sql<number>`count(*)` }).from(bookings);
-  const [totalLeadsResult] = await db.select({ count: sql<number>`count(*)` }).from(leads);
-  const [pendingQuotesResult] = await db.select({ count: sql<number>`count(*)` }).from(quotes).where(eq(quotes.status, "enviado"));
-  const [revenueResult] = await db.select({ total: sql<string>`COALESCE(SUM(amount), 0)` }).from(transactions).where(eq(transactions.status, "completado"));
+  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const startOfMonthMs = startOfMonth.getTime();
+
+  const [
+    [totalBookingsResult],
+    [totalLeadsResult],
+    [pendingQuotesResult],
+    [revenueResult],
+    [revenueThisMonthResult],
+    [bookingsThisMonthResult],
+    [leadsConvertedResult],
+  ] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` }).from(bookings),
+    db.select({ count: sql<number>`count(*)` }).from(leads),
+    db.select({ count: sql<number>`count(*)` }).from(quotes).where(eq(quotes.status, "enviado")),
+    db.select({ total: sql<string>`COALESCE(SUM(amount), 0)` }).from(transactions).where(eq(transactions.status, "completado")),
+    db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfMonth}`),
+    db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status IN ('paid','pending_payment') AND created_at >= ${startOfMonthMs}`),
+    db.select({ count: sql<number>`count(*)` }).from(leads).where(eq(leads.status, "convertido")),
+  ]);
+
+  const totalLeadsCount = Number(totalLeadsResult?.count ?? 0);
+  const convertedLeads = Number(leadsConvertedResult?.count ?? 0);
+  const conversionRate = totalLeadsCount > 0 ? Math.round((convertedLeads / totalLeadsCount) * 100) : 0;
 
   return {
     totalRevenue: parseFloat(revenueResult?.total ?? "0"),
     totalBookings: Number(totalBookingsResult?.count ?? 0),
-    totalLeads: Number(totalLeadsResult?.count ?? 0),
+    totalLeads: totalLeadsCount,
     pendingQuotes: Number(pendingQuotesResult?.count ?? 0),
-    revenueThisMonth: 0,
-    bookingsThisMonth: 0,
-    conversionRate: 0,
+    revenueThisMonth: parseFloat(revenueThisMonthResult?.total ?? "0"),
+    bookingsThisMonth: Number(bookingsThisMonthResult?.count ?? 0),
+    conversionRate,
   };
 }
 
