@@ -3,11 +3,11 @@
  *
  * Canales disponibles:
  * 1. Notificación interna al equipo Náyade (Manus Notification Service) — siempre activo
- * 2. Email al cliente via SMTP — activo si SMTP_HOST está configurado
+ * 2. Email al cliente via Brevo HTTP API / SMTP fallback
  */
 import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
-import { createTransporter } from "./mailer";
+import { sendEmail } from "./mailer";
 
 export interface ReservationEmailData {
   id: number;
@@ -88,17 +88,30 @@ export async function sendReservationPaidNotifications(
   }
 
   // ── 2. Email de confirmación al cliente ───────────────────────────────────
-  const transporter = createTransporter();
-  if (transporter) {
-    const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
-    const adminEmail = process.env.ADMIN_EMAIL;
-    const copyEmail = "reservas@nayadeexperiences.es";
-    try {
-      await transporter.sendMail({
-        from,
-        to: reservation.customerEmail,
-        bcc: [copyEmail, ...(adminEmail ? [adminEmail] : [])].join(","),
-        subject: `✅ Reserva confirmada — ${reservation.productName} — Náyade Experiences`,
+  const copyEmail = "reservas@nayadeexperiences.es";
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const bccList = [copyEmail, ...(adminEmail ? [adminEmail] : [])];
+
+  try {
+    await sendEmail({
+      to: reservation.customerEmail,
+      subject: `✅ Reserva confirmada — ${reservation.productName} — Náyade Experiences`,
+      html: buildReservationConfirmHtml({
+        merchantOrder: reservation.merchantOrder,
+        productName: reservation.productName,
+        customerName: reservation.customerName,
+        date,
+        people: reservation.people,
+        amount,
+        extras,
+      }),
+      text: `Reserva confirmada. Ref: ${reservation.merchantOrder}. Producto: ${reservation.productName}. Fecha: ${date}. Personas: ${reservation.people}. Total: ${amount}. Contacto: reservas@nayadeexperiences.es`,
+    });
+    // BCC manual al equipo
+    for (const bcc of bccList) {
+      await sendEmail({
+        to: bcc,
+        subject: `[COPIA] Reserva confirmada — ${reservation.merchantOrder} — ${reservation.customerName}`,
         html: buildReservationConfirmHtml({
           merchantOrder: reservation.merchantOrder,
           productName: reservation.productName,
@@ -108,14 +121,11 @@ export async function sendReservationPaidNotifications(
           amount,
           extras,
         }),
-        text: `Reserva confirmada. Ref: ${reservation.merchantOrder}. Producto: ${reservation.productName}. Fecha: ${date}. Personas: ${reservation.people}. Total: ${amount}. Contacto: reservas@nayadeexperiences.es`,
       });
-      console.log(`[ReservationEmails] Email de confirmacion enviado a ${reservation.customerEmail}`);
-    } catch (error) {
-      console.error(`[ReservationEmails] Error enviando email al cliente:`, error);
     }
-  } else {
-    console.log(`[ReservationEmails] SMTP no configurado — email omitido para ${reservation.merchantOrder}`);
+    console.log(`[ReservationEmails] Email de confirmacion enviado a ${reservation.customerEmail}`);
+  } catch (error) {
+    console.error(`[ReservationEmails] Error enviando email al cliente:`, error);
   }
 }
 
@@ -146,28 +156,21 @@ export async function sendReservationFailedNotifications(
     console.error("[ReservationEmails] Error enviando notificacion de fallo:", error);
   }
 
-  // ──   // ── 2. Email informativo al cliente ──────────────────────────────
-  const transporter = createTransporter();
-  if (transporter) {
-    const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
-    const copyEmail = "reservas@nayadeexperiences.es";
-    try {
-      await transporter.sendMail({
-        from,
-        to: reservation.customerEmail,
-        bcc: copyEmail,
-        subject: `❌ Pago no completado — ${reservation.productName} — Náyade Experiences`,
-        html: buildReservationFailedHtml({
-          merchantOrder: reservation.merchantOrder,
-          productName: reservation.productName,
-          customerName: reservation.customerName,
-          responseCode: redsysResponseCode,
-        }),
-        text: `Tu pago para ${reservation.productName} no pudo procesarse. Ref: ${reservation.merchantOrder}. Contacta: reservas@nayadeexperiences.es o +34 930 34 77 91.`,
-      });
-      console.log(`[ReservationEmails] Email de fallo enviado a ${reservation.customerEmail}`);
-    } catch (error) {
-      console.error(`[ReservationEmails] Error enviando email de fallo al cliente:`, error);
-    }
+  // ── 2. Email informativo al cliente ──────────────────────────────────────
+  try {
+    await sendEmail({
+      to: reservation.customerEmail,
+      subject: `❌ Pago no completado — ${reservation.productName} — Náyade Experiences`,
+      html: buildReservationFailedHtml({
+        merchantOrder: reservation.merchantOrder,
+        productName: reservation.productName,
+        customerName: reservation.customerName,
+        responseCode: redsysResponseCode,
+      }),
+      text: `Tu pago para ${reservation.productName} no pudo procesarse. Ref: ${reservation.merchantOrder}. Contacta: reservas@nayadeexperiences.es o +34 930 34 77 91.`,
+    });
+    console.log(`[ReservationEmails] Email de fallo enviado a ${reservation.customerEmail}`);
+  } catch (error) {
+    console.error(`[ReservationEmails] Error enviando email de fallo al cliente:`, error);
   }
 }

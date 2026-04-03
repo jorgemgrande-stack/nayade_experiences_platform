@@ -17,7 +17,7 @@ import { getBookingByMerchantOrder, updateBooking, addBookingLog } from "./resta
 import { notifyOwner } from "./_core/notification";
 import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
-import { createTransporter } from "./mailer";
+import { sendEmail } from "./mailer";
 import { generateDocumentNumber } from "./documentNumbers";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
@@ -171,31 +171,27 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           const COPY_EMAIL  = "reservas@nayadeexperiences.es";
           if (clientEmail) {
             try {
-              const transporter = createTransporter();
-              if (transporter) {
-                const html = buildConfirmationHtml({
-                  clientName,
-                  reservationRef: invoiceNumber,
-                  quoteNumber: quote.quoteNumber,
-                  quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
-                  items,
-                  subtotal: String(subtotal),
-                  taxAmount: String(taxAmount),
-                  total: String(total),
-                  bookingDate: updatedReservation.bookingDate ?? undefined,
-                  selectedTime: (updatedReservation as any).selectedTime ?? undefined,
-                  contactEmail: COPY_EMAIL,
-                  contactPhone: "+34 930 34 77 91",
-                });
-                await transporter.sendMail({
-                  from: process.env.SMTP_FROM ?? `Náyade Experiences <${COPY_EMAIL}>`,
-                  to: clientEmail,
-                  bcc: COPY_EMAIL,
-                  subject: `✅ Reserva confirmada — ${quote.quoteNumber} — Náyade Experiences`,
-                  html,
-                });
-                console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail} (BCC: ${COPY_EMAIL})`);
-              }
+              const html = buildConfirmationHtml({
+                clientName,
+                reservationRef: invoiceNumber,
+                quoteNumber: quote.quoteNumber,
+                quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
+                items,
+                subtotal: String(subtotal),
+                taxAmount: String(taxAmount),
+                total: String(total),
+                bookingDate: updatedReservation.bookingDate ?? undefined,
+                selectedTime: (updatedReservation as any).selectedTime ?? undefined,
+                contactEmail: COPY_EMAIL,
+                contactPhone: "+34 930 34 77 91",
+              });
+              await sendEmail({
+                to: clientEmail,
+                subject: `✅ Reserva confirmada — ${quote.quoteNumber} — Náyade Experiences`,
+                html,
+              });
+              await sendEmail({ to: COPY_EMAIL, subject: `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`, html });
+              console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail} (BCC: ${COPY_EMAIL})`);
             } catch (emailErr) {
               console.error("[Redsys IPN] Error al enviar email de confirmación:", emailErr);
             }

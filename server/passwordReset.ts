@@ -10,50 +10,23 @@
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import express, { type Request, type Response, type Router } from "express";
-import nodemailer from "nodemailer";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "./db";
 import { users, passwordResetTokens } from "../drizzle/schema";
 import { buildPasswordResetHtml } from "./emailTemplates";
+import { sendEmail } from "./mailer";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
 const TOKEN_EXPIRY_MINUTES = 60; // El enlace caduca en 1 hora
 const BCRYPT_ROUNDS = 12;
 
-// ─── Mailer ───────────────────────────────────────────────────────────────────
-function createMailer() {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT ?? "587");
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM ?? user ?? "noreply@nayadeexperiences.es";
-
-  if (!host || !user || !pass) {
-    // Sin SMTP configurado: log en consola (útil en desarrollo)
-    console.warn("[PasswordReset] SMTP no configurado — el enlace se imprimirá en consola.");
-    return null;
-  }
-
-  return { transporter: nodemailer.createTransport({ host, port, auth: { user, pass } }), from };
-}
-
 async function sendResetEmail(to: string, resetUrl: string, name: string) {
-  const mailer = createMailer();
-
   const html = buildPasswordResetHtml({ name: name ?? "", resetUrl, expiryMinutes: TOKEN_EXPIRY_MINUTES });
-
-  if (!mailer) {
-    // Sin SMTP: imprimir en consola para desarrollo
+  const sent = await sendEmail({ to, subject: "Recuperar contraseña — Náyade Experiences", html });
+  if (!sent) {
+    // Fallback: imprimir en consola para desarrollo
     console.log(`\n[PasswordReset] 📧 Enlace de recuperación para ${to}:\n  ${resetUrl}\n`);
-    return;
   }
-
-  await mailer.transporter.sendMail({
-    from: mailer.from,
-    to,
-    subject: "Recuperar contraseña — Náyade Experiences",
-    html,
-  });
 }
 
 // ─── Router Express ───────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ import mysql from "mysql2/promise";
 import { and, eq, isNull, lt, isNotNull } from "drizzle-orm";
 import { quotes, leads } from "../drizzle/schema";
 import { buildQuoteHtml } from "./emailTemplates";
-import { createTransporter } from "./mailer";
+import { sendEmail } from "./mailer";
 import { notifyOwner } from "./_core/notification";
 
 const MAX_REMINDERS = 2; // máximo de reenvíos automáticos por presupuesto
@@ -40,12 +40,6 @@ async function runQuoteReminderJob() {
       .limit(50); // procesar máximo 50 por ejecución
 
     if (!pendingQuotes.length) {
-      return;
-    }
-
-    const transporter = createTransporter();
-    if (!transporter) {
-      console.warn("[QuoteReminder] SMTP no configurado, saltando reenvíos");
       return;
     }
 
@@ -92,10 +86,8 @@ async function runQuoteReminderJob() {
       });
 
       try {
-        await transporter.sendMail({
-          from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
+        await sendEmail({
           to: clientEmail,
-          bcc: process.env.SMTP_FROM ?? process.env.SMTP_USER,
           subject: `⏰ Recordatorio: tu presupuesto ${quote.quoteNumber} sigue disponible — Náyade Experiences`,
           html,
         });

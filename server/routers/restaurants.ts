@@ -1,6 +1,6 @@
 import z from "zod";
-import nodemailer from "nodemailer";
 import { router, publicProcedure, protectedProcedure, adminrestProcedure } from "../_core/trpc";
+import { sendEmail } from "../mailer";
 import { TRPCError } from "@trpc/server";
 import {
   getAllRestaurants, getRestaurantBySlug, getRestaurantById,
@@ -16,19 +16,6 @@ import {
 import { notifyOwner } from "../_core/notification";
 import { buildRedsysForm, generateMerchantOrder, getRedsysUrl } from "../redsys";
 import { buildRestaurantPaymentLinkHtml, buildRestaurantConfirmHtml } from "../emailTemplates";
-
-// ─── Helper: crear transporter SMTP ──────────────────────────────────────────
-function createSmtpTransporter() {
-  const host = process.env.SMTP_HOST;
-  if (!host) return null;
-  return nodemailer.createTransport({
-    host,
-    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    tls: { rejectUnauthorized: false },
-  });
-}
 
 // ─── Helper: enviar email de link de pago ─────────────────────────────────────
 async function sendRestaurantPaymentEmail(params: {
@@ -46,16 +33,8 @@ async function sendRestaurantPaymentEmail(params: {
   signatureVersion: string;
   origin: string;
 }) {
-  const transporter = createSmtpTransporter();
-  if (!transporter) {
-    console.log("[RestaurantPaymentEmail] SMTP no configurado — email omitido para", params.locator);
-    return;
-  }
-  const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
-  await transporter.sendMail({
-    from,
+  await sendEmail({
     to: params.guestEmail,
-    bcc: "reservas@nayadeexperiences.es",
     subject: `💳 Completa tu reserva en ${params.restaurantName} — Depósito pendiente (${params.locator})`,
     html: buildRestaurantPaymentLinkHtml({
       guestName: params.guestName,
@@ -87,16 +66,8 @@ async function sendRestaurantConfirmEmail(params: {
   depositAmount: string;
   requiresPayment: boolean;
 }) {
-  const transporter = createSmtpTransporter();
-  if (!transporter) {
-    console.log("[RestaurantConfirmEmail] SMTP no configurado — email omitido para", params.locator);
-    return;
-  }
-  const from = process.env.SMTP_FROM ?? "Náyade Experiences <reservas@nayadeexperiences.es>";
-  await transporter.sendMail({
-    from,
+  await sendEmail({
     to: params.guestEmail,
-    bcc: "reservas@nayadeexperiences.es",
     subject: `🏔️ Reserva recibida en ${params.restaurantName} — ${params.locator}`,
     html: buildRestaurantConfirmHtml({
       guestName: params.guestName,

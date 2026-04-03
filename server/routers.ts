@@ -117,7 +117,7 @@ import {
   generateMerchantOrder,
 } from "./redsys";
 import { sendInviteEmail } from "./inviteEmail";
-import nodemailer from "nodemailer";
+import { sendEmail } from "./mailer";
 import {
   buildBudgetRequestUserHtml, buildBudgetRequestAdminHtml,
   buildReservationConfirmHtml, buildReservationFailedHtml,
@@ -304,62 +304,35 @@ export const appRouter = router({
           source: "landing_presupuesto",
         });
 
-        // Enviar emails (try/catch independientes: si el email del usuario falla, el del admin sigue)
-        const smtpHost = process.env.SMTP_HOST;
-        const smtpUser = process.env.SMTP_USER;
-        const smtpPass = process.env.SMTP_PASS;
-        const smtpPort = parseInt(process.env.SMTP_PORT ?? "465", 10);
-        const from = process.env.SMTP_FROM ?? `"Náyade Experiences" <${smtpUser}>`;
+        // Enviar emails (fire-and-forget: no bloquea la respuesta al cliente)
+        const emailData = {
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          arrivalDate: new Date(input.arrivalDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+          adults: input.adults,
+          children: input.children,
+          selectedCategory: input.selectedCategory,
+          selectedProduct: input.selectedProduct,
+          comments: input.comments ?? "",
+          submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
+          activitiesJson: input.activitiesJson ?? undefined,
+        };
 
-        if (smtpHost && smtpUser && smtpPass) {
-          const transporter = nodemailer.createTransport({
-            host: smtpHost,
-            port: smtpPort,
-            secure: smtpPort === 465,
-            auth: { user: smtpUser, pass: smtpPass },
-            tls: { rejectUnauthorized: false },
-          });
+        // Email al usuario
+        sendEmail({
+          to: input.email,
+          subject: "Solicitud de presupuesto recibida — Náyade Experiences",
+          html: buildBudgetRequestUserHtml(emailData),
+        }).catch(err => console.error("[submitBudget] Email al usuario fallido:", err));
 
-          const emailData = {
-            name: input.name,
-            email: input.email,
-            phone: input.phone,
-            arrivalDate: new Date(input.arrivalDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
-            adults: input.adults,
-            children: input.children,
-            selectedCategory: input.selectedCategory,
-            selectedProduct: input.selectedProduct,
-            comments: input.comments ?? "",
-            submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
-            activitiesJson: input.activitiesJson ?? undefined,
-          };
-
-          // Email al usuario (independiente: si su email es inválido no bloquea el del admin)
-          try {
-            await transporter.sendMail({
-              from,
-              to: input.email,
-              bcc: "reservas@nayadeexperiences.es",
-              subject: "Solicitud de presupuesto recibida — Náyade Experiences",
-              html: buildBudgetRequestUserHtml(emailData),
-            });
-          } catch (userEmailErr) {
-            console.error("[submitBudget] Email al usuario fallido:", userEmailErr);
-          }
-
-          // Email al administrador (siempre intenta, independiente del email del usuario)
-          try {
-            const adminEmail = process.env.ADMIN_EMAIL ?? "reservas@nayadeexperiences.es";
-            await transporter.sendMail({
-              from,
-              to: adminEmail,
-              subject: `⚠️ Nueva solicitud — ${input.name} (${input.selectedCategory})`,
-              html: buildBudgetRequestAdminHtml(emailData),
-            });
-          } catch (adminEmailErr) {
-            console.error("[submitBudget] Email al admin fallido:", adminEmailErr);
-          }
-        }
+        // Email al administrador
+        const adminEmail = process.env.ADMIN_EMAIL ?? "reservas@nayadeexperiences.es";
+        sendEmail({
+          to: adminEmail,
+          subject: `⚠️ Nueva solicitud — ${input.name} (${input.selectedCategory})`,
+          html: buildBudgetRequestAdminHtml(emailData),
+        }).catch(err => console.error("[submitBudget] Email al admin fallido:", err));
 
         return { success: true, leadId: lead.id };
       }),
@@ -1108,13 +1081,6 @@ export const appRouter = router({
       templateId: z.string(),
       to: z.string().email(),
     })).mutation(async ({ input }) => {
-      const smtpHost = process.env.SMTP_HOST;
-      const smtpUser = process.env.SMTP_USER;
-      const smtpPass = process.env.SMTP_PASS;
-      const smtpPort = parseInt(process.env.SMTP_PORT || "465", 10);
-      if (!smtpHost || !smtpUser || !smtpPass) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "SMTP no configurado" });
-      const transporter = nodemailer.createTransport({ host: smtpHost, port: smtpPort, secure: smtpPort === 465, auth: { user: smtpUser, pass: smtpPass }, tls: { rejectUnauthorized: false } });
-      const from = process.env.SMTP_FROM || `"Náyade Experiences" <${smtpUser}>`;
       const TEMPLATES: Record<string, { subject: string; html: string }> = {
         "budget-user": {
           subject: "[PREVIEW] Solicitud de presupuesto recibida",
@@ -1159,7 +1125,8 @@ export const appRouter = router({
       };
       const tpl = TEMPLATES[input.templateId];
       if (!tpl) throw new TRPCError({ code: "BAD_REQUEST", message: `Plantilla desconocida: ${input.templateId}` });
-      await transporter.sendMail({ from, to: input.to, subject: tpl.subject, html: tpl.html });
+      const sent = await sendEmail({ to: input.to, subject: tpl.subject, html: tpl.html });
+      if (!sent) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error al enviar email" });
       return { success: true, templateId: input.templateId, to: input.to };
     }),
   }),

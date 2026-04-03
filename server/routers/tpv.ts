@@ -2,8 +2,8 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import nodemailer from "nodemailer";
 import { buildReservationConfirmHtml, buildTpvTicketHtml } from "../emailTemplates";
+import { sendEmail } from "../mailer";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity } from "../db";
 import { calcularREAVSimple } from "../reav";
 import {
@@ -701,12 +701,6 @@ export const tpvRouter = router({
 
       // ── 9. Email de confirmación (cliente si hay email + siempre a reservas@) ─
       try {
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT ?? "587"),
-          secure: process.env.SMTP_SECURE === "true",
-          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-        });
         const emailHtml = buildReservationConfirmHtml({
           merchantOrder: ticketNumber,
           productName: mainItem?.productName ?? input.items.map(i => i.productName).join(", "),
@@ -716,21 +710,9 @@ export const tpvRouter = router({
           amount: `${total.toFixed(2)} €`,
         });
         const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
-        // Siempre a reservas@
-        await transporter.sendMail({
-          from: process.env.SMTP_FROM ?? "noreply@nayadeexperiences.com",
-          to: "reservas@nayadeexperiences.es",
-          subject,
-          html: emailHtml,
-        });
-        // Al cliente si proporcionó email
+        await sendEmail({ to: "reservas@nayadeexperiences.es", subject, html: emailHtml });
         if (input.customerEmail) {
-          await transporter.sendMail({
-            from: process.env.SMTP_FROM ?? "noreply@nayadeexperiences.com",
-            to: input.customerEmail,
-            subject,
-            html: emailHtml,
-          });
+          await sendEmail({ to: input.customerEmail, subject, html: emailHtml });
         }
       } catch (e) {
         console.error("[TPV] Error enviando email de confirmación:", e);
@@ -867,15 +849,7 @@ export const tpvRouter = router({
         })),
         total: parseFloat(String(sale.total)),
       });
-            const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT ?? "587"),
-        secure: process.env.SMTP_SECURE === "true",
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-      });
-
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM ?? "noreply@nayadeexperiences.com",
+      await sendEmail({
         to: input.email,
         subject: `Tu ticket de compra ${sale.ticketNumber} — Náyade Experiences`,
         html: emailHtml,

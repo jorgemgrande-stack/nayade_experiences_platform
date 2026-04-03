@@ -3701,10 +3701,6 @@ export const crmRouter = router({
         const now = new Date();
 
         try {
-          const { createTransporter } = await import("../mailer");
-          const transporter = createTransporter();
-          if (!transporter) throw new Error("SMTP not configured");
-
           const subject = invoice.invoiceType === "abono"
             ? `Factura de abono ${invoice.invoiceNumber} — Náyade Experiences`
             : `Tu factura ${invoice.invoiceNumber} — Náyade Experiences`;
@@ -3724,13 +3720,8 @@ export const crmRouter = router({
               <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · reservas@nayadeexperiences.es · +34 930 34 77 91</p>
             </div>`;
 
-          await transporter.sendMail({
-            from: process.env.SMTP_FROM ?? `Náyade Experiences <${COPY_EMAIL}>`,
-            to: recipient,
-            bcc: COPY_EMAIL,
-            subject,
-            html: htmlBody,
-          });
+          await sharedSendEmail({ to: recipient, subject, html: htmlBody });
+          await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html: htmlBody });
 
           await db.update(invoices).set({
             status: invoice.status === "generada" ? "enviada" : invoice.status,
