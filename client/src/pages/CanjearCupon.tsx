@@ -90,6 +90,7 @@ function CouponBlock({
   onRemove: (id: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadMutation = trpc.ticketing.uploadCouponAttachment.useMutation();
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -100,22 +101,32 @@ function CouponBlock({
       toast.error("El archivo no puede superar 10MB");
       return;
     }
-    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
     if (!allowed.includes(file.type)) {
       toast.error("Solo se admiten imágenes (JPG, PNG, WEBP) o PDF");
       return;
     }
     onUpdate(coupon.id, { attachmentFile: file, uploading: true });
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/upload-coupon", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("Upload failed");
-      const { url } = await res.json() as { url: string };
-      onUpdate(coupon.id, { attachmentUrl: url, uploading: false });
-    } catch {
-      toast.error("Error al subir el archivo. Por favor, inténtalo de nuevo.");
-      onUpdate(coupon.id, { attachmentFile: null, attachmentUrl: "", uploading: false, attachmentError: "Error al subir. Vuelve a seleccionar el archivo." });
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]); // quitar el prefijo "data:...;base64,"
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const result = await uploadMutation.mutateAsync({
+        filename: file.name,
+        mimeType: file.type,
+        base64Data,
+      });
+      onUpdate(coupon.id, { attachmentUrl: result.url, uploading: false });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error desconocido";
+      toast.error(`Error al subir el archivo: ${message}`);
+      onUpdate(coupon.id, { attachmentFile: null, attachmentUrl: "", uploading: false, attachmentError: `Error al subir: ${message}` });
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };

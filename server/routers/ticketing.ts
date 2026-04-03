@@ -303,6 +303,31 @@ export const ticketingRouter = router({
         .where(and(eq(ticketingProducts.active, true), eq(ticketingProducts.provider, input.provider)));
     }),
 
+  // ── UPLOAD ADJUNTO CUPÓN (base64, público) ───────────────────────────────
+  /** Público: sube un adjunto de cupón codificado en base64 → devuelve URL */
+  uploadCouponAttachment: publicProcedure
+    .input(z.object({
+      filename: z.string().max(256),
+      mimeType: z.string().max(128),
+      base64Data: z.string().max(14 * 1024 * 1024), // ~10MB en base64
+    }))
+    .mutation(async ({ input }) => {
+      const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
+      if (!allowed.includes(input.mimeType)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Tipo no permitido. Solo JPG, PNG, WEBP o PDF." });
+      }
+      const buffer = Buffer.from(input.base64Data, "base64");
+      if (buffer.length > 10 * 1024 * 1024) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El archivo no puede superar 10MB." });
+      }
+      const ext = input.filename.split(".").pop()?.toLowerCase() || "bin";
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 10);
+      const key = `nayade/coupons/${timestamp}-${random}.${ext}`;
+      const { url } = await storagePut(key, buffer, input.mimeType);
+      return { url, key };
+    }),
+
   // ── SOLICITUDES DE CANJE (MULTI-CUPÓN) ───────────────────────────────────
   /** Público: crear múltiples cupones en un mismo envío */
   createSubmission: publicProcedure
