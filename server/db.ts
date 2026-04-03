@@ -1913,6 +1913,18 @@ export async function deleteReavCost(id: number) {
   if (cost) await recalculateReavMargins(cost.expedientId);
 }
 
+export async function deleteReavExpedient(id: number): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [exp] = await db.select().from(reavExpedients).where(eq(reavExpedients.id, id));
+  if (!exp) throw new Error("Expediente no encontrado");
+  await db.delete(reavDocuments).where(eq(reavDocuments.expedientId, id));
+  await db.delete(reavCosts).where(eq(reavCosts.expedientId, id));
+  await db.update(reservations).set({ reavExpedientId: null } as any).where(eq((reservations as any).reavExpedientId, id));
+  await db.delete(reavExpedients).where(eq(reavExpedients.id, id));
+  return exp.expedientNumber;
+}
+
 // ─── UPSERT CLIENTE DESDE RESERVA ─────────────────────────────────────────────
 // Helper centralizado para crear/actualizar el registro de cliente cuando se
 // genera una reserva desde cualquier canal (TPV, Redsys IPN, CRM manual, etc.)

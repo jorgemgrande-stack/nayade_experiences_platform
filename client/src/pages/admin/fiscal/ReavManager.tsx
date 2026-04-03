@@ -103,6 +103,8 @@ export default function ReavManager() {
   const [filterOperative, setFilterOperative] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [deleteExpedientId, setDeleteExpedientId] = useState<number | null>(null);
+  const [deleteExpedientNumber, setDeleteExpedientNumber] = useState<string>("");
 
   const { data: expedients, refetch } = trpc.reav.list.useQuery({
     fiscalStatus: filterFiscal === "all" ? undefined : filterFiscal || undefined,
@@ -146,6 +148,17 @@ export default function ReavManager() {
 
   const delCostMut = trpc.reav.deleteCost.useMutation({
     onSuccess: () => { refetchSelected(); toast.success("Coste eliminado"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteExpedientMut = trpc.reav.deleteExpedient.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Expediente ${data.expedientNumber} eliminado`);
+      setDeleteExpedientId(null);
+      setDeleteExpedientNumber("");
+      setSelectedId(null);
+      refetch();
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -360,10 +373,46 @@ export default function ReavManager() {
               onExportZip={() => exportZipMut.mutate({ id: selected.id })}
               exportZipPending={exportZipMut.isPending}
               onExportExcel={() => handleExportExcel(selected)}
+              onDelete={() => { setDeleteExpedientId(selected.id); setDeleteExpedientNumber(selected.expedientNumber); }}
             />
           )}
         </div>
       </div>
+
+      {/* ── Modal eliminar expediente ── */}
+      <Dialog open={deleteExpedientId !== null} onOpenChange={(o) => { if (!o) { setDeleteExpedientId(null); setDeleteExpedientNumber(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" /> Eliminar expediente
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <p className="text-sm text-slate-600">
+              ¿Eliminar definitivamente el expediente <span className="font-mono font-bold text-slate-800">{deleteExpedientNumber}</span>?
+            </p>
+            <ul className="text-xs text-slate-500 list-disc list-inside space-y-1">
+              <li>Se eliminarán todos los documentos y costes asociados</li>
+              <li>La reserva vinculada quedará sin expediente REAV</li>
+              <li>Esta acción no se puede deshacer</li>
+            </ul>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => { setDeleteExpedientId(null); setDeleteExpedientNumber(""); }}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={deleteExpedientMut.isPending}
+              onClick={() => deleteExpedientId !== null && deleteExpedientMut.mutate({ id: deleteExpedientId })}
+            >
+              {deleteExpedientMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Eliminar definitivamente
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Modal crear expediente ── */}
       <CreateExpedientModal
@@ -379,7 +428,7 @@ export default function ReavManager() {
 // ─── Detalle del expediente ───────────────────────────────────────────────────
 
 function ExpedientDetail({
-  exp, onUpdate, onRecalc, onAddDoc, onDelDoc, onAddCost, onDelCost, onExportZip, exportZipPending, onExportExcel,
+  exp, onUpdate, onRecalc, onAddDoc, onDelDoc, onAddCost, onDelCost, onExportZip, exportZipPending, onExportExcel, onDelete,
 }: {
   exp: any;
   onUpdate: (data: any) => void;
@@ -391,6 +440,7 @@ function ExpedientDetail({
   onExportZip: () => void;
   exportZipPending: boolean;
   onExportExcel: () => void;
+  onDelete?: () => void;
 }) {
   const [editInfo, setEditInfo] = useState(false);
   const [infoForm, setInfoForm] = useState({
@@ -946,6 +996,16 @@ function ExpedientDetail({
               }}
             >
               <Lock className="w-4 h-4 mr-1.5" /> Cerrar Expediente
+            </Button>
+          )}
+          {onDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-sm border-red-300 text-red-700 hover:bg-red-50"
+              onClick={onDelete}
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" /> Eliminar Expediente
             </Button>
           )}
         </div>

@@ -111,6 +111,7 @@ import {
   addReavCost,
   updateReavCost,
   deleteReavCost,
+  deleteReavExpedient,
 } from "./db";
 import {
   buildRedsysForm,
@@ -1772,6 +1773,13 @@ export const appRouter = router({
           base64: zipBuffer,
           filename: `${exp.expedientNumber}_REAV.zip`,
         };
+      }),
+
+    deleteExpedient: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const expedientNumber = await deleteReavExpedient(input.id);
+        return { success: true, expedientNumber };
       }),
   }),
 
