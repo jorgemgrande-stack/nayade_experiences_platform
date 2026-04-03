@@ -38,6 +38,7 @@ interface CouponEntry {
   attachmentUrl: string;
   uploading: boolean;
   couponCodeError: string;
+  attachmentError: string;
 }
 
 interface CommonForm {
@@ -68,6 +69,7 @@ function makeCoupon(): CouponEntry {
     attachmentUrl: "",
     uploading: false,
     couponCodeError: "",
+    attachmentError: "",
   };
 }
 
@@ -92,6 +94,7 @@ function CouponBlock({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    onUpdate(coupon.id, { attachmentError: "" });
     const maxSize = 10 * 1024 * 1024;
     if (file.size > maxSize) {
       toast.error("El archivo no puede superar 10MB");
@@ -111,8 +114,9 @@ function CouponBlock({
       const { url } = await res.json() as { url: string };
       onUpdate(coupon.id, { attachmentUrl: url, uploading: false });
     } catch {
-      toast.error("Error al subir el archivo. Puedes continuar sin adjunto.");
-      onUpdate(coupon.id, { attachmentUrl: "", uploading: false });
+      toast.error("Error al subir el archivo. Por favor, inténtalo de nuevo.");
+      onUpdate(coupon.id, { attachmentFile: null, attachmentUrl: "", uploading: false, attachmentError: "Error al subir. Vuelve a seleccionar el archivo." });
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -208,7 +212,7 @@ function CouponBlock({
 
       {/* Adjunto */}
       <div>
-        <Label className="text-white/50 text-xs mb-1.5 block">Adjuntar cupón (recomendado)</Label>
+        <Label className="text-white/50 text-xs mb-1.5 block">Adjuntar cupón <span className="text-amber-400">*</span></Label>
         {!coupon.attachmentFile ? (
           <button
             type="button"
@@ -240,6 +244,7 @@ function CouponBlock({
           onChange={handleFileChange}
           className="hidden"
         />
+        {coupon.attachmentError && <p className="text-red-400 text-xs mt-1">{coupon.attachmentError}</p>}
         <p className="text-white/25 text-xs mt-1">JPG, PNG, WEBP o PDF · Máx. 10MB</p>
       </div>
     </div>
@@ -315,11 +320,16 @@ export default function CanjearCupon() {
     // Validar cupones
     let couponValid = true;
     setCoupons((prev) => prev.map((c) => {
+      const patch: Partial<CouponEntry> = {};
       if (!c.couponCode.trim()) {
         couponValid = false;
-        return { ...c, couponCodeError: "El código es obligatorio" };
+        patch.couponCodeError = "El código es obligatorio";
       }
-      return c;
+      if (!c.attachmentUrl) {
+        couponValid = false;
+        patch.attachmentError = "Debes adjuntar el cupón (imagen o PDF)";
+      }
+      return Object.keys(patch).length > 0 ? { ...c, ...patch } : c;
     }));
 
     return Object.keys(errs).length === 0 && couponValid;

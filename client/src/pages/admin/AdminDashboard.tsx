@@ -350,6 +350,7 @@ export default function AdminDashboard() {
   const cancellacionesPendientes = cancellationsData?.kpis?.recibidas ?? 0;
   const ticketingIncidencias = ticketingStats?.incidencias ?? 0;
   const ticketingPendientes = ticketingStats?.pendientes ?? 0;
+  const ticketingRecibidos = ticketingStats?.recibidos ?? 0;
   const liquidacionesPendientes = suppliersKpis?.pendingCount ?? 0;
   const leadsAging = overview?.todayComplex?.leadsAging ?? 0;
   const complex = overview?.todayComplex;
@@ -360,6 +361,7 @@ export default function AdminDashboard() {
     (alerts?.invoicesOverdue ?? 0) +
     cancellacionesPendientes +
     ticketingIncidencias +
+    (ticketingRecibidos > 0 ? 1 : 0) +
     (leadsAging > 0 ? 1 : 0);
 
   return (
@@ -465,6 +467,18 @@ export default function AdminDashboard() {
                         <p className="text-[10px] text-orange-400/60">Vencen en 7 días</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {ticketingRecibidos > 0 && (
+                  <Link href="/admin/marketing/cupones">
+                    <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-amber-500/15 transition-colors">
+                      <Ticket className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-amber-300">{ticketingRecibidos} cupón{ticketingRecibidos > 1 ? "es" : ""} sin revisar</p>
+                        <p className="text-[10px] text-amber-400/60">Marketing → Cupones</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     </div>
                   </Link>
                 )}
