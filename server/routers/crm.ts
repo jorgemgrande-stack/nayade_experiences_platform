@@ -3840,7 +3840,7 @@ export const crmRouter = router({
         // Si hay presupuesto vinculado, revertir a estado anterior al pago
         if (invoice.quoteId) {
           await db.update(quotes)
-            .set({ status: "pendiente", paidAt: null, invoiceNumber: null, updatedAt: new Date() } as any)
+            .set({ status: "enviado", paidAt: null, invoiceNumber: null, updatedAt: new Date() } as any)
             .where(eq(quotes.id, invoice.quoteId));
         }
 
