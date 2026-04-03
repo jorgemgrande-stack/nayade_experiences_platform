@@ -18,8 +18,21 @@ import mysql from "mysql2/promise";
 import { eq, and, sql } from "drizzle-orm";
 import { documentCounters, documentNumberLogs } from "../drizzle/schema";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
-const db = drizzle(_pool);
+// Pool lazy: se crea la primera vez que se necesita, no al importar el módulo.
+// Esto evita crash en arranque si DATABASE_URL aún no está disponible.
+let _pool: ReturnType<typeof mysql.createPool> | null = null;
+let _db: ReturnType<typeof drizzle> | null = null;
+
+function getDb() {
+  if (!_db) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("[documentNumbers] DATABASE_URL is not defined");
+    }
+    _pool = mysql.createPool(process.env.DATABASE_URL);
+    _db = drizzle(_pool);
+  }
+  return _db;
+}
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +73,7 @@ export async function generateDocumentNumber(
   context?: string,
   generatedBy?: string
 ): Promise<string> {
+  const db = getDb();
   const year = new Date().getFullYear();
 
   // Paso 1: Incrementar el contador de forma atómica usando UPDATE + SELECT
@@ -152,7 +166,7 @@ export async function generateDocumentNumber(
  * Solo lectura, no genera números.
  */
 export async function getAllCounters() {
-  return db.select().from(documentCounters).orderBy(documentCounters.documentType);
+  return getDb().select().from(documentCounters).orderBy(documentCounters.documentType);
 }
 
 /**
@@ -164,7 +178,7 @@ export async function updateCounterPrefix(
   year: number,
   newPrefix: string
 ): Promise<void> {
-  await db
+  await getDb()
     .update(documentCounters)
     .set({ prefix: newPrefix })
     .where(
@@ -185,6 +199,7 @@ export async function resetCounter(
   newValue: number,
   resetBy: string
 ): Promise<void> {
+  const db = getDb();
   await db
     .update(documentCounters)
     .set({ currentNumber: newValue })
@@ -210,6 +225,7 @@ export async function resetCounter(
  * Devuelve el historial de generación de números para un tipo de documento.
  */
 export async function getDocumentNumberLogs(documentType?: DocumentType, limit = 100) {
+  const db = getDb();
   const query = db
     .select()
     .from(documentNumberLogs)
