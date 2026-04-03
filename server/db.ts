@@ -235,35 +235,39 @@ export async function createLead(data: {
   });
   const leadId = Number(result[0].insertId);
 
-  // 2. Upsert de cliente — SOLUCIÓN ROBUSTA
-  // Usa INSERT ... ON DUPLICATE KEY UPDATE para que sea atómico.
+  // 2. Upsert de cliente
+  // SELECT + INSERT/UPDATE explícito para evitar problemas con onDuplicateKeyUpdate.
   // - Si no existe cliente con ese email → crea uno nuevo vinculado a este lead.
-  // - Si ya existe → actualiza el leadId al nuevo lead (el más reciente) y refresca
-  //   nombre/teléfono/empresa SOLO si los campos actuales están vacíos, preservando
-  //   los datos ya enriquecidos por el agente.
+  // - Si ya existe → actualiza el leadId y rellena campos vacíos.
   try {
-    await db.insert(clients).values({
-      leadId,
-      source: "lead",
-      name: data.name,
-      email: data.email,
-      phone: data.phone ?? "",
-      company: data.company ?? "",
-      tags: [],
-      isConverted: false,
-      totalBookings: 0,
-    }).onDuplicateKeyUpdate({
-      set: {
-        // Siempre actualizar el leadId al lead más reciente
+    const [existingClient] = await db
+      .select({ id: clients.id, name: clients.name, phone: clients.phone, company: clients.company })
+      .from(clients)
+      .where(eq(clients.email, data.email))
+      .limit(1);
+
+    if (existingClient) {
+      // Actualizar leadId y rellenar campos solo si están vacíos
+      await db.update(clients).set({
         leadId,
-        // Actualizar nombre/teléfono/empresa solo si el campo está vacío en el cliente existente
-        // (usa COALESCE-like: si ya tiene valor, lo conserva; si está vacío, usa el del lead)
-        name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${data.name}, ${clients.name})`,
-        phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${data.phone ?? ''}, ${clients.phone})`,
-        company: sql`IF(TRIM(${clients.company}) = '' OR ${clients.company} IS NULL, ${data.company ?? ''}, ${clients.company})`,
+        name: existingClient.name?.trim() ? existingClient.name : data.name,
+        phone: existingClient.phone?.trim() ? existingClient.phone : (data.phone ?? ""),
+        company: existingClient.company?.trim() ? existingClient.company : (data.company ?? ""),
         updatedAt: new Date(),
-      },
-    });
+      }).where(eq(clients.id, existingClient.id));
+    } else {
+      await db.insert(clients).values({
+        leadId,
+        source: "lead",
+        name: data.name,
+        email: data.email,
+        phone: data.phone ?? "",
+        company: data.company ?? "",
+        tags: [],
+        isConverted: false,
+        totalBookings: 0,
+      });
+    }
   } catch (e) {
     // No bloquear el lead si falla la creación del cliente
     console.warn("[createLead] No se pudo crear/vincular cliente:", e);
