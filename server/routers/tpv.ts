@@ -500,7 +500,8 @@ export const tpvRouter = router({
       const mainItem = mainItemForDate;
       if (mainItem) {
         try {
-          const merchantOrder = await generateReservationRef(String((ctx as any).user?.id ?? "system"));
+          const reservationNumber = await generateReservationRef(String((ctx as any).user?.id ?? "system"));
+          const merchantOrder = reservationNumber; // reutilizamos el mismo número correlativo
           const amountCents = Math.round(total * 100);
           // Construir resumen de todos los ítems del ticket para extrasJson
           const extrasForReservation = input.items.map(it => ({
@@ -529,6 +530,7 @@ export const tpvRouter = router({
             customerEmail: input.customerEmail || null,
             customerPhone: input.customerPhone || null,
             merchantOrder,
+            reservationNumber,
             notes: [
               `[ORIGEN_TPV] Ticket: ${ticketNumber}`,
               input.customerName ? `Cliente: ${input.customerName}` : null,

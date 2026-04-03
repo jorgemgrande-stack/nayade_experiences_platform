@@ -281,6 +281,13 @@
       "when": 1743715200000,
       "tag": "0039_reav_schema_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1743801600000,
+      "tag": "0040_reservation_number",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,11 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { createGHLContact, getGHLTagsFromSource } from "./ghl";
+import { generateDocumentNumber } from "./documentNumbers";
+
+export async function generateReservationNumber(): Promise<string> {
+  return generateDocumentNumber("reserva", "db:createReservation", "system");
+}
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -878,6 +883,7 @@ export async function createReservation(data: {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const now = Date.now();
+  const reservationNumber = await generateReservationNumber();
   const result = await db.insert(reservations).values({
     productId: data.productId,
     productName: data.productName,
@@ -895,6 +901,7 @@ export async function createReservation(data: {
     customerEmail: data.customerEmail,
     customerPhone: data.customerPhone ?? null,
     merchantOrder: data.merchantOrder,
+    reservationNumber,
     notes: data.notes ?? null,
     createdAt: now,
     updatedAt: now,
@@ -902,7 +909,7 @@ export async function createReservation(data: {
     selectedTimeSlotId: data.selectedTimeSlotId ?? null,
     selectedTime: data.selectedTime ?? null,
   });
-  return { id: Number(result[0].insertId), merchantOrder: data.merchantOrder };
+  return { id: Number(result[0].insertId), merchantOrder: data.merchantOrder, reservationNumber };
 }
 
 export async function getReservationByMerchantOrder(merchantOrder: string) {

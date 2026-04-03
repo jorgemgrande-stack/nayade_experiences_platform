@@ -76,6 +76,9 @@ async function generateInvoiceNumber(context?: string, userId?: string): Promise
 async function generateQuoteNumber(context?: string, userId?: string): Promise<string> {
   return generateDocumentNumber("presupuesto", context ?? "crm:quote", userId ?? "system");
 }
+async function generateReservationNum(context?: string, userId?: string): Promise<string> {
+  return generateDocumentNumber("reserva", context ?? "crm:reservation", userId ?? "system");
+}
 
 // ─── LEGAL COMPANY SETTINGS ─────────────────────────────────────────────────
 async function getLegalCompanySettings(): Promise<{
@@ -1375,6 +1378,7 @@ export const crmRouter = router({
           ? new Date(lead.preferredDate).toISOString().split("T")[0]
           : now.toISOString().split("T")[0];
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
+        const reservationNumber = await generateReservationNum("crm:confirmPayment", String(ctx.user.id));
         const [resResult] = await db.insert(reservations).values({
           productId: mainProductId, // FIX: usar el productId principal del presupuesto
           productName: quote.title,
@@ -1391,6 +1395,7 @@ export const crmRouter = router({
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
           merchantOrder: reservationRef.substring(0, 12),
+          reservationNumber,
           paymentMethod: input.paymentMethod ?? "efectivo",
           transferProofUrl: input.transferProofUrl ?? null,
           notes: [
@@ -1653,6 +1658,7 @@ export const crmRouter = router({
         const now = new Date();
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const total = Number(quote.total);
+        const reservationNumberConvert = await generateReservationNum("crm:convertQuote", String(ctx.user.id));
 
         // Crear reserva CONFIRMADA: el admin siempre confirma al convertir, independientemente del pago
         const [resResult] = await db.insert(reservations).values({
@@ -1669,6 +1675,7 @@ export const crmRouter = router({
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
           merchantOrder: reservationRef.substring(0, 12),
+          reservationNumber: reservationNumberConvert,
           channel: "ONLINE_ASISTIDO",
           quoteId: input.quoteId,
           quoteSource: "presupuesto",
@@ -1829,6 +1836,7 @@ export const crmRouter = router({
           ? new Date(lead.preferredDate).toISOString().split("T")[0]
           : now.toISOString().split("T")[0];
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
+        const reservationNumberTransfer = await generateReservationNum("crm:confirmTransfer", String(ctx.user.id));
         const [resResult] = await db.insert(reservations).values({
           productId: mainProductIdT, // FIX: usar el productId principal del presupuesto
           productName: quote.title,
@@ -1845,6 +1853,7 @@ export const crmRouter = router({
           customerEmail: lead.email,
           customerPhone: lead.phone ?? "",
           merchantOrder: reservationRef.substring(0, 12),
+          reservationNumber: reservationNumberTransfer,
           notes: `Pago por transferencia bancaria confirmado manualmente. Presupuesto ${quote.quoteNumber}`,
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -2425,6 +2434,7 @@ export const crmRouter = router({
         const customerName = input.customerName ?? lead.name;
         const customerEmail = input.customerEmail ?? lead.email ?? "";
         const customerPhone = input.customerPhone ?? lead.phone ?? "";
+        const reservationNumberLink = await generateReservationNum("crm:paymentLink", "system");
 
         const [resResult] = await db.insert(reservations).values({
           productId: 0,
@@ -2438,6 +2448,7 @@ export const crmRouter = router({
           customerEmail,
           customerPhone,
           merchantOrder,
+          reservationNumber: reservationNumberLink,
           notes: `Pago desde enlace de presupuesto ${quote.quoteNumber}`,
           quoteId: quote.id,
           quoteSource: "presupuesto",
@@ -2649,6 +2660,7 @@ export const crmRouter = router({
           const s = `%${input.search}%`;
           conditions.push(
             or(
+              like(reservations.reservationNumber, s),
               like(reservations.customerName, s),
               like(reservations.customerEmail, s),
               like(reservations.customerPhone, s),
@@ -3138,6 +3150,7 @@ export const crmRouter = router({
         const invoiceId = (invResult as { insertId: number }).insertId;
 
         // 6. Insertar reserva
+        const reservationNumberManual = await generateReservationNum("crm:createManual", String(ctx.user.id));
         const [resResult] = await db.insert(reservations).values({
           productId: input.productId,
           productName: input.productName,
@@ -3152,6 +3165,7 @@ export const crmRouter = router({
           channel: input.channel,
           paymentMethod: input.paymentMethod,
           merchantOrder,
+          reservationNumber: reservationNumberManual,
           invoiceId,
           invoiceNumber,
           notes: input.notes ?? `Reserva creada manualmente por ${ctx.user.name ?? ctx.user.id}`,
@@ -3953,6 +3967,7 @@ export const crmRouter = router({
         if (!resolvedReservationId) {
           const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
           const reservationRef = `PP-${Date.now().toString(36).toUpperCase()}`;
+          const reservationNumberPP = await generateReservationNum("crm:pagoPendiente", String(ctx.user.id));
           const [resResult] = await db.insert(reservations).values({
             productId: 0,
             productName: input.productName,
@@ -3967,6 +3982,7 @@ export const crmRouter = router({
             customerEmail: input.clientEmail,
             customerPhone: input.clientPhone,
             merchantOrder: reservationRef.substring(0, 12),
+            reservationNumber: reservationNumberPP,
             channel: "ONLINE_ASISTIDO",
             quoteId: input.quoteId,
             quoteSource: "presupuesto",

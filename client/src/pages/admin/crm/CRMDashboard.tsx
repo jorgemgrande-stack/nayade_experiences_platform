@@ -3196,7 +3196,14 @@ function ReservationDetailModal({
             </div>
             <div>
               <div className="font-bold">{res.customerName}</div>
-              <div className="text-sm text-white/50 font-normal">{res.merchantOrder}</div>
+              <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                {res.reservationNumber && (
+                  <span className="font-mono text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded px-1.5 py-0.5">
+                    {res.reservationNumber}
+                  </span>
+                )}
+                <span className="text-xs text-white/30 font-normal font-mono">{res.merchantOrder}</span>
+              </div>
             </div>
           </DialogTitle>
         </DialogHeader>
@@ -4548,6 +4555,7 @@ export default function CRMDashboard() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/8 bg-white/5">
+                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Nº Reserva</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Producto</th>
                     <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Est. Reserva</th>
@@ -4561,11 +4569,21 @@ export default function CRMDashboard() {
                 </thead>
                 <tbody>
                   {resLoading ? (
-                    <tr><td colSpan={9} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={10} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !resData?.length ? (
-                    <tr><td colSpan={9} className="text-center py-12 text-white/30 text-sm">No hay reservas</td></tr>
+                    <tr><td colSpan={10} className="text-center py-12 text-white/30 text-sm">No hay reservas</td></tr>
                   ) : resData.map((res: any) => (
                     <tr key={res.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                      {/* Nº Reserva */}
+                      <td className="px-4 py-3 shrink-0">
+                        {res.reservationNumber ? (
+                          <span className="font-mono text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded px-2 py-0.5 whitespace-nowrap">
+                            {res.reservationNumber}
+                          </span>
+                        ) : (
+                          <span className="font-mono text-xs text-white/20">—</span>
+                        )}
+                      </td>
                       {/* Cliente */}
                       <td className="px-4 py-3">
                         <div className="text-sm font-medium text-white">{res.customerName}</div>
@@ -5637,7 +5655,14 @@ export default function CRMDashboard() {
           {/* ── Cabecera con datos del cliente ── */}
           {editResData && (
             <div className="bg-white/5 rounded-xl p-3 mb-2 flex flex-col gap-1">
-              <div className="font-semibold text-white text-sm">{editResData.customerName}</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="font-semibold text-white text-sm">{editResData.customerName}</div>
+                {editResData.reservationNumber && (
+                  <span className="font-mono text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded px-1.5 py-0.5">
+                    {editResData.reservationNumber}
+                  </span>
+                )}
+              </div>
               {editResData.customerEmail && (
                 <div className="flex items-center gap-1.5 text-xs text-white/50">
                   <Mail className="w-3 h-3" />{editResData.customerEmail}
