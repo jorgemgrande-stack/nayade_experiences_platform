@@ -109,31 +109,6 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // ── Endpoint temporal de migración manual (autodestruye tras uso) ──────────
-  app.get("/api/admin/run-migration", async (req: any, res: any) => {
-    const token = req.query.token;
-    if (token !== "nayade-migrate-2026") return res.status(403).json({ error: "Forbidden" });
-    const mysql = await import("mysql2/promise");
-    const conn = await mysql.createConnection(process.env.DATABASE_URL!);
-    const results: string[] = [];
-    const sqls: [string, string][] = [
-      ["includes_vat en reav_costs", "ALTER TABLE `reav_costs` ADD COLUMN `includes_vat` boolean NOT NULL DEFAULT true"],
-      ["reav_expedient_id en reservations", "ALTER TABLE `reservations` ADD COLUMN `reav_expedient_id` int"],
-      ["reservation_number en reservations", "ALTER TABLE `reservations` ADD COLUMN `reservation_number` varchar(32)"],
-      ["UNIQUE INDEX reservation_number", "CREATE UNIQUE INDEX `reservations_reservation_number_unique` ON `reservations` (`reservation_number`)"],
-    ];
-    for (const [label, sql] of sqls) {
-      try {
-        await conn.execute(sql);
-        results.push(`✓ ${label}`);
-      } catch (e: any) {
-        results.push(`SKIP ${label}: ${e.message}`);
-      }
-    }
-    await conn.end();
-    res.json({ ok: true, results });
-  });
-
   if (USE_LOCAL_AUTH) {
     // Rate limiting en endpoints de autenticación (5 req/min por IP)
     app.use("/api/auth/login", authRateLimit);
