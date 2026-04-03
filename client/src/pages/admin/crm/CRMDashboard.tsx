@@ -4768,16 +4768,16 @@ export default function CRMDashboard() {
                               ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                               : <Send className="w-3.5 h-3.5" />}
                           </Button>
-                          {/* Descargar PDF */}
+                          {/* Descargar PDF factura */}
                           <Button size="sm" variant="ghost"
-                            className={`h-7 w-7 p-0 ${res.invoicePdfUrl ? "text-white/40 hover:text-emerald-300" : "text-white/15 cursor-not-allowed"}`}
-                            onClick={() => res.invoicePdfUrl && window.open(res.invoicePdfUrl, "_blank")}
-                            disabled={!res.invoicePdfUrl}
-                            title={res.invoicePdfUrl ? "Descargar reserva en PDF" : "Sin PDF disponible"}>
+                            className={`h-7 w-7 p-0 ${(res as any).invoicePdfUrl ? "text-white/40 hover:text-emerald-300" : "text-white/15 cursor-not-allowed"}`}
+                            onClick={() => (res as any).invoicePdfUrl && window.open((res as any).invoicePdfUrl, "_blank")}
+                            disabled={!(res as any).invoicePdfUrl}
+                            title={(res as any).invoicePdfUrl ? "Descargar factura PDF" : "Sin factura PDF"}>
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
                           {/* Generar factura — cualquier reserva sin factura */}
-                          {!res.invoiceId && (
+                          {!res.invoiceId && !res.invoiceNumber && (
                             <Button size="sm" variant="ghost" className="text-white/40 hover:text-violet-300 h-7 w-7 p-0"
                               onClick={() => setGenInvoiceResId(res.id)}
                               title="Generar factura">

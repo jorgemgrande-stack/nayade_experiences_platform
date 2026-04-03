@@ -2706,13 +2706,18 @@ export const crmRouter = router({
         if (input.from) conditions.push(gte(reservations.createdAt, new Date(input.from).getTime()));
         if (input.to) conditions.push(lte(reservations.createdAt, new Date(input.to).getTime()));
 
-        return db
-          .select()
+        const rows = await db
+          .select({
+            ...reservations,
+            invoicePdfUrl: invoices.pdfUrl,
+          })
           .from(reservations)
+          .leftJoin(invoices, eq(invoices.id, reservations.invoiceId as any))
           .where(conditions.length ? and(...conditions) : undefined)
           .orderBy(desc(reservations.createdAt))
           .limit(input.limit)
           .offset(input.offset);
+        return rows;
       }),
 
     counters: staff.query(async () => {
