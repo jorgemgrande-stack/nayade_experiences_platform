@@ -1480,29 +1480,53 @@ export const crmRouter = router({
         if (reavLines.length > 0) {
           try {
             const reavSaleAmount = reavLines.reduce((s, i) => s + i.total, 0);
-            // ── Obtener porcentajes REAV desde el producto (origen único de verdad) ──
-            // Si la línea tiene productId, buscar el producto para obtener sus porcentajes
-            let reavCostePct = 60; // fallback conservador
-            let reavMargenPct = 40;
-            const firstReavLine = reavLines[0] as any;
-            const reavProductId = firstReavLine?.productId ?? (lead as any).experienceId;
-            if (reavProductId) {
-              const [reavProduct] = await db.select({
-                providerPercent: experiences.providerPercent,
-                agencyMarginPercent: experiences.agencyMarginPercent,
-                fiscalRegime: experiences.fiscalRegime,
-              }).from(experiences).where(eq(experiences.id, reavProductId)).limit(1);
-              if (reavProduct && reavProduct.fiscalRegime === "reav") {
-                const errores = validarConfiguracionREAV(reavProduct);
-                if (errores.length === 0) {
-                  reavCostePct = parseFloat(String(reavProduct.providerPercent ?? 60));
-                  reavMargenPct = parseFloat(String(reavProduct.agencyMarginPercent ?? 40));
-                } else {
-                  console.warn("[confirmPayment] Configuración REAV inválida, usando fallback 60/40:", errores);
+
+            // ── P5+P3+P4: calcular por línea con los porcentajes de cada producto ──
+            // Cada línea REAV puede tener un producto con porcentajes distintos.
+            // Si la config es inválida no se usa fallback 60/40 — se registra la advertencia.
+            let totalEstimatedCost = 0;
+            let totalEstimatedMargin = 0;
+            const configWarnings: string[] = [];
+
+            for (const line of reavLines as any[]) {
+              const productId = line.productId ?? (lead as any).experienceId;
+              let lineCostePct: number | null = null;
+              let lineMargenPct: number | null = null;
+
+              if (productId) {
+                const [prod] = await db.select({
+                  providerPercent: experiences.providerPercent,
+                  agencyMarginPercent: experiences.agencyMarginPercent,
+                  fiscalRegime: experiences.fiscalRegime,
+                }).from(experiences).where(eq(experiences.id, productId)).limit(1);
+
+                if (prod?.fiscalRegime === "reav") {
+                  const errores = validarConfiguracionREAV(prod);
+                  if (errores.length === 0) {
+                    lineCostePct = parseFloat(String(prod.providerPercent));
+                    lineMargenPct = parseFloat(String(prod.agencyMarginPercent));
+                  } else {
+                    configWarnings.push(`Producto ${productId} (${line.description}): ${errores.join("; ")}`);
+                    console.warn(`[confirmPayment] REAV config inválida en producto ${productId}:`, errores);
+                  }
+                } else if (prod) {
+                  configWarnings.push(`Producto ${productId} (${line.description}): fiscalRegime no es "reav" (es "${prod.fiscalRegime}").`);
                 }
+              } else {
+                configWarnings.push(`Línea "${line.description}": sin productId, no se pueden obtener porcentajes REAV.`);
+              }
+
+              if (lineCostePct !== null && lineMargenPct !== null) {
+                const lineCalc = calcularREAVSimple(line.total, lineCostePct, lineMargenPct);
+                totalEstimatedCost += lineCalc.costeProveedor;
+                totalEstimatedMargin += lineCalc.margenAgencia;
+              } else {
+                // Sin config válida: coste y margen estimados quedan en 0 (visible en expediente)
+                configWarnings.push(`Línea "${line.description}" (${line.total.toFixed(2)}€): coste/margen estimados no calculados — revisar configuración del producto.`);
               }
             }
-            const reavCalc = calcularREAVSimple(reavSaleAmount, reavCostePct, reavMargenPct);
+
+            const reavCalc = { costeProveedor: totalEstimatedCost, margenAgencia: totalEstimatedMargin };
             // Obtener datos del cliente del lead
             const clientName = lead.name ?? undefined;
             const clientEmail = lead.email ?? undefined;
@@ -1537,6 +1561,7 @@ export const crmRouter = router({
                 `Factura: ${invoiceNumber}`,
                 `Importe REAV: ${reavSaleAmount.toFixed(2)}€`,
                 `Agente: ${ctx.user.name ?? ctx.user.email}`,
+                configWarnings.length > 0 ? `⚠ REVISAR CONFIGURACIÓN REAV: ${configWarnings.join(" | ")}` : null,
               ].filter(Boolean).join(" · "),
             });
             reavExpedientId = reavResult.id;
