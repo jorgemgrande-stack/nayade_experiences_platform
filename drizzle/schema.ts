@@ -4,6 +4,7 @@ import {
   decimal,
   int,
   json,
+  mediumtext,
   mysqlEnum,
   mysqlTable,
   text,
@@ -1757,7 +1758,7 @@ export const couponRedemptions = mysqlTable("coupon_redemptions", {
   // Datos cupón
   couponCode: varchar("couponCode", { length: 128 }).notNull(),
   securityCode: varchar("securityCode", { length: 128 }),
-  attachmentUrl: text("attachmentUrl"), // S3 URL del PDF/imagen del cupón
+  attachmentUrl: mediumtext("attachmentUrl"), // URL S3 o data URL base64 del PDF/imagen del cupón
 
   // Datos de experiencia solicitada
   requestedDate: varchar("requestedDate", { length: 20 }),

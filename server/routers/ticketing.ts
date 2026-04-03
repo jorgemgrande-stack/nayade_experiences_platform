@@ -304,7 +304,8 @@ export const ticketingRouter = router({
     }),
 
   // ── UPLOAD ADJUNTO CUPÓN (base64, público) ───────────────────────────────
-  /** Público: sube un adjunto de cupón codificado en base64 → devuelve URL */
+  /** Público: recibe archivo en base64 → intenta subir a storage; si no está
+   *  configurado, devuelve la data URL para guardarla directamente en DB. */
   uploadCouponAttachment: publicProcedure
     .input(z.object({
       filename: z.string().max(256),
@@ -320,12 +321,20 @@ export const ticketingRouter = router({
       if (buffer.length > 10 * 1024 * 1024) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "El archivo no puede superar 10MB." });
       }
-      const ext = input.filename.split(".").pop()?.toLowerCase() || "bin";
-      const timestamp = Date.now();
-      const random = Math.random().toString(36).substring(2, 10);
-      const key = `nayade/coupons/${timestamp}-${random}.${ext}`;
-      const { url } = await storagePut(key, buffer, input.mimeType);
-      return { url, key };
+      // Intentar subir a storage (S3/Forge)
+      try {
+        const ext = input.filename.split(".").pop()?.toLowerCase() || "bin";
+        const ts = Date.now();
+        const random = Math.random().toString(36).substring(2, 10);
+        const key = `nayade/coupons/${ts}-${random}.${ext}`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        // Si la URL es local (/local-storage/...) también aceptamos — son archivos en /tmp
+        return { url };
+      } catch {
+        // Storage no configurado → guardar como data URL en DB (MEDIUMTEXT soporta ~16MB)
+        const dataUrl = `data:${input.mimeType};base64,${input.base64Data}`;
+        return { url: dataUrl };
+      }
     }),
 
   // ── SOLICITUDES DE CANJE (MULTI-CUPÓN) ───────────────────────────────────
