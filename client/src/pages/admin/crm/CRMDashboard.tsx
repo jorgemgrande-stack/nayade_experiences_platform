@@ -5921,16 +5921,16 @@ export default function CRMDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── Diálogo: Generar Factura desde TPV ───────────────────────────────── */}
+      {/* ─── Diálogo: Generar Factura desde reserva ──────────────────────────── */}
       <Dialog open={genInvoiceResId !== null} onOpenChange={(o) => { if (!o) { setGenInvoiceResId(null); setGenInvoiceNif(""); setGenInvoiceAddress(""); } }}>
         <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
-              <FilePlus className="w-5 h-5 text-violet-400" /> Generar Factura desde TPV
+              <FilePlus className="w-5 h-5 text-violet-400" /> Generar factura
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-white/60">Se generará una factura formal a partir de los datos del ticket TPV. No se creará un nuevo expediente REAV; la factura se adjuntará al expediente existente.</p>
+            <p className="text-sm text-white/60">Se generará una factura formal a partir de los datos de la reserva.</p>
             <div className="space-y-2">
               <Label className="text-white/70 text-xs">NIF / DNI del cliente (opcional)</Label>
               <Input
