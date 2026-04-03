@@ -169,6 +169,26 @@ async function startServer() {
   });
 }
 
-startServer()
+async function runMigrations() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    const { migrate } = await import("drizzle-orm/mysql2/migrator");
+    const { resolve } = await import("path");
+    const pool = mysql.createPool(process.env.DATABASE_URL!);
+    const db = drizzle(pool);
+    // En producción el binario está en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
+    const migrationsFolder = resolve(process.cwd(), "drizzle");
+    await migrate(db, { migrationsFolder });
+    await pool.end();
+    console.log("[DB] Migraciones aplicadas correctamente");
+  } catch (err) {
+    console.error("[DB] Error al aplicar migraciones:", err);
+    // No abortamos el arranque — si la BD ya está al día, el error es esperado
+  }
+}
+
+runMigrations()
+  .then(() => startServer())
   .then(() => startQuoteReminderJob())
   .catch(console.error);

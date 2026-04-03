@@ -527,7 +527,7 @@ export const reservations = mysqlTable("reservations", {
   // REAV link
   reavExpedientId: int("reav_expedient_id"),
   // Número de referencia interna (RES-2026-XXXX)
-  reservationNumber: varchar("reservation_number", { length: 32 }),
+  reservationNumber: varchar("reservation_number", { length: 32 }).unique(),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────
