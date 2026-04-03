@@ -4776,11 +4776,11 @@ export default function CRMDashboard() {
                             title={res.invoicePdfUrl ? "Descargar reserva en PDF" : "Sin PDF disponible"}>
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
-                          {/* Generar factura — solo para TPV sin factura */}
-                          {res.channel === "tpv" && !res.invoiceId && (
+                          {/* Generar factura — cualquier reserva sin factura */}
+                          {!res.invoiceId && (
                             <Button size="sm" variant="ghost" className="text-white/40 hover:text-violet-300 h-7 w-7 p-0"
                               onClick={() => setGenInvoiceResId(res.id)}
-                              title="Generar factura desde ticket TPV">
+                              title="Generar factura">
                               <FilePlus className="w-3.5 h-3.5" />
                             </Button>
                           )}
