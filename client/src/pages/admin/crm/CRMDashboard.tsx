@@ -3484,7 +3484,7 @@ function ReservationDetailModal({
         >
           <Pencil className="w-4 h-4 mr-1" /> Editar reserva
         </Button>
-        {relatedInvoices.length === 0 && res.status === "paid" && onGenerateInvoice && (
+        {relatedInvoices.length === 0 && onGenerateInvoice && (
           <Button
             size="sm"
             className="bg-sky-600 hover:bg-sky-700 text-white"
