@@ -137,6 +137,9 @@ async function startServer() {
   // Middleware de protección: bloquea rutas /api/trpc de procedimientos protegidos
   // si no hay sesión válida. Funciona en ambos modos (local y Manus OAuth).
   app.use("/api/trpc", createAuthGuardMiddleware(USE_LOCAL_AUTH));
+  // Servir archivos del storage local (fallback cuando S3/Forge no está configurado)
+  const localStorageDir = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
+  app.use("/local-storage", express.static(localStorageDir));
   // File upload endpoint
   app.use(uploadRouter);
   // Redsys IPN notification endpoint

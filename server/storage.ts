@@ -1,12 +1,17 @@
-// Storage helpers — soporta dos backends:
+// Storage helpers — soporta tres backends:
 //  1. Manus Forge proxy  (BUILT_IN_FORGE_API_URL + BUILT_IN_FORGE_API_KEY)
 //  2. S3 / MinIO local  (S3_ENDPOINT + S3_ACCESS_KEY + S3_SECRET_KEY + S3_BUCKET)
+//  3. Fallback local     (/tmp/local-storage — útil en Railway sin S3 configurado)
 
 import { ENV } from './_core/env';
 import {
   S3Client,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import { writeFile, mkdir } from "fs/promises";
+import path from "path";
+
+const LOCAL_STORAGE_DIR = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
 
 // ─── Backend selector ─────────────────────────────────────────────────────────
 
@@ -20,13 +25,8 @@ let _s3: S3Client | null = null;
 
 function getS3(): S3Client {
   if (_s3) return _s3;
-  if (!ENV.s3Endpoint || !ENV.s3AccessKey || !ENV.s3SecretKey) {
-    throw new Error(
-      "Storage not configured: set either (BUILT_IN_FORGE_API_URL + BUILT_IN_FORGE_API_KEY) or (S3_ENDPOINT + S3_ACCESS_KEY + S3_SECRET_KEY + S3_BUCKET)"
-    );
-  }
   _s3 = new S3Client({
-    endpoint: ENV.s3Endpoint,
+    endpoint: ENV.s3Endpoint || undefined,
     region: ENV.s3Region,
     credentials: {
       accessKeyId: ENV.s3AccessKey,
@@ -35,6 +35,20 @@ function getS3(): S3Client {
     forcePathStyle: true, // necesario para MinIO
   });
   return _s3;
+}
+
+// ─── Fallback local (cuando no hay Forge ni S3) ───────────────────────────────
+
+async function localPut(
+  key: string,
+  data: Buffer | Uint8Array | string
+): Promise<{ key: string; url: string }> {
+  const filePath = path.join(LOCAL_STORAGE_DIR, key);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, data as Buffer);
+  const url = `/local-storage/${key}`;
+  console.warn(`[Storage] Sin S3/Forge — archivo guardado en ${filePath} (temporal, se perderá en el próximo deploy)`);
+  return { key, url };
 }
 
 function normalizeKey(relKey: string): string {
@@ -138,9 +152,10 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
-  return useForge()
-    ? forgePut(relKey, data, contentType)
-    : s3Put(relKey, data, contentType);
+  if (useForge()) return forgePut(relKey, data, contentType);
+  if (ENV.s3AccessKey && ENV.s3SecretKey) return s3Put(relKey, data, contentType);
+  // Fallback: almacenamiento local cuando ni Forge ni S3 están configurados
+  return localPut(normalizeKey(relKey), data);
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
