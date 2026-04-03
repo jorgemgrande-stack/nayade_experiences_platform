@@ -3825,6 +3825,34 @@ export const crmRouter = router({
         await logActivity("invoice", invoice.id, "invoice_voided", ctx.user.id, ctx.user.name, { reason: input.reason });
         return { success: true };
       }),
+
+    delete: adminProcedure
+      .input(z.object({ invoiceId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+
+        // Desvincular reservas asociadas (limpiar invoiceId e invoiceNumber)
+        await db.update(reservations)
+          .set({ invoiceId: null, invoiceNumber: null, updatedAt: Date.now() } as any)
+          .where(eq(reservations.invoiceId, input.invoiceId));
+
+        // Si hay presupuesto vinculado, revertir a estado anterior al pago
+        if (invoice.quoteId) {
+          await db.update(quotes)
+            .set({ status: "pendiente", paidAt: null, invoiceNumber: null, updatedAt: new Date() } as any)
+            .where(eq(quotes.id, invoice.quoteId));
+        }
+
+        // Eliminar la factura
+        await db.delete(invoices).where(eq(invoices.id, input.invoiceId));
+
+        await logActivity("invoice", invoice.id, "invoice_deleted", ctx.user.id, ctx.user.name, {
+          invoiceNumber: invoice.invoiceNumber,
+          quoteId: invoice.quoteId ?? null,
+        });
+        return { success: true };
+      }),
   }),
 
   // ─── CLIENTS ────────────────────────────────────────────────────────────────

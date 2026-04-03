@@ -3598,6 +3598,7 @@ export default function CRMDashboard() {
   const [confirmPaymentInvoiceId, setConfirmPaymentInvoiceId] = useState<number | null>(null);
   const [creditNoteInvoiceId, setCreditNoteInvoiceId] = useState<number | null>(null);
   const [voidInvoiceId, setVoidInvoiceId] = useState<number | null>(null);
+  const [deleteInvoiceId, setDeleteInvoiceId] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"transferencia" | "efectivo" | "otro">("transferencia");
   const [creditNoteReason, setCreditNoteReason] = useState("");
 
@@ -3897,6 +3898,16 @@ export default function CRMDashboard() {
     onSuccess: () => {
       toast.success("Factura anulada");
       setVoidInvoiceId(null);
+      utils.crm.invoices.listAll.invalidate();
+      refetchInvoices();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteInvoiceMutation = trpc.crm.invoices.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Factura eliminada — reserva desvinculada");
+      setDeleteInvoiceId(null);
       utils.crm.invoices.listAll.invalidate();
       refetchInvoices();
     },
@@ -4975,6 +4986,11 @@ export default function CRMDashboard() {
                                 <Ban className="w-4 h-4" />
                               </button>
                             )}
+                            {/* Eliminar */}
+                            <button onClick={() => setDeleteInvoiceId(inv.id)} title="Eliminar factura"
+                              className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-rose-600 transition-colors">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -5292,6 +5308,35 @@ export default function CRMDashboard() {
               className="bg-red-600 hover:bg-red-700 text-white">
               {voidInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Ban className="w-4 h-4 mr-1" />}
               Anular
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Eliminar factura */}
+      <Dialog open={deleteInvoiceId !== null} onOpenChange={(o) => !o && setDeleteInvoiceId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-rose-500" /> Eliminar factura
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <p className="text-sm text-white/70">Esta acción eliminará la factura permanentemente.</p>
+            <ul className="text-xs text-white/50 list-disc list-inside space-y-1">
+              <li>La reserva asociada quedará sin factura asignada</li>
+              <li>Si venía de un presupuesto, su estado volverá a <span className="text-amber-400">pendiente</span></li>
+              <li>Esta acción no se puede deshacer</li>
+            </ul>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteInvoiceId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button size="sm"
+              onClick={() => deleteInvoiceId !== null && deleteInvoiceMutation.mutate({ invoiceId: deleteInvoiceId })}
+              disabled={deleteInvoiceMutation.isPending}
+              className="bg-rose-700 hover:bg-rose-800 text-white">
+              {deleteInvoiceMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Eliminar definitivamente
             </Button>
           </DialogFooter>
         </DialogContent>
