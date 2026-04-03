@@ -1,17 +1,87 @@
 /**
- * mailer.ts — Helper compartido de Nodemailer
+ * mailer.ts — Sistema de envío de emails
  *
- * Centraliza la creación del transporter SMTP para evitar duplicación
- * en crm.ts, reservationEmails.ts, inviteEmail.ts, restaurants.ts,
- * adapters/notification.ts y passwordReset.ts.
+ * Estrategia dual:
+ *   1. PRIMARIO: Brevo HTTP API (puerto 443 HTTPS — funciona desde Railway/cloud)
+ *   2. FALLBACK:  Nodemailer SMTP (solo funciona si el host no bloquea puertos SMTP)
  *
- * Uso:
- *   import { createTransporter, sendEmail } from "../mailer";
- *   const transporter = createTransporter();
- *   await sendEmail({ to, subject, html });
+ * Railway bloquea conexiones SMTP salientes (465/587), por lo que el modo
+ * primario es siempre la API HTTP de Brevo cuando BREVO_API_KEY está definida.
+ *
+ * Variables de entorno necesarias:
+ *   BREVO_API_KEY   — clave API de Brevo (preferido en Railway)
+ *   SMTP_FROM       — remitente visible, ej: "Nayade Experiences <reservas@nayadeexperiences.es>"
+ *   SMTP_HOST/PORT/USER/PASS/SECURE — fallback SMTP (entornos locales o no-cloud)
  */
+
 import nodemailer from "nodemailer";
 
+// ─── Tipos ────────────────────────────────────────────────────────────────────
+export interface MailParams {
+  to: string | string[];
+  subject: string;
+  html: string;
+  text?: string;
+  from?: string;
+}
+
+// ─── Helper: parsea el SMTP_FROM en nombre + email ───────────────────────────
+function parseSender(raw: string): { name: string; email: string } {
+  // Formatos: "Nombre <email>" o solo "email"
+  const match = raw.match(/^(.+?)\s*<(.+?)>$/);
+  if (match) return { name: match[1].trim(), email: match[2].trim() };
+  return { name: "Nayade Experiences", email: raw.trim() };
+}
+
+// ─── Modo 1: Brevo HTTP API ───────────────────────────────────────────────────
+async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) return false;
+
+  const fromRaw = params.from
+    ?? process.env.SMTP_FROM
+    ?? "Nayade Experiences <reservas@nayadeexperiences.es>";
+  const sender = parseSender(fromRaw);
+
+  const toList = Array.isArray(params.to)
+    ? params.to.map(e => ({ email: e }))
+    : [{ email: params.to }];
+
+  const body = {
+    sender,
+    to: toList,
+    subject: params.subject,
+    htmlContent: params.html,
+    ...(params.text ? { textContent: params.text } : {}),
+  };
+
+  try {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "api-key": apiKey,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      const json = await res.json() as { messageId?: string };
+      console.log(`[Mailer] ✓ Brevo API → ${Array.isArray(params.to) ? params.to.join(", ") : params.to} | messageId: ${json.messageId ?? "—"}`);
+      return true;
+    }
+
+    const errText = await res.text();
+    console.error(`[Mailer] ✗ Brevo API error ${res.status}: ${errText}`);
+    return false;
+  } catch (err) {
+    console.error("[Mailer] ✗ Brevo API fetch error:", err);
+    return false;
+  }
+}
+
+// ─── Modo 2: Nodemailer SMTP (fallback) ───────────────────────────────────────
 export function createTransporter() {
   const host = process.env.SMTP_HOST;
   const port = parseInt(process.env.SMTP_PORT ?? "587", 10);
@@ -24,40 +94,59 @@ export function createTransporter() {
     return null;
   }
 
-  console.log(`[Mailer] Transporter creado → ${host}:${port} secure=${secure}`);
+  console.log(`[Mailer] SMTP transporter → ${host}:${port} secure=${secure}`);
 
   return nodemailer.createTransport({
     host,
     port,
-    secure,           // true = SSL directo (puerto 465); false = STARTTLS (puerto 587)
+    secure,
     auth: { user, pass },
-    tls: {
-      rejectUnauthorized: false,  // compatibilidad con certificados de hosting compartido
-      minVersion: "TLSv1.2",
-    },
-    // Timeouts explícitos para Railway (evita connection timeout silencioso)
-    connectionTimeout: 10000,   // 10s para establecer conexión
-    greetingTimeout: 10000,     // 10s para EHLO/HELO
-    socketTimeout: 30000,       // 30s para operaciones
+    tls: { rejectUnauthorized: false, minVersion: "TLSv1.2" },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 30000,
   });
 }
 
-export async function sendEmail({
-  to,
-  subject,
-  html,
-  from,
-}: {
-  to: string;
-  subject: string;
-  html: string;
-  from?: string;
-}): Promise<boolean> {
+async function sendViaSMTP(params: MailParams): Promise<boolean> {
   const transporter = createTransporter();
   if (!transporter) return false;
 
-  const fromAddress = from ?? process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "noreply@nayade.com";
+  const fromAddress = params.from
+    ?? process.env.SMTP_FROM
+    ?? process.env.SMTP_USER
+    ?? "noreply@nayadeexperiences.es";
 
-  await transporter.sendMail({ from: fromAddress, to, subject, html });
-  return true;
+  try {
+    await transporter.sendMail({
+      from: fromAddress,
+      to: Array.isArray(params.to) ? params.to.join(", ") : params.to,
+      subject: params.subject,
+      html: params.html,
+      ...(params.text ? { text: params.text } : {}),
+    });
+    console.log(`[Mailer] ✓ SMTP → ${Array.isArray(params.to) ? params.to.join(", ") : params.to}`);
+    return true;
+  } catch (err) {
+    console.error("[Mailer] ✗ SMTP error:", err);
+    return false;
+  }
+}
+
+// ─── API pública ──────────────────────────────────────────────────────────────
+
+/**
+ * Envía un email usando Brevo API (primario) o SMTP (fallback).
+ * Devuelve true si el envío fue exitoso.
+ */
+export async function sendEmail(params: MailParams): Promise<boolean> {
+  // Intentar primero con Brevo API
+  if (process.env.BREVO_API_KEY) {
+    const ok = await sendViaBrevoApi(params);
+    if (ok) return true;
+    console.warn("[Mailer] Brevo API falló, intentando SMTP...");
+  }
+
+  // Fallback SMTP
+  return sendViaSMTP(params);
 }
