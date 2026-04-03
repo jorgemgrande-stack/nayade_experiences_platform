@@ -1315,10 +1315,29 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
 
+        // Idempotencia: si el presupuesto ya está pagado, devolver la factura existente sin duplicar
+        if (quote.paidAt || quote.status === "aceptado") {
+          const [existingInv] = await db.select().from(invoices)
+            .where(eq(invoices.quoteId, quote.id))
+            .orderBy(invoices.id)
+            .limit(1);
+          if (existingInv) {
+            return {
+              success: true,
+              invoiceId: existingInv.id,
+              invoiceNumber: existingInv.invoiceNumber,
+              reservationId: null,
+              pdfUrl: existingInv.pdfUrl ?? null,
+              reavExpedientId: null,
+              reavExpedientNumber: null,
+            };
+          }
+        }
+
         const now = new Date();
 
         // Generate invoice
-         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
+        const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
         const taxRate = 21;
         const subtotal = Number(quote.subtotal);
@@ -1777,6 +1796,18 @@ export const crmRouter = router({
         }
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+
+        // Idempotencia: si ya hay factura para este presupuesto, devolver la existente
+        if (quote.paidAt || quote.status === "aceptado") {
+          const [existingInvT] = await db.select().from(invoices)
+            .where(eq(invoices.quoteId, quote.id))
+            .orderBy(invoices.id)
+            .limit(1);
+          if (existingInvT) {
+            return { success: true, invoiceId: existingInvT.id, invoiceNumber: existingInvT.invoiceNumber };
+          }
+        }
+
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
