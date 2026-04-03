@@ -274,6 +274,13 @@
       "when": 1775082960729,
       "tag": "0038_worthless_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "5",
+      "when": 1743715200000,
+      "tag": "0039_reav_schema_fixes",
+      "breakpoints": true
     }
   ]
 }

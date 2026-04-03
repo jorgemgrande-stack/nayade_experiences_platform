@@ -1658,6 +1658,7 @@ export const appRouter = router({
         currency: z.string().default("EUR"),
         category: z.enum(["transporte","alojamiento","actividad","restauracion","guia","seguro","otros"]).default("otros"),
         isPaid: z.boolean().default(false),
+        includesVat: z.boolean().default(true),
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => addReavCost({ ...input, createdBy: ctx.user.id })),
@@ -1669,6 +1670,7 @@ export const appRouter = router({
         providerName: z.string().optional(),
         amount: z.string().optional(),
         isPaid: z.boolean().optional(),
+        includesVat: z.boolean().optional(),
         notes: z.string().optional(),
       }))
       .mutation(async ({ input }) => { const { id, ...data } = input; await updateReavCost(id, data); return { success: true }; }),

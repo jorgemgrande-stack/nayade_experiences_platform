@@ -1825,7 +1825,13 @@ export async function recalculateReavMargins(expedientId: number) {
   if (!db) return null;
   const exp = await getReavExpedientById(expedientId);
   if (!exp) return null;
-  const totalCosts = exp.costs.reduce((sum, c) => sum + parseFloat(c.amount as string), 0);
+  // Si includesVat=false el importe es neto → coste real = amount × 1.21 (IVA no recuperable en REAV)
+  // Si includesVat=true (default) el importe ya incluye IVA → coste real = amount
+  const totalCosts = exp.costs.reduce((sum, c) => {
+    const amount = parseFloat(c.amount as string);
+    const effectiveCost = c.includesVat ? amount : amount * 1.21;
+    return sum + effectiveCost;
+  }, 0);
   const sale = parseFloat(exp.saleAmountTotal as string ?? "0");
   const marginReal = sale - totalCosts;
   const taxBase = Math.max(0, marginReal);

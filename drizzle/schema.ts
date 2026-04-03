@@ -524,6 +524,8 @@ export const reservations = mysqlTable("reservations", {
   // Time slots (optional, retrocompatible - null = no time slot required)
   selectedTimeSlotId: int("selected_time_slot_id"),
   selectedTime: varchar("selected_time", { length: 10 }),
+  // REAV link
+  reavExpedientId: int("reav_expedient_id"),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────
@@ -1165,6 +1167,8 @@ export const reavCosts = mysqlTable("reav_costs", {
   ]).default("otros").notNull(),
   isPaid: boolean("isPaid").default(false).notNull(),
   paidAt: timestamp("paidAt"),
+  // Si el importe incluye IVA (true) o es neto sin IVA (false)
+  includesVat: boolean("includes_vat").default(true).notNull(),
   notes: text("notes"),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

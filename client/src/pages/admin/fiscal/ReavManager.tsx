@@ -328,7 +328,7 @@ function ExpedientDetail({
   });
 
   const [newDoc, setNewDoc] = useState({ side: "client" as "client" | "provider", docType: "factura_emitida", title: "", fileUrl: "", notes: "" });
-  const [newCost, setNewCost] = useState({ description: "", providerName: "", amount: "", category: "otros", isPaid: false, notes: "" });
+  const [newCost, setNewCost] = useState({ description: "", providerName: "", amount: "", category: "otros", isPaid: false, includesVat: true, notes: "" });
 
   const sale = parseFloat(exp.saleAmountTotal ?? "0");
   const costReal = parseFloat(exp.providerCostReal ?? "0");
@@ -693,7 +693,7 @@ function ExpedientDetail({
               className="text-sm"
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
             <Select value={newCost.category} onValueChange={(v) => setNewCost(c => ({ ...c, category: v }))}>
               <SelectTrigger className="h-9 w-44 text-sm">
                 <SelectValue />
@@ -704,13 +704,22 @@ function ExpedientDetail({
                 ))}
               </SelectContent>
             </Select>
+            <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={newCost.includesVat}
+                onChange={(e) => setNewCost(c => ({ ...c, includesVat: e.target.checked }))}
+                className="accent-orange-500"
+              />
+              IVA incluido
+            </label>
             <Button
               size="sm"
               className="bg-orange-500 hover:bg-orange-600 text-white"
               onClick={() => {
                 if (!newCost.description || !newCost.amount) return toast.error("Descripción e importe son obligatorios");
                 onAddCost(newCost);
-                setNewCost({ description: "", providerName: "", amount: "", category: "otros", isPaid: false, notes: "" });
+                setNewCost({ description: "", providerName: "", amount: "", category: "otros", isPaid: false, includesVat: true, notes: "" });
               }}
             >
               <Plus className="w-4 h-4 mr-1" /> Añadir
@@ -729,6 +738,7 @@ function ExpedientDetail({
                     <p className="text-sm font-semibold text-slate-800 truncate">{cost.description}</p>
                     <p className="text-xs text-slate-500">
                       {cost.providerName || "—"} · {COST_CATEGORIES.find(c => c.value === cost.category)?.label}
+                      {cost.includesVat === false && <span className="ml-1 text-amber-600 font-medium">(neto s/IVA)</span>}
                     </p>
                   </div>
                 </div>
