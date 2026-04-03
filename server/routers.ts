@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import JSZip from "jszip";
 import {
   getActiveGalleryItems,
   getGalleryCategories,
@@ -1678,6 +1679,100 @@ export const appRouter = router({
     deleteCost: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => { await deleteReavCost(input.id); return { success: true }; }),
+
+    exportZip: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const exp = await getReavExpedientById(input.id);
+        if (!exp) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const zip = new JSZip();
+
+        // ── Resumen del expediente (texto) ────────────────────────────────────
+        const sale = parseFloat(exp.saleAmountTotal ?? "0");
+        const costReal = parseFloat(exp.providerCostReal ?? "0");
+        const marginReal = parseFloat(exp.agencyMarginReal ?? "0");
+        const taxBase = parseFloat(exp.reavTaxBase ?? "0");
+        const taxAmount = parseFloat(exp.reavTaxAmount ?? "0");
+
+        const summary = [
+          `EXPEDIENTE REAV — ${exp.expedientNumber}`,
+          `${"=".repeat(60)}`,
+          ``,
+          `DATOS DEL SERVICIO`,
+          `  Descripción:    ${exp.serviceDescription ?? "—"}`,
+          `  Destino:        ${exp.destination ?? "—"}`,
+          `  Fecha servicio: ${exp.serviceDate ?? "—"}`,
+          `  N.º Pax:        ${exp.numberOfPax ?? "—"}`,
+          `  Canal:          ${exp.channel ?? "—"}`,
+          `  Referencia:     ${exp.sourceRef ?? "—"}`,
+          ``,
+          `DATOS DEL CLIENTE`,
+          `  Nombre:         ${exp.clientName ?? "—"}`,
+          `  Email:          ${exp.clientEmail ?? "—"}`,
+          `  Teléfono:       ${exp.clientPhone ?? "—"}`,
+          `  DNI/NIF:        ${exp.clientDni ?? "—"}`,
+          `  Dirección:      ${exp.clientAddress ?? "—"}`,
+          ``,
+          `IMPORTES`,
+          `  Venta total:    ${sale.toFixed(2)} €`,
+          `  Coste real:     ${costReal.toFixed(2)} €`,
+          `  Margen real:    ${marginReal.toFixed(2)} €`,
+          `  Base imponible: ${taxBase.toFixed(2)} €`,
+          `  IVA REAV 21%:   ${taxAmount.toFixed(2)} €`,
+          ``,
+          `ESTADO`,
+          `  Fiscal:         ${exp.fiscalStatus ?? "—"}`,
+          `  Operativo:      ${exp.operativeStatus ?? "—"}`,
+          ``,
+          `COSTES DE PROVEEDOR`,
+          ...(exp.costs?.length
+            ? exp.costs.map((c: any) =>
+                `  [${c.category}] ${c.description} — ${parseFloat(c.amount).toFixed(2)} € (${c.includesVat ? "IVA incl." : "neto s/IVA"}) — ${c.providerName ?? "—"}${c.isPaid ? " ✓ Pagado" : ""}`
+              )
+            : ["  Sin costes registrados"]),
+          ``,
+          `DOCUMENTOS ADJUNTOS`,
+          ...(exp.documents?.length
+            ? exp.documents.map((d: any) =>
+                `  [${d.side}/${d.docType}] ${d.title}${d.fileUrl ? ` — ${d.fileUrl}` : ""}`
+              )
+            : ["  Sin documentos adjuntos"]),
+          ``,
+          `Generado: ${new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" })}`,
+        ].join("\n");
+
+        zip.file("resumen.txt", summary);
+
+        // ── Descargar documentos adjuntos ─────────────────────────────────────
+        const docFolder = zip.folder("documentos")!;
+        let docIndex = 1;
+        for (const doc of (exp.documents ?? []) as any[]) {
+          if (!doc.fileUrl) continue;
+          try {
+            const res = await fetch(doc.fileUrl);
+            if (!res.ok) continue;
+            const buf = await res.arrayBuffer();
+            const ext = doc.mimeType === "application/pdf" ? ".pdf"
+              : doc.mimeType?.startsWith("image/") ? "." + doc.mimeType.split("/")[1]
+              : "";
+            const safeName = `${String(docIndex).padStart(2, "0")}_${doc.title.replace(/[^a-zA-Z0-9_\-áéíóúñÁÉÍÓÚÑ ]/g, "_").substring(0, 60)}${ext}`;
+            docFolder.file(safeName, buf);
+            docIndex++;
+          } catch {
+            // Documento no descargable — incluir nota
+            docFolder.file(`${String(docIndex).padStart(2, "0")}_${doc.title.substring(0, 40)}_ERROR.txt`,
+              `No se pudo descargar: ${doc.fileUrl}`);
+            docIndex++;
+          }
+        }
+
+        const zipBuffer = await zip.generateAsync({ type: "base64", compression: "DEFLATE" });
+        return {
+          base64: zipBuffer,
+          filename: `${exp.expedientNumber}_REAV.zip`,
+        };
+      }),
   }),
 
   gallery: router({

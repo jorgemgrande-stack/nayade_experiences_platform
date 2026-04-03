@@ -149,6 +149,78 @@ export default function ReavManager() {
     onError: (e) => toast.error(e.message),
   });
 
+  const exportZipMut = trpc.reav.exportZip.useMutation({
+    onSuccess: (data) => {
+      const link = document.createElement("a");
+      link.href = `data:application/zip;base64,${data.base64}`;
+      link.download = data.filename;
+      link.click();
+      toast.success("ZIP descargado");
+    },
+    onError: (e) => toast.error(`Error al generar ZIP: ${e.message}`),
+  });
+
+  function handleExportExcel(exp: any) {
+    // Importación dinámica para no aumentar el bundle en la carga inicial
+    import("xlsx").then(({ utils, writeFile }) => {
+      const wb = utils.book_new();
+
+      // ── Hoja 1: Resumen ──────────────────────────────────────────────────
+      const resumen = [
+        ["EXPEDIENTE REAV", exp.expedientNumber],
+        ["Estado fiscal", exp.fiscalStatus],
+        ["Estado operativo", exp.operativeStatus],
+        [],
+        ["SERVICIO"],
+        ["Descripción", exp.serviceDescription],
+        ["Fecha", exp.serviceDate],
+        ["Destino", exp.destination],
+        ["Pax", exp.numberOfPax],
+        ["Referencia", exp.sourceRef],
+        [],
+        ["CLIENTE"],
+        ["Nombre", exp.clientName],
+        ["Email", exp.clientEmail],
+        ["Teléfono", exp.clientPhone],
+        ["DNI/NIF", exp.clientDni],
+        ["Dirección", exp.clientAddress],
+        [],
+        ["IMPORTES"],
+        ["Venta total (€)", parseFloat(exp.saleAmountTotal ?? "0")],
+        ["Coste proveedor real (€)", parseFloat(exp.providerCostReal ?? "0")],
+        ["Margen real (€)", parseFloat(exp.agencyMarginReal ?? "0")],
+        ["Base imponible REAV (€)", parseFloat(exp.reavTaxBase ?? "0")],
+        ["IVA REAV 21% (€)", parseFloat(exp.reavTaxAmount ?? "0")],
+      ];
+      utils.book_append_sheet(wb, utils.aoa_to_sheet(resumen), "Resumen");
+
+      // ── Hoja 2: Costes de proveedor ───────────────────────────────────────
+      const costsHeader = ["Descripción", "Proveedor", "NIF Proveedor", "Categoría", "Importe (€)", "IVA incluido", "N.º Factura", "Fecha Factura", "Pagado"];
+      const costsRows = (exp.costs ?? []).map((c: any) => [
+        c.description,
+        c.providerName ?? "",
+        c.providerNif ?? "",
+        c.category,
+        parseFloat(c.amount),
+        c.includesVat ? "Sí" : "No",
+        c.invoiceRef ?? "",
+        c.invoiceDate ?? "",
+        c.isPaid ? "Sí" : "No",
+      ]);
+      utils.book_append_sheet(wb, utils.aoa_to_sheet([costsHeader, ...costsRows]), "Costes Proveedor");
+
+      // ── Hoja 3: Documentos ────────────────────────────────────────────────
+      const docsHeader = ["Lado", "Tipo", "Título", "URL", "Notas"];
+      const docsRows = (exp.documents ?? []).map((d: any) => [
+        d.side, d.docType, d.title, d.fileUrl ?? "", d.notes ?? "",
+      ]);
+      utils.book_append_sheet(wb, utils.aoa_to_sheet([docsHeader, ...docsRows]), "Documentos");
+
+      writeFile(wb, `${exp.expedientNumber}_REAV.xlsx`);
+      toast.success("Excel descargado");
+    }).catch(() => toast.error("Error al generar Excel"));
+  }
+
   return (
     <AdminLayout>
       {/* ── Fondo general claro, sin overflow horizontal ── */}
@@ -285,6 +357,9 @@ export default function ReavManager() {
               onDelDoc={(id) => delDocMut.mutate({ id })}
               onAddCost={(data) => addCostMut.mutate({ expedientId: selected.id, ...data })}
               onDelCost={(id) => delCostMut.mutate({ id })}
+              onExportZip={() => exportZipMut.mutate({ id: selected.id })}
+              exportZipPending={exportZipMut.isPending}
+              onExportExcel={() => handleExportExcel(selected)}
             />
           )}
         </div>
@@ -304,7 +379,7 @@ export default function ReavManager() {
 // ─── Detalle del expediente ───────────────────────────────────────────────────
 
 function ExpedientDetail({
-  exp, onUpdate, onRecalc, onAddDoc, onDelDoc, onAddCost, onDelCost,
+  exp, onUpdate, onRecalc, onAddDoc, onDelDoc, onAddCost, onDelCost, onExportZip, exportZipPending, onExportExcel,
 }: {
   exp: any;
   onUpdate: (data: any) => void;
@@ -313,6 +388,9 @@ function ExpedientDetail({
   onDelDoc: (id: number) => void;
   onAddCost: (data: any) => void;
   onDelCost: (id: number) => void;
+  onExportZip: () => void;
+  exportZipPending: boolean;
+  onExportExcel: () => void;
 }) {
   const [editInfo, setEditInfo] = useState(false);
   const [infoForm, setInfoForm] = useState({
@@ -822,15 +900,17 @@ function ExpedientDetail({
             variant="outline"
             size="sm"
             className="text-sm"
-            onClick={() => toast.info("Exportar ZIP — próximamente")}
+            disabled={exportZipPending}
+            onClick={onExportZip}
           >
-            <FolderOpen className="w-4 h-4 mr-1.5" /> Exportar ZIP
+            <FolderOpen className="w-4 h-4 mr-1.5" />
+            {exportZipPending ? "Generando..." : "Exportar ZIP"}
           </Button>
           <Button
             variant="outline"
             size="sm"
             className="text-sm"
-            onClick={() => toast.info("Exportar Excel — próximamente")}
+            onClick={onExportExcel}
           >
             <TrendingUp className="w-4 h-4 mr-1.5" /> Exportar Excel
           </Button>
