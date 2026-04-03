@@ -4172,6 +4172,37 @@ export const crmRouter = router({
             console.error("[pendingPayments.confirm] Error en postConfirmOperation:", e);
           }
         }
+        // Generar factura si la reserva no tiene una aún
+        if (pp.reservationId) {
+          try {
+            const [resForInv] = await db.select().from(reservations).where(eq(reservations.id, pp.reservationId));
+            if (resForInv && !resForInv.invoiceId) {
+              const now = new Date();
+              const invoiceNumber = await generateInvoiceNumber("crm:pendingPayment", String(ctx.user.id));
+              const amountEur = pp.amountCents / 100;
+              const items = [{ description: pp.productName ?? resForInv.productName, quantity: resForInv.people, unitPrice: amountEur / resForInv.people, total: amountEur }];
+              const subtotal = amountEur;
+              const taxAmount = parseFloat((subtotal * 0.21).toFixed(2));
+              const total = parseFloat((subtotal + taxAmount).toFixed(2));
+              let pdfUrl: string | null = null;
+              let pdfKey: string | null = null;
+              try {
+                const pdf = await generateInvoicePdf({ invoiceNumber, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: "21", taxAmount: String(taxAmount), total: String(total.toFixed(2)), issuedAt: now });
+                pdfUrl = pdf.url;
+                pdfKey = pdf.key;
+              } catch (pdfErr) {
+                console.error("[pendingPayments.confirm] PDF generation failed:", pdfErr);
+              }
+              const [invRes] = await db.insert(invoices).values({ invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: "21", taxAmount: String(taxAmount), total: String(total.toFixed(2)), pdfUrl, pdfKey, isAutomatic: true, status: "cobrada", paymentMethod: input.paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
+              const invoiceId = (invRes as { insertId: number }).insertId;
+              await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId));
+              console.log(`[pendingPayments.confirm] Factura ${invoiceNumber} generada para reserva ${pp.reservationId}`);
+            }
+          } catch (invErr) {
+            console.error("[pendingPayments.confirm] Error generando factura:", invErr);
+          }
+        }
+
         await logActivity("quote", pp.quoteId, "pending_payment_confirmed", ctx.user.id, ctx.user.name, { ppId: input.id, method: input.paymentMethod });
         return { success: true };
       }),

@@ -3116,10 +3116,12 @@ function ReservationDetailModal({
   reservationId,
   onClose,
   onEdit,
+  onGenerateInvoice,
 }: {
   reservationId: number;
   onClose: () => void;
   onEdit: (id: number, status: string) => void;
+  onGenerateInvoice?: (id: number) => void;
 }) {
   const { data, isLoading } = trpc.crm.reservations.get.useQuery({ id: reservationId });
 
@@ -3482,6 +3484,15 @@ function ReservationDetailModal({
         >
           <Pencil className="w-4 h-4 mr-1" /> Editar reserva
         </Button>
+        {relatedInvoices.length === 0 && res.status === "paid" && onGenerateInvoice && (
+          <Button
+            size="sm"
+            className="bg-sky-600 hover:bg-sky-700 text-white"
+            onClick={() => { onClose(); onGenerateInvoice(res.id); }}
+          >
+            <FilePlus className="w-4 h-4 mr-1" /> Generar factura
+          </Button>
+        )}
         {relatedInvoices[0]?.pdfUrl && (
           <Button
             size="sm"
@@ -5669,6 +5680,10 @@ export default function CRMDashboard() {
           <ReservationDetailModal
             reservationId={viewResId}
             onClose={() => setViewResId(null)}
+            onGenerateInvoice={(id) => {
+              setViewResId(null);
+              setGenInvoiceResId(id);
+            }}
             onEdit={(id, status) => {
               const resRow = resData?.find((r: any) => r.id === id);
               setViewResId(null);
