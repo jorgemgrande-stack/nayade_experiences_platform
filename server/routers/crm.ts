@@ -3826,7 +3826,7 @@ export const crmRouter = router({
         return { success: true };
       }),
 
-    delete: adminProcedure
+    delete: staff
       .input(z.object({ invoiceId: z.number() }))
       .mutation(async ({ input, ctx }) => {
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
