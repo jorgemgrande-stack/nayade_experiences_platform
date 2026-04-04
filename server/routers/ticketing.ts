@@ -459,7 +459,7 @@ export const ticketingRouter = router({
       phone: z.string().optional(),
       couponCode: z.string().min(1),
       securityCode: z.string().optional(),
-      attachmentUrl: z.string().url().optional(),
+      attachmentUrl: z.string().optional(),
       requestedDate: z.string().optional(),
       station: z.string().optional(),
       participants: z.number().int().min(1).default(1),

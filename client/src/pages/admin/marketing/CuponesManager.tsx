@@ -455,8 +455,10 @@ export default function CuponesManager() {
   const [manualForm, setManualForm] = useState({
     provider: "Groupon", customerName: "", email: "", phone: "", couponCode: "",
     securityCode: "", requestedDate: "", station: "", participants: 1, children: 0,
-    comments: "", channelEntry: "manual" as const, notes: "",
+    comments: "", channelEntry: "manual" as const, notes: "", attachmentUrl: "",
   });
+  const [manualAttachName, setManualAttachName] = useState("");
+  const [manualAttachError, setManualAttachError] = useState("");
 
   // ── QUERIES ──────────────────────────────────────────────────────────────
   const statsQuery = trpc.ticketing.getDashboardStats.useQuery(undefined, { refetchInterval: 30000 });
@@ -516,11 +518,14 @@ export default function CuponesManager() {
     onSuccess: () => {
       toast.success("Cupón registrado manualmente");
       setManualOpen(false);
-      setManualForm({ provider: "Groupon", customerName: "", email: "", phone: "", couponCode: "", securityCode: "", requestedDate: "", station: "", participants: 1, children: 0, comments: "", channelEntry: "manual", notes: "" });
+      setManualForm({ provider: "Groupon", customerName: "", email: "", phone: "", couponCode: "", securityCode: "", requestedDate: "", station: "", participants: 1, children: 0, comments: "", channelEntry: "manual", notes: "", attachmentUrl: "" });
+      setManualAttachName("");
+      setManualAttachError("");
       invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
+  const manualUploadMutation = trpc.ticketing.uploadCouponAttachment.useMutation();
 
   const stats = statsQuery.data;
   const coupons = (couponsQuery.data?.items ?? []) as Coupon[];
@@ -930,6 +935,46 @@ export default function CuponesManager() {
               </div>
             </div>
             <div>
+              <Label className="text-white/70 text-xs">Adjunto cupón (imagen o PDF)</Label>
+              <div className="mt-1">
+                {manualForm.attachmentUrl ? (
+                  <div className="flex items-center gap-2 p-2 rounded bg-green-500/10 border border-green-500/20">
+                    <CheckCircle className="w-4 h-4 text-green-400 shrink-0" />
+                    <span className="text-green-300 text-xs truncate flex-1">{manualAttachName}</span>
+                    <button type="button" onClick={() => { setManualForm(f => ({ ...f, attachmentUrl: "" })); setManualAttachName(""); setManualAttachError(""); }} className="text-white/40 hover:text-white/70">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded border border-dashed border-white/20 hover:border-violet-400/50 transition-colors">
+                    <Upload className="w-4 h-4 text-white/40" />
+                    <span className="text-white/40 text-xs">{manualUploadMutation.isPending ? "Subiendo..." : "Seleccionar archivo (JPG, PNG, PDF, máx 10MB)"}</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setManualAttachError("");
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                          try {
+                            const dataUrl = reader.result as string;
+                            const base64Data = dataUrl.split(",")[1];
+                            const result = await manualUploadMutation.mutateAsync({ filename: file.name, mimeType: file.type, base64Data });
+                            setManualForm(f => ({ ...f, attachmentUrl: result.url }));
+                            setManualAttachName(file.name);
+                          } catch (err: unknown) {
+                            setManualAttachError("Error al subir: " + (err instanceof Error ? err.message : "Error desconocido"));
+                            e.target.value = "";
+                          }
+                        };
+                        reader.readAsDataURL(file);
+                      }} />
+                  </label>
+                )}
+                {manualAttachError && <p className="text-red-400 text-xs mt-1">{manualAttachError}</p>}
+              </div>
+            </div>
+            <div>
               <Label className="text-white/70 text-xs">Notas internas</Label>
               <Textarea value={manualForm.notes} onChange={(e) => setManualForm(f => ({ ...f, notes: e.target.value }))} className="bg-white/5 border-white/10 text-white mt-1 resize-none" rows={2} />
             </div>
@@ -937,8 +982,8 @@ export default function CuponesManager() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setManualOpen(false)} className="border-white/10 text-white/70">Cancelar</Button>
             <Button className="bg-violet-600 hover:bg-violet-700 text-white"
-              disabled={!manualForm.customerName || !manualForm.email || !manualForm.couponCode || createManualMutation.isPending}
-              onClick={() => createManualMutation.mutate(manualForm)}>
+              disabled={!manualForm.customerName || !manualForm.email || !manualForm.couponCode || createManualMutation.isPending || manualUploadMutation.isPending}
+              onClick={() => createManualMutation.mutate({ ...manualForm, attachmentUrl: manualForm.attachmentUrl || undefined })}>
               {createManualMutation.isPending ? "Registrando..." : "Registrar cupón"}
             </Button>
           </DialogFooter>
