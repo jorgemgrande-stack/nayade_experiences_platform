@@ -83,85 +83,90 @@ async function propagateCancellation(params: {
 }): Promise<{ cancellationNumber: string }> {
   const { requestId, req, refundAmount, compensationType, adminUserId, adminUserName } = params;
 
-  // ── 1. Generar número ANU- ────────────────────────────────────────────────
+  // ── 1. Generar número ANU- (fuera de la tx, no se puede hacer rollback de numeración) ──
   const cancellationNumber = await generateDocumentNumber(
     "anulacion",
     `cancellations:acceptRequest:${compensationType}`,
     String(adminUserId)
   );
 
-  // Guardar el número ANU en la solicitud
-  await db.update(cancellationRequests)
-    .set({ cancellationNumber })
-    .where(eq(cancellationRequests.id, requestId));
+  // ── 2. Todo lo que afecta a otras tablas: dentro de transacción ACID ───────
+  await db.transaction(async (tx) => {
+    // Guardar el número ANU en la solicitud
+    await tx.update(cancellationRequests)
+      .set({ cancellationNumber })
+      .where(eq(cancellationRequests.id, requestId));
 
-  // ── 2. Cancelar la reserva vinculada ─────────────────────────────────────
-  const reservationId = req.linkedReservationId;
-  if (reservationId) {
-    await db.update(reservations)
-      .set({ status: "cancelled" })
-      .where(eq(reservations.id, reservationId));
-
-    // ── 3. Actualizar estado operativo ──────────────────────────────────────
-    await db.update(reservationOperational)
-      .set({ opStatus: "anulado", updatedBy: adminUserId })
-      .where(eq(reservationOperational.reservationId, reservationId));
-
-    // ── 4. Cerrar expediente REAV si existe ──────────────────────────────────
-    const [reavExp] = await db.select({ id: reavExpedients.id })
-      .from(reavExpedients)
-      .where(eq(reavExpedients.reservationId, reservationId))
-      .limit(1);
-    if (reavExp) {
-      await db.update(reavExpedients)
+    // ── Cancelar la reserva vinculada ─────────────────────────────────────
+    const reservationId = req.linkedReservationId;
+    if (reservationId) {
+      await tx.update(reservations)
         .set({
-          fiscalStatus: "anulado",
-          operativeStatus: "anulado",
-          closedAt: new Date(),
-          internalNotes: `Anulado por expediente ${cancellationNumber} el ${new Date().toLocaleDateString("es-ES")}`,
+          status: "cancelled",
+          statusReservation: "ANULADA",
         })
-        .where(eq(reavExpedients.id, reavExp.id));
+        .where(eq(reservations.id, reservationId));
+
+      // ── Actualizar estado operativo ──────────────────────────────────────
+      await tx.update(reservationOperational)
+        .set({ opStatus: "anulado", updatedBy: adminUserId })
+        .where(eq(reservationOperational.reservationId, reservationId));
+
+      // ── Cerrar expediente REAV si existe ──────────────────────────────────
+      const [reavExp] = await tx.select({ id: reavExpedients.id })
+        .from(reavExpedients)
+        .where(eq(reavExpedients.reservationId, reservationId))
+        .limit(1);
+      if (reavExp) {
+        await tx.update(reavExpedients)
+          .set({
+            fiscalStatus: "anulado",
+            operativeStatus: "anulado",
+            closedAt: new Date(),
+            internalNotes: `Anulado por expediente ${cancellationNumber} el ${new Date().toLocaleDateString("es-ES")}`,
+          })
+          .where(eq(reavExpedients.id, reavExp.id));
+      }
     }
-  }
 
-  // ── 5. Transacción contable de devolución (solo si hay importe a devolver) ─
-  if (compensationType === "devolucion" && refundAmount && refundAmount > 0) {
-    const txNumber = await generateDocumentNumber(
-      "factura",
-      `cancellations:refundTransaction:${requestId}`,
-      String(adminUserId)
-    );
-    // Usamos un prefijo especial para distinguir las transacciones de devolución
-    const refundTxNumber = txNumber.replace("FAC-", "DEV-");
-    await db.insert(transactions).values({
-      transactionNumber: refundTxNumber,
-      type: "reembolso",
-      amount: String(-Math.abs(refundAmount)),
-      currency: "EUR",
-      paymentMethod: "transferencia",
-      status: "completado",
-      description: `Devolución por anulación ${cancellationNumber} — ${req.fullName}`,
-      processedAt: new Date(),
-      clientName: req.fullName,
-      clientEmail: req.email ?? undefined,
-      clientPhone: req.phone ?? undefined,
-      saleChannel: (req.saleChannel as any) ?? "admin",
-      operationStatus: "anulada",
-      reservationId: req.linkedReservationId ?? undefined,
-      invoiceNumber: req.invoiceRef ?? cancellationNumber,
-      sellerUserId: adminUserId,
-      sellerName: adminUserName,
-    } as any);
-  }
+    // ── Transacción contable de devolución (solo si hay importe a devolver) ─
+    if (compensationType === "devolucion" && refundAmount && refundAmount > 0) {
+      const txNumber = await generateDocumentNumber(
+        "factura",
+        `cancellations:refundTransaction:${requestId}`,
+        String(adminUserId)
+      );
+      const refundTxNumber = txNumber.replace("FAC-", "DEV-");
+      await tx.insert(transactions).values({
+        transactionNumber: refundTxNumber,
+        type: "reembolso",
+        amount: String(-Math.abs(refundAmount)),
+        currency: "EUR",
+        paymentMethod: "transferencia",
+        status: "completado",
+        description: `Devolución por anulación ${cancellationNumber} — ${req.fullName}`,
+        processedAt: new Date(),
+        clientName: req.fullName,
+        clientEmail: req.email ?? undefined,
+        clientPhone: req.phone ?? undefined,
+        saleChannel: (req.saleChannel as any) ?? "admin",
+        operationStatus: "anulada",
+        reservationId: req.linkedReservationId ?? undefined,
+        invoiceNumber: req.invoiceRef ?? cancellationNumber,
+        sellerUserId: adminUserId,
+        sellerName: adminUserName,
+      } as any);
+    }
+  });
 
-  // ── 6. Log de propagación ─────────────────────────────────────────────────
+  // ── 3. Log de propagación (fuera de tx — no crítico) ──────────────────────
   await addLog(
     requestId,
     "system_propagation",
     {
       cancellationNumber,
-      reservationCancelled: !!reservationId,
-      reavClosed: !!reservationId,
+      reservationCancelled: !!req.linkedReservationId,
+      reavClosed: !!req.linkedReservationId,
       refundTransactionCreated: compensationType === "devolucion" && !!refundAmount,
     },
     adminUserId,
@@ -864,5 +869,138 @@ export const cancellationsRouter = router({
           reavExpedientNumber: reavExpedient ? reavExpedient.expedientNumber : null,
         },
       };
+    }),
+
+  // ── Crear solicitud manual (admin) ─────────────────────────────────────────
+  createManualRequest: adminProcedure
+    .input(
+      z.object({
+        fullName: z.string().min(2),
+        email: z.string().email().optional(),
+        phone: z.string().optional(),
+        activityDate: z.string().min(1),
+        reason: z.enum(["meteorologicas", "accidente", "enfermedad", "desistimiento", "otra"]),
+        reasonDetail: z.string().optional(),
+        locator: z.string().optional(),
+        adminNotes: z.string().optional(),
+        linkedReservationId: z.number().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const [result] = await db.insert(cancellationRequests).values({
+        fullName: input.fullName,
+        email: input.email,
+        phone: input.phone,
+        activityDate: input.activityDate,
+        reason: input.reason,
+        reasonDetail: input.reasonDetail,
+        termsChecked: true,
+        source: "admin_manual",
+        locator: input.locator,
+        adminNotes: input.adminNotes,
+        operationalStatus: "recibida",
+        resolutionStatus: "sin_resolver",
+        financialStatus: "sin_compensacion",
+        compensationType: "ninguna",
+        linkedReservationId: input.linkedReservationId,
+        assignedUserId: ctx.user.id,
+      });
+      const requestId = (result as { insertId: number }).insertId;
+
+      // Si viene con reserva vinculada, actualizar el FK inverso
+      if (input.linkedReservationId) {
+        await db.update(reservations)
+          .set({ cancellationRequestId: requestId } as any)
+          .where(eq(reservations.id, input.linkedReservationId));
+      }
+
+      await addLog(requestId, "created", {
+        source: "admin_manual",
+        adminUserId: ctx.user.id,
+        linkedReservationId: input.linkedReservationId,
+      }, ctx.user.id, ctx.user.name ?? "Admin");
+
+      await logActivity(
+        "reservation",
+        requestId,
+        "cancellation_request_created_manual",
+        ctx.user.id,
+        ctx.user.name ?? "Admin",
+        { fullName: input.fullName, reason: input.reason, activityDate: input.activityDate }
+      ).catch(() => {});
+
+      return { success: true, requestId };
+    }),
+
+  // ── Vincular solicitud a reserva existente (admin) ──────────────────────────
+  linkToReservation: adminProcedure
+    .input(
+      z.object({
+        requestId: z.number(),
+        reservationId: z.number(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.requestId));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND", message: "Solicitud no encontrada" });
+
+      const [res] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId));
+      if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+
+      // Desvincula la solicitud anterior de la reserva (si la hubiera)
+      if (req.linkedReservationId && req.linkedReservationId !== input.reservationId) {
+        await db.update(reservations)
+          .set({ cancellationRequestId: null } as any)
+          .where(eq(reservations.id, req.linkedReservationId));
+      }
+
+      await db.update(cancellationRequests)
+        .set({ linkedReservationId: input.reservationId, locator: (res as any).reservationNumber ?? req.locator })
+        .where(eq(cancellationRequests.id, input.requestId));
+
+      await db.update(reservations)
+        .set({ cancellationRequestId: input.requestId } as any)
+        .where(eq(reservations.id, input.reservationId));
+
+      await addLog(
+        input.requestId, "linked_reservation",
+        { reservationId: input.reservationId, reservationNumber: (res as any).reservationNumber },
+        ctx.user.id, ctx.user.name ?? "Admin"
+      );
+
+      return { success: true };
+    }),
+
+  // ── Buscar reservas para vinculación (admin) ─────────────────────────────────
+  searchReservations: adminProcedure
+    .input(z.object({ query: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const q = `%${input.query}%`;
+      const rows = await db
+        .select({
+          id: reservations.id,
+          reservationNumber: reservations.reservationNumber,
+          customerName: reservations.customerName,
+          customerEmail: reservations.customerEmail,
+          productName: reservations.productName,
+          bookingDate: reservations.bookingDate,
+          status: reservations.status,
+          cancellationRequestId: sql<number | null>`${reservations.cancellationRequestId}`,
+        })
+        .from(reservations)
+        .where(
+          and(
+            sql`${reservations.status} != 'cancelled'`,
+            or(
+              like(reservations.reservationNumber, q),
+              like(reservations.customerName, q),
+              like(reservations.customerEmail, q),
+              like(reservations.merchantOrder, q),
+            )
+          )
+        )
+        .orderBy(desc(reservations.createdAt))
+        .limit(10);
+      return rows;
     }),
 });

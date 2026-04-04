@@ -529,6 +529,8 @@ export const reservations = mysqlTable("reservations", {
   reavExpedientId: int("reav_expedient_id"),
   // Número de referencia interna (RES-2026-XXXX)
   reservationNumber: varchar("reservation_number", { length: 32 }).unique(),
+  // Anulación vinculada (FK → cancellation_requests.id)
+  cancellationRequestId: int("cancellation_request_id"),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────

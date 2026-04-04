@@ -295,6 +295,10 @@ export default function AdminDashboard() {
     { operationalStatus: "recibida", limit: 5, offset: 0 },
     { enabled: isAuthenticated, staleTime: 2 * 60 * 1000 }
   );
+  const { data: anulCountersDash } = trpc.cancellations.getCounters.useQuery(undefined, {
+    enabled: isAuthenticated,
+    staleTime: 2 * 60 * 1000,
+  });
 
   const { data: ticketingStats } = trpc.ticketing.getDashboardStats.useQuery(undefined, {
     enabled: isAuthenticated,
@@ -347,7 +351,7 @@ export default function AdminDashboard() {
   const funnel = overview?.funnel;
   const alerts = overview?.pendingAlerts;
 
-  const cancellacionesPendientes = cancellationsData?.kpis?.recibidas ?? 0;
+  const cancellacionesPendientes = anulCountersDash?.pending ?? cancellationsData?.kpis?.recibidas ?? 0;
   const ticketingIncidencias = ticketingStats?.incidencias ?? 0;
   const ticketingPendientes = ticketingStats?.pendientes ?? 0;
   const ticketingRecibidos = ticketingStats?.recibidos ?? 0;
@@ -360,6 +364,7 @@ export default function AdminDashboard() {
     (alerts?.quotesExpiringSoon ?? 0) +
     (alerts?.invoicesOverdue ?? 0) +
     cancellacionesPendientes +
+    (anulCountersDash?.incidencias ?? 0) +
     ticketingIncidencias +
     (ticketingRecibidos > 0 ? 1 : 0) +
     (leadsAging > 0 ? 1 : 0);
@@ -451,8 +456,10 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-amber-500/15 transition-colors">
                       <XCircle className="w-4 h-4 text-amber-400 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-amber-300">{cancellacionesPendientes} anulación{cancellacionesPendientes > 1 ? "es" : ""} sin revisar</p>
-                        <p className="text-[10px] text-amber-400/60">Operaciones → Anulaciones</p>
+                        <p className="text-xs font-semibold text-amber-300">{cancellacionesPendientes} anulación{cancellacionesPendientes > 1 ? "es" : ""} pendiente{cancellacionesPendientes > 1 ? "s" : ""}</p>
+                        <p className="text-[10px] text-amber-400/60">
+                          {anulCountersDash?.incidencias ? `${anulCountersDash.incidencias} incidencia${anulCountersDash.incidencias > 1 ? "s" : ""} · ` : ""}Operaciones → Anulaciones
+                        </p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     </div>

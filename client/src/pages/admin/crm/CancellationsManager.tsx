@@ -30,7 +30,10 @@ import {
   Gift,
   AlertCircle,
   Archive,
+  Plus,
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
 
@@ -120,6 +123,137 @@ function KpiCard({ label, value, sub, color }: { label: string; value: number; s
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Modal Nueva Solicitud Manual ────────────────────────────────────────────
+function NewRequestModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [activityDate, setActivityDate] = useState("");
+  const [reason, setReason] = useState<string>("otra");
+  const [reasonDetail, setReasonDetail] = useState("");
+  const [locator, setLocator] = useState("");
+  const [adminNotes, setAdminNotes] = useState("");
+
+  const createMutation = trpc.cancellations.createManualRequest.useMutation({
+    onSuccess: () => {
+      toast.success("Solicitud creada correctamente");
+      onCreated();
+      onClose();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleSubmit = () => {
+    if (!fullName.trim()) return toast.error("El nombre es obligatorio");
+    if (!activityDate.trim()) return toast.error("La fecha de actividad es obligatoria");
+    createMutation.mutate({
+      fullName: fullName.trim(),
+      email: email.trim() || undefined,
+      phone: phone.trim() || undefined,
+      activityDate: activityDate.trim(),
+      reason: reason as "meteorologicas" | "accidente" | "enfermedad" | "desistimiento" | "otra",
+      reasonDetail: reasonDetail.trim() || undefined,
+      locator: locator.trim() || undefined,
+      adminNotes: adminNotes.trim() || undefined,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#111] border border-white/10 rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-white font-semibold text-lg flex items-center gap-2">
+            <Plus className="w-5 h-5 text-orange-400" />
+            Nueva solicitud manual
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-gray-300 text-sm">Nombre completo *</Label>
+              <Input value={fullName} onChange={(e) => setFullName(e.target.value)}
+                placeholder="Juan García López"
+                className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-gray-300 text-sm">Fecha de actividad *</Label>
+              <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)}
+                className="bg-[#1a1a1a] border-white/10 text-white" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-gray-300 text-sm">Email</Label>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="cliente@email.com" type="email"
+                className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-gray-300 text-sm">Teléfono</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)}
+                placeholder="+34 600 000 000"
+                className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-gray-300 text-sm">Localizador / Nº reserva</Label>
+            <Input value={locator} onChange={(e) => setLocator(e.target.value)}
+              placeholder="RES-2026-0001"
+              className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-gray-300 text-sm">Motivo</Label>
+            <Select value={reason} onValueChange={setReason}>
+              <SelectTrigger className="bg-[#1a1a1a] border-white/10 text-gray-300">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="meteorologicas">Meteorológicas</SelectItem>
+                <SelectItem value="accidente">Accidente</SelectItem>
+                <SelectItem value="enfermedad">Enfermedad</SelectItem>
+                <SelectItem value="desistimiento">Desistimiento</SelectItem>
+                <SelectItem value="otra">Otra</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-gray-300 text-sm">Detalle del motivo</Label>
+            <Textarea value={reasonDetail} onChange={(e) => setReasonDetail(e.target.value)}
+              placeholder="Descripción adicional..."
+              className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600 min-h-[80px]" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-gray-300 text-sm">Notas internas (admin)</Label>
+            <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)}
+              placeholder="Anotaciones internas..."
+              className="bg-[#1a1a1a] border-white/10 text-white placeholder:text-gray-600 min-h-[60px]" />
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <Button variant="outline" className="flex-1 border-white/10 text-gray-400" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+            onClick={handleSubmit}
+            disabled={createMutation.isPending}
+          >
+            {createMutation.isPending ? "Creando..." : "Crear solicitud"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function CancellationsManager() {
   const [search, setSearch] = useState("");
   const [opFilter, setOpFilter] = useState("all");
@@ -128,6 +262,7 @@ export default function CancellationsManager() {
   const [reasonFilter, setReasonFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [showNewModal, setShowNewModal] = useState(false);
 
   const utils = trpc.useUtils();
 
@@ -178,11 +313,20 @@ export default function CancellationsManager() {
             Actualizar
           </Button>
           <Button
+            variant="outline"
             size="sm"
             onClick={() => window.open("/solicitar-anulacion", "_blank")}
-            className="gap-1.5 bg-orange-500 hover:bg-orange-600 text-white"
+            className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
           >
             Ver formulario público
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setShowNewModal(true)}
+            className="gap-1.5 bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva solicitud
           </Button>
         </div>
       </div>
@@ -375,6 +519,16 @@ export default function CancellationsManager() {
           </div>
         )}
       </div>
+
+      {/* Modal nueva solicitud manual */}
+      {showNewModal && (
+        <NewRequestModal
+          onClose={() => setShowNewModal(false)}
+          onCreated={() => {
+            utils.cancellations.listRequests.invalidate();
+          }}
+        />
+      )}
 
       {/* Modal de detalle */}
       {selectedId !== null && (

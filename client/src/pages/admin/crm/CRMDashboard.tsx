@@ -3212,6 +3212,15 @@ function ReservationDetailModal({
 
         <div className="space-y-5 mt-4">
           {/* Estado, método de pago y canal */}
+          {res.cancellationRequestId && (
+            <div className="mb-3 flex items-center gap-2 bg-orange-500/10 border border-orange-500/30 rounded-xl px-4 py-2.5">
+              <span className="text-orange-400 text-sm">⚠️</span>
+              <div>
+                <p className="text-orange-400 text-xs font-bold">Solicitud de anulación vinculada</p>
+                <p className="text-orange-300/70 text-xs">Expediente #{res.cancellationRequestId}</p>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-3 flex-wrap">
             {getStatusBadge(res.status)}
             {getPaymentBadge(res.paymentMethod)}
@@ -4659,6 +4668,11 @@ export default function CRMDashboard() {
                              res.status === "pending_payment" ? "⏳ Pendiente" :
                              res.status === "cancelled" ? "❌ Cancelada" : res.status}
                           </span>
+                        )}
+                        {res.cancellationRequestId && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center text-[9px] font-bold text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded">⚠️ ANULACIÓN #{res.cancellationRequestId}</span>
+                          </div>
                         )}
                         {res.dateModified && (
                           <div className="mt-1">

@@ -9,11 +9,12 @@ import {
   Clock, CheckCircle2, XCircle, FileQuestion, AlertTriangle,
   Archive, Banknote, Gift, Plus,
   ChevronDown, ChevronUp, CloudLightning, HeartPulse, Car, HelpCircle,
+  Link, Search,
 } from "lucide-react";
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type ActionPanel = "none" | "rechazar" | "aceptar_total" | "aceptar_parcial" | "solicitar_docs" | "incidencia" | "cerrar" | "nota";
+type ActionPanel = "none" | "rechazar" | "aceptar_total" | "aceptar_parcial" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const REASON_LABELS: Record<string, string> = {
@@ -177,6 +178,8 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
   const [incidenceEconomic, setIncidenceEconomic] = useState(false);
   const [closeNote, setCloseNote] = useState("");
   const [internalNote, setInternalNote] = useState("");
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkSearchQuery, setLinkSearchQuery] = useState("");
 
   const { data, isLoading } = trpc.cancellations.getRequest.useQuery({ id: requestId });
 
@@ -211,6 +214,16 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
     onSuccess: () => { toast.success("Nota guardada"); setInternalNote(""); setActivePanel("none"); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
+
+  const linkMut = trpc.cancellations.linkToReservation.useMutation({
+    onSuccess: () => { toast.success("Reserva vinculada"); setActivePanel("none"); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const { data: searchResults } = trpc.cancellations.searchReservations.useQuery(
+    { query: linkSearchQuery },
+    { enabled: linkSearchQuery.length >= 2 }
+  );
 
   const statusMut = trpc.cancellations.updateOperationalStatus.useMutation({
     onSuccess: () => { toast.success("Estado actualizado"); invalidate(); },
@@ -418,6 +431,7 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
               <ActionButton label="Incidencia" icon={<AlertTriangle className="w-4 h-4" />} color="orange" active={activePanel === "incidencia"} onClick={() => togglePanel("incidencia")} />
               <ActionButton label="Nota interna" icon={<Plus className="w-4 h-4" />} color="purple" active={activePanel === "nota"} onClick={() => togglePanel("nota")} />
               <ActionButton label="Cerrar" icon={<Archive className="w-4 h-4" />} color="gray" active={activePanel === "cerrar"} onClick={() => togglePanel("cerrar")} />
+              <ActionButton label="Vincular reserva" icon={<Link className="w-4 h-4" />} color="blue" active={activePanel === "vincular"} onClick={() => togglePanel("vincular")} />
             </div>
 
             {/* ── Panel: Rechazar ── */}
@@ -655,6 +669,61 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
                 >
                   {closeMut.isPending ? "Cerrando..." : "Cerrar expediente"}
                 </Button>
+              </ActionPanelWrapper>
+            )}
+
+            {/* ── Panel: Vincular reserva ── */}
+            {activePanel === "vincular" && (
+              <ActionPanelWrapper title="Vincular a reserva del CRM" color="blue">
+                {req.linkedReservationId && (
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-2">
+                    <p className="text-xs text-blue-300 font-medium">Reserva actualmente vinculada</p>
+                    <p className="text-blue-400 text-sm font-mono mt-0.5">ID #{req.linkedReservationId}</p>
+                  </div>
+                )}
+                <p className="text-xs text-gray-500">Busca por número de reserva, nombre del cliente o email.</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={linkSearch}
+                    onChange={(e) => setLinkSearch(e.target.value)}
+                    placeholder="RES-2026-0001 o nombre..."
+                    className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 flex-1"
+                    onKeyDown={(e) => { if (e.key === "Enter") setLinkSearchQuery(linkSearch); }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="border-white/10 text-gray-400 hover:text-white"
+                    onClick={() => setLinkSearchQuery(linkSearch)}
+                  >
+                    <Search className="w-4 h-4" />
+                  </Button>
+                </div>
+                {searchResults && searchResults.length > 0 && (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {searchResults.map((r) => (
+                      <button
+                        key={r.id}
+                        onClick={() => linkMut.mutate({ requestId: req.id, reservationId: r.id })}
+                        disabled={linkMut.isPending}
+                        className="w-full text-left px-3 py-2.5 rounded-lg border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/5 transition-all"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-white text-xs font-mono font-medium">{r.reservationNumber ?? `#${r.id}`}</span>
+                          {r.cancellationRequestId && r.cancellationRequestId !== req.id && (
+                            <span className="text-xs text-orange-400 border border-orange-500/30 rounded px-1.5 py-0.5">Ya vinculada</span>
+                          )}
+                          <span className={`text-xs px-1.5 py-0.5 rounded border ${r.status === 'paid' ? 'text-green-400 border-green-500/20' : 'text-gray-400 border-white/10'}`}>{r.status}</span>
+                        </div>
+                        <p className="text-gray-300 text-xs mt-0.5">{r.customerName}</p>
+                        <p className="text-gray-500 text-xs">{r.productName} · {r.bookingDate}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {searchResults && searchResults.length === 0 && linkSearchQuery && (
+                  <p className="text-gray-500 text-xs text-center py-2">Sin resultados para "{linkSearchQuery}"</p>
+                )}
               </ActionPanelWrapper>
             )}
           </section>
