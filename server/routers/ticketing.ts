@@ -24,7 +24,7 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
-import { postConfirmOperation, logActivity } from "../db";
+import { postConfirmOperation, logActivity, generateReservationNumber } from "../db";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -709,6 +709,7 @@ export const ticketingRouter = router({
       const now = Date.now();
       const providerTag = input.providerTag ?? item.provider;
       const couponNotes = `Canje cupón ${providerTag} — Código: ${item.couponCode} — Producto: ${resolvedProductName}${input.notes ? ` — ${input.notes}` : ""}`;
+      const reservationNumber = await generateReservationNumber();
       const [resResult] = await db.insert(reservations).values({
         productId: resolvedExperienceId ?? 0,
         productName: resolvedProductName,
@@ -724,6 +725,7 @@ export const ticketingRouter = router({
         platformName: providerTag ?? null,
         redemptionId: item.id,
         merchantOrder,
+        reservationNumber,
         notes: couponNotes,
         customerName: item.customerName,
         customerEmail: item.email,
@@ -986,6 +988,7 @@ export const ticketingRouter = router({
         const merchantOrder = `TKT-${Date.now()}`;
         const now = Date.now();
         const couponNotes = `Canje cupón ${item.provider} — Código: ${item.couponCode} — Producto: ${resolvedProductName}${input.notes ? ` — ${input.notes}` : ""}`;
+        const reservationNumber = await generateReservationNumber();
         const [resResult] = await db.insert(reservations).values({
           productId: resolvedExperienceId ?? 0,
           productName: resolvedProductName,
@@ -1001,6 +1004,7 @@ export const ticketingRouter = router({
           platformName: item.provider ?? null,
           redemptionId: item.id,
           merchantOrder,
+          reservationNumber,
           notes: couponNotes,
           customerName: item.customerName,
           customerEmail: item.email,
