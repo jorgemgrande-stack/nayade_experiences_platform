@@ -2817,12 +2817,15 @@ export const crmRouter = router({
         const updateData: Record<string, unknown> = { updatedAt: now, changesLog: [...existingLog, logEntry] };
         if (input.statusReservation !== undefined) updateData.statusReservation = input.statusReservation;
         if (input.statusPayment !== undefined) updateData.statusPayment = input.statusPayment;
-        // Si se anula la reserva, sincronizar con status legacy
-        if (input.statusReservation === "ANULADA") updateData.status = "cancelled";
-        // Si se paga, sincronizar con status legacy y statusPayment
-        if (input.statusPayment === "PAGADO") {
+        // Sincronizar status legacy según los estados nuevos
+        if (input.statusReservation === "ANULADA") {
+          updateData.status = "cancelled";
+        } else if (input.statusPayment === "PAGADO") {
           updateData.status = "paid";
           updateData.paidAt = now;
+        } else if (input.statusPayment !== undefined && input.statusPayment !== "PAGADO") {
+          // Si el pago retrocede desde pagado, liberar el status legacy para permitir borrado
+          updateData.status = "pending_payment";
         }
         await db.update(reservations).set(updateData).where(eq(reservations.id, input.id));
         await db.insert(crmActivityLog).values({
