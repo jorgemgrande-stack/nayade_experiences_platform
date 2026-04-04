@@ -1173,6 +1173,108 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
   );
 }
 
+// ─── LIQUIDACIÓN CARD (acordeón) ─────────────────────────────────────────────
+function SettlementCard({ s }: { s: {
+  id: number; platformId: number; platformName?: string | null; periodLabel: string;
+  periodFrom?: string | null; periodTo?: string | null; totalCoupons: number;
+  totalAmount: string | null; netTotal?: string | null; status: string;
+  invoiceRef?: string | null; notes?: string | null; emittedAt?: Date | null; paidAt?: Date | null;
+}}) {
+  const [open, setOpen] = React.useState(false);
+  const couponsQuery = trpc.ticketing.getSettlementCoupons.useQuery(
+    { settlementId: s.id },
+    { enabled: open }
+  );
+  const coupons = couponsQuery.data ?? [];
+
+  const statusBadge = s.status === "pagada"
+    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-emerald-500/15 text-emerald-400 border-emerald-500/30"><CheckCircle className="w-3 h-3" /> Pagada</span>
+    : s.status === "emitida"
+    ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-blue-500/15 text-blue-400 border-blue-500/30"><Zap className="w-3 h-3" /> Emitida</span>
+    : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/15 text-amber-400 border-amber-500/30"><Clock className="w-3 h-3" /> Pendiente</span>;
+
+  return (
+    <div className="rounded-xl border border-white/8 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
+      {/* Cabecera siempre visible */}
+      <button
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-white/4 transition-colors text-left"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-violet-500/15 flex items-center justify-center shrink-0">
+            <Banknote className="w-4 h-4 text-violet-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-white font-semibold text-sm truncate">
+              {s.platformName ?? `Plataforma #${s.platformId}`}
+              <span className="ml-2 text-white/30 font-normal">·</span>
+              <span className="ml-2 text-white/50 font-normal">{s.periodLabel}</span>
+            </p>
+            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+              <span className="text-xs text-white/40">{s.totalCoupons} cupón{s.totalCoupons !== 1 ? "es" : ""}</span>
+              <span className="text-xs font-semibold text-white/70">PVP: {s.totalAmount} €</span>
+              {s.netTotal && <span className="text-xs font-semibold text-blue-400">Neto: {s.netTotal} €</span>}
+              {s.invoiceRef && <span className="text-xs text-white/30">Ref: {s.invoiceRef}</span>}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0 ml-4">
+          {statusBadge}
+          <ChevronRight className={`w-4 h-4 text-white/30 transition-transform ${open ? "rotate-90" : ""}`} />
+        </div>
+      </button>
+
+      {/* Detalle expandido */}
+      {open && (
+        <div className="border-t border-white/5 px-5 pb-4 pt-3">
+          {couponsQuery.isPending ? (
+            <p className="text-white/30 text-sm py-4 text-center">Cargando cupones...</p>
+          ) : coupons.length === 0 ? (
+            <p className="text-white/30 text-sm py-4 text-center">No hay cupones vinculados a esta liquidación.</p>
+          ) : (
+            <div className="space-y-1">
+              {/* Cabecera columnas */}
+              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 px-3 pb-1 text-[10px] uppercase tracking-wider text-white/30 font-semibold">
+                <span>Cliente</span>
+                <span>Código cupón</span>
+                <span>Fecha canje</span>
+                <span className="text-right">PVP</span>
+                <span className="text-right">Neto</span>
+              </div>
+              {coupons.map((c) => (
+                <div key={c.id} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center px-3 py-2 rounded-lg hover:bg-white/4 transition-colors">
+                  <span className="text-sm text-white truncate">{c.customerName}</span>
+                  <span className="text-sm font-mono text-violet-300">{c.couponCode}</span>
+                  <span className="text-xs text-white/50 whitespace-nowrap">
+                    {c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                  </span>
+                  <span className="text-xs text-white/70 text-right whitespace-nowrap">{c.pvpPrice ? `${c.pvpPrice} €` : "—"}</span>
+                  <span className="text-xs text-blue-400 text-right whitespace-nowrap">{c.netPrice ? `${c.netPrice} €` : "—"}</span>
+                </div>
+              ))}
+              {/* Totales */}
+              <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center px-3 pt-2 mt-1 border-t border-white/5">
+                <span className="text-xs font-semibold text-white/50 col-span-3">Total ({coupons.length} cupones)</span>
+                <span className="text-xs font-bold text-white text-right">{s.totalAmount} €</span>
+                <span className="text-xs font-bold text-blue-400 text-right">{s.netTotal ?? "—"} €</span>
+              </div>
+            </div>
+          )}
+          {s.notes && (
+            <p className="mt-3 text-xs text-white/30 italic border-t border-white/5 pt-3">{s.notes}</p>
+          )}
+          {(s.paidAt || s.emittedAt) && (
+            <div className="mt-3 flex gap-4 text-xs text-white/30 border-t border-white/5 pt-3">
+              {s.emittedAt && <span>Emitida: {new Date(s.emittedAt).toLocaleDateString("es-ES")}</span>}
+              {s.paidAt && <span>Pagada: {new Date(s.paidAt).toLocaleDateString("es-ES")}</span>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── LIQUIDACIONES TAB ────────────────────────────────────────────────────────
 function LiquidacionesTab() {
   const settlementsQuery = trpc.ticketing.listSettlements.useQuery({});
@@ -1193,41 +1295,8 @@ function LiquidacionesTab() {
           No hay liquidaciones registradas. Crea plataformas y genera liquidaciones desde el módulo de Plataformas.
         </div>
       ) : (
-        <div className="rounded-xl border border-white/5 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/5 bg-white/3">
-                {["Plataforma", "Periodo", "Cupones", "Importe", "Estado"].map((h, i) => (
-                  <th key={i} className="text-left px-4 py-3 text-white/40 font-medium text-xs">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {settlements.map((s) => (
-                <tr key={s.id} className="border-b border-white/5 hover:bg-white/3">
-                  <td className="px-4 py-3 text-white font-medium">{s.platformName ?? `Plataforma #${s.platformId}`}</td>
-                  <td className="px-4 py-3 text-white/60">{s.periodLabel}</td>
-                  <td className="px-4 py-3 text-white">{s.totalCoupons}</td>
-                  <td className="px-4 py-3 text-white font-medium">{s.totalAmount} €</td>
-                  <td className="px-4 py-3">
-                    {s.status === "pagada" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
-                        <CheckCircle className="w-3 h-3" /> Pagada
-                      </span>
-                    ) : s.status === "emitida" ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-blue-500/15 text-blue-400 border-blue-500/30">
-                        <Zap className="w-3 h-3" /> Emitida
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/15 text-amber-400 border-amber-500/30">
-                        <Clock className="w-3 h-3" /> Pendiente
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-2">
+          {settlements.map((s) => <SettlementCard key={s.id} s={s} />)}
         </div>
       )}
     </div>

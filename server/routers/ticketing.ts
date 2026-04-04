@@ -1360,6 +1360,33 @@ export const ticketingRouter = router({
       return rows;
     }),
 
+  /** Devuelve los cupones individuales incluidos en una liquidación */
+  getSettlementCoupons: adminProc
+    .input(z.object({ settlementId: z.number() }))
+    .query(async ({ input }) => {
+      const [settlement] = await db
+        .select({ couponIds: platformSettlements.couponIds })
+        .from(platformSettlements)
+        .where(eq(platformSettlements.id, input.settlementId))
+        .limit(1);
+      if (!settlement?.couponIds?.length) return [];
+      const rows = await db
+        .select({
+          id: couponRedemptions.id,
+          couponCode: couponRedemptions.couponCode,
+          customerName: couponRedemptions.customerName,
+          provider: couponRedemptions.provider,
+          settledAt: couponRedemptions.settledAt,
+          netPrice: platformProducts.netPrice,
+          pvpPrice: platformProducts.pvpPrice,
+          productName: platformProducts.externalProductName,
+        })
+        .from(couponRedemptions)
+        .leftJoin(platformProducts, eq(couponRedemptions.platformProductId, platformProducts.id))
+        .where(inArray(couponRedemptions.id, settlement.couponIds));
+      return rows;
+    }),
+
   /** Genera una liquidación agrupando los cupones canjeados del periodo que aún no tienen liquidación */
   generateSettlement: adminProc
     .input(z.object({
