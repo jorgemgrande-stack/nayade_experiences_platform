@@ -501,7 +501,11 @@ export default function CuponesManager() {
     onError: (e) => toast.error(e.message),
   });
   const markAsRedeemedMutation = trpc.ticketing.markAsRedeemed.useMutation({
-    onSuccess: () => { toast.success("Cupón marcado como canjeado"); setRedeemCoupon(null); invalidate(); },
+    onSuccess: (res) => {
+      toast.success(res.reservationId ? "Cupón canjeado y reserva creada en el CRM" : "Cupón marcado como canjeado");
+      setRedeemCoupon(null);
+      invalidate();
+    },
     onError: (e) => toast.error(e.message),
   });
   const deleteRedemptionMutation = trpc.ticketing.deleteRedemption.useMutation({
@@ -854,7 +858,7 @@ export default function CuponesManager() {
         <RedeemModal
           coupon={redeemCoupon}
           onClose={() => setRedeemCoupon(null)}
-          onConfirm={(data) => markAsRedeemedMutation.mutate({ id: redeemCoupon.id, ...data })}
+          onConfirm={(data) => markAsRedeemedMutation.mutate({ id: redeemCoupon.id, ...data, participants: data.participants ?? 1 })}
           isPending={markAsRedeemedMutation.isPending}
         />
       )}
@@ -1000,12 +1004,25 @@ export default function CuponesManager() {
 function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
   coupon: Coupon;
   onClose: () => void;
-  onConfirm: (data: { notes?: string; justificantBase64?: string; justificantFileName?: string; justificantMimeType?: string }) => void;
+  onConfirm: (data: { notes?: string; justificantBase64?: string; justificantFileName?: string; justificantMimeType?: string; platformProductId?: number; reservationDate?: string; participants: number }) => void;
   isPending: boolean;
 }) {
   const [notes, setNotes] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [filePreview, setFilePreview] = React.useState<string | null>(null);
+  const [reservationDate, setReservationDate] = React.useState(coupon.requestedDate ?? "");
+  const [participants, setParticipants] = React.useState(coupon.participants ?? 1);
+  const [selectedPlatformId, setSelectedPlatformId] = React.useState<number | undefined>();
+  const [platformProductId, setPlatformProductId] = React.useState<number | undefined>();
+
+  const platformsQuery = trpc.ticketing.listPlatforms.useQuery();
+  const platforms = platformsQuery.data ?? [];
+  const productsQuery = trpc.ticketing.listPlatformProducts.useQuery(
+    { platformId: selectedPlatformId! },
+    { enabled: !!selectedPlatformId }
+  );
+  const products = (productsQuery.data ?? []).filter((p: { active: boolean }) => p.active);
+  const selectedProduct = products.find((p: { id: number }) => p.id === platformProductId);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -1021,26 +1038,22 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
   };
 
   const handleConfirm = async () => {
+    const base = { notes: notes || undefined, platformProductId, reservationDate: reservationDate || undefined, participants };
     if (file) {
       const reader = new FileReader();
       reader.onload = (ev) => {
         const base64 = (ev.target?.result as string).split(",")[1];
-        onConfirm({
-          notes: notes || undefined,
-          justificantBase64: base64,
-          justificantFileName: file.name,
-          justificantMimeType: file.type,
-        });
+        onConfirm({ ...base, justificantBase64: base64, justificantFileName: file.name, justificantMimeType: file.type });
       };
       reader.readAsDataURL(file);
     } else {
-      onConfirm({ notes: notes || undefined });
+      onConfirm(base);
     }
   };
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
+      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BadgeCheck className="w-5 h-5 text-emerald-400" />
@@ -1049,33 +1062,96 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
         </DialogHeader>
         <div className="space-y-4">
           <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
-            El cupón pasará a estado <strong>Canjeado</strong> y quedará listo para incluir en la próxima liquidación.
+            El cupón pasará a <strong>Canjeado</strong> y se creará automáticamente una reserva en el CRM.
           </div>
           <div className="p-3 rounded-lg bg-white/5 text-sm space-y-1">
             <p className="text-white/60">Cliente: <span className="text-white">{coupon.customerName}</span></p>
-            <p className="text-white/60">Cupón: <code className="text-violet-300">{coupon.couponCode}</code></p>
-            <p className="text-white/60">Proveedor: <span className="text-white">{coupon.provider}</span></p>
+            <p className="text-white/60">Cupón: <code className="text-violet-300">{coupon.couponCode}</code> · <ProviderBadge provider={coupon.provider} /></p>
           </div>
 
-          {/* Subida de comprobante */}
+          {/* Plataforma */}
           <div>
-            <Label className="text-white/70 text-sm mb-2 block">Comprobante de canje (PDF o imagen)</Label>
-            <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed border-white/10 hover:border-emerald-500/40 cursor-pointer transition-colors bg-white/3 hover:bg-emerald-500/5">
-              <Upload className="w-6 h-6 text-white/30" />
+            <Label className="text-white/70 text-sm">Plataforma *</Label>
+            <Select value={selectedPlatformId?.toString() ?? ""} onValueChange={(v) => { setSelectedPlatformId(parseInt(v)); setPlatformProductId(undefined); }}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+                <SelectValue placeholder="Selecciona la plataforma del cupón" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1a1a2e] border-white/10">
+                {platforms.map((pl: { id: number; name: string }) => (
+                  <SelectItem key={pl.id} value={pl.id.toString()}>{pl.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Producto */}
+          {selectedPlatformId && (
+            <div>
+              <Label className="text-white/70 text-sm">Producto *</Label>
+              {productsQuery.isPending ? (
+                <p className="text-white/40 text-sm mt-2">Cargando...</p>
+              ) : products.length === 0 ? (
+                <p className="text-amber-400 text-sm mt-2">No hay productos activos. Configúralos en Plataformas.</p>
+              ) : (
+                <Select value={platformProductId?.toString() ?? ""} onValueChange={(v) => setPlatformProductId(parseInt(v))}>
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+                    <SelectValue placeholder="Selecciona el producto" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                    {products.map((p: { id: number; externalProductName?: string | null; pvpPrice?: string | null }) => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        {p.externalProductName ?? `Producto #${p.id}`}
+                        {p.pvpPrice && <span className="ml-2 text-white/40 text-xs">PVP: {p.pvpPrice}€</span>}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          )}
+
+          {selectedProduct && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
+                <p className="text-xs text-white/40 mb-0.5">PVP</p>
+                <p className="text-emerald-400 font-bold">{selectedProduct.pvpPrice ?? "—"}€</p>
+              </div>
+              <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-center">
+                <p className="text-xs text-white/40 mb-0.5">Precio neto</p>
+                <p className="text-blue-400 font-bold">{selectedProduct.netPrice ?? "—"}€</p>
+              </div>
+            </div>
+          )}
+
+          {/* Fecha y participantes */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-white/70 text-sm">Fecha de reserva *</Label>
+              <Input type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)}
+                className="bg-white/5 border-white/10 text-white mt-1" />
+            </div>
+            <div>
+              <Label className="text-white/70 text-sm">Participantes</Label>
+              <Input type="number" min={1} value={participants} onChange={(e) => setParticipants(parseInt(e.target.value) || 1)}
+                className="bg-white/5 border-white/10 text-white mt-1" />
+            </div>
+          </div>
+
+          {/* Comprobante */}
+          <div>
+            <Label className="text-white/70 text-sm mb-2 block">Comprobante de canje (opcional)</Label>
+            <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed border-white/10 hover:border-emerald-500/40 cursor-pointer transition-colors bg-white/3">
+              <Upload className="w-5 h-5 text-white/30" />
               <span className="text-xs text-white/40">{file ? file.name : "Arrastra o haz clic para subir"}</span>
               <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleFileChange} />
             </label>
             {file && (
               <div className="mt-2 flex items-center justify-between p-2 rounded-lg bg-white/5 text-xs">
                 <span className="text-white/70 truncate">{file.name}</span>
-                <button onClick={() => { setFile(null); setFilePreview(null); }} className="text-white/30 hover:text-red-400 ml-2">
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                <button onClick={() => { setFile(null); setFilePreview(null); }} className="text-white/30 hover:text-red-400 ml-2"><X className="w-3.5 h-3.5" /></button>
               </div>
             )}
-            {filePreview && (
-              <img src={filePreview} alt="Preview" className="mt-2 rounded-lg max-h-32 object-contain w-full" />
-            )}
+            {filePreview && <img src={filePreview} alt="Preview" className="mt-2 rounded-lg max-h-32 object-contain w-full" />}
           </div>
 
           <div>
@@ -1087,9 +1163,9 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
         <DialogFooter>
           <Button variant="outline" onClick={onClose} className="border-white/10 text-white/70">Cancelar</Button>
           <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            disabled={isPending}
+            disabled={isPending || !reservationDate || !platformProductId}
             onClick={handleConfirm}>
-            {isPending ? "Guardando..." : "✅ Confirmar canje"}
+            {isPending ? "Guardando..." : "✅ Confirmar canje y crear reserva"}
           </Button>
         </DialogFooter>
       </DialogContent>
