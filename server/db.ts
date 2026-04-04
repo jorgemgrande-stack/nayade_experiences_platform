@@ -1951,26 +1951,27 @@ export async function upsertClientFromReservation({
   const db = await getDb();
   if (!db) return;
   try {
-    await db.insert(clients).values({
-      leadId: leadId ?? null,
-      source,
-      name,
-      email,
-      phone: phone ?? "",
-      company: "",
-      tags: [],
-      isConverted: false,
-      totalBookings: 0,
-    }).onDuplicateKeyUpdate({
-      set: {
-        // Actualizar leadId si se proporciona uno nuevo
+    const [existing] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).where(eq(clients.email, email)).limit(1);
+    if (existing) {
+      await db.update(clients).set({
         ...(leadId ? { leadId } : {}),
-        // Actualizar nombre/teléfono solo si el campo está vacío en el cliente existente
-        name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${name}, ${clients.name})`,
-        phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${phone ?? ''}, ${clients.phone})`,
+        name: existing.name?.trim() ? existing.name : name,
+        phone: existing.phone?.trim() ? existing.phone : (phone ?? ""),
         updatedAt: new Date(),
-      },
-    });
+      }).where(eq(clients.id, existing.id));
+    } else {
+      await db.insert(clients).values({
+        leadId: leadId ?? null,
+        source,
+        name,
+        email,
+        phone: phone ?? "",
+        company: "",
+        tags: [],
+        isConverted: false,
+        totalBookings: 0,
+      });
+    }
   } catch (e) {
     console.warn("[upsertClientFromReservation] No se pudo crear/vincular cliente:", e);
   }
