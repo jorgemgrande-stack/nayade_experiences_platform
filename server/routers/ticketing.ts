@@ -414,24 +414,18 @@ export const ticketingRouter = router({
       }
 
       if (validResults.length > 0) {
-        // Upsert cliente en CRM (mismo patrón que createLead)
+        // Upsert cliente en CRM — SELECT + INSERT/UPDATE para evitar bug con onDuplicateKeyUpdate
         try {
-          await db.insert(clients).values({
-            source: "cupon",
-            name: input.customerName,
-            email: input.email,
-            phone: input.phone ?? "",
-            company: "",
-            tags: [],
-            isConverted: false,
-            totalBookings: 0,
-          }).onDuplicateKeyUpdate({
-            set: {
-              name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${input.customerName}, ${clients.name})`,
-              phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${input.phone ?? ''}, ${clients.phone})`,
+          const [existingCuponClient] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).where(eq(clients.email, input.email)).limit(1);
+          if (existingCuponClient) {
+            await db.update(clients).set({
+              name: existingCuponClient.name?.trim() ? existingCuponClient.name : input.customerName,
+              phone: existingCuponClient.phone?.trim() ? existingCuponClient.phone : (input.phone ?? ""),
               updatedAt: new Date(),
-            },
-          });
+            }).where(eq(clients.id, existingCuponClient.id));
+          } else {
+            await db.insert(clients).values({ source: "cupon", name: input.customerName, email: input.email, phone: input.phone ?? "", company: "", tags: [], isConverted: false, totalBookings: 0 });
+          }
         } catch { /* silent — no bloquear el flujo si el upsert falla */ }
 
         // Email confirmación cliente
@@ -505,24 +499,18 @@ export const ticketingRouter = router({
         createdByAdminId: ctx.user.id,
       });
       const redemptionId = (result as { insertId: number }).insertId;
-      // Upsert cliente en CRM
+      // Upsert cliente en CRM — SELECT + INSERT/UPDATE
       try {
-        await db.insert(clients).values({
-          source: "cupon",
-          name: input.customerName,
-          email: input.email,
-          phone: input.phone ?? "",
-          company: "",
-          tags: [],
-          isConverted: false,
-          totalBookings: 0,
-        }).onDuplicateKeyUpdate({
-          set: {
-            name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${input.customerName}, ${clients.name})`,
-            phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${input.phone ?? ''}, ${clients.phone})`,
+        const [existingAdminClient] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).where(eq(clients.email, input.email)).limit(1);
+        if (existingAdminClient) {
+          await db.update(clients).set({
+            name: existingAdminClient.name?.trim() ? existingAdminClient.name : input.customerName,
+            phone: existingAdminClient.phone?.trim() ? existingAdminClient.phone : (input.phone ?? ""),
             updatedAt: new Date(),
-          },
-        });
+          }).where(eq(clients.id, existingAdminClient.id));
+        } else {
+          await db.insert(clients).values({ source: "cupon", name: input.customerName, email: input.email, phone: input.phone ?? "", company: "", tags: [], isConverted: false, totalBookings: 0 });
+        }
       } catch { /* silent */ }
       if (input.attachmentUrl) {
         const attachUrl = input.attachmentUrl;
@@ -723,8 +711,8 @@ export const ticketingRouter = router({
         productName: resolvedProductName,
         bookingDate: input.reservationDate,
         people: input.participants,
-        amountTotal: parseFloat(resolvedPvpPrice) * input.participants,
-        amountPaid: parseFloat(resolvedNetPrice) * input.participants,
+        amountTotal: Math.round(parseFloat(resolvedPvpPrice) * input.participants * 100),
+        amountPaid: Math.round(parseFloat(resolvedNetPrice) * input.participants * 100),
         status: "paid",
         channel: "PARTNER",
         statusReservation: "CONFIRMADA",
@@ -1000,8 +988,8 @@ export const ticketingRouter = router({
           productName: resolvedProductName,
           bookingDate: input.reservationDate,
           people: input.participants,
-          amountTotal: parseFloat(resolvedPvpPrice) * input.participants,
-          amountPaid: parseFloat(resolvedNetPrice) * input.participants,
+          amountTotal: Math.round(parseFloat(resolvedPvpPrice) * input.participants * 100),
+          amountPaid: Math.round(parseFloat(resolvedNetPrice) * input.participants * 100),
           status: "paid",
           channel: "PARTNER",
           statusReservation: "CONFIRMADA",
@@ -1598,24 +1586,18 @@ export const ticketingRouter = router({
         submissionId,
       });
       const redemptionId = (result as { insertId: number }).insertId;
-      // Upsert cliente en CRM
+      // Upsert cliente en CRM — SELECT + INSERT/UPDATE
       try {
-        await db.insert(clients).values({
-          source: "cupon",
-          name: input.customerName,
-          email: input.email,
-          phone: input.phone ?? "",
-          company: "",
-          tags: [],
-          isConverted: false,
-          totalBookings: 0,
-        }).onDuplicateKeyUpdate({
-          set: {
-            name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${input.customerName}, ${clients.name})`,
-            phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${input.phone ?? ''}, ${clients.phone})`,
+        const [existingClient2] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).where(eq(clients.email, input.email)).limit(1);
+        if (existingClient2) {
+          await db.update(clients).set({
+            name: existingClient2.name?.trim() ? existingClient2.name : input.customerName,
+            phone: existingClient2.phone?.trim() ? existingClient2.phone : (input.phone ?? ""),
             updatedAt: new Date(),
-          },
-        });
+          }).where(eq(clients.id, existingClient2.id));
+        } else {
+          await db.insert(clients).values({ source: "cupon", name: input.customerName, email: input.email, phone: input.phone ?? "", company: "", tags: [], isConverted: false, totalBookings: 0 });
+        }
       } catch { /* silent */ }
       if (input.attachmentUrl) {
         setImmediate(async () => {
