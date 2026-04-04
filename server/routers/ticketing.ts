@@ -349,7 +349,7 @@ export const ticketingRouter = router({
         couponCode: z.string().min(1),
         securityCode: z.string().optional(),
         productTicketingId: z.number().optional(),
-        attachmentUrl: z.string().url().optional(),
+        attachmentUrl: z.string().optional(),
         provider: z.string().default("Groupon"),
       })).min(1).max(10),
       requestedDate: z.string().optional(),
