@@ -240,6 +240,9 @@ const calendarRouter = router({
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
+          r.reservation_number AS reservationNumber,
+          r.status_reservation AS statusReservation,
+          r.extras_json AS extrasJson,
           DATE_FORMAT(r.booking_date, '%Y-%m-%d') AS scheduledDate,
           r.people AS numberOfPersons,
           r.status,
@@ -252,13 +255,15 @@ const calendarRouter = router({
           ro.op_notes AS opNotes,
           ro.monitor_id AS monitorId,
           ro.op_status AS opStatus,
+          ro.activities_op_json AS activitiesOpJson,
           m.full_name AS monitorName
         FROM reservations r
         LEFT JOIN experiences e ON r.product_id = e.id
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
         WHERE r.booking_date >= ? AND r.booking_date < DATE_ADD(?, INTERVAL 1 DAY)
-          AND r.status NOT IN ('cancelled','failed')
+          AND r.status = 'paid'
+          AND r.status_reservation NOT IN ('ANULADA')
         ORDER BY r.booking_date ASC
       `, [fromDate, toDate]);
 
@@ -287,7 +292,7 @@ const calendarRouter = router({
         LEFT JOIN restaurants rest ON rest.id = rb.restaurantId
         LEFT JOIN reservation_operational ro ON ro.reservation_id = rb.id AND ro.reservation_type = 'restaurant'
         WHERE rb.date >= ? AND rb.date < DATE_ADD(?, INTERVAL 1 DAY)
-          AND rb.status NOT IN ('cancelled','failed')
+          AND rb.status IN ('confirmed','completed')
         ORDER BY rb.date ASC, rb.time ASC
       `, [fromDate, toDate]);
 
@@ -313,6 +318,11 @@ const dailyOrdersRouter = router({
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
+          r.reservation_number AS reservationNumber,
+          r.status_reservation AS statusReservation,
+          r.extras_json AS extrasJson,
+          r.channel,
+          r.created_at AS createdAt,
           DATE_FORMAT(r.booking_date, '%Y-%m-%d') AS scheduledDate,
           r.people AS numberOfPersons,
           r.status,
@@ -324,6 +334,7 @@ const dailyOrdersRouter = router({
           ro.op_notes AS opNotes,
           ro.monitor_id AS monitorId,
           ro.op_status AS opStatus,
+          ro.activities_op_json AS activitiesOpJson,
           m.full_name AS monitorName,
           ro.id AS opId
         FROM reservations r
@@ -331,7 +342,8 @@ const dailyOrdersRouter = router({
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
         WHERE r.booking_date = ?
-          AND r.status NOT IN ('cancelled','failed')
+          AND r.status = 'paid'
+          AND r.status_reservation NOT IN ('ANULADA')
         ORDER BY r.booking_date ASC
       `, [dateStr]);
 
@@ -359,7 +371,7 @@ const dailyOrdersRouter = router({
         LEFT JOIN restaurants rest ON rest.id = rb.restaurantId
         LEFT JOIN reservation_operational ro ON ro.reservation_id = rb.id AND ro.reservation_type = 'restaurant'
         WHERE rb.bookingDate = ?
-          AND rb.status NOT IN ('cancelled','failed')
+          AND rb.status IN ('confirmed','completed')
         ORDER BY rb.bookingDate ASC, rb.bookingTime ASC
       `, [dateStr]);
 
@@ -441,7 +453,8 @@ const dailyOrdersRouter = router({
         FROM reservations r
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         WHERE r.booking_date = ?
-          AND r.status NOT IN ('cancelled','failed')
+          AND r.status = 'paid'
+          AND r.status_reservation NOT IN ('ANULADA')
       `, [dateStr2]);
 
       const [[restStats]] = await pool.execute<any[]>(`
@@ -476,11 +489,15 @@ const activitiesRouter = router({
           r.customer_name AS clientName,
           r.customer_email AS clientEmail,
           r.customer_phone AS clientPhone,
+          r.reservation_number AS reservationNumber,
+          r.status_reservation AS statusReservation,
+          r.extras_json AS extrasJson,
           r.merchant_order AS merchantOrder,
+          r.channel,
+          r.created_at AS createdAt,
           DATE_FORMAT(r.booking_date, '%Y-%m-%d') AS scheduledDate,
           r.people AS numberOfPersons,
           r.status,
-          r.channel,
           COALESCE(e.title, r.product_name) AS activityTitle,
           e.slug AS activitySlug,
           e.duration AS duration,
@@ -489,6 +506,7 @@ const activitiesRouter = router({
           ro.op_notes AS opNotes,
           ro.monitor_id AS monitorId,
           ro.op_status AS opStatus,
+          ro.activities_op_json AS activitiesOpJson,
           m.full_name AS monitorName,
           ro.id AS opId
         FROM reservations r
@@ -496,7 +514,8 @@ const activitiesRouter = router({
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
         WHERE r.booking_date = ?
-          AND r.status NOT IN ('cancelled','failed')
+          AND r.status = 'paid'
+          AND r.status_reservation NOT IN ('ANULADA')
         ORDER BY r.booking_date ASC
       `, [actDateStr]);
 
@@ -573,6 +592,7 @@ const activitiesRouter = router({
       reservationId: z.number(),
       arrivalTime: z.string().optional(),
       opNotes: z.string().optional(),
+      monitorId: z.number().nullable().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const existing = await db.select().from(reservationOperational)
@@ -584,6 +604,7 @@ const activitiesRouter = router({
       const updateData: any = { updatedBy: ctx.user.id };
       if (input.arrivalTime !== undefined) updateData.arrivalTime = input.arrivalTime;
       if (input.opNotes !== undefined) updateData.opNotes = input.opNotes;
+      if (input.monitorId !== undefined) updateData.monitorId = input.monitorId;
 
       if (existing.length > 0) {
         await db.update(reservationOperational)
@@ -594,6 +615,51 @@ const activitiesRouter = router({
           reservationId: input.reservationId,
           reservationType: "activity",
           ...updateData,
+        });
+      }
+      return { ok: true };
+    }),
+
+  // Update operational data for a specific sub-activity (by index within extras_json)
+  updateActivityOp: adminProcedure
+    .input(z.object({
+      reservationId: z.number(),
+      activityIndex: z.number(),
+      monitorId: z.number().nullable().optional(),
+      arrivalTime: z.string().optional(),
+      opNotes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await db.select().from(reservationOperational)
+        .where(and(
+          eq(reservationOperational.reservationId, input.reservationId),
+          eq(reservationOperational.reservationType, "activity")
+        ));
+
+      const row = existing[0];
+      const current: Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string }> =
+        (row?.activitiesOpJson as any) || [];
+
+      const idx = current.findIndex(a => a.index === input.activityIndex);
+      const updated = { index: input.activityIndex, ...current[idx] };
+      if (input.monitorId !== undefined) updated.monitorId = input.monitorId;
+      if (input.arrivalTime !== undefined) updated.arrivalTime = input.arrivalTime;
+      if (input.opNotes !== undefined) updated.opNotes = input.opNotes;
+
+      const newJson = idx >= 0
+        ? current.map((a, i) => i === idx ? updated : a)
+        : [...current, updated];
+
+      if (row) {
+        await db.update(reservationOperational)
+          .set({ activitiesOpJson: newJson as any, updatedBy: ctx.user.id })
+          .where(eq(reservationOperational.id, row.id));
+      } else {
+        await db.insert(reservationOperational).values({
+          reservationId: input.reservationId,
+          reservationType: "activity",
+          activitiesOpJson: newJson as any,
+          updatedBy: ctx.user.id,
         });
       }
       return { ok: true };

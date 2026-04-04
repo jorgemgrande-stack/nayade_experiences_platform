@@ -2123,6 +2123,7 @@ export const reservationOperational = mysqlTable("reservation_operational", {
   opNotes: text("op_notes"),
   monitorId: int("monitor_id"),
   opStatus: mysqlEnum("op_status", ["pendiente", "confirmado", "incidencia", "completado", "anulado"]).default("pendiente").notNull(),
+  activitiesOpJson: json("activities_op_json").$type<Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string }>>(),
   updatedBy: int("updated_by"),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
