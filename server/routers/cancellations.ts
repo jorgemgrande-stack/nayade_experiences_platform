@@ -604,7 +604,7 @@ export const cancellationsRouter = router({
         if (!input.voucherValue || input.voucherValue <= 0) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "El valor del bono es obligatorio" });
         }
-        financialStatus = "pendiente_bono";
+        financialStatus = "compensada_bono";
         const code = generateVoucherCode();
 
         const [vResult] = await db.insert(compensationVouchers).values({
@@ -616,7 +616,8 @@ export const cancellationsRouter = router({
           expiresAt: input.voucherExpiresAt ? new Date(input.voucherExpiresAt) : undefined,
           conditions: input.voucherConditions,
           notes: input.voucherNotes,
-          status: "generado",
+          status: "enviado",
+          sentAt: new Date(),
         });
         voucherId = (vResult as { insertId: number }).insertId;
 
@@ -1121,7 +1122,7 @@ export const cancellationsRouter = router({
       const financialStatus = input.compensationType === "devolucion"
         ? "pendiente_devolucion"
         : input.compensationType === "bono"
-          ? "pendiente_bono"
+          ? "compensada_bono"
           : "sin_compensacion";
 
       const [result] = await db.insert(cancellationRequests).values({
@@ -1179,5 +1180,26 @@ export const cancellationsRouter = router({
       ).catch(() => {});
 
       return { success: true, requestId, cancellationNumber, creditNoteNumber };
+    }),
+
+  // ── ACCIÓN: Registrar reclamación post-cierre del cliente ─────────────────
+  addClientReclamation: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      description: z.string().min(1, "La descripción es obligatoria"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await addLog(
+        input.id,
+        "client_reclamation",
+        { description: input.description },
+        ctx.user.id,
+        ctx.user.name ?? "Admin"
+      );
+
+      return { success: true };
     }),
 });

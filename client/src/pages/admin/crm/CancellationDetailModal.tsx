@@ -9,12 +9,12 @@ import {
   Clock, CheckCircle2, XCircle, FileQuestion, AlertTriangle,
   Archive, Banknote, Gift, Plus,
   ChevronDown, ChevronUp, CloudLightning, HeartPulse, Car, HelpCircle,
-  Link, Search,
+  Link, Search, MessageSquareWarning,
 } from "lucide-react";
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type ActionPanel = "none" | "rechazar" | "aceptar_total" | "aceptar_parcial" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular";
+type ActionPanel = "none" | "rechazar" | "aceptar_total" | "aceptar_parcial" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const REASON_LABELS: Record<string, string> = {
@@ -132,17 +132,39 @@ function TimelineEntry({ log }: { log: { id: number; actionType: string; adminUs
     note_added: <Plus className="w-3 h-3 text-blue-400" />,
     voucher_generated: <Gift className="w-3 h-3 text-purple-400" />,
     email_sent: <Mail className="w-3 h-3 text-gray-400" />,
+    client_reclamation: <MessageSquareWarning className="w-3 h-3 text-rose-400" />,
+  };
+  const ACTION_LABELS: Record<string, string> = {
+    created: "Solicitud creada",
+    rejected: "Solicitud rechazada",
+    accepted_total: "Aceptada — compensación total",
+    accepted_partial: "Aceptada — compensación parcial",
+    doc_requested: "Documentación solicitada",
+    incidence: "Incidencia registrada",
+    closed: "Expediente cerrado",
+    note_added: "Nota interna",
+    voucher_generated: "Bono generado",
+    voucher_sent: "Bono enviado",
+    email_sent: "Email enviado",
+    system_propagation: "Propagación del sistema",
+    refund_executed: "Devolución ejecutada",
+    status_change: "Cambio de estado",
+    client_reclamation: "Reclamación del cliente",
   };
   const note = (log.payload as Record<string, unknown>)?.note as string | undefined;
+  const description = (log.payload as Record<string, unknown>)?.description as string | undefined;
   const ts = log.createdAt instanceof Date ? log.createdAt : new Date(log.createdAt);
   return (
-    <div className="flex gap-3 py-2 border-b border-white/5 last:border-0">
+    <div className={`flex gap-3 py-2 border-b border-white/5 last:border-0 ${log.actionType === "client_reclamation" ? "bg-rose-500/5 rounded-lg px-2 -mx-2" : ""}`}>
       <div className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0 mt-0.5">
         {icons[log.actionType] ?? <Clock className="w-3 h-3 text-gray-500" />}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-gray-300 text-xs font-medium">{log.actionType.replace(/_/g, " ")}</p>
-        {note && <p className="text-gray-500 text-xs mt-0.5 truncate">{note}</p>}
+        <p className={`text-xs font-medium ${log.actionType === "client_reclamation" ? "text-rose-300" : "text-gray-300"}`}>
+          {ACTION_LABELS[log.actionType] ?? log.actionType.replace(/_/g, " ")}
+        </p>
+        {description && <p className="text-gray-400 text-xs mt-0.5 whitespace-pre-wrap">{description}</p>}
+        {note && !description && <p className="text-gray-500 text-xs mt-0.5 truncate">{note}</p>}
         <p className="text-gray-600 text-xs mt-0.5">
           {log.adminUserName ?? "Sistema"} · {ts.toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
         </p>
@@ -180,6 +202,7 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
   const [internalNote, setInternalNote] = useState("");
   const [linkSearch, setLinkSearch] = useState("");
   const [linkSearchQuery, setLinkSearchQuery] = useState("");
+  const [reclamationText, setReclamationText] = useState("");
 
   const { data, isLoading } = trpc.cancellations.getRequest.useQuery({ id: requestId });
 
@@ -217,6 +240,11 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
 
   const linkMut = trpc.cancellations.linkToReservation.useMutation({
     onSuccess: () => { toast.success("Reserva vinculada"); setActivePanel("none"); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const reclamationMut = trpc.cancellations.addClientReclamation.useMutation({
+    onSuccess: () => { toast.success("Reclamación registrada"); setReclamationText(""); setActivePanel("none"); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -432,6 +460,7 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
               <ActionButton label="Nota interna" icon={<Plus className="w-4 h-4" />} color="purple" active={activePanel === "nota"} onClick={() => togglePanel("nota")} />
               <ActionButton label="Cerrar" icon={<Archive className="w-4 h-4" />} color="gray" active={activePanel === "cerrar"} onClick={() => togglePanel("cerrar")} />
               <ActionButton label="Vincular reserva" icon={<Link className="w-4 h-4" />} color="blue" active={activePanel === "vincular"} onClick={() => togglePanel("vincular")} />
+              <ActionButton label="Reclamación cliente" icon={<MessageSquareWarning className="w-4 h-4" />} color="red" active={activePanel === "reclamacion"} onClick={() => togglePanel("reclamacion")} />
             </div>
 
             {/* ── Panel: Rechazar ── */}
@@ -724,6 +753,29 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
                 {searchResults && searchResults.length === 0 && linkSearchQuery && (
                   <p className="text-gray-500 text-xs text-center py-2">Sin resultados para "{linkSearchQuery}"</p>
                 )}
+              </ActionPanelWrapper>
+            )}
+
+            {/* ── Panel: Reclamación post-cierre del cliente ── */}
+            {activePanel === "reclamacion" && (
+              <ActionPanelWrapper title="Registrar reclamación del cliente" color="red">
+                <p className="text-xs text-gray-500">
+                  Disponible aunque el expediente esté cerrado. Úsalo cuando el cliente siga insistiendo tras la resolución. Quedará registrado en el historial.
+                </p>
+                <Textarea
+                  value={reclamationText}
+                  onChange={(e) => setReclamationText(e.target.value)}
+                  placeholder="Describe la reclamación o insistencia del cliente..."
+                  rows={4}
+                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                />
+                <Button
+                  className="w-full bg-rose-700 hover:bg-rose-800 text-white"
+                  disabled={reclamationMut.isPending || reclamationText.trim().length === 0}
+                  onClick={() => reclamationMut.mutate({ id: req.id, description: reclamationText.trim() })}
+                >
+                  {reclamationMut.isPending ? "Registrando..." : "Registrar reclamación"}
+                </Button>
               </ActionPanelWrapper>
             )}
           </section>
