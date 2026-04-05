@@ -1079,4 +1079,105 @@ export const cancellationsRouter = router({
         .limit(10);
       return rows;
     }),
+
+  // ── Anular reserva directamente desde CRM (atajo ejecutivo) ─────────────────
+  // Crea la solicitud ya cerrada y ejecuta propagateCancellation en un solo paso.
+  cancelReservationDirect: adminProcedure
+    .input(
+      z.object({
+        reservationId: z.number(),
+        reason: z.enum(["meteorologicas", "accidente", "enfermedad", "desistimiento", "otra"]),
+        reasonDetail: z.string().optional(),
+        compensationType: z.enum(["devolucion", "bono", "ninguna"]),
+        refundAmount: z.number().optional(),   // solo si compensationType = devolucion
+        adminNotes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      // ── Guardia: la reserva no debe tener ya una solicitud activa ─────────
+      const [res] = await db.select({
+        id: reservations.id,
+        customerName: reservations.customerName,
+        customerEmail: reservations.customerEmail,
+        customerPhone: reservations.customerPhone,
+        bookingDate: reservations.bookingDate,
+        status: reservations.status,
+        cancellationRequestId: sql<number | null>`${reservations.cancellationRequestId}`,
+      }).from(reservations).where(eq(reservations.id, input.reservationId)).limit(1);
+
+      if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+      if (res.status === "cancelled") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "La reserva ya está anulada" });
+      }
+      if (res.cancellationRequestId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `La reserva ya tiene el expediente de anulación #${res.cancellationRequestId} abierto. Gestiona la anulación desde el módulo de Anulaciones.`,
+        });
+      }
+
+      // ── Crear solicitud de anulación ya resuelta y cerrada ────────────────
+      const resolutionStatus = input.compensationType === "ninguna" ? "aceptada_total" : "aceptada_total";
+      const financialStatus = input.compensationType === "devolucion"
+        ? "pendiente_devolucion"
+        : input.compensationType === "bono"
+          ? "pendiente_bono"
+          : "sin_compensacion";
+
+      const [result] = await db.insert(cancellationRequests).values({
+        fullName: res.customerName,
+        email: res.customerEmail ?? undefined,
+        phone: res.customerPhone ?? undefined,
+        activityDate: res.bookingDate,
+        reason: input.reason,
+        reasonDetail: input.reasonDetail,
+        termsChecked: true,
+        source: "admin_crm",
+        locator: undefined,
+        adminNotes: input.adminNotes,
+        operationalStatus: "cerrada",
+        resolutionStatus,
+        financialStatus,
+        compensationType: input.compensationType === "ninguna" ? "ninguna" : input.compensationType,
+        resolvedAmount: input.refundAmount ? String(input.refundAmount) : undefined,
+        linkedReservationId: input.reservationId,
+        assignedUserId: ctx.user.id,
+        closedAt: new Date(),
+      });
+      const requestId = (result as { insertId: number }).insertId;
+
+      // Actualizar FK inverso en la reserva
+      await db.update(reservations)
+        .set({ cancellationRequestId: requestId } as any)
+        .where(eq(reservations.id, input.reservationId));
+
+      await addLog(requestId, "created", {
+        source: "admin_crm",
+        adminUserId: ctx.user.id,
+        reservationId: input.reservationId,
+      }, ctx.user.id, ctx.user.name ?? "Admin");
+
+      // ── Propagar cancelación (reserva + factura abono + REAV + operaciones) ─
+      const reqRecord = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, requestId)).limit(1).then(r => r[0]);
+
+      const { cancellationNumber, creditNoteNumber } = await propagateCancellation({
+        requestId,
+        req: reqRecord,
+        refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
+        compensationType: input.compensationType === "ninguna" ? "devolucion" : input.compensationType,
+        adminUserId: ctx.user.id,
+        adminUserName: ctx.user.name ?? "Admin",
+      });
+
+      await logActivity(
+        "reservation",
+        input.reservationId,
+        "reservation_cancelled_direct",
+        ctx.user.id,
+        ctx.user.name ?? "Admin",
+        { cancellationNumber, creditNoteNumber: creditNoteNumber ?? null, reason: input.reason }
+      ).catch(() => {});
+
+      return { success: true, requestId, cancellationNumber, creditNoteNumber };
+    }),
 });

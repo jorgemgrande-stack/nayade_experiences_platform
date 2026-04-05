@@ -69,6 +69,7 @@ import {
   Gift,
   AlertCircle,
   Archive,
+  X,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -3117,11 +3118,13 @@ function ReservationDetailModal({
   onClose,
   onEdit,
   onGenerateInvoice,
+  onCancel,
 }: {
   reservationId: number;
   onClose: () => void;
   onEdit: (id: number, status: string) => void;
   onGenerateInvoice?: (id: number) => void;
+  onCancel?: (id: number, name: string) => void;
 }) {
   const { data, isLoading } = trpc.crm.reservations.get.useQuery({ id: reservationId });
 
@@ -3511,6 +3514,22 @@ function ReservationDetailModal({
             <FileDown className="w-4 h-4 mr-1" /> Descargar factura PDF
           </Button>
         )}
+        {/* Anular reserva — solo si no está ya cancelada y no tiene expediente activo */}
+        {onCancel && res.status !== "cancelled" && !res.cancellationRequestId && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-orange-500/40 text-orange-400 hover:bg-orange-500/10 ml-auto"
+            onClick={() => { onClose(); onCancel(res.id, res.customerName); }}
+          >
+            <XCircle className="w-4 h-4 mr-1" /> Anular reserva
+          </Button>
+        )}
+        {res.cancellationRequestId && (
+          <span className="ml-auto text-xs text-orange-400/70 border border-orange-500/20 rounded px-2 py-1">
+            ⚠️ Expediente #{res.cancellationRequestId} activo
+          </span>
+        )}
       </DialogFooter>
     </DialogContent>
   );
@@ -3636,6 +3655,10 @@ export default function CRMDashboard() {
     invoiceFilter,
     { enabled: tab === "invoices" }
   );
+  // ─── Anular Reserva directa ──────────────────────────────────────────────────
+  const [cancelReservationId, setCancelReservationId] = useState<number | null>(null);
+  const [cancelReservationName, setCancelReservationName] = useState<string>("");
+
   // ─── Anulaciones state ───────────────────────────────────────────────────────
   const [anulSearch, setAnulSearch] = useState("");
   const [anulOpFilter, setAnulOpFilter] = useState("all");
@@ -4798,6 +4821,15 @@ export default function CRMDashboard() {
                               <FilePlus className="w-3.5 h-3.5" />
                             </Button>
                           )}
+                          {/* Anular reserva */}
+                          {res.status !== "cancelled" && (
+                            <Button size="sm" variant="ghost"
+                              className="text-white/40 hover:text-orange-400 h-7 w-7 p-0"
+                              onClick={() => { setCancelReservationId(res.id); setCancelReservationName(res.customerName); }}
+                              title="Anular reserva">
+                              <XCircle className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                           {/* Eliminar */}
                           <Button size="sm" variant="ghost" className="text-white/40 hover:text-red-400 h-7 w-7 p-0"
                             onClick={() => setDeleteResId(res.id)}
@@ -5764,6 +5796,11 @@ export default function CRMDashboard() {
               setShowChangeDateSection(false);
               setEditResId(id);
             }}
+            onCancel={(id, name) => {
+              setViewResId(null);
+              setCancelReservationId(id);
+              setCancelReservationName(name);
+            }}
           />
         )}
       </Dialog>
@@ -6066,7 +6103,186 @@ export default function CRMDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* ─── MODAL: Anular reserva directa ─────────────────────────────────────── */}
+      {cancelReservationId !== null && (
+        <AnularReservaModal
+          reservationId={cancelReservationId}
+          reservationName={cancelReservationName}
+          onClose={() => { setCancelReservationId(null); setCancelReservationName(""); }}
+          onSuccess={() => {
+            setCancelReservationId(null);
+            setCancelReservationName("");
+            utils.crm.reservations.list.invalidate();
+            utils.crm.reservations.counters.invalidate();
+            utils.cancellations.listRequests.invalidate();
+            utils.cancellations.getCounters.invalidate();
+            utils.crm.invoices.listAll.invalidate();
+          }}
+        />
+      )}
+
         </AdminLayout>
+  );
+}
+
+// ─── MODAL: Anular Reserva ────────────────────────────────────────────────────
+function AnularReservaModal({
+  reservationId,
+  reservationName,
+  onClose,
+  onSuccess,
+}: {
+  reservationId: number;
+  reservationName: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [reason, setReason] = useState<"meteorologicas" | "accidente" | "enfermedad" | "desistimiento" | "otra">("otra");
+  const [reasonDetail, setReasonDetail] = useState("");
+  const [compensationType, setCompensationType] = useState<"devolucion" | "bono" | "ninguna">("ninguna");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [adminNotes, setAdminNotes] = useState("");
+
+  const cancelMutation = trpc.cancellations.cancelReservationDirect.useMutation({
+    onSuccess: (data) => {
+      toast.success(
+        `Reserva anulada · Expediente ${data.cancellationNumber}${data.creditNoteNumber ? ` · Abono ${data.creditNoteNumber}` : ""}`
+      );
+      onSuccess();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const handleSubmit = () => {
+    if (compensationType === "devolucion" && (!refundAmount || parseFloat(refundAmount) <= 0)) {
+      return toast.error("Introduce el importe a devolver");
+    }
+    cancelMutation.mutate({
+      reservationId,
+      reason,
+      reasonDetail: reasonDetail.trim() || undefined,
+      compensationType,
+      refundAmount: compensationType === "devolucion" ? parseFloat(refundAmount) : undefined,
+      adminNotes: adminNotes.trim() || undefined,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-[#111] border border-orange-500/30 rounded-2xl p-6 max-w-md w-full">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 bg-orange-500/10 rounded-full flex items-center justify-center flex-shrink-0">
+            <XCircle className="w-5 h-5 text-orange-400" />
+          </div>
+          <div>
+            <h2 className="text-white font-semibold">Anular reserva</h2>
+            <p className="text-gray-400 text-xs mt-0.5 truncate max-w-[280px]">{reservationName}</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="bg-orange-500/8 border border-orange-500/20 rounded-xl px-4 py-3 mb-5">
+          <p className="text-orange-300 text-xs">
+            Se creará un expediente de anulación cerrado, se cancelará la reserva, se marcará la actividad como anulada en operaciones
+            {" "}y si existe factura vinculada se generará automáticamente un abono (ABN-).
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-gray-300 text-sm">Motivo</label>
+            <Select value={reason} onValueChange={(v) => setReason(v as typeof reason)}>
+              <SelectTrigger className="bg-[#1a1a1a] border-white/10 text-gray-300">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="meteorologicas">Condiciones meteorológicas</SelectItem>
+                <SelectItem value="accidente">Accidente</SelectItem>
+                <SelectItem value="enfermedad">Enfermedad</SelectItem>
+                <SelectItem value="desistimiento">Desistimiento voluntario</SelectItem>
+                <SelectItem value="otra">Otra</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-gray-300 text-sm">Detalle del motivo (opcional)</label>
+            <textarea
+              value={reasonDetail}
+              onChange={(e) => setReasonDetail(e.target.value)}
+              placeholder="Explicación adicional..."
+              rows={2}
+              className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-orange-500/40"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-gray-300 text-sm">Compensación</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(["ninguna", "devolucion", "bono"] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setCompensationType(t)}
+                  className={`py-2 rounded-lg border text-xs font-medium transition-all ${
+                    compensationType === t
+                      ? t === "ninguna" ? "border-gray-500/50 bg-gray-500/15 text-gray-300"
+                        : t === "devolucion" ? "border-green-500/50 bg-green-500/10 text-green-400"
+                        : "border-purple-500/50 bg-purple-500/10 text-purple-400"
+                      : "border-white/10 text-gray-500 hover:text-gray-300"
+                  }`}
+                >
+                  {t === "ninguna" ? "Sin comp." : t === "devolucion" ? "💶 Devolución" : "🎟️ Bono"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {compensationType === "devolucion" && (
+            <div className="space-y-1.5">
+              <label className="text-gray-300 text-sm">Importe a devolver (€) *</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={refundAmount}
+                onChange={(e) => setRefundAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-green-500/40"
+              />
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label className="text-gray-300 text-sm">Notas internas (opcional)</label>
+            <textarea
+              value={adminNotes}
+              onChange={(e) => setAdminNotes(e.target.value)}
+              placeholder="Anotaciones para el expediente..."
+              rows={2}
+              className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-white/20"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-3 mt-6">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 rounded-xl border border-white/10 text-gray-400 text-sm hover:text-white hover:bg-white/5 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={cancelMutation.isPending}
+            className="flex-1 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+          >
+            {cancelMutation.isPending ? "Anulando..." : "Confirmar anulación"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
