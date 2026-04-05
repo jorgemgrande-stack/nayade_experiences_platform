@@ -43,7 +43,8 @@ export type DocumentType =
   | "tpv"
   | "cupon"
   | "liquidacion"
-  | "anulacion";
+  | "anulacion"
+  | "abono";
 
 const DEFAULT_PREFIXES: Record<DocumentType, string> = {
   presupuesto: "PRES",
@@ -53,6 +54,7 @@ const DEFAULT_PREFIXES: Record<DocumentType, string> = {
   cupon: "CUP",
   liquidacion: "LIQ",
   anulacion: "ANU",
+  abono: "ABN",
 };
 
 // Padding de 4 dígitos para mantener compatibilidad con el formato actual

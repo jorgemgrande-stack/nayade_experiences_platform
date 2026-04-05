@@ -3431,25 +3431,76 @@ export const crmRouter = router({
           conditions.push(lte(invoices.createdAt, to));
         }
         const whereClause = conditions.length ? and(...conditions) : undefined;
-        const [rows, [{ total }], [{ subtotalSum, taxSum, grandTotal }]] = await Promise.all([
+
+        // Condiciones base solo sobre facturas originales (no abonos) para el cálculo neto
+        const facturaOnlyConditions = [...conditions, eq(invoices.invoiceType, "factura")];
+        const abonoOnlyConditions = [...conditions, eq(invoices.invoiceType, "abono")];
+
+        const [rows, [{ total }], [{ subtotalSum, taxSum, grandTotal }], [{ abonosTotal }]] = await Promise.all([
           db.select().from(invoices)
             .where(whereClause)
             .orderBy(desc(invoices.createdAt))
             .limit(input.limit).offset(input.offset),
           db.select({ total: count() }).from(invoices).where(whereClause),
           db.select({
-            subtotalSum: sql<string>`COALESCE(SUM(subtotal), 0)`,
-            taxSum: sql<string>`COALESCE(SUM(taxAmount), 0)`,
-            grandTotal: sql<string>`COALESCE(SUM(total), 0)`,
+            subtotalSum: sql<string>`COALESCE(SUM(CASE WHEN invoice_type = 'factura' THEN subtotal ELSE 0 END), 0)`,
+            taxSum: sql<string>`COALESCE(SUM(CASE WHEN invoice_type = 'factura' THEN tax_amount ELSE 0 END), 0)`,
+            grandTotal: sql<string>`COALESCE(SUM(CASE WHEN invoice_type = 'factura' THEN total ELSE 0 END), 0)`,
           }).from(invoices).where(whereClause),
+          db.select({
+            abonosTotal: sql<string>`COALESCE(SUM(ABS(total)), 0)`,
+          }).from(invoices).where(and(...abonoOnlyConditions.length ? abonoOnlyConditions : [eq(invoices.invoiceType, "abono")])),
         ]);
+
+        // Enriquecer filas: para facturas abonadas → buscar su nº de abono; para abonos → nº de factura original
+        const abonadaIds = rows.filter(r => r.status === "abonada").map(r => r.id);
+        const abonoRows = rows.filter(r => r.invoiceType === "abono" && r.creditNoteForId);
+        const originalIds = abonoRows.map(r => r.creditNoteForId!);
+
+        // Batch-fetch credit notes linked to abonada invoices
+        const creditNoteMap: Record<number, string> = {}; // originalInvoiceId → abonoInvoiceNumber
+        if (abonadaIds.length > 0) {
+          const creditNotes = await db.select({ creditNoteForId: invoices.creditNoteForId, invoiceNumber: invoices.invoiceNumber })
+            .from(invoices)
+            .where(sql`${invoices.creditNoteForId} IN (${sql.join(abonadaIds.map(id => sql`${id}`), sql`, `)})`);
+          for (const cn of creditNotes) {
+            if (cn.creditNoteForId) creditNoteMap[cn.creditNoteForId] = cn.invoiceNumber;
+          }
+        }
+
+        // Batch-fetch original invoice numbers for abono rows
+        const originalInvoiceMap: Record<number, string> = {}; // abonoId → originalInvoiceNumber
+        if (originalIds.length > 0) {
+          const originals = await db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber })
+            .from(invoices)
+            .where(sql`${invoices.id} IN (${sql.join(originalIds.map(id => sql`${id}`), sql`, `)})`);
+          for (const orig of originals) {
+            // map by creditNoteForId (the abono's FK pointing to original)
+            const abonoRow = abonoRows.find(r => r.creditNoteForId === orig.id);
+            if (abonoRow) originalInvoiceMap[abonoRow.id] = orig.invoiceNumber;
+          }
+        }
+
+        const enrichedRows = rows.map(r => ({
+          ...r,
+          // Si esta factura está abonada, el nº del abono emitido
+          creditNoteNumber: r.status === "abonada" ? (creditNoteMap[r.id] ?? null) : null,
+          // Si este documento ES un abono, el nº de la factura original que rectifica
+          originalInvoiceNumber: r.invoiceType === "abono" ? (originalInvoiceMap[r.id] ?? null) : null,
+        }));
+
+        const grossTotal = Number(grandTotal);
+        const abonosAmt = Number(abonosTotal);
+
         return {
-          items: rows,
+          items: enrichedRows,
           total,
           summary: {
             subtotal: Number(subtotalSum),
             tax: Number(taxSum),
-            grandTotal: Number(grandTotal),
+            grandTotal: grossTotal,
+            abonosTotal: abonosAmt,
+            netTotal: grossTotal - abonosAmt,
           },
         };
       }),

@@ -17,6 +17,7 @@ import {
   reavExpedients,
   couponRedemptions,
   discountCodes,
+  invoices,
   type CancellationRequest,
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql } from "drizzle-orm";
@@ -80,7 +81,7 @@ async function propagateCancellation(params: {
   compensationType: "devolucion" | "bono";
   adminUserId: number;
   adminUserName: string;
-}): Promise<{ cancellationNumber: string }> {
+}): Promise<{ cancellationNumber: string; creditNoteNumber?: string }> {
   const { requestId, req, refundAmount, compensationType, adminUserId, adminUserName } = params;
 
   // ── 1. Generar número ANU- (fuera de la tx, no se puede hacer rollback de numeración) ──
@@ -90,6 +91,30 @@ async function propagateCancellation(params: {
     String(adminUserId)
   );
 
+  // Si hay factura vinculada, pre-generar el número de abono también fuera de la tx
+  let creditNoteNumber: string | undefined;
+  let originalInvoice: typeof invoices.$inferSelect | null = null;
+
+  const reservationId = req.linkedReservationId;
+  if (reservationId) {
+    const [res] = await db.select({ invoiceId: reservations.invoiceId, invoiceNumber: reservations.invoiceNumber })
+      .from(reservations)
+      .where(eq(reservations.id, reservationId))
+      .limit(1);
+
+    if (res?.invoiceId) {
+      const [inv] = await db.select().from(invoices).where(eq(invoices.id, res.invoiceId as number)).limit(1);
+      if (inv && inv.status !== "abonada" && inv.status !== "anulada") {
+        originalInvoice = inv;
+        creditNoteNumber = await generateDocumentNumber(
+          "abono",
+          `cancellations:creditNote:${requestId}`,
+          String(adminUserId)
+        );
+      }
+    }
+  }
+
   // ── 2. Todo lo que afecta a otras tablas: dentro de transacción ACID ───────
   await db.transaction(async (tx) => {
     // Guardar el número ANU en la solicitud
@@ -98,7 +123,6 @@ async function propagateCancellation(params: {
       .where(eq(cancellationRequests.id, requestId));
 
     // ── Cancelar la reserva vinculada ─────────────────────────────────────
-    const reservationId = req.linkedReservationId;
     if (reservationId) {
       await tx.update(reservations)
         .set({
@@ -127,6 +151,55 @@ async function propagateCancellation(params: {
           })
           .where(eq(reavExpedients.id, reavExp.id));
       }
+
+      // ── Factura rectificativa (abono) ─────────────────────────────────────
+      // Se genera siempre que exista factura válida, independientemente del tipo de compensación.
+      // El importe del abono = resolvedAmount (parcial) o total de la factura (total).
+      if (originalInvoice && creditNoteNumber) {
+        const creditAmount = refundAmount && refundAmount > 0
+          ? String(refundAmount.toFixed(2))
+          : String(Math.abs(Number(originalInvoice.total)).toFixed(2));
+
+        const taxRate = Number(originalInvoice.taxRate ?? 0);
+        const creditSubtotal = taxRate > 0
+          ? String((Number(creditAmount) / (1 + taxRate / 100)).toFixed(2))
+          : creditAmount;
+        const creditTax = taxRate > 0
+          ? String((Number(creditAmount) - Number(creditSubtotal)).toFixed(2))
+          : "0";
+
+        // Crear factura de abono (importe negativo en cuenta de resultados)
+        await tx.insert(invoices).values({
+          invoiceNumber: creditNoteNumber,
+          reservationId,
+          clientName: originalInvoice.clientName,
+          clientEmail: originalInvoice.clientEmail,
+          clientPhone: originalInvoice.clientPhone ?? undefined,
+          clientNif: originalInvoice.clientNif ?? undefined,
+          clientAddress: originalInvoice.clientAddress ?? undefined,
+          itemsJson: [{
+            description: `Abono por anulación ${cancellationNumber} — ${originalInvoice.invoiceNumber}`,
+            quantity: 1,
+            unitPrice: -Number(creditAmount),
+            total: -Number(creditAmount),
+          }],
+          subtotal: `-${creditSubtotal}`,
+          taxRate: String(taxRate),
+          taxAmount: `-${creditTax}`,
+          total: `-${creditAmount}`,
+          currency: originalInvoice.currency ?? "EUR",
+          invoiceType: "abono",
+          creditNoteForId: originalInvoice.id,
+          creditNoteReason: `Anulación de reserva. Expediente ${cancellationNumber}.`,
+          isAutomatic: false,
+          status: "generada",
+        } as any);
+
+        // Marcar la factura original como abonada
+        await tx.update(invoices)
+          .set({ status: "abonada" })
+          .where(eq(invoices.id, originalInvoice.id));
+      }
     }
 
     // ── Transacción contable de devolución (solo si hay importe a devolver) ─
@@ -152,7 +225,7 @@ async function propagateCancellation(params: {
         saleChannel: (req.saleChannel as any) ?? "admin",
         operationStatus: "anulada",
         reservationId: req.linkedReservationId ?? undefined,
-        invoiceNumber: req.invoiceRef ?? cancellationNumber,
+        invoiceNumber: creditNoteNumber ?? (req.invoiceRef ?? cancellationNumber),
         sellerUserId: adminUserId,
         sellerName: adminUserName,
       } as any);
@@ -167,13 +240,16 @@ async function propagateCancellation(params: {
       cancellationNumber,
       reservationCancelled: !!req.linkedReservationId,
       reavClosed: !!req.linkedReservationId,
+      creditNoteGenerated: !!creditNoteNumber,
+      creditNoteNumber: creditNoteNumber ?? null,
+      originalInvoiceNumber: originalInvoice?.invoiceNumber ?? null,
       refundTransactionCreated: compensationType === "devolucion" && !!refundAmount,
     },
     adminUserId,
     adminUserName
   );
 
-  return { cancellationNumber };
+  return { cancellationNumber, creditNoteNumber };
 }
 
 // ─── Email templates ──────────────────────────────────────────────────────────
@@ -610,8 +686,8 @@ export const cancellationsRouter = router({
         }
       }
 
-      // ── Propagación transversal (reserva, operaciones, REAV, contabilidad, número ANU-) ──
-      const { cancellationNumber } = await propagateCancellation({
+      // ── Propagación transversal (reserva, operaciones, REAV, contabilidad, número ANU-, abono) ──
+      const { cancellationNumber, creditNoteNumber } = await propagateCancellation({
         requestId: input.id,
         req,
         refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
@@ -620,7 +696,7 @@ export const cancellationsRouter = router({
         adminUserName: ctx.user.name ?? "Admin",
       });
 
-      return { success: true, voucherId, cancellationNumber };
+      return { success: true, voucherId, cancellationNumber, creditNoteNumber };
     }),
 
   // ── ACCIÓN: Solicitar documentación ──────────────────────────────────────

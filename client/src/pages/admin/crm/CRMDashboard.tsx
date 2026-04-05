@@ -4898,9 +4898,9 @@ export default function CRMDashboard() {
 
               {/* Panel de resumen del período */}
               {invoicesData?.summary && (
-                <div className="grid grid-cols-3 gap-3 mb-3">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
                   <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
-                    <div className="text-xs text-white/40 mb-1">Facturas en período</div>
+                    <div className="text-xs text-white/40 mb-1">Docs. en período</div>
                     <div className="text-lg font-bold text-white">{invoicesData.total}</div>
                   </div>
                   <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
@@ -4908,10 +4908,22 @@ export default function CRMDashboard() {
                     <div className="text-lg font-bold text-sky-400">{invoicesData.summary.subtotal.toFixed(2)} €</div>
                   </div>
                   <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 text-center">
-                    <div className="text-xs text-orange-300/60 mb-1">Total (IVA incl.)</div>
+                    <div className="text-xs text-orange-300/60 mb-1">Bruto (IVA incl.)</div>
                     <div className="text-lg font-bold text-orange-400">{invoicesData.summary.grandTotal.toFixed(2)} €</div>
                     <div className="text-xs text-white/30">IVA: {invoicesData.summary.tax.toFixed(2)} €</div>
                   </div>
+                  {(invoicesData.summary as any).abonosTotal > 0 && (
+                    <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-center">
+                      <div className="text-xs text-violet-300/60 mb-1">Total abonos</div>
+                      <div className="text-lg font-bold text-violet-400">-{(invoicesData.summary as any).abonosTotal.toFixed(2)} €</div>
+                    </div>
+                  )}
+                  {(invoicesData.summary as any).abonosTotal > 0 && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+                      <div className="text-xs text-emerald-300/60 mb-1">Neto real</div>
+                      <div className="text-lg font-bold text-emerald-400">{(invoicesData.summary as any).netTotal.toFixed(2)} €</div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -4937,11 +4949,39 @@ export default function CRMDashboard() {
                         No hay facturas
                       </td></tr>
                     ) : invoicesData.items.map((inv: any) => (
-                      <tr key={inv.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                      <tr key={inv.id} className={`border-t border-white/5 hover:bg-white/3 transition-colors ${inv.invoiceType === "abono" ? "bg-violet-500/3" : ""}`}>
                         <td className="px-4 py-3">
-                          <div className="text-sm font-mono font-bold text-white">{inv.invoiceNumber}</div>
-                          {inv.invoiceType === "abono" && (
-                            <span className="text-xs text-violet-400 font-medium">Abono</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-mono font-bold text-white">{inv.invoiceNumber}</span>
+                            {inv.invoiceType === "abono" && (
+                              <span className="inline-flex items-center text-[9px] font-bold text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded">ABONO</span>
+                            )}
+                          </div>
+                          {/* Factura abonada → mostrar el nº del abono emitido */}
+                          {inv.status === "abonada" && inv.creditNoteNumber && (
+                            <div className="mt-0.5">
+                              <button
+                                onClick={() => setInvoiceSearch(inv.creditNoteNumber)}
+                                className="text-[10px] text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1"
+                                title="Ver factura de abono"
+                              >
+                                <RotateCcw className="w-2.5 h-2.5" />
+                                Abono: {inv.creditNoteNumber}
+                              </button>
+                            </div>
+                          )}
+                          {/* Abono → mostrar la factura original que rectifica */}
+                          {inv.invoiceType === "abono" && inv.originalInvoiceNumber && (
+                            <div className="mt-0.5">
+                              <button
+                                onClick={() => setInvoiceSearch(inv.originalInvoiceNumber)}
+                                className="text-[10px] text-orange-400/70 hover:text-orange-300 transition-colors flex items-center gap-1"
+                                title="Ver factura original"
+                              >
+                                <Receipt className="w-2.5 h-2.5" />
+                                Rectifica: {inv.originalInvoiceNumber}
+                              </button>
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -4967,9 +5007,20 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-4 py-3">
                           {getInvoiceStatusBadge(inv.status)}
+                          {inv.invoiceType === "abono" && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center text-[9px] font-bold text-violet-400/70 border border-violet-500/20 px-1.5 py-0.5 rounded">
+                                Fact. rectificativa
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <span className="text-sm font-bold text-orange-400">{Number(inv.total).toFixed(2)} €</span>
+                          {inv.invoiceType === "abono" ? (
+                            <span className="text-sm font-bold text-violet-400">{Number(inv.total).toFixed(2)} €</span>
+                          ) : (
+                            <span className="text-sm font-bold text-orange-400">{Number(inv.total).toFixed(2)} €</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
                           <div className="text-xs text-white/40">{new Date(inv.createdAt).toLocaleDateString("es-ES")}</div>
