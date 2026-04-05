@@ -3,8 +3,8 @@
  * El cliente introduce su código de bono y puede ver el estado, valor y caducidad
  * sin necesidad de autenticarse.
  */
-import React, { useState } from "react";
-import { Link } from "wouter";
+import React, { useState, useEffect } from "react";
+import { Link, useSearch } from "wouter";
 import {
   Gift, Search, CheckCircle2, XCircle, Clock, AlertTriangle,
   ArrowRight, Euro, CalendarClock, Info,
@@ -52,8 +52,21 @@ const STATUS_CONFIG = {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function VerificarBono() {
-  const [inputCode, setInputCode] = useState("");
-  const [queryCode, setQueryCode] = useState<string | null>(null);
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const codeFromUrl = params.get("code")?.toUpperCase().trim() ?? null;
+
+  const [inputCode, setInputCode] = useState(codeFromUrl ?? "");
+  const [queryCode, setQueryCode] = useState<string | null>(codeFromUrl);
+
+  // Si llega con ?code= en la URL, lanzar la consulta automáticamente
+  useEffect(() => {
+    if (codeFromUrl) {
+      setInputCode(codeFromUrl);
+      setQueryCode(codeFromUrl);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data, isLoading, isFetching } = trpc.discounts.verifyVoucher.useQuery(
     { code: queryCode ?? "" },

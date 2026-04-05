@@ -1271,6 +1271,9 @@ export function buildCancellationAcceptedVoucherHtml(d: {
   isPartial: boolean;
 }): string {
   const tipo = d.isPartial ? "parcial" : "total";
+  const appUrl = process.env.APP_URL ?? "https://nayadeexperiences.es";
+  const verifyUrl = `${appUrl}/verificar-bono`;
+  const bookUrl = `${appUrl}/experiencias`;
   const body = `
     ${emailHeader("Bono de Compensación", "Tu anulación ha sido resuelta")}
     <tr><td style="padding:28px 32px 0;">
@@ -1292,11 +1295,32 @@ export function buildCancellationAcceptedVoucherHtml(d: {
         </td></tr>
       </table>
     </td></tr>
-    <tr><td style="padding:0 32px 28px;">
-      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
-        Para canjear este bono, contacta en
+    <tr><td style="padding:12px 32px 4px;">
+      <p style="color:#374151;font-size:14px;margin:0 0 12px;line-height:1.7;font-family:Arial,sans-serif;">
+        <strong>¿Cómo usar tu bono?</strong><br>
+        Entra en nuestra web, elige la experiencia que quieras y aplica el código en el paso de pago.
+        El importe se descontará automáticamente de tu reserva.
+      </p>
+      <table cellpadding="0" cellspacing="0" style="width:100%;">
+        <tr>
+          <td style="padding-right:6px;width:50%;">
+            ${ctaButton("Reservar experiencia", bookUrl)}
+          </td>
+          <td style="padding-left:6px;width:50%;">
+            <a href="${verifyUrl}?code=${d.voucherCode}" style="display:block;text-align:center;background:#f3f4f6;color:#374151;font-size:13px;font-weight:600;padding:12px 20px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;border:1px solid #e5e7eb;">
+              Verificar bono
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:12px 32px 28px;">
+      <p style="color:#9ca3af;font-size:12px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        También puedes consultar el estado de tu bono en cualquier momento en
+        <a href="${verifyUrl}" style="color:#f97316;text-decoration:none;font-weight:600;">${verifyUrl}</a>.
+        Si tienes dudas, contacta en
         <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
-        indicando el código anterior.
+        indicando el código <strong>${d.voucherCode}</strong>.
       </p>
     </td></tr>
     ${emailFooter()}`;
