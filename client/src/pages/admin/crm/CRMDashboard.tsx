@@ -28,6 +28,7 @@ import {
   FileText,
   CalendarCheck,
   Calendar,
+  CalendarClock,
   TrendingUp,
   Search,
   Plus,
@@ -74,7 +75,7 @@ import {
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
-type Tab = "leads" | "quotes" | "reservations" | "invoices" | "anulaciones" | "pagos_pendientes";
+type Tab = "leads" | "quotes" | "reservations" | "invoices" | "anulaciones" | "pagos_pendientes" | "bonos";
 
 type OpportunityStatus = "nueva" | "enviada" | "ganada" | "perdida";
 type Priority = "baja" | "media" | "alta";
@@ -3648,7 +3649,7 @@ export default function CRMDashboard() {
     try {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("tab");
-      if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones" || t === "pagos_pendientes") return t;
+      if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones" || t === "pagos_pendientes" || t === "bonos") return t;
     } catch { /* ignore */ }
     return "leads";
   };
@@ -3782,6 +3783,9 @@ export default function CRMDashboard() {
     offset: 0,
   }, { enabled: tab === "anulaciones" });
   const { data: anulCounters } = trpc.cancellations.getCounters.useQuery(undefined, {
+    refetchInterval: 60000,
+  });
+  const { data: voucherCounters } = trpc.cancellations.getVoucherCounters.useQuery(undefined, {
     refetchInterval: 60000,
   });
   const deleteAnulMutation = trpc.cancellations.deleteRequest.useMutation({
@@ -4267,6 +4271,44 @@ export default function CRMDashboard() {
               />
             </div>
           </div>
+
+          {/* Grupo 4: Bonos compensatorios */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-purple-400 to-purple-600" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Bonos compensatorios</span>
+              <div className="flex-1 h-px bg-white/5" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <CounterCard
+                label="Activos"
+                value={voucherCounters?.activos ?? 0}
+                icon={Gift}
+                color="purple"
+                subtitle="Pendientes de canjear"
+                active={tab === "bonos"}
+                onClick={() => handleTabChange("bonos")}
+              />
+              <CounterCard
+                label="Canjeados"
+                value={voucherCounters?.canjeados ?? 0}
+                icon={CheckCircle}
+                color="green"
+                subtitle="Usados por clientes"
+                active={tab === "bonos"}
+                onClick={() => handleTabChange("bonos")}
+              />
+              <CounterCard
+                label="Caducados"
+                value={voucherCounters?.caducados ?? 0}
+                icon={Clock}
+                color="slate"
+                subtitle="Sin canjear a tiempo"
+                active={tab === "bonos"}
+                onClick={() => handleTabChange("bonos")}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Barra de ratio de conversión */}
@@ -4350,6 +4392,7 @@ export default function CRMDashboard() {
               { key: "reservations", label: "Reservas", icon: CalendarCheck, count: resCounters?.confirmadas },
               { key: "invoices", label: "Facturas", icon: Receipt, count: undefined },
               { key: "anulaciones", label: "Anulaciones", icon: AlertTriangle, count: anulCounters?.pending },
+              { key: "bonos", label: "Bonos", icon: Gift, count: undefined },
               { key: "pagos_pendientes", label: "Pagos Pendientes", icon: Clock, count: undefined },
             ] as const).map(({ key, label, icon: Icon, count }) => (
               <button
@@ -4371,7 +4414,7 @@ export default function CRMDashboard() {
         </div>
 
         {/* Search & filter */}
-        {tab !== "anulaciones" && (
+        {tab !== "anulaciones" && tab !== "bonos" && (
         <div className="px-6 py-4 flex gap-3 items-center">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
@@ -5425,6 +5468,10 @@ export default function CRMDashboard() {
           )}
 
           {/* ─── TAB: Pagos Pendientes ─── */}
+          {tab === "bonos" && (
+            <BonosManager onOpenCancellation={(id) => { setSelectedAnulId(id); }} />
+          )}
+
           {tab === "pagos_pendientes" && (
             <PagosPendientesTab />
           )}
@@ -6387,6 +6434,289 @@ function AnularReservaModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── BONOS MANAGER ───────────────────────────────────────────────────────────
+function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number) => void }) {
+  const utils = trpc.useUtils();
+  const [statusFilter, setStatusFilter] = useState<"all" | "generado" | "enviado" | "canjeado" | "caducado" | "anulado">("all");
+  const [search, setSearch] = useState("");
+  const [extendModal, setExtendModal] = useState<{ id: number; code: string; current: string | null } | null>(null);
+  const [cancelModal, setCancelModal] = useState<{ id: number; code: string } | null>(null);
+  const [newExpiry, setNewExpiry] = useState("");
+  const [cancelReason, setCancelReason] = useState("");
+
+  const { data: kpis } = trpc.cancellations.getVoucherCounters.useQuery();
+  const { data: vouchers, isLoading } = trpc.cancellations.listVouchers.useQuery({
+    status: statusFilter,
+    search: search || undefined,
+  });
+
+  const invalidate = () => {
+    utils.cancellations.listVouchers.invalidate();
+    utils.cancellations.getVoucherCounters.invalidate();
+  };
+
+  const resendMut = trpc.cancellations.resendVoucherEmail.useMutation({
+    onSuccess: () => { toast.success("Email reenviado correctamente"); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const extendMut = trpc.cancellations.extendVoucherExpiry.useMutation({
+    onSuccess: () => { toast.success("Caducidad ampliada"); setExtendModal(null); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const cancelMut = trpc.cancellations.cancelVoucher.useMutation({
+    onSuccess: () => { toast.success("Bono anulado"); setCancelModal(null); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+    generado:  { label: "Generado",  cls: "bg-blue-500/10 text-blue-300 border-blue-500/20" },
+    enviado:   { label: "Activo",    cls: "bg-green-500/10 text-green-300 border-green-500/20" },
+    canjeado:  { label: "Canjeado",  cls: "bg-purple-500/10 text-purple-300 border-purple-500/20" },
+    caducado:  { label: "Caducado",  cls: "bg-amber-500/10 text-amber-300 border-amber-500/20" },
+    anulado:   { label: "Anulado",   cls: "bg-gray-500/10 text-gray-400 border-gray-500/20" },
+  };
+
+  const filters: { key: typeof statusFilter; label: string }[] = [
+    { key: "all",      label: "Todos" },
+    { key: "enviado",  label: "Activos" },
+    { key: "canjeado", label: "Canjeados" },
+    { key: "caducado", label: "Caducados" },
+    { key: "anulado",  label: "Anulados" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {[
+          { label: "Total emitidos", value: kpis?.total ?? 0, cls: "border-white/5" },
+          { label: "Activos",        value: kpis?.activos ?? 0, cls: "border-green-500/20" },
+          { label: "Canjeados",      value: kpis?.canjeados ?? 0, cls: "border-purple-500/20" },
+          { label: "Caducados",      value: kpis?.caducados ?? 0, cls: "border-amber-500/20" },
+          { label: "Importe pend.", value: `${(kpis?.importePendiente ?? 0).toFixed(2)} €`, cls: "border-green-500/20" },
+        ].map(({ label, value, cls }) => (
+          <div key={label} className={`bg-white/3 border ${cls} rounded-xl p-4`}>
+            <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
+            <p className="text-xl font-bold text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtros + búsqueda */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex gap-1 bg-white/5 rounded-lg p-1">
+          {filters.map(f => (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${statusFilter === f.key ? "bg-purple-600 text-white" : "text-white/40 hover:text-white"}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative flex-1 min-w-[200px] max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Código, cliente, expediente..."
+            className="pl-8 h-8 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-xs"
+          />
+        </div>
+      </div>
+
+      {/* Tabla */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-5 h-5 animate-spin text-purple-400" />
+        </div>
+      ) : !vouchers || vouchers.length === 0 ? (
+        <div className="text-center py-12 text-white/30 text-sm">No se encontraron bonos</div>
+      ) : (
+        <div className="space-y-2">
+          {vouchers.map((v) => {
+            const isActive = v.status === "enviado" || v.status === "generado";
+            const badge = STATUS_BADGE[v.status] ?? STATUS_BADGE.generado;
+            const isExpired = v.expiresAt && new Date(v.expiresAt) < new Date();
+            return (
+              <div key={v.id} className={`bg-white/3 border rounded-xl p-4 ${isActive ? "border-green-500/10" : "border-white/5"}`}>
+                <div className="flex flex-wrap items-start gap-3">
+                  {/* Código y estado */}
+                  <div className="min-w-[160px]">
+                    <p className="font-mono font-bold text-sm text-purple-300">{v.code}</p>
+                    <span className={`inline-flex items-center border rounded-full px-2 py-0.5 text-xs font-semibold mt-1 ${badge.cls}`}>
+                      {badge.label}
+                    </span>
+                  </div>
+
+                  {/* Cliente */}
+                  <div className="flex-1 min-w-[160px]">
+                    <p className="text-white text-sm font-medium">{v.clientName ?? "—"}</p>
+                    <p className="text-white/40 text-xs">{v.clientEmail ?? ""}</p>
+                  </div>
+
+                  {/* Valor + actividad */}
+                  <div className="min-w-[100px]">
+                    <p className="text-orange-400 font-bold">{Number(v.value).toFixed(2)} €</p>
+                    {v.activityName && <p className="text-white/40 text-xs truncate max-w-[140px]">{v.activityName}</p>}
+                  </div>
+
+                  {/* Caducidad */}
+                  <div className="min-w-[100px]">
+                    {v.expiresAt ? (
+                      <>
+                        <p className={`text-xs font-medium ${isExpired && isActive ? "text-red-400" : "text-white/60"}`}>
+                          {isExpired && isActive ? "⚠️ " : ""}{new Date(v.expiresAt).toLocaleDateString("es-ES")}
+                        </p>
+                        <p className="text-white/30 text-xs">Caduca</p>
+                      </>
+                    ) : (
+                      <p className="text-white/30 text-xs italic">Sin caducidad</p>
+                    )}
+                    {v.redeemedAt && (
+                      <p className="text-purple-300/60 text-xs mt-0.5">Canjeado {new Date(v.redeemedAt).toLocaleDateString("es-ES")}</p>
+                    )}
+                  </div>
+
+                  {/* Expediente */}
+                  {v.cancellationNumber && (
+                    <button
+                      className="text-xs font-mono text-orange-400/70 hover:text-orange-400 border border-orange-500/20 rounded px-2 py-0.5 transition-colors"
+                      onClick={() => onOpenCancellation(v.requestId)}
+                    >
+                      {v.cancellationNumber}
+                    </button>
+                  )}
+
+                  {/* Acciones */}
+                  <div className="flex gap-1.5 ml-auto items-center flex-wrap">
+                    {isActive && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 text-xs border-sky-500/30 text-sky-300 hover:bg-sky-500/10"
+                        disabled={resendMut.isPending}
+                        onClick={() => resendMut.mutate({ voucherId: v.id })}
+                        title="Reenviar email al cliente"
+                      >
+                        <Send className="w-3 h-3 mr-1" /> Reenviar
+                      </Button>
+                    )}
+                    {(isActive || v.status === "caducado") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 text-xs border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
+                        onClick={() => {
+                          setNewExpiry(v.expiresAt ? new Date(v.expiresAt).toISOString().split("T")[0] : "");
+                          setExtendModal({ id: v.id, code: v.code, current: v.expiresAt ? new Date(v.expiresAt).toLocaleDateString("es-ES") : null });
+                        }}
+                        title="Ampliar fecha de caducidad"
+                      >
+                        <CalendarClock className="w-3 h-3 mr-1" /> Ampliar
+                      </Button>
+                    )}
+                    {v.status !== "canjeado" && v.status !== "anulado" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
+                        onClick={() => { setCancelReason(""); setCancelModal({ id: v.id, code: v.code }); }}
+                        title="Anular bono"
+                      >
+                        <Ban className="w-3 h-3 mr-1" /> Anular
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Modal: Ampliar caducidad */}
+      <Dialog open={!!extendModal} onOpenChange={(o) => !o && setExtendModal(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <CalendarClock className="w-4 h-4 text-amber-400" /> Ampliar caducidad
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-white/50">Bono <span className="font-mono text-purple-300">{extendModal?.code}</span></p>
+            {extendModal?.current && (
+              <p className="text-xs text-white/40">Caducidad actual: <span className="text-amber-300">{extendModal.current}</span></p>
+            )}
+            <div>
+              <Label className="text-white/60 text-xs mb-1.5 block">Nueva fecha de caducidad</Label>
+              <Input
+                type="date"
+                value={newExpiry}
+                onChange={(e) => setNewExpiry(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+                className="bg-white/5 border-white/10 text-white"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" className="border-white/15 text-white/60" onClick={() => setExtendModal(null)}>Cancelar</Button>
+            <Button
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={!newExpiry || extendMut.isPending}
+              onClick={() => extendModal && extendMut.mutate({ voucherId: extendModal.id, newExpiresAt: newExpiry })}
+            >
+              {extendMut.isPending ? "Guardando..." : "Confirmar nueva fecha"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Anular bono */}
+      <Dialog open={!!cancelModal} onOpenChange={(o) => !o && setCancelModal(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Ban className="w-4 h-4 text-red-400" /> Anular bono
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-white/70">
+              ¿Confirmas anular el bono <span className="font-mono text-purple-300">{cancelModal?.code}</span>?
+              El código quedará inactivo y el cliente no podrá usarlo.
+            </p>
+            <div>
+              <Label className="text-white/60 text-xs mb-1.5 block">Motivo (opcional)</Label>
+              <Textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Ej: Emitido por error, cliente solicitó devolución económica..."
+                rows={3}
+                className="bg-white/5 border-white/10 text-white placeholder:text-gray-600 resize-none text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" className="border-white/15 text-white/60" onClick={() => setCancelModal(null)}>Cancelar</Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={cancelMut.isPending}
+              onClick={() => cancelModal && cancelMut.mutate({ voucherId: cancelModal.id, reason: cancelReason || undefined })}
+            >
+              {cancelMut.isPending ? "Anulando..." : "Confirmar anulación"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1202,4 +1202,161 @@ export const cancellationsRouter = router({
 
       return { success: true };
     }),
+
+  // ── GESTIÓN DE BONOS ─────────────────────────────────────────────────────
+
+  getVoucherCounters: adminProcedure
+    .query(async () => {
+      const rows = await db
+        .select({
+          status: compensationVouchers.status,
+          count: sql<number>`COUNT(*)`,
+          totalValue: sql<number>`SUM(CAST(value AS DECIMAL(10,2)))`,
+        })
+        .from(compensationVouchers)
+        .groupBy(compensationVouchers.status);
+
+      const cnt = (s: string) => Number(rows.find(r => r.status === s)?.count ?? 0);
+      const val = (s: string) => Number(rows.find(r => r.status === s)?.totalValue ?? 0);
+
+      return {
+        total: rows.reduce((s, r) => s + Number(r.count), 0),
+        activos: cnt("enviado") + cnt("generado"),
+        canjeados: cnt("canjeado"),
+        caducados: cnt("caducado"),
+        anulados: cnt("anulado"),
+        importePendiente: Math.round((val("enviado") + val("generado")) * 100) / 100,
+      };
+    }),
+
+  listVouchers: adminProcedure
+    .input(z.object({
+      status: z.enum(["all", "generado", "enviado", "canjeado", "caducado", "anulado"]).default("all"),
+      search: z.string().optional(),
+      limit: z.number().default(100),
+    }))
+    .query(async ({ input }) => {
+      const conditions: ReturnType<typeof eq>[] = [];
+      if (input.status !== "all") {
+        conditions.push(eq(compensationVouchers.status, input.status as "generado" | "enviado" | "canjeado" | "caducado" | "anulado"));
+      }
+
+      const rows = await db
+        .select({
+          id: compensationVouchers.id,
+          code: compensationVouchers.code,
+          activityName: compensationVouchers.activityName,
+          value: compensationVouchers.value,
+          status: compensationVouchers.status,
+          expiresAt: compensationVouchers.expiresAt,
+          issuedAt: compensationVouchers.issuedAt,
+          sentAt: compensationVouchers.sentAt,
+          redeemedAt: compensationVouchers.redeemedAt,
+          requestId: compensationVouchers.requestId,
+          clientName: cancellationRequests.fullName,
+          clientEmail: cancellationRequests.email,
+          cancellationNumber: cancellationRequests.cancellationNumber,
+          discountCodeStatus: discountCodes.status,
+          currentUses: discountCodes.currentUses,
+        })
+        .from(compensationVouchers)
+        .leftJoin(cancellationRequests, eq(cancellationRequests.id, compensationVouchers.requestId))
+        .leftJoin(discountCodes, eq(discountCodes.compensationVoucherId, compensationVouchers.id))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(compensationVouchers.issuedAt))
+        .limit(input.limit);
+
+      // Filtro de búsqueda en JS (evita complejidad JOIN para texto)
+      if (input.search) {
+        const s = input.search.toLowerCase();
+        return rows.filter(r =>
+          r.code.toLowerCase().includes(s) ||
+          (r.clientName ?? "").toLowerCase().includes(s) ||
+          (r.clientEmail ?? "").toLowerCase().includes(s) ||
+          (r.cancellationNumber ?? "").toLowerCase().includes(s)
+        );
+      }
+
+      return rows;
+    }),
+
+  resendVoucherEmail: adminProcedure
+    .input(z.object({ voucherId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const [voucher] = await db.select().from(compensationVouchers).where(eq(compensationVouchers.id, input.voucherId));
+      if (!voucher) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, voucher.requestId));
+      if (!req?.email) throw new TRPCError({ code: "BAD_REQUEST", message: "El expediente no tiene email registrado" });
+
+      const expiresStr = voucher.expiresAt
+        ? new Date(voucher.expiresAt).toLocaleDateString("es-ES")
+        : "Sin caducidad";
+
+      await sendEmail({
+        to: req.email,
+        subject: `Bono de compensación — Código ${voucher.code}`,
+        html: buildCancellationAcceptedVoucherHtml({
+          fullName: req.fullName,
+          requestId: req.id,
+          voucherCode: voucher.code,
+          activityName: voucher.activityName ?? "Actividad Náyade Experiences",
+          value: Number(voucher.value).toFixed(2),
+          expiresAt: expiresStr,
+          isPartial: false,
+        }),
+      });
+
+      await addLog(voucher.requestId, "voucher_sent", { voucherId: voucher.id, resentBy: ctx.user.id }, ctx.user.id, ctx.user.name ?? "Admin");
+      return { success: true };
+    }),
+
+  extendVoucherExpiry: adminProcedure
+    .input(z.object({
+      voucherId: z.number(),
+      newExpiresAt: z.string().min(1),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [voucher] = await db.select().from(compensationVouchers).where(eq(compensationVouchers.id, input.voucherId));
+      if (!voucher) throw new TRPCError({ code: "NOT_FOUND" });
+      if (voucher.status === "canjeado" || voucher.status === "anulado") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede modificar un bono canjeado o anulado" });
+      }
+
+      const newDate = new Date(input.newExpiresAt);
+      await db.update(compensationVouchers)
+        .set({ expiresAt: newDate, status: "enviado" })
+        .where(eq(compensationVouchers.id, input.voucherId));
+
+      await db.update(discountCodes)
+        .set({ expiresAt: newDate, status: "active" })
+        .where(eq(discountCodes.compensationVoucherId, input.voucherId));
+
+      await addLog(voucher.requestId, "voucher_expiry_extended", { voucherId: input.voucherId, newExpiresAt: input.newExpiresAt }, ctx.user.id, ctx.user.name ?? "Admin");
+      return { success: true };
+    }),
+
+  cancelVoucher: adminProcedure
+    .input(z.object({
+      voucherId: z.number(),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [voucher] = await db.select().from(compensationVouchers).where(eq(compensationVouchers.id, input.voucherId));
+      if (!voucher) throw new TRPCError({ code: "NOT_FOUND" });
+      if (voucher.status === "canjeado") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede anular un bono ya canjeado" });
+      }
+
+      await db.update(compensationVouchers)
+        .set({ status: "anulado" })
+        .where(eq(compensationVouchers.id, input.voucherId));
+
+      await db.update(discountCodes)
+        .set({ status: "inactive" })
+        .where(eq(discountCodes.compensationVoucherId, input.voucherId));
+
+      await addLog(voucher.requestId, "voucher_cancelled", { voucherId: input.voucherId, reason: input.reason ?? null }, ctx.user.id, ctx.user.name ?? "Admin");
+      return { success: true };
+    }),
 });
