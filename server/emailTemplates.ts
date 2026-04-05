@@ -1584,6 +1584,7 @@ export interface PendingPaymentEmailData {
 
 export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
   const body = `
+    ${emailHeader("Pago Pendiente", "Tu reserva está confirmada")}
     <tr><td style="padding:28px 32px 8px;">
       <h2 style="color:#1e3a6e;font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
         Reserva confirmada — Pago pendiente
@@ -1634,6 +1635,7 @@ export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
 // ─── PAGO PENDIENTE: Recordatorio 5 días antes ────────────────────────────────
 export function buildPendingPaymentReminderHtml(d: PendingPaymentEmailData): string {
   const body = `
+    ${emailHeader("Recordatorio de Pago", "Fecha l\u00edmite pr\u00f3xima")}
     <tr><td style="padding:28px 32px 8px;">
       <h2 style="color:#dc2626;font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
         Recordatorio urgente de pago

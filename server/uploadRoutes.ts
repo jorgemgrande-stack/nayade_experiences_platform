@@ -142,14 +142,18 @@ const couponUpload = multer({
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
     if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error("Solo se admiten imágenes (JPG, PNG, WEBP) o PDF"));
+    else cb(new Error(`Tipo no permitido: ${file.mimetype}. Solo JPG, PNG, WEBP o PDF.`));
   },
 });
 
-router.post(
-  "/api/upload-coupon",
-  couponUpload.single("file"),
-  async (req: Request, res: Response) => {
+router.post("/api/upload-coupon", (req: Request, res: Response) => {
+  couponUpload.single("file")(req, res, async (err) => {
+    if (err) {
+      console.error("[CouponUpload] Multer error:", err);
+      const message = err instanceof Error ? err.message : "Error al procesar el archivo";
+      res.status(400).json({ error: message });
+      return;
+    }
     try {
       if (!req.file) {
         res.status(400).json({ error: "No se recibió ningún archivo." });
@@ -160,15 +164,17 @@ router.post(
       const timestamp = Date.now();
       const random = Math.random().toString(36).substring(2, 10);
       const key = `nayade/coupons/${timestamp}-${random}.${ext}`;
+      console.log(`[CouponUpload] Subiendo ${originalname} (${mimetype}, ${buffer.length} bytes) → ${key}`);
       const { url } = await storagePut(key, buffer, mimetype);
+      console.log(`[CouponUpload] OK → ${url}`);
       res.json({ url, key });
     } catch (err: unknown) {
-      console.error("[CouponUpload] Error:", err);
+      console.error("[CouponUpload] Storage error:", err);
       const message = err instanceof Error ? err.message : "Error al subir el archivo";
       res.status(500).json({ error: message });
     }
-  }
-);
+  });
+});
 
 // POST /api/upload/monitor-photo — sube foto de perfil de monitor a S3 (admin)
 const monitorPhotoUpload = multer({

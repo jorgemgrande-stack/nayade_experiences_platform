@@ -23,6 +23,7 @@ export interface MailParams {
   html: string;
   text?: string;
   from?: string;
+  cc?: string | string[];
 }
 
 // ─── Helper: parsea el SMTP_FROM en nombre + email ───────────────────────────
@@ -47,12 +48,17 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
     ? params.to.map(e => ({ email: e }))
     : [{ email: params.to }];
 
+  const ccList = params.cc
+    ? (Array.isArray(params.cc) ? params.cc : [params.cc]).map(e => ({ email: e }))
+    : undefined;
+
   const body = {
     sender,
     to: toList,
     subject: params.subject,
     htmlContent: params.html,
     ...(params.text ? { textContent: params.text } : {}),
+    ...(ccList ? { cc: ccList } : {}),
   };
 
   try {
@@ -124,6 +130,7 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
       subject: params.subject,
       html: params.html,
       ...(params.text ? { text: params.text } : {}),
+      ...(params.cc ? { cc: Array.isArray(params.cc) ? params.cc.join(", ") : params.cc } : {}),
     });
     console.log(`[Mailer] ✓ SMTP → ${Array.isArray(params.to) ? params.to.join(", ") : params.to}`);
     return true;

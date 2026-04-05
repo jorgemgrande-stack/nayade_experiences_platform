@@ -714,7 +714,7 @@ export const tpvRouter = router({
         const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
         await sendEmail({ to: "reservas@nayadeexperiences.es", subject, html: emailHtml });
         if (input.customerEmail) {
-          await sendEmail({ to: input.customerEmail, subject, html: emailHtml });
+          await sendEmail({ to: input.customerEmail, cc: "reservas@nayadeexperiences.es", subject, html: emailHtml });
         }
       } catch (e) {
         console.error("[TPV] Error enviando email de confirmación:", e);
@@ -853,6 +853,7 @@ export const tpvRouter = router({
       });
       await sendEmail({
         to: input.email,
+        cc: "reservas@nayadeexperiences.es",
         subject: `Tu ticket de compra ${sale.ticketNumber} — Náyade Experiences`,
         html: emailHtml,
       });

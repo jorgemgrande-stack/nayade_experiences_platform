@@ -88,6 +88,7 @@ async function runQuoteReminderJob() {
       try {
         await sendEmail({
           to: clientEmail,
+          cc: "reservas@nayadeexperiences.es",
           subject: `⏰ Recordatorio: tu presupuesto ${quote.quoteNumber} sigue disponible — Náyade Experiences`,
           html,
         });

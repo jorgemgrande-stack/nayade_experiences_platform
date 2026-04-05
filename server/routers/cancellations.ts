@@ -336,6 +336,7 @@ export const cancellationsRouter = router({
       if (input.email) {
         await sendEmail({
           to: input.email,
+          cc: COPY_EMAIL,
           subject: `Solicitud de anulación recibida — Ref. #${requestId}`,
           html: emailAcuseRecibo(input.fullName, requestId),
         }).catch(() => {});
@@ -532,6 +533,7 @@ export const cancellationsRouter = router({
       if (input.sendEmail && req.email) {
         await sendEmail({
           to: req.email,
+          cc: COPY_EMAIL,
           subject: `Resolución de tu solicitud de anulación #${input.id}`,
           html: emailRechazo(req.fullName, input.id, input.adminText),
         }).catch(() => {});
@@ -593,6 +595,7 @@ export const cancellationsRouter = router({
         if (input.sendEmail && req.email) {
           await sendEmail({
             to: req.email,
+            cc: COPY_EMAIL,
             subject: `Aceptación de tu solicitud de anulación #${input.id}`,
             html: emailAceptacionDevolucion(req.fullName, input.id, String(input.refundAmount), input.isPartial),
           }).catch(() => {});
@@ -676,6 +679,7 @@ export const cancellationsRouter = router({
             : "Sin caducidad";
           await sendEmail({
             to: req.email,
+            cc: COPY_EMAIL,
             subject: `Bono de compensación — Solicitud #${input.id}`,
             html: emailAceptacionBono(
               req.fullName, input.id, code,
@@ -727,6 +731,7 @@ export const cancellationsRouter = router({
       if (input.sendEmail && req.email) {
         await sendEmail({
           to: req.email,
+          cc: COPY_EMAIL,
           subject: `Documentación requerida — Solicitud #${input.id}`,
           html: emailSolicitudDocumentacion(req.fullName, input.id, input.text),
         }).catch(() => {});
@@ -1295,6 +1300,7 @@ export const cancellationsRouter = router({
 
       await sendEmail({
         to: req.email,
+        cc: COPY_EMAIL,
         subject: `Bono de compensación — Código ${voucher.code}`,
         html: buildCancellationAcceptedVoucherHtml({
           fullName: req.fullName,

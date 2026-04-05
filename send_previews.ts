@@ -7,14 +7,27 @@
 import nodemailer from "nodemailer";
 import {
   buildBudgetRequestUserHtml,
+  buildBudgetRequestAdminHtml,
   buildReservationConfirmHtml,
   buildReservationFailedHtml,
   buildRestaurantConfirmHtml,
   buildRestaurantPaymentLinkHtml,
   buildPasswordResetHtml,
+  buildInviteHtml,
   buildQuoteHtml,
   buildConfirmationHtml,
   buildTransferConfirmationHtml,
+  buildCancellationReceivedHtml,
+  buildCancellationRejectedHtml,
+  buildCancellationAcceptedRefundHtml,
+  buildCancellationAcceptedVoucherHtml,
+  buildCancellationDocumentationHtml,
+  buildTpvTicketHtml,
+  buildCouponRedemptionReceivedHtml,
+  buildCouponPostponedHtml,
+  buildCouponInternalAlertHtml,
+  buildPendingPaymentHtml,
+  buildPendingPaymentReminderHtml,
 } from "./server/emailTemplates";
 
 const TO = "reservas@nayadeexperiences.es";
@@ -50,7 +63,7 @@ const templates: TemplateDef[] = [
 
   // 1. Solicitud de presupuesto recibida (al cliente)
   {
-    subject: "[PRUEBA 1/9] 🏄 Solicitud de presupuesto recibida — Náyade Experiences",
+    subject: "[PRUEBA 1/22] 🏄 Solicitud de presupuesto recibida — Náyade Experiences",
     build: () => buildBudgetRequestUserHtml({
       name: "Carlos Pedraza",
       email: TO,
@@ -67,7 +80,7 @@ const templates: TemplateDef[] = [
 
   // 2. Reserva confirmada — pago Redsys OK
   {
-    subject: "[PRUEBA 2/9] ✅ Reserva confirmada — Ruta en Kayak — Náyade Experiences",
+    subject: "[PRUEBA 2/22] ✅ Reserva confirmada — Ruta en Kayak — Náyade Experiences",
     build: () => buildReservationConfirmHtml({
       merchantOrder: "NE-20260405-0001",
       productName: "Ruta en Kayak por el Embalse de Pontón Alto",
@@ -81,7 +94,7 @@ const templates: TemplateDef[] = [
 
   // 3. Pago no completado — Redsys KO
   {
-    subject: "[PRUEBA 3/9] ❌ Pago no completado — Ruta en Kayak — Náyade Experiences",
+    subject: "[PRUEBA 3/22] ❌ Pago no completado — Ruta en Kayak — Náyade Experiences",
     build: () => buildReservationFailedHtml({
       merchantOrder: "NE-20260405-0001",
       productName: "Ruta en Kayak por el Embalse de Pontón Alto",
@@ -92,7 +105,7 @@ const templates: TemplateDef[] = [
 
   // 4. Reserva de restaurante confirmada
   {
-    subject: "[PRUEBA 4/9] 🍽️ Reserva en El Galeón confirmada — Náyade Experiences",
+    subject: "[PRUEBA 4/22] 🍽️ Reserva en El Galeón confirmada — Náyade Experiences",
     build: () => buildRestaurantConfirmHtml({
       guestName: "Carlos Pedraza",
       restaurantName: "El Galeón",
@@ -100,13 +113,14 @@ const templates: TemplateDef[] = [
       time: "14:00",
       guests: 4,
       locator: "NR-TEST01",
-      status: "confirmed",
+      depositAmount: "0,00",
+      requiresPayment: false,
     }),
   },
 
   // 5. Link de pago depósito restaurante
   {
-    subject: "[PRUEBA 5/9] 💳 Completa tu reserva en Nassau Bar & Music — Náyade Experiences",
+    subject: "[PRUEBA 5/22] 💳 Completa tu reserva en Nassau Bar & Music — Náyade Experiences",
     build: () => buildRestaurantPaymentLinkHtml({
       guestName: "Carlos Pedraza",
       guestEmail: TO,
@@ -125,7 +139,7 @@ const templates: TemplateDef[] = [
 
   // 6. Recuperar contraseña
   {
-    subject: "[PRUEBA 6/9] 🔑 Recuperar contraseña — Náyade Experiences",
+    subject: "[PRUEBA 6/22] 🔑 Recuperar contraseña — Náyade Experiences",
     build: () => buildPasswordResetHtml({
       name: "Carlos Pedraza",
       resetUrl: `${PORTAL}/reset-password?token=demo-token-abc123`,
@@ -135,7 +149,7 @@ const templates: TemplateDef[] = [
 
   // 7. Presupuesto enviado al cliente
   {
-    subject: "[PRUEBA 7/9] 📋 Tu presupuesto personalizado — Náyade Experiences",
+    subject: "[PRUEBA 7/22] 📋 Tu presupuesto personalizado — Náyade Experiences",
     build: () => buildQuoteHtml({
       quoteNumber: "NQ-20260323-0042",
       title: "Pack Cable Ski Experience",
@@ -158,7 +172,7 @@ const templates: TemplateDef[] = [
 
   // 8. Reserva confirmada (CRM — factura enviada)
   {
-    subject: "[PRUEBA 8/9] ✅ Tu reserva está confirmada — Náyade Experiences",
+    subject: "[PRUEBA 8/22] ✅ Tu reserva está confirmada — Náyade Experiences",
     build: () => buildConfirmationHtml({
       clientName: "Carlos Pedraza",
       reservationRef: "NE-20260405-0042",
@@ -180,7 +194,7 @@ const templates: TemplateDef[] = [
 
   // 9. Pago por transferencia validado
   {
-    subject: "[PRUEBA 9/9] 🏦 Transferencia recibida — Reserva confirmada — Náyade Experiences",
+    subject: "[PRUEBA 9/22] 🏦 Transferencia recibida — Reserva confirmada — Náyade Experiences",
     build: () => buildTransferConfirmationHtml({
       clientName: "Carlos Pedraza",
       invoiceNumber: "FAC-2026-0042",
@@ -197,6 +211,177 @@ const templates: TemplateDef[] = [
       invoiceUrl: `${PORTAL}/facturas/demo.pdf`,
       confirmedBy: "Jorge Grande",
       confirmedAt: new Date(),
+    }),
+  },
+
+  // 10. Invitación de usuario al equipo
+  {
+    subject: "[PRUEBA 10/22] 👋 Invitación al equipo de Náyade Experiences",
+    build: () => buildInviteHtml({
+      name: "Ana Martínez",
+      role: "admin",
+      setPasswordUrl: `${PORTAL}/set-password?token=demo-invite-token-xyz`,
+    }),
+  },
+
+  // 11. Solicitud de presupuesto — alerta interna al admin
+  {
+    subject: "[PRUEBA 11/22] 🔔 [INTERNO] Nueva solicitud de presupuesto — Náyade Experiences",
+    build: () => buildBudgetRequestAdminHtml({
+      name: "Carlos Pedraza",
+      email: TO,
+      phone: "+34 600 123 456",
+      arrivalDate: "sábado, 5 de abril de 2026",
+      adults: 5,
+      children: 0,
+      selectedCategory: "Acuáticas",
+      selectedProduct: "Pack Cable Ski Experience",
+      comments: "Queremos celebrar un cumpleaños, ¿podéis preparar algo especial?",
+      submittedAt: new Date().toLocaleString("es-ES"),
+    }),
+  },
+
+  // 12. Anulación recibida — en revisión
+  {
+    subject: "[PRUEBA 12/22] 🔄 Solicitud de anulación recibida — Náyade Experiences",
+    build: () => buildCancellationReceivedHtml({
+      fullName: "Carlos Pedraza",
+      requestId: 23,
+      locator: "NE-20260405-0001",
+      reason: "Enfermedad acreditada con parte médico",
+    }),
+  },
+
+  // 13. Anulación rechazada
+  {
+    subject: "[PRUEBA 13/22] ❌ Solicitud de anulación no aceptada — Náyade Experiences",
+    build: () => buildCancellationRejectedHtml({
+      fullName: "Carlos Pedraza",
+      requestId: 23,
+      adminText: "La solicitud fue recibida fuera del plazo de cancelación establecido en nuestras condiciones generales.",
+    }),
+  },
+
+  // 14. Anulación aceptada con devolución económica
+  {
+    subject: "[PRUEBA 14/22] 💶 Devolución aprobada — Náyade Experiences",
+    build: () => buildCancellationAcceptedRefundHtml({
+      fullName: "Carlos Pedraza",
+      requestId: 23,
+      amount: "79,00",
+      isPartial: false,
+    }),
+  },
+
+  // 15. Anulación aceptada con bono de compensación
+  {
+    subject: "[PRUEBA 15/22] 🎫 Bono de compensación emitido — Náyade Experiences",
+    build: () => buildCancellationAcceptedVoucherHtml({
+      fullName: "Carlos Pedraza",
+      requestId: 23,
+      voucherCode: "BON-2026-XK7F2A",
+      activityName: "Ruta en Kayak por el Embalse de Pontón Alto",
+      value: "79,00",
+      expiresAt: "31 de diciembre de 2026",
+      isPartial: false,
+    }),
+  },
+
+  // 16. Documentación adicional requerida
+  {
+    subject: "[PRUEBA 16/22] 📎 Documentación requerida para tu anulación — Náyade Experiences",
+    build: () => buildCancellationDocumentationHtml({
+      fullName: "Carlos Pedraza",
+      requestId: 23,
+      adminText: "1. Parte médico o informe que acredite la enfermedad\n2. DNI del titular de la reserva",
+    }),
+  },
+
+  // 17. Ticket de compra TPV presencial
+  {
+    subject: "[PRUEBA 17/22] 🧾 Tu ticket de compra — Náyade Experiences",
+    build: () => buildTpvTicketHtml({
+      ticketNumber: "T-2026-0847",
+      customerName: "Carlos Pedraza",
+      createdAt: new Date(),
+      items: [
+        { name: "Wakeboard 1h", quantity: 2, unitPrice: 35, total: 70 },
+        { name: "Alquiler de neopreno", quantity: 2, unitPrice: 8, total: 16 },
+      ],
+      payments: [
+        { method: "card", amount: 86 },
+      ],
+      subtotal: 72.73,
+      taxAmount: 13.27,
+      total: 86,
+    }),
+  },
+
+  // 18. Solicitud de canje de cupón recibida (al cliente)
+  {
+    subject: "[PRUEBA 18/22] 🎟️ Solicitud de canje recibida — Náyade Experiences",
+    build: () => buildCouponRedemptionReceivedHtml({
+      customerName: "Carlos Pedraza",
+      coupons: [
+        { couponCode: "GV-2026-ABC123", provider: "Groupon" },
+        { couponCode: "GV-2026-DEF456", provider: "Groupon" },
+      ],
+      submissionId: "TKT-2026-0091",
+      requestedDate: "sábado, 5 de abril de 2026",
+    }),
+  },
+
+  // 19. Cupón sin disponibilidad — fecha pospuesta
+  {
+    subject: "[PRUEBA 19/22] ⏳ Sin disponibilidad para la fecha solicitada — Náyade Experiences",
+    build: () => buildCouponPostponedHtml({
+      customerName: "Carlos Pedraza",
+      couponCode: "GV-2026-ABC123",
+      provider: "Groupon",
+      productName: "Wakeboard 1 hora",
+      requestedDate: "sábado, 5 de abril de 2026",
+    }),
+  },
+
+  // 20. Alerta interna — nuevo envío de cupones
+  {
+    subject: "[PRUEBA 20/22] 🔔 [INTERNO] Nuevo envío de cupones — Náyade Experiences",
+    build: () => buildCouponInternalAlertHtml({
+      customerName: "Carlos Pedraza",
+      email: TO,
+      phone: "+34 600 123 456",
+      coupons: [
+        { couponCode: "GV-2026-ABC123", provider: "Groupon" },
+        { couponCode: "GV-2026-DEF456", provider: "Groupon" },
+      ],
+      submissionId: "TKT-2026-0091",
+      requestedDate: "sábado, 5 de abril de 2026",
+    }),
+  },
+
+  // 21. Reserva confirmada — pago pendiente (inicial)
+  {
+    subject: "[PRUEBA 21/22] ⏰ Reserva confirmada — Pago pendiente — Náyade Experiences",
+    build: () => buildPendingPaymentHtml({
+      clientName: "Carlos Pedraza",
+      productName: "Pack Cable Ski Experience",
+      amountFormatted: "171,00 €",
+      dueDate: "viernes, 10 de abril de 2026",
+      ibanInfo: "IBAN: ES12 3456 7890 1234 5678 9012\nConcepto: NE-20260405-0042",
+      origin: "crm",
+    }),
+  },
+
+  // 22. Recordatorio urgente de pago (5 días antes)
+  {
+    subject: "[PRUEBA 22/22] ⚠️ Recordatorio urgente — Pago pendiente — Náyade Experiences",
+    build: () => buildPendingPaymentReminderHtml({
+      clientName: "Carlos Pedraza",
+      productName: "Pack Cable Ski Experience",
+      amountFormatted: "171,00 €",
+      dueDate: "viernes, 10 de abril de 2026",
+      ibanInfo: "IBAN: ES12 3456 7890 1234 5678 9012\nConcepto: NE-20260405-0042",
+      origin: "crm",
     }),
   },
 ];
@@ -225,5 +410,5 @@ for (const [i, tpl] of templates.entries()) {
 
 console.log(`\n📊 Resultado: ${sent}/${templates.length} enviados${failed > 0 ? `, ${failed} fallidos` : ""}`);
 if (sent === templates.length) {
-  console.log(`✅ Todos los emails enviados correctamente a ${TO}`);
+  console.log(`✅ Las ${templates.length} plantillas enviadas correctamente a ${TO}`);
 }

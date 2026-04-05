@@ -35,6 +35,7 @@ async function sendRestaurantPaymentEmail(params: {
 }) {
   await sendEmail({
     to: params.guestEmail,
+    cc: "reservas@nayadeexperiences.es",
     subject: `💳 Completa tu reserva en ${params.restaurantName} — Depósito pendiente (${params.locator})`,
     html: buildRestaurantPaymentLinkHtml({
       guestName: params.guestName,
@@ -68,6 +69,7 @@ async function sendRestaurantConfirmEmail(params: {
 }) {
   await sendEmail({
     to: params.guestEmail,
+    cc: "reservas@nayadeexperiences.es",
     subject: `🏔️ Reserva recibida en ${params.restaurantName} — ${params.locator}`,
     html: buildRestaurantConfirmHtml({
       guestName: params.guestName,
