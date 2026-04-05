@@ -15,6 +15,7 @@ import ExperienceDetail from "./pages/ExperienceDetail";
 import Gallery from "./pages/Gallery";
 import BudgetRequest from "./pages/BudgetRequest";
 import CanjearCupon from "./pages/CanjearCupon";
+import VerificarBono from "./pages/VerificarBono";
 import Contact from "./pages/Contact";
 import Locations from "./pages/Locations";
 import LegoPacksHome from "./pages/LegoPacksHome";
@@ -137,6 +138,7 @@ function Router() {
       <Route path="/galeria" component={Gallery} />
       <Route path="/presupuesto" component={BudgetRequest} />
       <Route path="/canjear-cupon" component={CanjearCupon} />
+      <Route path="/verificar-bono" component={VerificarBono} />
       <Route path="/solicitar-anulacion">{() => <Suspense fallback={<AdminLoadingFallback />}><SolicitarAnulacion /></Suspense>}</Route>
       <Route path="/presupuesto/:token" component={QuoteAcceptance} />
       <Route path="/contacto" component={Contact} />

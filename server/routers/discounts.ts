@@ -2,7 +2,7 @@ import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { discountCodes, discountCodeUses } from "../../drizzle/schema";
+import { discountCodes, discountCodeUses, compensationVouchers } from "../../drizzle/schema";
 import { eq, desc, like, and, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
@@ -79,6 +79,37 @@ export async function recordDiscountUse(params: {
     .update(discountCodes)
     .set({ currentUses: sql`current_uses + 1` })
     .where(eq(discountCodes.id, params.discountCodeId));
+
+  // ── Sincronizar bono compensatorio si este código proviene de uno ────────────
+  // Cuando el código es de origin='voucher' y alcanza maxUses, marcamos el voucher
+  // como 'canjeado' automáticamente, sin intervención manual del admin.
+  try {
+    const [updated] = await db
+      .select({
+        origin: discountCodes.origin,
+        compensationVoucherId: discountCodes.compensationVoucherId,
+        currentUses: discountCodes.currentUses,
+        maxUses: discountCodes.maxUses,
+      })
+      .from(discountCodes)
+      .where(eq(discountCodes.id, params.discountCodeId))
+      .limit(1);
+
+    if (
+      updated?.origin === "voucher" &&
+      updated.compensationVoucherId &&
+      updated.maxUses !== null &&
+      updated.currentUses >= updated.maxUses
+    ) {
+      await db
+        .update(compensationVouchers)
+        .set({ status: "canjeado", redeemedAt: new Date() })
+        .where(eq(compensationVouchers.id, updated.compensationVoucherId));
+    }
+  } catch (e) {
+    // No crítico: el descuento ya se registró correctamente
+    console.error("[discounts] Error sincronizando estado del bono compensatorio:", e);
+  }
 }
 
 // ─── ROUTER ──────────────────────────────────────────────────────────────────
@@ -90,6 +121,56 @@ export const discountsRouter = router({
     .mutation(async ({ input }) => {
       const result = await validateAndGetDiscount(input.code);
       return { valid: true, ...result };
+    }),
+
+  /**
+   * Verificar un bono compensatorio por código (acceso público).
+   * Devuelve el estado del voucher sin modificar nada.
+   */
+  verifyVoucher: publicProcedure
+    .input(z.object({ code: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const normalizedCode = input.code.toUpperCase().trim();
+
+      // Buscar en discount_codes el código
+      const [dc] = await db
+        .select()
+        .from(discountCodes)
+        .where(and(
+          eq(discountCodes.code, normalizedCode),
+          eq(discountCodes.origin, "voucher"),
+        ))
+        .limit(1);
+
+      if (!dc) {
+        return { found: false } as const;
+      }
+
+      // Buscar el voucher vinculado
+      let voucher: typeof compensationVouchers.$inferSelect | null = null;
+      if (dc.compensationVoucherId) {
+        const [v] = await db
+          .select()
+          .from(compensationVouchers)
+          .where(eq(compensationVouchers.id, dc.compensationVoucherId))
+          .limit(1);
+        voucher = v ?? null;
+      }
+
+      const isExpiredByDate = dc.expiresAt ? new Date(dc.expiresAt) < new Date() : false;
+      const isUsed = dc.maxUses !== null && dc.currentUses >= dc.maxUses;
+
+      return {
+        found: true,
+        code: dc.code,
+        value: Number(dc.discountAmount ?? 0),
+        discountType: dc.discountType,
+        status: isUsed ? "canjeado" : isExpiredByDate ? "caducado" : (voucher?.status ?? "enviado"),
+        expiresAt: dc.expiresAt ?? voucher?.expiresAt ?? null,
+        conditions: voucher?.conditions ?? null,
+        activityName: voucher?.activityName ?? null,
+        clientName: dc.clientName ?? null,
+      };
     }),
 
   /** Listar todos los códigos (admin) */
