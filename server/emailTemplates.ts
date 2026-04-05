@@ -51,44 +51,71 @@ const SVG = {
 
 // ─── COMPONENTE 1: Cabecera hero con imagen aérea del lago ────────────────────
 // Estructura: imagen de fondo full-width + overlay azul oscuro + logo + titular
-// Compatible con Outlook mediante VML background + tabla de contenido
+// Outlook: VML con type="frame" + tablas sin rgba/gradient/SVG
+// Modernos: background-image CSS + gradient overlay + SVG wave
 function emailHeader(subtitle?: string, tagline?: string): string {
+  const heroHeight = subtitle && tagline ? 260 : subtitle ? 240 : 220;
   return `
   <tr>
     <td style="padding:0;margin:0;">
+
       <!--[if gte mso 9]>
-      <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;height:220px;">
-        <v:fill type="tile" src="${HERO_IMG}" color="${BRAND_BLUE}" />
+      <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false"
+              style="width:600px;height:${heroHeight}px;display:block;">
+        <v:fill type="frame" src="${HERO_IMG}" color="${BRAND_BLUE}" />
         <v:textbox inset="0,0,0,0">
+        <table width="600" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td align="center" style="padding:36px 40px 28px;background-color:#0d1f3c;">
+              <table cellpadding="0" cellspacing="0" border="0"><tr>
+                <td align="center" style="border:3px solid #ffffff;padding:4px;background-color:#1e3a6e;">
+                  <img src="${LOGO_URL}" alt="Nayade" width="72" height="72" style="display:block;border:0;" />
+                </td>
+              </tr></table>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td align="center" style="color:#ffffff;font-size:28px;font-weight:900;letter-spacing:5px;font-family:Georgia,serif;padding-top:12px;">N&Aacute;YADE</td></tr>
+                <tr><td align="center" style="color:#c8d8f0;font-size:10px;letter-spacing:6px;text-transform:uppercase;font-family:Arial,sans-serif;padding-top:2px;">EXPERIENCES</td></tr>
+              </table>
+              ${subtitle ? `<table cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+                <tr><td align="center" style="background-color:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;font-family:Arial,sans-serif;">${subtitle}</td></tr>
+              </table>` : ""}
+              ${tagline ? `<table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td align="center" style="color:#c8d8f0;font-size:13px;font-family:Arial,sans-serif;line-height:1.5;font-style:italic;padding-top:8px;">${tagline}</td></tr>
+              </table>` : ""}
+            </td>
+          </tr>
+        </table>
+        </v:textbox>
+      </v:rect>
+      <table width="600" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td height="8" style="background-color:#ffffff;font-size:0;line-height:0;"></td>
+      </tr></table>
       <![endif]-->
+
+      <!--[if !mso]><!-->
       <table width="600" cellpadding="0" cellspacing="0" border="0"
-             style="background-color:${BRAND_BLUE};background-image:url('${HERO_IMG}');background-size:cover;background-position:center top;min-height:220px;">
+             style="background-color:${BRAND_BLUE};background-image:url('${HERO_IMG}');background-size:cover;background-position:center top;">
         <tr>
-          <td style="background:linear-gradient(180deg,rgba(10,22,40,0.72) 0%,rgba(10,22,40,0.88) 100%);padding:36px 40px 28px;text-align:center;">
-            <!-- Logo circular con borde blanco semitransparente -->
-            <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-              <div style="display:inline-block;border-radius:50%;border:3px solid rgba(255,255,255,0.8);padding:4px;background:rgba(255,255,255,0.12);">
-                <img src="${LOGO_URL}" alt="Nayade" width="72" height="72"
-                     style="display:block;border-radius:50%;object-fit:cover;border:0;" />
-              </div>
-            </td></tr></table>
-            <!-- Nombre de marca -->
-            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;"><tr><td align="center">
-              <div style="color:#ffffff;font-size:30px;font-weight:900;letter-spacing:5px;font-family:Georgia,'Times New Roman',serif;text-shadow:0 2px 12px rgba(0,0,0,0.5);">N&Aacute;YADE</div>
-              <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:7px;text-transform:uppercase;margin-top:2px;font-family:Arial,sans-serif;">EXPERIENCES</div>
-            </td></tr></table>
-            <!-- Badge de tipo de email -->
-            ${subtitle ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;"><tr><td align="center"><div style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;border-radius:20px;font-family:Arial,sans-serif;">${subtitle}</div></td></tr></table>` : ""}
-            <!-- Tagline emocional -->
-            ${tagline ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:10px;"><tr><td align="center"><div style="color:rgba(255,255,255,0.80);font-size:13px;font-family:Arial,sans-serif;line-height:1.5;font-style:italic;">${tagline}</div></td></tr></table>` : ""}
+          <td align="center" style="padding:36px 40px 28px;background:linear-gradient(180deg,rgba(10,22,40,0.72) 0%,rgba(10,22,40,0.88) 100%);">
+            <table cellpadding="0" cellspacing="0" border="0"><tr>
+              <td align="center" style="display:inline-block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);padding:4px;background:rgba(255,255,255,0.12);">
+                <img src="${LOGO_URL}" alt="Náyade" width="72" height="72"
+                     style="display:block;border-radius:50%;border:0;" />
+              </td>
+            </tr></table>
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+              <tr><td align="center" style="color:#ffffff;font-size:30px;font-weight:900;letter-spacing:5px;font-family:Georgia,'Times New Roman',serif;text-shadow:0 2px 12px rgba(0,0,0,0.5);">N&Aacute;YADE</td></tr>
+              <tr><td align="center" style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:7px;text-transform:uppercase;margin-top:2px;font-family:Arial,sans-serif;padding-top:2px;">EXPERIENCES</td></tr>
+            </table>
+            ${subtitle ? `<table cellpadding="0" cellspacing="0" border="0" style="margin-top:14px;">
+              <tr><td align="center" style="background:${BRAND_ORANGE};color:#ffffff;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:6px 20px;border-radius:20px;font-family:Arial,sans-serif;">${subtitle}</td></tr>
+            </table>` : ""}
+            ${tagline ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">
+              <tr><td align="center" style="color:rgba(255,255,255,0.80);font-size:13px;font-family:Arial,sans-serif;line-height:1.5;font-style:italic;">${tagline}</td></tr>
+            </table>` : ""}
           </td>
         </tr>
       </table>
-      <!--[if gte mso 9]>
-        </v:textbox>
-      </v:rect>
-      <![endif]-->
-      <!-- Ola decorativa inferior (blanca) -->
       <table width="600" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND_BLUE};"><tr>
         <td style="line-height:0;padding:0;font-size:0;">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 32" preserveAspectRatio="none" width="600" height="32" style="display:block;">
@@ -96,6 +123,8 @@ function emailHeader(subtitle?: string, tagline?: string): string {
           </svg>
         </td>
       </tr></table>
+      <!--<![endif]-->
+
     </td>
   </tr>`;
 }
