@@ -3126,7 +3126,29 @@ function ReservationDetailModal({
   onGenerateInvoice?: (id: number) => void;
   onCancel?: (id: number, name: string) => void;
 }) {
+  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.crm.reservations.get.useQuery({ id: reservationId });
+
+  // ── Aplicar bono/descuento ──
+  const [showBonoPanel, setShowBonoPanel] = useState(false);
+  const [bonoCode, setBonoCode] = useState("");
+  const [bonoQueryCode, setBonoQueryCode] = useState<string | null>(null);
+
+  const { data: bonoPreview, isFetching: bonoFetching } = trpc.discounts.verifyVoucher.useQuery(
+    { code: bonoQueryCode ?? "" },
+    { enabled: !!bonoQueryCode }
+  );
+
+  const applyDiscountMut = trpc.crm.reservations.applyDiscount.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Bono ${result.code} aplicado — ${result.discountEur.toFixed(2)} € descontados`);
+      setShowBonoPanel(false);
+      setBonoCode("");
+      setBonoQueryCode(null);
+      utils.crm.reservations.get.invalidate({ id: reservationId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const ACTION_LABELS: Record<string, string> = {
     reservation_created:   "Reserva creada",
@@ -3140,6 +3162,10 @@ function ReservationDetailModal({
     booking_confirmed:     "Actividad confirmada",
     booking_completed:     "Actividad completada",
     email_sent:            "Email enviado al cliente",
+    discount_applied:      "Descuento / bono aplicado",
+    email_resent:          "Email de confirmación reenviado",
+    date_changed:          "Fecha de reserva modificada",
+    status_updated:        "Estado actualizado",
   };
   const translateAction = (action: string) =>
     ACTION_LABELS[action] ?? action.replace(/_/g, " ");
@@ -3309,6 +3335,18 @@ function ReservationDetailModal({
                   <span className="text-emerald-400 font-bold">{amountEur} €</span>
                 </div>
               )}
+              {res.discountAmount && Number(res.discountAmount) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-purple-300/80">Descuento aplicado</span>
+                  <span className="text-purple-300 font-bold">−{Number(res.discountAmount).toFixed(2)} €</span>
+                </div>
+              )}
+              {res.discountReason && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/30">Código</span>
+                  <span className="font-mono text-purple-300/60">{res.discountReason}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-white/50">Referencia</span>
                 <span className="font-mono text-white/60 text-xs">{res.merchantOrder}</span>
@@ -3340,6 +3378,85 @@ function ReservationDetailModal({
                 Ver justificante adjunto
                 <ExternalLink className="w-3 h-3" />
               </a>
+            </div>
+          )}
+
+          {/* Panel: Aplicar bono o código de descuento */}
+          {res.status !== "cancelled" && !(res.discountAmount && Number(res.discountAmount) > 0) && (
+            <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-4">
+              <button
+                className="w-full flex items-center justify-between text-xs font-semibold text-purple-300 uppercase tracking-wider"
+                onClick={() => setShowBonoPanel((v) => !v)}
+              >
+                <span className="flex items-center gap-2">
+                  <Gift className="w-4 h-4" /> Aplicar bono / código de descuento
+                </span>
+                <span className="text-purple-400/60">{showBonoPanel ? "▲" : "▼"}</span>
+              </button>
+              {showBonoPanel && (
+                <div className="mt-3 space-y-3">
+                  <div className="flex gap-2">
+                    <Input
+                      value={bonoCode}
+                      onChange={(e) => { setBonoCode(e.target.value.toUpperCase()); setBonoQueryCode(null); }}
+                      placeholder="Ej: BON-A1B2-C3D4"
+                      className="bg-[#0a0a1a] border-white/10 text-white placeholder:text-gray-600 font-mono text-sm h-9 flex-1"
+                      spellCheck={false}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-purple-500/30 text-purple-300 hover:bg-purple-500/10 h-9 px-3"
+                      disabled={bonoCode.trim().length < 3 || bonoFetching}
+                      onClick={() => setBonoQueryCode(bonoCode.trim())}
+                    >
+                      {bonoFetching ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                    </Button>
+                  </div>
+
+                  {bonoPreview && !bonoPreview.found && (
+                    <p className="text-red-400 text-xs">Código no encontrado o no es un bono válido.</p>
+                  )}
+
+                  {bonoPreview?.found && (
+                    <div className={`rounded-lg border p-3 space-y-2 ${
+                      bonoPreview.status === "canjeado" ? "border-gray-500/20 bg-gray-500/5" :
+                      bonoPreview.status === "caducado" ? "border-red-500/20 bg-red-500/5" :
+                      "border-purple-500/20 bg-purple-500/5"
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-bold text-white">{bonoPreview.code}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          bonoPreview.status === "canjeado" ? "text-gray-400 bg-gray-500/10" :
+                          bonoPreview.status === "caducado" ? "text-red-400 bg-red-500/10" :
+                          "text-purple-300 bg-purple-500/10"
+                        }`}>
+                          {bonoPreview.status === "canjeado" ? "Ya canjeado" : bonoPreview.status === "caducado" ? "Caducado" : "Activo"}
+                        </span>
+                      </div>
+                      {bonoPreview.value > 0 && (
+                        <p className="text-white text-sm font-bold">{bonoPreview.value.toFixed(2)} € de descuento</p>
+                      )}
+                      {bonoPreview.activityName && (
+                        <p className="text-white/50 text-xs">{bonoPreview.activityName}</p>
+                      )}
+                      {(bonoPreview.status === "enviado" || bonoPreview.status === "generado") && (
+                        <Button
+                          size="sm"
+                          className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs"
+                          disabled={applyDiscountMut.isPending}
+                          onClick={() => applyDiscountMut.mutate({ id: res.id, code: bonoPreview.code })}
+                        >
+                          {applyDiscountMut.isPending ? "Aplicando..." : `Confirmar — aplicar ${bonoPreview.value.toFixed(2)} € a esta reserva`}
+                        </Button>
+                      )}
+                      {bonoPreview.status !== "enviado" && bonoPreview.status !== "generado" && (
+                        <p className="text-xs text-red-400">Este bono no puede aplicarse ({bonoPreview.status}).</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

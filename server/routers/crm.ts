@@ -24,7 +24,9 @@ import {
   legoPacks,
   packs,
   pendingPayments,
+  discountCodes,
 } from "../../drizzle/schema";
+import { recordDiscountUse } from "./discounts";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
@@ -3077,6 +3079,89 @@ export const crmRouter = router({
         });
 
         return { ok: true, invoiceId, invoiceNumber, pdfUrl };
+      }),
+
+    // ─── Aplicar código de descuento / bono a una reserva (CRM manual) ───────
+    applyDiscount: staff
+      .input(z.object({
+        id: z.number(),
+        code: z.string().min(1),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const normalizedCode = input.code.toUpperCase().trim();
+
+        // 1. Cargar la reserva
+        const [res] = await db.select().from(reservations).where(eq(reservations.id, input.id));
+        if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+        if (res.status === "cancelled") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede aplicar un descuento a una reserva cancelada" });
+        }
+        if (res.discountAmount && Number(res.discountAmount) > 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Esta reserva ya tiene el descuento "${res.discountReason}" aplicado` });
+        }
+
+        // 2. Validar el código
+        const [dc] = await db.select().from(discountCodes)
+          .where(eq(discountCodes.code, normalizedCode))
+          .limit(1);
+
+        if (!dc) throw new TRPCError({ code: "NOT_FOUND", message: "Código no encontrado" });
+        if (dc.status === "inactive") throw new TRPCError({ code: "BAD_REQUEST", message: "El código está inactivo" });
+        if (dc.expiresAt && new Date(dc.expiresAt) < new Date()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "El código ha caducado" });
+        }
+        if (dc.maxUses !== null && dc.currentUses >= dc.maxUses) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "El código ya ha alcanzado el límite de usos" });
+        }
+
+        // 3. Calcular importe del descuento
+        const grossEur = res.amountTotal / 100;
+        let discountEur: number;
+        if (dc.discountType === "fixed") {
+          discountEur = Math.min(Number(dc.discountAmount ?? 0), grossEur);
+        } else {
+          discountEur = (grossEur * Number(dc.discountPercent)) / 100;
+        }
+        discountEur = Math.round(discountEur * 100) / 100;
+
+        // 4. Aplicar descuento en la reserva
+        await db.update(reservations).set({
+          discountAmount: String(discountEur.toFixed(2)),
+          discountReason: `${normalizedCode} — ${dc.name}`,
+          updatedAt: Date.now(),
+        } as any).where(eq(reservations.id, input.id));
+
+        // 5. Registrar uso del código (también sincroniza el bono si origin=voucher)
+        await recordDiscountUse({
+          discountCodeId: dc.id,
+          code: dc.code,
+          discountPercent: Number(dc.discountPercent),
+          discountAmount: discountEur,
+          originalAmount: grossEur,
+          finalAmount: Math.max(0, grossEur - discountEur),
+          channel: "crm",
+          reservationId: input.id,
+          appliedByUserId: String(ctx.user.id),
+        });
+
+        // 6. Log de actividad
+        await db.insert(crmActivityLog).values({
+          entityType: "reservation",
+          entityId: input.id,
+          action: "discount_applied",
+          actorId: ctx.user.id,
+          actorName: ctx.user.name ?? null,
+          details: {
+            code: dc.code,
+            name: dc.name,
+            discountType: dc.discountType,
+            discountEur,
+            grossEur,
+          },
+          createdAt: new Date(),
+        });
+
+        return { success: true, discountEur, code: dc.code, name: dc.name };
       }),
 
     // ─── Eliminar reserva ───────────────────────────────────────────────────
