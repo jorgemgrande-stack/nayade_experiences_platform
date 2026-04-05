@@ -2147,7 +2147,31 @@ function QuoteEditModal({
   const [taxRate, setTaxRate] = useState(21);
   const [validUntil, setValidUntil] = useState("");
   const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([]);
+  const [discount, setDiscount] = useState(0);
   const [initialized, setInitialized] = useState(false);
+
+  // ── Aplicar bono/código ──
+  const [showBonoPanel, setShowBonoPanel] = useState(false);
+  const [bonoCode, setBonoCode] = useState("");
+  const [bonoQueryCode, setBonoQueryCode] = useState<string | null>(null);
+
+  const { data: bonoPreview, isFetching: bonoFetching } = trpc.discounts.verifyVoucher.useQuery(
+    { code: bonoQueryCode ?? "" },
+    { enabled: !!bonoQueryCode }
+  );
+
+  const applyDiscountCodeMut = trpc.crm.quotes.applyDiscountCode.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Bono ${result.code} aplicado — ${result.discountEur.toFixed(2)} € descontados`);
+      setDiscount(result.discountEur);
+      setShowBonoPanel(false);
+      setBonoCode("");
+      setBonoQueryCode(null);
+      utils.crm.quotes.get.invalidate({ id: quoteId });
+      utils.crm.quotes.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   if (data && !initialized) {
     const q = data.quote;
@@ -2158,13 +2182,15 @@ function QuoteEditModal({
     setValidUntil(q.validUntil ? new Date(q.validUntil).toISOString().split("T")[0] : "");
     const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
     setItems(rawItems.length > 0 ? rawItems : [{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }]);
+    setDiscount(Number(q.discount ?? 0));
     setInitialized(true);
   }
 
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const generalSubtotalEdit = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-  const taxAmount = parseFloat((generalSubtotalEdit * (taxRate / 100)).toFixed(2));
-  const total = parseFloat((subtotal + taxAmount).toFixed(2));
+  const discountedBase = Math.max(0, generalSubtotalEdit - discount);
+  const taxAmount = parseFloat((discountedBase * (taxRate / 100)).toFixed(2));
+  const total = parseFloat((subtotal - discount + taxAmount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) => prev.map((item, i) => {
@@ -2293,6 +2319,12 @@ function QuoteEditModal({
           {!items.some(i => i.fiscalRegime === "reav") && (
             <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
           )}
+          {discount > 0 && (
+            <div className="flex justify-between text-sm text-purple-300">
+              <span className="flex items-center gap-1"><Gift className="w-3 h-3" /> Descuento / bono</span>
+              <span>−{discount.toFixed(2)} €</span>
+            </div>
+          )}
           {generalSubtotalEdit > 0 && (
             <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
           )}
@@ -2303,6 +2335,75 @@ function QuoteEditModal({
             <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
           </div>
         </div>
+
+        {/* ── Panel: Aplicar bono / código de descuento ── */}
+        {discount === 0 && (
+          <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-3">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between text-xs font-semibold text-purple-300 uppercase tracking-wider"
+              onClick={() => setShowBonoPanel((v) => !v)}
+            >
+              <span className="flex items-center gap-2"><Gift className="w-3.5 h-3.5" /> Aplicar bono / código de descuento</span>
+              <span className="text-purple-400/60">{showBonoPanel ? "▲" : "▼"}</span>
+            </button>
+            {showBonoPanel && (
+              <div className="mt-3 space-y-2">
+                <div className="flex gap-2">
+                  <Input
+                    value={bonoCode}
+                    onChange={(e) => { setBonoCode(e.target.value.toUpperCase()); setBonoQueryCode(null); }}
+                    placeholder="Ej: BON-A1B2-C3D4"
+                    className="bg-[#0a0a1a] border-white/10 text-white placeholder:text-gray-600 font-mono text-xs h-8 flex-1"
+                    spellCheck={false}
+                  />
+                  <Button size="sm" variant="outline"
+                    className="border-purple-500/30 text-purple-300 hover:bg-purple-500/10 h-8 px-3"
+                    disabled={bonoCode.trim().length < 3 || bonoFetching}
+                    onClick={() => setBonoQueryCode(bonoCode.trim())}
+                  >
+                    {bonoFetching ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                  </Button>
+                </div>
+                {bonoPreview && !bonoPreview.found && (
+                  <p className="text-red-400 text-xs">Código no encontrado.</p>
+                )}
+                {bonoPreview?.found && (
+                  <div className={`rounded-lg border p-3 space-y-2 text-xs ${
+                    bonoPreview.status === "canjeado" ? "border-gray-500/20 bg-gray-500/5" :
+                    bonoPreview.status === "caducado" ? "border-red-500/20 bg-red-500/5" :
+                    "border-purple-500/20 bg-purple-500/5"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-bold text-white">{bonoPreview.code}</span>
+                      <span className={`font-semibold px-2 py-0.5 rounded-full text-xs ${
+                        bonoPreview.status === "canjeado" ? "text-gray-400 bg-gray-500/10" :
+                        bonoPreview.status === "caducado" ? "text-red-400 bg-red-500/10" :
+                        "text-purple-300 bg-purple-500/10"
+                      }`}>
+                        {bonoPreview.status === "canjeado" ? "Ya canjeado" : bonoPreview.status === "caducado" ? "Caducado" : "Activo"}
+                      </span>
+                    </div>
+                    {bonoPreview.value > 0 && <p className="text-white font-bold">{bonoPreview.value.toFixed(2)} € de descuento</p>}
+                    {bonoPreview.activityName && <p className="text-white/40">{bonoPreview.activityName}</p>}
+                    {(bonoPreview.status === "enviado" || bonoPreview.status === "generado") && (
+                      <Button size="sm" className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs h-7"
+                        disabled={applyDiscountCodeMut.isPending}
+                        onClick={() => applyDiscountCodeMut.mutate({ id: quoteId, code: bonoPreview.code })}
+                      >
+                        {applyDiscountCodeMut.isPending ? "Aplicando..." : `Confirmar — descontar ${bonoPreview.value.toFixed(2)} €`}
+                      </Button>
+                    )}
+                    {bonoPreview.status !== "enviado" && bonoPreview.status !== "generado" && (
+                      <p className="text-red-400">Este bono no puede aplicarse ({bonoPreview.status}).</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           <Label className="text-white/60 text-xs">Notas para el cliente</Label>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-16 text-sm" />
@@ -2316,7 +2417,7 @@ function QuoteEditModal({
         <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
         <Button
           size="sm"
-          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items, subtotal, taxRate, total, validUntil })}
+          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items, subtotal, discount, taxRate, total, validUntil })}
           disabled={updateQuote.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
@@ -3126,29 +3227,7 @@ function ReservationDetailModal({
   onGenerateInvoice?: (id: number) => void;
   onCancel?: (id: number, name: string) => void;
 }) {
-  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.crm.reservations.get.useQuery({ id: reservationId });
-
-  // ── Aplicar bono/descuento ──
-  const [showBonoPanel, setShowBonoPanel] = useState(false);
-  const [bonoCode, setBonoCode] = useState("");
-  const [bonoQueryCode, setBonoQueryCode] = useState<string | null>(null);
-
-  const { data: bonoPreview, isFetching: bonoFetching } = trpc.discounts.verifyVoucher.useQuery(
-    { code: bonoQueryCode ?? "" },
-    { enabled: !!bonoQueryCode }
-  );
-
-  const applyDiscountMut = trpc.crm.reservations.applyDiscount.useMutation({
-    onSuccess: (result) => {
-      toast.success(`Bono ${result.code} aplicado — ${result.discountEur.toFixed(2)} € descontados`);
-      setShowBonoPanel(false);
-      setBonoCode("");
-      setBonoQueryCode(null);
-      utils.crm.reservations.get.invalidate({ id: reservationId });
-    },
-    onError: (e) => toast.error(e.message),
-  });
 
   const ACTION_LABELS: Record<string, string> = {
     reservation_created:   "Reserva creada",
@@ -3335,18 +3414,6 @@ function ReservationDetailModal({
                   <span className="text-emerald-400 font-bold">{amountEur} €</span>
                 </div>
               )}
-              {res.discountAmount && Number(res.discountAmount) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-purple-300/80">Descuento aplicado</span>
-                  <span className="text-purple-300 font-bold">−{Number(res.discountAmount).toFixed(2)} €</span>
-                </div>
-              )}
-              {res.discountReason && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-white/30">Código</span>
-                  <span className="font-mono text-purple-300/60">{res.discountReason}</span>
-                </div>
-              )}
               <div className="flex justify-between text-sm">
                 <span className="text-white/50">Referencia</span>
                 <span className="font-mono text-white/60 text-xs">{res.merchantOrder}</span>
@@ -3378,85 +3445,6 @@ function ReservationDetailModal({
                 Ver justificante adjunto
                 <ExternalLink className="w-3 h-3" />
               </a>
-            </div>
-          )}
-
-          {/* Panel: Aplicar bono o código de descuento */}
-          {res.status !== "cancelled" && !(res.discountAmount && Number(res.discountAmount) > 0) && (
-            <div className="bg-purple-500/5 border border-purple-500/20 rounded-xl p-4">
-              <button
-                className="w-full flex items-center justify-between text-xs font-semibold text-purple-300 uppercase tracking-wider"
-                onClick={() => setShowBonoPanel((v) => !v)}
-              >
-                <span className="flex items-center gap-2">
-                  <Gift className="w-4 h-4" /> Aplicar bono / código de descuento
-                </span>
-                <span className="text-purple-400/60">{showBonoPanel ? "▲" : "▼"}</span>
-              </button>
-              {showBonoPanel && (
-                <div className="mt-3 space-y-3">
-                  <div className="flex gap-2">
-                    <Input
-                      value={bonoCode}
-                      onChange={(e) => { setBonoCode(e.target.value.toUpperCase()); setBonoQueryCode(null); }}
-                      placeholder="Ej: BON-A1B2-C3D4"
-                      className="bg-[#0a0a1a] border-white/10 text-white placeholder:text-gray-600 font-mono text-sm h-9 flex-1"
-                      spellCheck={false}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-purple-500/30 text-purple-300 hover:bg-purple-500/10 h-9 px-3"
-                      disabled={bonoCode.trim().length < 3 || bonoFetching}
-                      onClick={() => setBonoQueryCode(bonoCode.trim())}
-                    >
-                      {bonoFetching ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                    </Button>
-                  </div>
-
-                  {bonoPreview && !bonoPreview.found && (
-                    <p className="text-red-400 text-xs">Código no encontrado o no es un bono válido.</p>
-                  )}
-
-                  {bonoPreview?.found && (
-                    <div className={`rounded-lg border p-3 space-y-2 ${
-                      bonoPreview.status === "canjeado" ? "border-gray-500/20 bg-gray-500/5" :
-                      bonoPreview.status === "caducado" ? "border-red-500/20 bg-red-500/5" :
-                      "border-purple-500/20 bg-purple-500/5"
-                    }`}>
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-xs font-bold text-white">{bonoPreview.code}</span>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                          bonoPreview.status === "canjeado" ? "text-gray-400 bg-gray-500/10" :
-                          bonoPreview.status === "caducado" ? "text-red-400 bg-red-500/10" :
-                          "text-purple-300 bg-purple-500/10"
-                        }`}>
-                          {bonoPreview.status === "canjeado" ? "Ya canjeado" : bonoPreview.status === "caducado" ? "Caducado" : "Activo"}
-                        </span>
-                      </div>
-                      {bonoPreview.value > 0 && (
-                        <p className="text-white text-sm font-bold">{bonoPreview.value.toFixed(2)} € de descuento</p>
-                      )}
-                      {bonoPreview.activityName && (
-                        <p className="text-white/50 text-xs">{bonoPreview.activityName}</p>
-                      )}
-                      {(bonoPreview.status === "enviado" || bonoPreview.status === "generado") && (
-                        <Button
-                          size="sm"
-                          className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs"
-                          disabled={applyDiscountMut.isPending}
-                          onClick={() => applyDiscountMut.mutate({ id: res.id, code: bonoPreview.code })}
-                        >
-                          {applyDiscountMut.isPending ? "Aplicando..." : `Confirmar — aplicar ${bonoPreview.value.toFixed(2)} € a esta reserva`}
-                        </Button>
-                      )}
-                      {bonoPreview.status !== "enviado" && bonoPreview.status !== "generado" && (
-                        <p className="text-xs text-red-400">Este bono no puede aplicarse ({bonoPreview.status}).</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           )}
 
