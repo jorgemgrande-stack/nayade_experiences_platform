@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, ChevronDown, Phone } from "lucide-react";
+import { Menu, X, ChevronDown, Phone, Sun, Moon } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
@@ -122,6 +123,7 @@ function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
 
 export default function PublicNav() {
   const [isOpen, setIsOpen] = useState(false);
+  const { publicTheme, togglePublicTheme } = useTheme();
   const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
   const [location, setLocation] = useLocation();
 
@@ -249,6 +251,17 @@ export default function PublicNav() {
                 Solicitar Presupuesto
               </Button>
             </Link>
+            {/* Toggle tema público */}
+            <button
+              onClick={togglePublicTheme}
+              title={publicTheme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+              className="p-2 rounded-full text-foreground hover:bg-muted transition-colors"
+            >
+              {publicTheme === "dark"
+                ? <Sun className="w-4 h-4 text-amber-500" />
+                : <Moon className="w-4 h-4 text-foreground/60" />
+              }
+            </button>
             <CartIcon />
           </div>
           {/* Botón hamburguesa mobile */}

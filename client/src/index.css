@@ -422,6 +422,50 @@ html:not(.dark) .text-gray-400  { color: oklch(0.50 0.04 230) !important; }
 }
 
 
+
+/* ─── Tema público independiente del admin ─────────────────────────────────── */
+/* Cuando admin está en dark (html.dark) pero la web pública debe mostrarse     */
+/* en light mode, el wrapper público recibe la clase 'force-light'.             */
+/* Se restauran las variables CSS del light mode para toda esa sección.         */
+
+html.dark .force-light {
+  --background: oklch(0.99 0.006 85);
+  --foreground: oklch(0.18 0.04 230);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.04 230);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.04 230);
+  --primary: oklch(0.38 0.18 235);
+  --primary-foreground: oklch(0.99 0.005 220);
+  --secondary: oklch(0.92 0.06 200);
+  --secondary-foreground: oklch(0.28 0.12 235);
+  --muted: oklch(0.96 0.015 80);
+  --muted-foreground: oklch(0.52 0.04 230);
+  --accent: oklch(0.70 0.20 42);
+  --accent-foreground: oklch(0.99 0.005 80);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.88 0.04 210);
+  --input: oklch(0.90 0.03 210);
+  --ring: oklch(0.38 0.18 235);
+  --sidebar: oklch(0.97 0.015 220);
+  --sidebar-foreground: oklch(0.20 0.06 235);
+  --sidebar-primary: oklch(0.38 0.18 235);
+  --sidebar-primary-foreground: oklch(0.99 0.005 220);
+  --sidebar-accent: oklch(0.91 0.04 220);
+  --sidebar-accent-foreground: oklch(0.20 0.06 235);
+  --sidebar-border: oklch(0.86 0.04 215);
+  --sidebar-ring: oklch(0.38 0.18 235);
+  color-scheme: light;
+}
+
+/* Revertir las pocas clases dark: de Tailwind usadas en páginas públicas       */
+/* (RestaurantBooking, RestauranteDetail) cuando public está en light mode      */
+html.dark .force-light [class*="dark:bg-amber"] { background-color: oklch(0.98 0.015 85) !important; }
+html.dark .force-light [class*="dark:bg-red"]   { background-color: oklch(0.98 0.01 25) !important; }
+html.dark .force-light [class*="dark:border-amber"] { border-color: oklch(0.88 0.06 85) !important; }
+html.dark .force-light [class*="dark:text-amber"] { color: oklch(0.50 0.16 55) !important; }
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.
