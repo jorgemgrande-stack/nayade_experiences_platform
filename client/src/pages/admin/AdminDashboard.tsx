@@ -693,7 +693,7 @@ export default function AdminDashboard() {
                     <p className="text-xl font-black text-amber-600 dark:text-amber-300">{kpis?.quotesEnviados ?? 0}</p>
                     <p className="text-[10px] text-muted-foreground">Pres. activos</p>
                   </div>
-                  <div className="bg-white/5 rounded-lg p-2 text-center col-span-2">
+                  <div className="bg-foreground/[0.05] rounded-lg p-2 text-center col-span-2">
                     <p className="text-base font-black text-emerald-600 dark:text-emerald-300">{fmtDec(kpis?.quotesPendingAmount ?? 0)}</p>
                     <p className="text-[10px] text-muted-foreground">Cartera pendiente</p>
                   </div>
@@ -717,7 +717,7 @@ export default function AdminDashboard() {
                     <p className="text-xl font-black text-amber-600 dark:text-amber-300">{kpis?.bookingsPending ?? 0}</p>
                     <p className="text-[10px] text-muted-foreground">Pendientes</p>
                   </div>
-                  <div className="bg-white/5 rounded-lg p-2 text-center col-span-2">
+                  <div className="bg-foreground/[0.05] rounded-lg p-2 text-center col-span-2">
                     <p className="text-base font-black text-blue-600 dark:text-blue-300">{kpis?.bookingsThisMonth ?? 0} actividades</p>
                     <p className="text-[10px] text-muted-foreground">Total este mes</p>
                   </div>
@@ -800,7 +800,7 @@ export default function AdminDashboard() {
                 }
               >
                 {activitiesLoading ? (
-                  <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-11 bg-white/5 rounded-lg animate-pulse" />)}</div>
+                  <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-11 bg-foreground/[0.05] rounded-lg animate-pulse" />)}</div>
                 ) : (todayActivities?.length ?? 0) === 0 ? (
                   <div className="text-center py-6 text-muted-foreground/50">
                     <Calendar className="w-7 h-7 mx-auto mb-2 opacity-40" />
@@ -823,7 +823,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-white truncate">{b.activityTitle}</p>
-                          <p className="text-[10px] text-white/40 truncate">
+                          <p className="text-[10px] text-foreground/50 truncate">
                             {b.clientName} · {b.numberOfPersons} pax
                             {b.monitorName ? ` · ${b.monitorName}` : " · Sin monitor"}
                           </p>
@@ -840,7 +840,7 @@ export default function AdminDashboard() {
                 <Panel
                   title="Próximas actividades (7 días)"
                   icon={Clock}
-                  iconColor="text-white/40"
+                  iconColor="text-foreground/50"
                   action={
                     <Link href="/admin/operaciones/reservas">
                       <button className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
@@ -855,7 +855,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-white truncate">{b.experienceName}</p>
-                          <p className="text-[10px] text-white/40 truncate">{b.clientName} · {b.numberOfPersons} pers.</p>
+                          <p className="text-[10px] text-foreground/50 truncate">{b.clientName} · {b.numberOfPersons} pers.</p>
                         </div>
                         <StatusBadge status={b.status} />
                       </div>
@@ -872,7 +872,7 @@ export default function AdminDashboard() {
                 badge={cancellacionesPendientes}
                 action={
                   <Link href="/admin/operaciones/anulaciones">
-                    <button className="text-[10px] text-white/30 hover:text-white/60 flex items-center gap-1 transition-colors">Gestionar <ExternalLink className="w-3 h-3" /></button>
+                    <button className="text-[10px] text-foreground/40 hover:text-foreground/65 flex items-center gap-1 transition-colors">Gestionar <ExternalLink className="w-3 h-3" /></button>
                   </Link>
                 }
               >
@@ -899,7 +899,7 @@ export default function AdminDashboard() {
                         </Link>
                       ))}
                     </div>
-                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/5">
+                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-foreground/[0.08]">
                       <div className="text-center">
                         <p className="text-base font-black text-amber-300">{cancellationsData?.kpis?.recibidas ?? 0}</p>
                         <p className="text-[10px] text-muted-foreground">Recibidas</p>
@@ -1003,7 +1003,7 @@ export default function AdminDashboard() {
               {/* Top experiencias del mes */}
               <Panel title="Top experiencias (mes)" icon={TrendingUp} iconColor="text-emerald-400">
                 {isLoading ? (
-                  <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-white/5 rounded animate-pulse" />)}</div>
+                  <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-foreground/[0.05] rounded animate-pulse" />)}</div>
                 ) : (overview?.topExperiences?.length ?? 0) === 0 ? (
                   <p className="text-xs text-muted-foreground/50 text-center py-4">Sin actividades este mes</p>
                 ) : (
@@ -1040,11 +1040,11 @@ export default function AdminDashboard() {
                 }
               >
                 <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+                  <div className="bg-foreground/[0.03] rounded-lg p-2 text-center">
                     <p className="text-xl font-black text-orange-600 dark:text-orange-300">{liquidacionesPendientes}</p>
                     <p className="text-[10px] text-muted-foreground">Pendientes abono</p>
                   </div>
-                  <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+                  <div className="bg-foreground/[0.03] rounded-lg p-2 text-center">
                     <p className="text-sm font-black text-rose-300">{fmtDec(suppliersKpis?.pendingAmount ?? 0)}</p>
                     <p className="text-[10px] text-muted-foreground">Importe a pagar</p>
                   </div>

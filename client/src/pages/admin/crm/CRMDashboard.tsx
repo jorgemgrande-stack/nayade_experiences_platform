@@ -209,29 +209,29 @@ function AnulOpBadge({ status }: { status: string }) {
     cerrada: { label: "Cerrada", cls: "bg-gray-500/15 text-gray-400 border-gray-500/20" },
     incidencia: { label: "Incidencia", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
   };
-  const s = map[status] ?? { label: status, cls: "bg-white/5 text-white/40 border-white/10" };
+  const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
 }
 function AnulResBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    sin_resolver: { label: "Sin resolver", cls: "bg-white/5 text-white/40 border-white/10" },
+    sin_resolver: { label: "Sin resolver", cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" },
     rechazada: { label: "Rechazada", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
     aceptada_total: { label: "Aceptada total", cls: "bg-green-500/15 text-green-300 border-green-500/20" },
     aceptada_parcial: { label: "Aceptada parcial", cls: "bg-teal-500/15 text-teal-300 border-teal-500/20" },
   };
-  const s = map[status] ?? { label: status, cls: "bg-white/5 text-white/40 border-white/10" };
+  const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
 }
 function AnulFinBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    sin_compensacion: { label: "Sin comp.", cls: "bg-white/5 text-white/40 border-white/10" },
+    sin_compensacion: { label: "Sin comp.", cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" },
     pendiente_devolucion: { label: "Pend. dev.", cls: "bg-amber-500/15 text-amber-300 border-amber-500/20" },
     devuelta_economicamente: { label: "Devuelta", cls: "bg-green-500/15 text-green-300 border-green-500/20" },
     pendiente_bono: { label: "Pend. bono", cls: "bg-purple-500/15 text-purple-300 border-purple-500/20" },
     compensada_bono: { label: "Bono enviado", cls: "bg-violet-500/15 text-violet-300 border-violet-500/20" },
     incidencia_economica: { label: "Incid. ec.", cls: "bg-red-500/15 text-red-300 border-red-500/20" },
   };
-  const s = map[status] ?? { label: status, cls: "bg-white/5 text-white/40 border-white/10" };
+  const s = map[status] ?? { label: status, cls: "bg-foreground/[0.05] text-foreground/50 border-foreground/[0.12]" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
 }
 
@@ -352,7 +352,7 @@ function LeadDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white">
+      <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -365,7 +365,7 @@ function LeadDetailModal({
 
   return (
     <>
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="flex items-center gap-3 text-white">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center font-bold text-sm">
@@ -373,7 +373,7 @@ function LeadDetailModal({
           </div>
           <div>
             <div className="font-bold">{lead.name}</div>
-            <div className="text-sm text-white/50 font-normal">{lead.email}</div>
+            <div className="text-sm text-foreground/60 font-normal">{lead.email}</div>
           </div>
         </DialogTitle>
       </DialogHeader>
@@ -383,46 +383,46 @@ function LeadDetailModal({
         <div className="flex items-center gap-3 flex-wrap">
           <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
           <PriorityDot priority={lead.priority as Priority} />
-          <span className="text-xs text-white/40 capitalize">{lead.priority} prioridad</span>
-          <span className="text-xs text-white/30">·</span>
-          <span className="text-xs text-white/40">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</span>
+          <span className="text-xs text-foreground/50 capitalize">{lead.priority} prioridad</span>
+          <span className="text-xs text-foreground/40">·</span>
+          <span className="text-xs text-foreground/50">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</span>
         </div>
 
         {/* Contact info */}
         <div className="grid grid-cols-2 gap-3">
           {lead.phone && (
-            <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-sm text-white/70 hover:text-orange-400 transition-colors">
+            <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-sm text-foreground/70 hover:text-orange-400 transition-colors">
               <Phone className="w-3.5 h-3.5" /> {lead.phone}
             </a>
           )}
-          <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-sm text-white/70 hover:text-orange-400 transition-colors">
+          <a href={`mailto:${lead.email}`} className="flex items-center gap-2 text-sm text-foreground/70 hover:text-orange-400 transition-colors">
             <Mail className="w-3.5 h-3.5" /> {lead.email}
           </a>
         </div>
 
         {/* Request details */}
-        <div className="bg-white/5 rounded-xl p-4 space-y-2">
+        <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-2">
           {lead.selectedCategory && (
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Categoría</span>
+              <span className="text-foreground/60">Categoría</span>
               <span className="text-white font-medium">{lead.selectedCategory}</span>
             </div>
           )}
           {lead.selectedProduct && (
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Producto</span>
+              <span className="text-foreground/60">Producto</span>
               <span className="text-white font-medium">{lead.selectedProduct}</span>
             </div>
           )}
           {lead.preferredDate && (
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Fecha de la actividad</span>
+              <span className="text-foreground/60">Fecha de la actividad</span>
               <span className="text-white font-medium">{new Date(lead.preferredDate).toLocaleDateString("es-ES")}</span>
             </div>
           )}
           {(lead.numberOfAdults || lead.numberOfPersons) && (
             <div className="flex justify-between text-sm">
-              <span className="text-white/50">Personas</span>
+              <span className="text-foreground/60">Personas</span>
               <span className="text-white font-medium">
                 {lead.numberOfAdults ? `${lead.numberOfAdults} adultos` : ""}{lead.numberOfChildren ? ` + ${lead.numberOfChildren} niños` : ""}
                 {!lead.numberOfAdults && lead.numberOfPersons ? `${lead.numberOfPersons} personas` : ""}
@@ -431,8 +431,8 @@ function LeadDetailModal({
           )}
           {/* Actividades enriquecidas desde el formulario multi-actividad */}
           {Array.isArray(lead.activitiesJson) && lead.activitiesJson.length > 0 && (
-            <div className="pt-2 border-t border-white/10">
-              <p className="text-xs text-white/40 uppercase tracking-wider mb-2">Actividades solicitadas</p>
+            <div className="pt-2 border-t border-foreground/[0.12]">
+              <p className="text-xs text-foreground/50 uppercase tracking-wider mb-2">Actividades solicitadas</p>
               <div className="space-y-2">
                 {(lead.activitiesJson as any[]).map((act: any, i: number) => (
                   <div key={i} className="bg-white/[0.06] rounded-lg px-3 py-2.5">
@@ -461,8 +461,8 @@ function LeadDetailModal({
             </div>
           )}
           {lead.message && (
-            <div className="pt-2 border-t border-white/10">
-              <p className="text-sm text-white/60 italic">"{lead.message}"</p>
+            <div className="pt-2 border-t border-foreground/[0.12]">
+              <p className="text-sm text-foreground/65 italic">"{lead.message}"</p>
             </div>
           )}
         </div>
@@ -470,13 +470,13 @@ function LeadDetailModal({
         {/* Related quotes */}
         {relatedQuotes.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Presupuestos asociados</h4>
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Presupuestos asociados</h4>
             <div className="space-y-2">
               {relatedQuotes.map((q: any) => (
-                <div key={q.id} className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
+                <div key={q.id} className="flex items-center justify-between bg-foreground/[0.05] rounded-lg px-3 py-2">
                   <div>
-                    <span className="text-sm font-medium text-white">{q.quoteNumber}</span>
-                    <span className="text-xs text-white/40 ml-2">{q.title}</span>
+                    <span className="text-sm font-medium text-foreground">{q.quoteNumber}</span>
+                    <span className="text-xs text-foreground/50 ml-2">{q.title}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <QuoteStatusBadge status={q.status as QuoteStatus} />
@@ -490,25 +490,25 @@ function LeadDetailModal({
 
         {/* Notes */}
         <div>
-          <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Notas internas</h4>
+          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Notas internas</h4>
           {Array.isArray(lead.internalNotes) && lead.internalNotes.length > 0 ? (
             <div className="space-y-2 mb-3">
               {(lead.internalNotes as { text: string; authorName: string; createdAt: string }[]).map((n, i) => (
-                <div key={i} className="bg-white/5 rounded-lg px-3 py-2">
-                  <p className="text-sm text-white/80">{n.text}</p>
-                  <p className="text-xs text-white/30 mt-1">{n.authorName} · {new Date(n.createdAt).toLocaleString("es-ES")}</p>
+                <div key={i} className="bg-foreground/[0.05] rounded-lg px-3 py-2">
+                  <p className="text-sm text-foreground/80">{n.text}</p>
+                  <p className="text-xs text-foreground/40 mt-1">{n.authorName} · {new Date(n.createdAt).toLocaleString("es-ES")}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-xs text-white/30 mb-3">Sin notas aún</p>
+            <p className="text-xs text-foreground/40 mb-3">Sin notas aún</p>
           )}
           <div className="flex gap-2">
             <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Añadir nota interna..."
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none h-16"
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none h-16"
             />
             <Button
               size="sm"
@@ -523,14 +523,14 @@ function LeadDetailModal({
 
         {/* Change status */}
         <div>
-          <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Cambiar estado</h4>
+          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Cambiar estado</h4>
           <div className="flex gap-2 flex-wrap">
             {(["nueva", "enviada", "ganada", "perdida"] as OpportunityStatus[]).map((s) => (
               <Button
                 key={s}
                 size="sm"
                 variant="outline"
-                className={`border-white/15 text-white/70 hover:text-white text-xs capitalize ${lead.opportunityStatus === s ? "bg-white/10 text-white" : ""}`}
+                className={`border-foreground/[0.15] text-foreground/70 hover:text-foreground text-xs capitalize ${lead.opportunityStatus === s ? "bg-foreground/[0.08] text-white" : ""}`}
                 onClick={() => updateStatus.mutate({ id: leadId, opportunityStatus: s })}
               >
                 {s}
@@ -662,7 +662,7 @@ function LeadEditModal({
 
   if (isLoading || !form) {
     return (
-      <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white">
+      <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -703,7 +703,7 @@ function LeadEditModal({
   };
 
   return (
-    <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <Pencil className="w-4 h-4 text-orange-400" /> Editar Lead
@@ -713,36 +713,36 @@ function LeadEditModal({
         {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-white/60 text-xs">Nombre <span className="text-red-400">*</span></Label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Nombre <span className="text-red-400">*</span></Label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Email <span className="text-red-400">*</span></Label>
-            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Email <span className="text-red-400">*</span></Label>
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Teléfono</Label>
-            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Teléfono</Label>
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Empresa / Grupo</Label>
-            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Empresa / Grupo</Label>
+            <Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
         </div>
 
         {/* Líneas de actividad */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-white/60 text-xs">Actividades de interés</Label>
+            <Label className="text-foreground/65 text-xs">Actividades de interés</Label>
             <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 transition-colors">
               <Plus className="w-3 h-3" /> Añadir actividad
             </button>
           </div>
           <div className="space-y-2">
             {activityLines.map((line, idx) => (
-              <div key={line.id} className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+              <div key={line.id} className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-white/30 w-4">{idx + 1}.</span>
+                  <span className="text-xs text-foreground/40 w-4">{idx + 1}.</span>
                   <div className="relative flex-1">
                     <Input
                       value={line.experienceTitle || line.search}
@@ -750,13 +750,13 @@ function LeadEditModal({
                       onFocus={() => { updateLine(idx, { showSuggestions: true }); setActiveLineIdx(idx); }}
                       onBlur={() => setTimeout(() => updateLine(idx, { showSuggestions: false }), 200)}
                       placeholder="Buscar experiencia o pack..."
-                      className="bg-white/5 border-white/10 text-white placeholder:text-white/25 text-sm h-8"
+                      className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 text-sm h-8"
                     />
                     {line.showSuggestions && productSuggestions && productSuggestions.length > 0 && activeLineIdx === idx && (
-                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
                         {(productSuggestions as any[]).map((p: any) => (
                           <button key={`${p.productType}-${p.id}`} type="button"
-                            className="w-full text-left px-3 py-2 hover:bg-white/8 text-xs text-white flex items-center gap-2"
+                            className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-xs text-white flex items-center gap-2"
                             onMouseDown={() => updateLine(idx, {
                               experienceId: p.id,
                               experienceTitle: p.title,
@@ -764,23 +764,23 @@ function LeadEditModal({
                               search: "",
                               showSuggestions: false,
                             })}>
-                            <span className="text-white/40">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                            <span className="text-foreground/50">{p.productType === "experience" ? "🏊" : "📦"}</span>
                             <span>{p.title}</span>
-                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-white/40">{Number(p.basePrice).toFixed(2)}€</span>}
+                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50">{Number(p.basePrice).toFixed(2)}€</span>}
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs text-white/40">Pax</span>
+                    <span className="text-xs text-foreground/50">Pax</span>
                     <Input
                       type="number" min={1} value={line.participants}
                       onChange={e => updateLine(idx, { participants: Math.max(1, Number(e.target.value)) })}
-                      className="bg-white/5 border-white/10 text-white w-14 h-8 text-xs text-center"
+                      className="bg-foreground/[0.05] border-foreground/[0.12] text-white w-14 h-8 text-xs text-center"
                     />
                     {activityLines.length > 1 && (
-                      <button type="button" onClick={() => removeLine(idx)} className="text-white/30 hover:text-red-400 transition-colors ml-1">
+                      <button type="button" onClick={() => removeLine(idx)} className="text-foreground/40 hover:text-red-400 transition-colors ml-1">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -797,26 +797,26 @@ function LeadEditModal({
         {/* Fecha y participantes */}
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
-            <Label className="text-white/60 text-xs">Fecha de la actividad</Label>
-            <Input type="date" value={form.preferredDate} onChange={e => setForm({ ...form, preferredDate: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Fecha de la actividad</Label>
+            <Input type="date" value={form.preferredDate} onChange={e => setForm({ ...form, preferredDate: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Adultos</Label>
-            <Input type="number" min={1} value={form.numberOfAdults} onChange={e => setForm({ ...form, numberOfAdults: Number(e.target.value) })} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Adultos</Label>
+            <Input type="number" min={1} value={form.numberOfAdults} onChange={e => setForm({ ...form, numberOfAdults: Number(e.target.value) })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Niños</Label>
-            <Input type="number" min={0} value={form.numberOfChildren} onChange={e => setForm({ ...form, numberOfChildren: Number(e.target.value) })} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Niños</Label>
+            <Input type="number" min={0} value={form.numberOfChildren} onChange={e => setForm({ ...form, numberOfChildren: Number(e.target.value) })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
         </div>
 
         {/* Prioridad y estado */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-white/60 text-xs">Prioridad</Label>
+            <Label className="text-foreground/65 text-xs">Prioridad</Label>
             <Select value={form.priority} onValueChange={(v) => setForm({ ...form, priority: v })}>
-              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-white/10">
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                 <SelectItem value="baja" className="text-white">Baja</SelectItem>
                 <SelectItem value="media" className="text-white">Media</SelectItem>
                 <SelectItem value="alta" className="text-white">Alta</SelectItem>
@@ -824,10 +824,10 @@ function LeadEditModal({
             </Select>
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Estado oportunidad</Label>
+            <Label className="text-foreground/65 text-xs">Estado oportunidad</Label>
             <Select value={form.opportunityStatus} onValueChange={(v) => setForm({ ...form, opportunityStatus: v })}>
-              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-white/10">
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                 <SelectItem value="nueva" className="text-white">1. Nueva Oportunidad</SelectItem>
                 <SelectItem value="enviada" className="text-white">2. Oportunidad Enviada</SelectItem>
                 <SelectItem value="ganada" className="text-white">3. Oportunidad Ganada</SelectItem>
@@ -839,12 +839,12 @@ function LeadEditModal({
 
         {/* Notas */}
         <div>
-          <Label className="text-white/60 text-xs">Mensaje / Comentarios</Label>
-          <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-16 text-sm" />
+          <Label className="text-foreground/65 text-xs">Mensaje / Comentarios</Label>
+          <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-16 text-sm" />
         </div>
       </div>
       <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button
           size="sm"
           onClick={handleSave}
@@ -880,7 +880,7 @@ function ProductSearchInput({
   return (
     <div className="relative">
       <Input
-        className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
+        className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
         placeholder="Descripción o busca un producto..."
         value={value}
         onChange={(e) => { onChange(e.target.value); setQ(e.target.value); setOpen(true); }}
@@ -888,12 +888,12 @@ function ProductSearchInput({
         onBlur={() => setTimeout(() => setOpen(false), 200)}
       />
       {open && products && products.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/10 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.12] rounded-lg shadow-xl max-h-48 overflow-y-auto">
           {products.map((p: any) => (
             <button
               key={p.id}
               type="button"
-              className="w-full text-left px-3 py-2 hover:bg-white/10 text-sm text-white flex justify-between items-center gap-2"
+              className="w-full text-left px-3 py-2 hover:bg-foreground/[0.08] text-sm text-white flex justify-between items-center gap-2"
               onMouseDown={() => { onSelect(p as any); setOpen(false); }}
             >
               <span className="truncate">{p.title}</span>
@@ -1004,7 +1004,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <Users className="w-4 h-4 text-violet-400" /> Nuevo Lead
@@ -1014,36 +1014,36 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
         {/* Datos del cliente */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Nombre <span className="text-red-400">*</span></Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            <Label className="text-xs text-foreground/60 mb-1 block">Nombre <span className="text-red-400">*</span></Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
           </div>
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Email <span className="text-red-400">*</span></Label>
-            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            <Label className="text-xs text-foreground/60 mb-1 block">Email <span className="text-red-400">*</span></Label>
+            <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
           </div>
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Teléfono</Label>
-            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            <Label className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
           </div>
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Empresa / Grupo</Label>
-            <Input value={company} onChange={e => setCompany(e.target.value)} placeholder="Empresa S.L." className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+            <Label className="text-xs text-foreground/60 mb-1 block">Empresa / Grupo</Label>
+            <Input value={company} onChange={e => setCompany(e.target.value)} placeholder="Empresa S.L." className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
           </div>
         </div>
 
         {/* Líneas de actividad */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-xs text-white/50">Actividades de interés</Label>
+            <Label className="text-xs text-foreground/60">Actividades de interés</Label>
             <button type="button" onClick={addLine} className="flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 transition-colors">
               <Plus className="w-3 h-3" /> Añadir actividad
             </button>
           </div>
           <div className="space-y-2">
             {activityLines.map((line, idx) => (
-              <div key={line.id} className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+              <div key={line.id} className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-white/30 w-4">{idx + 1}.</span>
+                  <span className="text-xs text-foreground/40 w-4">{idx + 1}.</span>
                   <div className="relative flex-1">
                     <Input
                       value={line.experienceTitle || line.search}
@@ -1051,13 +1051,13 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
                       onFocus={() => { updateLine(idx, { showSuggestions: true }); setActiveLineIdx(idx); }}
                       onBlur={() => setTimeout(() => updateLine(idx, { showSuggestions: false }), 200)}
                       placeholder="Buscar experiencia o pack..."
-                      className="bg-white/5 border-white/10 text-white placeholder:text-white/25 text-sm h-8"
+                      className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 text-sm h-8"
                     />
                     {line.showSuggestions && productSuggestions && productSuggestions.length > 0 && activeLineIdx === idx && (
-                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
                         {(productSuggestions as any[]).map((p: any) => (
                           <button key={`${p.productType}-${p.id}`} type="button"
-                            className="w-full text-left px-3 py-2 hover:bg-white/8 text-xs text-white flex items-center gap-2"
+                            className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-xs text-white flex items-center gap-2"
                             onMouseDown={() => updateLine(idx, {
                               experienceId: p.id,
                               experienceTitle: p.title,
@@ -1065,23 +1065,23 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
                               search: "",
                               showSuggestions: false,
                             })}>
-                            <span className="text-white/40">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                            <span className="text-foreground/50">{p.productType === "experience" ? "🏊" : "📦"}</span>
                             <span>{p.title}</span>
-                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-white/40">{Number(p.basePrice).toFixed(2)}€</span>}
+                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50">{Number(p.basePrice).toFixed(2)}€</span>}
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-xs text-white/40">Pax</span>
+                    <span className="text-xs text-foreground/50">Pax</span>
                     <Input
                       type="number" min={1} value={line.participants}
                       onChange={e => updateLine(idx, { participants: Math.max(1, Number(e.target.value)) })}
-                      className="bg-white/5 border-white/10 text-white w-14 h-8 text-xs text-center"
+                      className="bg-foreground/[0.05] border-foreground/[0.12] text-white w-14 h-8 text-xs text-center"
                     />
                     {activityLines.length > 1 && (
-                      <button type="button" onClick={() => removeLine(idx)} className="text-white/30 hover:text-red-400 transition-colors ml-1">
+                      <button type="button" onClick={() => removeLine(idx)} className="text-foreground/40 hover:text-red-400 transition-colors ml-1">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -1098,25 +1098,25 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
         {/* Fecha y participantes globales */}
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
-            <Label className="text-xs text-white/50 mb-1 block">Fecha de la actividad</Label>
-            <Input type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-white/5 border-white/10 text-white" />
+            <Label className="text-xs text-foreground/60 mb-1 block">Fecha de la actividad</Label>
+            <Input type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Adultos</Label>
-            <Input type="number" min={1} value={adults} onChange={e => setAdults(Number(e.target.value))} className="bg-white/5 border-white/10 text-white" />
+            <Label className="text-xs text-foreground/60 mb-1 block">Adultos</Label>
+            <Input type="number" min={1} value={adults} onChange={e => setAdults(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
           <div>
-            <Label className="text-xs text-white/50 mb-1 block">Niños</Label>
-            <Input type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-white/5 border-white/10 text-white" />
+            <Label className="text-xs text-foreground/60 mb-1 block">Niños</Label>
+            <Input type="number" min={0} value={children} onChange={e => setChildren(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
           </div>
         </div>
 
         {/* Canal y notas */}
         <div>
-          <Label className="text-xs text-white/50 mb-1 block">Canal de origen</Label>
+          <Label className="text-xs text-foreground/60 mb-1 block">Canal de origen</Label>
           <Select value={source} onValueChange={setSource}>
-            <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue /></SelectTrigger>
-            <SelectContent className="bg-[#0d1526] border-white/10">
+            <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
+            <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
               <SelectItem value="admin" className="text-white text-xs">💼 Admin (manual)</SelectItem>
               <SelectItem value="telefono" className="text-white text-xs">📞 Teléfono</SelectItem>
               <SelectItem value="email" className="text-white text-xs">📧 Email</SelectItem>
@@ -1127,12 +1127,12 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
           </Select>
         </div>
         <div>
-          <Label className="text-xs text-white/50 mb-1 block">Mensaje / notas</Label>
-          <Textarea value={messageText} onChange={e => setMessageText(e.target.value)} placeholder="Información adicional del cliente..." rows={3} className="bg-white/5 border-white/10 text-white placeholder:text-white/25 resize-none" />
+          <Label className="text-xs text-foreground/60 mb-1 block">Mensaje / notas</Label>
+          <Textarea value={messageText} onChange={e => setMessageText(e.target.value)} placeholder="Información adicional del cliente..." rows={3} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
         </div>
       </div>
       <DialogFooter className="gap-2">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button size="sm" onClick={handleSubmit} disabled={createLead.isPending} className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white">
           {createLead.isPending ? "Creando..." : "Crear Lead"}
         </Button>
@@ -1213,7 +1213,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <CalendarCheck className="w-5 h-5 text-emerald-400" /> Nueva Reserva
@@ -1221,24 +1221,24 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
       </DialogHeader>
       <div className="space-y-4 py-2">
         {/* Cliente */}
-        <div className="bg-white/3 border border-white/8 rounded-xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">Cliente</p>
+        <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Cliente</p>
           <div className="relative">
-            <Label className="text-xs text-white/50 mb-1 block">Nombre completo *</Label>
+            <Label className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
             <Input
               value={customerName || clientSearch}
               onChange={e => { setClientSearch(e.target.value); setCustomerName(""); setShowClientSugg(true); }}
               onFocus={() => setShowClientSugg(true)}
               placeholder="Buscar cliente existente o escribir nuevo..."
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/25"
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
             />
             {showClientSugg && clientSuggestions.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
                 {clientSuggestions.map((c) => (
-                  <button key={c.id} type="button" className="w-full text-left px-3 py-2 hover:bg-white/8 text-sm text-white"
+                  <button key={c.id} type="button" className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-sm text-white"
                     onClick={() => { setCustomerName(c.name); setCustomerEmail(c.email ?? ""); setCustomerPhone(c.phone ?? ""); setClientSearch(""); setShowClientSugg(false); }}>
                     <span className="font-medium">{c.name}</span>
-                    <span className="text-white/40 ml-2 text-xs">{c.email}</span>
+                    <span className="text-foreground/50 ml-2 text-xs">{c.email}</span>
                   </button>
                 ))}
               </div>
@@ -1247,39 +1247,39 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Email *</Label>
-              <Input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+              <Label className="text-xs text-foreground/60 mb-1 block">Email *</Label>
+              <Input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
             </div>
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Teléfono</Label>
-              <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+              <Label className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+              <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
             </div>
           </div>
         </div>
         {/* Producto */}
-        <div className="bg-white/3 border border-white/8 rounded-xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">Producto / Servicio</p>
+        <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Producto / Servicio</p>
           <div className="relative">
-            <Label className="text-xs text-white/50 mb-1 block">Experiencia o pack *</Label>
+            <Label className="text-xs text-foreground/60 mb-1 block">Experiencia o pack *</Label>
             <Input
               value={productName || productSearch}
               onChange={e => { setProductSearch(e.target.value); setProductId(null); setProductName(""); setShowProductSugg(true); }}
               onFocus={() => setShowProductSugg(true)}
               placeholder="Buscar producto..."
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/25"
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
             />
             {showProductSugg && productSuggestions && (productSuggestions as any[]).length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-48 overflow-y-auto">
                 {(productSuggestions as any[]).map((p: any) => (
-                  <button key={`${p.productType}-${p.id}`} type="button" className="w-full text-left px-3 py-2 hover:bg-white/8 text-sm text-white flex items-center gap-2"
+                  <button key={`${p.productType}-${p.id}`} type="button" className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-sm text-white flex items-center gap-2"
                     onClick={() => {
                       setProductId(p.id); setProductName(p.title);
                       if (p.basePrice && Number(p.basePrice) > 0) { const base = Number(p.basePrice) * people; setAmountTotal(base.toFixed(2)); setAmountPaid(base.toFixed(2)); }
                       setProductSearch(""); setShowProductSugg(false);
                     }}>
-                    <span className="text-white/40 text-xs">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                    <span className="text-foreground/50 text-xs">{p.productType === "experience" ? "🏊" : "📦"}</span>
                     <span>{p.title}</span>
-                    {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-white/40 text-xs">{Number(p.basePrice).toFixed(2)}€/pers</span>}
+                    {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50 text-xs">{Number(p.basePrice).toFixed(2)}€/pers</span>}
                   </button>
                 ))}
               </div>
@@ -1288,34 +1288,34 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Fecha del servicio *</Label>
-              <Input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="bg-white/5 border-white/10 text-white" />
+              <Label className="text-xs text-foreground/60 mb-1 block">Fecha del servicio *</Label>
+              <Input type="date" value={bookingDate} onChange={e => setBookingDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
             </div>
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Nº personas</Label>
-              <Input type="number" min={1} value={people} onChange={e => setPeople(Number(e.target.value))} className="bg-white/5 border-white/10 text-white" />
+              <Label className="text-xs text-foreground/60 mb-1 block">Nº personas</Label>
+              <Input type="number" min={1} value={people} onChange={e => setPeople(Number(e.target.value))} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
             </div>
           </div>
         </div>
         {/* Económico */}
-        <div className="bg-white/3 border border-white/8 rounded-xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-white/50 uppercase tracking-wider">Datos económicos</p>
+        <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Datos económicos</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Importe total (€) *</Label>
-              <Input type="number" min={0} step="0.01" value={amountTotal} onChange={e => setAmountTotal(e.target.value)} placeholder="0.00" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+              <Label className="text-xs text-foreground/60 mb-1 block">Importe total (€) *</Label>
+              <Input type="number" min={0} step="0.01" value={amountTotal} onChange={e => setAmountTotal(e.target.value)} placeholder="0.00" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
             </div>
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Importe cobrado (€)</Label>
-              <Input type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="Igual al total si pagado" className="bg-white/5 border-white/10 text-white placeholder:text-white/25" />
+              <Label className="text-xs text-foreground/60 mb-1 block">Importe cobrado (€)</Label>
+              <Input type="number" min={0} step="0.01" value={amountPaid} onChange={e => setAmountPaid(e.target.value)} placeholder="Igual al total si pagado" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Método de pago</Label>
+              <Label className="text-xs text-foreground/60 mb-1 block">Método de pago</Label>
               <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as typeof paymentMethod)}>
-                <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-[#0d1526] border-white/10">
+                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                   <SelectItem value="efectivo" className="text-white text-xs">💵 Efectivo</SelectItem>
                   <SelectItem value="transferencia" className="text-white text-xs">🏦 Transferencia</SelectItem>
                   <SelectItem value="redsys" className="text-white text-xs">💳 Tarjeta (Redsys)</SelectItem>
@@ -1324,10 +1324,10 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
               </Select>
             </div>
             <div>
-              <Label className="text-xs text-white/50 mb-1 block">Canal</Label>
+              <Label className="text-xs text-foreground/60 mb-1 block">Canal</Label>
               <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
-                <SelectTrigger className="bg-white/5 border-white/10 text-white"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-[#0d1526] border-white/10">
+                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                   <SelectItem value="crm" className="text-white text-xs">💼 CRM (admin)</SelectItem>
                   <SelectItem value="telefono" className="text-white text-xs">📞 Teléfono</SelectItem>
                   <SelectItem value="email" className="text-white text-xs">📧 Email</SelectItem>
@@ -1338,16 +1338,16 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <div>
-          <Label className="text-xs text-white/50 mb-1 block">Notas internas</Label>
-          <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo..." rows={2} className="bg-white/5 border-white/10 text-white placeholder:text-white/25 resize-none" />
+          <Label className="text-xs text-foreground/60 mb-1 block">Notas internas</Label>
+          <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notas para el equipo..." rows={2} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 resize-none" />
         </div>
         <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={sendEmailConfirm} onChange={e => setSendEmailConfirm(e.target.checked)} className="rounded" />
-          <span className="text-sm text-white/60">Enviar email de confirmación al cliente</span>
+          <span className="text-sm text-foreground/65">Enviar email de confirmación al cliente</span>
         </label>
       </div>
       <DialogFooter className="gap-2">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button size="sm" onClick={handleSubmit} disabled={createManual.isPending} className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white">
           {createManual.isPending ? "Creando reserva..." : "Crear Reserva"}
         </Button>
@@ -1471,29 +1471,29 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <Plus className="w-5 h-5 text-orange-400" /> Nuevo Presupuesto
-          <span className="text-white/40 text-sm font-normal ml-1">sin lead previo</span>
+          <span className="text-foreground/50 text-sm font-normal ml-1">sin lead previo</span>
         </DialogTitle>
       </DialogHeader>
 
       <div className="space-y-5">
         {/* ── Sección cliente ── */}
-        <div className="bg-white/5 rounded-xl p-4 space-y-3">
+        <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-3">
           <div className="flex items-center gap-2 mb-1">
             <User className="w-4 h-4 text-orange-400" />
-            <span className="text-xs font-semibold uppercase tracking-widest text-white/50">Datos del cliente</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-foreground/60">Datos del cliente</span>
           </div>
 
           {/* Buscador de cliente existente */}
           <div className="relative">
-            <Label className="text-white/60 text-xs">Buscar cliente existente</Label>
+            <Label className="text-foreground/65 text-xs">Buscar cliente existente</Label>
             <div className="relative mt-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
               <Input
-                className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
+                className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
                 placeholder="Nombre o email del cliente..."
                 value={clientSearch}
                 onChange={(e) => { setClientSearch(e.target.value); setShowClientSuggestions(true); }}
@@ -1502,47 +1502,47 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
               />
             </div>
             {showClientSuggestions && clientSuggestions.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/10 rounded-lg shadow-xl max-h-40 overflow-y-auto">
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.12] rounded-lg shadow-xl max-h-40 overflow-y-auto">
                 {clientSuggestions.map((c) => (
                   <button
                     key={c.id}
                     type="button"
-                    className="w-full text-left px-3 py-2.5 hover:bg-white/10 flex items-center justify-between gap-2"
+                    className="w-full text-left px-3 py-2.5 hover:bg-foreground/[0.08] flex items-center justify-between gap-2"
                     onMouseDown={() => selectClient(c)}
                   >
                     <div>
                       <div className="text-sm text-white font-medium">{c.name}</div>
-                      <div className="text-xs text-white/40">{c.email}</div>
+                      <div className="text-xs text-foreground/50">{c.email}</div>
                     </div>
-                    {c.company && <span className="text-xs text-white/30 shrink-0">{c.company}</span>}
+                    {c.company && <span className="text-xs text-foreground/40 shrink-0">{c.company}</span>}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="text-xs text-white/30 text-center">— o introduce los datos manualmente —</div>
+          <div className="text-xs text-foreground/40 text-center">— o introduce los datos manualmente —</div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-white/60 text-xs">Nombre *</Label>
+              <Label className="text-foreground/65 text-xs">Nombre *</Label>
               <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setTitle(`Presupuesto Nayade Experiences - ${e.target.value}`); }}
-                className="bg-white/5 border-white/10 text-white mt-1 text-sm" placeholder="Nombre completo" />
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="Nombre completo" />
             </div>
             <div>
-              <Label className="text-white/60 text-xs">Email *</Label>
+              <Label className="text-foreground/65 text-xs">Email *</Label>
               <Input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)}
-                className="bg-white/5 border-white/10 text-white mt-1 text-sm" placeholder="cliente@email.com" />
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="cliente@email.com" />
             </div>
             <div>
-              <Label className="text-white/60 text-xs">Teléfono</Label>
+              <Label className="text-foreground/65 text-xs">Teléfono</Label>
               <Input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)}
-                className="bg-white/5 border-white/10 text-white mt-1 text-sm" placeholder="+34 600 000 000" />
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="+34 600 000 000" />
             </div>
             <div>
-              <Label className="text-white/60 text-xs">Empresa</Label>
+              <Label className="text-foreground/65 text-xs">Empresa</Label>
               <Input value={clientCompany} onChange={(e) => setClientCompany(e.target.value)}
-                className="bg-white/5 border-white/10 text-white mt-1 text-sm" placeholder="Nombre empresa (opcional)" />
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" placeholder="Nombre empresa (opcional)" />
             </div>
           </div>
         </div>
@@ -1550,20 +1550,20 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         {/* ── Asunto y fechas ── */}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Asunto del presupuesto *</Label>
+            <Label className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)}
-              className="bg-white/5 border-white/10 text-white mt-1 text-sm" />
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Válido hasta</Label>
+            <Label className="text-foreground/65 text-xs">Válido hasta</Label>
             <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)}
-              className="bg-white/5 border-white/10 text-white mt-1" />
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">IVA (%)</Label>
+            <Label className="text-foreground/65 text-xs">IVA (%)</Label>
             <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
-              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-white/10">
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                 <SelectItem value="0" className="text-white">0% (exento)</SelectItem>
                 <SelectItem value="10" className="text-white">10%</SelectItem>
                 <SelectItem value="21" className="text-white">21%</SelectItem>
@@ -1575,13 +1575,13 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         {/* ── Conceptos ── */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-white/60 text-xs">Conceptos * <span className="text-white/30">(escribe o busca un producto)</span></Label>
+            <Label className="text-foreground/65 text-xs">Conceptos * <span className="text-foreground/40">(escribe o busca un producto)</span></Label>
             <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
               onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0 }])}>
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
-          <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mb-1">
+          <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
             <span className="col-span-4">Descripción</span>
             <span className="col-span-2 text-center">Régimen</span>
             <span className="col-span-2 text-center">Cant.</span>
@@ -1606,19 +1606,19 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                   />
                 </div>
                 <select
-                  className="col-span-2 bg-white/5 border border-white/10 text-white text-xs rounded-md px-1 py-1.5 h-9"
+                  className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
                   value={item.fiscalRegime ?? "general_21"}
                   onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
                 >
                   <option value="general_21" className="bg-[#0d1526]">IVA 21%</option>
                   <option value="reav" className="bg-[#0d1526]">REAV</option>
                 </select>
-                <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center" type="number" min={1}
+                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
-                <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-right" type="number" min={0} step={0.01}
+                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
                 <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{item.total.toFixed(2)} €</div>
-                <Button size="sm" variant="ghost" className="col-span-1 text-white/30 hover:text-red-400 p-1"
+                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
@@ -1628,44 +1628,44 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Totales */}
-        <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
+        <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-white/60"><span>Subtotal rég. general</span><span>{generalSubtotal.toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal rég. general</span><span>{generalSubtotal.toFixed(2)} €</span></div>
               <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotal).toFixed(2)} €</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
           )}
           {generalSubtotal > 0 && (
-            <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
           )}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
-          <div className="flex justify-between text-base font-bold text-white border-t border-white/10 pt-2 mt-2">
+          <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2 mt-2">
             <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
           </div>
         </div>
 
         <div>
-          <Label className="text-white/60 text-xs">Notas para el cliente</Label>
+          <Label className="text-foreground/65 text-xs">Notas para el cliente</Label>
           <Textarea value={notes} onChange={(e) => setNotes(e.target.value)}
             placeholder="Información adicional visible para el cliente..."
-            className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1 resize-none h-16 text-sm" />
+            className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1 resize-none h-16 text-sm" />
         </div>
         <div>
-          <Label className="text-white/60 text-xs">Condiciones</Label>
+          <Label className="text-foreground/65 text-xs">Condiciones</Label>
           <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)}
-            className="bg-white/5 border-white/10 text-white mt-1 resize-none h-12 text-sm" />
+            className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-12 text-sm" />
         </div>
       </div>
 
       <DialogFooter className="gap-2 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button size="sm" onClick={() => handleSubmit(false)} disabled={createDirect.isPending}
-          className="bg-white/10 hover:bg-white/20 text-white border border-white/15">
+          className="bg-foreground/[0.08] hover:bg-foreground/[0.15] text-white border border-foreground/[0.15]">
           {createDirect.isPending && !sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
           Guardar borrador
         </Button>
@@ -1791,11 +1791,11 @@ function QuoteBuilderModal({
   };
 
   return (
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <FileText className="w-5 h-5 text-orange-400" /> Nuevo Presupuesto
-          {leadName && <span className="text-white/40 text-sm font-normal ml-1">para {leadName}</span>}
+          {leadName && <span className="text-foreground/50 text-sm font-normal ml-1">para {leadName}</span>}
         </DialogTitle>
       </DialogHeader>
       {/* Boton Autogenerar con IA */}
@@ -1821,30 +1821,30 @@ function QuoteBuilderModal({
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Asunto del presupuesto *</Label>
+            <Label className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1"
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1"
             />
-            <p className="text-white/30 text-xs mt-1">Generado automáticamente. Puedes editarlo.</p>
+            <p className="text-foreground/40 text-xs mt-1">Generado automáticamente. Puedes editarlo.</p>
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Válido hasta</Label>
+            <Label className="text-foreground/65 text-xs">Válido hasta</Label>
             <Input
               type="date"
               value={validUntil}
               onChange={(e) => setValidUntil(e.target.value)}
-              className="bg-white/5 border-white/10 text-white mt-1"
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"
             />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">IVA (%)</Label>
+            <Label className="text-foreground/65 text-xs">IVA (%)</Label>
             <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
-              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-white/10">
+              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                 <SelectItem value="0" className="text-white">0% (exento)</SelectItem>
                 <SelectItem value="10" className="text-white">10%</SelectItem>
                 <SelectItem value="21" className="text-white">21%</SelectItem>
@@ -1856,8 +1856,8 @@ function QuoteBuilderModal({
         {/* Items con buscador de productos */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-white/60 text-xs">
-              Conceptos * <span className="text-white/30">(escribe o busca un producto)</span>
+            <Label className="text-foreground/65 text-xs">
+              Conceptos * <span className="text-foreground/40">(escribe o busca un producto)</span>
             </Label>
             <Button
               size="sm"
@@ -1868,7 +1868,7 @@ function QuoteBuilderModal({
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
-          <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mb-1">
+          <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
             <span className="col-span-4">Descripción</span>
             <span className="col-span-2 text-center">Régimen</span>
             <span className="col-span-2 text-center">Cant.</span>
@@ -1893,7 +1893,7 @@ function QuoteBuilderModal({
                   />
                 </div>
                 <select
-                  className="col-span-2 bg-white/5 border border-white/10 text-white text-xs rounded-md px-1 py-1.5 h-9"
+                  className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
                   value={item.fiscalRegime ?? "general_21"}
                   onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
                 >
@@ -1901,14 +1901,14 @@ function QuoteBuilderModal({
                   <option value="reav" className="bg-[#0d1526]">REAV</option>
                 </select>
                 <Input
-                  className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center"
+                  className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center"
                   type="number"
                   min={1}
                   value={item.quantity}
                   onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))}
                 />
                 <Input
-                  className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-right"
+                  className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right"
                   type="number"
                   min={0}
                   step={0.01}
@@ -1921,7 +1921,7 @@ function QuoteBuilderModal({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="col-span-1 text-white/30 hover:text-red-400 p-1"
+                  className="col-span-1 text-foreground/40 hover:text-red-400 p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))}
                   disabled={items.length === 1}
                 >
@@ -1933,17 +1933,17 @@ function QuoteBuilderModal({
         </div>
 
         {/* Código promocional */}
-        <div className="bg-white/5 rounded-xl p-3">
-          <Label className="text-white/60 text-xs mb-1.5 block">Código de descuento (opcional)</Label>
+        <div className="bg-foreground/[0.05] rounded-xl p-3">
+          <Label className="text-foreground/65 text-xs mb-1.5 block">Código de descuento (opcional)</Label>
           {promoData ? (
             <div className="flex items-center justify-between bg-green-900/30 border border-green-700/40 rounded-lg px-3 py-2">
               <span className="font-mono font-bold text-green-400 text-sm">{promoData.code} — -{promoData.discountPercent}%</span>
-              <button onClick={() => { setPromoData(null); setPromoInput(""); }} className="text-white/40 hover:text-red-400 text-xs ml-2">× Quitar</button>
+              <button onClick={() => { setPromoData(null); setPromoInput(""); }} className="text-foreground/50 hover:text-red-400 text-xs ml-2">× Quitar</button>
             </div>
           ) : (
             <div className="flex gap-2">
               <Input
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm font-mono uppercase"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm font-mono uppercase"
                 placeholder="VERANO25"
                 value={promoInput}
                 onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
@@ -1957,58 +1957,58 @@ function QuoteBuilderModal({
         </div>
 
         {/* Totals */}
-        <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
+        <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-white/60"><span>Subtotal rég. general</span><span>{generalSubtotalBuilder.toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal rég. general</span><span>{generalSubtotalBuilder.toFixed(2)} €</span></div>
               <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotalBuilder).toFixed(2)} €</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
           )}
           {promoDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-400"><span>Descuento {promoData?.code}</span><span>-{promoDiscount.toFixed(2)} €</span></div>
           )}
           {generalSubtotalBuilder > 0 && (
-            <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
           )}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
-          <div className="flex justify-between text-base font-bold text-white border-t border-white/10 pt-2 mt-2">
+          <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2 mt-2">
             <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
           </div>
         </div>
 
         <div>
-          <Label className="text-white/60 text-xs">Notas para el cliente</Label>
+          <Label className="text-foreground/65 text-xs">Notas para el cliente</Label>
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Información adicional visible para el cliente..."
-            className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1 resize-none h-16 text-sm"
+            className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1 resize-none h-16 text-sm"
           />
         </div>
         <div>
-          <Label className="text-white/60 text-xs">Condiciones</Label>
+          <Label className="text-foreground/65 text-xs">Condiciones</Label>
           <Textarea
             value={conditions}
             onChange={(e) => setConditions(e.target.value)}
-            className="bg-white/5 border-white/10 text-white mt-1 resize-none h-12 text-sm"
+            className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-12 text-sm"
           />
         </div>
       </div>
 
       <DialogFooter className="gap-2 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">
           Cancelar
         </Button>
         <Button
           size="sm"
           onClick={() => handleSubmit(false)}
           disabled={convertToQuote.isPending}
-          className="bg-white/10 hover:bg-white/20 text-white border border-white/15"
+          className="bg-foreground/[0.08] hover:bg-foreground/[0.15] text-white border border-foreground/[0.15]"
         >
           {convertToQuote.isPending && !sendAfterCreate ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <FileText className="w-4 h-4 mr-1" />}
           Guardar borrador
@@ -2080,7 +2080,7 @@ function ProductAutocompleteInput({
   return (
     <div ref={containerRef} className="relative col-span-4">
       <Input
-        className="w-full bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm"
+        className="w-full bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
         placeholder={placeholder}
         value={query}
         onChange={(e) => {
@@ -2091,20 +2091,20 @@ function ProductAutocompleteInput({
         onFocus={() => { if (query.trim().length >= 1) setOpen(true); }}
       />
       {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-white/15 rounded-lg shadow-2xl overflow-hidden">
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-2xl overflow-hidden">
           {isFetching && (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-white/40">
+            <div className="flex items-center gap-2 px-3 py-2 text-xs text-foreground/50">
               <RefreshCw className="w-3 h-3 animate-spin" /> Buscando...
             </div>
           )}
           {!isFetching && results.length === 0 && (
-            <div className="px-3 py-2 text-xs text-white/30">Sin resultados para "{query}"</div>
+            <div className="px-3 py-2 text-xs text-foreground/40">Sin resultados para "{query}"</div>
           )}
           {results.map((r) => (
             <button
               key={`${r.type}-${r.id}`}
               type="button"
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-white/10 transition-colors text-left group"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-foreground/[0.08] transition-colors text-left group"
               onMouseDown={(e) => {
                 e.preventDefault();
                 setQuery(r.title);
@@ -2114,7 +2114,7 @@ function ProductAutocompleteInput({
               }}
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className={`text-[10px] font-semibold shrink-0 ${TYPE_COLORS[r.type] ?? "text-white/40"}`}>
+                <span className={`text-[10px] font-semibold shrink-0 ${TYPE_COLORS[r.type] ?? "text-foreground/50"}`}>
                   {TYPE_LABELS[r.type] ?? r.type}
                 </span>
                 <span className="text-sm text-white truncate group-hover:text-orange-300 transition-colors">{r.title}</span>
@@ -2229,7 +2229,7 @@ function QuoteEditModal({
 
   if (isLoading || !initialized) {
     return (
-      <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white">
+      <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -2238,7 +2238,7 @@ function QuoteEditModal({
   }
 
   return (
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <Pencil className="w-4 h-4 text-orange-400" /> Editar Presupuesto
@@ -2247,18 +2247,18 @@ function QuoteEditModal({
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label className="text-white/60 text-xs">Título *</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Título *</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">Válido hasta</Label>
-            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1" />
+            <Label className="text-foreground/65 text-xs">Válido hasta</Label>
+            <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
-            <Label className="text-white/60 text-xs">IVA (%)</Label>
+            <Label className="text-foreground/65 text-xs">IVA (%)</Label>
             <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
-              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-white/10">
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                 <SelectItem value="0" className="text-white">0% (exento)</SelectItem>
                 <SelectItem value="10" className="text-white">10%</SelectItem>
                 <SelectItem value="21" className="text-white">21%</SelectItem>
@@ -2268,13 +2268,13 @@ function QuoteEditModal({
         </div>
         <div>
           <div className="flex items-center justify-between mb-2">
-            <Label className="text-white/60 text-xs">Conceptos *</Label>
+            <Label className="text-foreground/65 text-xs">Conceptos *</Label>
             <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
               onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }])}>
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
-          <div className="text-xs text-white/30 grid grid-cols-12 gap-2 mb-1">
+          <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
             <span className="col-span-4">Descripción</span>
             <span className="col-span-2 text-center">Régimen</span>
             <span className="col-span-2 text-center">Cant.</span>
@@ -2290,19 +2290,19 @@ function QuoteEditModal({
                   onSelect={(product) => selectCatalogProduct(idx, product)}
                 />
                 <select
-                  className="col-span-2 bg-white/5 border border-white/10 text-white text-xs rounded-md px-1 py-1.5 h-9"
+                  className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
                   value={item.fiscalRegime ?? "general_21"}
                   onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
                 >
                   <option value="general_21" className="bg-[#0d1526]">IVA 21%</option>
                   <option value="reav" className="bg-[#0d1526]">REAV</option>
                 </select>
-                <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-center" type="number" min={1}
+                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
-                <Input className="col-span-2 bg-white/5 border-white/10 text-white text-sm text-right" type="number" min={0} step={0.01}
+                <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
                   value={item.unitPrice} onChange={(e) => updateItem(idx, "unitPrice", Number(e.target.value))} />
                 <div className={`col-span-1 text-right text-sm font-semibold ${item.fiscalRegime === "reav" ? "text-amber-400" : "text-orange-400"}`}>{item.total.toFixed(2)} €</div>
-                <Button size="sm" variant="ghost" className="col-span-1 text-white/30 hover:text-red-400 p-1"
+                <Button size="sm" variant="ghost" className="col-span-1 text-foreground/40 hover:text-red-400 p-1"
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
@@ -2310,15 +2310,15 @@ function QuoteEditModal({
             ))}
           </div>
         </div>
-        <div className="bg-white/5 rounded-xl p-4 space-y-1.5">
+        <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-white/60"><span>Subtotal rég. general</span><span>{generalSubtotalEdit.toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal rég. general</span><span>{generalSubtotalEdit.toFixed(2)} €</span></div>
               <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotalEdit).toFixed(2)} €</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-white/60"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
           )}
           {discount > 0 && (
             <div className="flex justify-between text-sm text-purple-300">
@@ -2327,12 +2327,12 @@ function QuoteEditModal({
             </div>
           )}
           {generalSubtotalEdit > 0 && (
-            <div className="flex justify-between text-sm text-white/60"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
           )}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
-          <div className="flex justify-between text-base font-bold text-white border-t border-white/10 pt-2">
+          <div className="flex justify-between text-base font-bold text-white border-t border-foreground/[0.12] pt-2">
             <span>TOTAL</span><span className="text-orange-400 text-xl">{total.toFixed(2)} €</span>
           </div>
         </div>
@@ -2355,7 +2355,7 @@ function QuoteEditModal({
                     value={bonoCode}
                     onChange={(e) => { setBonoCode(e.target.value.toUpperCase()); setBonoQueryCode(null); }}
                     placeholder="Ej: BON-A1B2-C3D4"
-                    className="bg-[#0a0a1a] border-white/10 text-white placeholder:text-gray-600 font-mono text-xs h-8 flex-1"
+                    className="bg-[#0a0a1a] border-foreground/[0.12] text-white placeholder:text-gray-600 font-mono text-xs h-8 flex-1"
                     spellCheck={false}
                   />
                   <Button size="sm" variant="outline"
@@ -2376,7 +2376,7 @@ function QuoteEditModal({
                     "border-purple-500/20 bg-purple-500/5"
                   }`}>
                     <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-white">{bonoPreview.code}</span>
+                      <span className="font-mono font-bold text-foreground">{bonoPreview.code}</span>
                       <span className={`font-semibold px-2 py-0.5 rounded-full text-xs ${
                         bonoPreview.status === "canjeado" ? "text-gray-400 bg-gray-500/10" :
                         bonoPreview.status === "caducado" ? "text-red-400 bg-red-500/10" :
@@ -2386,7 +2386,7 @@ function QuoteEditModal({
                       </span>
                     </div>
                     {bonoPreview.value > 0 && <p className="text-white font-bold">{bonoPreview.value.toFixed(2)} € de descuento</p>}
-                    {bonoPreview.activityName && <p className="text-white/40">{bonoPreview.activityName}</p>}
+                    {bonoPreview.activityName && <p className="text-foreground/50">{bonoPreview.activityName}</p>}
                     {(bonoPreview.status === "enviado" || bonoPreview.status === "generado") && (
                       <Button size="sm" className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs h-7"
                         disabled={applyDiscountCodeMut.isPending}
@@ -2406,16 +2406,16 @@ function QuoteEditModal({
         )}
 
         <div>
-          <Label className="text-white/60 text-xs">Notas para el cliente</Label>
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-16 text-sm" />
+          <Label className="text-foreground/65 text-xs">Notas para el cliente</Label>
+          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-16 text-sm" />
         </div>
         <div>
-          <Label className="text-white/60 text-xs">Condiciones</Label>
-          <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)} className="bg-white/5 border-white/10 text-white mt-1 resize-none h-12 text-sm" />
+          <Label className="text-foreground/65 text-xs">Condiciones</Label>
+          <Textarea value={conditions} onChange={(e) => setConditions(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-12 text-sm" />
         </div>
       </div>
       <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">Cancelar</Button>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button
           size="sm"
           onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items, subtotal, discount, taxRate, total, validUntil })}
@@ -2437,7 +2437,7 @@ function QuoteEditModal({
 type TimelineEventType = "created" | "sent" | "viewed" | "reminder" | "accepted" | "rejected" | "paid" | "lost" | "expired" | "activity";
 
 const TIMELINE_CONFIG: Record<TimelineEventType, { icon: React.ReactNode; color: string; bg: string }> = {
-  created:  { icon: <FileText className="w-3.5 h-3.5" />, color: "text-white/60", bg: "bg-white/10" },
+  created:  { icon: <FileText className="w-3.5 h-3.5" />, color: "text-foreground/65", bg: "bg-foreground/[0.08]" },
   sent:     { icon: <Send className="w-3.5 h-3.5" />, color: "text-blue-400", bg: "bg-blue-500/20" },
   viewed:   { icon: <Eye className="w-3.5 h-3.5" />, color: "text-emerald-400", bg: "bg-emerald-500/20" },
   reminder: { icon: <RefreshCw className="w-3.5 h-3.5" />, color: "text-amber-400", bg: "bg-amber-500/20" },
@@ -2445,7 +2445,7 @@ const TIMELINE_CONFIG: Record<TimelineEventType, { icon: React.ReactNode; color:
   rejected: { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-red-400", bg: "bg-red-500/20" },
   paid:     { icon: <CheckCircle className="w-3.5 h-3.5" />, color: "text-orange-400", bg: "bg-orange-500/20" },
   lost:     { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-red-400", bg: "bg-red-500/20" },
-  expired:  { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-white/40", bg: "bg-white/10" },
+  expired:  { icon: <XCircle className="w-3.5 h-3.5" />, color: "text-foreground/50", bg: "bg-foreground/[0.08]" },
   activity: { icon: <ArrowUpRight className="w-3.5 h-3.5" />, color: "text-purple-400", bg: "bg-purple-500/20" },
 };
 
@@ -2455,19 +2455,19 @@ function QuoteTimeline({ quoteId }: { quoteId: number }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-6">
-        <RefreshCw className="w-4 h-4 animate-spin text-white/30" />
+        <RefreshCw className="w-4 h-4 animate-spin text-foreground/40" />
       </div>
     );
   }
 
   if (!data || data.events.length === 0) {
-    return <p className="text-xs text-white/30 text-center py-4">Sin actividad registrada</p>;
+    return <p className="text-xs text-foreground/40 text-center py-4">Sin actividad registrada</p>;
   }
 
   return (
     <div className="relative">
       {/* Línea vertical */}
-      <div className="absolute left-[15px] top-0 bottom-0 w-px bg-white/10" />
+      <div className="absolute left-[15px] top-0 bottom-0 w-px bg-foreground/[0.08]" />
       <div className="space-y-3">
         {data.events.map((event, idx) => {
           const cfg = TIMELINE_CONFIG[event.type as TimelineEventType] ?? TIMELINE_CONFIG.activity;
@@ -2475,22 +2475,22 @@ function QuoteTimeline({ quoteId }: { quoteId: number }) {
           return (
             <div key={event.id} className="flex gap-3 relative">
               {/* Icono */}
-              <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${cfg.bg} ${cfg.color} border border-white/10`}>
+              <div className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${cfg.bg} ${cfg.color} border border-foreground/[0.12]`}>
                 {cfg.icon}
               </div>
               {/* Contenido */}
               <div className={`flex-1 pb-3 ${isLast ? "" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
                   <span className={`text-sm font-medium ${cfg.color}`}>{event.label}</span>
-                  <span className="text-xs text-white/30 whitespace-nowrap flex-shrink-0">
+                  <span className="text-xs text-foreground/40 whitespace-nowrap flex-shrink-0">
                     {new Date(event.timestamp).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
                 {event.detail && (
-                  <p className="text-xs text-white/40 mt-0.5">{event.detail}</p>
+                  <p className="text-xs text-foreground/50 mt-0.5">{event.detail}</p>
                 )}
                 {event.actor && (
-                  <p className="text-xs text-white/30 mt-0.5">Por: {event.actor}</p>
+                  <p className="text-xs text-foreground/40 mt-0.5">Por: {event.actor}</p>
                 )}
               </div>
             </div>
@@ -2717,7 +2717,7 @@ function QuoteDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white">
+      <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -2735,7 +2735,7 @@ function QuoteDetailModal({
 
   return (
     <>
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
       <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-3">
@@ -2744,7 +2744,7 @@ function QuoteDetailModal({
           </div>
           <div>
             <div className="font-bold">{quote.quoteNumber}</div>
-            <div className="text-sm text-white/50 font-normal">{lead?.name ?? "Cliente"}</div>
+            <div className="text-sm text-foreground/60 font-normal">{lead?.name ?? "Cliente"}</div>
           </div>
         </DialogTitle>
       </DialogHeader>
@@ -2761,51 +2761,51 @@ function QuoteDetailModal({
               Generado con IA
             </span>
           )}
-          {quote.sentAt && <span className="text-xs text-white/40">Enviado {new Date(quote.sentAt).toLocaleDateString("es-ES")}</span>}
+          {quote.sentAt && <span className="text-xs text-foreground/50">Enviado {new Date(quote.sentAt).toLocaleDateString("es-ES")}</span>}
           {quote.viewedAt && <span className="text-xs text-emerald-400">Visto ✓</span>}
         </div>
 
-        <div className="bg-white/5 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/10">
+        <div className="bg-foreground/[0.05] rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-foreground/[0.12]">
             <h3 className="font-semibold text-white text-sm">{quote.title}</h3>
-            {quote.description && <p className="text-xs text-white/50 mt-0.5">{quote.description}</p>}
+            {quote.description && <p className="text-xs text-foreground/60 mt-0.5">{quote.description}</p>}
           </div>
           <table className="w-full">
             <thead>
-              <tr className="bg-white/5">
-                <th className="text-left px-4 py-2 text-xs text-white/40 font-medium">Concepto</th>
-                <th className="text-center px-4 py-2 text-xs text-white/40 font-medium">Cant.</th>
-                <th className="text-right px-4 py-2 text-xs text-white/40 font-medium">P.Unit.</th>
-                <th className="text-right px-4 py-2 text-xs text-white/40 font-medium">Total</th>
+              <tr className="bg-foreground/[0.05]">
+                <th className="text-left px-4 py-2 text-xs text-foreground/50 font-medium">Concepto</th>
+                <th className="text-center px-4 py-2 text-xs text-foreground/50 font-medium">Cant.</th>
+                <th className="text-right px-4 py-2 text-xs text-foreground/50 font-medium">P.Unit.</th>
+                <th className="text-right px-4 py-2 text-xs text-foreground/50 font-medium">Total</th>
               </tr>
             </thead>
             <tbody>
               {hasGeneral && hasReav && (
-                <tr className="border-t border-white/5 bg-blue-500/5">
+                <tr className="border-t border-foreground/[0.08] bg-blue-500/5">
                   <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-blue-300 uppercase tracking-wider">Régimen General (IVA 21%)</td>
                 </tr>
               )}
               {(hasGeneral && hasReav ? generalItems : items).map((item, i) => (
-                <tr key={i} className="border-t border-white/5">
-                  <td className="px-4 py-2.5 text-sm text-white/80">{item.description}</td>
-                  <td className="px-4 py-2.5 text-sm text-white/60 text-center">{item.quantity}</td>
-                  <td className="px-4 py-2.5 text-sm text-white/60 text-right">{Number(item.unitPrice).toFixed(2)} €</td>
+                <tr key={i} className="border-t border-foreground/[0.08]">
+                  <td className="px-4 py-2.5 text-sm text-foreground/80">{item.description}</td>
+                  <td className="px-4 py-2.5 text-sm text-foreground/65 text-center">{item.quantity}</td>
+                  <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{Number(item.unitPrice).toFixed(2)} €</td>
                   <td className="px-4 py-2.5 text-sm font-semibold text-orange-400 text-right">{Number(item.total).toFixed(2)} €</td>
                 </tr>
               ))}
               {hasReav && (
                 <>
-                  <tr className="border-t border-white/5 bg-amber-500/5">
+                  <tr className="border-t border-foreground/[0.08] bg-amber-500/5">
                     <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold text-amber-300 uppercase tracking-wider">REAV — Sin IVA (Régimen Especial Agencias de Viaje)</td>
                   </tr>
                   {reavItems.map((item, i) => (
-                    <tr key={`reav-${i}`} className="border-t border-white/5">
-                      <td className="px-4 py-2.5 text-sm text-white/80">
+                    <tr key={`reav-${i}`} className="border-t border-foreground/[0.08]">
+                      <td className="px-4 py-2.5 text-sm text-foreground/80">
                         {item.description}
                         <span className="ml-1.5 text-xs bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">REAV</span>
                       </td>
-                      <td className="px-4 py-2.5 text-sm text-white/60 text-center">{item.quantity}</td>
-                      <td className="px-4 py-2.5 text-sm text-white/60 text-right">{Number(item.unitPrice).toFixed(2)} €</td>
+                      <td className="px-4 py-2.5 text-sm text-foreground/65 text-center">{item.quantity}</td>
+                      <td className="px-4 py-2.5 text-sm text-foreground/65 text-right">{Number(item.unitPrice).toFixed(2)} €</td>
                       <td className="px-4 py-2.5 text-sm font-semibold text-amber-400 text-right">{Number(item.total).toFixed(2)} €</td>
                     </tr>
                   ))}
@@ -2813,15 +2813,15 @@ function QuoteDetailModal({
               )}
             </tbody>
           </table>
-          <div className="px-4 py-3 border-t border-white/10 space-y-1">
+          <div className="px-4 py-3 border-t border-foreground/[0.12] space-y-1">
             {Number(quote.discount) > 0 && (
-              <div className="flex justify-between text-sm text-white/50">
+              <div className="flex justify-between text-sm text-foreground/60">
                 <span>Descuento</span><span>-{Number(quote.discount).toFixed(2)} €</span>
               </div>
             )}
             {hasGeneral && hasReav && (
               <>
-                <div className="flex justify-between text-sm text-white/50">
+                <div className="flex justify-between text-sm text-foreground/60">
                   <span>Subtotal rég. general</span><span>{generalItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</span>
                 </div>
                 <div className="flex justify-between text-sm text-amber-400/70">
@@ -2830,7 +2830,7 @@ function QuoteDetailModal({
               </>
             )}
             {Number(quote.tax) > 0 && (
-              <div className="flex justify-between text-sm text-white/50">
+              <div className="flex justify-between text-sm text-foreground/60">
                 <span>IVA (21%)</span><span>{Number(quote.tax).toFixed(2)} €</span>
               </div>
             )}
@@ -2838,7 +2838,7 @@ function QuoteDetailModal({
               <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
             )}
             <div className="flex justify-between items-center pt-1">
-              <span className="font-bold text-white">TOTAL</span>
+              <span className="font-bold text-foreground">TOTAL</span>
               <span className="text-xl font-bold text-orange-400">{Number(quote.total).toFixed(2)} €</span>
             </div>
           </div>
@@ -2847,12 +2847,12 @@ function QuoteDetailModal({
         {/* Invoices */}
         {relatedInvoices.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Facturas generadas</h4>
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Facturas generadas</h4>
             {relatedInvoices.map((inv: any) => (
               <div key={inv.id} className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
                 <div>
                   <span className="text-sm font-medium text-emerald-400">{inv.invoiceNumber}</span>
-                  <span className="text-xs text-white/40 ml-2">{new Date(inv.issuedAt).toLocaleDateString("es-ES")}</span>
+                  <span className="text-xs text-foreground/50 ml-2">{new Date(inv.issuedAt).toLocaleDateString("es-ES")}</span>
                 </div>
                 {inv.pdfUrl && (
                   <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer">
@@ -2870,14 +2870,14 @@ function QuoteDetailModal({
         <div>
           <button
             onClick={() => setShowTimeline(!showTimeline)}
-            className="flex items-center gap-2 text-xs text-white/40 hover:text-white/70 transition-colors w-full py-1"
+            className="flex items-center gap-2 text-xs text-foreground/50 hover:text-foreground/70 transition-colors w-full py-1"
           >
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/5 hover:bg-white/10 transition-colors">
+            <div className="flex-1 h-px bg-foreground/[0.08]" />
+            <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-foreground/[0.05] hover:bg-foreground/[0.08] transition-colors">
               <Eye className="w-3 h-3" />
               {showTimeline ? "Ocultar historial" : "Ver historial de actividad"}
             </span>
-            <div className="flex-1 h-px bg-white/10" />
+            <div className="flex-1 h-px bg-foreground/[0.08]" />
           </button>
           {showTimeline && (
             <div className="mt-3 pl-1">
@@ -2889,19 +2889,19 @@ function QuoteDetailModal({
         {/* Payment link input */}
         {showPaymentInput && (
           <div>
-            <Label className="text-white/60 text-xs">Link de pago (opcional)</Label>
+            <Label className="text-foreground/65 text-xs">Link de pago (opcional)</Label>
             <Input
               value={paymentLink}
               onChange={(e) => setPaymentLink(e.target.value)}
               placeholder="https://..."
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 mt-1 text-sm"
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1 text-sm"
             />
           </div>
         )}
       </div>
 
       </div>
-      <DialogFooter className="flex gap-2 flex-wrap pt-3 pb-4 px-6 border-t border-white/10 shrink-0">
+      <DialogFooter className="flex gap-2 flex-wrap pt-3 pb-4 px-6 border-t border-foreground/[0.12] shrink-0">
         {/* Confirmar Pago — botón unificado */}
         {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
           <Button
@@ -2919,7 +2919,7 @@ function QuoteDetailModal({
             <Button
               size="sm"
               variant="outline"
-              className="border-white/15 text-white/60 text-xs"
+              className="border-foreground/[0.15] text-foreground/65 text-xs"
               onClick={() => setShowPaymentInput(!showPaymentInput)}
             >
               <ArrowUpRight className="w-3.5 h-3.5 mr-1" /> {showPaymentInput ? "Sin link" : "+ Link pago"}
@@ -2959,7 +2959,7 @@ function QuoteDetailModal({
           Descargar PDF
         </Button>
         {/* Duplicar */}
-        <Button size="sm" variant="ghost" className="text-white/40 hover:text-white text-xs" onClick={() => duplicate.mutate({ id: quoteId })} disabled={duplicate.isPending}>
+        <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground text-xs" onClick={() => duplicate.mutate({ id: quoteId })} disabled={duplicate.isPending}>
           <Copy className="w-3.5 h-3.5 mr-1" /> Duplicar
         </Button>
         {/* Marcar perdido */}
@@ -2973,7 +2973,7 @@ function QuoteDetailModal({
 
       {/* ─── MODAL: Confirmar pago por transferencia bancaria ─── */}
       <Dialog open={showTransferModal} onOpenChange={setShowTransferModal}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Banknote className="w-5 h-5 text-blue-400" />
@@ -2981,11 +2981,11 @@ function QuoteDetailModal({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-foreground/65">
               Para validar el pago por transferencia bancaria debes adjuntar obligatoriamente el justificante (JPG, PNG o PDF).
               Solo cuando esté adjunto podrás confirmar el pago, generar la reserva y la factura.
             </p>
-            <div className="border-2 border-dashed border-white/20 rounded-lg p-4 text-center hover:border-blue-500/50 transition-colors">
+            <div className="border-2 border-dashed border-foreground/[0.18] rounded-lg p-4 text-center hover:border-blue-500/50 transition-colors">
               <input
                 type="file"
                 accept=".jpg,.jpeg,.png,.pdf"
@@ -2997,20 +2997,20 @@ function QuoteDetailModal({
                 {isUploadingProof ? (
                   <div className="flex flex-col items-center gap-2">
                     <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
-                    <span className="text-sm text-white/60">Subiendo justificante...</span>
+                    <span className="text-sm text-foreground/65">Subiendo justificante...</span>
                   </div>
                 ) : transferProofUrl ? (
                   <div className="flex flex-col items-center gap-2">
                     <CheckCircle className="w-8 h-8 text-emerald-400" />
                     <span className="text-sm text-emerald-400 font-medium">Justificante adjuntado</span>
-                    <span className="text-xs text-white/40">{transferFile?.name}</span>
+                    <span className="text-xs text-foreground/50">{transferFile?.name}</span>
                     <span className="text-xs text-blue-400 underline">Cambiar archivo</span>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-2">
-                    <Upload className="w-8 h-8 text-white/40" />
-                    <span className="text-sm text-white/60">Haz clic para adjuntar el justificante</span>
-                    <span className="text-xs text-white/30">JPG, PNG o PDF · Máx. 10 MB</span>
+                    <Upload className="w-8 h-8 text-foreground/50" />
+                    <span className="text-sm text-foreground/65">Haz clic para adjuntar el justificante</span>
+                    <span className="text-xs text-foreground/40">JPG, PNG o PDF · Máx. 10 MB</span>
                   </div>
                 )}
               </label>
@@ -3029,7 +3029,7 @@ function QuoteDetailModal({
           <DialogFooter className="gap-2">
             <Button
               variant="ghost"
-              className="text-white/60 hover:text-white"
+              className="text-foreground/65 hover:text-foreground"
               onClick={() => { setShowTransferModal(false); setTransferFile(null); setTransferProofUrl(null); }}
             >
               Cancelar
@@ -3053,7 +3053,7 @@ function QuoteDetailModal({
       <Dialog open={showConfirmPaymentModal} onOpenChange={(o) => {
         if (!o) { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }
       }}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-emerald-400" />
@@ -3061,14 +3061,14 @@ function QuoteDetailModal({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-white/60 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
+            <p className="text-foreground/65 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
             {/* Selector de método */}
             <div className="grid grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button key={m}
                   onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
-                    paymentMethodSelected === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-white/5 text-white/50 hover:border-white/25 hover:text-white/80"
+                    paymentMethodSelected === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
                   }`}
                 >
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
@@ -3081,22 +3081,22 @@ function QuoteDetailModal({
             {/* Campo específico por método */}
             {paymentMethodSelected === "tarjeta" && (
               <div className="space-y-1.5">
-                <Label className="text-white/70 text-xs">Nº operación TPV *</Label>
-                <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder="Ej: 000123456789" className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm" />
+                <Label className="text-foreground/70 text-xs">Nº operación TPV *</Label>
+                <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder="Ej: 000123456789" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm" />
               </div>
             )}
             {paymentMethodSelected === "transferencia" && (
               <div className="space-y-2">
-                <Label className="text-white/70 text-xs">Justificante de transferencia *</Label>
+                <Label className="text-foreground/70 text-xs">Justificante de transferencia *</Label>
                 {!viewProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
-                    isUploadingViewProof ? "border-white/20 bg-white/5" : "border-white/20 bg-white/5 hover:border-emerald-500/50 hover:bg-emerald-500/5"
+                    isUploadingViewProof ? "border-foreground/[0.18] bg-foreground/[0.05]" : "border-foreground/[0.18] bg-foreground/[0.05] hover:border-emerald-500/50 hover:bg-emerald-500/5"
                   }`}>
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleViewProofFileChange} disabled={isUploadingViewProof} />
                     {isUploadingViewProof ? (
-                      <><RefreshCw className="w-5 h-5 text-white/40 animate-spin" /><span className="text-xs text-white/40">Subiendo...</span></>
+                      <><RefreshCw className="w-5 h-5 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">Subiendo...</span></>
                     ) : (
-                      <><Upload className="w-5 h-5 text-white/40" /><span className="text-xs text-white/50">Haz clic o arrastra el justificante (PDF, JPG, PNG)</span></>
+                      <><Upload className="w-5 h-5 text-foreground/50" /><span className="text-xs text-foreground/60">Haz clic o arrastra el justificante (PDF, JPG, PNG)</span></>
                     )}
                   </label>
                 ) : (
@@ -3104,20 +3104,20 @@ function QuoteDetailModal({
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span className="text-xs text-emerald-300 flex-1 truncate">Justificante subido correctamente</span>
                     <a href={viewProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
-                    <button onClick={() => { setViewProofUrl(null); setViewProofKey(null); }} className="text-white/30 hover:text-white/60 ml-1">×</button>
+                    <button onClick={() => { setViewProofUrl(null); setViewProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
                   </div>
                 )}
               </div>
             )}
             {paymentMethodSelected === "efectivo" && (
               <div className="space-y-1.5">
-                <Label className="text-white/70 text-xs">Justificación *</Label>
-                <Textarea value={viewPayNote} onChange={(e) => setViewPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 31/03/2026" className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none" rows={2} />
+                <Label className="text-foreground/70 text-xs">Justificación *</Label>
+                <Textarea value={viewPayNote} onChange={(e) => setViewPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 31/03/2026" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="text-white/60 hover:text-white" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }}>Cancelar</Button>
+            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }}>Cancelar</Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               disabled={
@@ -3150,7 +3150,7 @@ function QuoteDetailModal({
 
       {/* ─── MODAL: Pago Pendiente ─── */}
       <Dialog open={showPendingPaymentModal} onOpenChange={setShowPendingPaymentModal}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Clock className="w-5 h-5 text-amber-400" />
@@ -3158,30 +3158,30 @@ function QuoteDetailModal({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-white/60 text-sm">Se creará un registro de pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
+            <p className="text-foreground/65 text-sm">Se creará un registro de pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
             <div className="space-y-1.5">
-              <Label className="text-white/70 text-xs">Fecha límite de pago *</Label>
+              <Label className="text-foreground/70 text-xs">Fecha límite de pago *</Label>
               <Input
                 type="date"
                 value={pendingDueDate}
                 onChange={(e) => setPendingDueDate(e.target.value)}
-                className="bg-white/5 border-white/10 text-white text-sm"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-white/70 text-xs">Motivo / nota interna (opcional)</Label>
+              <Label className="text-foreground/70 text-xs">Motivo / nota interna (opcional)</Label>
               <Textarea
                 value={pendingReason}
                 onChange={(e) => setPendingReason(e.target.value)}
                 placeholder="Ej: Cliente confirma pago por transferencia la próxima semana..."
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none"
                 rows={3}
               />
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="text-white/60 hover:text-white" onClick={() => setShowPendingPaymentModal(false)}>Cancelar</Button>
+            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => setShowPendingPaymentModal(false)}>Cancelar</Button>
             <Button
               className="bg-amber-600 hover:bg-amber-700 text-white"
               disabled={!pendingDueDate || createPendingPayment.isPending}
@@ -3268,14 +3268,14 @@ function ReservationDetailModal({
   };
 
   const getPaymentBadge = (method: string | null) => {
-    if (!method) return <span className="text-white/20 text-xs">—</span>;
+    if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
       redsys:        { label: "Tarjeta (Redsys)",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
       transferencia: { label: "Transferencia",      cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
       efectivo:      { label: "Efectivo",           cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
-      otro:          { label: "Otro",               cls: "bg-white/10 text-white/50 border-white/15",             icon: "❓" },
+      otro:          { label: "Otro",               cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]",             icon: "❓" },
     };
-    const s = map[method] ?? { label: method, cls: "bg-white/10 text-white/50 border-white/15", icon: "" };
+    const s = map[method] ?? { label: method, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" };
     return (
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${s.cls}`}>
         <span>{s.icon}</span>{s.label}
@@ -3285,7 +3285,7 @@ function ReservationDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white">
+      <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -3298,7 +3298,7 @@ function ReservationDetailModal({
   const totalEur = (res.amountTotal / 100).toFixed(2);
 
   return (
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
+    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
       <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-3">
@@ -3313,7 +3313,7 @@ function ReservationDetailModal({
                     {res.reservationNumber}
                   </span>
                 )}
-                <span className="text-xs text-white/30 font-normal font-mono">{res.merchantOrder}</span>
+                <span className="text-xs text-foreground/40 font-normal font-mono">{res.merchantOrder}</span>
               </div>
             </div>
           </DialogTitle>
@@ -3365,22 +3365,22 @@ function ReservationDetailModal({
           )}
 
           {/* Datos del cliente */}
-          <div className="bg-white/[0.04] border border-white/8 rounded-xl p-4">
-            <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Datos del cliente</h4>
+          <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Datos del cliente</h4>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-xs text-white/40 mb-0.5">Nombre</div>
+                <div className="text-xs text-foreground/50 mb-0.5">Nombre</div>
                 <div className="text-sm text-white font-medium">{res.customerName}</div>
               </div>
               <div>
-                <div className="text-xs text-white/40 mb-0.5">Email</div>
+                <div className="text-xs text-foreground/50 mb-0.5">Email</div>
                 <a href={`mailto:${res.customerEmail}`} className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
                   {res.customerEmail}
                 </a>
               </div>
               {res.customerPhone && (
                 <div>
-                  <div className="text-xs text-white/40 mb-0.5">Teléfono</div>
+                  <div className="text-xs text-foreground/50 mb-0.5">Teléfono</div>
                   <a href={`tel:${res.customerPhone}`} className="text-sm text-sky-400 hover:text-sky-300 transition-colors">
                     {res.customerPhone}
                   </a>
@@ -3390,42 +3390,42 @@ function ReservationDetailModal({
           </div>
 
           {/* Detalles de la reserva */}
-          <div className="bg-white/[0.04] border border-white/8 rounded-xl p-4">
-            <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Detalles de la reserva</h4>
+          <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
+            <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Detalles de la reserva</h4>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-white/50">Producto</span>
+                <span className="text-foreground/60">Producto</span>
                 <span className="text-white font-medium text-right max-w-[60%]">{res.productName}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-white/50">Fecha de actividad</span>
+                <span className="text-foreground/60">Fecha de actividad</span>
                 <span className="text-white font-medium">{res.bookingDate || "—"}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-white/50">Personas</span>
+                <span className="text-foreground/60">Personas</span>
                 <span className="text-white font-medium">{res.people} pax</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-white/50">Importe total</span>
+                <span className="text-foreground/60">Importe total</span>
                 <span className="text-orange-400 font-bold">{totalEur} €</span>
               </div>
               {res.amountPaid !== res.amountTotal && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-white/50">Importe cobrado</span>
+                  <span className="text-foreground/60">Importe cobrado</span>
                   <span className="text-emerald-400 font-bold">{amountEur} €</span>
                 </div>
               )}
               <div className="flex justify-between text-sm">
-                <span className="text-white/50">Referencia</span>
-                <span className="font-mono text-white/60 text-xs">{res.merchantOrder}</span>
+                <span className="text-foreground/60">Referencia</span>
+                <span className="font-mono text-foreground/65 text-xs">{res.merchantOrder}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-white/50">Creada el</span>
-                <span className="text-white/60">{new Date(res.createdAt).toLocaleString("es-ES")}</span>
+                <span className="text-foreground/60">Creada el</span>
+                <span className="text-foreground/65">{new Date(res.createdAt).toLocaleString("es-ES")}</span>
               </div>
               {res.paidAt && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-white/50">Pagada el</span>
+                  <span className="text-foreground/60">Pagada el</span>
                   <span className="text-emerald-400">{new Date(res.paidAt).toLocaleString("es-ES")}</span>
                 </div>
               )}
@@ -3453,7 +3453,7 @@ function ReservationDetailModal({
           {res.notes && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
               <h4 className="text-xs font-semibold text-amber-300 uppercase tracking-wider mb-2">Notas internas</h4>
-              <p className="text-sm text-white/70">{res.notes}</p>
+              <p className="text-sm text-foreground/70">{res.notes}</p>
             </div>
           )}
 
@@ -3468,11 +3468,11 @@ function ReservationDetailModal({
             const generalItems = allItems.filter(i => !i.fiscalRegime || i.fiscalRegime === "general_21");
             const reavItems = allItems.filter(i => i.fiscalRegime === "reav");
             return (
-              <div className="bg-white/[0.04] border border-white/8 rounded-xl p-4">
-                <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Líneas del pedido</h4>
+              <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">
+                <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-3">Líneas del pedido</h4>
                 <div className="space-y-1">
                   {/* Header */}
-                  <div className="grid grid-cols-12 gap-2 text-xs text-white/30 font-medium pb-1 border-b border-white/8">
+                  <div className="grid grid-cols-12 gap-2 text-xs text-foreground/40 font-medium pb-1 border-b border-foreground/[0.10]">
                     <div className="col-span-6">Concepto</div>
                     <div className="col-span-2 text-center">Cant.</div>
                     <div className="col-span-2 text-right">P.Unit.</div>
@@ -3481,12 +3481,12 @@ function ReservationDetailModal({
                   {/* General items */}
                   {generalItems.length > 0 && (
                     <>
-                      <div className="text-xs font-semibold text-white/50 pt-1 pb-0.5">Régimen General (IVA 21%)</div>
+                      <div className="text-xs font-semibold text-foreground/60 pt-1 pb-0.5">Régimen General (IVA 21%)</div>
                       {generalItems.map((item, i) => (
                         <div key={`g-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
-                          <div className="col-span-6 text-white/80">{item.description}</div>
-                          <div className="col-span-2 text-center text-white/60">{item.quantity}</div>
-                          <div className="col-span-2 text-right text-white/60">{Number(item.unitPrice).toFixed(2)} €</div>
+                          <div className="col-span-6 text-foreground/80">{item.description}</div>
+                          <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
+                          <div className="col-span-2 text-right text-foreground/65">{Number(item.unitPrice).toFixed(2)} €</div>
                           <div className="col-span-2 text-right text-orange-400 font-medium">{Number(item.total).toFixed(2)} €</div>
                         </div>
                       ))}
@@ -3498,21 +3498,21 @@ function ReservationDetailModal({
                       <div className="text-xs font-semibold text-amber-400/70 pt-1 pb-0.5">REAV — Sin IVA (Régimen Especial Agencias de Viaje)</div>
                       {reavItems.map((item, i) => (
                         <div key={`r-${i}`} className="grid grid-cols-12 gap-2 text-sm py-1">
-                          <div className="col-span-6 text-white/80 flex items-center gap-1.5">
+                          <div className="col-span-6 text-foreground/80 flex items-center gap-1.5">
                             {item.description}
                             <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1 py-0.5 rounded">REAV</span>
                           </div>
-                          <div className="col-span-2 text-center text-white/60">{item.quantity}</div>
-                          <div className="col-span-2 text-right text-white/60">{Number(item.unitPrice).toFixed(2)} €</div>
+                          <div className="col-span-2 text-center text-foreground/65">{item.quantity}</div>
+                          <div className="col-span-2 text-right text-foreground/65">{Number(item.unitPrice).toFixed(2)} €</div>
                           <div className="col-span-2 text-right text-orange-400 font-medium">{Number(item.total).toFixed(2)} €</div>
                         </div>
                       ))}
                     </>
                   )}
                   {/* Totals */}
-                  <div className="border-t border-white/8 pt-2 mt-1 space-y-1">
+                  <div className="border-t border-foreground/[0.10] pt-2 mt-1 space-y-1">
                     {generalItems.length > 0 && reavItems.length > 0 && (
-                      <div className="flex justify-between text-xs text-white/40">
+                      <div className="flex justify-between text-xs text-foreground/50">
                         <span>Subtotal rég. general</span>
                         <span>{generalItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
                       </div>
@@ -3523,7 +3523,7 @@ function ReservationDetailModal({
                         <span>{reavItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-sm font-bold text-white">
+                    <div className="flex justify-between text-sm font-bold text-foreground">
                       <span>Total</span>
                       <span className="text-orange-400">{allItems.reduce((s, i) => s + Number(i.total), 0).toFixed(2)} €</span>
                     </div>
@@ -3536,13 +3536,13 @@ function ReservationDetailModal({
           {/* Facturas asociadas */}
           {relatedInvoices.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Facturas asociadas</h4>
+              <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Facturas asociadas</h4>
               <div className="space-y-2">
                 {relatedInvoices.map((inv: any) => (
-                  <div key={inv.id} className="flex items-center justify-between bg-white/5 border border-white/8 rounded-xl px-4 py-3">
+                  <div key={inv.id} className="flex items-center justify-between bg-foreground/[0.05] border border-foreground/[0.10] rounded-xl px-4 py-3">
                     <div>
-                      <div className="text-sm font-mono font-bold text-white">{inv.invoiceNumber}</div>
-                      <div className="text-xs text-white/40 mt-0.5">
+                      <div className="text-sm font-mono font-bold text-foreground">{inv.invoiceNumber}</div>
+                      <div className="text-xs text-foreground/50 mt-0.5">
                         {new Date(inv.createdAt).toLocaleDateString("es-ES")} · {inv.status}
                       </div>
                     </div>
@@ -3568,18 +3568,18 @@ function ReservationDetailModal({
           {/* Historial de actividad */}
           {activity.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Historial de actividad</h4>
+              <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Historial de actividad</h4>
               <div className="space-y-1.5">
                 {activity.map((log: any) => (
-                  <div key={log.id} className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0">
+                  <div key={log.id} className="flex items-start gap-3 py-2 border-b border-foreground/[0.08] last:border-0">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/60 mt-2 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-white/70">{translateAction(log.action)}</div>
+                      <div className="text-sm text-foreground/70">{translateAction(log.action)}</div>
                       {log.actorName && (
-                        <div className="text-xs text-white/30">{log.actorName}</div>
+                        <div className="text-xs text-foreground/40">{log.actorName}</div>
                       )}
                     </div>
-                    <div className="text-xs text-white/30 shrink-0">
+                    <div className="text-xs text-foreground/40 shrink-0">
                       {new Date(log.createdAt).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
@@ -3590,8 +3590,8 @@ function ReservationDetailModal({
         </div>
       </div>
 
-      <DialogFooter className="px-6 py-4 border-t border-white/8 flex gap-2 flex-wrap">
-        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
+      <DialogFooter className="px-6 py-4 border-t border-foreground/[0.10] flex gap-2 flex-wrap">
+        <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">
           Cerrar
         </Button>
         <Button
@@ -4082,7 +4082,7 @@ export default function CRMDashboard() {
       anulada: { label: "Anulada", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
       abonada: { label: "Abonada", cls: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
     };
-    const s = map[status] ?? { label: status, cls: "bg-white/10 text-white/50 border-white/10" };
+    const s = map[status] ?? { label: status, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.12]" };
     return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
   };
 
@@ -4098,14 +4098,14 @@ export default function CRMDashboard() {
   };
 
   const getPaymentMethodBadge = (method: string | null) => {
-    if (!method) return <span className="text-white/20 text-xs">—</span>;
+    if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
       redsys:        { label: "Tarjeta",       cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
       transferencia: { label: "Transferencia", cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
       efectivo:      { label: "Efectivo",      cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
-      otro:          { label: "Otro",          cls: "bg-white/10 text-white/50 border-white/15",             icon: "❓" },
+      otro:          { label: "Otro",          cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]",             icon: "❓" },
     };
-    const s = map[method] ?? { label: method, cls: "bg-white/10 text-white/50 border-white/15", icon: "" };
+    const s = map[method] ?? { label: method, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" };
     return (
       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>
         <span>{s.icon}</span>
@@ -4122,13 +4122,13 @@ export default function CRMDashboard() {
 
   return (
     <AdminLayout title="CRM Comercial">
-      <div className="min-h-screen bg-[#080e1c] text-white">
+      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-white/5">
+        <div className="px-6 pt-6 pb-4 border-b border-foreground/[0.08]">
           <div className="flex items-center justify-between mb-1">
             <div>
-              <h1 className="text-2xl font-bold text-white">CRM Comercial</h1>
-              <p className="text-sm text-white/40 mt-0.5">Pipeline completo Lead → Presupuesto → Reserva → Factura</p>
+              <h1 className="text-2xl font-bold text-foreground">CRM Comercial</h1>
+              <p className="text-sm text-foreground/50 mt-0.5">Pipeline completo Lead → Presupuesto → Reserva → Factura</p>
             </div>
           </div>
         </div>
@@ -4140,10 +4140,10 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-blue-400 to-blue-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Pipeline de Oportunidades</span>
-              <div className="flex-1 h-px bg-white/5" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Pipeline de Oportunidades</span>
+              <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(leadCounters?.total ?? 0) > 0 && (
-                <span className="text-xs text-white/30">{leadCounters?.total ?? 0} leads totales</span>
+                <span className="text-xs text-foreground/40">{leadCounters?.total ?? 0} leads totales</span>
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -4190,8 +4190,8 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-orange-400 to-orange-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Presupuestos &amp; Ingresos</span>
-              <div className="flex-1 h-px bg-white/5" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Presupuestos &amp; Ingresos</span>
+              <div className="flex-1 h-px bg-foreground/[0.05]" />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <CounterCard
@@ -4235,10 +4235,10 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-red-400 to-red-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Anulaciones</span>
-              <div className="flex-1 h-px bg-white/5" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Anulaciones</span>
+              <div className="flex-1 h-px bg-foreground/[0.05]" />
               {(anulCounters?.total ?? 0) > 0 && (
-                <span className="text-xs text-white/30">{anulCounters?.total ?? 0} totales</span>
+                <span className="text-xs text-foreground/40">{anulCounters?.total ?? 0} totales</span>
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -4276,8 +4276,8 @@ export default function CRMDashboard() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-4 rounded-full bg-gradient-to-b from-purple-400 to-purple-600" />
-              <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Bonos compensatorios</span>
-              <div className="flex-1 h-px bg-white/5" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Bonos compensatorios</span>
+              <div className="flex-1 h-px bg-foreground/[0.05]" />
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <CounterCard
@@ -4314,11 +4314,11 @@ export default function CRMDashboard() {
         {/* Barra de ratio de conversión */}
         {(leadCounters?.total ?? 0) > 0 && (
           <div className="px-6 pb-4">
-            <div className="bg-white/3 border border-white/8 rounded-2xl p-4">
+            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-1 h-4 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-600" />
-                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-white/40">Ratio de Conversión</span>
+                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Ratio de Conversión</span>
                   {(leadCounters?.sinLeer ?? 0) > 0 && (
                     <span className="flex items-center gap-1 text-xs text-blue-400 font-medium">
                       <span className="relative flex h-2 w-2">
@@ -4329,7 +4329,7 @@ export default function CRMDashboard() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-4 text-xs text-white/40">
+                <div className="flex items-center gap-4 text-xs text-foreground/50">
                   <span className="text-emerald-400 font-bold text-sm">
                     {leadCounters?.total ? Math.round(((leadCounters.ganada ?? 0) / leadCounters.total) * 100) : 0}%
                   </span>
@@ -4337,7 +4337,7 @@ export default function CRMDashboard() {
                 </div>
               </div>
               {/* Barra segmentada */}
-              <div className="relative h-3 bg-white/5 rounded-full overflow-hidden">
+              <div className="relative h-3 bg-foreground/[0.05] rounded-full overflow-hidden">
                 {/* Ganadas */}
                 <div
                   className="absolute left-0 top-0 h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-1000"
@@ -4362,19 +4362,19 @@ export default function CRMDashboard() {
               </div>
               {/* Leyenda */}
               <div className="flex items-center gap-4 mt-2">
-                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                <div className="flex items-center gap-1.5 text-xs text-foreground/50">
                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                   Ganadas ({leadCounters?.ganada ?? 0})
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                <div className="flex items-center gap-1.5 text-xs text-foreground/50">
                   <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
                   Enviadas ({leadCounters?.enviada ?? 0})
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                <div className="flex items-center gap-1.5 text-xs text-foreground/50">
                   <div className="w-2.5 h-2.5 rounded-full bg-blue-500/40" />
                   Nuevas ({leadCounters?.nueva ?? 0})
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-white/40">
+                <div className="flex items-center gap-1.5 text-xs text-foreground/50">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-500/40" />
                   Perdidas ({leadCounters?.perdida ?? 0})
                 </div>
@@ -4385,7 +4385,7 @@ export default function CRMDashboard() {
 
         {/* Tabs */}
         <div className="px-6">
-          <div className="flex gap-1 bg-white/5 rounded-xl p-1 w-fit">
+          <div className="flex gap-1 bg-foreground/[0.05] rounded-xl p-1 w-fit">
             {([
               { key: "leads", label: "Leads", icon: Users, count: leadCounters?.total },
               { key: "quotes", label: "Presupuestos", icon: FileText, count: quoteCounters?.enviado },
@@ -4399,12 +4399,12 @@ export default function CRMDashboard() {
                 key={key}
                 onClick={() => handleTabChange(key)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
-                  ${tab === key ? "bg-orange-600 text-white shadow-lg shadow-orange-900/30" : "text-white/50 hover:text-white hover:bg-white/5"}`}
+                  ${tab === key ? "bg-orange-600 text-white shadow-lg shadow-orange-900/30" : "text-foreground/60 hover:text-foreground hover:bg-foreground/[0.05]"}`}
               >
                 <Icon className="w-4 h-4" />
                 {label}
                 {count !== undefined && count > 0 && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${tab === key ? "bg-white/20 text-white" : "bg-white/10 text-white/60"}`}>
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${tab === key ? "bg-foreground/[0.15] text-white" : "bg-foreground/[0.08] text-foreground/65"}`}>
                     {count}
                   </span>
                 )}
@@ -4417,12 +4417,12 @@ export default function CRMDashboard() {
         {tab !== "anulaciones" && tab !== "bonos" && (
         <div className="px-6 py-4 flex gap-3 items-center">
           <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={`Buscar ${tab === "leads" ? "leads" : tab === "quotes" ? "presupuestos" : tab === "reservations" ? "reservas" : "facturas"}...`}
-              className="pl-9 bg-white/5 border-white/10 text-white placeholder:text-white/30"
+              className="pl-9 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40"
             />
           </div>
           {filterStatus !== "all" && (
@@ -4433,17 +4433,17 @@ export default function CRMDashboard() {
           {/* Filtro por canal — visible solo en el tab de reservas */}
           {tab === "reservations" && (
             <Select value={resChannelFilter} onValueChange={setResChannelFilter}>
-              <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white text-xs h-9">
+              <SelectTrigger className="w-40 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
                 <SelectValue placeholder="Canal" />
               </SelectTrigger>
-              <SelectContent className="bg-[#0d1520] border-white/10">
-                <SelectItem value="all" className="text-white/70 text-xs">📊 Todos los canales</SelectItem>
+              <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                <SelectItem value="all" className="text-foreground/70 text-xs">📊 Todos los canales</SelectItem>
                 <SelectItem value="tpv" className="text-violet-300 text-xs">🖥️ TPV Presencial</SelectItem>
                 <SelectItem value="web" className="text-sky-300 text-xs">🌐 Online</SelectItem>
                 <SelectItem value="crm" className="text-purple-300 text-xs">💼 CRM Delegado</SelectItem>
                 <SelectItem value="telefono" className="text-amber-300 text-xs">📞 Teléfono</SelectItem>
                 <SelectItem value="coupon" className="text-orange-300 text-xs">🎫 Plataformas (Cupón)</SelectItem>
-                <SelectItem value="otro" className="text-white/50 text-xs">❓ Otro</SelectItem>
+                <SelectItem value="otro" className="text-foreground/60 text-xs">❓ Otro</SelectItem>
               </SelectContent>
             </Select>
           )}
@@ -4481,25 +4481,25 @@ export default function CRMDashboard() {
         {/* Table */}
         <div className="px-6 pb-8">
           {tab === "leads" && (
-            <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-white/8 bg-white/5">
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Producto</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">Fecha actividad</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Recibido</th>
-                    <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+                  <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">Fecha actividad</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Recibido</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {leadsLoading ? (
-                    <tr><td colSpan={6} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={6} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !leadsData?.length ? (
-                    <tr><td colSpan={6} className="text-center py-12 text-white/30 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
+                    <tr><td colSpan={6} className="text-center py-12 text-foreground/40 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
                   ) : leadsData.map((lead: any) => (
-                    <tr key={lead.id} className={`border-t border-white/5 hover:bg-white/3 transition-colors ${!lead.seenAt ? "bg-blue-950/20" : ""}`}>
+                    <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${!lead.seenAt ? "bg-blue-950/20" : ""}`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
                           {/* Punto pulse para leads no leídos */}
@@ -4513,10 +4513,10 @@ export default function CRMDashboard() {
                           )}
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-medium text-white">{lead.name}</span>
+                              <span className="text-sm font-medium text-foreground">{lead.name}</span>
                               {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">Nuevo</span>}
                             </div>
-                            <div className="text-xs text-white/40">{lead.email}</div>
+                            <div className="text-xs text-foreground/50">{lead.email}</div>
                           </div>
                         </div>
                       </td>
@@ -4525,33 +4525,33 @@ export default function CRMDashboard() {
                           <div className="flex flex-col gap-0.5">
                             {(lead.activitiesJson as any[]).slice(0, 2).map((act: any, i: number) => (
                               <div key={i} className="flex items-center gap-1.5">
-                                <span className="text-sm text-white/80">{act.experienceTitle}</span>
+                                <span className="text-sm text-foreground/80">{act.experienceTitle}</span>
                                 <span className="text-xs text-orange-400 font-semibold">{act.participants}p</span>
                               </div>
                             ))}
                             {(lead.activitiesJson as any[]).length > 2 && (
-                              <span className="text-xs text-white/30">+{(lead.activitiesJson as any[]).length - 2} más</span>
+                              <span className="text-xs text-foreground/40">+{(lead.activitiesJson as any[]).length - 2} más</span>
                             )}
                           </div>
                         ) : (
-                          <div className="text-sm text-white/60">{lead.selectedProduct || lead.selectedCategory || "—"}</div>
+                          <div className="text-sm text-foreground/65">{lead.selectedProduct || lead.selectedCategory || "—"}</div>
                         )}
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        <div className="text-sm text-white/50">{lead.preferredDate ? new Date(lead.preferredDate).toLocaleDateString("es-ES") : "—"}</div>
+                        <div className="text-sm text-foreground/60">{lead.preferredDate ? new Date(lead.preferredDate).toLocaleDateString("es-ES") : "—"}</div>
                       </td>
                       <td className="px-4 py-3">
                         <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-xs text-white/40">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</div>
+                        <div className="text-xs text-foreground/50">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-white/50 hover:text-white h-7 px-2 text-xs"
+                            className="text-foreground/60 hover:text-foreground h-7 px-2 text-xs"
                             onClick={() => setSelectedLeadId(lead.id)}
                             title="Ver ficha"
                           >
@@ -4594,36 +4594,36 @@ export default function CRMDashboard() {
           )}
 
           {tab === "quotes" && (
-            <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-white/8 bg-white/5">
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Referencia</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Título</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
-                    <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Total</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Fecha</th>
-                    <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+                  <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Referencia</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Título</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Total</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Fecha</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {quotesLoading ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !quotesData?.length ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-white/30 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-foreground/40 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
                   ) : quotesData.map((quote: any) => (
-                    <tr key={quote.id} className="border-t border-white/5 hover:bg-white/3 transition-colors group">
+                    <tr key={quote.id} className="border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors group">
                       <td className="px-4 py-3">
                         <div className="text-sm font-mono font-medium text-orange-400">{quote.quoteNumber}</div>
-                        <div className="text-[10px] text-white/30 mt-0.5">{new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
+                        <div className="text-[10px] text-foreground/40 mt-0.5">{new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-white/90">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
-                        <div className="text-[10px] text-white/40 truncate max-w-[140px]">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
+                        <div className="text-sm font-medium text-foreground/90">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
+                        <div className="text-[10px] text-foreground/50 truncate max-w-[140px]">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-sm text-white/70 truncate max-w-[180px]">{quote.title}</div>
+                        <div className="text-sm text-foreground/70 truncate max-w-[180px]">{quote.title}</div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
@@ -4659,7 +4659,7 @@ export default function CRMDashboard() {
                             </span>
                           )}
                           {quote.sentAt && !quote.viewedAt && !quote.paidAt && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-white/30 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-foreground/40 bg-foreground/[0.05] border border-foreground/[0.12] px-1.5 py-0.5 rounded-full">
                               <Eye className="w-2.5 h-2.5" />
                               No visto
                             </span>
@@ -4667,10 +4667,10 @@ export default function CRMDashboard() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className="text-sm font-bold text-white">{Number(quote.total).toFixed(2)} €</span>
+                        <span className="text-sm font-bold text-foreground">{Number(quote.total).toFixed(2)} €</span>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-xs text-white/40">
+                        <div className="text-xs text-foreground/50">
                           {quote.sentAt ? (
                             <span className="text-blue-400/70">Env. {new Date(quote.sentAt).toLocaleDateString("es-ES")}</span>
                           ) : (
@@ -4681,29 +4681,29 @@ export default function CRMDashboard() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-white h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title="Ver detalle">
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title="Ver detalle">
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                           {/* Editar */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-blue-300 h-7 w-7 p-0" onClick={() => setEditQuoteId(quote.id)} title="Editar">
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0" onClick={() => setEditQuoteId(quote.id)} title="Editar">
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           {/* Enviar al cliente (solo borrador) */}
                           {(quote.status === "borrador") && (
-                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-orange-300 h-7 w-7 p-0" onClick={() => setSendQuoteId(quote.id)} title="Enviar al cliente">
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0" onClick={() => setSendQuoteId(quote.id)} title="Enviar al cliente">
                               <Send className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Reenviar (si ya fue enviado) */}
                           {quote.status === "enviado" && (
-                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-blue-300 h-7 w-7 p-0"
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
                               onClick={() => sendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title="Reenviar al cliente">
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Confirmar pago (enviado o aceptado sin pago) */}
                           {(quote.status === "enviado" || (quote.status === "aceptado" && !quote.paidAt)) && (
-                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title="Confirmar pago recibido">
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title="Confirmar pago recibido">
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
@@ -4711,7 +4711,7 @@ export default function CRMDashboard() {
                           {quote.status === "enviado" && (
                             <Button
                               size="sm" variant="ghost"
-                              className="text-white/40 hover:text-amber-300 h-7 w-7 p-0"
+                              className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
                               onClick={() => {
                                 setRowPendingPayQuoteId(quote.id);
                                 setRowPendingPayDueDate("");
@@ -4724,23 +4724,23 @@ export default function CRMDashboard() {
                           )}
                           {/* Marcar perdido */}
                           {(quote.status === "borrador" || quote.status === "enviado") && (
-                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-red-300 h-7 w-7 p-0" onClick={() => setMarkLostQuoteId(quote.id)} title="Marcar como perdido">
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-300 h-7 w-7 p-0" onClick={() => setMarkLostQuoteId(quote.id)} title="Marcar como perdido">
                               <XCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Descargar PDF */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-amber-300 h-7 w-7 p-0"
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
                             onClick={() => downloadQuotePdf(quote.id, quote.quoteNumber)} title="Descargar presupuesto en PDF"
                             disabled={generatePdfMutation.isPending}>
                             <FileDown className="w-3.5 h-3.5" />
                           </Button>
                           {/* Duplicar */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-white/70 h-7 w-7 p-0"
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground/70 h-7 w-7 p-0"
                             onClick={() => duplicateQuoteMutation.mutate({ id: quote.id })} title="Duplicar presupuesto">
                             <Copy className="w-3.5 h-3.5" />
                           </Button>
                           {/* Eliminar */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-red-400 h-7 w-7 p-0" onClick={() => setDeleteQuoteId(quote.id)} title="Eliminar">
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" onClick={() => setDeleteQuoteId(quote.id)} title="Eliminar">
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -4753,29 +4753,29 @@ export default function CRMDashboard() {
           )}
 
           {tab === "reservations" && (
-            <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+            <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-white/8 bg-white/5">
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Nº Reserva</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Producto</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Est. Reserva</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Est. Pago</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden xl:table-cell">Canal</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">F. Compra</th>
-                    <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden lg:table-cell">F. Actividad</th>
-                    <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Importe</th>
-                    <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+                  <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Nº Reserva</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Est. Reserva</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Est. Pago</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell">Canal</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">F. Compra</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">F. Actividad</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Importe</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {resLoading ? (
-                    <tr><td colSpan={10} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={10} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !resData?.length ? (
-                    <tr><td colSpan={10} className="text-center py-12 text-white/30 text-sm">No hay reservas</td></tr>
+                    <tr><td colSpan={10} className="text-center py-12 text-foreground/40 text-sm">No hay reservas</td></tr>
                   ) : resData.map((res: any) => (
-                    <tr key={res.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                    <tr key={res.id} className="border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors">
                       {/* Nº Reserva */}
                       <td className="px-4 py-3 shrink-0">
                         {res.reservationNumber ? (
@@ -4783,21 +4783,21 @@ export default function CRMDashboard() {
                             {res.reservationNumber}
                           </span>
                         ) : (
-                          <span className="font-mono text-xs text-white/20">—</span>
+                          <span className="font-mono text-xs text-foreground/30">—</span>
                         )}
                       </td>
                       {/* Cliente */}
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-white">{res.customerName}</div>
-                        <div className="text-xs text-white/40">{res.customerEmail}</div>
-                        {res.customerPhone && <div className="text-xs text-white/30 mt-0.5">{res.customerPhone}</div>}
-                        {res.merchantOrder && <div className="text-xs font-mono text-white/20 mt-0.5">{res.merchantOrder}</div>}
+                        <div className="text-sm font-medium text-foreground">{res.customerName}</div>
+                        <div className="text-xs text-foreground/50">{res.customerEmail}</div>
+                        {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5">{res.customerPhone}</div>}
+                        {res.merchantOrder && <div className="text-xs font-mono text-foreground/30 mt-0.5">{res.merchantOrder}</div>}
                       </td>
                       {/* Producto */}
                       <td className="px-4 py-3 hidden md:table-cell">
-                        <div className="text-sm text-white/60 truncate max-w-[200px]">{res.productName}</div>
+                        <div className="text-sm text-foreground/65 truncate max-w-[200px]">{res.productName}</div>
                         {res.paymentMethod && (
-                          <div className="text-xs text-white/30 mt-0.5">{getPaymentMethodLabel(res.paymentMethod)}</div>
+                          <div className="text-xs text-foreground/40 mt-0.5">{getPaymentMethodLabel(res.paymentMethod)}</div>
                         )}
                         {res.invoiceNumber && (
                           <button
@@ -4884,7 +4884,7 @@ export default function CRMDashboard() {
                           res.channel === "telefono" ? "text-amber-300 bg-amber-500/15 border-amber-500/30" :
                           res.channel === "PARTNER" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
                           res.channel === "groupon" || res.originSource === "coupon_redemption" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
-                          "text-white/40 bg-white/5 border-white/10"
+                          "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]"
                         }`}>
                           {res.channel === "tpv" || res.channel === "TPV_FISICO" ? "🖥️ TPV" :
                            res.channel === "crm" || res.channel === "VENTA_DELEGADA" ? "💼 Delegada" :
@@ -4896,38 +4896,38 @@ export default function CRMDashboard() {
                            res.channel ?? "—"}
                         </span>
                         {res.channelDetail && (
-                          <div className="text-[9px] text-white/30 mt-0.5 truncate max-w-[80px]">{res.channelDetail}</div>
+                          <div className="text-[9px] text-foreground/40 mt-0.5 truncate max-w-[80px]">{res.channelDetail}</div>
                         )}
                       </td>
                       {/* F. Compra */}
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        <div className="text-xs text-white/50">{new Date(res.createdAt).toLocaleDateString("es-ES")}</div>
+                        <div className="text-xs text-foreground/60">{new Date(res.createdAt).toLocaleDateString("es-ES")}</div>
                       </td>
                       {/* F. Actividad */}
                       <td className="px-4 py-3 hidden lg:table-cell">
                         {res.bookingDate ? (
-                          <div className="text-xs text-white/70 font-medium">{res.bookingDate}</div>
+                          <div className="text-xs text-foreground/70 font-medium">{res.bookingDate}</div>
                         ) : (
-                          <span className="text-xs text-white/20">—</span>
+                          <span className="text-xs text-foreground/30">—</span>
                         )}
                       </td>
                       {/* Importe */}
                       <td className="px-4 py-3 text-right">
                         <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
                         {res.amountPaid !== res.amountTotal && (
-                          <div className="text-xs text-white/30">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</div>
+                          <div className="text-xs text-foreground/40">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</div>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver detalles */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-sky-300 h-7 w-7 p-0"
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-sky-300 h-7 w-7 p-0"
                             onClick={() => setViewResId(res.id)}
                             title="Ver detalles">
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
                           {/* Editar */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-amber-300 h-7 w-7 p-0"
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
                             onClick={() => {
                               setEditResData(res);
                               setEditResStatus(res.status ?? "");
@@ -4945,7 +4945,7 @@ export default function CRMDashboard() {
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           {/* Reenviar al cliente */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-blue-300 h-7 w-7 p-0"
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
                             onClick={() => resendResMutation.mutate({ id: res.id })}
                             disabled={resendResMutation.isPending}
                             title="Reenviar confirmación al cliente">
@@ -4955,7 +4955,7 @@ export default function CRMDashboard() {
                           </Button>
                           {/* Descargar PDF factura */}
                           <Button size="sm" variant="ghost"
-                            className={`h-7 w-7 p-0 ${(res as any).invoicePdfUrl ? "text-white/40 hover:text-emerald-300" : "text-white/15 cursor-not-allowed"}`}
+                            className={`h-7 w-7 p-0 ${(res as any).invoicePdfUrl ? "text-foreground/50 hover:text-emerald-300" : "text-foreground/20 cursor-not-allowed"}`}
                             onClick={() => (res as any).invoicePdfUrl && window.open((res as any).invoicePdfUrl, "_blank")}
                             disabled={!(res as any).invoicePdfUrl}
                             title={(res as any).invoicePdfUrl ? "Descargar factura PDF" : "Sin factura PDF"}>
@@ -4963,7 +4963,7 @@ export default function CRMDashboard() {
                           </Button>
                           {/* Generar factura — cualquier reserva sin factura */}
                           {!res.invoiceId && !res.invoiceNumber && (
-                            <Button size="sm" variant="ghost" className="text-white/40 hover:text-violet-300 h-7 w-7 p-0"
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-violet-300 h-7 w-7 p-0"
                               onClick={() => setGenInvoiceResId(res.id)}
                               title="Generar factura">
                               <FilePlus className="w-3.5 h-3.5" />
@@ -4972,14 +4972,14 @@ export default function CRMDashboard() {
                           {/* Anular reserva */}
                           {res.status !== "cancelled" && (
                             <Button size="sm" variant="ghost"
-                              className="text-white/40 hover:text-orange-400 h-7 w-7 p-0"
+                              className="text-foreground/50 hover:text-orange-400 h-7 w-7 p-0"
                               onClick={() => { setCancelReservationId(res.id); setCancelReservationName(res.customerName); }}
                               title="Anular reserva">
                               <XCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Eliminar */}
-                          <Button size="sm" variant="ghost" className="text-white/40 hover:text-red-400 h-7 w-7 p-0"
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0"
                             onClick={() => setDeleteResId(res.id)}
                             title="Eliminar reserva">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -5005,7 +5005,7 @@ export default function CRMDashboard() {
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                       invoiceStatusFilter === s
                         ? "bg-orange-600 text-white border-orange-600"
-                        : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"
+                        : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
                     }`}
                   >
                     {s === "all" ? "Todas" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -5019,7 +5019,7 @@ export default function CRMDashboard() {
                       className={`px-3 py-1 rounded-full text-xs font-medium transition-all border ${
                         invoiceTypeFilter === t
                           ? "bg-violet-600 text-white border-violet-600"
-                          : "bg-white/5 text-white/50 border-white/10 hover:bg-white/10"
+                          : "bg-foreground/[0.05] text-foreground/60 border-foreground/[0.12] hover:bg-foreground/[0.08]"
                       }`}
                     >
                       {t === "all" ? "Todos los tipos" : t.charAt(0).toUpperCase() + t.slice(1)}
@@ -5029,9 +5029,9 @@ export default function CRMDashboard() {
               </div>
 
               {/* Filtro por rango de fechas + accesos rápidos */}
-              <div className="bg-white/3 border border-white/8 rounded-xl p-3 mb-3">
+              <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 mb-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2 text-white/50 text-xs">
+                  <div className="flex items-center gap-2 text-foreground/60 text-xs">
                     <Calendar className="w-3.5 h-3.5" />
                     <span className="font-medium">Período:</span>
                   </div>
@@ -5047,7 +5047,7 @@ export default function CRMDashboard() {
                     { label: "Este año", fn: () => { const y = new Date().getFullYear(); setInvoiceDateFrom(`${y}-01-01`); setInvoiceDateTo(`${y}-12-31`); } },
                   ]).map(({ label, fn }) => (
                     <button key={label} onClick={fn}
-                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-white/5 text-white/60 border border-white/10 hover:bg-sky-600/30 hover:text-sky-300 hover:border-sky-500/40 transition-all">
+                      className="px-2.5 py-1 rounded-lg text-xs font-medium bg-foreground/[0.05] text-foreground/65 border border-foreground/[0.12] hover:bg-sky-600/30 hover:text-sky-300 hover:border-sky-500/40 transition-all">
                       {label}
                     </button>
                   ))}
@@ -5057,18 +5057,18 @@ export default function CRMDashboard() {
                       type="date"
                       value={invoiceDateFrom}
                       onChange={e => setInvoiceDateFrom(e.target.value)}
-                      className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white/70 focus:outline-none focus:border-sky-500/50 [color-scheme:dark]"
+                      className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-2 py-1 text-xs text-foreground/70 focus:outline-none focus:border-sky-500/50 [color-scheme:dark]"
                     />
-                    <span className="text-white/30 text-xs">→</span>
+                    <span className="text-foreground/40 text-xs">→</span>
                     <input
                       type="date"
                       value={invoiceDateTo}
                       onChange={e => setInvoiceDateTo(e.target.value)}
-                      className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white/70 focus:outline-none focus:border-sky-500/50 [color-scheme:dark]"
+                      className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-2 py-1 text-xs text-foreground/70 focus:outline-none focus:border-sky-500/50 [color-scheme:dark]"
                     />
                     {(invoiceDateFrom || invoiceDateTo) && (
                       <button onClick={() => { setInvoiceDateFrom(""); setInvoiceDateTo(""); }}
-                        className="text-white/30 hover:text-white/60 transition-colors text-xs px-1.5 py-1 rounded hover:bg-white/5">
+                        className="text-foreground/40 hover:text-foreground/65 transition-colors text-xs px-1.5 py-1 rounded hover:bg-foreground/[0.05]">
                         ✕
                       </button>
                     )}
@@ -5079,18 +5079,18 @@ export default function CRMDashboard() {
               {/* Panel de resumen del período */}
               {invoicesData?.summary && (
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
-                  <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
-                    <div className="text-xs text-white/40 mb-1">Docs. en período</div>
-                    <div className="text-lg font-bold text-white">{invoicesData.total}</div>
+                  <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 text-center">
+                    <div className="text-xs text-foreground/50 mb-1">Docs. en período</div>
+                    <div className="text-lg font-bold text-foreground">{invoicesData.total}</div>
                   </div>
-                  <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
-                    <div className="text-xs text-white/40 mb-1">Base imponible</div>
+                  <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-3 text-center">
+                    <div className="text-xs text-foreground/50 mb-1">Base imponible</div>
                     <div className="text-lg font-bold text-sky-400">{invoicesData.summary.subtotal.toFixed(2)} €</div>
                   </div>
                   <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 text-center">
                     <div className="text-xs text-orange-300/60 mb-1">Bruto (IVA incl.)</div>
                     <div className="text-lg font-bold text-orange-400">{invoicesData.summary.grandTotal.toFixed(2)} €</div>
-                    <div className="text-xs text-white/30">IVA: {invoicesData.summary.tax.toFixed(2)} €</div>
+                    <div className="text-xs text-foreground/40">IVA: {invoicesData.summary.tax.toFixed(2)} €</div>
                   </div>
                   {(invoicesData.summary as any).abonosTotal > 0 && (
                     <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-center">
@@ -5107,32 +5107,32 @@ export default function CRMDashboard() {
                 </div>
               )}
 
-              <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+              <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-white/8 bg-white/5">
-                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Número</th>
-                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
-                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden md:table-cell">Método pago</th>
-                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
-                      <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Total</th>
-                      <th className="text-left px-4 py-3 text-xs text-white/40 font-medium hidden sm:table-cell">Fecha</th>
-                      <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+                    <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Número</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Método pago</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
+                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Total</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Fecha</th>
+                      <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {invoicesLoading ? (
-                      <tr><td colSpan={7} className="text-center py-12 text-white/30"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                      <tr><td colSpan={7} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                     ) : !invoicesData?.items?.length ? (
-                      <tr><td colSpan={7} className="text-center py-12 text-white/30 text-sm">
+                      <tr><td colSpan={7} className="text-center py-12 text-foreground/40 text-sm">
                         <Receipt className="w-8 h-8 mx-auto mb-2 opacity-30" />
                         No hay facturas
                       </td></tr>
                     ) : invoicesData.items.map((inv: any) => (
-                      <tr key={inv.id} className={`border-t border-white/5 hover:bg-white/3 transition-colors ${inv.invoiceType === "abono" ? "bg-violet-500/3" : ""}`}>
+                      <tr key={inv.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${inv.invoiceType === "abono" ? "bg-violet-500/3" : ""}`}>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-mono font-bold text-white">{inv.invoiceNumber}</span>
+                            <span className="text-sm font-mono font-bold text-foreground">{inv.invoiceNumber}</span>
                             {inv.invoiceType === "abono" && (
                               <span className="inline-flex items-center text-[9px] font-bold text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded">ABONO</span>
                             )}
@@ -5165,8 +5165,8 @@ export default function CRMDashboard() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="text-sm font-medium text-white">{inv.clientName}</div>
-                          <div className="text-xs text-white/40">{inv.clientEmail}</div>
+                          <div className="text-sm font-medium text-foreground">{inv.clientName}</div>
+                          <div className="text-xs text-foreground/50">{inv.clientEmail}</div>
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
                           <div className="flex flex-col gap-1">
@@ -5203,48 +5203,48 @@ export default function CRMDashboard() {
                           )}
                         </td>
                         <td className="px-4 py-3 hidden sm:table-cell">
-                          <div className="text-xs text-white/40">{new Date(inv.createdAt).toLocaleDateString("es-ES")}</div>
+                          <div className="text-xs text-foreground/50">{new Date(inv.createdAt).toLocaleDateString("es-ES")}</div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             {/* PDF */}
                             {inv.pdfUrl && (
                               <button onClick={() => downloadInvoicePdf(inv)} title="Descargar PDF"
-                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-white transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-foreground transition-colors">
                                 <FileDown className="w-4 h-4" />
                               </button>
                             )}
                             {/* Reenviar */}
                             {["generada", "enviada"].includes(inv.status) && (
                               <button onClick={() => resendInvoiceMutation.mutate({ invoiceId: inv.id })} title="Reenviar por email"
-                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-sky-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
                                 <Send className="w-4 h-4" />
                               </button>
                             )}
                             {/* Confirmar pago manual */}
                             {["generada", "enviada"].includes(inv.status) && inv.invoiceType !== "abono" && (
                               <button onClick={() => setConfirmPaymentInvoiceId(inv.id)} title="Confirmar pago manual"
-                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-emerald-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors">
                                 <CreditCard className="w-4 h-4" />
                               </button>
                             )}
                             {/* Generar abono */}
                             {inv.status === "cobrada" && inv.invoiceType !== "abono" && (
                               <button onClick={() => setCreditNoteInvoiceId(inv.id)} title="Generar factura de abono"
-                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-violet-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-violet-400 transition-colors">
                                 <RotateCcw className="w-4 h-4" />
                               </button>
                             )}
                             {/* Anular */}
                             {!["anulada", "abonada"].includes(inv.status) && (
                               <button onClick={() => setVoidInvoiceId(inv.id)} title="Anular factura"
-                                className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-red-400 transition-colors">
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-red-400 transition-colors">
                                 <Ban className="w-4 h-4" />
                               </button>
                             )}
                             {/* Eliminar */}
                             <button onClick={() => setDeleteInvoiceId(inv.id)} title="Eliminar factura"
-                              className="p-1.5 rounded-lg hover:bg-white/10 text-white/40 hover:text-rose-600 transition-colors">
+                              className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-rose-600 transition-colors">
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
@@ -5263,16 +5263,16 @@ export default function CRMDashboard() {
               {anulKpis && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                   {[
-                    { label: "Total", value: anulKpis.total, color: "border-white/5" },
+                    { label: "Total", value: anulKpis.total, color: "border-foreground/[0.08]" },
                     { label: "Recibidas", value: anulKpis.recibidas, color: "border-blue-500/20" },
                     { label: "En revisión", value: anulKpis.enRevision, color: "border-amber-500/20" },
                     { label: "Pend. docs", value: anulKpis.pendienteDocumentacion, color: "border-orange-500/20" },
                     { label: "Incidencias", value: anulKpis.incidencias, color: "border-red-500/20" },
                     { label: "Cerradas", value: anulKpis.cerradas, color: "border-gray-500/20" },
                   ].map(({ label, value, color }) => (
-                    <div key={label} className={`bg-white/3 border ${color} rounded-xl p-4`}>
-                      <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
-                      <p className="text-2xl font-bold text-white">{value}</p>
+                    <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
+                      <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
+                      <p className="text-2xl font-bold text-foreground">{value}</p>
                     </div>
                   ))}
                 </div>
@@ -5286,9 +5286,9 @@ export default function CRMDashboard() {
                     { label: "Rechazadas", value: anulKpis.rechazadas, color: "border-red-500/20" },
                     { label: "Bonos enviados", value: anulKpis.compensadasBono, color: "border-purple-500/20" },
                   ].map(({ label, value, color }) => (
-                    <div key={label} className={`bg-white/3 border ${color} rounded-xl p-4`}>
-                      <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
-                      <p className="text-2xl font-bold text-white">{value}</p>
+                    <div key={label} className={`bg-foreground/[0.03] border ${color} rounded-xl p-4`}>
+                      <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
+                      <p className="text-2xl font-bold text-foreground">{value}</p>
                     </div>
                   ))}
                 </div>
@@ -5296,64 +5296,64 @@ export default function CRMDashboard() {
               {/* Filtros */}
               <div className="flex flex-wrap gap-3">
                 <Select value={anulOpFilter} onValueChange={setAnulOpFilter}>
-                  <SelectTrigger className="w-44 bg-white/5 border-white/10 text-white/70 text-xs h-9">
+                  <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
                     <SelectValue placeholder="Estado operativo" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0d1520] border-white/10">
-                    <SelectItem value="all" className="text-white/70 text-xs">Todos los estados</SelectItem>
-                    <SelectItem value="recibida" className="text-white/70 text-xs">Recibida</SelectItem>
-                    <SelectItem value="en_revision" className="text-white/70 text-xs">En revisión</SelectItem>
-                    <SelectItem value="pendiente_documentacion" className="text-white/70 text-xs">Pend. documentación</SelectItem>
-                    <SelectItem value="pendiente_decision" className="text-white/70 text-xs">Pend. decisión</SelectItem>
-                    <SelectItem value="resuelta" className="text-white/70 text-xs">Resuelta</SelectItem>
-                    <SelectItem value="cerrada" className="text-white/70 text-xs">Cerrada</SelectItem>
-                    <SelectItem value="incidencia" className="text-white/70 text-xs">Incidencia</SelectItem>
+                  <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                    <SelectItem value="all" className="text-foreground/70 text-xs">Todos los estados</SelectItem>
+                    <SelectItem value="recibida" className="text-foreground/70 text-xs">Recibida</SelectItem>
+                    <SelectItem value="en_revision" className="text-foreground/70 text-xs">En revisión</SelectItem>
+                    <SelectItem value="pendiente_documentacion" className="text-foreground/70 text-xs">Pend. documentación</SelectItem>
+                    <SelectItem value="pendiente_decision" className="text-foreground/70 text-xs">Pend. decisión</SelectItem>
+                    <SelectItem value="resuelta" className="text-foreground/70 text-xs">Resuelta</SelectItem>
+                    <SelectItem value="cerrada" className="text-foreground/70 text-xs">Cerrada</SelectItem>
+                    <SelectItem value="incidencia" className="text-foreground/70 text-xs">Incidencia</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={anulResFilter} onValueChange={setAnulResFilter}>
-                  <SelectTrigger className="w-44 bg-white/5 border-white/10 text-white/70 text-xs h-9">
+                  <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
                     <SelectValue placeholder="Resolución" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0d1520] border-white/10">
-                    <SelectItem value="all" className="text-white/70 text-xs">Toda resolución</SelectItem>
-                    <SelectItem value="sin_resolver" className="text-white/70 text-xs">Sin resolver</SelectItem>
-                    <SelectItem value="rechazada" className="text-white/70 text-xs">Rechazada</SelectItem>
-                    <SelectItem value="aceptada_total" className="text-white/70 text-xs">Aceptada total</SelectItem>
-                    <SelectItem value="aceptada_parcial" className="text-white/70 text-xs">Aceptada parcial</SelectItem>
+                  <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                    <SelectItem value="all" className="text-foreground/70 text-xs">Toda resolución</SelectItem>
+                    <SelectItem value="sin_resolver" className="text-foreground/70 text-xs">Sin resolver</SelectItem>
+                    <SelectItem value="rechazada" className="text-foreground/70 text-xs">Rechazada</SelectItem>
+                    <SelectItem value="aceptada_total" className="text-foreground/70 text-xs">Aceptada total</SelectItem>
+                    <SelectItem value="aceptada_parcial" className="text-foreground/70 text-xs">Aceptada parcial</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={anulFinFilter} onValueChange={setAnulFinFilter}>
-                  <SelectTrigger className="w-44 bg-white/5 border-white/10 text-white/70 text-xs h-9">
+                  <SelectTrigger className="w-44 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
                     <SelectValue placeholder="Estado financiero" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0d1520] border-white/10">
-                    <SelectItem value="all" className="text-white/70 text-xs">Todo financiero</SelectItem>
-                    <SelectItem value="sin_compensacion" className="text-white/70 text-xs">Sin compensación</SelectItem>
-                    <SelectItem value="pendiente_devolucion" className="text-white/70 text-xs">Pend. devolución</SelectItem>
-                    <SelectItem value="devuelta_economicamente" className="text-white/70 text-xs">Devuelta</SelectItem>
-                    <SelectItem value="pendiente_bono" className="text-white/70 text-xs">Pend. bono</SelectItem>
-                    <SelectItem value="compensada_bono" className="text-white/70 text-xs">Bono enviado</SelectItem>
-                    <SelectItem value="incidencia_economica" className="text-white/70 text-xs">Incidencia ec.</SelectItem>
+                  <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                    <SelectItem value="all" className="text-foreground/70 text-xs">Todo financiero</SelectItem>
+                    <SelectItem value="sin_compensacion" className="text-foreground/70 text-xs">Sin compensación</SelectItem>
+                    <SelectItem value="pendiente_devolucion" className="text-foreground/70 text-xs">Pend. devolución</SelectItem>
+                    <SelectItem value="devuelta_economicamente" className="text-foreground/70 text-xs">Devuelta</SelectItem>
+                    <SelectItem value="pendiente_bono" className="text-foreground/70 text-xs">Pend. bono</SelectItem>
+                    <SelectItem value="compensada_bono" className="text-foreground/70 text-xs">Bono enviado</SelectItem>
+                    <SelectItem value="incidencia_economica" className="text-foreground/70 text-xs">Incidencia ec.</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={anulReasonFilter} onValueChange={setAnulReasonFilter}>
-                  <SelectTrigger className="w-40 bg-white/5 border-white/10 text-white/70 text-xs h-9">
+                  <SelectTrigger className="w-40 bg-foreground/[0.05] border-foreground/[0.12] text-foreground/70 text-xs h-9">
                     <SelectValue placeholder="Motivo" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#0d1520] border-white/10">
-                    <SelectItem value="all" className="text-white/70 text-xs">Todos los motivos</SelectItem>
-                    <SelectItem value="meteorologicas" className="text-white/70 text-xs">Meteorológicas</SelectItem>
-                    <SelectItem value="accidente" className="text-white/70 text-xs">Accidente</SelectItem>
-                    <SelectItem value="enfermedad" className="text-white/70 text-xs">Enfermedad</SelectItem>
-                    <SelectItem value="desistimiento" className="text-white/70 text-xs">Desistimiento</SelectItem>
-                    <SelectItem value="otra" className="text-white/70 text-xs">Otra</SelectItem>
+                  <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                    <SelectItem value="all" className="text-foreground/70 text-xs">Todos los motivos</SelectItem>
+                    <SelectItem value="meteorologicas" className="text-foreground/70 text-xs">Meteorológicas</SelectItem>
+                    <SelectItem value="accidente" className="text-foreground/70 text-xs">Accidente</SelectItem>
+                    <SelectItem value="enfermedad" className="text-foreground/70 text-xs">Enfermedad</SelectItem>
+                    <SelectItem value="desistimiento" className="text-foreground/70 text-xs">Desistimiento</SelectItem>
+                    <SelectItem value="otra" className="text-foreground/70 text-xs">Otra</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => refetchAnul()}
-                  className="gap-1.5 border-white/10 text-white/40 hover:text-white h-9"
+                  className="gap-1.5 border-foreground/[0.12] text-foreground/50 hover:text-foreground h-9"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   Actualizar
@@ -5368,26 +5368,26 @@ export default function CRMDashboard() {
                 </Button>
               </div>
               {/* Tabla */}
-              <div className="bg-white/3 border border-white/8 rounded-2xl overflow-hidden">
+              <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[900px]">
                     <thead>
-                      <tr className="border-b border-white/8 bg-white/5">
-                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">#</th>
-                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Solicitante</th>
-                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Motivo</th>
-                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Fecha actividad</th>
-                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado op.</th>
-                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Resolución</th>
-                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Financiero</th>
-                        <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Fecha</th>
-                        <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+                      <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">#</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Solicitante</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Motivo</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Fecha actividad</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado op.</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Resolución</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Financiero</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Fecha</th>
+                        <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {anulLoading && (
                         <tr>
-                          <td colSpan={9} className="text-center py-12 text-white/30">
+                          <td colSpan={9} className="text-center py-12 text-foreground/40">
                             <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
                           </td>
                         </tr>
@@ -5395,34 +5395,34 @@ export default function CRMDashboard() {
                       {!anulLoading && anulRows.length === 0 && (
                         <tr>
                           <td colSpan={9} className="text-center py-12">
-                            <AlertTriangle className="w-8 h-8 text-white/20 mx-auto mb-2" />
-                            <p className="text-white/30 text-sm">No hay solicitudes que coincidan con los filtros</p>
+                            <AlertTriangle className="w-8 h-8 text-foreground/30 mx-auto mb-2" />
+                            <p className="text-foreground/40 text-sm">No hay solicitudes que coincidan con los filtros</p>
                           </td>
                         </tr>
                       )}
                       {anulRows.map((row) => (
                         <tr
                           key={row.id}
-                          className="border-b border-white/5 hover:bg-white/3 transition-colors cursor-pointer"
+                          className="border-b border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors cursor-pointer"
                           onClick={() => setSelectedAnulId(row.id)}
                         >
-                          <td className="px-4 py-3 text-white/40 text-sm font-mono">#{row.id}</td>
+                          <td className="px-4 py-3 text-foreground/50 text-sm font-mono">#{row.id}</td>
                           <td className="px-4 py-3">
                             <p className="text-white text-sm font-medium">{row.fullName}</p>
-                            {row.email && <p className="text-white/40 text-xs">{row.email}</p>}
-                            {row.locator && <p className="text-white/30 text-xs font-mono">{row.locator}</p>}
+                            {row.email && <p className="text-foreground/50 text-xs">{row.email}</p>}
+                            {row.locator && <p className="text-foreground/40 text-xs font-mono">{row.locator}</p>}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5">
                               {row.reason === "meteorologicas" && <CloudLightning className="w-4 h-4 text-blue-400" />}
                               {row.reason === "accidente" && <AlertTriangle className="w-4 h-4 text-red-400" />}
                               {row.reason === "enfermedad" && <HeartPulse className="w-4 h-4 text-pink-400" />}
-                              {row.reason === "desistimiento" && <XCircle className="w-4 h-4 text-white/40" />}
-                              {row.reason === "otra" && <HelpCircle className="w-4 h-4 text-white/40" />}
-                              <span className="text-white/60 text-xs capitalize">{row.reason}</span>
+                              {row.reason === "desistimiento" && <XCircle className="w-4 h-4 text-foreground/50" />}
+                              {row.reason === "otra" && <HelpCircle className="w-4 h-4 text-foreground/50" />}
+                              <span className="text-foreground/65 text-xs capitalize">{row.reason}</span>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-white/60 text-sm">{row.activityDate}</td>
+                          <td className="px-4 py-3 text-foreground/65 text-sm">{row.activityDate}</td>
                           <td className="px-4 py-3">
                             <AnulOpBadge status={row.operationalStatus} />
                           </td>
@@ -5432,21 +5432,21 @@ export default function CRMDashboard() {
                           <td className="px-4 py-3">
                             <AnulFinBadge status={row.financialStatus} />
                           </td>
-                          <td className="px-4 py-3 text-white/40 text-xs">
+                          <td className="px-4 py-3 text-foreground/50 text-xs">
                             {new Date(row.createdAt).toLocaleDateString("es-ES")}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => setSelectedAnulId(row.id)}
-                                className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/5 transition-colors"
+                                className="p-1.5 rounded-lg text-foreground/50 hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
                                 title="Ver detalle"
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => setDeleteAnulId(row.id)}
-                                className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                className="p-1.5 rounded-lg text-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                                 title="Eliminar"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -5459,7 +5459,7 @@ export default function CRMDashboard() {
                   </table>
                 </div>
                 {anulRows.length > 0 && (
-                  <div className="px-4 py-3 border-t border-white/5 text-xs text-white/30">
+                  <div className="px-4 py-3 border-t border-foreground/[0.08] text-xs text-foreground/40">
                     {anulRows.length} solicitud{anulRows.length !== 1 ? "es" : ""}
                   </div>
                 )}
@@ -5483,7 +5483,7 @@ export default function CRMDashboard() {
       {/* ─── MODALES DE FACTURAS ──────────────────────────────────────────────── */}
       {/* Confirmar pago manual */}
       <Dialog open={confirmPaymentInvoiceId !== null} onOpenChange={(o) => !o && setConfirmPaymentInvoiceId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-emerald-400" /> Confirmar pago manual
@@ -5491,22 +5491,22 @@ export default function CRMDashboard() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label className="text-white/60 text-xs mb-1.5 block">Método de pago</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">Método de pago</Label>
               <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
-                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-[#0d1526] border-white/10">
+                <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                   <SelectItem value="transferencia" className="text-white">🏦 Transferencia bancaria</SelectItem>
                   <SelectItem value="efectivo" className="text-white">💵 Efectivo</SelectItem>
                   <SelectItem value="otro" className="text-white">❓ Otro</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-white/40">Se marcará la factura como cobrada y se actualizará la reserva asociada.</p>
+            <p className="text-xs text-foreground/50">Se marcará la factura como cobrada y se actualizará la reserva asociada.</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConfirmPaymentInvoiceId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setConfirmPaymentInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button size="sm" onClick={() => confirmPaymentInvoiceId !== null && confirmManualPaymentMutation.mutate({ invoiceId: confirmPaymentInvoiceId, paymentMethod })}
               disabled={confirmManualPaymentMutation.isPending}
               className="bg-emerald-600 hover:bg-emerald-700 text-white">
@@ -5519,7 +5519,7 @@ export default function CRMDashboard() {
 
       {/* Generar abono */}
       <Dialog open={creditNoteInvoiceId !== null} onOpenChange={(o) => { if (!o) { setCreditNoteInvoiceId(null); setCreditNoteReason(""); } }}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <RotateCcw className="w-5 h-5 text-violet-400" /> Generar factura de abono
@@ -5527,19 +5527,19 @@ export default function CRMDashboard() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label className="text-white/60 text-xs mb-1.5 block">Motivo del abono *</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">Motivo del abono *</Label>
               <Textarea
                 value={creditNoteReason}
                 onChange={(e) => setCreditNoteReason(e.target.value)}
                 placeholder="Ej: Cancelación por condiciones meteorológicas"
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 resize-none"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 resize-none"
                 rows={3}
               />
             </div>
-            <p className="text-xs text-white/40">Se generará una factura de abono por el importe total. La factura original quedará marcada como abonada.</p>
+            <p className="text-xs text-foreground/50">Se generará una factura de abono por el importe total. La factura original quedará marcada como abonada.</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setCreditNoteInvoiceId(null); setCreditNoteReason(""); }} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setCreditNoteInvoiceId(null); setCreditNoteReason(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button size="sm"
               onClick={() => creditNoteInvoiceId !== null && creditNoteReason.trim() && createCreditNoteMutation.mutate({ invoiceId: creditNoteInvoiceId, reason: creditNoteReason })}
               disabled={createCreditNoteMutation.isPending || !creditNoteReason.trim()}
@@ -5553,15 +5553,15 @@ export default function CRMDashboard() {
 
       {/* Anular factura */}
       <Dialog open={voidInvoiceId !== null} onOpenChange={(o) => !o && setVoidInvoiceId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-400" /> Anular factura
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-white/60 py-2">Esta acción marcará la factura como anulada. No se puede deshacer. Para reembolsos, usa la opción de generar abono.</p>
+          <p className="text-sm text-foreground/65 py-2">Esta acción marcará la factura como anulada. No se puede deshacer. Para reembolsos, usa la opción de generar abono.</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setVoidInvoiceId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setVoidInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button size="sm"
               onClick={() => voidInvoiceId !== null && voidInvoiceMutation.mutate({ invoiceId: voidInvoiceId })}
               disabled={voidInvoiceMutation.isPending}
@@ -5575,22 +5575,22 @@ export default function CRMDashboard() {
 
       {/* Eliminar factura */}
       <Dialog open={deleteInvoiceId !== null} onOpenChange={(o) => !o && setDeleteInvoiceId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Trash2 className="w-5 h-5 text-rose-500" /> Eliminar factura
             </DialogTitle>
           </DialogHeader>
           <div className="py-2 space-y-2">
-            <p className="text-sm text-white/70">Esta acción eliminará la factura permanentemente.</p>
-            <ul className="text-xs text-white/50 list-disc list-inside space-y-1">
+            <p className="text-sm text-foreground/70">Esta acción eliminará la factura permanentemente.</p>
+            <ul className="text-xs text-foreground/60 list-disc list-inside space-y-1">
               <li>La reserva asociada quedará sin factura asignada</li>
               <li>Si venía de un presupuesto, su estado volverá a <span className="text-amber-400">pendiente</span></li>
               <li>Esta acción no se puede deshacer</li>
             </ul>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteInvoiceId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteInvoiceId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button size="sm"
               onClick={() => deleteInvoiceId !== null && deleteInvoiceMutation.mutate({ invoiceId: deleteInvoiceId })}
               disabled={deleteInvoiceMutation.isPending}
@@ -5659,15 +5659,15 @@ export default function CRMDashboard() {
 
       {/* Delete Lead confirmation */}
       <Dialog open={deleteLeadId !== null} onOpenChange={(o) => !o && setDeleteLeadId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-400" /> Eliminar lead
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-white/60 py-2">Esta acción es irreversible. Se eliminará el lead y toda su actividad asociada.</p>
+          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará el lead y toda su actividad asociada.</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteLeadId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteLeadId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               onClick={() => deleteLeadId !== null && deleteLead.mutate({ id: deleteLeadId })}
@@ -5690,15 +5690,15 @@ export default function CRMDashboard() {
 
       {/* Delete Quote confirmation */}
       <Dialog open={deleteQuoteId !== null} onOpenChange={(o) => !o && setDeleteQuoteId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-400" /> Eliminar presupuesto
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-white/60 py-2">Esta acción es irreversible. Se eliminará el presupuesto y sus facturas asociadas.</p>
+          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará el presupuesto y sus facturas asociadas.</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteQuoteId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               onClick={() => deleteQuoteId !== null && deleteQuote.mutate({ id: deleteQuoteId })}
@@ -5713,15 +5713,15 @@ export default function CRMDashboard() {
       </Dialog>
       {/* Send Quote confirmation */}
       <Dialog open={sendQuoteId !== null} onOpenChange={(o) => !o && setSendQuoteId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Send className="w-5 h-5 text-orange-400" /> Enviar presupuesto al cliente
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-white/60 py-2">Se enviará el presupuesto por email al cliente y se actualizará el estado a "Enviado".</p>
+          <p className="text-sm text-foreground/65 py-2">Se enviará el presupuesto por email al cliente y se actualizará el estado a "Enviado".</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setSendQuoteId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setSendQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               onClick={() => sendQuoteId !== null && sendQuoteMutation.mutate({ id: sendQuoteId, origin: window.location.origin })}
@@ -5737,14 +5737,14 @@ export default function CRMDashboard() {
 
       {/* Confirm Payment — con paso previo por método */}
       <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => { if (!o) { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); } }}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-emerald-400" /> Confirmar pago recibido
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-white/60 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
+            <p className="text-foreground/65 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
             {/* Selector de método */}
             <div className="grid grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
@@ -5752,7 +5752,7 @@ export default function CRMDashboard() {
                   key={m}
                   onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
-                    confirmPayMethodRow === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-white/5 text-white/50 hover:border-white/25 hover:text-white/80"
+                    confirmPayMethodRow === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
                   }`}
                 >
                   {m === "tarjeta" && <CreditCard className="w-5 h-5" />}
@@ -5765,22 +5765,22 @@ export default function CRMDashboard() {
             {/* Campo específico por método */}
             {confirmPayMethodRow === "tarjeta" && (
               <div className="space-y-1.5">
-                <Label className="text-white/70 text-xs">Nº operación TPV *</Label>
-                <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder="Ej: 000123456789" className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm" />
+                <Label className="text-foreground/70 text-xs">Nº operación TPV *</Label>
+                <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder="Ej: 000123456789" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm" />
               </div>
             )}
             {confirmPayMethodRow === "transferencia" && (
               <div className="space-y-2">
-                <Label className="text-white/70 text-xs">Justificante de transferencia *</Label>
+                <Label className="text-foreground/70 text-xs">Justificante de transferencia *</Label>
                 {!confirmPayRowProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
-                    isUploadingRowProof ? "border-white/20 bg-white/5" : "border-white/20 bg-white/5 hover:border-emerald-500/50 hover:bg-emerald-500/5"
+                    isUploadingRowProof ? "border-foreground/[0.18] bg-foreground/[0.05]" : "border-foreground/[0.18] bg-foreground/[0.05] hover:border-emerald-500/50 hover:bg-emerald-500/5"
                   }`}>
                     <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" onChange={handleRowProofFileChange} disabled={isUploadingRowProof} />
                     {isUploadingRowProof ? (
-                      <><RefreshCw className="w-5 h-5 text-white/40 animate-spin" /><span className="text-xs text-white/40">Subiendo...</span></>
+                      <><RefreshCw className="w-5 h-5 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">Subiendo...</span></>
                     ) : (
-                      <><Upload className="w-5 h-5 text-white/40" /><span className="text-xs text-white/50">Haz clic o arrastra el justificante (PDF, JPG, PNG)</span></>
+                      <><Upload className="w-5 h-5 text-foreground/50" /><span className="text-xs text-foreground/60">Haz clic o arrastra el justificante (PDF, JPG, PNG)</span></>
                     )}
                   </label>
                 ) : (
@@ -5788,20 +5788,20 @@ export default function CRMDashboard() {
                     <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span className="text-xs text-emerald-300 flex-1 truncate">Justificante subido correctamente</span>
                     <a href={confirmPayRowProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
-                    <button onClick={() => { setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="text-white/30 hover:text-white/60 ml-1">×</button>
+                    <button onClick={() => { setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
                   </div>
                 )}
               </div>
             )}
             {confirmPayMethodRow === "efectivo" && (
               <div className="space-y-1.5">
-                <Label className="text-white/70 text-xs">Justificación *</Label>
-                <Textarea value={confirmPayNote} onChange={(e) => setConfirmPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 31/03/2026" className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none" rows={2} />
+                <Label className="text-foreground/70 text-xs">Justificación *</Label>
+                <Textarea value={confirmPayNote} onChange={(e) => setConfirmPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 31/03/2026" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               disabled={
@@ -5836,37 +5836,37 @@ export default function CRMDashboard() {
         open={rowPendingPayQuoteId !== null}
         onOpenChange={(o) => { if (!o) { setRowPendingPayQuoteId(null); setRowPendingPayDueDate(""); setRowPendingPayReason(""); } }}
       >
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Clock className="w-5 h-5 text-amber-400" /> Registrar pago pendiente
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-white/60 text-sm">Se creará la reserva en estado <strong className="text-amber-400">pendiente de cobro</strong>, se registrará el pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
+            <p className="text-foreground/65 text-sm">Se creará la reserva en estado <strong className="text-amber-400">pendiente de cobro</strong>, se registrará el pago pendiente y se enviará un email de recordatorio al cliente con la fecha límite.</p>
             <div className="space-y-1.5">
-              <Label className="text-white/70 text-xs">Fecha límite de pago *</Label>
+              <Label className="text-foreground/70 text-xs">Fecha límite de pago *</Label>
               <Input
                 type="date"
                 value={rowPendingPayDueDate}
                 onChange={(e) => setRowPendingPayDueDate(e.target.value)}
-                className="bg-white/5 border-white/10 text-white text-sm"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-white/70 text-xs">Motivo / nota interna (opcional)</Label>
+              <Label className="text-foreground/70 text-xs">Motivo / nota interna (opcional)</Label>
               <Textarea
                 value={rowPendingPayReason}
                 onChange={(e) => setRowPendingPayReason(e.target.value)}
                 placeholder="Ej: Cliente confirma pago por transferencia la próxima semana..."
-                className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-sm resize-none"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none"
                 rows={3}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setRowPendingPayQuoteId(null); setRowPendingPayDueDate(""); setRowPendingPayReason(""); }} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setRowPendingPayQuoteId(null); setRowPendingPayDueDate(""); setRowPendingPayReason(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               disabled={!rowPendingPayDueDate || rowPendingPayMutation.isPending}
@@ -5900,15 +5900,15 @@ export default function CRMDashboard() {
 
       {/* Mark Lost */}
       <Dialog open={markLostQuoteId !== null} onOpenChange={(o) => !o && setMarkLostQuoteId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <XCircle className="w-5 h-5 text-red-400" /> Marcar presupuesto como perdido
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-white/60 py-2">Se marcará el presupuesto y la oportunidad como perdidos. Esta acción se puede revertir editando el estado manualmente.</p>
+          <p className="text-sm text-foreground/65 py-2">Se marcará el presupuesto y la oportunidad como perdidos. Esta acción se puede revertir editando el estado manualmente.</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setMarkLostQuoteId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setMarkLostQuoteId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               onClick={() => markLostQuoteId !== null && markLostQuoteMutation.mutate({ id: markLostQuoteId })}
@@ -5959,7 +5959,7 @@ export default function CRMDashboard() {
 
       {/* ─── EDITAR RESERVA (Fase 3) ──────────────────────────────────────────── */}
       <Dialog open={editResId !== null} onOpenChange={(o) => { if (!o) { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); } }}>
-        <DialogContent className="max-w-xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Pencil className="w-5 h-5 text-amber-400" /> Editar reserva
@@ -5968,7 +5968,7 @@ export default function CRMDashboard() {
 
           {/* ── Cabecera con datos del cliente ── */}
           {editResData && (
-            <div className="bg-white/5 rounded-xl p-3 mb-2 flex flex-col gap-1">
+            <div className="bg-foreground/[0.05] rounded-xl p-3 mb-2 flex flex-col gap-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="font-semibold text-white text-sm">{editResData.customerName}</div>
                 {editResData.reservationNumber && (
@@ -5978,16 +5978,16 @@ export default function CRMDashboard() {
                 )}
               </div>
               {editResData.customerEmail && (
-                <div className="flex items-center gap-1.5 text-xs text-white/50">
+                <div className="flex items-center gap-1.5 text-xs text-foreground/60">
                   <Mail className="w-3 h-3" />{editResData.customerEmail}
                 </div>
               )}
               {editResData.customerPhone && (
-                <div className="flex items-center gap-1.5 text-xs text-white/50">
+                <div className="flex items-center gap-1.5 text-xs text-foreground/60">
                   <Phone className="w-3 h-3" />{editResData.customerPhone}
                 </div>
               )}
-              <div className="text-xs text-white/30 font-mono mt-0.5">{editResData.merchantOrder}</div>
+              <div className="text-xs text-foreground/40 font-mono mt-0.5">{editResData.merchantOrder}</div>
             </div>
           )}
 
@@ -5996,11 +5996,11 @@ export default function CRMDashboard() {
             {/* ── Estados separados ── */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-white/50 mb-1.5">Estado de reserva</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">Estado de reserva</label>
                 <select
                   value={editResStatusReservation}
                   onChange={(e) => setEditResStatusReservation(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
                   <option value="">-- Sin cambiar --</option>
                   <option value="PENDIENTE_CONFIRMACION">Pendiente confirmación</option>
                   <option value="CONFIRMADA">Confirmada</option>
@@ -6011,11 +6011,11 @@ export default function CRMDashboard() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-white/50 mb-1.5">Estado de pago</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">Estado de pago</label>
                 <select
                   value={editResStatusPayment}
                   onChange={(e) => setEditResStatusPayment(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
                   <option value="">-- Sin cambiar --</option>
                   <option value="PENDIENTE">Pendiente</option>
                   <option value="PAGO_PARCIAL">Pago parcial</option>
@@ -6028,11 +6028,11 @@ export default function CRMDashboard() {
             {/* ── Canal ── */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-white/50 mb-1.5">Canal</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">Canal</label>
                 <select
                   value={editResChannel}
                   onChange={(e) => setEditResChannel(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500/50">
                   <option value="">-- Sin cambiar --</option>
                   <option value="ONLINE_DIRECTO">Online Directo</option>
                   <option value="ONLINE_ASISTIDO">Online Asistido</option>
@@ -6044,25 +6044,25 @@ export default function CRMDashboard() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-white/50 mb-1.5">Detalle canal (ej: Groupon)</label>
+                <label className="block text-xs text-foreground/60 mb-1.5">Detalle canal (ej: Groupon)</label>
                 <input
                   type="text"
                   value={editResChannelDetail}
                   onChange={(e) => setEditResChannelDetail(e.target.value)}
                   placeholder="Ej: Groupon, Booking..."
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50" />
+                  className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50" />
               </div>
             </div>
 
             {/* ── Notas internas ── */}
             <div>
-              <label className="block text-xs text-white/50 mb-1.5">Notas internas (opcional)</label>
+              <label className="block text-xs text-foreground/60 mb-1.5">Notas internas (opcional)</label>
               <textarea
                 value={editResNotes}
                 onChange={(e) => setEditResNotes(e.target.value)}
                 rows={2}
                 placeholder="Añade notas internas sobre esta reserva..."
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50 resize-none" />
+                className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-orange-500/50 resize-none" />
             </div>
 
             {/* ── Cambio de fecha ── */}
@@ -6073,26 +6073,26 @@ export default function CRMDashboard() {
                 className="flex items-center gap-2 text-sm font-medium text-amber-400 hover:text-amber-300 transition-colors w-full text-left">
                 <Calendar className="w-4 h-4" />
                 Cambiar fecha de actividad
-                <span className="ml-auto text-xs text-white/30">{showChangeDateSection ? "▲ Ocultar" : "▼ Expandir"}</span>
+                <span className="ml-auto text-xs text-foreground/40">{showChangeDateSection ? "▲ Ocultar" : "▼ Expandir"}</span>
               </button>
               {showChangeDateSection && (
                 <div className="mt-3 space-y-3">
                   <div>
-                    <label className="block text-xs text-white/50 mb-1.5">Nueva fecha de actividad *</label>
+                    <label className="block text-xs text-foreground/60 mb-1.5">Nueva fecha de actividad *</label>
                     <input
                       type="date"
                       value={editResNewDate}
                       onChange={(e) => setEditResNewDate(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50" />
+                      className="w-full bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50" />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/50 mb-1.5">Motivo del cambio * (obligatorio)</label>
+                    <label className="block text-xs text-foreground/60 mb-1.5">Motivo del cambio * (obligatorio)</label>
                     <textarea
                       value={editResDateReason}
                       onChange={(e) => setEditResDateReason(e.target.value)}
                       rows={2}
                       placeholder="Ej: Solicitud del cliente por condiciones meteorológicas..."
-                      className="w-full bg-white/5 border border-amber-500/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-amber-500/50 resize-none" />
+                      className="w-full bg-foreground/[0.05] border border-amber-500/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-amber-500/50 resize-none" />
                   </div>
                   <Button
                     size="sm"
@@ -6120,7 +6120,7 @@ export default function CRMDashboard() {
               Descargar reserva PDF
             </Button>
             <div className="flex gap-2 ml-auto">
-              <Button variant="outline" size="sm" onClick={() => { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); }} className="border-white/15 text-white/60">Cancelar</Button>
+              <Button variant="outline" size="sm" onClick={() => { setEditResId(null); setEditResData(null); setShowChangeDateSection(false); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
               <Button
                 size="sm"
                 onClick={() => {
@@ -6154,15 +6154,15 @@ export default function CRMDashboard() {
 
       {/* ─── ELIMINAR RESERVA ───────────────────────────────────────────────── */}
       <Dialog open={deleteResId !== null} onOpenChange={(o) => !o && setDeleteResId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-red-400" /> Eliminar reserva
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-white/60 py-2">Esta acción es irreversible. Se eliminará la reserva y sus datos asociados. Las facturas generadas no se eliminarán.</p>
+          <p className="text-sm text-foreground/65 py-2">Esta acción es irreversible. Se eliminará la reserva y sus datos asociados. Las facturas generadas no se eliminarán.</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteResId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setDeleteResId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               onClick={() => deleteResId !== null && deleteResMutation.mutate({ id: deleteResId })}
@@ -6177,35 +6177,35 @@ export default function CRMDashboard() {
 
       {/* ─── Diálogo: Generar Factura desde reserva ──────────────────────────── */}
       <Dialog open={genInvoiceResId !== null} onOpenChange={(o) => { if (!o) { setGenInvoiceResId(null); setGenInvoiceNif(""); setGenInvoiceAddress(""); } }}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <FilePlus className="w-5 h-5 text-violet-400" /> Generar factura
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-white/60">Se generará una factura formal a partir de los datos de la reserva.</p>
+            <p className="text-sm text-foreground/65">Se generará una factura formal a partir de los datos de la reserva.</p>
             <div className="space-y-2">
-              <Label className="text-white/70 text-xs">NIF / DNI del cliente (opcional)</Label>
+              <Label className="text-foreground/70 text-xs">NIF / DNI del cliente (opcional)</Label>
               <Input
                 value={genInvoiceNif}
                 onChange={(e) => setGenInvoiceNif(e.target.value)}
                 placeholder="12345678A"
-                className="bg-white/5 border-white/15 text-white text-sm"
+                className="bg-foreground/[0.05] border-foreground/[0.15] text-white text-sm"
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-white/70 text-xs">Dirección de facturación (opcional)</Label>
+              <Label className="text-foreground/70 text-xs">Dirección de facturación (opcional)</Label>
               <Input
                 value={genInvoiceAddress}
                 onChange={(e) => setGenInvoiceAddress(e.target.value)}
                 placeholder="Calle, número, CP, ciudad"
-                className="bg-white/5 border-white/15 text-white text-sm"
+                className="bg-foreground/[0.05] border-foreground/[0.15] text-white text-sm"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setGenInvoiceResId(null); setGenInvoiceNif(""); setGenInvoiceAddress(""); }} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setGenInvoiceResId(null); setGenInvoiceNif(""); setGenInvoiceAddress(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               onClick={() => genInvoiceResId !== null && generateInvoiceMutation.mutate({
@@ -6235,13 +6235,13 @@ export default function CRMDashboard() {
       )}
       {/* Confirmar eliminación anulación */}
       <Dialog open={deleteAnulId !== null} onOpenChange={(o) => !o && setDeleteAnulId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle>Eliminar solicitud</DialogTitle>
           </DialogHeader>
-          <p className="text-white/60 text-sm">¿Seguro que quieres eliminar esta solicitud de anulación? Esta acción no se puede deshacer.</p>
+          <p className="text-foreground/65 text-sm">¿Seguro que quieres eliminar esta solicitud de anulación? Esta acción no se puede deshacer.</p>
           <DialogFooter className="gap-2">
-            <Button variant="outline" size="sm" onClick={() => setDeleteAnulId(null)} className="border-white/10 text-white/60">
+            <Button variant="outline" size="sm" onClick={() => setDeleteAnulId(null)} className="border-foreground/[0.12] text-foreground/65">
               Cancelar
             </Button>
             <Button
@@ -6330,7 +6330,7 @@ function AnularReservaModal({
             <h2 className="text-white font-semibold">Anular reserva</h2>
             <p className="text-gray-400 text-xs mt-0.5 truncate max-w-[280px]">{reservationName}</p>
           </div>
-          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-white">
+          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-foreground">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -6346,7 +6346,7 @@ function AnularReservaModal({
           <div className="space-y-1.5">
             <label className="text-gray-300 text-sm">Motivo</label>
             <Select value={reason} onValueChange={(v) => setReason(v as typeof reason)}>
-              <SelectTrigger className="bg-[#1a1a1a] border-white/10 text-gray-300">
+              <SelectTrigger className="bg-[#1a1a1a] border-foreground/[0.12] text-gray-300">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -6366,7 +6366,7 @@ function AnularReservaModal({
               onChange={(e) => setReasonDetail(e.target.value)}
               placeholder="Explicación adicional..."
               rows={2}
-              className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-orange-500/40"
+              className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-orange-500/40"
             />
           </div>
 
@@ -6382,7 +6382,7 @@ function AnularReservaModal({
                       ? t === "ninguna" ? "border-gray-500/50 bg-gray-500/15 text-gray-300"
                         : t === "devolucion" ? "border-green-500/50 bg-green-500/10 text-green-400"
                         : "border-purple-500/50 bg-purple-500/10 text-purple-400"
-                      : "border-white/10 text-gray-500 hover:text-gray-300"
+                      : "border-foreground/[0.12] text-gray-500 hover:text-gray-300"
                   }`}
                 >
                   {t === "ninguna" ? "Sin comp." : t === "devolucion" ? "💶 Devolución" : "🎟️ Bono"}
@@ -6401,7 +6401,7 @@ function AnularReservaModal({
                 value={refundAmount}
                 onChange={(e) => setRefundAmount(e.target.value)}
                 placeholder="0.00"
-                className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-green-500/40"
+                className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-green-500/40"
               />
             </div>
           )}
@@ -6413,7 +6413,7 @@ function AnularReservaModal({
               onChange={(e) => setAdminNotes(e.target.value)}
               placeholder="Anotaciones para el expediente..."
               rows={2}
-              className="w-full bg-[#1a1a1a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-white/20"
+              className="w-full bg-[#1a1a1a] border border-foreground/[0.12] rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-600 resize-none focus:outline-none focus:border-foreground/[0.18]"
             />
           </div>
         </div>
@@ -6421,7 +6421,7 @@ function AnularReservaModal({
         <div className="flex gap-3 mt-6">
           <button
             onClick={onClose}
-            className="flex-1 py-2 rounded-xl border border-white/10 text-gray-400 text-sm hover:text-white hover:bg-white/5 transition-colors"
+            className="flex-1 py-2 rounded-xl border border-foreground/[0.12] text-gray-400 text-sm hover:text-foreground hover:bg-foreground/[0.05] transition-colors"
           >
             Cancelar
           </button>
@@ -6495,39 +6495,39 @@ function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number)
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
-          { label: "Total emitidos", value: kpis?.total ?? 0, cls: "border-white/5" },
+          { label: "Total emitidos", value: kpis?.total ?? 0, cls: "border-foreground/[0.08]" },
           { label: "Activos",        value: kpis?.activos ?? 0, cls: "border-green-500/20" },
           { label: "Canjeados",      value: kpis?.canjeados ?? 0, cls: "border-purple-500/20" },
           { label: "Caducados",      value: kpis?.caducados ?? 0, cls: "border-amber-500/20" },
           { label: "Importe pend.", value: `${(kpis?.importePendiente ?? 0).toFixed(2)} €`, cls: "border-green-500/20" },
         ].map(({ label, value, cls }) => (
-          <div key={label} className={`bg-white/3 border ${cls} rounded-xl p-4`}>
-            <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
-            <p className="text-xl font-bold text-white">{value}</p>
+          <div key={label} className={`bg-foreground/[0.03] border ${cls} rounded-xl p-4`}>
+            <p className="text-foreground/50 text-xs font-medium uppercase tracking-wide mb-1">{label}</p>
+            <p className="text-xl font-bold text-foreground">{value}</p>
           </div>
         ))}
       </div>
 
       {/* Filtros + búsqueda */}
       <div className="flex flex-wrap gap-2 items-center">
-        <div className="flex gap-1 bg-white/5 rounded-lg p-1">
+        <div className="flex gap-1 bg-foreground/[0.05] rounded-lg p-1">
           {filters.map(f => (
             <button
               key={f.key}
               onClick={() => setStatusFilter(f.key)}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${statusFilter === f.key ? "bg-purple-600 text-white" : "text-white/40 hover:text-white"}`}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${statusFilter === f.key ? "bg-purple-600 text-white" : "text-foreground/50 hover:text-foreground"}`}
             >
               {f.label}
             </button>
           ))}
         </div>
         <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Código, cliente, expediente..."
-            className="pl-8 h-8 bg-white/5 border-white/10 text-white placeholder:text-white/30 text-xs"
+            className="pl-8 h-8 bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-xs"
           />
         </div>
       </div>
@@ -6538,7 +6538,7 @@ function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number)
           <RefreshCw className="w-5 h-5 animate-spin text-purple-400" />
         </div>
       ) : !vouchers || vouchers.length === 0 ? (
-        <div className="text-center py-12 text-white/30 text-sm">No se encontraron bonos</div>
+        <div className="text-center py-12 text-foreground/40 text-sm">No se encontraron bonos</div>
       ) : (
         <div className="space-y-2">
           {vouchers.map((v) => {
@@ -6546,7 +6546,7 @@ function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number)
             const badge = STATUS_BADGE[v.status] ?? STATUS_BADGE.generado;
             const isExpired = v.expiresAt && new Date(v.expiresAt) < new Date();
             return (
-              <div key={v.id} className={`bg-white/3 border rounded-xl p-4 ${isActive ? "border-green-500/10" : "border-white/5"}`}>
+              <div key={v.id} className={`bg-foreground/[0.03] border rounded-xl p-4 ${isActive ? "border-green-500/10" : "border-foreground/[0.08]"}`}>
                 <div className="flex flex-wrap items-start gap-3">
                   {/* Código y estado */}
                   <div className="min-w-[160px]">
@@ -6559,26 +6559,26 @@ function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number)
                   {/* Cliente */}
                   <div className="flex-1 min-w-[160px]">
                     <p className="text-white text-sm font-medium">{v.clientName ?? "—"}</p>
-                    <p className="text-white/40 text-xs">{v.clientEmail ?? ""}</p>
+                    <p className="text-foreground/50 text-xs">{v.clientEmail ?? ""}</p>
                   </div>
 
                   {/* Valor + actividad */}
                   <div className="min-w-[100px]">
                     <p className="text-orange-400 font-bold">{Number(v.value).toFixed(2)} €</p>
-                    {v.activityName && <p className="text-white/40 text-xs truncate max-w-[140px]">{v.activityName}</p>}
+                    {v.activityName && <p className="text-foreground/50 text-xs truncate max-w-[140px]">{v.activityName}</p>}
                   </div>
 
                   {/* Caducidad */}
                   <div className="min-w-[100px]">
                     {v.expiresAt ? (
                       <>
-                        <p className={`text-xs font-medium ${isExpired && isActive ? "text-red-400" : "text-white/60"}`}>
+                        <p className={`text-xs font-medium ${isExpired && isActive ? "text-red-400" : "text-foreground/65"}`}>
                           {isExpired && isActive ? "⚠️ " : ""}{new Date(v.expiresAt).toLocaleDateString("es-ES")}
                         </p>
-                        <p className="text-white/30 text-xs">Caduca</p>
+                        <p className="text-foreground/40 text-xs">Caduca</p>
                       </>
                     ) : (
-                      <p className="text-white/30 text-xs italic">Sin caducidad</p>
+                      <p className="text-foreground/40 text-xs italic">Sin caducidad</p>
                     )}
                     {v.redeemedAt && (
                       <p className="text-purple-300/60 text-xs mt-0.5">Canjeado {new Date(v.redeemedAt).toLocaleDateString("es-ES")}</p>
@@ -6644,30 +6644,30 @@ function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number)
 
       {/* Modal: Ampliar caducidad */}
       <Dialog open={!!extendModal} onOpenChange={(o) => !o && setExtendModal(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
               <CalendarClock className="w-4 h-4 text-amber-400" /> Ampliar caducidad
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-xs text-white/50">Bono <span className="font-mono text-purple-300">{extendModal?.code}</span></p>
+            <p className="text-xs text-foreground/60">Bono <span className="font-mono text-purple-300">{extendModal?.code}</span></p>
             {extendModal?.current && (
-              <p className="text-xs text-white/40">Caducidad actual: <span className="text-amber-300">{extendModal.current}</span></p>
+              <p className="text-xs text-foreground/50">Caducidad actual: <span className="text-amber-300">{extendModal.current}</span></p>
             )}
             <div>
-              <Label className="text-white/60 text-xs mb-1.5 block">Nueva fecha de caducidad</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">Nueva fecha de caducidad</Label>
               <Input
                 type="date"
                 value={newExpiry}
                 onChange={(e) => setNewExpiry(e.target.value)}
                 min={new Date().toISOString().split("T")[0]}
-                className="bg-white/5 border-white/10 text-white"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" className="border-white/15 text-white/60" onClick={() => setExtendModal(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setExtendModal(null)}>Cancelar</Button>
             <Button
               size="sm"
               className="bg-amber-600 hover:bg-amber-700 text-white"
@@ -6682,30 +6682,30 @@ function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number)
 
       {/* Modal: Anular bono */}
       <Dialog open={!!cancelModal} onOpenChange={(o) => !o && setCancelModal(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-white">
               <Ban className="w-4 h-4 text-red-400" /> Anular bono
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-foreground/70">
               ¿Confirmas anular el bono <span className="font-mono text-purple-300">{cancelModal?.code}</span>?
               El código quedará inactivo y el cliente no podrá usarlo.
             </p>
             <div>
-              <Label className="text-white/60 text-xs mb-1.5 block">Motivo (opcional)</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">Motivo (opcional)</Label>
               <Textarea
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
                 placeholder="Ej: Emitido por error, cliente solicitó devolución económica..."
                 rows={3}
-                className="bg-white/5 border-white/10 text-white placeholder:text-gray-600 resize-none text-sm"
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-gray-600 resize-none text-sm"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" className="border-white/15 text-white/60" onClick={() => setCancelModal(null)}>Cancelar</Button>
+            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setCancelModal(null)}>Cancelar</Button>
             <Button
               size="sm"
               className="bg-red-600 hover:bg-red-700 text-white"
@@ -6767,9 +6767,9 @@ function PagosPendientesTab() {
       pending:   { label: "Pendiente",  cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
       overdue:   { label: "Vencido",    cls: "bg-red-500/15 text-red-400 border-red-500/30" },
       confirmed: { label: "Confirmado", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-      cancelled: { label: "Cancelado",  cls: "bg-white/10 text-white/40 border-white/10" },
+      cancelled: { label: "Cancelado",  cls: "bg-foreground/[0.08] text-foreground/50 border-foreground/[0.12]" },
     };
-    const s = map[status] ?? { label: status, cls: "bg-white/10 text-white/40 border-white/10" };
+    const s = map[status] ?? { label: status, cls: "bg-foreground/[0.08] text-foreground/50 border-foreground/[0.12]" };
     return (
       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs border font-medium ${s.cls}`}>
         {s.label}
@@ -6783,14 +6783,14 @@ function PagosPendientesTab() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-white font-semibold text-lg">Pagos Pendientes</h2>
-          <p className="text-white/40 text-sm">{total} registro{total !== 1 ? "s" : ""} en total</p>
+          <p className="text-foreground/50 text-sm">{total} registro{total !== 1 ? "s" : ""} en total</p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="bg-white/5 border-white/10 text-white h-8 text-xs w-36">
+            <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white h-8 text-xs w-36">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-[#0d1526] border-white/10">
+            <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
               <SelectItem value="all" className="text-white text-xs">Todos</SelectItem>
               <SelectItem value="pending" className="text-white text-xs">Pendiente</SelectItem>
               <SelectItem value="overdue" className="text-white text-xs">Vencido</SelectItem>
@@ -6800,7 +6800,7 @@ function PagosPendientesTab() {
           </Select>
           <button
             onClick={() => refetch()}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg bg-foreground/[0.05] hover:bg-foreground/[0.08] text-foreground/50 hover:text-foreground transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -6808,25 +6808,25 @@ function PagosPendientesTab() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-white/8 overflow-hidden">
+      <div className="rounded-xl border border-foreground/[0.10] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-white/8 bg-white/5">
-                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">#</th>
-                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Cliente</th>
-                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Presupuesto</th>
-                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Importe</th>
-                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Vencimiento</th>
-                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Motivo</th>
-                <th className="text-left px-4 py-3 text-xs text-white/40 font-medium">Estado</th>
-                <th className="text-right px-4 py-3 text-xs text-white/40 font-medium">Acciones</th>
+              <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">#</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Presupuesto</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Importe</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Vencimiento</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Motivo</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
+                <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-white/30">
+                  <td colSpan={8} className="text-center py-12 text-foreground/40">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
                   </td>
                 </tr>
@@ -6834,8 +6834,8 @@ function PagosPendientesTab() {
               {!isLoading && rows.length === 0 && (
                 <tr>
                   <td colSpan={8} className="text-center py-12">
-                    <Clock className="w-8 h-8 text-white/20 mx-auto mb-2" />
-                    <p className="text-white/30 text-sm">No hay pagos pendientes</p>
+                    <Clock className="w-8 h-8 text-foreground/30 mx-auto mb-2" />
+                    <p className="text-foreground/40 text-sm">No hay pagos pendientes</p>
                   </td>
                 </tr>
               )}
@@ -6845,18 +6845,18 @@ function PagosPendientesTab() {
                 return (
                   <tr
                     key={row.id}
-                    className="border-b border-white/5 hover:bg-white/3 transition-colors"
+                    className="border-b border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors"
                   >
-                    <td className="px-4 py-3 text-white/40 text-sm font-mono">#{row.id}</td>
+                    <td className="px-4 py-3 text-foreground/50 text-sm font-mono">#{row.id}</td>
                     <td className="px-4 py-3">
                       <p className="text-white text-sm font-medium">{row.clientName}</p>
-                      {row.clientEmail && <p className="text-white/40 text-xs">{row.clientEmail}</p>}
+                      {row.clientEmail && <p className="text-foreground/50 text-xs">{row.clientEmail}</p>}
                     </td>
                     <td className="px-4 py-3">
                       {row.quoteId ? (
-                        <span className="text-white/60 text-xs font-mono">PRES-{row.quoteId}</span>
+                        <span className="text-foreground/65 text-xs font-mono">PRES-{row.quoteId}</span>
                       ) : (
-                        <span className="text-white/20 text-xs">—</span>
+                        <span className="text-foreground/30 text-xs">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -6866,15 +6866,15 @@ function PagosPendientesTab() {
                     </td>
                     <td className="px-4 py-3">
                       {dueDate ? (
-                        <span className={`text-xs ${isOverdue ? "text-red-400 font-semibold" : "text-white/60"}`}>
+                        <span className={`text-xs ${isOverdue ? "text-red-400 font-semibold" : "text-foreground/65"}`}>
                           {dueDate.toLocaleDateString("es-ES")}
                           {isOverdue && " ⚠"}
                         </span>
                       ) : (
-                        <span className="text-white/20 text-xs">—</span>
+                        <span className="text-foreground/30 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-white/50 text-xs max-w-[160px] truncate">
+                    <td className="px-4 py-3 text-foreground/60 text-xs max-w-[160px] truncate">
                       {row.reason ?? "—"}
                     </td>
                     <td className="px-4 py-3">{statusBadge(row.status)}</td>
@@ -6918,7 +6918,7 @@ function PagosPendientesTab() {
 
       {/* Confirm payment modal */}
       <Dialog open={confirmId !== null} onOpenChange={(o) => !o && setConfirmId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <CheckCircle className="w-5 h-5 text-emerald-400" /> Confirmar pago recibido
@@ -6926,22 +6926,22 @@ function PagosPendientesTab() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label className="text-white/60 text-xs mb-1.5 block">Método de pago</Label>
+              <Label className="text-foreground/65 text-xs mb-1.5 block">Método de pago</Label>
               <Select value={confirmMethod} onValueChange={(v) => setConfirmMethod(v as any)}>
-                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-[#0d1526] border-white/10">
+                <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                   <SelectItem value="transferencia" className="text-white">🏦 Transferencia bancaria</SelectItem>
                   <SelectItem value="tarjeta" className="text-white">💳 Tarjeta</SelectItem>
                   <SelectItem value="efectivo" className="text-white">💵 Efectivo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs text-white/40">Se marcará el pago como confirmado y se actualizará la reserva asociada.</p>
+            <p className="text-xs text-foreground/50">Se marcará el pago como confirmado y se actualizará la reserva asociada.</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setConfirmId(null)} className="border-white/15 text-white/60">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => setConfirmId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               onClick={() => confirmId !== null && confirmMut.mutate({ id: confirmId, paymentMethod: confirmMethod })}
@@ -6957,15 +6957,15 @@ function PagosPendientesTab() {
 
       {/* Cancel modal */}
       <Dialog open={cancelId !== null} onOpenChange={(o) => !o && setCancelId(null)}>
-        <DialogContent className="max-w-sm bg-[#0d1526] border-white/10 text-white">
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <XCircle className="w-5 h-5 text-red-400" /> Cancelar pago pendiente
             </DialogTitle>
           </DialogHeader>
-          <p className="text-white/60 text-sm py-2">¿Seguro que quieres cancelar este pago pendiente? El cliente no recibirá más recordatorios.</p>
+          <p className="text-foreground/65 text-sm py-2">¿Seguro que quieres cancelar este pago pendiente? El cliente no recibirá más recordatorios.</p>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setCancelId(null)} className="border-white/15 text-white/60">Volver</Button>
+            <Button variant="outline" size="sm" onClick={() => setCancelId(null)} className="border-foreground/[0.15] text-foreground/65">Volver</Button>
             <Button
               size="sm"
               onClick={() => cancelId !== null && cancelMut.mutate({ id: cancelId })}
