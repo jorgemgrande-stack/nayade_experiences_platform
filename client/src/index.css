@@ -76,15 +76,15 @@
   --chart-3: oklch(0.70 0.20 42);
   --chart-4: oklch(0.58 0.14 160);
   --chart-5: oklch(0.78 0.12 80);
-  /* Sidebar oscuro náutico */
-  --sidebar: oklch(0.16 0.06 235);
-  --sidebar-foreground: oklch(0.94 0.01 210);
-  --sidebar-primary: oklch(0.70 0.20 42);
-  --sidebar-primary-foreground: oklch(0.16 0.06 235);
-  --sidebar-accent: oklch(0.24 0.08 235);
-  --sidebar-accent-foreground: oklch(0.94 0.01 210);
-  --sidebar-border: oklch(0.28 0.08 235);
-  --sidebar-ring: oklch(0.70 0.20 42);
+  /* Sidebar claro en light mode */
+  --sidebar: oklch(0.97 0.015 220);
+  --sidebar-foreground: oklch(0.20 0.06 235);
+  --sidebar-primary: oklch(0.38 0.18 235);
+  --sidebar-primary-foreground: oklch(0.99 0.005 220);
+  --sidebar-accent: oklch(0.91 0.04 220);
+  --sidebar-accent-foreground: oklch(0.20 0.06 235);
+  --sidebar-border: oklch(0.86 0.04 215);
+  --sidebar-ring: oklch(0.38 0.18 235);
 }
 
 .dark {
@@ -243,47 +243,150 @@
   ::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.18 235); }
 }
 
-/* ─── Dark mode: scrollbar adaptado ─────────────────────────────────────────── */
-.dark ::-webkit-scrollbar-track { background: oklch(0.14 0.025 240); }
-.dark ::-webkit-scrollbar-thumb { background: oklch(0.30 0.04 240); border-radius: 3px; }
+/* ════════════════════════════════════════════════════════════════════════════
+   SISTEMA DE NORMALIZACIÓN DE TEMAS — Bidireccional
+   Reasigna colores hardcodeados a tokens semánticos en ambos modos.
+   var(--card), var(--muted), var(--border), var(--foreground) resuelven
+   al valor correcto según si .dark está activo o no.
+   Sin tocar ningún archivo TSX ni lógica de negocio.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Scrollbar adaptado al tema activo ──────────────────────────────────── */
+.dark ::-webkit-scrollbar-track  { background: oklch(0.14 0.025 240); }
+.dark ::-webkit-scrollbar-thumb  { background: oklch(0.30 0.04 240); border-radius: 3px; }
 .dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.40 0.06 240); }
 
-/* ─── Dark mode: overrides para colores hardcodeados en componentes admin ──── */
-/* bg-white y variantes de superficie */
-.dark .bg-white { background-color: var(--card) !important; }
-.dark .bg-gray-50 { background-color: oklch(0.13 0.02 240) !important; }
-.dark .bg-gray-100 { background-color: oklch(0.16 0.025 240) !important; }
-.dark .bg-gray-200 { background-color: oklch(0.20 0.03 240) !important; }
-.dark .bg-slate-50 { background-color: oklch(0.13 0.02 240) !important; }
-.dark .bg-slate-100 { background-color: oklch(0.16 0.025 240) !important; }
+/* ─── SUPERFICIES DE CARD — dark surfaces → var(--card) en ambos modos ──── */
+/* En light: var(--card) = blanco. En dark: var(--card) = superficie oscura elevada */
+.bg-slate-800, .bg-slate-900,
+.bg-gray-800,  .bg-gray-900,
+.bg-zinc-800,  .bg-zinc-900,
+.bg-neutral-800, .bg-neutral-900 {
+  background-color: var(--card) !important;
+}
+/* Superficies de segundo nivel → muted */
+.bg-slate-700, .bg-gray-700,
+.bg-zinc-700,  .bg-neutral-700 {
+  background-color: var(--muted) !important;
+}
+/* Superficies medias */
+.bg-slate-600, .bg-gray-600,
+.bg-slate-500, .bg-gray-500 {
+  background-color: oklch(from var(--muted) calc(l - 0.04) c h) !important;
+}
 
-/* Textos grises en dark — garantizar legibilidad */
-.dark .text-gray-900 { color: oklch(0.95 0.005 240) !important; }
-.dark .text-gray-800 { color: oklch(0.90 0.007 240) !important; }
-.dark .text-gray-700 { color: oklch(0.82 0.010 240) !important; }
-.dark .text-gray-600 { color: oklch(0.70 0.012 240) !important; }
-.dark .text-gray-500 { color: oklch(0.60 0.015 240) !important; }
-.dark .text-gray-400 { color: oklch(0.55 0.015 240) !important; }
-.dark .text-slate-900 { color: oklch(0.95 0.005 240) !important; }
-.dark .text-slate-800 { color: oklch(0.90 0.007 240) !important; }
-.dark .text-slate-700 { color: oklch(0.82 0.010 240) !important; }
-.dark .text-slate-600 { color: oklch(0.70 0.012 240) !important; }
-.dark .text-slate-500 { color: oklch(0.60 0.015 240) !important; }
+/* ─── TEXTO EN SUPERFICIES ANTERIORMENTE OSCURAS ─────────────────────────── */
+/* En light mode, esas superficies son ahora blancas → el texto claro se hace invisible */
+/* Solo aplicar en :not(.dark) para no afectar dark mode donde el texto blanco es correcto */
+html:not(.dark) .bg-slate-800 .text-white,
+html:not(.dark) .bg-slate-800 .text-gray-100,
+html:not(.dark) .bg-slate-800 .text-gray-200,
+html:not(.dark) .bg-slate-800 .text-gray-300,
+html:not(.dark) .bg-slate-800 .text-gray-400,
+html:not(.dark) .bg-slate-800 .text-slate-100,
+html:not(.dark) .bg-slate-800 .text-slate-200,
+html:not(.dark) .bg-slate-800 .text-slate-300,
+html:not(.dark) .bg-slate-800 .text-slate-400,
+html:not(.dark) .bg-slate-900 .text-white,
+html:not(.dark) .bg-slate-900 .text-gray-100,
+html:not(.dark) .bg-slate-900 .text-gray-200,
+html:not(.dark) .bg-slate-900 .text-gray-300,
+html:not(.dark) .bg-slate-900 .text-slate-100,
+html:not(.dark) .bg-slate-900 .text-slate-200,
+html:not(.dark) .bg-slate-900 .text-slate-300,
+html:not(.dark) .bg-gray-800 .text-white,
+html:not(.dark) .bg-gray-800 .text-gray-100,
+html:not(.dark) .bg-gray-800 .text-gray-200,
+html:not(.dark) .bg-gray-800 .text-gray-300,
+html:not(.dark) .bg-gray-800 .text-slate-300,
+html:not(.dark) .bg-gray-900 .text-white,
+html:not(.dark) .bg-gray-900 .text-gray-100,
+html:not(.dark) .bg-gray-900 .text-gray-200,
+html:not(.dark) .bg-gray-900 .text-slate-100,
+html:not(.dark) .bg-gray-900 .text-slate-200,
+html:not(.dark) .bg-slate-700 .text-white,
+html:not(.dark) .bg-slate-700 .text-gray-100,
+html:not(.dark) .bg-slate-700 .text-gray-200,
+html:not(.dark) .bg-slate-700 .text-slate-100,
+html:not(.dark) .bg-slate-700 .text-slate-200,
+html:not(.dark) .bg-gray-700 .text-white,
+html:not(.dark) .bg-gray-700 .text-gray-100 {
+  color: var(--foreground) !important;
+}
+/* Texto secundario en superficies anteriormente oscuras (light mode) */
+html:not(.dark) .bg-slate-800 .text-gray-500,
+html:not(.dark) .bg-slate-800 .text-slate-500,
+html:not(.dark) .bg-gray-800  .text-gray-500,
+html:not(.dark) .bg-slate-900 .text-gray-500,
+html:not(.dark) .bg-gray-900  .text-gray-500 {
+  color: var(--muted-foreground) !important;
+}
 
-/* Bordes en dark */
-.dark .border-gray-100 { border-color: oklch(0.22 0.03 240) !important; }
-.dark .border-gray-200 { border-color: oklch(0.24 0.03 240) !important; }
-.dark .border-gray-300 { border-color: oklch(0.28 0.04 240) !important; }
-.dark .border-slate-100 { border-color: oklch(0.22 0.03 240) !important; }
-.dark .border-slate-200 { border-color: oklch(0.24 0.03 240) !important; }
+/* ─── BORDES hardcodeados → var(--border) en ambos modos ─────────────────── */
+.border-slate-600, .border-slate-700, .border-slate-800,
+.border-gray-600,  .border-gray-700,  .border-gray-800 {
+  border-color: var(--border) !important;
+}
+/* Bordes light en dark mode */
+.dark .border-gray-100, .dark .border-gray-200, .dark .border-gray-300,
+.dark .border-slate-100, .dark .border-slate-200, .dark .border-slate-300 {
+  border-color: var(--border) !important;
+}
 
-/* Divisores */
-.dark .divide-gray-100 > * + * { border-color: oklch(0.22 0.03 240) !important; }
-.dark .divide-gray-200 > * + * { border-color: oklch(0.24 0.03 240) !important; }
+/* ─── TEXTO GRIS/SLATE — escala de contraste por modo ────────────────────── */
+/* Dark mode: asegurar legibilidad de grises */
+.dark .text-gray-900, .dark .text-slate-900 { color: oklch(0.95 0.005 240) !important; }
+.dark .text-gray-800, .dark .text-slate-800 { color: oklch(0.90 0.007 240) !important; }
+.dark .text-gray-700, .dark .text-slate-700 { color: oklch(0.82 0.010 240) !important; }
+.dark .text-gray-600, .dark .text-slate-600 { color: oklch(0.70 0.012 240) !important; }
+.dark .text-gray-500, .dark .text-slate-500 { color: oklch(0.60 0.015 240) !important; }
+.dark .text-gray-400, .dark .text-slate-400 { color: oklch(0.56 0.015 240) !important; }
+.dark .text-gray-300, .dark .text-slate-300 { color: oklch(0.78 0.012 240) !important; }
+/* Light mode: texto claro que quedó hardcodeado y se pierde en fondos blancos */
+html:not(.dark) .text-slate-300 { color: oklch(0.45 0.06 230) !important; }
+html:not(.dark) .text-slate-400 { color: oklch(0.42 0.05 230) !important; }
+html:not(.dark) .text-gray-300  { color: oklch(0.45 0.04 230) !important; }
+html:not(.dark) .text-gray-400  { color: oklch(0.50 0.04 230) !important; }
 
-/* glass-card en dark */
+/* ─── SUPERFICIES BLANCAS/CLARAS en dark mode ─────────────────────────────── */
+.dark .bg-white         { background-color: var(--card) !important; }
+.dark .bg-gray-50,
+.dark .bg-slate-50      { background-color: oklch(0.13 0.02 240) !important; }
+.dark .bg-gray-100,
+.dark .bg-slate-100     { background-color: oklch(0.16 0.025 240) !important; }
+.dark .bg-gray-200,
+.dark .bg-slate-200     { background-color: oklch(0.20 0.03 240) !important; }
+
+/* ─── FONDOS DE ESTADO (tinted) en dark mode — versiones oscuras ─────────── */
+.dark .bg-red-50     { background-color: oklch(0.18 0.04 25)  !important; }
+.dark .bg-red-100    { background-color: oklch(0.20 0.05 25)  !important; }
+.dark .bg-orange-50  { background-color: oklch(0.18 0.04 42)  !important; }
+.dark .bg-orange-100 { background-color: oklch(0.20 0.05 42)  !important; }
+.dark .bg-amber-50   { background-color: oklch(0.18 0.04 60)  !important; }
+.dark .bg-amber-100  { background-color: oklch(0.20 0.05 60)  !important; }
+.dark .bg-yellow-50  { background-color: oklch(0.18 0.04 80)  !important; }
+.dark .bg-green-50   { background-color: oklch(0.16 0.04 150) !important; }
+.dark .bg-green-100  { background-color: oklch(0.18 0.05 150) !important; }
+.dark .bg-emerald-50 { background-color: oklch(0.16 0.04 160) !important; }
+.dark .bg-emerald-100{ background-color: oklch(0.18 0.05 160) !important; }
+.dark .bg-blue-50    { background-color: oklch(0.16 0.04 230) !important; }
+.dark .bg-blue-100   { background-color: oklch(0.18 0.05 230) !important; }
+.dark .bg-indigo-50  { background-color: oklch(0.16 0.04 265) !important; }
+.dark .bg-violet-50  { background-color: oklch(0.16 0.04 280) !important; }
+.dark .bg-purple-50  { background-color: oklch(0.16 0.04 290) !important; }
+.dark .bg-purple-100 { background-color: oklch(0.18 0.05 290) !important; }
+.dark .bg-sky-50     { background-color: oklch(0.16 0.04 215) !important; }
+.dark .bg-sky-100    { background-color: oklch(0.18 0.05 215) !important; }
+
+/* ─── DIVISORES ──────────────────────────────────────────────────────────── */
+.dark .divide-gray-100 > * + * { border-color: var(--border) !important; }
+.dark .divide-gray-200 > * + * { border-color: var(--border) !important; }
+.divide-slate-700 > * + *,
+.divide-gray-700  > * + * { border-color: var(--border) !important; }
+
+/* ─── glass-card adaptado ─────────────────────────────────────────────────── */
 .dark .glass-card {
-  background: oklch(0.14 0.025 240 / 0.90) !important;
+  background: oklch(0.14 0.025 240 / 0.92) !important;
   border-color: oklch(0.30 0.04 240 / 0.50) !important;
 }
 
