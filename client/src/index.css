@@ -257,28 +257,55 @@
 .dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.40 0.06 240); }
 
 /* ─── SUPERFICIES DE CARD — dark surfaces → var(--card) en ambos modos ──── */
-/* En light: var(--card) = blanco. En dark: var(--card) = superficie oscura elevada */
+/* En light: var(--card) = blanco. En dark: var(--card) = superficie oscura elevada.
+   Se capturan tanto las clases base como las variantes con opacidad (/n) que
+   Tailwind 4 genera como selectores independientes. */
 .bg-slate-800, .bg-slate-900,
 .bg-gray-800,  .bg-gray-900,
 .bg-zinc-800,  .bg-zinc-900,
-.bg-neutral-800, .bg-neutral-900 {
+.bg-neutral-800, .bg-neutral-900,
+.bg-slate-800\/80, .bg-slate-800\/60, .bg-slate-800\/50, .bg-slate-800\/40,
+.bg-slate-900\/60, .bg-slate-900\/80,
+.bg-gray-800\/80,  .bg-gray-800\/60,
+.bg-gray-900\/80,  .bg-gray-900\/60 {
   background-color: var(--card) !important;
 }
 /* Superficies de segundo nivel → muted */
 .bg-slate-700, .bg-gray-700,
-.bg-zinc-700,  .bg-neutral-700 {
+.bg-zinc-700,  .bg-neutral-700,
+.bg-slate-700\/80, .bg-slate-700\/60, .bg-slate-700\/50,
+.bg-gray-700\/80,  .bg-gray-700\/60 {
   background-color: var(--muted) !important;
 }
 /* Superficies medias */
 .bg-slate-600, .bg-gray-600,
+.bg-slate-600\/50,
 .bg-slate-500, .bg-gray-500 {
-  background-color: oklch(from var(--muted) calc(l - 0.04) c h) !important;
+  background-color: var(--muted) !important;
 }
 
 /* ─── TEXTO EN SUPERFICIES ANTERIORMENTE OSCURAS ─────────────────────────── */
 /* En light mode, esas superficies son ahora blancas → el texto claro se hace invisible */
 /* Solo aplicar en :not(.dark) para no afectar dark mode donde el texto blanco es correcto */
+/* Texto claro que queda invisible en light mode sobre fondos ahora blancos.
+   Se cubren tanto clases base como variantes con opacidad. */
 html:not(.dark) .bg-slate-800 .text-white,
+html:not(.dark) .bg-slate-800\/80 .text-white,
+html:not(.dark) .bg-slate-800\/60 .text-white,
+html:not(.dark) .bg-slate-800\/50 .text-white,
+html:not(.dark) .bg-slate-800\/40 .text-white,
+html:not(.dark) .bg-slate-900 .text-white,
+html:not(.dark) .bg-slate-900\/60 .text-white,
+html:not(.dark) .bg-slate-900\/80 .text-white,
+html:not(.dark) .bg-gray-800 .text-white,
+html:not(.dark) .bg-gray-800\/80 .text-white,
+html:not(.dark) .bg-gray-800\/60 .text-white,
+html:not(.dark) .bg-gray-900 .text-white,
+html:not(.dark) .bg-gray-900\/80 .text-white,
+html:not(.dark) .bg-slate-700 .text-white,
+html:not(.dark) .bg-slate-700\/80 .text-white,
+html:not(.dark) .bg-slate-700\/60 .text-white,
+html:not(.dark) .bg-gray-700 .text-white,
 html:not(.dark) .bg-slate-800 .text-gray-100,
 html:not(.dark) .bg-slate-800 .text-gray-200,
 html:not(.dark) .bg-slate-800 .text-gray-300,
@@ -287,38 +314,42 @@ html:not(.dark) .bg-slate-800 .text-slate-100,
 html:not(.dark) .bg-slate-800 .text-slate-200,
 html:not(.dark) .bg-slate-800 .text-slate-300,
 html:not(.dark) .bg-slate-800 .text-slate-400,
-html:not(.dark) .bg-slate-900 .text-white,
+html:not(.dark) .bg-slate-800\/80 .text-gray-300,
+html:not(.dark) .bg-slate-800\/60 .text-gray-300,
+html:not(.dark) .bg-slate-800\/60 .text-slate-300,
 html:not(.dark) .bg-slate-900 .text-gray-100,
 html:not(.dark) .bg-slate-900 .text-gray-200,
 html:not(.dark) .bg-slate-900 .text-gray-300,
 html:not(.dark) .bg-slate-900 .text-slate-100,
 html:not(.dark) .bg-slate-900 .text-slate-200,
 html:not(.dark) .bg-slate-900 .text-slate-300,
-html:not(.dark) .bg-gray-800 .text-white,
+html:not(.dark) .bg-slate-900\/60 .text-gray-300,
+html:not(.dark) .bg-slate-900\/60 .text-slate-300,
 html:not(.dark) .bg-gray-800 .text-gray-100,
 html:not(.dark) .bg-gray-800 .text-gray-200,
 html:not(.dark) .bg-gray-800 .text-gray-300,
 html:not(.dark) .bg-gray-800 .text-slate-300,
-html:not(.dark) .bg-gray-900 .text-white,
 html:not(.dark) .bg-gray-900 .text-gray-100,
 html:not(.dark) .bg-gray-900 .text-gray-200,
 html:not(.dark) .bg-gray-900 .text-slate-100,
-html:not(.dark) .bg-gray-900 .text-slate-200,
-html:not(.dark) .bg-slate-700 .text-white,
+html:not(.dark) .bg-gray-900\/80 .text-gray-200,
 html:not(.dark) .bg-slate-700 .text-gray-100,
 html:not(.dark) .bg-slate-700 .text-gray-200,
 html:not(.dark) .bg-slate-700 .text-slate-100,
-html:not(.dark) .bg-slate-700 .text-slate-200,
-html:not(.dark) .bg-gray-700 .text-white,
+html:not(.dark) .bg-slate-700\/80 .text-gray-200,
 html:not(.dark) .bg-gray-700 .text-gray-100 {
   color: var(--foreground) !important;
 }
 /* Texto secundario en superficies anteriormente oscuras (light mode) */
 html:not(.dark) .bg-slate-800 .text-gray-500,
+html:not(.dark) .bg-slate-800\/80 .text-gray-500,
+html:not(.dark) .bg-slate-800\/60 .text-gray-500,
 html:not(.dark) .bg-slate-800 .text-slate-500,
-html:not(.dark) .bg-gray-800  .text-gray-500,
+html:not(.dark) .bg-gray-800 .text-gray-500,
 html:not(.dark) .bg-slate-900 .text-gray-500,
-html:not(.dark) .bg-gray-900  .text-gray-500 {
+html:not(.dark) .bg-slate-900\/60 .text-gray-500,
+html:not(.dark) .bg-gray-900 .text-gray-500,
+html:not(.dark) .bg-gray-900\/80 .text-gray-500 {
   color: var(--muted-foreground) !important;
 }
 
