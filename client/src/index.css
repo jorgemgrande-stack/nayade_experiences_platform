@@ -421,6 +421,85 @@ html:not(.dark) .text-gray-400  { color: oklch(0.50 0.04 230) !important; }
   border-color: oklch(0.30 0.04 240 / 0.50) !important;
 }
 
+/* ─── ARBITRARY DARK COLORS — override en light mode ─────────────────────── */
+/* Colores arbitrarios hardcodeados en módulos admin (CRM, Ops, Marketing...)  */
+/* Tailwind genera .bg-\[\#111\], .bg-\[\#1a1a1a\], etc. como selectores CSS. */
+html:not(.dark) .bg-\[\#111\],
+html:not(.dark) .bg-\[\#111111\],
+html:not(.dark) .bg-\[\#0d0d0d\],
+html:not(.dark) .bg-\[\#0a0f1e\],
+html:not(.dark) .bg-\[\#080e1c\],
+html:not(.dark) .bg-\[\#0d1526\],
+html:not(.dark) .bg-\[\#0d1117\],
+html:not(.dark) .bg-\[\#0a0f1c\] {
+  background-color: var(--card) !important;
+}
+html:not(.dark) .bg-\[\#1a1a1a\],
+html:not(.dark) .bg-\[\#181818\],
+html:not(.dark) .bg-\[\#1c1c1c\],
+html:not(.dark) .bg-\[\#161616\],
+html:not(.dark) .bg-\[\#1e1e1e\] {
+  background-color: var(--muted) !important;
+}
+/* Gradient endpoints */
+html:not(.dark) .to-\[\#080e1c\],
+html:not(.dark) .to-\[\#080e1c\]\/80,
+html:not(.dark) .from-\[\#080e1c\] {
+  --tw-gradient-to: oklch(0.98 0.008 220) !important;
+  --tw-gradient-from: oklch(0.98 0.008 220) !important;
+}
+/* Borders white/opacity → var(--border) en light mode */
+html:not(.dark) .border-white\/10,
+html:not(.dark) .border-white\/5,
+html:not(.dark) .border-white\/8 {
+  border-color: var(--border) !important;
+}
+/* Texto blanco en contenedores anteriormente oscuros (arbitrarios) */
+/* Texto en contenedores de fondo oscuro arbitrario */
+html:not(.dark) .bg-\[\#111\] .text-white,
+html:not(.dark) .bg-\[\#111\] .text-gray-100,
+html:not(.dark) .bg-\[\#111\] .text-gray-200,
+html:not(.dark) .bg-\[\#111\] .text-gray-300,
+html:not(.dark) .bg-\[\#111\] .text-gray-400,
+html:not(.dark) .bg-\[\#111\] .text-slate-300,
+html:not(.dark) .bg-\[\#1a1a1a\] .text-white,
+html:not(.dark) .bg-\[\#1a1a1a\] .text-gray-100,
+html:not(.dark) .bg-\[\#1a1a1a\] .text-gray-200,
+html:not(.dark) .bg-\[\#1a1a1a\] .text-gray-300,
+html:not(.dark) .bg-\[\#1a1a1a\] .text-gray-400,
+html:not(.dark) .bg-\[\#1a1a1a\] .text-slate-300,
+html:not(.dark) .bg-\[\#080e1c\] .text-white,
+html:not(.dark) .bg-\[\#080e1c\] .text-gray-300,
+html:not(.dark) .bg-\[\#0d1526\] .text-white,
+html:not(.dark) .bg-\[\#0d1526\] .text-gray-100,
+html:not(.dark) .bg-\[\#0d1526\] .text-gray-200,
+html:not(.dark) .bg-\[\#0d1526\] .text-gray-300,
+html:not(.dark) .bg-\[\#0d1526\] .text-gray-400,
+html:not(.dark) .bg-\[\#0d1526\] .text-slate-300,
+html:not(.dark) .bg-\[\#0d1526\] .text-slate-400 {
+  color: var(--foreground) !important;
+}
+html:not(.dark) .bg-\[\#111\] .text-gray-500,
+html:not(.dark) .bg-\[\#111\] .text-gray-600,
+html:not(.dark) .bg-\[\#1a1a1a\] .text-gray-500,
+html:not(.dark) .bg-\[\#1a1a1a\] .text-gray-600,
+html:not(.dark) .bg-\[\#0d1526\] .text-gray-500,
+html:not(.dark) .bg-\[\#0d1526\] .text-gray-600 {
+  color: var(--muted-foreground) !important;
+}
+/* Input/Textarea/Select con fondo oscuro arbitrario — la clase text-white va en el propio elemento */
+html:not(.dark) .bg-\[\#111\].text-white,
+html:not(.dark) .bg-\[\#1a1a1a\].text-white,
+html:not(.dark) .bg-\[\#0d1526\].text-white {
+  color: var(--foreground) !important;
+}
+/* placeholder text en inputs oscuros */
+html:not(.dark) .bg-\[\#111\]::placeholder,
+html:not(.dark) .bg-\[\#1a1a1a\]::placeholder,
+html:not(.dark) .bg-\[\#0d1526\]::placeholder {
+  color: var(--muted-foreground) !important;
+}
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.

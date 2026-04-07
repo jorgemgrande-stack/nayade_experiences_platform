@@ -59,12 +59,12 @@ function useCountUp(target: number, duration = 900) {
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 const KPI_STYLES = {
-  emerald: { bg: "bg-gradient-to-br from-emerald-950/80 via-emerald-900/30 to-[#080e1c]", border: "border-emerald-500/30", glow: "bg-emerald-500/10", icon: "text-emerald-400", number: "text-emerald-300", label: "text-emerald-300/70", dot: "bg-emerald-400" },
-  blue:    { bg: "bg-gradient-to-br from-blue-950/80 via-blue-900/30 to-[#080e1c]",       border: "border-blue-500/30",    glow: "bg-blue-500/10",    icon: "text-blue-400",    number: "text-blue-300",    label: "text-blue-300/70",    dot: "bg-blue-400" },
-  violet:  { bg: "bg-gradient-to-br from-violet-950/80 via-violet-900/30 to-[#080e1c]",   border: "border-violet-500/30",  glow: "bg-violet-500/10",  icon: "text-violet-400",  number: "text-violet-300",  label: "text-violet-300/70",  dot: "bg-violet-400" },
-  amber:   { bg: "bg-gradient-to-br from-amber-950/80 via-amber-900/30 to-[#080e1c]",     border: "border-amber-500/30",   glow: "bg-amber-500/10",   icon: "text-amber-400",   number: "text-amber-300",   label: "text-amber-300/70",   dot: "bg-amber-400" },
-  orange:  { bg: "bg-gradient-to-br from-orange-950/80 via-orange-900/30 to-[#080e1c]",   border: "border-orange-500/30",  glow: "bg-orange-500/10",  icon: "text-orange-400",  number: "text-orange-300",  label: "text-orange-300/70",  dot: "bg-orange-400" },
-  rose:    { bg: "bg-gradient-to-br from-rose-950/80 via-rose-900/30 to-[#080e1c]",       border: "border-rose-500/30",    glow: "bg-rose-500/10",    icon: "text-rose-400",    number: "text-rose-300",    label: "text-rose-300/70",    dot: "bg-rose-400" },
+  emerald: { bg: "bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/80 dark:via-emerald-900/30 dark:to-[#080e1c]", border: "border-emerald-200 dark:border-emerald-500/30", glow: "bg-emerald-500/10", icon: "text-emerald-600 dark:text-emerald-400", number: "text-emerald-700 dark:text-emerald-300", label: "text-emerald-600/70 dark:text-emerald-300/70", dot: "bg-emerald-500 dark:bg-emerald-400" },
+  blue:    { bg: "bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/80 dark:via-blue-900/30 dark:to-[#080e1c]",         border: "border-blue-200 dark:border-blue-500/30",     glow: "bg-blue-500/10",    icon: "text-blue-600 dark:text-blue-400",       number: "text-blue-700 dark:text-blue-300",       label: "text-blue-600/70 dark:text-blue-300/70",       dot: "bg-blue-500 dark:bg-blue-400" },
+  violet:  { bg: "bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/80 dark:via-violet-900/30 dark:to-[#080e1c]",   border: "border-violet-200 dark:border-violet-500/30", glow: "bg-violet-500/10",  icon: "text-violet-600 dark:text-violet-400",   number: "text-violet-700 dark:text-violet-300",   label: "text-violet-600/70 dark:text-violet-300/70",   dot: "bg-violet-500 dark:bg-violet-400" },
+  amber:   { bg: "bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/80 dark:via-amber-900/30 dark:to-[#080e1c]",     border: "border-amber-200 dark:border-amber-500/30",   glow: "bg-amber-500/10",   icon: "text-amber-600 dark:text-amber-400",     number: "text-amber-700 dark:text-amber-300",     label: "text-amber-600/70 dark:text-amber-300/70",     dot: "bg-amber-500 dark:bg-amber-400" },
+  orange:  { bg: "bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/80 dark:via-orange-900/30 dark:to-[#080e1c]",   border: "border-orange-200 dark:border-orange-500/30", glow: "bg-orange-500/10",  icon: "text-orange-600 dark:text-orange-400",   number: "text-orange-700 dark:text-orange-300",   label: "text-orange-600/70 dark:text-orange-300/70",   dot: "bg-orange-500 dark:bg-orange-400" },
+  rose:    { bg: "bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/80 dark:via-rose-900/30 dark:to-[#080e1c]",         border: "border-rose-200 dark:border-rose-500/30",     glow: "bg-rose-500/10",    icon: "text-rose-600 dark:text-rose-400",       number: "text-rose-700 dark:text-rose-300",       label: "text-rose-600/70 dark:text-rose-300/70",       dot: "bg-rose-500 dark:bg-rose-400" },
 };
 
 function KpiCard({ label, value, suffix = "", change, positive, subLabel, icon: Icon, color, href }: {
@@ -104,9 +104,9 @@ function Panel({ title, icon: Icon, iconColor, children, action, badge }: {
   children: React.ReactNode; action?: React.ReactNode; badge?: number;
 }) {
   return (
-    <div className="rounded-xl border border-white/8 overflow-hidden" style={{ background: "rgba(255,255,255,0.03)" }}>
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-white/5">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-white/60 flex items-center gap-2">
+    <div className="rounded-xl border border-border/50 overflow-hidden bg-card/40">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-border/30">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
           <Icon className={cn("w-3.5 h-3.5", iconColor)} />
           {title}
           {badge !== undefined && badge > 0 && (
@@ -130,16 +130,16 @@ function ChannelCard({ title, icon: Icon, color, href, children, alertMsg }: {
       <div className={cn(
         "rounded-xl border p-4 cursor-pointer group transition-all hover:brightness-110",
         `border-${color}-700/30 hover:border-${color}-500/50`,
-        `bg-gradient-to-br from-${color}-950/60 to-[#080e1c]/80`
+        `bg-gradient-to-br from-${color}-50 to-white dark:from-${color}-950/60 dark:to-[#080e1c]/80`
       )}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", `bg-${color}-500/20`)}>
-              <Icon className={cn("w-4 h-4", `text-${color}-400`)} />
+              <Icon className={cn("w-4 h-4", `text-${color}-500 dark:text-${color}-400`)} />
             </div>
-            <span className="font-semibold text-white text-sm">{title}</span>
+            <span className={cn("font-semibold text-sm text-foreground")}>{title}</span>
           </div>
-          <ArrowRight className={cn("w-4 h-4 text-white/20 group-hover:text-white/60 transition-colors", `group-hover:text-${color}-400`)} />
+          <ArrowRight className={cn("w-4 h-4 text-foreground/20 group-hover:text-foreground/60 transition-colors", `group-hover:text-${color}-500`)} />
         </div>
         {children}
         {alertMsg && (
@@ -265,8 +265,8 @@ function SectionLabel({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 mb-3">
       <div className="w-1 h-4 rounded-full bg-gradient-to-b from-orange-400 to-blue-600" />
-      <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">{label}</span>
-      <div className="flex-1 h-px bg-white/5" />
+      <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground/70">{label}</span>
+      <div className="flex-1 h-px bg-border/30" />
     </div>
   );
 }
@@ -319,7 +319,7 @@ export default function AdminDashboard() {
   // ── Auth guards ──────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#080e1c]">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full" />
       </div>
     );
@@ -327,17 +327,17 @@ export default function AdminDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#080e1c]">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="w-8 h-8 text-blue-400" />
           </div>
-          <h2 className="text-2xl font-black text-white mb-2">Acceso Restringido</h2>
-          <p className="text-white/50 mb-6">Debes iniciar sesión para acceder al panel de administración.</p>
+          <h2 className="text-2xl font-black text-foreground mb-2">Acceso Restringido</h2>
+          <p className="text-muted-foreground mb-6">Debes iniciar sesión para acceder al panel de administración.</p>
           <button className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-3 rounded-xl transition-colors" onClick={() => { window.location.href = getLoginUrl("/admin"); }}>
             Iniciar Sesión
           </button>
-          <p className="mt-4 text-sm text-white/30">{isLocalAuth() ? "Accede con tu email y contraseña de administrador." : "Accede con tu cuenta de Manus."}</p>
+          <p className="mt-4 text-sm text-muted-foreground/60">{isLocalAuth() ? "Accede con tu email y contraseña de administrador." : "Accede con tu cuenta de Manus."}</p>
         </div>
       </div>
     );
@@ -371,18 +371,18 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout title="Dashboard">
-      <div className="min-h-screen bg-[#080e1c] text-white">
+      <div className="min-h-screen bg-background text-foreground">
 
         {/* ── HEADER ─────────────────────────────────────────────────────── */}
-        <div className="px-6 pt-6 pb-4 border-b border-white/5">
+        <div className="px-6 pt-6 pb-4 border-b border-border/30">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[10px] font-semibold text-emerald-400/80 uppercase tracking-widest">Sistema activo</span>
+                <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400/80 uppercase tracking-widest">Sistema activo</span>
               </div>
-              <h1 className="text-xl font-black text-white">{greeting}, {firstName} 👋</h1>
-              <p className="text-white/40 text-xs mt-0.5">
+              <h1 className="text-xl font-black text-foreground">{greeting}, {firstName} 👋</h1>
+              <p className="text-muted-foreground text-xs mt-0.5">
                 Náyade Experiences · {new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
               </p>
             </div>
@@ -396,7 +396,7 @@ export default function AdminDashboard() {
               <button
                 onClick={() => refetch()}
                 disabled={isFetching}
-                className="flex items-center gap-1.5 bg-white/5 hover:bg-white/8 border border-white/10 text-white/50 text-xs font-medium px-3 py-1.5 rounded-lg transition-all"
+                className="flex items-center gap-1.5 bg-muted/50 hover:bg-muted border border-border/60 text-muted-foreground text-xs font-medium px-3 py-1.5 rounded-lg transition-all"
               >
                 <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
                 Actualizar
@@ -407,7 +407,7 @@ export default function AdminDashboard() {
                 </button>
               </Link>
               <Link href="/" target="_blank">
-                <button className="flex items-center gap-2 bg-white/5 hover:bg-white/8 border border-white/10 text-white/40 text-xs font-medium px-3 py-1.5 rounded-lg transition-all">
+                <button className="flex items-center gap-2 bg-muted/50 hover:bg-muted border border-border/60 text-muted-foreground text-xs font-medium px-3 py-1.5 rounded-lg transition-all">
                   <ExternalLink className="w-3.5 h-3.5" /> Ver web
                 </button>
               </Link>
@@ -571,22 +571,22 @@ export default function AdminDashboard() {
 
               {/* Hotel */}
               <Link href="/admin/hotel">
-                <div className="group rounded-xl border border-sky-700/30 hover:border-sky-500/50 bg-gradient-to-br from-sky-950/60 to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-110">
+                <div className="group rounded-xl border border-sky-200 dark:border-sky-700/30 hover:border-sky-400 dark:hover:border-sky-500/50 bg-gradient-to-br from-sky-50 to-white dark:from-sky-950/60 dark:to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-105">
                   <div className="flex items-center justify-between mb-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-sky-500/20">
-                      <BedDouble className="w-4 h-4 text-sky-400" />
+                      <BedDouble className="w-4 h-4 text-sky-500 dark:text-sky-400" />
                     </div>
-                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-sky-400 transition-colors" />
+                    <ArrowRight className="w-4 h-4 text-foreground/20 group-hover:text-sky-500 transition-colors" />
                   </div>
-                  <p className="text-xs font-semibold text-white/70 mb-2">Hotel hoy</p>
+                  <p className="text-xs font-semibold text-foreground/70 mb-2">Hotel hoy</p>
                   {isLoading ? (
-                    <div className="h-7 bg-white/5 rounded animate-pulse" />
+                    <div className="h-7 bg-muted/50 rounded animate-pulse" />
                   ) : (complex?.hotelReservations ?? 0) === 0 ? (
-                    <p className="text-sm text-white/25">Sin reservas hoy</p>
+                    <p className="text-sm text-muted-foreground/50">Sin reservas hoy</p>
                   ) : (
                     <>
-                      <p className="text-2xl font-black text-sky-300">{complex?.hotelReservations}</p>
-                      <p className="text-[10px] text-white/40 mt-0.5">{complex?.hotelGuests} huéspedes · check-in</p>
+                      <p className="text-2xl font-black text-sky-600 dark:text-sky-300">{complex?.hotelReservations}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{complex?.hotelGuests} huéspedes · check-in</p>
                     </>
                   )}
                 </div>
@@ -594,22 +594,22 @@ export default function AdminDashboard() {
 
               {/* SPA */}
               <Link href="/admin/spa">
-                <div className="group rounded-xl border border-purple-700/30 hover:border-purple-500/50 bg-gradient-to-br from-purple-950/60 to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-110">
+                <div className="group rounded-xl border border-purple-200 dark:border-purple-700/30 hover:border-purple-400 dark:hover:border-purple-500/50 bg-gradient-to-br from-purple-50 to-white dark:from-purple-950/60 dark:to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-105">
                   <div className="flex items-center justify-between mb-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-purple-500/20">
-                      <Sparkles className="w-4 h-4 text-purple-400" />
+                      <Sparkles className="w-4 h-4 text-purple-500 dark:text-purple-400" />
                     </div>
-                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-purple-400 transition-colors" />
+                    <ArrowRight className="w-4 h-4 text-foreground/20 group-hover:text-purple-500 transition-colors" />
                   </div>
-                  <p className="text-xs font-semibold text-white/70 mb-2">SPA hoy</p>
+                  <p className="text-xs font-semibold text-foreground/70 mb-2">SPA hoy</p>
                   {isLoading ? (
-                    <div className="h-7 bg-white/5 rounded animate-pulse" />
+                    <div className="h-7 bg-muted/50 rounded animate-pulse" />
                   ) : (complex?.spaBookedSlots ?? 0) === 0 ? (
-                    <p className="text-sm text-white/25">Sin citas hoy</p>
+                    <p className="text-sm text-muted-foreground/50">Sin citas hoy</p>
                   ) : (
                     <>
-                      <p className="text-2xl font-black text-purple-300">{complex?.spaBookedSlots}</p>
-                      <p className="text-[10px] text-white/40 mt-0.5">{complex?.spaPax} personas · slots activos</p>
+                      <p className="text-2xl font-black text-purple-600 dark:text-purple-300">{complex?.spaBookedSlots}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{complex?.spaPax} personas · slots activos</p>
                     </>
                   )}
                 </div>
@@ -617,22 +617,22 @@ export default function AdminDashboard() {
 
               {/* Restaurantes */}
               <Link href="/admin/restaurantes">
-                <div className="group rounded-xl border border-rose-700/30 hover:border-rose-500/50 bg-gradient-to-br from-rose-950/60 to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-110">
+                <div className="group rounded-xl border border-rose-200 dark:border-rose-700/30 hover:border-rose-400 dark:hover:border-rose-500/50 bg-gradient-to-br from-rose-50 to-white dark:from-rose-950/60 dark:to-[#080e1c]/80 p-4 cursor-pointer transition-all hover:brightness-105">
                   <div className="flex items-center justify-between mb-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-rose-500/20">
-                      <UtensilsCrossed className="w-4 h-4 text-rose-400" />
+                      <UtensilsCrossed className="w-4 h-4 text-rose-500 dark:text-rose-400" />
                     </div>
-                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-rose-400 transition-colors" />
+                    <ArrowRight className="w-4 h-4 text-foreground/20 group-hover:text-rose-500 transition-colors" />
                   </div>
-                  <p className="text-xs font-semibold text-white/70 mb-2">Restaurantes hoy</p>
+                  <p className="text-xs font-semibold text-foreground/70 mb-2">Restaurantes hoy</p>
                   {isLoading ? (
-                    <div className="h-7 bg-white/5 rounded animate-pulse" />
+                    <div className="h-7 bg-muted/50 rounded animate-pulse" />
                   ) : (complex?.restaurantReservations ?? 0) === 0 ? (
-                    <p className="text-sm text-white/25">Sin reservas hoy</p>
+                    <p className="text-sm text-muted-foreground/50">Sin reservas hoy</p>
                   ) : (
                     <>
-                      <p className="text-2xl font-black text-rose-300">{complex?.restaurantCovers}</p>
-                      <p className="text-[10px] text-white/40 mt-0.5">{complex?.restaurantReservations} reservas · cubiertos</p>
+                      <p className="text-2xl font-black text-rose-600 dark:text-rose-300">{complex?.restaurantCovers}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{complex?.restaurantReservations} reservas · cubiertos</p>
                     </>
                   )}
                 </div>
@@ -643,27 +643,27 @@ export default function AdminDashboard() {
                 <div className={cn(
                   "group rounded-xl border p-4 cursor-pointer transition-all hover:brightness-110",
                   leadsAging > 0
-                    ? "border-violet-600/50 bg-gradient-to-br from-violet-950/70 to-[#080e1c]/80"
-                    : "border-violet-700/20 bg-gradient-to-br from-violet-950/30 to-[#080e1c]/80"
+                    ? "border-violet-400 dark:border-violet-600/50 bg-gradient-to-br from-violet-100 to-white dark:from-violet-950/70 dark:to-[#080e1c]/80"
+                    : "border-violet-200 dark:border-violet-700/20 bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/30 dark:to-[#080e1c]/80"
                 )}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-violet-500/20">
                       <Clock className="w-4 h-4 text-violet-400" />
                     </div>
-                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-violet-400 transition-colors" />
+                    <ArrowRight className="w-4 h-4 text-foreground/20 group-hover:text-violet-500 transition-colors" />
                   </div>
-                  <p className="text-xs font-semibold text-white/70 mb-2">Leads sin atender</p>
+                  <p className="text-xs font-semibold text-foreground/70 mb-2">Leads sin atender</p>
                   {isLoading ? (
-                    <div className="h-7 bg-white/5 rounded animate-pulse" />
+                    <div className="h-7 bg-muted/50 rounded animate-pulse" />
                   ) : leadsAging === 0 ? (
                     <>
-                      <p className="text-2xl font-black text-emerald-400">0</p>
-                      <p className="text-[10px] text-emerald-400/60 mt-0.5">Todos atendidos</p>
+                      <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">0</p>
+                      <p className="text-[10px] text-emerald-600/60 dark:text-emerald-400/60 mt-0.5">Todos atendidos</p>
                     </>
                   ) : (
                     <>
-                      <p className="text-2xl font-black text-violet-300">{leadsAging}</p>
-                      <p className="text-[10px] text-amber-400/80 mt-0.5">+3 días sin contacto</p>
+                      <p className="text-2xl font-black text-violet-600 dark:text-violet-300">{leadsAging}</p>
+                      <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">+3 días sin contacto</p>
                     </>
                   )}
                 </div>
@@ -685,17 +685,17 @@ export default function AdminDashboard() {
                 alertMsg={(alerts?.transfersToValidate ?? 0) > 0 ? `${alerts?.transfersToValidate} transferencia${(alerts?.transfersToValidate ?? 0) > 1 ? "s" : ""} por validar` : undefined}
               >
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-xl font-black text-violet-300">{kpis?.leadsNew ?? 0}</p>
-                    <p className="text-[10px] text-white/40">Leads nuevos</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-xl font-black text-violet-600 dark:text-violet-300">{kpis?.leadsNew ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Leads nuevos</p>
                   </div>
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-xl font-black text-amber-300">{kpis?.quotesEnviados ?? 0}</p>
-                    <p className="text-[10px] text-white/40">Pres. activos</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-xl font-black text-amber-600 dark:text-amber-300">{kpis?.quotesEnviados ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Pres. activos</p>
                   </div>
                   <div className="bg-white/5 rounded-lg p-2 text-center col-span-2">
-                    <p className="text-base font-black text-emerald-300">{fmtDec(kpis?.quotesPendingAmount ?? 0)}</p>
-                    <p className="text-[10px] text-white/40">Cartera pendiente</p>
+                    <p className="text-base font-black text-emerald-600 dark:text-emerald-300">{fmtDec(kpis?.quotesPendingAmount ?? 0)}</p>
+                    <p className="text-[10px] text-muted-foreground">Cartera pendiente</p>
                   </div>
                 </div>
               </ChannelCard>
@@ -709,17 +709,17 @@ export default function AdminDashboard() {
                 alertMsg={(kpis?.bookingsPending ?? 0) > 0 ? `${kpis?.bookingsPending} reserva${(kpis?.bookingsPending ?? 0) > 1 ? "s" : ""} pendiente${(kpis?.bookingsPending ?? 0) > 1 ? "s" : ""} de pago` : undefined}
               >
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-xl font-black text-emerald-300">{kpis?.reservationsPaidThisMonth ?? kpis?.bookingsConfirmed ?? 0}</p>
-                    <p className="text-[10px] text-white/40">Pagadas (mes)</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-300">{kpis?.reservationsPaidThisMonth ?? kpis?.bookingsConfirmed ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Pagadas (mes)</p>
                   </div>
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-xl font-black text-amber-300">{kpis?.bookingsPending ?? 0}</p>
-                    <p className="text-[10px] text-white/40">Pendientes</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-xl font-black text-amber-600 dark:text-amber-300">{kpis?.bookingsPending ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Pendientes</p>
                   </div>
                   <div className="bg-white/5 rounded-lg p-2 text-center col-span-2">
-                    <p className="text-base font-black text-blue-300">{kpis?.bookingsThisMonth ?? 0} actividades</p>
-                    <p className="text-[10px] text-white/40">Total este mes</p>
+                    <p className="text-base font-black text-blue-600 dark:text-blue-300">{kpis?.bookingsThisMonth ?? 0} actividades</p>
+                    <p className="text-[10px] text-muted-foreground">Total este mes</p>
                   </div>
                 </div>
               </ChannelCard>
@@ -739,14 +739,14 @@ export default function AdminDashboard() {
                       <span className="text-[10px] text-emerald-400/60 ml-auto">{timeAgo(new Date((tpvSession as { openedAt?: number }).openedAt ?? Date.now()))}</span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
-                      <span className="w-2 h-2 bg-white/20 rounded-full shrink-0" />
-                      <span className="text-xs text-white/40">Sin sesión activa</span>
+                    <div className="flex items-center gap-2 bg-muted/40 rounded-lg px-3 py-2">
+                      <span className="w-2 h-2 bg-muted-foreground/30 rounded-full shrink-0" />
+                      <span className="text-xs text-muted-foreground">Sin sesión activa</span>
                     </div>
                   )}
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-xs text-white/40 mb-0.5">Acceder al punto de venta</p>
-                    <p className="text-sm font-bold text-emerald-400">→ Abrir TPV</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-xs text-muted-foreground mb-0.5">Acceder al punto de venta</p>
+                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">→ Abrir TPV</p>
                   </div>
                 </div>
               </ChannelCard>
@@ -760,21 +760,21 @@ export default function AdminDashboard() {
                 alertMsg={ticketingIncidencias > 0 ? `${ticketingIncidencias} cupón${ticketingIncidencias > 1 ? "es" : ""} con incidencia` : undefined}
               >
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-xl font-black text-orange-300">{ticketingPendientes}</p>
-                    <p className="text-[10px] text-white/40">Pendientes</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-xl font-black text-orange-600 dark:text-orange-300">{ticketingPendientes}</p>
+                    <p className="text-[10px] text-muted-foreground">Pendientes</p>
                   </div>
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-xl font-black text-emerald-300">{ticketingStats?.convertidos ?? 0}</p>
-                    <p className="text-[10px] text-white/40">Convertidos</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-300">{ticketingStats?.convertidos ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Convertidos</p>
                   </div>
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-base font-black text-blue-300">{ticketingStats?.conversionRate ?? 0}%</p>
-                    <p className="text-[10px] text-white/40">Conversión</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-base font-black text-blue-600 dark:text-blue-300">{ticketingStats?.conversionRate ?? 0}%</p>
+                    <p className="text-[10px] text-muted-foreground">Conversión</p>
                   </div>
-                  <div className="bg-white/5 rounded-lg p-2 text-center">
-                    <p className="text-base font-black text-rose-300">{ticketingIncidencias}</p>
-                    <p className="text-[10px] text-white/40">Incidencias</p>
+                  <div className="bg-muted/40 rounded-lg p-2 text-center">
+                    <p className="text-base font-black text-rose-600 dark:text-rose-300">{ticketingIncidencias}</p>
+                    <p className="text-[10px] text-muted-foreground">Incidencias</p>
                   </div>
                 </div>
               </ChannelCard>
@@ -795,21 +795,21 @@ export default function AdminDashboard() {
                 badge={todayActivities?.length}
                 action={
                   <Link href="/admin/operaciones/actividades">
-                    <button className="text-[10px] text-white/30 hover:text-white/60 flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
+                    <button className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
                   </Link>
                 }
               >
                 {activitiesLoading ? (
                   <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-11 bg-white/5 rounded-lg animate-pulse" />)}</div>
                 ) : (todayActivities?.length ?? 0) === 0 ? (
-                  <div className="text-center py-6 text-white/25">
+                  <div className="text-center py-6 text-muted-foreground/50">
                     <Calendar className="w-7 h-7 mx-auto mb-2 opacity-40" />
                     <p className="text-xs">No hay actividades programadas para hoy</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
                     {todayActivities?.map(b => (
-                      <div key={b.id} className="flex items-center gap-3 bg-white/[0.04] hover:bg-white/[0.06] rounded-lg px-3 py-2.5 transition-colors">
+                      <div key={b.id} className="flex items-center gap-3 bg-muted/40 hover:bg-muted/60 rounded-lg px-3 py-2.5 transition-colors">
                         <div className="w-11 text-center shrink-0">
                           {b.monitorName ? (
                             <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-500/40 flex items-center justify-center mx-auto">
@@ -843,15 +843,15 @@ export default function AdminDashboard() {
                   iconColor="text-white/40"
                   action={
                     <Link href="/admin/operaciones/reservas">
-                      <button className="text-[10px] text-white/30 hover:text-white/60 flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
+                      <button className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
                     </Link>
                   }
                 >
                   <div className="space-y-2">
                     {overview?.upcomingBookings?.map(b => (
-                      <div key={b.id} className="flex items-center gap-3 bg-white/[0.03] rounded-lg px-3 py-2.5">
+                      <div key={b.id} className="flex items-center gap-3 bg-muted/30 rounded-lg px-3 py-2.5">
                         <div className="w-14 text-center shrink-0">
-                          <p className="text-[10px] font-semibold text-white/50">{fmtDate(b.scheduledDate)}</p>
+                          <p className="text-[10px] font-semibold text-muted-foreground">{fmtDate(b.scheduledDate)}</p>
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-white truncate">{b.experienceName}</p>
@@ -877,7 +877,7 @@ export default function AdminDashboard() {
                 }
               >
                 {cancellacionesPendientes === 0 ? (
-                  <div className="text-center py-4 text-white/25">
+                  <div className="text-center py-4 text-muted-foreground/50">
                     <CheckCircle className="w-6 h-6 mx-auto mb-1.5 text-emerald-500/40" />
                     <p className="text-xs">Sin anulaciones pendientes</p>
                   </div>
@@ -886,13 +886,13 @@ export default function AdminDashboard() {
                     <div className="space-y-2 mb-3">
                       {cancellationsData?.rows?.slice(0, 3).map((req: { id: number; fullName: string; reason: string; operationalStatus: string; createdAt: Date }) => (
                         <Link key={req.id} href="/admin/operaciones/anulaciones">
-                          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] transition-colors cursor-pointer">
+                          <div className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors cursor-pointer">
                             <div className="w-7 h-7 rounded-full bg-rose-500/15 flex items-center justify-center shrink-0">
                               <XCircle className="w-3.5 h-3.5 text-rose-400" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-white truncate">{req.fullName}</p>
-                              <p className="text-[10px] text-white/40">{req.reason} · {timeAgo(req.createdAt)}</p>
+                              <p className="text-[10px] text-muted-foreground">{req.reason} · {timeAgo(req.createdAt)}</p>
                             </div>
                             <StatusBadge status={req.operationalStatus} />
                           </div>
@@ -902,15 +902,15 @@ export default function AdminDashboard() {
                     <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/5">
                       <div className="text-center">
                         <p className="text-base font-black text-amber-300">{cancellationsData?.kpis?.recibidas ?? 0}</p>
-                        <p className="text-[10px] text-white/30">Recibidas</p>
+                        <p className="text-[10px] text-muted-foreground">Recibidas</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-base font-black text-blue-300">{cancellationsData?.kpis?.enRevision ?? 0}</p>
-                        <p className="text-[10px] text-white/30">En revisión</p>
+                        <p className="text-base font-black text-blue-600 dark:text-blue-300">{cancellationsData?.kpis?.enRevision ?? 0}</p>
+                        <p className="text-[10px] text-muted-foreground">En revisión</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-base font-black text-rose-300">{cancellationsData?.kpis?.incidencias ?? 0}</p>
-                        <p className="text-[10px] text-white/30">Incidencias</p>
+                        <p className="text-base font-black text-rose-600 dark:text-rose-300">{cancellationsData?.kpis?.incidencias ?? 0}</p>
+                        <p className="text-[10px] text-muted-foreground">Incidencias</p>
                       </div>
                     </div>
                   </>
@@ -928,18 +928,18 @@ export default function AdminDashboard() {
                     { label: "Añadir Experiencia",   desc: "Gestionar catálogo de productos", href: "/admin/productos/experiencias", icon: ShoppingBag,  bg: "bg-violet-500/8 border-violet-500/20 hover:bg-violet-500/12", ic: "text-violet-400" },
                     { label: "CRM Comercial",        desc: "Leads, presupuestos y facturas",  href: "/admin/crm",                   icon: Users,        bg: "bg-amber-500/8 border-amber-500/20 hover:bg-amber-500/12",    ic: "text-amber-400" },
                     { label: "Contabilidad",         desc: "Facturas y transacciones",        href: "/admin/contabilidad",          icon: Banknote,     bg: "bg-rose-500/8 border-rose-500/20 hover:bg-rose-500/12",       ic: "text-rose-400" },
-                    { label: "Ver sitio web",        desc: "Abrir la web pública",            href: "/",                            icon: ExternalLink, bg: "bg-white/5 border-white/10 hover:bg-white/8",                 ic: "text-white/50" },
+                    { label: "Ver sitio web",        desc: "Abrir la web pública",            href: "/",                            icon: ExternalLink, bg: "bg-muted/50 border-border/50 hover:bg-muted",                 ic: "text-muted-foreground" },
                   ].map(a => (
                     <Link key={a.href} href={a.href}>
                       <div className={cn("group flex items-center gap-3 p-3 rounded-xl border transition-all cursor-pointer", a.bg)}>
-                        <div className="p-2 rounded-lg bg-white/5 shrink-0">
+                        <div className="p-2 rounded-lg bg-muted/50 shrink-0">
                           <a.icon className={cn("w-4 h-4", a.ic)} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-white/90 group-hover:text-white transition-colors truncate">{a.label}</p>
-                          <p className="text-[10px] text-white/35 truncate">{a.desc}</p>
+                          <p className="text-xs font-semibold text-foreground/90 group-hover:text-foreground transition-colors truncate">{a.label}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{a.desc}</p>
                         </div>
-                        <ArrowRight className="w-3 h-3 text-white/20 group-hover:text-white/50 transition-colors shrink-0" />
+                        <ArrowRight className="w-3 h-3 text-foreground/20 group-hover:text-foreground/50 transition-colors shrink-0" />
                       </div>
                     </Link>
                   ))}
@@ -953,7 +953,7 @@ export default function AdminDashboard() {
               {/* Embudo de ventas */}
               <Panel title="Embudo de ventas" icon={BarChart3} iconColor="text-violet-400">
                 {isLoading ? (
-                  <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-8 bg-white/5 rounded animate-pulse" />)}</div>
+                  <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="h-8 bg-muted/40 rounded animate-pulse" />)}</div>
                 ) : (
                   <div className="space-y-3">
                     {[
@@ -969,13 +969,13 @@ export default function AdminDashboard() {
                         <Link key={step.label} href={step.href}>
                           <div className="group cursor-pointer">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] text-white/50 group-hover:text-white/80 transition-colors">{step.label}</span>
+                              <span className="text-[10px] text-muted-foreground group-hover:text-foreground transition-colors">{step.label}</span>
                               <div className="flex items-center gap-2">
-                                {convRate !== null && <span className="text-[10px] text-white/20">{convRate}%</span>}
-                                <span className="text-xs font-bold text-white">{step.value}</span>
+                                {convRate !== null && <span className="text-[10px] text-muted-foreground/50">{convRate}%</span>}
+                                <span className="text-xs font-bold text-foreground">{step.value}</span>
                               </div>
                             </div>
-                            <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <div className={cn("h-full rounded-full transition-all", step.color)} style={{ width: `${pct}%` }} />
                             </div>
                           </div>
@@ -984,18 +984,18 @@ export default function AdminDashboard() {
                     })}
                   </div>
                 )}
-                <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
-                  <div className="text-center bg-white/[0.03] rounded-lg p-2">
+                <div className="mt-4 pt-3 border-t border-border/30 grid grid-cols-2 gap-2">
+                  <div className="text-center bg-muted/30 rounded-lg p-2">
                     <p className="text-xs font-black text-emerald-300">
                       {funnel?.leads ? Math.round((funnel.reservations / funnel.leads) * 100) : 0}%
                     </p>
-                    <p className="text-[10px] text-white/30">Lead→Reserva</p>
+                    <p className="text-[10px] text-muted-foreground">Lead→Reserva</p>
                   </div>
-                  <div className="text-center bg-white/[0.03] rounded-lg p-2">
+                  <div className="text-center bg-muted/30 rounded-lg p-2">
                     <p className="text-xs font-black text-blue-300">
                       {funnel?.quotes ? Math.round((funnel.reservations / funnel.quotes) * 100) : 0}%
                     </p>
-                    <p className="text-[10px] text-white/30">Pres.→Reserva</p>
+                    <p className="text-[10px] text-muted-foreground">Pres.→Reserva</p>
                   </div>
                 </div>
               </Panel>
@@ -1005,22 +1005,22 @@ export default function AdminDashboard() {
                 {isLoading ? (
                   <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 bg-white/5 rounded animate-pulse" />)}</div>
                 ) : (overview?.topExperiences?.length ?? 0) === 0 ? (
-                  <p className="text-xs text-white/30 text-center py-4">Sin actividades este mes</p>
+                  <p className="text-xs text-muted-foreground/50 text-center py-4">Sin actividades este mes</p>
                 ) : (
                   <div className="space-y-2">
                     {overview?.topExperiences?.map((exp, i) => (
-                      <div key={exp.experienceId} className="flex items-center gap-3 bg-white/[0.03] rounded-lg px-3 py-2.5">
+                      <div key={exp.experienceId} className="flex items-center gap-3 bg-muted/30 rounded-lg px-3 py-2.5">
                         <span className={cn(
                           "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0",
-                          i === 0 ? "bg-yellow-500/20 text-yellow-400" : i === 1 ? "bg-slate-400/20 text-slate-300" : i === 2 ? "bg-orange-700/20 text-orange-600" : "bg-white/5 text-white/30"
+                          i === 0 ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400" : i === 1 ? "bg-slate-400/20 text-slate-500 dark:text-slate-300" : i === 2 ? "bg-orange-700/20 text-orange-600" : "bg-muted/50 text-muted-foreground"
                         )}>
                           {i + 1}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-white truncate">{exp.experienceName}</p>
-                          <p className="text-[10px] text-white/40">{exp.count} reserva{exp.count !== 1 ? "s" : ""}</p>
+                          <p className="text-xs font-semibold text-foreground truncate">{exp.experienceName}</p>
+                          <p className="text-[10px] text-muted-foreground">{exp.count} reserva{exp.count !== 1 ? "s" : ""}</p>
                         </div>
-                        <p className="text-xs font-bold text-emerald-400 shrink-0">{fmt(exp.revenue)}</p>
+                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{fmt(exp.revenue)}</p>
                       </div>
                     ))}
                   </div>
@@ -1035,27 +1035,27 @@ export default function AdminDashboard() {
                 badge={liquidacionesPendientes}
                 action={
                   <Link href="/admin/proveedores">
-                    <button className="text-[10px] text-white/30 hover:text-white/60 flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
+                    <button className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors">Ver todas <ExternalLink className="w-3 h-3" /></button>
                   </Link>
                 }
               >
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   <div className="bg-white/[0.03] rounded-lg p-2 text-center">
-                    <p className="text-xl font-black text-orange-300">{liquidacionesPendientes}</p>
-                    <p className="text-[10px] text-white/30">Pendientes abono</p>
+                    <p className="text-xl font-black text-orange-600 dark:text-orange-300">{liquidacionesPendientes}</p>
+                    <p className="text-[10px] text-muted-foreground">Pendientes abono</p>
                   </div>
                   <div className="bg-white/[0.03] rounded-lg p-2 text-center">
                     <p className="text-sm font-black text-rose-300">{fmtDec(suppliersKpis?.pendingAmount ?? 0)}</p>
-                    <p className="text-[10px] text-white/30">Importe a pagar</p>
+                    <p className="text-[10px] text-muted-foreground">Importe a pagar</p>
                   </div>
                 </div>
                 {suppliersKpis?.ranking && suppliersKpis.ranking.length > 0 && (
                   <div className="space-y-1.5">
-                    <p className="text-[10px] text-white/30 uppercase tracking-wide font-semibold mb-1.5">Top proveedores</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold mb-1.5">Top proveedores</p>
                     {suppliersKpis.ranking.slice(0, 3).map((s: { supplierId: number; name: string; gross: number }) => (
-                      <div key={s.supplierId} className="flex items-center gap-2 bg-white/[0.03] rounded-lg px-2.5 py-1.5">
+                      <div key={s.supplierId} className="flex items-center gap-2 bg-muted/30 rounded-lg px-2.5 py-1.5">
                         <Building2 className="w-3 h-3 text-orange-400 shrink-0" />
-                        <span className="text-[10px] text-white/70 flex-1 truncate">{s.name}</span>
+                        <span className="text-[10px] text-foreground/70 flex-1 truncate">{s.name}</span>
                         <span className="text-[10px] font-bold text-emerald-400">{fmtDec(s.gross)}</span>
                       </div>
                     ))}
@@ -1076,17 +1076,17 @@ export default function AdminDashboard() {
               <Panel
                 title="Actividad reciente"
                 icon={Activity}
-                iconColor="text-white/40"
+                iconColor="text-muted-foreground"
                 action={
                   <Link href="/admin/crm">
-                    <button className="text-[10px] text-white/30 hover:text-white/60 flex items-center gap-1 transition-colors">Ver todo <ExternalLink className="w-3 h-3" /></button>
+                    <button className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1 transition-colors">Ver todo <ExternalLink className="w-3 h-3" /></button>
                   </Link>
                 }
               >
                 {isLoading ? (
-                  <div className="space-y-3">{[1,2,3,4,5].map(i => <div key={i} className="h-9 bg-white/5 rounded animate-pulse" />)}</div>
+                  <div className="space-y-3">{[1,2,3,4,5].map(i => <div key={i} className="h-9 bg-muted/40 rounded animate-pulse" />)}</div>
                 ) : (overview?.recentActivity?.length ?? 0) === 0 ? (
-                  <p className="text-xs text-white/30 text-center py-4">Sin actividad reciente</p>
+                  <p className="text-xs text-muted-foreground/50 text-center py-4">Sin actividad reciente</p>
                 ) : (
                   <div className="space-y-2.5">
                     {overview?.recentActivity
@@ -1095,10 +1095,10 @@ export default function AdminDashboard() {
                       <div key={a.id} className="flex items-start gap-2.5">
                         <ActivityIcon type={a.entityType} />
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs text-white/80 leading-snug">{activityLabel(a.action, a.details)}</p>
-                          {a.actorName && <p className="text-[10px] text-white/30">{a.actorName}</p>}
+                          <p className="text-xs text-foreground/80 leading-snug">{activityLabel(a.action, a.details)}</p>
+                          {a.actorName && <p className="text-[10px] text-muted-foreground">{a.actorName}</p>}
                         </div>
-                        <span className="text-[10px] text-white/25 shrink-0 whitespace-nowrap">{timeAgo(a.createdAt)}</span>
+                        <span className="text-[10px] text-muted-foreground/60 shrink-0 whitespace-nowrap">{timeAgo(a.createdAt)}</span>
                       </div>
                     ))}
                   </div>
