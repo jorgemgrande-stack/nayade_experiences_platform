@@ -243,6 +243,50 @@
   ::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.18 235); }
 }
 
+/* ─── Dark mode: scrollbar adaptado ─────────────────────────────────────────── */
+.dark ::-webkit-scrollbar-track { background: oklch(0.14 0.025 240); }
+.dark ::-webkit-scrollbar-thumb { background: oklch(0.30 0.04 240); border-radius: 3px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.40 0.06 240); }
+
+/* ─── Dark mode: overrides para colores hardcodeados en componentes admin ──── */
+/* bg-white y variantes de superficie */
+.dark .bg-white { background-color: var(--card) !important; }
+.dark .bg-gray-50 { background-color: oklch(0.13 0.02 240) !important; }
+.dark .bg-gray-100 { background-color: oklch(0.16 0.025 240) !important; }
+.dark .bg-gray-200 { background-color: oklch(0.20 0.03 240) !important; }
+.dark .bg-slate-50 { background-color: oklch(0.13 0.02 240) !important; }
+.dark .bg-slate-100 { background-color: oklch(0.16 0.025 240) !important; }
+
+/* Textos grises en dark — garantizar legibilidad */
+.dark .text-gray-900 { color: oklch(0.95 0.005 240) !important; }
+.dark .text-gray-800 { color: oklch(0.90 0.007 240) !important; }
+.dark .text-gray-700 { color: oklch(0.82 0.010 240) !important; }
+.dark .text-gray-600 { color: oklch(0.70 0.012 240) !important; }
+.dark .text-gray-500 { color: oklch(0.60 0.015 240) !important; }
+.dark .text-gray-400 { color: oklch(0.55 0.015 240) !important; }
+.dark .text-slate-900 { color: oklch(0.95 0.005 240) !important; }
+.dark .text-slate-800 { color: oklch(0.90 0.007 240) !important; }
+.dark .text-slate-700 { color: oklch(0.82 0.010 240) !important; }
+.dark .text-slate-600 { color: oklch(0.70 0.012 240) !important; }
+.dark .text-slate-500 { color: oklch(0.60 0.015 240) !important; }
+
+/* Bordes en dark */
+.dark .border-gray-100 { border-color: oklch(0.22 0.03 240) !important; }
+.dark .border-gray-200 { border-color: oklch(0.24 0.03 240) !important; }
+.dark .border-gray-300 { border-color: oklch(0.28 0.04 240) !important; }
+.dark .border-slate-100 { border-color: oklch(0.22 0.03 240) !important; }
+.dark .border-slate-200 { border-color: oklch(0.24 0.03 240) !important; }
+
+/* Divisores */
+.dark .divide-gray-100 > * + * { border-color: oklch(0.22 0.03 240) !important; }
+.dark .divide-gray-200 > * + * { border-color: oklch(0.24 0.03 240) !important; }
+
+/* glass-card en dark */
+.dark .glass-card {
+  background: oklch(0.14 0.025 240 / 0.90) !important;
+  border-color: oklch(0.30 0.04 240 / 0.50) !important;
+}
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.

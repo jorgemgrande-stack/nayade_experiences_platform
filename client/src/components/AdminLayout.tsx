@@ -5,6 +5,7 @@ import {
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
+  Sun, Moon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useLocation as useWouterLocation } from "wouter";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const navItems = [
   {
@@ -191,6 +193,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [location, navigate] = useWouterLocation();
   const { user, logout, loading, isAuthenticated } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   const userRole = (user as any)?.role ?? "user";
   const roleMeta = ROLE_META[userRole] ?? ROLE_META.user;
@@ -458,6 +461,19 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           <div className="ml-auto flex items-center gap-3">
             <Button variant="ghost" size="icon" className="w-9 h-9">
               <Search className="w-4 h-4" />
+            </Button>
+            {/* Toggle Light / Dark */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="w-9 h-9"
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+            >
+              {theme === "dark"
+                ? <Sun className="w-4 h-4 text-amber-400" />
+                : <Moon className="w-4 h-4" />
+              }
             </Button>
             <Popover open={notifOpen} onOpenChange={setNotifOpen}>
               <PopoverTrigger asChild>
