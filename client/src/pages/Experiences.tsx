@@ -71,56 +71,76 @@ export default function Experiences() {
 
       {/* Filters */}
       <section className="sticky top-20 z-30 bg-white/95 backdrop-blur-md border-b border-border/50 shadow-sm">
-        <div className="container py-4">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-            {/* Search */}
-            <div className="relative w-full md:w-64 shrink-0" style={{minWidth: '200px'}}>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder="Buscar experiencias..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 w-full"
-                style={{pointerEvents: 'auto', position: 'relative', zIndex: 1}}
-              />
-            </div>
+        <div className="container py-3">
+          {/* Search */}
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Buscar experiencias..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 w-full h-9 text-sm"
+              style={{ pointerEvents: 'auto', position: 'relative', zIndex: 1 }}
+            />
+          </div>
 
-            {/* Category Filter */}
-            <div className="flex items-center gap-2 flex-wrap">
+          {/* Categories + Difficulty — scroll horizontal en móvil, wrap en desktop */}
+          <div
+            className="md:flex md:flex-wrap md:items-center md:gap-2"
+            style={{
+              display: 'flex',
+              flexWrap: 'nowrap',
+              overflowX: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              gap: '8px',
+              alignItems: 'center',
+              paddingBottom: '4px',
+              marginLeft: '-16px',
+              marginRight: '-16px',
+              paddingLeft: '16px',
+              paddingRight: '16px',
+            }}
+          >
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={cn(
+                "transition-all font-medium",
+                !selectedCategory
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              )}
+              style={{ flexShrink: 0, padding: '6px 12px', borderRadius: '999px', fontSize: '12px', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer' }}
+            >
+              Todas
+            </button>
+            {categories.map((cat) => (
               <button
-                onClick={() => setSelectedCategory(null)}
+                key={cat.id}
+                onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
                 className={cn(
-                  "px-4 py-2 rounded-full text-sm font-medium transition-all",
-                  !selectedCategory
+                  "transition-all font-medium",
+                  selectedCategory === cat.id
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
                 )}
+                style={{ flexShrink: 0, padding: '6px 12px', borderRadius: '999px', fontSize: '12px', whiteSpace: 'nowrap', border: 'none', cursor: 'pointer' }}
               >
-                Todas
+                {(cat as any).iconName} {cat.name}
               </button>
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
-                  className={cn(
-                    "px-4 py-2 rounded-full text-sm font-medium transition-all",
-                    selectedCategory === cat.id
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  )}
-                >
-                  {(cat as any).iconName} {cat.name}
-                </button>
-              ))}
-            </div>
+            ))}
 
-            {/* Difficulty Filter */}
-            <div className="flex items-center gap-2">
-              <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
+            {/* Separator */}
+            <div style={{ flexShrink: 0, width: '1px', height: '20px', background: '#e5e7eb', margin: '0 4px' }} />
+
+            {/* Difficulty inline */}
+            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" style={{ flexShrink: 0 } as any} />
               <select
                 value={selectedDifficulty ?? ""}
                 onChange={(e) => setSelectedDifficulty(e.target.value || null)}
-                className="text-sm border border-border rounded-lg px-3 py-2 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                style={{ flexShrink: 0, fontSize: '12px', border: '1px solid #d1d5db', borderRadius: '999px', padding: '6px 10px', background: 'white', whiteSpace: 'nowrap', cursor: 'pointer' }}
               >
                 <option value="">Dificultad</option>
                 <option value="facil">Fácil</option>

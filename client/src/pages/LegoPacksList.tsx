@@ -130,47 +130,45 @@ export default function LegoPacksList() {
 
       {/* ── Barra de filtros sticky ───────────────────────────────────────────── */}
       <section className="sticky top-20 z-30 bg-white/95 backdrop-blur-md border-b border-border/50 shadow-sm">
-        <div className="container py-4">
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-            {/* Search */}
-            <div className="relative w-full md:w-64 shrink-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder={`Buscar ${meta.breadcrumb.toLowerCase()}...`}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 w-full"
-              />
-            </div>
+        <div className="container py-3">
+          {/* Search — always full width */}
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder={`Buscar ${meta.breadcrumb.toLowerCase()}...`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 w-full h-9 text-sm"
+            />
+          </div>
 
-            {/* Badge filter pills */}
-            <div className="flex items-center gap-2 flex-wrap">
+          {/* Badge pills — single scrollable row on mobile */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap">
+            <button
+              onClick={() => setSelectedBadge(null)}
+              className={cn(
+                "shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap",
+                !selectedBadge
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              )}
+            >
+              Todos
+            </button>
+            {meta.badgeOptions.map((badge) => (
               <button
-                onClick={() => setSelectedBadge(null)}
+                key={badge}
+                onClick={() => setSelectedBadge(selectedBadge === badge ? null : badge)}
                 className={cn(
-                  "px-4 py-2 rounded-full text-sm font-medium transition-all",
-                  !selectedBadge
+                  "shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap",
+                  selectedBadge === badge
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
                 )}
               >
-                Todos
+                {badge}
               </button>
-              {meta.badgeOptions.map((badge) => (
-                <button
-                  key={badge}
-                  onClick={() => setSelectedBadge(selectedBadge === badge ? null : badge)}
-                  className={cn(
-                    "px-4 py-2 rounded-full text-sm font-medium transition-all",
-                    selectedBadge === badge
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                  )}
-                >
-                  {badge}
-                </button>
-              ))}
-            </div>
+            ))}
           </div>
         </div>
       </section>
