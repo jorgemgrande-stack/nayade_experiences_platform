@@ -70,11 +70,15 @@ function deriveKey(merchantOrder: string): Buffer {
     keyBuffer = Buffer.concat([k, k.subarray(0, 8)]);
   }
 
-  console.log(`[Redsys] deriveKey: rawKey=${rawKey.length}B → keyBuffer=${keyBuffer.length}B`);
+  console.log(`[Redsys] deriveKey: rawKey=${rawKey.length}B keyBuffer=${keyBuffer.length}B order="${merchantOrder}"`);
 
-  // Padding del merchantOrder a 8 bytes con ceros
-  const orderBuffer = Buffer.alloc(8, 0);
-  Buffer.from(merchantOrder, "utf8").copy(orderBuffer);
+  // Padding del merchantOrder al múltiplo de 8 más próximo (como hace PHP con OPENSSL_ZERO_PADDING).
+  // Redsys usa la salida completa de 3DES como clave HMAC — truncar a 8 bytes produce firma incorrecta
+  // para cualquier merchantOrder de más de 8 caracteres (nuestros pedidos son de 10).
+  const orderRaw = Buffer.from(merchantOrder, "utf8");
+  const orderLen = Math.ceil(orderRaw.length / 8) * 8; // ceil a múltiplo de 8
+  const orderBuffer = Buffer.alloc(orderLen, 0);
+  orderRaw.copy(orderBuffer);
 
   // Cifrado 3DES en modo CBC con IV de ceros
   const iv = Buffer.alloc(8, 0);
