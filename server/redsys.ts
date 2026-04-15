@@ -46,7 +46,15 @@ export function getMerchantTerminal(): string {
  */
 function deriveKey(merchantOrder: string): Buffer {
   const keyBase64 = getMerchantKey().trim();
-  const keyBuffer = Buffer.from(keyBase64, "base64");
+  const rawKey = Buffer.from(keyBase64, "base64");
+
+  // Node.js des-ede3-cbc requiere exactamente 24 bytes.
+  // La clave SHA-256 de Redsys tiene 32 bytes; la librería PHP oficial de Redsys
+  // usa OpenSSL que trunca silenciosamente al tamaño requerido (24 bytes).
+  // Replicamos ese comportamiento: tomamos los primeros 24 bytes si la clave es mayor,
+  // o la completamos con ceros si es menor (ej. claves de 16 bytes de algunos entornos).
+  const keyBuffer = Buffer.alloc(24, 0);
+  rawKey.copy(keyBuffer, 0, 0, Math.min(rawKey.length, 24));
 
   // Padding del merchantOrder a 8 bytes con ceros
   const orderBuffer = Buffer.alloc(8, 0);
