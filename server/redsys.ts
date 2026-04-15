@@ -48,13 +48,29 @@ function deriveKey(merchantOrder: string): Buffer {
   const keyBase64 = getMerchantKey().trim();
   const rawKey = Buffer.from(keyBase64, "base64");
 
-  // Node.js des-ede3-cbc requiere exactamente 24 bytes.
-  // La clave SHA-256 de Redsys tiene 32 bytes; la librería PHP oficial de Redsys
-  // usa OpenSSL que trunca silenciosamente al tamaño requerido (24 bytes).
-  // Replicamos ese comportamiento: tomamos los primeros 24 bytes si la clave es mayor,
-  // o la completamos con ceros si es menor (ej. claves de 16 bytes de algunos entornos).
-  const keyBuffer = Buffer.alloc(24, 0);
-  rawKey.copy(keyBuffer, 0, 0, Math.min(rawKey.length, 24));
+  // Normalizar la clave a 24 bytes para des-ede3-cbc, replicando exactamente
+  // el comportamiento de OpenSSL que usa la librería PHP oficial de Redsys:
+  //
+  //  ≥24 bytes → usar primeros 24 bytes (OpenSSL trunca silenciosamente)
+  //  16 bytes  → extender a 24 repitiendo K1 como K3: [K1|K2|K1]
+  //              (comportamiento 2-key 3DES de OpenSSL con DES-EDE3)
+  //  <16 bytes → padding con ceros hasta 16, luego extender con K1 (fallback)
+  let keyBuffer: Buffer;
+  if (rawKey.length >= 24) {
+    keyBuffer = Buffer.from(rawKey.subarray(0, 24));
+  } else if (rawKey.length >= 8) {
+    // K1 = primeros 8 bytes, K2 = siguientes 8 bytes (o ceros), K3 = K1
+    const k = Buffer.alloc(16, 0);
+    rawKey.copy(k, 0, 0, Math.min(rawKey.length, 16));
+    keyBuffer = Buffer.concat([k, k.subarray(0, 8)]); // [K1|K2|K1]
+  } else {
+    // Clave inválida — padding de emergencia, buildRedsysForm ya ha validado
+    const k = Buffer.alloc(16, 0);
+    rawKey.copy(k);
+    keyBuffer = Buffer.concat([k, k.subarray(0, 8)]);
+  }
+
+  console.log(`[Redsys] deriveKey: rawKey=${rawKey.length}B → keyBuffer=${keyBuffer.length}B`);
 
   // Padding del merchantOrder a 8 bytes con ceros
   const orderBuffer = Buffer.alloc(8, 0);
@@ -115,6 +131,10 @@ export interface RedsysFormData {
 export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
   const merchantCode = getMerchantCode();
   const terminal = getMerchantTerminal();
+
+  // ── Diagnóstico de clave (visible en Railway Deploy Logs) ─────────────────────
+  const rawKeyBytes = Buffer.from(getMerchantKey().trim(), "base64").length;
+  console.log(`[Redsys] buildRedsysForm START — keyBytes=${rawKeyBytes} merchantCode=${merchantCode} terminal=${terminal} amount=${params.amount} order=${params.merchantOrder}`);
 
   // ── Validación estricta de parámetros antes de firmar ────────────────────────
   if (!merchantCode) {
