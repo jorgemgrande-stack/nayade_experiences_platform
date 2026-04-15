@@ -210,6 +210,23 @@ export async function updateBooking(id: number, data: Partial<InsertRestaurantBo
   return db.update(restaurantBookings).set(data).where(eq(restaurantBookings.id, id));
 }
 
+/**
+ * Actualización atómica del pago de una reserva de restaurante.
+ * Solo actualiza si el estado actual es "pending" — protección contra IPNs duplicadas.
+ * Devuelve el número de filas afectadas.
+ */
+export async function updateBookingPaymentAtomic(
+  id: number,
+  data: Partial<InsertRestaurantBooking>
+): Promise<{ affectedRows: number }> {
+  const db = await getDb();
+  const result = await db
+    .update(restaurantBookings)
+    .set(data)
+    .where(and(eq(restaurantBookings.id, id), eq(restaurantBookings.paymentStatus, "pending")));
+  return { affectedRows: (result[0] as { affectedRows: number }).affectedRows ?? 0 };
+}
+
 export interface BookingFilters {
   restaurantId?: number;
   date?: string;

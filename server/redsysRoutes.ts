@@ -6,14 +6,14 @@
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
-import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "./db";
+import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "./db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "./reav";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { quotes, leads, invoices, reservations } from "../drizzle/schema";
+import { quotes, leads, invoices, reservations, transactions } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
-import { getBookingByMerchantOrder, updateBooking, addBookingLog } from "./restaurantsDb";
+import { getBookingByMerchantOrder, updateBooking, updateBookingPaymentAtomic, addBookingLog } from "./restaurantsDb";
 import { notifyOwner } from "./_core/notification";
 import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
@@ -71,17 +71,18 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       return res.status(404).send("KO");
     }
 
-    // Evitar procesar dos veces la misma notificación
-    if (reservation.status === "paid") {
-      console.log("[Redsys IPN] Reserva ya marcada como pagada:", result.merchantOrder);
-      return res.send("OK");
+    // Validar importe: previene que Redsys confirme un pago con importe manipulado
+    if (result.isAuthorized && result.amount !== reservation.amountTotal) {
+      console.error(`[Redsys IPN] Importe no coincide — esperado: ${reservation.amountTotal}, recibido: ${result.amount} — merchantOrder: ${result.merchantOrder}`);
+      return res.status(400).send("KO");
     }
 
-    // Actualizar estado según resultado
+    // Actualización atómica: solo procede si la reserva sigue en pending_payment.
+    // affectedRows === 0 significa IPN duplicada o ya procesada — responder OK sin downstream.
     const newStatus = result.isAuthorized ? "paid" : "failed";
     const redsysResponseJson = JSON.stringify(result.rawData);
 
-    await updateReservationPayment(
+    const { affectedRows } = await updateReservationPayment(
       result.merchantOrder,
       newStatus,
       redsysResponseJson,
@@ -89,9 +90,17 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       result.isAuthorized ? result.amount : 0
     );
 
+    if (affectedRows === 0) {
+      console.log(`[Redsys IPN] IPN duplicada o ya procesada para ${result.merchantOrder} — respondiendo OK sin downstream`);
+      return res.send("OK");
+    }
+
     console.log(`[Redsys IPN] Reserva ${result.merchantOrder} actualizada a: ${newStatus}`);
 
-    // Enviar notificaciones según el resultado del pago
+    // Responder OK a Redsys inmediatamente antes de ejecutar downstream
+    res.send("OK");
+
+    // Procesar downstream en background — no bloquea la respuesta a Redsys
     const updatedReservation = await getReservationByMerchantOrder(result.merchantOrder);
 
     // ── Crear/actualizar cliente en el CRM cuando el pago es exitoso ──────────
@@ -149,12 +158,13 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             updatedAt: Date.now(),
           } as any).where(eq(reservations.id, updatedReservation.id));
 
-          // Update quote to paid
+          // Update quote to paid — invalidar paymentLinkToken para evitar re-uso del enlace
           await _db.update(quotes).set({
             status: "aceptado",
             paidAt: now,
             redsysOrderId: result.merchantOrder,
             invoiceNumber,
+            paymentLinkToken: null,
             updatedAt: now,
           }).where(eq(quotes.id, quote.id));
 
@@ -346,12 +356,11 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         }
       ).catch(() => {});
     }
-
-    // Redsys espera "OK" en texto plano para confirmar recepción
-    return res.send("OK");
+    // res.send("OK") ya fue enviado antes del downstream
   } catch (error) {
     console.error("[Redsys IPN] Error procesando notificación:", error);
-    return res.status(500).send("KO");
+    // Solo enviar KO si aún no se ha respondido (affectedRows === 0 ya retornó OK)
+    if (!res.headersSent) return res.status(500).send("KO");
   }
 });
 
@@ -420,6 +429,47 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
         title: `Pago confirmado: Reserva ${booking.locator}`,
         content: `${booking.guestName} — ${booking.guests} pax — ${booking.date} ${booking.time} — ${booking.depositAmount}€ pagado`,
       }).catch(() => {});
+
+      // Crear transacción contable para el depósito del restaurante (idempotente por reservationRef)
+      try {
+        const existingTx = await _db.select({ id: transactions.id })
+          .from(transactions)
+          .where(eq(transactions.reservationRef, result.merchantOrder))
+          .limit(1);
+        if (existingTx.length === 0) {
+          const txNumber = `TX-${Date.now()}-${result.merchantOrder.slice(-4)}`;
+          const depositEuros = result.amount / 100;
+          await _db.insert(transactions).values({
+            transactionNumber: txNumber,
+            type: "ingreso",
+            amount: String(depositEuros.toFixed(2)),
+            currency: "EUR",
+            paymentMethod: "tarjeta",
+            status: "completado",
+            description: `Depósito reserva restaurante ${booking.locator} — ${booking.guests} pax — ${booking.date} ${booking.time}`,
+            processedAt: new Date(),
+            clientName: booking.guestName,
+            clientEmail: booking.guestEmail,
+            clientPhone: booking.guestPhone ?? null,
+            productName: `Depósito restaurante — ${booking.guests} pax`,
+            saleChannel: "online",
+            fiscalRegime: "general_21",
+            operationStatus: "confirmada",
+            reservationRef: result.merchantOrder,
+          } as any);
+        }
+      } catch (txErr) {
+        console.error("[Redsys Restaurant IPN] Error creando transacción contable:", txErr);
+      }
+
+      await logActivity(
+        "reservation",
+        booking.id,
+        "redsys_restaurant_payment_confirmed",
+        null,
+        "Sistema (Redsys)",
+        { merchantOrder: result.merchantOrder, amount: result.amount / 100, responseCode: result.responseCode, locator: booking.locator }
+      ).catch(() => {});
       console.log(`[Redsys Restaurant IPN] Reserva ${booking.locator} marcada como pagada`);
     } else {
       await updateBooking(booking.id, {
@@ -431,6 +481,14 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
         "payment_failed",
         `Pago Redsys fallido. Código: ${result.responseCode}`,
       );
+      await logActivity(
+        "reservation",
+        booking.id,
+        "redsys_restaurant_payment_failed",
+        null,
+        "Sistema (Redsys)",
+        { merchantOrder: result.merchantOrder, responseCode: result.responseCode, locator: booking.locator }
+      ).catch(() => {});
       console.log(`[Redsys Restaurant IPN] Reserva ${booking.locator} marcada como pago fallido`);
     }
 

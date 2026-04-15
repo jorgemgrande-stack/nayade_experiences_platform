@@ -1209,6 +1209,10 @@ export const appRouter = router({
         }
 
         let totalEuros = pricePerPerson * input.people;
+        // SECURITY NOTE: Los extras no se validan contra BD porque no existe tabla de catálogo de extras.
+        // Pendiente: crear tabla `experience_extras` con precios oficiales y validar aquí.
+        // Mientras tanto, la capa de validación de importe en el IPN (result.amount !== reservation.amountTotal)
+        // actúa como segunda línea de defensa — Redsys no puede confirmar más de lo cobrado.
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
         totalEuros += extrasTotal;
         const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos
@@ -1240,9 +1244,9 @@ export const appRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: `${product.title} x${input.people} personas`,
-          notifyUrl: `${input.origin}/api/redsys/notification`,
-          okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
+          okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
           holderName: input.customerName,
         });
 
@@ -1403,9 +1407,9 @@ export const appRouter = router({
           amount: finalAmountCents,
           merchantOrder,
           productDescription: description.slice(0, 125),
-          notifyUrl: `${input.origin}/api/redsys/notification`,
-          okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
+          okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
           holderName: input.customerName,
         });
         return {

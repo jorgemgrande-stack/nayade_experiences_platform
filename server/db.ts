@@ -939,11 +939,13 @@ export async function updateReservationPayment(
   redsysResponse: string,
   redsysDsResponse: string,
   amountPaid?: number
-) {
+): Promise<{ affectedRows: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const now = Date.now();
-  await db.update(reservations).set({
+  // Condición atómica: solo actualiza si sigue en pending_payment.
+  // Garantiza idempotencia ante IPNs duplicados — si MySQL actualiza 0 filas, ya fue procesada.
+  const result = await db.update(reservations).set({
     status,
     redsysResponse,
     redsysDsResponse,
@@ -954,8 +956,11 @@ export async function updateReservationPayment(
       statusReservation: "CONFIRMADA",
       statusPayment: "PAGADO",
     } : {}),
-  }).where(eq(reservations.merchantOrder, merchantOrder));
-  return { success: true };
+  }).where(and(
+    eq(reservations.merchantOrder, merchantOrder),
+    eq(reservations.status, "pending_payment")
+  ));
+  return { affectedRows: (result[0] as { affectedRows: number }).affectedRows ?? 0 };
 }
 
 export async function getAllReservations(params: { status?: string; channel?: string; limit?: number; offset?: number }) {

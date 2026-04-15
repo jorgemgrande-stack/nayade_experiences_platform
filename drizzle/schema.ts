@@ -479,7 +479,7 @@ export const reservations = mysqlTable("reservations", {
   redsysResponse: text("redsys_response"),
   redsysDsResponse: varchar("redsys_ds_response", { length: 10 }),
   notes: text("notes"),
-  quoteId: int("quote_id"),
+  quoteId: int("quote_id").references(() => quotes.id, { onDelete: "set null" }),
   quoteSource: varchar("quoteSource", { length: 32 }), // 'presupuesto' | 'directo'
   // Invoice link
   invoiceId: int("invoiceId"),

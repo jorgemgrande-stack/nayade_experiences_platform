@@ -133,22 +133,6 @@ export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
   // Generar firma
   const signature = signParams(merchantParamsBase64, params.merchantOrder);
 
-  const rawKey = getMerchantKey();
-  const decodedKeyBytes = Buffer.from(rawKey.trim(), "base64");
-  console.log("[Redsys] buildRedsysForm →", {
-    amount: params.amount,
-    merchantOrder: params.merchantOrder,
-    merchantCode,
-    terminal,
-    url: getRedsysUrl(),
-    paramsJson: merchantParamsJson,
-    paramsBase64: merchantParamsBase64.slice(0, 40) + "...",
-    signature: signature.slice(0, 20) + "...",
-    keyRawLength: rawKey.trim().length,
-    keyDecodedBytes: decodedKeyBytes.length,
-    keyValid3DES: decodedKeyBytes.length === 16 || decodedKeyBytes.length === 24,
-  });
-
   return {
     url: getRedsysUrl(),
     Ds_MerchantParameters: merchantParamsBase64,
@@ -213,12 +197,17 @@ export function validateRedsysNotification(
 
   // Verificar firma
   const expectedSignature = signParams(Ds_MerchantParameters, merchantOrder);
+  // Normalizar base64url → base64 estándar (Redsys puede enviar base64url con - y _)
+  function normalizeBase64(s: string): string {
+    const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+    return b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  }
   // Comparación segura para evitar timing attacks
   let isValid = false;
   try {
     isValid = crypto.timingSafeEqual(
-      Buffer.from(expectedSignature),
-      Buffer.from(Ds_Signature)
+      Buffer.from(normalizeBase64(expectedSignature), "base64"),
+      Buffer.from(normalizeBase64(Ds_Signature), "base64")
     );
   } catch {
     isValid = false;
@@ -247,9 +236,9 @@ export function validateRedsysNotification(
  * Formato: NY + timestamp reducido + random (evita duplicados).
  */
 export function generateMerchantOrder(): string {
-  // Redsys exige que los primeros 4 caracteres sean numéricos
+  // Redsys: primeros 4 chars deben ser numéricos, máx 12 chars alfanuméricos
   const now = Date.now();
   const numeric = String(now).slice(-6); // 6 dígitos numéricos del timestamp
-  const rand = Math.random().toString(36).toUpperCase().slice(2, 6); // 4 alfanum
-  return `${numeric}${rand}`.slice(0, 12); // máx 12 chars, empieza por dígitos
+  const rand = crypto.randomBytes(3).toString("hex").toUpperCase().slice(0, 4); // 4 hex chars (CSPRNG)
+  return `${numeric}${rand}`; // 10 chars: 6 dígitos + 4 hex alfanumérico
 }

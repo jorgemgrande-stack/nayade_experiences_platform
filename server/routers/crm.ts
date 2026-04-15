@@ -2460,13 +2460,43 @@ export const crmRouter = router({
         const totalEuros = Number(quote.total);
         const amountCents = Math.round(totalEuros * 100);
 
+        const customerName = input.customerName ?? lead.name;
+        const customerEmail = input.customerEmail ?? lead.email ?? "";
+        const customerPhone = input.customerPhone ?? lead.phone ?? "";
+
+        // Reutilizar reserva pending_payment existente si el presupuesto ya fue convertido.
+        // Evita crear múltiples reservas huérfanas si el cliente recarga o reintenta el pago.
+        if (quote.status === "convertido_carrito" && quote.redsysOrderId) {
+          const [existingReservation] = await db
+            .select()
+            .from(reservations)
+            .where(and(eq(reservations.quoteId, quote.id), eq(reservations.status, "pending_payment")))
+            .limit(1);
+
+          if (existingReservation) {
+            const redsysForm = buildRedsysForm({
+              amount: amountCents,
+              merchantOrder: existingReservation.merchantOrder,
+              productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
+              notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
+              okUrl: `${process.env.APP_URL}/reserva/ok?order=${existingReservation.merchantOrder}`,
+              koUrl: `${process.env.APP_URL}/reserva/error?order=${existingReservation.merchantOrder}`,
+              holderName: customerName,
+            });
+            return {
+              merchantOrder: existingReservation.merchantOrder,
+              amountCents,
+              amountEuros: totalEuros,
+              quoteTitle: quote.title,
+              redsysForm,
+            };
+          }
+        }
+
         // Generar merchantOrder único para Redsys (máx 12 chars)
         const merchantOrder = generateMerchantOrder();
 
         // Guardar pre-reserva con estado pending_payment
-        const customerName = input.customerName ?? lead.name;
-        const customerEmail = input.customerEmail ?? lead.email ?? "";
-        const customerPhone = input.customerPhone ?? lead.phone ?? "";
         const reservationNumberLink = await generateReservationNum("crm:paymentLink", "system");
 
         const [resResult] = await db.insert(reservations).values({
@@ -2508,9 +2538,9 @@ export const crmRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
-          notifyUrl: `${input.origin}/api/redsys/notification`,
-          okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
+          okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
           holderName: customerName,
         });
 
