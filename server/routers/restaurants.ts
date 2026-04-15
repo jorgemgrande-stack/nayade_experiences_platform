@@ -338,7 +338,7 @@ export const restaurantsRouter = router({
         `Por ${ctx.user.name}${input.requiresPayment ? " (con pago pendiente)" : ""}`, ctx.user.id);
       // Si se requiere pago: generar formulario Redsys y enviar email al cliente
       let redsysForm = null;
-      if (input.requiresPayment && Number(rawDepositAmount) > 0 && input.origin) {
+      if (input.requiresPayment && Number(rawDepositAmount) > 0) {
         const amountCents = Math.round(Number(rawDepositAmount) * 100);
         const merchantOrder = generateMerchantOrder();
         // Guardar merchantOrder en la reserva para correlacionar el IPN
@@ -347,9 +347,9 @@ export const restaurantsRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: `Depósito reserva ${restaurant.name} ${input.date} ${input.time}`,
-          notifyUrl: `${input.origin}/api/redsys/restaurant-notification`,
-          okUrl: `${input.origin}/restaurantes/reserva-ok?locator=${locator}`,
-          koUrl: `${input.origin}/restaurantes/reserva-ko?locator=${locator}`,
+          notifyUrl: `${process.env.APP_URL}/api/redsys/restaurant-notification`,
+          okUrl: `${process.env.APP_URL}/restaurantes/reserva-ok?locator=${locator}`,
+          koUrl: `${process.env.APP_URL}/restaurantes/reserva-ko?locator=${locator}`,
           holderName: input.guestName,
         });
         // Enviar email con link de pago

@@ -108,6 +108,29 @@ export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
   const merchantCode = getMerchantCode();
   const terminal = getMerchantTerminal();
 
+  // ── Validación estricta de parámetros antes de firmar ────────────────────────
+  if (!merchantCode) {
+    throw new Error("[Redsys] REDSYS_MERCHANT_CODE no está configurado. Configura la variable de entorno.");
+  }
+  if (!getMerchantKey()) {
+    throw new Error("[Redsys] REDSYS_MERCHANT_KEY no está configurado. Configura la variable de entorno.");
+  }
+  if (!params.merchantOrder || params.merchantOrder.trim() === "") {
+    throw new Error(`[Redsys] merchantOrder está vacío. No se puede iniciar el pago.`);
+  }
+  if (!/^\d{4}/.test(params.merchantOrder)) {
+    throw new Error(`[Redsys] merchantOrder inválido: "${params.merchantOrder}". Los primeros 4 caracteres deben ser numéricos (requisito Redsys).`);
+  }
+  if (params.merchantOrder.length < 4 || params.merchantOrder.length > 12) {
+    throw new Error(`[Redsys] merchantOrder "${params.merchantOrder}" tiene ${params.merchantOrder.length} caracteres. Debe tener entre 4 y 12.`);
+  }
+  if (!/^[a-zA-Z0-9]+$/.test(params.merchantOrder)) {
+    throw new Error(`[Redsys] merchantOrder "${params.merchantOrder}" contiene caracteres no permitidos. Solo alfanumérico.`);
+  }
+  if (!params.amount || params.amount <= 0) {
+    throw new Error(`[Redsys] Importe inválido: ${params.amount}. Debe ser > 0 céntimos.`);
+  }
+
   // Construir el objeto de parámetros según especificación Redsys
   const merchantData: Record<string, string> = {
     DS_MERCHANT_AMOUNT: String(params.amount),
@@ -132,6 +155,16 @@ export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
 
   // Generar firma
   const signature = signParams(merchantParamsBase64, params.merchantOrder);
+
+  console.log("[Redsys] buildRedsysForm:", {
+    merchantOrder: params.merchantOrder,
+    amount: params.amount,
+    merchantCode,
+    terminal,
+    notifyUrl: params.notifyUrl,
+    parametersPreview: merchantParamsBase64.slice(0, 60) + "...",
+    signaturePreview: signature.slice(0, 20) + "...",
+  });
 
   return {
     url: getRedsysUrl(),

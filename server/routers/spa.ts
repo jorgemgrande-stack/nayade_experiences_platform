@@ -407,9 +407,9 @@ export const spaRouter = router({
         merchantOrder,
         productDescription: `SPA ${treatment.name} · ${input.date} ${input.time} · ${input.persons}p`,
         holderName: input.customerName,
-        notifyUrl: `${input.origin}/api/redsys/notify`,
-        okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
-        koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+        notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
+        okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
+        koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
       });
 
       return { reservationId: reservation.id, merchantOrder, redsysForm };

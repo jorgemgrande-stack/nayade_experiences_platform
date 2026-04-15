@@ -1191,6 +1191,7 @@ export const appRouter = router({
 
         // 2. Calcular el importe total en backend (nunca confiar en el frontend)
         const basePrice = parseFloat(String(product.basePrice));
+        if (!(basePrice > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este producto no tiene un precio válido (debe ser > 0)" });
         let pricePerPerson = basePrice;
 
         // Si se seleccionó una variante, usar su precio
@@ -1342,6 +1343,7 @@ export const appRouter = router({
           if (!product) throw new TRPCError({ code: "NOT_FOUND", message: `Producto ${item.productId} no encontrado` });
           if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
           const basePrice = parseFloat(String(product.basePrice));
+          if (!(basePrice > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
           let pricePerPerson = basePrice;
           if (item.variantId) {
             const variants = await getVariants(item.productId);

@@ -387,9 +387,9 @@ export const hotelRouter = router({
         amount: amountCents,
         merchantOrder,
         productDescription: `Hotel Náyade: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
-        notifyUrl: `${input.origin}/api/redsys/notification`,
-        okUrl: `${input.origin}/reserva/ok?order=${merchantOrder}`,
-        koUrl: `${input.origin}/reserva/error?order=${merchantOrder}`,
+        notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
+        okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
+        koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
         holderName: input.customerName,
       });
 

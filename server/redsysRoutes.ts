@@ -407,19 +407,19 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
       return res.status(404).send("KO");
     }
 
-    // Evitar doble procesamiento
-    if (booking.paymentStatus === "paid") {
-      console.log("[Redsys Restaurant IPN] Ya pagada:", result.merchantOrder);
-      return res.send("OK");
-    }
-
     if (result.isAuthorized) {
-      await updateBooking(booking.id, {
+      // Actualización atómica: solo procede si paymentStatus sigue en "pending".
+      // affectedRows === 0 → IPN duplicada o ya procesada.
+      const { affectedRows } = await updateBookingPaymentAtomic(booking.id, {
         paymentStatus: "paid",
         status: "confirmed",
         paymentTransactionId: result.merchantOrder,
         paidAt: new Date(),
       });
+      if (affectedRows === 0) {
+        console.log(`[Redsys Restaurant IPN] IPN duplicada o ya procesada para ${result.merchantOrder} — respondiendo OK sin downstream`);
+        return res.send("OK");
+      }
       await addBookingLog(
         booking.id,
         "payment_confirmed",
