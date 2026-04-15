@@ -8,7 +8,7 @@
  * 3. Cliente puede ACEPTAR (→ pago Redsys) o RECHAZAR
  * 4. Tras aceptar: formulario Redsys se envía automáticamente
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -86,13 +86,14 @@ export default function QuoteAcceptance() {
   const [showConditions, setShowConditions] = useState(false);
 
   // ── Redsys auto-submit effect ──
-  // When redsysForm is set, create and submit the form programmatically
-  if (redsysForm) {
-    // Build and auto-submit form
+  // useEffect ensures the form is submitted after render, not during it.
+  // The empty-dependency array on redsysForm means it only fires when redsysForm changes.
+  useEffect(() => {
+    if (!redsysForm) return;
     const form = document.createElement("form");
     form.method = "POST";
     form.action = redsysForm.url;
-    const fields = [
+    const fields: [string, string][] = [
       ["Ds_MerchantParameters", redsysForm.Ds_MerchantParameters],
       ["Ds_Signature", redsysForm.Ds_Signature],
       ["Ds_SignatureVersion", redsysForm.Ds_SignatureVersion],
@@ -106,7 +107,7 @@ export default function QuoteAcceptance() {
     });
     document.body.appendChild(form);
     form.submit();
-  }
+  }, [redsysForm]);
 
   // ── Load quote ──
   const { data: quote, isLoading, error } = trpc.crm.quotes.getByToken.useQuery(

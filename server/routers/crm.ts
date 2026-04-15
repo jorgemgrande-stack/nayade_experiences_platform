@@ -2458,6 +2458,9 @@ export const crmRouter = router({
 
         // Precios CONGELADOS del presupuesto — nunca recalculados
         const totalEuros = Number(quote.total);
+        if (!(totalEuros > 0)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `El presupuesto tiene un importe inválido (${quote.total}). Contacta con el equipo.` });
+        }
         const amountCents = Math.round(totalEuros * 100);
 
         const customerName = input.customerName ?? lead.name;
