@@ -35,6 +35,7 @@ type ExpForm = {
   categoryId: string; locationId: string;
   image1: string; image2: string; image3: string; image4: string;
   basePrice: string; duration: string; minPersons: string; maxPersons: string;
+  pricingType: string; unitCapacity: string; maxUnits: string;
   difficulty: string; isFeatured: boolean; isActive: boolean; isPublished: boolean; isPresentialSale: boolean;
   includes: string[]; excludes: string[];
   discountPercent: string; discountExpiresAt: string;
@@ -53,6 +54,7 @@ const emptyForm: ExpForm = {
   categoryId: "", locationId: "",
   image1: "", image2: "", image3: "", image4: "",
   basePrice: "", duration: "", minPersons: "1", maxPersons: "",
+  pricingType: "per_person", unitCapacity: "", maxUnits: "",
   difficulty: "facil", isFeatured: false, isActive: true, isPublished: true, isPresentialSale: false,
   includes: [], excludes: [],
   discountPercent: "", discountExpiresAt: "",
@@ -201,6 +203,9 @@ export default function ExperiencesManager() {
       duration: String(exp.duration ?? ""),
       minPersons: String(exp.minPersons ?? "1"),
       maxPersons: String(exp.maxPersons ?? ""),
+      pricingType: String((exp as Record<string,unknown>).pricingType ?? "per_person"),
+      unitCapacity: (exp as Record<string,unknown>).unitCapacity != null ? String((exp as Record<string,unknown>).unitCapacity) : "",
+      maxUnits: (exp as Record<string,unknown>).maxUnits != null ? String((exp as Record<string,unknown>).maxUnits) : "",
       difficulty: String(exp.difficulty ?? "facil"),
       isFeatured: Boolean(exp.isFeatured),
       isActive: Boolean(exp.isActive),
@@ -246,6 +251,9 @@ export default function ExperiencesManager() {
       duration: form.duration || undefined,
       minPersons: form.minPersons ? parseInt(form.minPersons) : undefined,
       maxPersons: form.maxPersons ? parseInt(form.maxPersons) : undefined,
+      pricingType: form.pricingType as "per_person" | "per_unit",
+      unitCapacity: form.unitCapacity ? parseInt(form.unitCapacity) : undefined,
+      maxUnits: form.maxUnits ? parseInt(form.maxUnits) : undefined,
       difficulty: form.difficulty as "facil" | "moderado" | "dificil" | "experto",
       isFeatured: form.isFeatured,
       isActive: form.isActive,
@@ -515,6 +523,50 @@ export default function ExperiencesManager() {
                 <Label htmlFor="maxPersons">Máx. Personas</Label>
                 <Input id="maxPersons" type="number" value={form.maxPersons} onChange={(e) => setForm({ ...form, maxPersons: e.target.value })} className="mt-1" />
               </div>
+
+              {/* Tipo de Pricing */}
+              <div className="col-span-2">
+                <div className="border border-cyan-200 bg-cyan-50/50 rounded-xl p-4">
+                  <Label className="text-sm font-semibold text-cyan-700 flex items-center gap-1.5 mb-3">
+                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-cyan-100 text-cyan-600 text-xs font-bold">€</span>
+                    Modelo de cobro
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className={form.pricingType === "per_unit" ? "" : "col-span-2"}>
+                      <Label className="text-xs text-muted-foreground">Tipo de precio</Label>
+                      <Select value={form.pricingType} onValueChange={(v) => setForm({ ...form, pricingType: v, unitCapacity: "", maxUnits: "" })}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="per_person">Por persona</SelectItem>
+                          <SelectItem value="per_unit">Por unidad (canoa, moto de agua, etc.)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {form.pricingType === "per_unit" && (
+                      <>
+                        <div>
+                          <Label htmlFor="unitCapacity" className="text-xs text-muted-foreground">Personas por unidad *</Label>
+                          <Input id="unitCapacity" type="number" min="1" value={form.unitCapacity}
+                            onChange={(e) => setForm({ ...form, unitCapacity: e.target.value })} className="mt-1" placeholder="Ej: 2" />
+                        </div>
+                        <div>
+                          <Label htmlFor="maxUnits" className="text-xs text-muted-foreground">Máx. unidades disponibles</Label>
+                          <Input id="maxUnits" type="number" min="1" value={form.maxUnits}
+                            onChange={(e) => setForm({ ...form, maxUnits: e.target.value })} className="mt-1" placeholder="Sin límite" />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {form.pricingType === "per_unit" && (
+                    <p className="text-xs text-cyan-600 mt-2">
+                      El precio base es por unidad.
+                      {form.unitCapacity ? ` Cada unidad admite ${form.unitCapacity} persona${parseInt(form.unitCapacity) !== 1 ? "s" : ""}.` : ""}
+                      {" "}El sistema calcula automáticamente cuántas unidades necesita el grupo.
+                    </p>
+                  )}
+                </div>
+              </div>
+
               <div className="col-span-2">
                 <Label htmlFor="shortDescription">Descripción Corta</Label>
                 <Input id="shortDescription" value={form.shortDescription} onChange={(e) => setForm({ ...form, shortDescription: e.target.value })} className="mt-1" />

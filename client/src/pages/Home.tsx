@@ -309,7 +309,7 @@ function HeroActivityModal({
 export default function Home() {
   const [, navigate] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string; discountPercent?: number | null; discountExpiresAt?: string | Date | null } | null>(null);
+  const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string; discountPercent?: number | null; discountExpiresAt?: string | Date | null; pricingType?: "per_person" | "per_unit" | null; unitCapacity?: number | null; maxUnits?: number | null } | null>(null);
   function todayStr() { return new Date().toISOString().split("T")[0]; }
   function tomorrowStr() { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; }
 
@@ -887,7 +887,7 @@ export default function Home() {
                     {act.basePrice && (
                       <div className="ml-auto flex items-center gap-2">
                         <button
-                          onClick={() => setAddToCartProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1, discountPercent: (act as any).discountPercent, discountExpiresAt: (act as any).discountExpiresAt })}
+                          onClick={() => setAddToCartProduct({ id: act.experienceId || 0, title: act.title, basePrice: act.basePrice, image1: act.image1, discountPercent: (act as any).discountPercent, discountExpiresAt: (act as any).discountExpiresAt, pricingType: (act as any).pricingType, unitCapacity: (act as any).unitCapacity, maxUnits: (act as any).maxUnits })}
                           className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-display font-bold bg-orange-500 text-white hover:bg-orange-600 transition-colors"
                         >
                           <ShoppingCartIcon className="w-3.5 h-3.5" /> Añadir al carrito

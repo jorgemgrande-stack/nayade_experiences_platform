@@ -54,6 +54,10 @@ export interface CartItem {
   selectedTimeSlotLabel?: string;
   /** Hora elegida por el cliente (solo para slots tipo flexible) */
   selectedTime?: string;
+  /** Modelo de cobro del producto */
+  pricingType?: "per_person" | "per_unit";
+  /** Personas por unidad (para per_unit) */
+  unitCapacity?: number;
 }
 
 interface CartContextValue {
@@ -127,12 +131,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems(prev => prev.map(i => i.cartItemId === cartItemId ? { ...i, ...updates } : i));
   }, []);
 
+  /** Calcula unidades facturables según el modelo de pricing */
+  function calcUnits(item: CartItem, people: number): number {
+    return (item.pricingType === "per_unit" && item.unitCapacity && item.unitCapacity > 0)
+      ? Math.ceil(people / item.unitCapacity)
+      : people;
+  }
+
   /** Cambia el número de personas y recalcula el total estimado */
   const updatePeople = useCallback((cartItemId: string, people: number) => {
     setItems(prev => prev.map(i => {
       if (i.cartItemId !== cartItemId) return i;
       const extrasTotal = i.extras.reduce((s, e) => s + e.price * e.quantity, 0);
-      const estimatedTotal = i.pricePerPerson * people + extrasTotal;
+      const estimatedTotal = i.pricePerPerson * calcUnits(i, people) + extrasTotal;
       return { ...i, people, estimatedTotal };
     }));
   }, []);
@@ -147,7 +158,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems(prev => prev.map(i => {
       if (i.cartItemId !== cartItemId) return i;
       const extrasTotal = i.extras.reduce((s, e) => s + e.price * e.quantity, 0);
-      const estimatedTotal = pricePerPerson * i.people + extrasTotal;
+      const estimatedTotal = pricePerPerson * calcUnits(i, i.people) + extrasTotal;
       return { ...i, variantId, variantName, pricePerPerson, estimatedTotal };
     }));
   }, []);

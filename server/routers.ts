@@ -129,6 +129,27 @@ import {
 } from "./emailTemplates";
 import { getDb } from "./db";
 import { siteSettings, packs, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes } from "../drizzle/schema";
+
+// ─── Pricing helper (per_person | per_unit) ───────────────────────────────────
+/**
+ * Calcula el importe en EUROS dado el precio base, el tipo de tarificación y el
+ * número de personas. Devuelve también el nº de unidades realmente reservadas.
+ */
+function calcPricing(
+  priceUnit: number,          // precio base por persona o por unidad
+  people: number,
+  pricingType: "per_person" | "per_unit",
+  unitCapacity: number | null | undefined,
+  maxUnits: number | null | undefined,
+): { totalEuros: number; unitsBooked: number } {
+  if (pricingType === "per_unit" && unitCapacity && unitCapacity > 0) {
+    let units = Math.ceil(people / unitCapacity);
+    if (maxUnits && units > maxUnits) units = maxUnits;
+    return { totalEuros: units * priceUnit, unitsBooked: units };
+  }
+  // per_person (default, retrocompatible)
+  return { totalEuros: priceUnit * people, unitsBooked: 0 };
+}
 import { eq, and, desc, inArray, sql as sqlDrizzle } from "drizzle-orm";
 import { hotelRouter } from "./routers/hotel";
 import { spaRouter } from "./routers/spa";
@@ -568,6 +589,9 @@ export const appRouter = router({
         excludes: z.array(z.string()).optional(),
         discountPercent: z.string().optional(),
         discountExpiresAt: z.string().optional(),
+        pricingType: z.enum(["per_person", "per_unit"]).default("per_person"),
+        unitCapacity: z.number().optional(),
+        maxUnits: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         // Map legacy "general" -> "general_21" for DB enum compatibility
@@ -626,6 +650,9 @@ export const appRouter = router({
         isPresentialSale: z.boolean().optional(),
         isPublished: z.boolean().optional(),
         hasTimeSlots: z.boolean().optional(),
+        pricingType: z.enum(["per_person", "per_unit"]).optional(),
+        unitCapacity: z.number().optional(),
+        maxUnits: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
@@ -1209,13 +1236,16 @@ export const appRouter = router({
           }
         }
 
-        let totalEuros = pricePerPerson * input.people;
+        // 2b. Calcular importe con lógica dual per_person / per_unit
+        const pricingType = (product as any).pricingType ?? "per_person";
+        const unitCapacity = (product as any).unitCapacity ?? null;
+        const maxUnits = (product as any).maxUnits ?? null;
+        const { totalEuros: baseTotal, unitsBooked } = calcPricing(
+          pricePerPerson, input.people, pricingType, unitCapacity, maxUnits
+        );
         // SECURITY NOTE: Los extras no se validan contra BD porque no existe tabla de catálogo de extras.
-        // Pendiente: crear tabla `experience_extras` con precios oficiales y validar aquí.
-        // Mientras tanto, la capa de validación de importe en el IPN (result.amount !== reservation.amountTotal)
-        // actúa como segunda línea de defensa — Redsys no puede confirmar más de lo cobrado.
         const extrasTotal = input.extras.reduce((sum, e) => sum + e.price * e.quantity, 0);
-        totalEuros += extrasTotal;
+        const totalEuros = baseTotal + extrasTotal;
         const amountCents = Math.round(totalEuros * 100); // Redsys usa céntimos
 
         // 3. Generar merchantOrder único
@@ -1238,13 +1268,20 @@ export const appRouter = router({
           // Time slots (optional, retrocompatible)
           selectedTimeSlotId: input.selectedTimeSlotId ?? undefined,
           selectedTime: input.selectedTime ?? undefined,
+          // Pricing snapshot
+          pricingType,
+          unitCapacity: unitCapacity ?? undefined,
+          unitsBooked: unitsBooked || undefined,
         });
 
         // 5. Construir el formulario Redsys
+        const pricingDesc = pricingType === "per_unit" && unitsBooked
+          ? `${product.title} x${unitsBooked} unidad${unitsBooked !== 1 ? "es" : ""}`
+          : `${product.title} x${input.people} persona${input.people !== 1 ? "s" : ""}`;
         const redsysForm = buildRedsysForm({
           amount: amountCents,
           merchantOrder,
-          productDescription: `${product.title} x${input.people} personas`,
+          productDescription: pricingDesc,
           notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
           okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
           koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
@@ -1336,6 +1373,9 @@ export const appRouter = router({
           people: number;
           extrasJson: string;
           amountTotal: number;
+          pricingType?: "per_person" | "per_unit";
+          unitCapacity?: number;
+          unitsBooked?: number;
         }> = [];
         const productNames: string[] = [];
         for (const item of input.items) {
@@ -1356,7 +1396,13 @@ export const appRouter = router({
             }
           }
           const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
-          const itemTotalEuros = pricePerPerson * item.people + extrasTotal;
+          const itemPricingType = (product as any).pricingType ?? "per_person";
+          const itemUnitCap = (product as any).unitCapacity ?? null;
+          const itemMaxUnits = (product as any).maxUnits ?? null;
+          const { totalEuros: itemBase, unitsBooked: itemUnits } = calcPricing(
+            pricePerPerson, item.people, itemPricingType, itemUnitCap, itemMaxUnits
+          );
+          const itemTotalEuros = itemBase + extrasTotal;
           const itemAmountCents = Math.round(itemTotalEuros * 100);
           totalAmountCents += itemAmountCents;
           itemsWithPrices.push({
@@ -1366,6 +1412,9 @@ export const appRouter = router({
             people: item.people,
             extrasJson: JSON.stringify(item.extras),
             amountTotal: itemAmountCents,
+            pricingType: itemPricingType,
+            unitCapacity: itemUnitCap ?? undefined,
+            unitsBooked: itemUnits || undefined,
           });
           productNames.push(product.title);
         }
@@ -1380,6 +1429,9 @@ export const appRouter = router({
             customerPhone: input.customerPhone,
             merchantOrder,
             notes: `Carrito: ${productNames.join(", ")}`,
+            pricingType: item.pricingType,
+            unitCapacity: item.unitCapacity,
+            unitsBooked: item.unitsBooked,
           });
         }
         // 3b. Aplicar descuento por código si se proporcionó — validar SIEMPRE en servidor

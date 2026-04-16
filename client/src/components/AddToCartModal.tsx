@@ -25,6 +25,9 @@ export interface AddToCartProduct {
   maxPersons?: number | null;
   discountPercent?: number | null;
   discountExpiresAt?: string | Date | null;
+  pricingType?: "per_person" | "per_unit" | null;
+  unitCapacity?: number | null;
+  maxUnits?: number | null;
 }
 
 interface AddToCartModalProps {
@@ -63,7 +66,9 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
   const isDiscountActive = discountPct > 0 && (!discountExpiry || discountExpiry >= new Date());
   const effectivePrice = isDiscountActive ? rawPrice * (1 - discountPct / 100) : rawPrice;
 
-  const estimatedTotal = effectivePrice * people;
+  const isPerUnit = product.pricingType === "per_unit" && product.unitCapacity && product.unitCapacity > 0;
+  const unitsNeeded = isPerUnit ? Math.ceil(people / product.unitCapacity!) : people;
+  const estimatedTotal = effectivePrice * unitsNeeded;
 
   function handleAddToCart() {
     addItem({
@@ -82,6 +87,8 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
       originalPricePerPerson: isDiscountActive ? rawPrice : undefined,
       discountPercent: isDiscountActive ? discountPct : undefined,
       estimatedTotal,
+      pricingType: product.pricingType ?? undefined,
+      unitCapacity: product.unitCapacity ?? undefined,
     });
     onClose();
     openCart();
@@ -106,7 +113,7 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
                   <span className="text-white/60 text-sm line-through">{rawPrice.toFixed(2)} €</span>
                 )}
                 <p className="text-orange-300 text-sm font-semibold">
-                  {effectivePrice.toFixed(2)} € / persona
+                  {effectivePrice.toFixed(2)} € / {isPerUnit ? "unidad" : "persona"}
                   {isDiscountActive && <span className="ml-1 text-xs bg-green-500 text-white px-1.5 py-0.5 rounded-full">-{discountPct}%</span>}
                 </p>
               </div>
@@ -123,7 +130,7 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
               <span className="text-slate-400 text-sm line-through">{rawPrice.toFixed(2)} €</span>
             )}
             <p className="text-orange-600 font-semibold text-sm">
-              {effectivePrice.toFixed(2)} € / persona
+              {effectivePrice.toFixed(2)} € / {isPerUnit ? "unidad" : "persona"}
               {isDiscountActive && <span className="ml-1 text-xs bg-green-500 text-white px-1.5 py-0.5 rounded-full">-{discountPct}%</span>}
             </p>
           </div>
@@ -222,7 +229,13 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
             <div className="bg-orange-50 rounded-xl px-4 py-3 flex justify-between items-center">
               <div>
                 <span className="text-sm text-slate-600">Total estimado</span>
-                {selectedVariant && (
+                {isPerUnit && (
+                  <p className="text-xs text-orange-600 mt-0.5">
+                    {unitsNeeded} unidad{unitsNeeded !== 1 ? "es" : ""} × {effectivePrice.toFixed(2)} €
+                    {product.unitCapacity ? ` (${product.unitCapacity} pers./unidad)` : ""}
+                  </p>
+                )}
+                {selectedVariant && !isPerUnit && (
                   <p className="text-xs text-orange-600 mt-0.5">{selectedVariant.name}</p>
                 )}
               </div>

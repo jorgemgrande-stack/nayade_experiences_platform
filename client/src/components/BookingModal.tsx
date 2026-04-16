@@ -24,6 +24,9 @@ interface BookingModalProps {
     maxPersons?: number;
     image1?: string;
     hasTimeSlots?: boolean;
+    pricingType?: "per_person" | "per_unit";
+    unitCapacity?: number;
+    maxUnits?: number;
   };
   /** Extras disponibles para este producto (opcional) */
   extras?: Extra[];
@@ -84,11 +87,14 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
     return mod;
   }, [selectedVariant, basePrice]);
 
+  const isPerUnit = product.pricingType === "per_unit" && product.unitCapacity && product.unitCapacity > 0;
+  const unitsNeeded = isPerUnit ? Math.ceil(people / product.unitCapacity!) : people;
+
   const extrasTotal = useMemo(() =>
     extras.reduce((sum, e) => sum + (selectedExtras[e.name] ?? 0) * e.price, 0),
     [extras, selectedExtras]
   );
-  const estimatedTotal = effectivePricePerPerson * people + extrasTotal;
+  const estimatedTotal = effectivePricePerPerson * unitsNeeded + extrasTotal;
 
   const createAndPay = trpc.reservations.createAndPay.useMutation();
 
@@ -451,8 +457,10 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                 padding: "0.75rem 1rem",
               }}>
                 <span style={{ color: "#9a3412", fontSize: "0.875rem" }}>
-                  💡 Subtotal estimado: <strong>{(effectivePricePerPerson * people).toFixed(2)}€</strong>
-                  {" "}({effectivePricePerPerson.toFixed(2)}€ × {people} persona{people !== 1 ? "s" : ""})
+                  💡 Subtotal estimado: <strong>{(effectivePricePerPerson * unitsNeeded).toFixed(2)}€</strong>
+                  {" "}({effectivePricePerPerson.toFixed(2)}€ × {isPerUnit
+                    ? `${unitsNeeded} unidad${unitsNeeded !== 1 ? "es" : ""} (${people} pers.)`
+                    : `${people} persona${people !== 1 ? "s" : ""}`})
                   {selectedVariant && (
                     <span style={{ color: "#6b7280" }}> — tarifa: {selectedVariant.name}</span>
                   )}
@@ -598,6 +606,9 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                   <Row label="Actividad" value={product.title} />
                   <Row label="Fecha" value={bookingDate} />
                   <Row label="Personas" value={`${people} persona${people !== 1 ? "s" : ""}`} />
+                  {isPerUnit && (
+                    <Row label="Unidades" value={`${unitsNeeded} unidad${unitsNeeded !== 1 ? "es" : ""} (${product.unitCapacity} pers./unidad)`} />
+                  )}
                   {/* Mostrar horario si está seleccionado */}
                   {hasTimeSlotConfig && selectedTimeSlotId && (
                     <Row label="Horario" value={timeSlots?.find(s => s.id === selectedTimeSlotId)?.label ?? ""} />
@@ -609,8 +620,8 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
                     <Row label="Tarifa" value={selectedVariant.name} />
                   )}
                   <Row
-                    label="Precio por persona"
-                    value={`${effectivePricePerPerson.toFixed(2)}€ × ${people} = ${(effectivePricePerPerson * people).toFixed(2)}€`}
+                    label={isPerUnit ? "Precio por unidad" : "Precio por persona"}
+                    value={`${effectivePricePerPerson.toFixed(2)}€ × ${unitsNeeded} = ${(effectivePricePerPerson * unitsNeeded).toFixed(2)}€`}
                   />
                   {extras.filter(e => (selectedExtras[e.name] ?? 0) > 0).map(e => (
                     <Row

@@ -176,6 +176,10 @@ export const experiences = mysqlTable("experiences", {
   isActive: boolean("isActive").default(true).notNull(),
   isPublished: boolean("isPublished").default(true).notNull(),
   isPresentialSale: boolean("isPresentialSale").default(false).notNull(),
+  // Pricing mode (retrocompatible: default = per_person)
+  pricingType: mysqlEnum("pricing_type", ["per_person", "per_unit"]).default("per_person").notNull(),
+  unitCapacity: int("unit_capacity"),   // personas por unidad (solo si pricingType=per_unit)
+  maxUnits: int("max_units"),           // máximo de unidades disponibles (opcional)
   // Time slots module (optional, retrocompatible)
   hasTimeSlots: boolean("has_time_slots").default(false).notNull(),
   sortOrder: int("sortOrder").default(0).notNull(),
@@ -522,6 +526,10 @@ export const reservations = mysqlTable("reservations", {
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   paidAt: bigint("paid_at", { mode: "number" }),
+  // Pricing snapshot (retrocompatible: null = per_person legacy)
+  pricingType: varchar("pricing_type", { length: 16 }),      // "per_person" | "per_unit"
+  unitCapacity: int("unit_capacity"),                         // personas por unidad al reservar
+  unitsBooked: int("units_booked"),                          // unidades reservadas
   // Time slots (optional, retrocompatible - null = no time slot required)
   selectedTimeSlotId: int("selected_time_slot_id"),
   selectedTime: varchar("selected_time", { length: 10 }),

@@ -185,6 +185,11 @@ function CartItemRow({ item }: { item: CartItem }) {
             <Plus className="w-3 h-3" />
           </button>
           <span className="text-xs text-muted-foreground">pers.</span>
+          {item.pricingType === "per_unit" && item.unitCapacity && item.unitCapacity > 0 && (
+            <span className="text-xs text-cyan-600 font-medium ml-1">
+              → {Math.ceil(item.people / item.unitCapacity)} unid.
+            </span>
+          )}
         </div>
 
         {/* Total artículo */}

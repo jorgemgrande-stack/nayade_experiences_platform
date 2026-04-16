@@ -307,6 +307,9 @@ export default function Experiences() {
             maxPersons: (cartProduct as any).maxPersons ?? 100,
             discountPercent: (cartProduct as any).discountPercent,
             discountExpiresAt: (cartProduct as any).discountExpiresAt,
+            pricingType: (cartProduct as any).pricingType,
+            unitCapacity: (cartProduct as any).unitCapacity,
+            maxUnits: (cartProduct as any).maxUnits,
           }}
         />
       )}

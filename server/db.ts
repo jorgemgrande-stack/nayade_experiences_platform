@@ -697,6 +697,9 @@ export async function createExperience(data: {
   difficulty?: "facil" | "moderado" | "dificil" | "experto";
   isFeatured?: boolean;
   isActive?: boolean;
+  pricingType?: "per_person" | "per_unit";
+  unitCapacity?: number;
+  maxUnits?: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -715,6 +718,9 @@ export async function createExperience(data: {
     difficulty: data.difficulty ?? "facil",
     isFeatured: data.isFeatured ?? false,
     isActive: data.isActive ?? true,
+    pricingType: data.pricingType ?? "per_person",
+    unitCapacity: data.unitCapacity ?? null,
+    maxUnits: data.maxUnits ?? null,
   });
   return { id: Number(result[0].insertId), success: true };
 }
@@ -883,6 +889,10 @@ export async function createReservation(data: {
   // Time slots (optional, retrocompatible)
   selectedTimeSlotId?: number;
   selectedTime?: string;
+  // Pricing snapshot (optional, retrocompatible)
+  pricingType?: "per_person" | "per_unit";
+  unitCapacity?: number;
+  unitsBooked?: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -912,6 +922,10 @@ export async function createReservation(data: {
     // Time slots (optional, retrocompatible)
     selectedTimeSlotId: data.selectedTimeSlotId ?? null,
     selectedTime: data.selectedTime ?? null,
+    // Pricing snapshot (optional, retrocompatible)
+    pricingType: data.pricingType ?? null,
+    unitCapacity: data.unitCapacity ?? null,
+    unitsBooked: data.unitsBooked ?? null,
   });
   return { id: Number(result[0].insertId), merchantOrder: data.merchantOrder, reservationNumber };
 }
