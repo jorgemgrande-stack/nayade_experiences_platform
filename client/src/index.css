@@ -246,18 +246,14 @@
    Sin tocar ningún archivo TSX ni lógica de negocio.
    ════════════════════════════════════════════════════════════════════════════ */
 
-/* ─── Scrollbar náutico — fuera de @layer para que no sea sobrescrito ────── */
+/* ─── Scrollbar — siempre blanco/gris independiente del tema ─────────────── */
 /* Firefox */
-html { scrollbar-width: thin; scrollbar-color: oklch(0.58 0.14 210) oklch(0.95 0.02 210); }
-.dark { scrollbar-color: oklch(0.30 0.04 240) oklch(0.14 0.025 240); }
+html { scrollbar-width: thin; scrollbar-color: #b0b0b0 #ffffff; }
 /* Chrome / Safari / Edge */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: oklch(0.95 0.02 210); }
-::-webkit-scrollbar-thumb { background: oklch(0.58 0.14 210); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.18 235); }
-.dark ::-webkit-scrollbar-track  { background: oklch(0.14 0.025 240); }
-.dark ::-webkit-scrollbar-thumb  { background: oklch(0.30 0.04 240); border-radius: 3px; }
-.dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.40 0.06 240); }
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: #ffffff; }
+::-webkit-scrollbar-thumb { background: #b8b8b8; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #888888; }
 
 /* ─── SUPERFICIES DE CARD — dark surfaces → var(--card) en ambos modos ──── */
 /* En light: var(--card) = blanco. En dark: var(--card) = superficie oscura elevada.

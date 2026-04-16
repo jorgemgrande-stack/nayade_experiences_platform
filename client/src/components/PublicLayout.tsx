@@ -7,19 +7,23 @@ interface PublicLayoutProps {
   children: React.ReactNode;
   fullWidthHero?: boolean;
   darkContent?: boolean;
+  /** Fuerza siempre light mode (p.ej. checkout — páginas transaccionales) */
+  forcePublicLight?: boolean;
 }
 
 export default function PublicLayout({
   children,
   fullWidthHero = false,
   darkContent = false,
+  forcePublicLight = false,
 }: PublicLayoutProps) {
   const { adminTheme, publicTheme } = useTheme();
 
   // admin oscuro + public claro → forzar variables de light mode en la sección pública
-  const forceLight = adminTheme === "dark" && publicTheme === "light";
-  // admin claro + public oscuro → añadir clase dark al wrapper para que dark: active
-  const addDark   = adminTheme === "light" && publicTheme === "dark";
+  // También si la página exige siempre light (checkout, etc.)
+  const forceLight = forcePublicLight || (adminTheme === "dark" && publicTheme === "light");
+  // admin claro + public oscuro → añadir clase dark al wrapper (solo si no se fuerza light)
+  const addDark = !forcePublicLight && adminTheme === "light" && publicTheme === "dark";
 
   return (
     // Wrapper de scope: aplica 'dark' al árbol si el public debe ser oscuro con admin claro

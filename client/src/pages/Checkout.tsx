@@ -126,7 +126,7 @@ export default function Checkout() {
   }
 
   return (
-    <PublicLayout>
+    <PublicLayout forcePublicLight>
       <div className="min-h-screen bg-slate-50">
         {/* Breadcrumb / Header */}
         <div className="bg-white border-b border-slate-200">
@@ -220,7 +220,7 @@ export default function Checkout() {
                             </button>
                           </div>
 
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-600">
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3 h-3 text-orange-400" />
                               {formatDate(item.bookingDate)}
@@ -234,16 +234,16 @@ export default function Checkout() {
                           {item.extras.length > 0 && (
                             <div className="mt-2 space-y-0.5">
                               {item.extras.map((e, i) => (
-                                <p key={i} className="text-xs text-slate-400">
+                                <p key={i} className="text-xs text-slate-600">
                                   + {e.name} ×{e.quantity}
-                                  <span className="ml-1 text-slate-500">({(e.price * e.quantity).toFixed(2).replace(".", ",")} €)</span>
+                                  <span className="ml-1 text-slate-700">({(e.price * e.quantity).toFixed(2).replace(".", ",")} €)</span>
                                 </p>
                               ))}
                             </div>
                           )}
 
                           <div className="flex items-center justify-between mt-3">
-                            <span className="text-xs text-slate-400">
+                            <span className="text-xs text-slate-600">
                               {item.pricePerPerson.toFixed(2).replace(".", ",")} €/persona
                               {extrasTotal > 0 && ` + ${extrasTotal.toFixed(2).replace(".", ",")} € extras`}
                             </span>
@@ -313,7 +313,7 @@ export default function Checkout() {
                     <span>Total</span>
                     <span className="text-orange-600">{finalTotal.toFixed(2).replace(".", ",")} €</span>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1.5">* El precio final se calculará en el servidor antes del pago.</p>
+                  <p className="text-xs text-slate-500 mt-1.5">* El precio final se calculará en el servidor antes del pago.</p>
                 </div>
               </div>
 
@@ -327,7 +327,7 @@ export default function Checkout() {
                   <div key={label} className="bg-white rounded-xl border border-slate-200 p-3 text-center">
                     <Icon className="w-5 h-5 text-green-500 mx-auto mb-1" />
                     <p className="text-xs font-bold text-slate-800">{label}</p>
-                    <p className="text-xs text-slate-400">{desc}</p>
+                    <p className="text-xs text-slate-600">{desc}</p>
                   </div>
                 ))}
               </div>
@@ -341,7 +341,7 @@ export default function Checkout() {
                     <User className="w-4 h-4 text-orange-500" />
                     Tus datos de contacto
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Para enviarte la confirmación de reserva.</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Para enviarte la confirmación de reserva.</p>
                 </div>
 
                 <div className="px-5 py-5 space-y-4">
@@ -384,7 +384,7 @@ export default function Checkout() {
                   {/* Teléfono */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Teléfono <span className="text-slate-400 font-normal">(opcional)</span>
+                      Teléfono <span className="text-slate-500 font-normal">(opcional)</span>
                     </label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -402,7 +402,7 @@ export default function Checkout() {
                   {/* Comentarios */}
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Comentarios <span className="text-slate-400 font-normal">(opcional)</span>
+                      Comentarios <span className="text-slate-500 font-normal">(opcional)</span>
                     </label>
                     <textarea
                       value={comments}
@@ -453,7 +453,7 @@ export default function Checkout() {
                       )}
                     </Button>
 
-                    <p className="text-center text-xs text-slate-400 mt-3 flex items-center justify-center gap-1">
+                    <p className="text-center text-xs text-slate-500 mt-3 flex items-center justify-center gap-1">
                       <Lock className="w-3 h-3" />
                       Pago seguro con Redsys · Datos cifrados SSL
                     </p>
