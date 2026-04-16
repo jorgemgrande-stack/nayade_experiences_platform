@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import PublicNav from "./PublicNav";
 import PublicFooter from "./PublicFooter";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -7,7 +8,7 @@ interface PublicLayoutProps {
   children: React.ReactNode;
   fullWidthHero?: boolean;
   darkContent?: boolean;
-  /** Fuerza siempre light mode (p.ej. checkout — páginas transaccionales) */
+  /** Fuerza siempre light mode eliminando html.dark mientras el componente está montado */
   forcePublicLight?: boolean;
 }
 
@@ -19,14 +20,24 @@ export default function PublicLayout({
 }: PublicLayoutProps) {
   const { adminTheme, publicTheme } = useTheme();
 
+  // Cuando forcePublicLight=true: retirar dark de <html> mientras la página esté montada.
+  // Al desmontar, restablecer si el admin estaba en oscuro.
+  useEffect(() => {
+    if (!forcePublicLight) return;
+    const root = document.documentElement;
+    const hadDark = root.classList.contains("dark");
+    root.classList.remove("dark");
+    return () => {
+      if (hadDark) root.classList.add("dark");
+    };
+  }, [forcePublicLight]);
+
   // admin oscuro + public claro → forzar variables de light mode en la sección pública
-  // También si la página exige siempre light (checkout, etc.)
-  const forceLight = forcePublicLight || (adminTheme === "dark" && publicTheme === "light");
-  // admin claro + public oscuro → añadir clase dark al wrapper (solo si no se fuerza light)
+  const forceLight = !forcePublicLight && adminTheme === "dark" && publicTheme === "light";
+  // admin claro + public oscuro → añadir clase dark al wrapper para que dark: active
   const addDark = !forcePublicLight && adminTheme === "light" && publicTheme === "dark";
 
   return (
-    // Wrapper de scope: aplica 'dark' al árbol si el public debe ser oscuro con admin claro
     <div className={cn(addDark && "dark")}>
       <div
         className={cn(
