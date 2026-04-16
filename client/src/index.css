@@ -236,11 +236,6 @@
     backdrop-filter: blur(16px);
     border: 1px solid oklch(1 0 0 / 0.35);
   }
-  /* Scrollbar náutico */
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: oklch(0.95 0.02 210); }
-  ::-webkit-scrollbar-thumb { background: oklch(0.58 0.14 210); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.18 235); }
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -251,7 +246,15 @@
    Sin tocar ningún archivo TSX ni lógica de negocio.
    ════════════════════════════════════════════════════════════════════════════ */
 
-/* ─── Scrollbar adaptado al tema activo ──────────────────────────────────── */
+/* ─── Scrollbar náutico — fuera de @layer para que no sea sobrescrito ────── */
+/* Firefox */
+html { scrollbar-width: thin; scrollbar-color: oklch(0.58 0.14 210) oklch(0.95 0.02 210); }
+.dark { scrollbar-color: oklch(0.30 0.04 240) oklch(0.14 0.025 240); }
+/* Chrome / Safari / Edge */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: oklch(0.95 0.02 210); }
+::-webkit-scrollbar-thumb { background: oklch(0.58 0.14 210); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.18 235); }
 .dark ::-webkit-scrollbar-track  { background: oklch(0.14 0.025 240); }
 .dark ::-webkit-scrollbar-thumb  { background: oklch(0.30 0.04 240); border-radius: 3px; }
 .dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.40 0.06 240); }
