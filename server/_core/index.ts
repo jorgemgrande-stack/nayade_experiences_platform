@@ -260,41 +260,74 @@ async function seedExperiencesIfEmpty() {
   }
 }
 
-async function diagnoseDatabaseColumns() {
+async function ensurePricingColumns() {
   try {
     const mysql = await import("mysql2/promise");
     const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
-    // Check which pricing columns exist
+
     const [cols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'experiences'
        AND COLUMN_NAME IN ('pricing_type','unit_capacity','max_units','has_time_slots')`
     ) as any[];
-    const found = cols.map((c: any) => c.COLUMN_NAME);
-    console.log("[DB Diag] Columnas de pricing presentes:", found.length > 0 ? found.join(", ") : "NINGUNA");
-    const missing = ["pricing_type","unit_capacity","max_units","has_time_slots"].filter(c => !found.includes(c));
-    if (missing.length > 0) {
-      console.error("[DB Diag] ⚠️  Columnas FALTANTES:", missing.join(", "));
-    } else {
-      console.log("[DB Diag] ✅ Todas las columnas de pricing existen");
+    const found = new Set(cols.map((c: any) => c.COLUMN_NAME));
+    console.log("[DB] Columnas pricing encontradas:", [...found].join(", ") || "ninguna");
+
+    if (!found.has("pricing_type")) {
+      await conn.execute("ALTER TABLE `experiences` ADD COLUMN `pricing_type` ENUM('per_person','per_unit') NOT NULL DEFAULT 'per_person'");
+      console.log("[DB] ✅ Columna pricing_type añadida");
     }
-    // Test the actual query
+    if (!found.has("unit_capacity")) {
+      await conn.execute("ALTER TABLE `experiences` ADD COLUMN `unit_capacity` INT NULL");
+      console.log("[DB] ✅ Columna unit_capacity añadida");
+    }
+    if (!found.has("max_units")) {
+      await conn.execute("ALTER TABLE `experiences` ADD COLUMN `max_units` INT NULL");
+      console.log("[DB] ✅ Columna max_units añadida");
+    }
+    if (!found.has("has_time_slots")) {
+      await conn.execute("ALTER TABLE `experiences` ADD COLUMN `has_time_slots` BOOLEAN NOT NULL DEFAULT false");
+      console.log("[DB] ✅ Columna has_time_slots añadida");
+    }
+
+    // Check reservations columns too
+    const [resCols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations'
+       AND COLUMN_NAME IN ('pricing_type','unit_capacity','units_booked')`
+    ) as any[];
+    const foundRes = new Set(resCols.map((c: any) => c.COLUMN_NAME));
+    if (!foundRes.has("pricing_type")) {
+      await conn.execute("ALTER TABLE `reservations` ADD COLUMN `pricing_type` VARCHAR(16) NULL");
+      console.log("[DB] ✅ reservations.pricing_type añadida");
+    }
+    if (!foundRes.has("unit_capacity")) {
+      await conn.execute("ALTER TABLE `reservations` ADD COLUMN `unit_capacity` INT NULL");
+      console.log("[DB] ✅ reservations.unit_capacity añadida");
+    }
+    if (!foundRes.has("units_booked")) {
+      await conn.execute("ALTER TABLE `reservations` ADD COLUMN `units_booked` INT NULL");
+      console.log("[DB] ✅ reservations.units_booked añadida");
+    }
+
+    // Final test
     try {
       const [rows] = await conn.execute(
-        "SELECT id, pricing_type, unit_capacity, max_units FROM experiences LIMIT 1"
+        "SELECT id, pricing_type, unit_capacity, max_units, has_time_slots FROM experiences LIMIT 1"
       ) as any[];
-      console.log(`[DB Diag] ✅ Query de test OK (${rows.length} filas)`);
+      console.log(`[DB] ✅ Test query OK — ${rows.length} fila(s)`);
     } catch (qErr: any) {
-      console.error("[DB Diag] ❌ Query de test FALLÓ:", qErr.message);
+      console.error("[DB] ❌ Test query FALLÓ:", qErr.message);
     }
+
     await conn.end();
   } catch (err: any) {
-    console.error("[DB Diag] Error en diagnóstico:", err.message);
+    console.error("[DB] Error en ensurePricingColumns:", err.message);
   }
 }
 
 runMigrations()
-  .then(() => diagnoseDatabaseColumns())
+  .then(() => ensurePricingColumns())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
   .then(() => startQuoteReminderJob())
