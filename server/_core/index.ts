@@ -358,6 +358,7 @@ async function wipeTestDataIfRequested() {
     await wipe("ghl_webhook_logs");        // Leads GHL
 
     // Parent tables
+    await wipe("pending_payments");        // Pagos Pendientes
     await wipe("daily_orders");            // Calendario / Actividades del día
     await wipe("invoices");                // Facturas
     await wipe("bookings");                // Reservas
