@@ -2938,7 +2938,7 @@ function QuoteDetailModal({
             </Button>
           </>
         )}
-        {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
+        {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
           <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId, origin: window.location.origin })} disabled={resendQuote.isPending}>
             {resendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
             Reenviar
@@ -4709,21 +4709,21 @@ export default function CRMDashboard() {
                               <Send className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Reenviar (si ya fue enviado, visualizado o pago fallido) */}
-                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
+                          {/* Reenviar */}
+                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
                               onClick={() => sendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title="Reenviar al cliente">
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Confirmar pago (enviado, visualizado, pago fallido o aceptado sin pago) */}
-                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido" || (quote.status === "aceptado" && !quote.paidAt)) && (
+                          {/* Confirmar pago */}
+                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido" || (quote.status === "aceptado" && !quote.paidAt)) && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title="Confirmar pago recibido">
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Convertir a reserva pendiente de cobro */}
-                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
+                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
                             <Button
                               size="sm" variant="ghost"
                               className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
@@ -4738,7 +4738,7 @@ export default function CRMDashboard() {
                             </Button>
                           )}
                           {/* Marcar perdido */}
-                          {(quote.status === "borrador" || quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
+                          {(quote.status === "borrador" || quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-300 h-7 w-7 p-0" onClick={() => setMarkLostQuoteId(quote.id)} title="Marcar como perdido">
                               <XCircle className="w-3.5 h-3.5" />
                             </Button>
