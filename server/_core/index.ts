@@ -402,14 +402,16 @@ function startAbandonedCheckoutCleanup() {
     try {
       const mysql = await import("mysql2/promise");
       const { drizzle } = await import("drizzle-orm/mysql2");
-      const { reservations } = await import("../../drizzle/schema");
-      const { eq, and, lte, ne } = await import("drizzle-orm");
-      const { createVentaPerdidaLead } = await import("../db");
+      const { reservations, quotes } = await import("../../drizzle/schema");
+      const { eq, and, lte, isNotNull } = await import("drizzle-orm");
+      const { createVentaPerdidaLead, logActivity } = await import("../db");
 
       const pool = mysql.default.createPool(process.env.DATABASE_URL!);
       const db = drizzle(pool);
 
       const staleThreshold = Date.now() - STALE_AFTER_MS;
+
+      // ── Caso A: checkout directo ONLINE_DIRECTO sin presupuesto → Venta Perdida ──
       const stale = await db
         .select()
         .from(reservations)
@@ -419,12 +421,9 @@ function startAbandonedCheckoutCleanup() {
           lte(reservations.createdAt as any, staleThreshold)
         ));
 
-      if (!stale.length) { await pool.end(); return; }
-
-      // Agrupar por merchantOrder (un checkout = un lead)
       const byOrder = new Map<string, typeof stale>();
       for (const r of stale) {
-        if ((r as any).quoteId) continue; // Reservas de presupuesto: el lead ya existe en CRM
+        if ((r as any).quoteId) continue; // Reservas de presupuesto: se tratan en Caso B
         const key = r.merchantOrder;
         if (!byOrder.has(key)) byOrder.set(key, []);
         byOrder.get(key)!.push(r);
@@ -437,6 +436,44 @@ function startAbandonedCheckoutCleanup() {
           .set({ status: "cancelled", updatedAt: Date.now() } as any)
           .where(and(eq(reservations.merchantOrder, order), eq(reservations.status, "pending_payment")));
         console.log(`[AbandonedCheckout] Checkout abandonado ${order} cancelado → Lead Venta Perdida registrado`);
+      }
+
+      // ── Caso B: reserva vinculada a presupuesto + 60 min sin pago → pago_fallido ──
+      const staleQuoteReservations = await db
+        .select({ id: reservations.id, quoteId: reservations.quoteId, merchantOrder: reservations.merchantOrder })
+        .from(reservations)
+        .where(and(
+          eq(reservations.status, "pending_payment"),
+          isNotNull(reservations.quoteId),
+          lte(reservations.createdAt as any, staleThreshold)
+        ));
+
+      for (const resv of staleQuoteReservations) {
+        if (!resv.quoteId) continue;
+        try {
+          const [currentQuote] = await db
+            .select({ id: quotes.id, status: quotes.status, viewedAt: quotes.viewedAt })
+            .from(quotes).where(eq(quotes.id, resv.quoteId)).limit(1);
+
+          if (!currentQuote || currentQuote.status === "pagado" || currentQuote.status === "aceptado") continue;
+
+          const now = new Date();
+          await db.update(quotes).set({
+            status: "pago_fallido",
+            viewedAt: currentQuote.viewedAt ?? now,
+            updatedAt: now,
+          }).where(eq(quotes.id, resv.quoteId));
+
+          await logActivity("quote", resv.quoteId, "payment_abandoned_timeout", null, "Sistema (AbandonedCheckout)", {
+            merchantOrder: resv.merchantOrder,
+            reservationId: resv.id,
+            staleAfterMinutes: 60,
+          });
+
+          console.log(`[AbandonedCheckout] Presupuesto id=${resv.quoteId} → pago_fallido (reserva ${resv.merchantOrder} sin pago tras 60 min)`);
+        } catch (qErr: any) {
+          console.error(`[AbandonedCheckout] Error actualizando quote id=${resv.quoteId}:`, qErr.message);
+        }
       }
 
       await pool.end();
