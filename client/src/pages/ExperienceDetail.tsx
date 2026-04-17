@@ -101,7 +101,14 @@ export default function ExperienceDetail() {
     : ((exp as Record<string, unknown> | undefined)?.gallery as string[] | undefined) ?? [];
   const includes = (exp?.includes as string[] | undefined) ?? [];
   const excludes = (exp?.excludes as string[] | undefined) ?? [];
-  const totalPrice = effectivePricePerPerson * persons;
+  // Dual pricing: per_unit support
+  const pricingType = (exp as Record<string, unknown> | undefined)?.pricingType as string | undefined;
+  const unitCapacity = (exp as Record<string, unknown> | undefined)?.unitCapacity as number | undefined;
+  const isPerUnit = pricingType === "per_unit" && !!unitCapacity && unitCapacity > 0;
+  const unitsNeeded = isPerUnit ? Math.ceil(persons / unitCapacity!) : persons;
+  const totalPrice = effectivePricePerPerson * unitsNeeded;
+  const priceUnitLabel = isPerUnit ? "unidad" : "persona";
+  const priceSuffix = isPerUnit ? "€/u." : "€/p.";
 
   // Descuento activo en la experiencia
   const discountedFromPrice = getDiscountedPrice(
@@ -323,7 +330,9 @@ export default function ExperienceDetail() {
 
                 {/* Precio desde */}
                 <div className="mb-4">
-                  <span className="text-sm text-muted-foreground">Precio por persona desde</span>
+                  <span className="text-sm text-muted-foreground">
+                    Precio por {priceUnitLabel} desde
+                  </span>
                   {discountedFromPrice ? (
                     <div className="flex items-baseline gap-2 mt-1">
                       <span className="text-4xl font-display font-bold text-orange-500">{discountedFromPrice.toFixed(0)}€</span>
@@ -333,7 +342,7 @@ export default function ExperienceDetail() {
                     <div className="flex items-baseline gap-1.5 mt-1">
                       <span className="text-4xl font-display font-bold text-foreground">{displayFromPrice.toFixed(0)}€</span>
                       {variants.length > 0 && (
-                        <span className="text-xs text-muted-foreground">/ persona</span>
+                        <span className="text-xs text-muted-foreground">/ {priceUnitLabel}</span>
                       )}
                     </div>
                   )}
@@ -369,7 +378,7 @@ export default function ExperienceDetail() {
                           )}
                         >
                           <span>Estándar</span>
-                          <span className="font-bold">{parseFloat(String(exp?.basePrice ?? "0")).toFixed(0)}€/p.</span>
+                          <span className="font-bold">{parseFloat(String(exp?.basePrice ?? "0")).toFixed(0)}{priceSuffix}</span>
                         </button>
                       )}
                       {variants.map(v => (
@@ -385,7 +394,7 @@ export default function ExperienceDetail() {
                           )}
                         >
                           <span className="text-left leading-tight">{v.name}</span>
-                          <span className="font-bold ml-2 shrink-0">{parseFloat(String(v.priceModifier ?? 0)).toFixed(0)}€/p.</span>
+                          <span className="font-bold ml-2 shrink-0">{parseFloat(String(v.priceModifier ?? 0)).toFixed(0)}{priceSuffix}</span>
                         </button>
                       ))}
                     </div>
@@ -415,13 +424,22 @@ export default function ExperienceDetail() {
                       +
                     </button>
                   </div>
+                  {isPerUnit && (
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      → <strong className="text-foreground">{unitsNeeded} {unitsNeeded === 1 ? "unidad" : "unidades"}</strong> necesaria{unitsNeeded !== 1 ? "s" : ""}
+                      <span className="ml-1 opacity-70">({unitCapacity} pers./unidad)</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Total */}
                 <div className="bg-muted/50 rounded-xl p-4 mb-5">
                   <div className="flex items-center justify-between text-sm text-muted-foreground mb-1">
                     <span>
-                      {effectivePricePerPerson.toFixed(0)}€ × {persons} personas
+                      {isPerUnit
+                        ? <>{effectivePricePerPerson.toFixed(0)}€ × {unitsNeeded} {unitsNeeded === 1 ? "unidad" : "unidades"} <span className="opacity-60">({persons} pers.)</span></>
+                        : <>{effectivePricePerPerson.toFixed(0)}€ × {persons} personas</>
+                      }
                       {selectedVariant && <span className="block text-xs text-orange-600">{selectedVariant.name}</span>}
                     </span>
                     <span>{totalPrice.toFixed(0)}€</span>
@@ -553,11 +571,13 @@ export default function ExperienceDetail() {
                         variantId: selectedVariant?.id,
                         variantName: selectedVariant?.name,
                         pricePerPerson: effectivePricePerPerson,
-                        estimatedTotal: effectivePricePerPerson * persons,
+                        estimatedTotal: totalPrice,
                         extras: [],
                         selectedTimeSlotId: selectedSlot?.id,
                         selectedTimeSlotLabel: selectedSlot?.label,
                         selectedTime: slotType === "flexible" ? selectedTime : undefined,
+                        pricingType: isPerUnit ? "per_unit" : "per_person",
+                        unitCapacity: isPerUnit ? unitCapacity : undefined,
                       });
                       openCart();
                     }}
