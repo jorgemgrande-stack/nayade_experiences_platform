@@ -105,6 +105,8 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  // Confiar en el proxy de Railway (necesario para que express-rate-limit identifique IPs correctamente)
+  app.set("trust proxy", 1);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -310,6 +312,17 @@ async function ensurePricingColumns() {
       console.log("[DB] ✅ reservations.units_booked añadida");
     }
 
+    // Check leads.cart_metadata column
+    const [leadsCols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leads'
+       AND COLUMN_NAME = 'cart_metadata'`
+    ) as any[];
+    if (leadsCols.length === 0) {
+      await conn.execute("ALTER TABLE `leads` ADD COLUMN `cart_metadata` JSON NULL");
+      console.log("[DB] ✅ leads.cart_metadata añadida");
+    }
+
     // Final test
     try {
       const [rows] = await conn.execute(
@@ -428,7 +441,7 @@ function startAbandonedCheckoutCleanup() {
 
       await pool.end();
     } catch (err: any) {
-      console.error("[AbandonedCheckout] Error en limpieza:", err.message);
+      console.error("[AbandonedCheckout] Error en limpieza:", err.message, err.cause ?? "");
     }
     setTimeout(run, CHECK_INTERVAL_MS);
   }
