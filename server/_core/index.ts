@@ -326,8 +326,59 @@ async function ensurePricingColumns() {
   }
 }
 
+// ─── WIPE TEST DATA (one-shot, gated by WIPE_TEST_DATA=true env var) ──────────
+async function wipeTestDataIfRequested() {
+  if (process.env.WIPE_TEST_DATA !== "true") return;
+
+  console.log("[Wipe] ⚠️  WIPE_TEST_DATA=true detectado — limpiando datos de prueba...");
+  const mysql = await import("mysql2/promise");
+  const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+
+  // Helper: count + truncate with log
+  async function wipe(table: string) {
+    const [rows] = await conn.execute(`SELECT COUNT(*) as cnt FROM \`${table}\``) as any[];
+    const cnt = rows[0].cnt;
+    if (cnt > 0) {
+      await conn.execute(`DELETE FROM \`${table}\``);
+      console.log(`[Wipe] ✓ ${table}: ${cnt} registros eliminados`);
+    } else {
+      console.log(`[Wipe] — ${table}: ya vacía`);
+    }
+  }
+
+  try {
+    await conn.execute("SET FOREIGN_KEY_CHECKS=0");
+
+    // Child tables first (FK dependencies)
+    await wipe("discount_code_uses");      // Bonos (usos)
+    await wipe("booking_monitors");        // Reservas (hijos de bookings)
+    await wipe("reservation_operational"); // Reservas operacional
+    await wipe("cancellation_requests");   // Anulaciones
+    await wipe("crm_activity_log");        // Leads activity
+    await wipe("ghl_webhook_logs");        // Leads GHL
+
+    // Parent tables
+    await wipe("daily_orders");            // Calendario / Actividades del día
+    await wipe("invoices");                // Facturas
+    await wipe("bookings");                // Reservas
+    await wipe("reservations");            // Reservas principal
+    await wipe("quotes");                  // Presupuestos
+    await wipe("leads");                   // Leads
+
+    await conn.execute("SET FOREIGN_KEY_CHECKS=1");
+    console.log("[Wipe] ✅ Limpieza completada. REAV, liquidaciones, transacciones y catálogo intactos.");
+    console.log("[Wipe] ⚠️  Retira la variable WIPE_TEST_DATA del entorno para el próximo deploy.");
+  } catch (err: any) {
+    await conn.execute("SET FOREIGN_KEY_CHECKS=1").catch(() => {});
+    console.error("[Wipe] ❌ Error durante la limpieza:", err.message);
+  } finally {
+    await conn.end();
+  }
+}
+
 runMigrations()
   .then(() => ensurePricingColumns())
+  .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
   .then(() => startQuoteReminderJob())
