@@ -53,6 +53,7 @@ function StatusBadge({ status, isExpired }: { status: string; isExpired: boolean
     enviado:             { label: "Pendiente",         cls: "bg-amber-100 text-amber-700 border-amber-200" },
     visualizado:         { label: "Visto",             cls: "bg-blue-100 text-blue-700 border-blue-200" },
     convertido_carrito:  { label: "Pago iniciado",     cls: "bg-purple-100 text-purple-700 border-purple-200" },
+    pago_fallido:        { label: "Pago no completado", cls: "bg-orange-100 text-orange-700 border-orange-200" },
     aceptado:            { label: "Aceptado y pagado", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
     rechazado:           { label: "Rechazado",         cls: "bg-red-100 text-red-700 border-red-200" },
     perdido:             { label: "Expirado",          cls: "bg-red-100 text-red-700 border-red-200" },
@@ -264,6 +265,19 @@ export default function QuoteAcceptance() {
 
       {/* Content */}
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+
+        {/* Aviso de pago fallido */}
+        {quote.status === "pago_fallido" && (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl px-5 py-4 flex gap-3 items-start">
+            <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-orange-800 font-semibold text-sm">El pago anterior no se completó</p>
+              <p className="text-orange-600 text-xs mt-0.5">
+                Puedes intentarlo de nuevo con otra tarjeta o método de pago. El presupuesto sigue siendo válido.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Title card */}
         <div className="bg-white rounded-2xl shadow-xl overflow-hidden">

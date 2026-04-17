@@ -79,7 +79,7 @@ type Tab = "leads" | "quotes" | "reservations" | "invoices" | "anulaciones" | "p
 
 type OpportunityStatus = "nueva" | "enviada" | "ganada" | "perdida";
 type Priority = "baja" | "media" | "alta";
-type QuoteStatus = "borrador" | "enviado" | "aceptado" | "rechazado" | "expirado" | "perdido";
+type QuoteStatus = "borrador" | "enviado" | "visualizado" | "convertido_carrito" | "pago_fallido" | "aceptado" | "rechazado" | "expirado" | "perdido";
 
 // ─── BADGE HELPERS ────────────────────────────────────────────────────────────
 
@@ -96,14 +96,17 @@ function OpportunityBadge({ status }: { status: OpportunityStatus }) {
 
 function QuoteStatusBadge({ status }: { status: QuoteStatus }) {
   const map: Record<QuoteStatus, { label: string; className: string }> = {
-    borrador: { label: "Borrador", className: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
-    enviado: { label: "Enviado", className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-    aceptado: { label: "Aceptado", className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-    rechazado: { label: "Rechazado", className: "bg-red-500/15 text-red-400 border-red-500/30" },
-    expirado: { label: "Expirado", className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-    perdido: { label: "Perdido", className: "bg-red-500/15 text-red-400 border-red-500/30" },
+    borrador:           { label: "Borrador",         className: "bg-slate-500/15 text-slate-400 border-slate-500/30" },
+    enviado:            { label: "Enviado",           className: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+    visualizado:        { label: "Visualizado",       className: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
+    convertido_carrito: { label: "Pago iniciado",     className: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
+    pago_fallido:       { label: "Pago fallido",      className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+    aceptado:           { label: "Aceptado",          className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+    rechazado:          { label: "Rechazado",         className: "bg-red-500/15 text-red-400 border-red-500/30" },
+    expirado:           { label: "Expirado",          className: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+    perdido:            { label: "Perdido",           className: "bg-red-500/15 text-red-400 border-red-500/30" },
   };
-  const { label, className } = map[status] ?? map.borrador;
+  const { label, className } = map[status] ?? { label: status, className: "bg-slate-500/15 text-slate-400 border-slate-500/30" };
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${className}`}>{label}</span>;
 }
 
@@ -2903,7 +2906,7 @@ function QuoteDetailModal({
       </div>
       <DialogFooter className="flex gap-2 flex-wrap pt-3 pb-4 px-6 border-t border-foreground/[0.12] shrink-0">
         {/* Confirmar Pago — botón unificado */}
-        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
+        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
           <Button
             size="sm"
             className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
@@ -2935,14 +2938,14 @@ function QuoteDetailModal({
             </Button>
           </>
         )}
-        {quote.status === "enviado" && (
+        {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
           <Button size="sm" variant="outline" className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs" onClick={() => resendQuote.mutate({ id: quoteId, origin: window.location.origin })} disabled={resendQuote.isPending}>
             {resendQuote.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
             Reenviar
           </Button>
         )}
         {/* Pago Pendiente */}
-        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito") && (
+        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
           <Button
             size="sm"
             variant="outline"
@@ -4212,6 +4215,17 @@ export default function CRMDashboard() {
                 active={tab === "quotes" && filterStatus === "enviado"}
                 onClick={() => { handleTabChange("quotes"); setFilterStatus("enviado"); }}
               />
+              {(quoteCounters?.pagoFallido ?? 0) > 0 && (
+                <CounterCard
+                  label="Pago Fallido"
+                  value={quoteCounters?.pagoFallido ?? 0}
+                  icon={XCircle}
+                  color="red"
+                  subtitle="Recuperables"
+                  active={tab === "quotes" && filterStatus === "pago_fallido"}
+                  onClick={() => { handleTabChange("quotes"); setFilterStatus("pago_fallido"); }}
+                />
+              )}
               <CounterCard
                 label="Reservas Hoy"
                 value={resCounters?.hoy ?? 0}
@@ -4658,7 +4672,8 @@ export default function CRMDashboard() {
                               Visto {new Date(quote.viewedAt).toLocaleDateString("es-ES")}
                             </span>
                           )}
-                          {quote.sentAt && !quote.viewedAt && !quote.paidAt && (
+                          {quote.sentAt && !quote.viewedAt && !quote.paidAt &&
+                            quote.status !== "pago_fallido" && quote.status !== "convertido_carrito" && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-medium text-foreground/40 bg-foreground/[0.05] border border-foreground/[0.12] px-1.5 py-0.5 rounded-full">
                               <Eye className="w-2.5 h-2.5" />
                               No visto
@@ -4694,21 +4709,21 @@ export default function CRMDashboard() {
                               <Send className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Reenviar (si ya fue enviado) */}
-                          {quote.status === "enviado" && (
+                          {/* Reenviar (si ya fue enviado, visualizado o pago fallido) */}
+                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
                               onClick={() => sendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title="Reenviar al cliente">
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Confirmar pago (enviado o aceptado sin pago) */}
-                          {(quote.status === "enviado" || (quote.status === "aceptado" && !quote.paidAt)) && (
+                          {/* Confirmar pago (enviado, visualizado, pago fallido o aceptado sin pago) */}
+                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido" || (quote.status === "aceptado" && !quote.paidAt)) && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title="Confirmar pago recibido">
                               <CheckCircle className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Convertir a reserva pendiente de cobro (icono 5 — usa flujo Pago Pendiente) */}
-                          {quote.status === "enviado" && (
+                          {/* Convertir a reserva pendiente de cobro */}
+                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
                             <Button
                               size="sm" variant="ghost"
                               className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0"
@@ -4723,7 +4738,7 @@ export default function CRMDashboard() {
                             </Button>
                           )}
                           {/* Marcar perdido */}
-                          {(quote.status === "borrador" || quote.status === "enviado") && (
+                          {(quote.status === "borrador" || quote.status === "enviado" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-300 h-7 w-7 p-0" onClick={() => setMarkLostQuoteId(quote.id)} title="Marcar como perdido">
                               <XCircle className="w-3.5 h-3.5" />
                             </Button>

@@ -103,19 +103,41 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     // Procesar downstream en background — no bloquea la respuesta a Redsys
     const updatedReservation = await getReservationByMerchantOrder(result.merchantOrder);
 
-    // ── Pago fallido en checkout directo → Lead "Venta Perdida" ──────────────
-    // Solo para reservas ONLINE_DIRECTO sin vínculo a presupuesto (checkout público).
-    // Las reservas de presupuesto con link de pago no generan lead: ya existe uno en el CRM.
+    // ── Pago fallido ──────────────────────────────────────────────────────────
     if (!result.isAuthorized) {
       try {
         const allFailed = await getAllReservationsByMerchantOrder(result.merchantOrder);
+
+        // Caso A: checkout directo sin presupuesto → Lead "Venta Perdida"
         const isDirectCheckout = allFailed.length > 0 &&
           allFailed.every(r => (r as any).channel === "ONLINE_DIRECTO" && !(r as any).quoteId);
         if (isDirectCheckout) {
           await createVentaPerdidaLead(allFailed as any);
         }
+
+        // Caso B: reserva vinculada a un presupuesto → marcar quote como pago_fallido
+        const quoteReservation = allFailed.find(r => (r as any).quoteId);
+        if (quoteReservation) {
+          const quoteId = (quoteReservation as any).quoteId as number;
+          const now = new Date();
+          const [currentQuote] = await _db.select({ id: quotes.id, viewedAt: quotes.viewedAt })
+            .from(quotes).where(eq(quotes.id, quoteId)).limit(1);
+          if (currentQuote) {
+            await _db.update(quotes).set({
+              status: "pago_fallido",
+              // Garantizar viewedAt: si el cliente llegó a Redsys, definitivamente vio el presupuesto
+              viewedAt: currentQuote.viewedAt ?? now,
+              updatedAt: now,
+            }).where(eq(quotes.id, quoteId));
+            await logActivity("quote", quoteId, "payment_failed_redsys", null, "Sistema (Redsys)", {
+              merchantOrder: result.merchantOrder,
+              responseCode: result.responseCode,
+            });
+            console.log(`[Redsys IPN] Presupuesto id=${quoteId} marcado como pago_fallido (order: ${result.merchantOrder})`);
+          }
+        }
       } catch (vpErr: any) {
-        console.error("[Redsys IPN] Error creando lead Venta Perdida:", vpErr.message);
+        console.error("[Redsys IPN] Error procesando pago fallido:", vpErr.message);
       }
     }
 

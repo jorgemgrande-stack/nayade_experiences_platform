@@ -1051,9 +1051,10 @@ export const crmRouter = router({
       }),
 
     counters: staff.query(async () => {
-      const [borrador, enviado, pendientePago, ganado, perdido, totalImporte] = await Promise.all([
+      const [borrador, enviado, pagoFallido, pendientePago, ganado, perdido, totalImporte] = await Promise.all([
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "borrador")),
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "enviado")),
+        db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "pago_fallido")),
         db.select({ cnt: count() }).from(quotes).where(and(eq(quotes.status, "enviado"), sql`${quotes.paidAt} IS NULL`)),
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "aceptado")),
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "perdido")),
@@ -1067,6 +1068,7 @@ export const crmRouter = router({
       return {
         borrador: borrador[0]?.cnt ?? 0,
         enviado: enviado[0]?.cnt ?? 0,
+        pagoFallido: pagoFallido[0]?.cnt ?? 0,
         pendientePago: pendientePago[0]?.cnt ?? 0,
         ganado: totalGanados,
         perdido: perdido[0]?.cnt ?? 0,
@@ -2357,13 +2359,17 @@ export const crmRouter = router({
           .limit(1);
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado o enlace inválido" });
 
-        // Marcar como visualizado si llega por primera vez
+        // Marcar como visualizado si llega por primera vez (solo desde "enviado")
+        // Si ya está en pago_fallido o estados posteriores, no se degrada el estado
         if (quote.status === "enviado") {
           await db
             .update(quotes)
             .set({ status: "visualizado", viewedAt: new Date(), updatedAt: new Date() })
             .where(eq(quotes.id, quote.id));
           await logActivity("quote", quote.id, "quote_viewed_by_client", null, null, { token: input.token });
+        } else if (!quote.viewedAt) {
+          // Garantizar viewedAt aunque el estado ya haya avanzado
+          await db.update(quotes).set({ viewedAt: new Date(), updatedAt: new Date() }).where(eq(quotes.id, quote.id));
         }
 
         // Obtener datos del lead/cliente
@@ -2456,6 +2462,11 @@ export const crmRouter = router({
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Cliente no encontrado" });
 
+        // Garantizar viewedAt: si el cliente llega a iniciar el pago, definitivamente vio el presupuesto
+        if (!quote.viewedAt) {
+          await db.update(quotes).set({ viewedAt: new Date(), updatedAt: new Date() }).where(eq(quotes.id, quote.id));
+        }
+
         // Precios CONGELADOS del presupuesto — nunca recalculados
         const totalEuros = Number(quote.total);
         if (!(totalEuros > 0)) {
@@ -2467,9 +2478,9 @@ export const crmRouter = router({
         const customerEmail = input.customerEmail ?? lead.email ?? "";
         const customerPhone = input.customerPhone ?? lead.phone ?? "";
 
-        // Reutilizar reserva pending_payment existente si el presupuesto ya fue convertido.
-        // Evita crear múltiples reservas huérfanas si el cliente recarga o reintenta el pago.
-        if (quote.status === "convertido_carrito" && quote.redsysOrderId) {
+        // Reutilizar reserva pending_payment existente si el presupuesto ya fue convertido
+        // o si el pago anterior falló y el cliente reintenta con una nueva tarjeta.
+        if ((quote.status === "convertido_carrito" || quote.status === "pago_fallido") && quote.redsysOrderId) {
           const [existingReservation] = await db
             .select()
             .from(reservations)

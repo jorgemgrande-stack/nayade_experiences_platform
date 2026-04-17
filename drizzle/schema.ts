@@ -275,6 +275,7 @@ export const quotes = mysqlTable("quotes", {
     "visualizado",
     "aceptado",
     "convertido_carrito",
+    "pago_fallido",
     "pagado",
     "convertido_reserva",
     "facturado",
