@@ -526,43 +526,41 @@ export default function ExperiencesManager() {
 
               {/* Tipo de Pricing */}
               <div className="col-span-2">
-                <div className="border border-cyan-200 bg-cyan-50/50 rounded-xl p-4">
-                  <Label className="text-sm font-semibold text-cyan-700 flex items-center gap-1.5 mb-3">
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-cyan-100 text-cyan-600 text-xs font-bold">€</span>
-                    Modelo de cobro
-                  </Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className={form.pricingType === "per_unit" ? "" : "col-span-2"}>
-                      <Label className="text-xs text-muted-foreground">Tipo de precio</Label>
-                      <Select value={form.pricingType} onValueChange={(v) => setForm({ ...form, pricingType: v, unitCapacity: "", maxUnits: "" })}>
-                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="per_person">Por persona</SelectItem>
-                          <SelectItem value="per_unit">Por unidad (canoa, moto de agua, etc.)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {form.pricingType === "per_unit" && (
-                      <>
-                        <div>
-                          <Label htmlFor="unitCapacity" className="text-xs text-muted-foreground">Personas por unidad *</Label>
-                          <Input id="unitCapacity" type="number" min="1" value={form.unitCapacity}
-                            onChange={(e) => setForm({ ...form, unitCapacity: e.target.value })} className="mt-1" placeholder="Ej: 2" />
-                        </div>
-                        <div>
-                          <Label htmlFor="maxUnits" className="text-xs text-muted-foreground">Máx. unidades disponibles</Label>
-                          <Input id="maxUnits" type="number" min="1" value={form.maxUnits}
-                            onChange={(e) => setForm({ ...form, maxUnits: e.target.value })} className="mt-1" placeholder="Sin límite" />
-                        </div>
-                      </>
-                    )}
+                <div className="rounded-xl border border-border bg-muted/40 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-accent/15 text-accent text-xs font-bold">€</span>
+                    <span className="text-sm font-semibold text-foreground">Modelo de cobro</span>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">Tipo de precio</Label>
+                    <Select value={form.pricingType} onValueChange={(v) => setForm({ ...form, pricingType: v, unitCapacity: "", maxUnits: "" })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="per_person">Por persona</SelectItem>
+                        <SelectItem value="per_unit">Por unidad (canoa, moto de agua, etc.)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   {form.pricingType === "per_unit" && (
-                    <p className="text-xs text-cyan-600 mt-2">
-                      El precio base es por unidad.
-                      {form.unitCapacity ? ` Cada unidad admite ${form.unitCapacity} persona${parseInt(form.unitCapacity) !== 1 ? "s" : ""}.` : ""}
-                      {" "}El sistema calcula automáticamente cuántas unidades necesita el grupo.
-                    </p>
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="unitCapacity" className="text-xs text-muted-foreground mb-1 block">Personas por unidad *</Label>
+                          <Input id="unitCapacity" type="number" min="1" value={form.unitCapacity}
+                            onChange={(e) => setForm({ ...form, unitCapacity: e.target.value })} placeholder="Ej: 2" />
+                        </div>
+                        <div>
+                          <Label htmlFor="maxUnits" className="text-xs text-muted-foreground mb-1 block">Máx. unidades disponibles</Label>
+                          <Input id="maxUnits" type="number" min="1" value={form.maxUnits}
+                            onChange={(e) => setForm({ ...form, maxUnits: e.target.value })} placeholder="Sin límite" />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground bg-background/60 border border-border/60 rounded-lg px-3 py-2">
+                        El precio base es <strong className="text-foreground">por unidad</strong>.
+                        {form.unitCapacity ? <> Cada unidad admite <strong className="text-foreground">{form.unitCapacity} persona{parseInt(form.unitCapacity) !== 1 ? "s" : ""}</strong>.</> : ""}
+                        {" "}El sistema calcula automáticamente cuántas unidades necesita el grupo.
+                      </p>
+                    </>
                   )}
                 </div>
               </div>
