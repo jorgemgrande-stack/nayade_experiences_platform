@@ -37,12 +37,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      const pool = mysql.createPool({
-        uri: process.env.DATABASE_URL,
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-      });
+      const pool = mysql.createPool(process.env.DATABASE_URL!);
       _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);

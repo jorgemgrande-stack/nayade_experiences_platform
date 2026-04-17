@@ -260,7 +260,41 @@ async function seedExperiencesIfEmpty() {
   }
 }
 
+async function diagnoseDatabaseColumns() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    // Check which pricing columns exist
+    const [cols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'experiences'
+       AND COLUMN_NAME IN ('pricing_type','unit_capacity','max_units','has_time_slots')`
+    ) as any[];
+    const found = cols.map((c: any) => c.COLUMN_NAME);
+    console.log("[DB Diag] Columnas de pricing presentes:", found.length > 0 ? found.join(", ") : "NINGUNA");
+    const missing = ["pricing_type","unit_capacity","max_units","has_time_slots"].filter(c => !found.includes(c));
+    if (missing.length > 0) {
+      console.error("[DB Diag] ⚠️  Columnas FALTANTES:", missing.join(", "));
+    } else {
+      console.log("[DB Diag] ✅ Todas las columnas de pricing existen");
+    }
+    // Test the actual query
+    try {
+      const [rows] = await conn.execute(
+        "SELECT id, pricing_type, unit_capacity, max_units FROM experiences LIMIT 1"
+      ) as any[];
+      console.log(`[DB Diag] ✅ Query de test OK (${rows.length} filas)`);
+    } catch (qErr: any) {
+      console.error("[DB Diag] ❌ Query de test FALLÓ:", qErr.message);
+    }
+    await conn.end();
+  } catch (err: any) {
+    console.error("[DB Diag] Error en diagnóstico:", err.message);
+  }
+}
+
 runMigrations()
+  .then(() => diagnoseDatabaseColumns())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
   .then(() => startQuoteReminderJob())
