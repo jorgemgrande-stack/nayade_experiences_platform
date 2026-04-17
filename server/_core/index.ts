@@ -323,6 +323,20 @@ async function ensurePricingColumns() {
       console.log("[DB] ✅ leads.cart_metadata añadida");
     }
 
+    // Asegurar que el enum de quotes.status incluye 'pago_fallido'
+    const [enumInfo] = await conn.execute(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quotes' AND COLUMN_NAME = 'status'`
+    ) as any[];
+    const currentEnum: string = enumInfo[0]?.COLUMN_TYPE ?? "";
+    if (!currentEnum.includes("pago_fallido")) {
+      await conn.execute(`ALTER TABLE \`quotes\` MODIFY COLUMN \`status\` ENUM(
+        'borrador','enviado','visualizado','aceptado','convertido_carrito','pago_fallido',
+        'pagado','convertido_reserva','facturado','rechazado','expirado','perdido'
+      ) NOT NULL DEFAULT 'borrador'`);
+      console.log("[DB] ✅ quotes.status enum actualizado con 'pago_fallido'");
+    }
+
     // Final test
     try {
       const [rows] = await conn.execute(

@@ -3834,6 +3834,14 @@ export default function CRMDashboard() {
     onError: (e) => toast.error(e.message),
   });
 
+  const resendQuoteMutation = trpc.crm.quotes.resend.useMutation({
+    onSuccess: () => {
+      toast.success("Presupuesto reenviado al cliente");
+      utils.crm.quotes.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const confirmPaymentMutation = trpc.crm.quotes.confirmPayment.useMutation({
     onSuccess: () => {
       toast.success("Pago confirmado — reserva y factura generadas");
@@ -4709,10 +4717,10 @@ export default function CRMDashboard() {
                               <Send className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Reenviar */}
+                          {/* Reenviar (usa resend para no resetear el status) */}
                           {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0"
-                              onClick={() => sendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title="Reenviar al cliente">
+                              onClick={() => resendQuoteMutation.mutate({ id: quote.id, origin: window.location.origin })} title="Reenviar al cliente">
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
                           )}
