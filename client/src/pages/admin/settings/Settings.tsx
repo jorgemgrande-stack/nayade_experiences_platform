@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Settings as SettingsIcon, Globe, Phone, Mail, Clock,
   CreditCard, Loader2, CheckCircle2, Info, Send, Building2,
+  Eye, EyeOff, Wifi, WifiOff,
 } from "lucide-react";
 
 const EMAIL_TEMPLATES = [
@@ -24,6 +25,136 @@ const EMAIL_TEMPLATES = [
   { id: "confirmation",        label: "Reserva confirmada (CRM admin)" },
   { id: "transfer-confirm",    label: "Pago por transferencia validado" },
 ];
+
+function GHLSection() {
+  const { data: status, refetch: refetchStatus } = trpc.cms.getGHLStatus.useQuery();
+  const saveMutation = trpc.cms.updateSiteSettings.useMutation({
+    onSuccess: () => { toast.success("Credenciales GHL guardadas"); refetchStatus(); },
+    onError: (e) => toast.error("Error al guardar: " + e.message),
+  });
+  const testMutation = trpc.cms.testGHLConnection.useMutation({
+    onSuccess: (res) => {
+      if (res.ok) toast.success("Conexión con GHL exitosa ✓");
+      else toast.error("Fallo de conexión: " + (res.error ?? "Error desconocido"));
+    },
+    onError: (e) => toast.error("Error: " + e.message),
+  });
+
+  const [apiKey, setApiKey] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [showKey, setShowKey] = useState(false);
+
+  const isConfigured = status?.configured;
+  const fromEnv = status?.fromEnv;
+
+  function handleSave() {
+    if (!apiKey && !locationId) return toast.error("Introduce al menos un valor");
+    const settings: Record<string, string> = {};
+    if (apiKey) settings.ghlApiKey = apiKey;
+    if (locationId) settings.ghlLocationId = locationId;
+    saveMutation.mutate({ settings });
+  }
+
+  function handleTest() {
+    const key = apiKey || "";
+    const loc = locationId || status?.locationId || "";
+    if (!key || !loc) return toast.error("Introduce API Key y Location ID para probar");
+    testMutation.mutate({ apiKey: key, locationId: loc });
+  }
+
+  return (
+    <div className="bg-card border border-border/50 rounded-2xl p-6">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center">
+            <SettingsIcon className="w-4 h-4 text-blue-500" />
+          </div>
+          <h3 className="font-heading font-semibold text-foreground">Integración GoHighLevel</h3>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs font-display font-medium px-2.5 py-1 rounded-full ${isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
+          {isConfigured ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+          {isConfigured ? "Conectado" : "Sin configurar"}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground mb-5 ml-11">
+        Sincroniza leads y contactos con tu CRM de GoHighLevel. Las credenciales se guardan de forma segura en la base de datos.
+        {fromEnv && <span className="ml-1 text-amber-600 font-medium">· Actualmente usando variables de entorno (env vars tienen prioridad)</span>}
+      </p>
+
+      <div className="ml-11 space-y-4">
+        {isConfigured && (
+          <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-display text-emerald-800">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>
+              API Key: <strong>{status?.apiKeyMasked}</strong>
+              {status?.locationId && <> · Location ID: <strong>{status.locationId}</strong></>}
+            </span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-display font-medium text-foreground/80">
+              API Key {isConfigured && <span className="text-xs text-muted-foreground">(dejar vacío para no cambiar)</span>}
+            </Label>
+            <div className="relative">
+              <Input
+                type={showKey ? "text" : "password"}
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder={isConfigured ? "••••••••" : "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."}
+                className="pr-10 font-mono text-xs"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-display font-medium text-foreground/80">Location ID</Label>
+            <Input
+              value={locationId}
+              onChange={e => setLocationId(e.target.value)}
+              placeholder={status?.locationId || "xxxxxxxxxxxxxxxxxxxxxxxx"}
+              className="font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            onClick={handleSave}
+            disabled={saveMutation.isPending || (!apiKey && !locationId)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-display"
+            size="sm"
+          >
+            {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+            Guardar credenciales
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTest}
+            disabled={testMutation.isPending}
+            className="font-display"
+          >
+            {testMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wifi className="w-4 h-4 mr-2" />}
+            Probar conexión
+          </Button>
+        </div>
+
+        <div className="text-xs text-muted-foreground font-display space-y-1 pt-1 border-t border-border/40">
+          <p>Los leads del formulario web y presupuestos se sincronizan automáticamente como contactos en GHL con sus tags y notas.</p>
+          <p>Tags disponibles: <code className="bg-muted px-1 rounded">Lead Web</code> · <code className="bg-muted px-1 rounded">Experiencia</code> · <code className="bg-muted px-1 rounded">Presupuesto</code> · <code className="bg-muted px-1 rounded">Reserva Online</code></p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function EmailPreviewSection() {
   const [templateId, setTemplateId] = useState("budget-user");
@@ -539,40 +670,8 @@ export default function Settings() {
           </div>
         </Section>
 
-        {/* ── Integración GHL (informativo) ── */}
-        <div className="bg-card border border-border/50 rounded-2xl p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center">
-              <SettingsIcon className="w-4 h-4 text-blue-500" />
-            </div>
-            <h3 className="font-heading font-semibold text-foreground">Integración GoHighLevel</h3>
-          </div>
-          <p className="text-sm font-display text-muted-foreground mb-4 ml-11">
-            Las credenciales de GHL (API Key, Location ID) se gestionan como variables de entorno seguras en el panel de gestión del proyecto.
-          </p>
-          <div className="ml-11 space-y-2">
-            <div className="flex items-center gap-2 text-sm font-display">
-              <span className="w-2 h-2 rounded-full bg-muted-foreground/40" />
-              <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono">GHL_API_KEY</code>
-              <span className="text-muted-foreground">— API Key de GoHighLevel</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm font-display">
-              <span className="w-2 h-2 rounded-full bg-muted-foreground/40" />
-              <code className="text-xs bg-muted px-2 py-0.5 rounded font-mono">GHL_LOCATION_ID</code>
-              <span className="text-muted-foreground">— ID de ubicación en GHL</span>
-            </div>
-          </div>
-          <div className="mt-4 ml-11">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => toast.info("Accede a Secrets en el panel de gestión del proyecto para configurar GHL")}
-              className="font-display"
-            >
-              Ver instrucciones
-            </Button>
-          </div>
-        </div>
+        {/* ── Integración GHL ── */}
+        <GHLSection />
 
         {/* ── Prueba de plantillas de email ── */}
         <EmailPreviewSection />

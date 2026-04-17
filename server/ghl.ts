@@ -28,9 +28,39 @@ export interface GHLContactPayload {
  * Retorna el contactId de GHL si tiene éxito, o null si falla (sin lanzar error,
  * para no bloquear el flujo principal de la plataforma).
  */
-export async function createGHLContact(payload: GHLContactPayload): Promise<string | null> {
-  const apiKey = process.env.GHL_API_KEY;
-  const locationId = process.env.GHL_LOCATION_ID;
+/**
+ * Verifica que las credenciales de GHL son válidas haciendo una llamada de prueba.
+ * Retorna { ok: true } o { ok: false, error: string }.
+ */
+export async function testGHLConnection(
+  apiKey: string,
+  locationId: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const response = await fetch(
+      `${GHL_API_URL}/locations/${locationId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Version: GHL_API_VERSION,
+          Accept: "application/json",
+        },
+      }
+    );
+    if (response.ok) return { ok: true };
+    const text = await response.text();
+    return { ok: false, error: `HTTP ${response.status}: ${text.slice(0, 120)}` };
+  } catch (err: any) {
+    return { ok: false, error: err.message ?? "Error de red" };
+  }
+}
+
+export async function createGHLContact(
+  payload: GHLContactPayload,
+  overrideCredentials?: { apiKey: string; locationId: string }
+): Promise<string | null> {
+  const apiKey = overrideCredentials?.apiKey ?? process.env.GHL_API_KEY;
+  const locationId = overrideCredentials?.locationId ?? process.env.GHL_LOCATION_ID;
 
   if (!apiKey || !locationId) {
     console.warn("[GHL] GHL_API_KEY o GHL_LOCATION_ID no configurados. Saltando integración CRM.");

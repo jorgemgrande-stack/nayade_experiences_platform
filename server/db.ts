@@ -283,17 +283,41 @@ export async function createLead(data: {
 
   // 4. Sincronizar con GoHighLevel CRM (fire-and-forget, no bloquea el flujo)
   const ghlSource = data.source ?? "web";
-  createGHLContact({
-    name: data.name,
-    email: data.email,
-    phone: data.phone,
-    companyName: data.company,
-    source: ghlSource,
-    tags: getGHLTagsFromSource(ghlSource),
-    notes: data.message
-      ? `[Lead #${leadId}] ${data.message}`
-      : `[Lead #${leadId}] Origen: ${ghlSource}`,
-  }).catch((err) => console.warn("[GHL] Error en fire-and-forget:", err));
+  (async () => {
+    try {
+      // Resolve credentials: env vars first, then DB siteSettings
+      let ghlApiKey = process.env.GHL_API_KEY;
+      let ghlLocationId = process.env.GHL_LOCATION_ID;
+      if (!ghlApiKey || !ghlLocationId) {
+        const db = await getDb();
+        if (db) {
+          const rows = await db.select().from(siteSettings)
+            .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
+          const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+          ghlApiKey = ghlApiKey || map.ghlApiKey || undefined;
+          ghlLocationId = ghlLocationId || map.ghlLocationId || undefined;
+        }
+      }
+      if (ghlApiKey && ghlLocationId) {
+        await createGHLContact(
+          {
+            name: data.name,
+            email: data.email,
+            phone: data.phone,
+            companyName: data.company,
+            source: ghlSource,
+            tags: getGHLTagsFromSource(ghlSource),
+            notes: data.message
+              ? `[Lead #${leadId}] ${data.message}`
+              : `[Lead #${leadId}] Origen: ${ghlSource}`,
+          },
+          { apiKey: ghlApiKey, locationId: ghlLocationId }
+        );
+      }
+    } catch (err) {
+      console.warn("[GHL] Error en fire-and-forget:", err);
+    }
+  })();
 
   return { id: leadId, success: true };
 }

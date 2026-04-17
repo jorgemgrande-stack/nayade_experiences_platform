@@ -119,6 +119,7 @@ import {
   generateMerchantOrder,
 } from "./redsys";
 import { sendInviteEmail } from "./inviteEmail";
+import { testGHLConnection } from "./ghl";
 import { sendEmail } from "./mailer";
 import {
   buildBudgetRequestUserHtml, buildBudgetRequestAdminHtml,
@@ -544,6 +545,36 @@ export const appRouter = router({
         }
         return { ok: true };
       }),
+
+    testGHLConnection: adminProcedure
+      .input(z.object({ apiKey: z.string(), locationId: z.string() }))
+      .mutation(async ({ input }) => {
+        return testGHLConnection(input.apiKey, input.locationId);
+      }),
+
+    getGHLStatus: adminProcedure.query(async () => {
+      const db = await getDb();
+      const envKey = process.env.GHL_API_KEY;
+      const envLoc = process.env.GHL_LOCATION_ID;
+      let dbKey = "";
+      let dbLoc = "";
+      if (db) {
+        const rows = await db.select().from(siteSettings)
+          .where(sqlDrizzle`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
+        const map = Object.fromEntries(rows.map((r: any) => [r.key, r.value]));
+        dbKey = map.ghlApiKey ?? "";
+        dbLoc = map.ghlLocationId ?? "";
+      }
+      return {
+        configured: !!(envKey || dbKey) && !!(envLoc || dbLoc),
+        fromEnv: !!(envKey && envLoc),
+        apiKeySet: !!(envKey || dbKey),
+        locationIdSet: !!(envLoc || dbLoc),
+        // Return masked values for display (never return plain key)
+        apiKeyMasked: (envKey || dbKey) ? "••••••••" + (envKey || dbKey).slice(-4) : "",
+        locationId: envLoc || dbLoc || "",
+      };
+    }),
   }),
 
   // ─── PUBLIC: Page Blocks ──────────────────────────────────────────────────────────────────────────────
