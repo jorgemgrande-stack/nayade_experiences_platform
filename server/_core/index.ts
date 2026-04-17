@@ -142,40 +142,6 @@ async function startServer() {
   // Servir archivos del storage local (fallback cuando S3/Forge no está configurado)
   const localStorageDir = process.env.LOCAL_STORAGE_PATH ?? "/tmp/local-storage";
   app.use("/local-storage", express.static(localStorageDir));
-  // Endpoint temporal de debug para consultar estado de reservas/pedidos
-  app.get("/api/debug/order/:merchantOrder", async (req, res) => {
-    if (req.headers["x-debug-secret"] !== process.env.DEBUG_SECRET) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-    try {
-      const { getDb } = await import("../db");
-      const { reservations, leads } = await import("../../drizzle/schema");
-      const { eq, sql: sqlRaw } = await import("drizzle-orm");
-      const db = await getDb();
-      if (!db) return res.status(503).json({ error: "No DB" });
-      const rows = await db.select({
-        id: reservations.id,
-        merchantOrder: reservations.merchantOrder,
-        status: reservations.status,
-        channel: reservations.channel,
-        quoteId: reservations.quoteId,
-        customerName: reservations.customerName,
-        customerEmail: reservations.customerEmail,
-        amountTotal: reservations.amountTotal,
-      }).from(reservations).where(eq(reservations.merchantOrder, req.params.merchantOrder));
-      const ventaPerdidaLeads = await db.select({
-        id: leads.id,
-        source: leads.source,
-        opportunityStatus: leads.opportunityStatus,
-        name: leads.name,
-        email: leads.email,
-      }).from(leads).where(eq(leads.source, "venta_perdida"));
-      res.json({ reservations: rows, recentVentaPerdidaLeads: ventaPerdidaLeads.slice(-5) });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message, stack: e.stack });
-    }
-  });
-
   // File upload endpoint
   app.use(uploadRouter);
   // Redsys IPN notification endpoint
