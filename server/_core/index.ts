@@ -377,10 +377,72 @@ async function wipeTestDataIfRequested() {
   }
 }
 
+// ─── ABANDONED CHECKOUT CLEANUP ───────────────────────────────────────────────
+// Cada 20 minutos busca reservas pending_payment+ONLINE_DIRECTO sin pago durante
+// más de 60 minutos. Las convierte en leads "Venta Perdida" y las cancela.
+// Esto cubre el caso en que el cliente abandona el pago sin que Redsys envíe IPN.
+function startAbandonedCheckoutCleanup() {
+  const CHECK_INTERVAL_MS = 20 * 60 * 1000;  // 20 min
+  const STALE_AFTER_MS    = 60 * 60 * 1000;  // 60 min sin confirmar = abandonado
+
+  async function run() {
+    try {
+      const mysql = await import("mysql2/promise");
+      const { drizzle } = await import("drizzle-orm/mysql2");
+      const { reservations } = await import("../../drizzle/schema");
+      const { eq, and, lte, ne } = await import("drizzle-orm");
+      const { createVentaPerdidaLead } = await import("../db");
+
+      const pool = mysql.default.createPool(process.env.DATABASE_URL!);
+      const db = drizzle(pool);
+
+      const staleThreshold = Date.now() - STALE_AFTER_MS;
+      const stale = await db
+        .select()
+        .from(reservations)
+        .where(and(
+          eq(reservations.status, "pending_payment"),
+          eq(reservations.channel, "ONLINE_DIRECTO"),
+          lte(reservations.createdAt as any, staleThreshold)
+        ));
+
+      if (!stale.length) { await pool.end(); return; }
+
+      // Agrupar por merchantOrder (un checkout = un lead)
+      const byOrder = new Map<string, typeof stale>();
+      for (const r of stale) {
+        if ((r as any).quoteId) continue; // Reservas de presupuesto: el lead ya existe en CRM
+        const key = r.merchantOrder;
+        if (!byOrder.has(key)) byOrder.set(key, []);
+        byOrder.get(key)!.push(r);
+      }
+
+      for (const [order, group] of byOrder) {
+        await createVentaPerdidaLead(group as any);
+        await db
+          .update(reservations)
+          .set({ status: "cancelled", updatedAt: Date.now() } as any)
+          .where(and(eq(reservations.merchantOrder, order), eq(reservations.status, "pending_payment")));
+        console.log(`[AbandonedCheckout] Checkout abandonado ${order} cancelado → Lead Venta Perdida registrado`);
+      }
+
+      await pool.end();
+    } catch (err: any) {
+      console.error("[AbandonedCheckout] Error en limpieza:", err.message);
+    }
+    setTimeout(run, CHECK_INTERVAL_MS);
+  }
+
+  // Primera ejecución tras arranque completo (evita competir con las migraciones)
+  setTimeout(run, CHECK_INTERVAL_MS);
+  console.log("[AbandonedCheckout] Job iniciado — checkeo de checkouts abandonados cada 20 min");
+}
+
 runMigrations()
   .then(() => ensurePricingColumns())
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
   .then(() => startQuoteReminderJob())
+  .then(() => startAbandonedCheckoutCleanup())
   .catch(console.error);

@@ -238,6 +238,12 @@ export const leads = mysqlTable("leads", {
   }[]>(),
   numberOfAdults: int("numberOfAdults"),
   numberOfChildren: int("numberOfChildren"),
+  cartMetadata: json("cart_metadata").$type<{
+    merchantOrder: string;
+    items: { productId: number; productName: string; people: number; amountCents: number; bookingDate: string }[];
+    totalAmountCents: number;
+    checkoutAt: string;
+  } | null>(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

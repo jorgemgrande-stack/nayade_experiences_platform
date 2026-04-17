@@ -6,7 +6,7 @@
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
-import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "./db";
+import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, createVentaPerdidaLead } from "./db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "./reav";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
@@ -102,6 +102,22 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
 
     // Procesar downstream en background — no bloquea la respuesta a Redsys
     const updatedReservation = await getReservationByMerchantOrder(result.merchantOrder);
+
+    // ── Pago fallido en checkout directo → Lead "Venta Perdida" ──────────────
+    // Solo para reservas ONLINE_DIRECTO sin vínculo a presupuesto (checkout público).
+    // Las reservas de presupuesto con link de pago no generan lead: ya existe uno en el CRM.
+    if (!result.isAuthorized) {
+      try {
+        const allFailed = await getAllReservationsByMerchantOrder(result.merchantOrder);
+        const isDirectCheckout = allFailed.length > 0 &&
+          allFailed.every(r => (r as any).channel === "ONLINE_DIRECTO" && !(r as any).quoteId);
+        if (isDirectCheckout) {
+          await createVentaPerdidaLead(allFailed as any);
+        }
+      } catch (vpErr: any) {
+        console.error("[Redsys IPN] Error creando lead Venta Perdida:", vpErr.message);
+      }
+    }
 
     // ── Crear/actualizar cliente en el CRM cuando el pago es exitoso ──────────
     if (result.isAuthorized && updatedReservation?.customerName) {

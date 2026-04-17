@@ -27,7 +27,7 @@ import {
   discountCodes,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
-import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { generateDocumentNumber } from "../documentNumbers";
@@ -2796,7 +2796,26 @@ export const crmRouter = router({
       )
       .query(async ({ input }) => {
         const conditions = [];
-        if (input.status) conditions.push(eq(reservations.status, input.status as "draft" | "pending_payment" | "paid" | "failed" | "cancelled"));
+
+        if (input.status) {
+          conditions.push(eq(reservations.status, input.status as "draft" | "pending_payment" | "paid" | "failed" | "cancelled"));
+        } else {
+          // Regla de negocio: solo mostrar reservas reales.
+          // - "paid": confirmadas por Redsys o admin.
+          // - "pending_payment" + canal NO ONLINE_DIRECTO: autorizadas por admin (link de pago desde CRM).
+          // Quedan excluidos: intentos de checkout web no pagados (pending_payment+ONLINE_DIRECTO),
+          // pagos fallidos (failed) y cancelaciones (cancelled).
+          conditions.push(
+            or(
+              eq(reservations.status, "paid"),
+              and(
+                eq(reservations.status, "pending_payment"),
+                ne(reservations.channel, "ONLINE_DIRECTO")
+              )
+            ) as ReturnType<typeof and>
+          );
+        }
+
         if (input.channel) {
           if (input.channel === "coupon") {
             // Filtrar por origen cupón (cualquier plataforma)

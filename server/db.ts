@@ -956,6 +956,68 @@ export async function createReservation(data: {
   return { id: Number(result[0].insertId), merchantOrder: data.merchantOrder, reservationNumber };
 }
 
+// ─── VENTA PERDIDA LEAD ───────────────────────────────────────────────────────
+// Crea un lead "venta_perdida" cuando un checkout ONLINE_DIRECTO falla o queda
+// abandonado sin completar el pago. Solo se crea uno por merchantOrder.
+export async function createVentaPerdidaLead(reservationGroup: Array<{
+  productId: number;
+  productName: string;
+  bookingDate: string;
+  people: number;
+  amountTotal: number;
+  customerName: string;
+  customerEmail: string | null;
+  customerPhone?: string | null;
+  merchantOrder: string;
+  quoteId?: number | null;
+}>) {
+  if (!reservationGroup.length) return;
+  const db = await getDb();
+  if (!db) return;
+
+  const first = reservationGroup[0];
+
+  // Idempotencia: no crear si ya existe un lead para este merchantOrder
+  const existing = await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(and(eq(leads.source, "venta_perdida"), like(leads.message!, `%${first.merchantOrder}%`)))
+    .limit(1);
+  if (existing.length > 0) return;
+
+  const totalCents = reservationGroup.reduce((s, r) => s + (r.amountTotal ?? 0), 0);
+  const items = reservationGroup.map(r => ({
+    productId: r.productId,
+    productName: r.productName,
+    people: r.people,
+    amountCents: r.amountTotal,
+    bookingDate: r.bookingDate,
+  }));
+
+  await db.insert(leads).values({
+    name: first.customerName,
+    email: first.customerEmail ?? "",
+    phone: first.customerPhone ?? null,
+    selectedProduct: items.length === 1 ? items[0].productName : `${items.length} productos`,
+    budget: String(totalCents / 100) as any,
+    status: "nuevo",
+    opportunityStatus: "perdida",
+    source: "venta_perdida",
+    message: `Intento de compra no completado. Referencia: ${first.merchantOrder}`,
+    cartMetadata: {
+      merchantOrder: first.merchantOrder,
+      items,
+      totalAmountCents: totalCents,
+      checkoutAt: new Date().toISOString(),
+    } as any,
+    numberOfPersons: reservationGroup.reduce((s, r) => s + (r.people ?? 0), 0),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  console.log(`[VentaPerdida] Lead creado — merchantOrder: ${first.merchantOrder}, cliente: ${first.customerName}, importe: ${(totalCents / 100).toFixed(2)}€`);
+}
+
 export async function getReservationByMerchantOrder(merchantOrder: string) {
   const db = await getDb();
   if (!db) return null;
