@@ -472,6 +472,12 @@ function startAbandonedCheckoutCleanup() {
           if (!currentQuote || currentQuote.status === "pagado" || currentQuote.status === "aceptado") continue;
 
           const now = new Date();
+
+          // Marcar la reserva como failed para que el próximo intento genere un nuevo merchantOrder
+          // Sin esto, payWithToken reutiliza el mismo merchantOrder y Redsys devuelve "Número de pedido repetido"
+          await db.update(reservations).set({ status: "failed", updatedAt: Date.now() } as any)
+            .where(eq(reservations.id, resv.id));
+
           await db.update(quotes).set({
             status: "pago_fallido",
             viewedAt: currentQuote.viewedAt ?? now,
@@ -484,7 +490,7 @@ function startAbandonedCheckoutCleanup() {
             staleAfterMinutes: 60,
           });
 
-          console.log(`[AbandonedCheckout] Presupuesto id=${resv.quoteId} → pago_fallido (reserva ${resv.merchantOrder} sin pago tras 60 min)`);
+          console.log(`[AbandonedCheckout] Presupuesto id=${resv.quoteId} → pago_fallido, reserva ${resv.merchantOrder} → failed (sin pago tras 60 min)`);
         } catch (qErr: any) {
           console.error(`[AbandonedCheckout] Error actualizando quote id=${resv.quoteId}:`, qErr.message);
         }
