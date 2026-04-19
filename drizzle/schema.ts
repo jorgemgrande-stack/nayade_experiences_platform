@@ -283,6 +283,8 @@ export const quotes = mysqlTable("quotes", {
     "expirado",
     "perdido",
   ]).default("borrador").notNull(),
+  // Plan de pagos fraccionado (null = pago total clásico, sin cambios en el flujo)
+  paymentPlanId: int("payment_plan_id"),
   // CRM fields
   sentAt: timestamp("sentAt"),
   viewedAt: timestamp("viewedAt"),
@@ -2194,3 +2196,51 @@ export const pendingPayments = mysqlTable("pending_payments", {
   updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });
 export type PendingPayment = typeof pendingPayments.$inferSelect;
+
+// ─── PLANES DE PAGO FRACCIONADO ──────────────────────────────────────────────
+// Un presupuesto puede tener como máximo UN plan de pagos.
+// Si paymentPlanId en quotes es NULL → flujo de pago total clásico (sin cambios).
+// Si existe un plan → el cobro se gestiona mediante cuotas/installments.
+
+export const paymentPlans = mysqlTable("payment_plans", {
+  id: int("id").autoincrement().primaryKey(),
+  quoteId: int("quote_id").notNull(),
+  planType: mysqlEnum("plan_type", ["full", "installment"]).default("installment").notNull(),
+  totalAmountCents: int("total_amount_cents").notNull(),
+  createdBy: int("created_by").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PaymentPlan = typeof paymentPlans.$inferSelect;
+
+export const paymentInstallments = mysqlTable("payment_installments", {
+  id: int("id").autoincrement().primaryKey(),
+  planId: int("plan_id").notNull(),
+  quoteId: int("quote_id").notNull(),        // denormalizado para queries directas
+  installmentNumber: int("installment_number").notNull(),
+  amountCents: int("amount_cents").notNull(),
+  dueDate: varchar("due_date", { length: 20 }).notNull(),
+  status: mysqlEnum("installment_status", [
+    "pending",    // pendiente de pago
+    "paid",       // pagado
+    "overdue",    // vencido sin pagar
+    "cancelled",  // cancelado
+  ]).default("pending").notNull(),
+  // Si true, el pago de esta cuota permite confirmar la reserva principal
+  isRequiredForConfirmation: boolean("is_required_for_confirmation").default(false).notNull(),
+  // Referencia al intento de pago Redsys para esta cuota (su propio merchantOrder)
+  merchantOrder: varchar("merchant_order", { length: 30 }),
+  // Reserva creada para el pago de esta cuota vía Redsys
+  reservationId: int("reservation_id"),
+  // Datos del pago confirmado
+  paymentMethod: varchar("payment_method", { length: 32 }),
+  paidAt: timestamp("paidAt"),
+  paidBy: varchar("paid_by", { length: 128 }),   // "redsys" | "admin:userId"
+  // Trazabilidad de recordatorios
+  remindersSent: int("reminders_sent").default(0).notNull(),
+  lastReminderAt: timestamp("lastReminderAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PaymentInstallment = typeof paymentInstallments.$inferSelect;
