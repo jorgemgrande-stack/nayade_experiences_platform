@@ -4512,11 +4512,11 @@ export default function CRMDashboard() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Recibido</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">Fecha actividad</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Recibido</th>
                     <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
                   </tr>
                 </thead>
@@ -4527,6 +4527,10 @@ export default function CRMDashboard() {
                     <tr><td colSpan={6} className="text-center py-12 text-foreground/40 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
                   ) : leadsData.map((lead: any) => (
                     <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${!lead.seenAt ? "bg-blue-950/20" : ""}`}>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        <div className="text-xs text-foreground/70 font-medium">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</div>
+                        <div className="text-[11px] text-foreground/40">{new Date(lead.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</div>
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
                           {/* Punto pulse para leads no leídos */}
@@ -4576,9 +4580,6 @@ export default function CRMDashboard() {
                             </span>
                           )}
                         </div>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-xs text-foreground/50">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
