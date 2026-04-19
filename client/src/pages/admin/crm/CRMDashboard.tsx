@@ -1742,7 +1742,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                     }}
                     className="accent-violet-500"
                   />
-                  Req.
+                  Cuota inaplazable
                 </label>
                 <button onClick={() => setDraftInstallmentsD(draftInstallmentsD.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">✕</button>
               </div>
@@ -2182,7 +2182,7 @@ function QuoteBuilderModal({
                     }}
                     className="accent-violet-500"
                   />
-                  Req.
+                  Cuota inaplazable
                 </label>
                 <button onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">✕</button>
               </div>
@@ -3269,7 +3269,7 @@ function QuoteDetailModal({
                         }}
                         className="accent-violet-500"
                       />
-                      Req.
+                      Cuota inaplazable
                     </label>
                     <button
                       onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))}
