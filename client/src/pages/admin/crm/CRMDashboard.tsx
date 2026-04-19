@@ -4583,6 +4583,37 @@ export default function CRMDashboard() {
           </div>
         </div>
 
+        {/* ── Alertas de pagos fraccionados urgentes ── */}
+        {(() => {
+          const todayStr = new Date().toISOString().split("T")[0];
+          const overdue = (upcomingInstallments ?? []).filter(i =>
+            i.status === "overdue" || (i.status === "pending" && i.dueDate < todayStr)
+          );
+          const dueToday = (upcomingInstallments ?? []).filter(i =>
+            i.status === "pending" && i.dueDate === todayStr
+          );
+          if (overdue.length === 0 && dueToday.length === 0) return null;
+          return (
+            <div className="mx-6 mt-4 rounded-xl border border-red-500/30 bg-red-500/8 p-3 space-y-1.5">
+              <p className="text-xs font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5" /> Incidencias de pagos fraccionados
+              </p>
+              {overdue.length > 0 && (
+                <p className="text-sm text-red-300">
+                  <strong>{overdue.length}</strong> cuota{overdue.length > 1 ? "s" : ""} vencida{overdue.length > 1 ? "s" : ""} sin cobrar
+                  {" — "}{overdue.map(i => i.quoteNumber).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
+                </p>
+              )}
+              {dueToday.length > 0 && (
+                <p className="text-sm text-amber-300">
+                  <strong>{dueToday.length}</strong> cuota{dueToday.length > 1 ? "s" : ""} vence hoy
+                  {" — "}{dueToday.map(i => i.quoteNumber).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Top KPI strip — dos grupos diferenciados */}
         <div className="px-6 py-5 space-y-4">
 

@@ -310,6 +310,11 @@ export default function AdminDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const { data: installmentsAlert } = trpc.crm.paymentPlans.upcoming.useQuery(
+    { daysAhead: 7 },
+    { enabled: isAuthenticated, staleTime: 5 * 60 * 1000 }
+  );
+
   // TPV: check if any session is open for register 1 (default)
   const { data: tpvSession } = trpc.tpv.getActiveSession.useQuery(
     { registerId: 1 },
@@ -359,6 +364,15 @@ export default function AdminDashboard() {
   const leadsAging = overview?.todayComplex?.leadsAging ?? 0;
   const complex = overview?.todayComplex;
 
+  const today = new Date().toISOString().split("T")[0];
+  const installmentsOverdue = (installmentsAlert ?? []).filter(i =>
+    i.status === "overdue" || (i.status === "pending" && i.dueDate < today)
+  ).length;
+  const installmentsDueToday = (installmentsAlert ?? []).filter(i =>
+    i.status === "pending" && i.dueDate === today
+  ).length;
+  const installmentsUrgent = installmentsOverdue + installmentsDueToday;
+
   const totalAlerts =
     (alerts?.transfersToValidate ?? 0) +
     (alerts?.quotesExpiringSoon ?? 0) +
@@ -367,7 +381,8 @@ export default function AdminDashboard() {
     (anulCountersDash?.incidencias ?? 0) +
     ticketingIncidencias +
     (ticketingRecibidos > 0 ? 1 : 0) +
-    (leadsAging > 0 ? 1 : 0);
+    (leadsAging > 0 ? 1 : 0) +
+    (installmentsUrgent > 0 ? 1 : 0);
 
   return (
     <AdminLayout title="Dashboard">
@@ -510,6 +525,30 @@ export default function AdminDashboard() {
                         <p className="text-[10px] text-violet-400/60">CRM → Leads activos</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {installmentsOverdue > 0 && (
+                  <Link href="/admin/crm">
+                    <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-red-500/15 transition-colors">
+                      <CreditCard className="w-4 h-4 text-red-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-red-300">{installmentsOverdue} cuota{installmentsOverdue > 1 ? "s" : ""} de pago vencida{installmentsOverdue > 1 ? "s" : ""}</p>
+                        <p className="text-[10px] text-red-400/60">CRM → Pagos fraccionados</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {installmentsDueToday > 0 && installmentsOverdue === 0 && (
+                  <Link href="/admin/crm">
+                    <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-amber-500/15 transition-colors">
+                      <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-amber-300">{installmentsDueToday} cuota{installmentsDueToday > 1 ? "s" : ""} fraccionada{installmentsDueToday > 1 ? "s" : ""} vence hoy</p>
+                        <p className="text-[10px] text-amber-400/60">CRM → Pagos fraccionados</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     </div>
                   </Link>
                 )}
