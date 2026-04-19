@@ -150,11 +150,11 @@ async function startServer() {
       const mysql = await import("mysql2/promise");
       const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
       const [rows] = await conn.execute(
-        "SELECT id, merchantOrder, status, channel, quoteId, customerEmail, customerName, createdAt, updatedAt FROM reservations WHERE merchantOrder = ? LIMIT 5",
+        "SELECT id, merchant_order, status, channel, quote_id, customer_email, customer_name, created_at, updated_at FROM reservations WHERE merchant_order = ? LIMIT 5",
         [req.params.merchantOrder]
       ) as any[];
       const [leads] = await conn.execute(
-        "SELECT id, source, opportunityStatus, message, createdAt FROM leads WHERE message LIKE ? LIMIT 5",
+        "SELECT id, source, opportunity_status, message, created_at FROM leads WHERE message LIKE ? LIMIT 5",
         [`%${req.params.merchantOrder}%`]
       ) as any[];
       await conn.end();
