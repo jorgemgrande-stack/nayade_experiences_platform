@@ -1387,6 +1387,10 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const [taxRate, setTaxRate] = useState(21);
   const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
+  // Plan de pago fraccionado (draft local)
+  const [showPlanSectionD, setShowPlanSectionD] = useState(false);
+  type DraftInstD = { installmentNumber: number; amountCents: number; dueDate: string; isRequiredForConfirmation: boolean; notes: string };
+  const [draftInstallmentsD, setDraftInstallmentsD] = useState<DraftInstD[]>([]);
   // Promo code
   const [promoInput, setPromoInput] = useState("");
   const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
@@ -1423,13 +1427,25 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
     );
   };
 
+  const upsertPlanDirect = trpc.crm.paymentPlans.upsert.useMutation({
+    onError: (e) => toast.error(`Plan de pago: ${e.message}`),
+  });
+
   const createDirect = trpc.crm.quotes.createDirect.useMutation({
-    onSuccess: (data) => {
-      toast.success(
-        data.sent
-          ? `Presupuesto ${data.quoteNumber} creado y enviado al cliente`
-          : `Presupuesto ${data.quoteNumber} guardado como borrador`
-      );
+    onSuccess: async (data) => {
+      if (draftInstallmentsD.length > 0) {
+        await upsertPlanDirect.mutateAsync({
+          quoteId: data.quoteId,
+          installments: draftInstallmentsD.map((i, idx) => ({ ...i, installmentNumber: idx + 1 })),
+        });
+        toast.success(`Presupuesto ${data.quoteNumber} creado con plan de ${draftInstallmentsD.length} cuotas`);
+      } else {
+        toast.success(
+          data.sent
+            ? `Presupuesto ${data.quoteNumber} creado y enviado al cliente`
+            : `Presupuesto ${data.quoteNumber} guardado como borrador`
+        );
+      }
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
@@ -1670,6 +1686,93 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
+      {/* ─── PLAN DE PAGO FRACCIONADO (opcional) ─── */}
+      <div className="border border-foreground/[0.10] rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowPlanSectionD(!showPlanSectionD)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-foreground/[0.04] transition-colors"
+        >
+          <span className="flex items-center gap-2 text-violet-300 font-medium">
+            <CreditCard className="w-4 h-4" />
+            Plan de pago fraccionado
+            {draftInstallmentsD.length > 0 && (
+              <span className="bg-violet-500/20 text-violet-300 border border-violet-500/30 text-xs px-1.5 py-0.5 rounded-full">
+                {draftInstallmentsD.length} cuota{draftInstallmentsD.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </span>
+          <span className="text-foreground/40 text-xs">{showPlanSectionD ? "▲ ocultar" : "▼ opcional"}</span>
+        </button>
+        {showPlanSectionD && (
+          <div className="px-4 pb-4 space-y-3 border-t border-foreground/[0.08]">
+            <p className="text-xs text-foreground/45 pt-3">Define las cuotas ahora. Se guardarán automáticamente al crear el presupuesto.</p>
+            {draftInstallmentsD.map((inst, idx) => (
+              <div key={idx} className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center">
+                <span className="text-xs text-foreground/40">#{idx + 1}</span>
+                <input
+                  type="number"
+                  placeholder="Importe (€)"
+                  value={inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : ""}
+                  onChange={(e) => {
+                    const updated = [...draftInstallmentsD];
+                    updated[idx] = { ...updated[idx], amountCents: Math.round(parseFloat(e.target.value || "0") * 100) };
+                    setDraftInstallmentsD(updated);
+                  }}
+                  className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                />
+                <input
+                  type="date"
+                  value={inst.dueDate}
+                  onChange={(e) => {
+                    const updated = [...draftInstallmentsD];
+                    updated[idx] = { ...updated[idx], dueDate: e.target.value };
+                    setDraftInstallmentsD(updated);
+                  }}
+                  className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                />
+                <label className="flex items-center gap-1 text-xs text-violet-300 cursor-pointer whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={inst.isRequiredForConfirmation}
+                    onChange={(e) => {
+                      const updated = [...draftInstallmentsD];
+                      updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
+                      setDraftInstallmentsD(updated);
+                    }}
+                    className="accent-violet-500"
+                  />
+                  Req.
+                </label>
+                <button onClick={() => setDraftInstallmentsD(draftInstallmentsD.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">✕</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setDraftInstallmentsD([...draftInstallmentsD, {
+                installmentNumber: draftInstallmentsD.length + 1,
+                amountCents: 0, dueDate: "",
+                isRequiredForConfirmation: draftInstallmentsD.length === 0,
+                notes: "",
+              }])}
+              className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+            >+ Añadir cuota</button>
+            {draftInstallmentsD.length > 0 && (() => {
+              const sum = draftInstallmentsD.reduce((s, i) => s + i.amountCents, 0);
+              const totalCents = Math.round(total * 100);
+              const diff = Math.abs(sum - totalCents);
+              return (
+                <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
+                  <span>Suma: {(sum / 100).toFixed(2)} €</span>
+                  <span>Total: {total.toFixed(2)} €</span>
+                  {diff > 1 && <span>⚠ Dif: {(diff / 100).toFixed(2)} €</span>}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
       <DialogFooter className="gap-2 flex-wrap">
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button size="sm" onClick={() => handleSubmit(false)} disabled={createDirect.isPending}
@@ -1715,6 +1818,10 @@ function QuoteBuilderModal({
   ]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
+  // Plan de pago fraccionado (draft local — se guarda tras recibir quoteId)
+  const [showPlanSection, setShowPlanSection] = useState(false);
+  type DraftInst = { installmentNumber: number; amountCents: number; dueDate: string; isRequiredForConfirmation: boolean; notes: string };
+  const [draftInstallments, setDraftInstallments] = useState<DraftInst[]>([]);
   // Promo code
   const [promoInput, setPromoInput] = useState("");
   const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
@@ -1763,12 +1870,23 @@ function QuoteBuilderModal({
     onError: (e) => toast.error(e.message),
   });
 
+  const upsertPlanBuilder = trpc.crm.paymentPlans.upsert.useMutation({
+    onError: (e) => toast.error(`Plan de pago: ${e.message}`),
+  });
+
   const convertToQuote = trpc.crm.leads.convertToQuote.useMutation({
     onSuccess: async (data) => {
       toast.success(`Presupuesto ${data.quoteNumber} creado`);
       utils.crm.leads.counters.invalidate();
       utils.crm.quotes.counters.invalidate();
       utils.crm.quotes.list.invalidate();
+      if (draftInstallments.length > 0) {
+        await upsertPlanBuilder.mutateAsync({
+          quoteId: data.quoteId,
+          installments: draftInstallments.map((i, idx) => ({ ...i, installmentNumber: idx + 1 })),
+        });
+        toast.success(`Plan fraccionado guardado (${draftInstallments.length} cuotas)`);
+      }
       if (sendAfterCreate) {
         await sendQuote.mutateAsync({ id: data.quoteId, origin: window.location.origin });
       }
@@ -2006,6 +2124,94 @@ function QuoteBuilderModal({
             className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 resize-none h-12 text-sm"
           />
         </div>
+      </div>
+
+      {/* ─── PLAN DE PAGO FRACCIONADO (opcional) ─── */}
+      <div className="border border-foreground/[0.10] rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowPlanSection(!showPlanSection)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm hover:bg-foreground/[0.04] transition-colors"
+        >
+          <span className="flex items-center gap-2 text-violet-300 font-medium">
+            <CreditCard className="w-4 h-4" />
+            Plan de pago fraccionado
+            {draftInstallments.length > 0 && (
+              <span className="bg-violet-500/20 text-violet-300 border border-violet-500/30 text-xs px-1.5 py-0.5 rounded-full">
+                {draftInstallments.length} cuota{draftInstallments.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </span>
+          <span className="text-foreground/40 text-xs">{showPlanSection ? "▲ ocultar" : "▼ opcional"}</span>
+        </button>
+        {showPlanSection && (
+          <div className="px-4 pb-4 space-y-3 border-t border-foreground/[0.08]">
+            <p className="text-xs text-foreground/45 pt-3">Define las cuotas ahora. Se guardarán automáticamente al crear el presupuesto.</p>
+            {draftInstallments.map((inst, idx) => (
+              <div key={idx} className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center">
+                <span className="text-xs text-foreground/40">#{idx + 1}</span>
+                <input
+                  type="number"
+                  placeholder="Importe (€)"
+                  value={inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : ""}
+                  onChange={(e) => {
+                    const updated = [...draftInstallments];
+                    updated[idx] = { ...updated[idx], amountCents: Math.round(parseFloat(e.target.value || "0") * 100) };
+                    setDraftInstallments(updated);
+                  }}
+                  className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                />
+                <input
+                  type="date"
+                  value={inst.dueDate}
+                  onChange={(e) => {
+                    const updated = [...draftInstallments];
+                    updated[idx] = { ...updated[idx], dueDate: e.target.value };
+                    setDraftInstallments(updated);
+                  }}
+                  className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                />
+                <label className="flex items-center gap-1 text-xs text-violet-300 cursor-pointer whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={inst.isRequiredForConfirmation}
+                    onChange={(e) => {
+                      const updated = [...draftInstallments];
+                      updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
+                      setDraftInstallments(updated);
+                    }}
+                    className="accent-violet-500"
+                  />
+                  Req.
+                </label>
+                <button onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">✕</button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setDraftInstallments([...draftInstallments, {
+                installmentNumber: draftInstallments.length + 1,
+                amountCents: 0,
+                dueDate: "",
+                isRequiredForConfirmation: draftInstallments.length === 0,
+                notes: "",
+              }])}
+              className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+            >+ Añadir cuota</button>
+            {draftInstallments.length > 0 && (() => {
+              const sum = draftInstallments.reduce((s, i) => s + i.amountCents, 0);
+              const totalCents = Math.round(total * 100);
+              const diff = Math.abs(sum - totalCents);
+              return (
+                <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
+                  <span>Suma cuotas: {(sum / 100).toFixed(2)} €</span>
+                  <span>Total: {total.toFixed(2)} €</span>
+                  {diff > 1 && <span>⚠ Dif: {(diff / 100).toFixed(2)} €</span>}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       <DialogFooter className="gap-2 flex-wrap">
