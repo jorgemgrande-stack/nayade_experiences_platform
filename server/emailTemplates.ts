@@ -1712,3 +1712,70 @@ export function buildPendingPaymentReminderHtml(d: PendingPaymentEmailData): str
     ${emailFooter()}`;
   return emailWrapper(`Recordatorio: pago pendiente hasta el ${d.dueDate} — ${d.productName}`, body);
 }
+
+// ─── PAGO FRACCIONADO: Recordatorio de cuota próxima ─────────────────────────
+export interface InstallmentReminderData {
+  clientName: string;
+  clientEmail: string;
+  quoteNumber: string;
+  installmentNumber: number;
+  totalInstallments: number;
+  amountFormatted: string;
+  dueDate: string;
+  ibanInfo?: string;
+}
+
+export function buildInstallmentReminderHtml(d: InstallmentReminderData): string {
+  const body = `
+    ${emailHeader("Recordatorio de Cuota", `Cuota ${d.installmentNumber} de ${d.totalInstallments}`)}
+    <tr><td style="padding:28px 32px 8px;">
+      <h2 style="color:#1e3a6e;font-size:22px;font-weight:800;margin:0 0 6px;font-family:Arial,sans-serif;">
+        Recordatorio: cuota ${d.installmentNumber}/${d.totalInstallments}
+      </h2>
+      <p style="color:#64748b;font-size:14px;margin:0;font-family:Arial,sans-serif;">
+        Hola ${d.clientName}, te recordamos que tienes una cuota pendiente de pago
+        del presupuesto <strong>${d.quoteNumber}</strong>.
+      </p>
+    </td></tr>
+    <tr><td style="padding:16px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ff;border-radius:10px;border:1px solid #c4b5fd;">
+        <tr><td style="padding:20px 22px;">
+          <p style="color:#6d28d9;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Detalle de la cuota</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Presupuesto</td>
+              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.quoteNumber}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Cuota</td>
+              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.installmentNumber} de ${d.totalInstallments}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Importe</td>
+              <td style="color:#6d28d9;font-size:15px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.amountFormatted}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">Fecha límite</td>
+              <td style="color:#f97316;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.dueDate}</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${d.ibanInfo ? `
+    <tr><td style="padding:8px 32px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#1e3a6e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Datos bancarios para el pago</p>
+          <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;white-space:pre-line;">${d.ibanInfo}</p>
+        </td></tr>
+      </table>
+    </td></tr>` : ""}
+    <tr><td style="padding:8px 32px 20px;">
+      <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
+        Para cualquier consulta: <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a>
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Recordatorio cuota ${d.installmentNumber}/${d.totalInstallments} — ${d.amountFormatted} vence el ${d.dueDate}`, body);
+}

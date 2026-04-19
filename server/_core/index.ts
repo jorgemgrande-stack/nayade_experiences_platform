@@ -338,6 +338,73 @@ async function ensurePricingColumns() {
       console.log("[DB] ✅ quotes.status enum actualizado con 'pago_fallido'");
     }
 
+    // ── Planes de pago fraccionado ────────────────────────────────────────────
+    // Columna nullable en quotes (sin romper flujo existente)
+    const [quotePlanCol] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'quotes'
+       AND COLUMN_NAME = 'payment_plan_id'`
+    ) as any[];
+    if ((quotePlanCol as any[]).length === 0) {
+      await conn.execute("ALTER TABLE `quotes` ADD COLUMN `payment_plan_id` INT NULL");
+      console.log("[DB] ✅ quotes.payment_plan_id añadida");
+    }
+
+    // Tabla payment_plans
+    const [ppTables] = await conn.execute(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_plans'`
+    ) as any[];
+    if ((ppTables as any[]).length === 0) {
+      await conn.execute(`
+        CREATE TABLE \`payment_plans\` (
+          \`id\`                INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          \`quote_id\`          INT NOT NULL,
+          \`plan_type\`         ENUM('full','installment') NOT NULL DEFAULT 'installment',
+          \`total_amount_cents\` INT NOT NULL,
+          \`created_by\`        INT NOT NULL,
+          \`createdAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_pp_quote (\`quote_id\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log("[DB] ✅ Tabla payment_plans creada");
+    }
+
+    // Tabla payment_installments
+    const [piTables] = await conn.execute(
+      `SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_installments'`
+    ) as any[];
+    if ((piTables as any[]).length === 0) {
+      await conn.execute(`
+        CREATE TABLE \`payment_installments\` (
+          \`id\`                          INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+          \`plan_id\`                     INT NOT NULL,
+          \`quote_id\`                    INT NOT NULL,
+          \`installment_number\`          INT NOT NULL,
+          \`amount_cents\`                INT NOT NULL,
+          \`due_date\`                    VARCHAR(20) NOT NULL,
+          \`status\`                      ENUM('pending','paid','overdue','cancelled') NOT NULL DEFAULT 'pending',
+          \`is_required_for_confirmation\` BOOLEAN NOT NULL DEFAULT FALSE,
+          \`merchant_order\`              VARCHAR(30) NULL,
+          \`reservation_id\`              INT NULL,
+          \`payment_method\`              VARCHAR(32) NULL,
+          \`paidAt\`                      TIMESTAMP NULL,
+          \`paid_by\`                     VARCHAR(128) NULL,
+          \`reminders_sent\`              INT NOT NULL DEFAULT 0,
+          \`lastReminderAt\`              TIMESTAMP NULL,
+          \`notes\`                       TEXT NULL,
+          \`createdAt\`                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          \`updatedAt\`                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_pi_plan (\`plan_id\`),
+          INDEX idx_pi_quote (\`quote_id\`),
+          INDEX idx_pi_merchant (\`merchant_order\`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      console.log("[DB] ✅ Tabla payment_installments creada");
+    }
+
     // Final test
     try {
       const [rows] = await conn.execute(
@@ -511,6 +578,106 @@ function startAbandonedCheckoutCleanup() {
   console.log("[AbandonedCheckout] Job iniciado — checkeo de checkouts abandonados cada 20 min");
 }
 
+// ─── INSTALLMENT OVERDUE + REMINDER JOB ──────────────────────────────────────
+// Cada hora: marca como 'overdue' las cuotas vencidas y envía recordatorio
+// por email a los clientes con cuotas que vencen en 3 días.
+function startInstallmentOverdueJob() {
+  const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hora
+
+  async function run() {
+    try {
+      const mysql = await import("mysql2/promise");
+      const { drizzle } = await import("drizzle-orm/mysql2");
+      const { paymentInstallments, quotes, leads } = await import("../../drizzle/schema");
+      const { eq, and, lte, lt, ne } = await import("drizzle-orm");
+      const { sendEmail } = await import("../mailer");
+      const { buildInstallmentReminderHtml } = await import("../emailTemplates");
+
+      const pool = mysql.default.createPool(process.env.DATABASE_URL!);
+      const db = drizzle(pool);
+      const todayStr = new Date().toISOString().split("T")[0];
+
+      // 1. Marcar como vencidas las cuotas pending con dueDate <= hoy
+      const overdueResult = await db
+        .update(paymentInstallments)
+        .set({ status: "overdue", updatedAt: new Date() })
+        .where(and(
+          eq(paymentInstallments.status, "pending"),
+          lte(paymentInstallments.dueDate, todayStr)
+        ));
+      const overdueCount = (overdueResult[0] as any).affectedRows ?? 0;
+      if (overdueCount > 0) {
+        console.log(`[InstallmentJob] ${overdueCount} cuota(s) marcadas como vencidas`);
+      }
+
+      // 2. Enviar recordatorio por email a cuotas que vencen en exactamente 3 días
+      const reminderDate = new Date();
+      reminderDate.setDate(reminderDate.getDate() + 3);
+      const reminderDateStr = reminderDate.toISOString().split("T")[0];
+
+      const dueIn3Days = await db
+        .select({
+          id: paymentInstallments.id,
+          quoteId: paymentInstallments.quoteId,
+          installmentNumber: paymentInstallments.installmentNumber,
+          amountCents: paymentInstallments.amountCents,
+          dueDate: paymentInstallments.dueDate,
+          remindersSent: paymentInstallments.remindersSent,
+          quoteNumber: quotes.quoteNumber,
+          clientEmail: leads.email,
+          clientName: leads.name,
+        })
+        .from(paymentInstallments)
+        .innerJoin(quotes, eq(quotes.id, paymentInstallments.quoteId))
+        .leftJoin(leads, eq(leads.id, quotes.leadId))
+        .where(and(
+          eq(paymentInstallments.status, "pending"),
+          eq(paymentInstallments.dueDate, reminderDateStr),
+          lt(paymentInstallments.remindersSent, 1)
+        ));
+
+      for (const inst of dueIn3Days) {
+        if (!inst.clientEmail) continue;
+        // Contar total cuotas del mismo quote
+        const allInstallments = await db
+          .select({ id: paymentInstallments.id })
+          .from(paymentInstallments)
+          .where(eq(paymentInstallments.quoteId, inst.quoteId));
+
+        try {
+          const html = buildInstallmentReminderHtml({
+            clientName: inst.clientName ?? "Cliente",
+            clientEmail: inst.clientEmail,
+            quoteNumber: inst.quoteNumber ?? "",
+            installmentNumber: inst.installmentNumber,
+            totalInstallments: allInstallments.length,
+            amountFormatted: `${(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €`,
+            dueDate: inst.dueDate,
+          });
+          await sendEmail({
+            to: inst.clientEmail,
+            subject: `Recordatorio: cuota ${inst.installmentNumber}/${allInstallments.length} vence el ${inst.dueDate}`,
+            html,
+          });
+          await db
+            .update(paymentInstallments)
+            .set({ remindersSent: (inst.remindersSent ?? 0) + 1, lastReminderAt: new Date(), updatedAt: new Date() })
+            .where(eq(paymentInstallments.id, inst.id));
+          console.log(`[InstallmentJob] Recordatorio enviado a ${inst.clientEmail} — cuota #${inst.installmentNumber} de ${inst.quoteNumber}`);
+        } catch (emailErr: any) {
+          console.error(`[InstallmentJob] Error enviando recordatorio cuota ${inst.id}:`, emailErr.message);
+        }
+      }
+    } catch (err: any) {
+      console.error("[InstallmentJob] Error en job:", err.message);
+    }
+    setTimeout(run, CHECK_INTERVAL_MS);
+  }
+
+  setTimeout(run, 5 * 60 * 1000); // Primera ejecución 5 min tras arranque
+  console.log("[InstallmentJob] Job iniciado — cuotas vencidas + recordatorios cada hora");
+}
+
 runMigrations()
   .then(() => ensurePricingColumns())
   .then(() => wipeTestDataIfRequested())
@@ -518,4 +685,5 @@ runMigrations()
   .then(() => startServer())
   .then(() => startQuoteReminderJob())
   .then(() => startAbandonedCheckoutCleanup())
+  .then(() => startInstallmentOverdueJob())
   .catch(console.error);
