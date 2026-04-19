@@ -154,7 +154,7 @@ async function startServer() {
         [req.params.merchantOrder]
       ) as any[];
       const [leads] = await conn.execute(
-        "SELECT id, source, opportunity_status, message, created_at FROM leads WHERE message LIKE ? LIMIT 5",
+        "SELECT id, source, opportunityStatus, message, created_at FROM leads WHERE message LIKE ? LIMIT 5",
         [`%${req.params.merchantOrder}%`]
       ) as any[];
       await conn.end();
