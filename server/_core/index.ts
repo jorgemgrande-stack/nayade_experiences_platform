@@ -589,7 +589,7 @@ function startInstallmentOverdueJob() {
       const mysql = await import("mysql2/promise");
       const { drizzle } = await import("drizzle-orm/mysql2");
       const { paymentInstallments, quotes, leads } = await import("../../drizzle/schema");
-      const { eq, and, lte, lt, ne } = await import("drizzle-orm");
+      const { eq, and, lte, lt, ne, sql } = await import("drizzle-orm");
       const { sendEmail } = await import("../mailer");
       const { buildInstallmentReminderHtml } = await import("../emailTemplates");
 
@@ -597,13 +597,14 @@ function startInstallmentOverdueJob() {
       const db = drizzle(pool);
       const todayStr = new Date().toISOString().split("T")[0];
 
-      // 1. Marcar como vencidas las cuotas pending con dueDate <= hoy
+      // 1. Marcar como vencidas solo cuotas de planes activos (al menos una cuota pagada)
       const overdueResult = await db
         .update(paymentInstallments)
         .set({ status: "overdue", updatedAt: new Date() })
         .where(and(
           eq(paymentInstallments.status, "pending"),
-          lte(paymentInstallments.dueDate, todayStr)
+          lte(paymentInstallments.dueDate, todayStr),
+          sql.raw(`EXISTS (SELECT 1 FROM payment_installments pi2 WHERE pi2.quote_id = payment_installments.quote_id AND pi2.status = 'paid')`),
         ));
       const overdueCount = (overdueResult[0] as any).affectedRows ?? 0;
       if (overdueCount > 0) {
@@ -633,7 +634,8 @@ function startInstallmentOverdueJob() {
         .where(and(
           eq(paymentInstallments.status, "pending"),
           eq(paymentInstallments.dueDate, reminderDateStr),
-          lt(paymentInstallments.remindersSent, 1)
+          lt(paymentInstallments.remindersSent, 1),
+          sql.raw(`EXISTS (SELECT 1 FROM payment_installments pi2 WHERE pi2.quote_id = payment_installments.quote_id AND pi2.status = 'paid')`),
         ));
 
       for (const inst of dueIn3Days) {

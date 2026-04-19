@@ -2900,7 +2900,19 @@ export const crmRouter = router({
         const todayStr = now.toISOString().split("T")[0];
         const futureStr = future.toISOString().split("T")[0];
 
-        const conditions = [ne(paymentInstallments.status, "paid"), ne(paymentInstallments.status, "cancelled")];
+        // Solo cuotas de planes activos: el plan se considera activo cuando
+        // al menos una cuota del mismo presupuesto ya está pagada.
+        const activePlanFilter = sql.raw(`EXISTS (
+          SELECT 1 FROM payment_installments pi2
+          WHERE pi2.quote_id = payment_installments.quote_id
+          AND pi2.status = 'paid'
+        )`);
+
+        const conditions = [
+          ne(paymentInstallments.status, "paid"),
+          ne(paymentInstallments.status, "cancelled"),
+          activePlanFilter,
+        ];
         if (input.status === "overdue") {
           conditions.push(lte(paymentInstallments.dueDate, todayStr));
         } else if (!input.status) {
@@ -2948,7 +2960,8 @@ export const crmRouter = router({
           .set({ status: "overdue", updatedAt: new Date() })
           .where(and(
             eq(paymentInstallments.status, "pending"),
-            lte(paymentInstallments.dueDate, todayStr)
+            lte(paymentInstallments.dueDate, todayStr),
+            sql.raw(`EXISTS (SELECT 1 FROM payment_installments pi2 WHERE pi2.quote_id = payment_installments.quote_id AND pi2.status = 'paid')`),
           ));
         const affected = (result[0] as any).affectedRows ?? 0;
         if (affected > 0) {
