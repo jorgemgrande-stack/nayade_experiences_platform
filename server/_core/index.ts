@@ -410,8 +410,9 @@ async function wipeTestDataIfRequested() {
 // más de 60 minutos. Las convierte en leads "Venta Perdida" y las cancela.
 // Esto cubre el caso en que el cliente abandona el pago sin que Redsys envíe IPN.
 function startAbandonedCheckoutCleanup() {
-  const CHECK_INTERVAL_MS = 20 * 60 * 1000;  // 20 min
-  const STALE_AFTER_MS    = 60 * 60 * 1000;  // 60 min sin confirmar = abandonado
+  const CHECK_INTERVAL_MS        = 10 * 60 * 1000;  // 10 min
+  const STALE_DIRECT_MS          = 10 * 60 * 1000;  // Flujo 2: compra directa → Venta Perdida tras 10 min
+  const STALE_QUOTE_MS           = 60 * 60 * 1000;  // Flujo 1: presupuesto → pago_fallido tras 60 min
 
   async function run() {
     try {
@@ -424,7 +425,8 @@ function startAbandonedCheckoutCleanup() {
       const pool = mysql.default.createPool(process.env.DATABASE_URL!);
       const db = drizzle(pool);
 
-      const staleThreshold = Date.now() - STALE_AFTER_MS;
+      const staleDirectThreshold = Date.now() - STALE_DIRECT_MS;
+      const staleQuoteThreshold  = Date.now() - STALE_QUOTE_MS;
 
       // ── Caso A: checkout directo ONLINE_DIRECTO sin presupuesto → Venta Perdida ──
       const stale = await db
@@ -433,7 +435,7 @@ function startAbandonedCheckoutCleanup() {
         .where(and(
           eq(reservations.status, "pending_payment"),
           eq(reservations.channel, "ONLINE_DIRECTO"),
-          lte(reservations.createdAt as any, staleThreshold)
+          lte(reservations.createdAt as any, staleDirectThreshold)
         ));
 
       const byOrder = new Map<string, typeof stale>();
@@ -460,7 +462,7 @@ function startAbandonedCheckoutCleanup() {
         .where(and(
           eq(reservations.status, "pending_payment"),
           isNotNull(reservations.quoteId),
-          lte(reservations.createdAt as any, staleThreshold)
+          lte(reservations.createdAt as any, staleQuoteThreshold)
         ));
 
       for (const resv of staleQuoteReservations) {
