@@ -2220,11 +2220,11 @@ export const paymentInstallments = mysqlTable("payment_installments", {
   installmentNumber: int("installment_number").notNull(),
   amountCents: int("amount_cents").notNull(),
   dueDate: varchar("due_date", { length: 20 }).notNull(),
-  status: mysqlEnum("installment_status", [
-    "pending",    // pendiente de pago
-    "paid",       // pagado
-    "overdue",    // vencido sin pagar
-    "cancelled",  // cancelado
+  status: mysqlEnum("status", [
+    "pending",
+    "paid",
+    "overdue",
+    "cancelled",
   ]).default("pending").notNull(),
   // Si true, el pago de esta cuota permite confirmar la reserva principal
   isRequiredForConfirmation: boolean("is_required_for_confirmation").default(false).notNull(),
