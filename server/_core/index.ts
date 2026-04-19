@@ -144,6 +144,31 @@ async function startServer() {
   app.use("/local-storage", express.static(localStorageDir));
   // File upload endpoint
   app.use(uploadRouter);
+  // [DEBUG TEMPORAL] Simular ejecución del AbandonedCheckout job
+  app.get("/api/debug/abandoned-checkout-sim", async (req, res) => {
+    try {
+      const mysql2 = await import("mysql2/promise");
+      const { drizzle } = await import("drizzle-orm/mysql2");
+      const { reservations: resSchema } = await import("../../drizzle/schema");
+      const { eq, and, lte } = await import("drizzle-orm");
+
+      const pool = mysql2.default.createPool(process.env.DATABASE_URL!);
+      const db = drizzle(pool);
+
+      const staleThreshold = Date.now() - 60 * 60 * 1000;
+      const stale = await db.select().from(resSchema).where(and(
+        eq(resSchema.status, "pending_payment"),
+        eq(resSchema.channel, "ONLINE_DIRECTO"),
+        lte(resSchema.createdAt as any, staleThreshold)
+      ));
+
+      await pool.end();
+      res.json({ staleThreshold, now: Date.now(), count: stale.length, reservations: stale.map(r => ({ id: r.id, merchantOrder: r.merchantOrder, status: r.status, quoteId: r.quoteId, createdAt: r.createdAt })) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // [DEBUG TEMPORAL] Inspeccionar reserva por merchantOrder
   app.get("/api/debug/reservation/:merchantOrder", async (req, res) => {
     try {
