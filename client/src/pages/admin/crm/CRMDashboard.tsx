@@ -1463,6 +1463,10 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       toast.error("Completa la descripción de todos los conceptos");
       return;
     }
+    if (draftInstallmentsD.some(i => !i.dueDate || i.amountCents <= 0)) {
+      toast.error("Completa el importe y la fecha de todas las cuotas del plan");
+      return;
+    }
     setSendAfterCreate(andSend);
     createDirect.mutate({
       clientName,
@@ -1898,6 +1902,10 @@ function QuoteBuilderModal({
   const handleSubmit = (andSend = false) => {
     if (!title || items.some((i) => !i.description)) {
       toast.error("Completa el título y todos los conceptos");
+      return;
+    }
+    if (draftInstallments.some(i => !i.dueDate || i.amountCents <= 0)) {
+      toast.error("Completa el importe y la fecha de todas las cuotas del plan");
       return;
     }
     setSendAfterCreate(andSend);
@@ -3308,10 +3316,16 @@ function QuoteDetailModal({
                   size="sm"
                   className="bg-violet-600 hover:bg-violet-700 text-white text-xs w-full"
                   disabled={draftInstallments.length === 0 || upsertPlan.isPending}
-                  onClick={() => upsertPlan.mutate({
-                    quoteId,
-                    installments: draftInstallments.map((i, idx) => ({ ...i, installmentNumber: idx + 1 })),
-                  })}
+                  onClick={() => {
+                    if (draftInstallments.some(i => !i.dueDate || i.amountCents <= 0)) {
+                      toast.error("Completa el importe y la fecha de todas las cuotas");
+                      return;
+                    }
+                    upsertPlan.mutate({
+                      quoteId,
+                      installments: draftInstallments.map((i, idx) => ({ ...i, installmentNumber: idx + 1 })),
+                    });
+                  }}
                 >
                   {upsertPlan.isPending ? <><RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />Guardando...</> : "Guardar plan de pago"}
                 </Button>
