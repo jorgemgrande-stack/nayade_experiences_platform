@@ -994,6 +994,10 @@ export async function createVentaPerdidaLead(reservationGroup: Array<{
     bookingDate: r.bookingDate,
   }));
 
+  // Tomar la fecha de reserva del primer item para que el admin pueda recotizar con la misma fecha
+  const bookingDateStr = first.bookingDate ?? null;
+  const preferredDate = bookingDateStr ? new Date(bookingDateStr) : null;
+
   await db.insert(leads).values({
     name: first.customerName,
     email: first.customerEmail ?? "",
@@ -1004,6 +1008,7 @@ export async function createVentaPerdidaLead(reservationGroup: Array<{
     opportunityStatus: "perdida",
     source: "venta_perdida",
     message: `Intento de compra no completado. Referencia: ${first.merchantOrder}`,
+    preferredDate: preferredDate ?? undefined,
     cartMetadata: {
       merchantOrder: first.merchantOrder,
       items,

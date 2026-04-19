@@ -385,6 +385,11 @@ function LeadDetailModal({
         {/* Status & Priority */}
         <div className="flex items-center gap-3 flex-wrap">
           <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
+          {(lead as any).source === "venta_perdida" && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/25">
+              Venta abandonada
+            </span>
+          )}
           <PriorityDot priority={lead.priority as Priority} />
           <span className="text-xs text-foreground/50 capitalize">{lead.priority} prioridad</span>
           <span className="text-xs text-foreground/40">·</span>
@@ -4563,7 +4568,14 @@ export default function CRMDashboard() {
                         <div className="text-sm text-foreground/60">{lead.preferredDate ? new Date(lead.preferredDate).toLocaleDateString("es-ES") : "—"}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
+                        <div className="flex flex-col gap-1">
+                          <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
+                          {(lead as any).source === "venta_perdida" && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/15 text-red-400 border border-red-500/25 w-fit">
+                              Abandonada
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <div className="text-xs text-foreground/50">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</div>
