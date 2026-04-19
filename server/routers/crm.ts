@@ -25,9 +25,11 @@ import {
   packs,
   pendingPayments,
   discountCodes,
+  paymentPlans,
+  paymentInstallments,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
-import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray } from "drizzle-orm";
+import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray, inArray, isNotNull, getTableColumns } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { generateDocumentNumber } from "../documentNumbers";
@@ -422,6 +424,35 @@ async function sendTransferConfirmationEmail(data: {
 // ─── CRM ROUTER ──────────────────────────────────────────────────────────────
 
 const staff = staffProcedure();
+
+async function _checkAndConfirmReservation(quoteId: number, userId: number, userName: string) {
+  const installments = await db.select().from(paymentInstallments)
+    .where(eq(paymentInstallments.quoteId, quoteId));
+  const required = installments.filter(i => i.isRequiredForConfirmation);
+  if (required.length === 0) return;
+  const allPaid = required.every(i => i.status === "paid");
+  if (!allPaid) return;
+  // Todas las cuotas obligatorias pagadas → confirmar la reserva principal del quote
+  const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId)).limit(1);
+  if (!quote) return;
+  const [reservation] = await db.select().from(reservations)
+    .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
+    .orderBy(desc(reservations.createdAt))
+    .limit(1);
+  if (!reservation || reservation.status === "paid") return;
+  await db.update(reservations)
+    .set({ status: "paid", paidAt: Date.now(), updatedAt: Date.now() })
+    .where(eq(reservations.id, reservation.id));
+  await db.insert(crmActivityLog).values({
+    entityType: "reservation",
+    entityId: reservation.id,
+    action: "confirmed_by_installments",
+    actorId: userId,
+    actorName: userName,
+    details: { quoteId, message: "Todas las cuotas obligatorias pagadas" },
+    createdAt: new Date(),
+  });
+}
 
 export const crmRouter = router({
   // ─── LEADS ─────────────────────────────────────────────────────────────────
@@ -2571,6 +2602,255 @@ export const crmRouter = router({
       }),
   }),
 
+  // ─── PLANES DE PAGO FRACCIONADO ──────────────────────────────────────────────
+  // Estos procedimientos son NUEVOS y no tocan ningún flujo existente de pago.
+  // El flujo de pago completo clásico sigue intacto si paymentPlanId === null.
+
+  paymentPlans: router({
+
+    // Crear o reemplazar el plan de pagos de un presupuesto
+    // Solo permitido si el presupuesto NO tiene cuotas ya pagadas
+    upsert: staff
+      .input(z.object({
+        quoteId: z.number(),
+        installments: z.array(z.object({
+          installmentNumber: z.number().int().min(1),
+          amountCents: z.number().int().min(1),
+          dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato YYYY-MM-DD"),
+          isRequiredForConfirmation: z.boolean(),
+          notes: z.string().optional(),
+        })).min(1).max(24),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
+
+        // No permitir si el presupuesto ya está pagado o convertido a reserva
+        if (["pagado", "facturado", "convertido_reserva"].includes(quote.status ?? "")) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede modificar el plan de un presupuesto ya cerrado" });
+        }
+
+        // Si ya existe plan, verificar que no haya cuotas pagadas
+        if (quote.paymentPlanId) {
+          const paidInstallments = await db
+            .select({ id: paymentInstallments.id })
+            .from(paymentInstallments)
+            .where(and(
+              eq(paymentInstallments.planId, quote.paymentPlanId),
+              eq(paymentInstallments.status, "paid")
+            ))
+            .limit(1);
+          if (paidInstallments.length > 0) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede modificar el plan porque ya hay cuotas pagadas. Crea un nuevo presupuesto si necesitas reestructurar." });
+          }
+          // Borrar cuotas pendientes del plan anterior
+          await db.delete(paymentInstallments).where(eq(paymentInstallments.planId, quote.paymentPlanId));
+          await db.delete(paymentPlans).where(eq(paymentPlans.id, quote.paymentPlanId));
+        }
+
+        // Validar que la suma de cuotas == total del presupuesto (tolerancia ±1 céntimo por redondeo)
+        const totalQuoteCents = Math.round(Number(quote.total) * 100);
+        const sumInstallments = input.installments.reduce((s, i) => s + i.amountCents, 0);
+        if (Math.abs(sumInstallments - totalQuoteCents) > 1) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `La suma de las cuotas (${(sumInstallments / 100).toFixed(2)}€) no coincide con el total del presupuesto (${(totalQuoteCents / 100).toFixed(2)}€)`,
+          });
+        }
+
+        // Validar que al menos una cuota esté marcada como obligatoria para confirmar
+        const hasRequired = input.installments.some(i => i.isRequiredForConfirmation);
+        if (!hasRequired) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Al menos una cuota debe ser obligatoria para confirmar la reserva" });
+        }
+
+        // Crear plan
+        const [planResult] = await db.insert(paymentPlans).values({
+          quoteId: input.quoteId,
+          planType: "installment",
+          totalAmountCents: totalQuoteCents,
+          createdBy: ctx.user.id,
+        });
+        const planId = (planResult as { insertId: number }).insertId;
+
+        // Crear cuotas
+        for (const inst of input.installments) {
+          await db.insert(paymentInstallments).values({
+            planId,
+            quoteId: input.quoteId,
+            installmentNumber: inst.installmentNumber,
+            amountCents: inst.amountCents,
+            dueDate: inst.dueDate,
+            isRequiredForConfirmation: inst.isRequiredForConfirmation,
+            notes: inst.notes ?? null,
+            status: "pending",
+          });
+        }
+
+        // Vincular plan al presupuesto
+        await db.update(quotes).set({ paymentPlanId: planId, updatedAt: new Date() }).where(eq(quotes.id, input.quoteId));
+
+        await logActivity("quote", input.quoteId, "payment_plan_created", ctx.user.id, ctx.user.name, {
+          planId,
+          installmentsCount: input.installments.length,
+          totalCents: totalQuoteCents,
+        });
+
+        return { success: true, planId, installmentsCount: input.installments.length };
+      }),
+
+    // Obtener el plan de pagos de un presupuesto
+    get: staff
+      .input(z.object({ quoteId: z.number() }))
+      .query(async ({ input }) => {
+        const [quote] = await db.select({ paymentPlanId: quotes.paymentPlanId, total: quotes.total })
+          .from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
+        if (!quote || !quote.paymentPlanId) return null;
+
+        const [plan] = await db.select().from(paymentPlans)
+          .where(eq(paymentPlans.id, quote.paymentPlanId)).limit(1);
+        if (!plan) return null;
+
+        const installments = await db.select().from(paymentInstallments)
+          .where(eq(paymentInstallments.planId, plan.id))
+          .orderBy(paymentInstallments.installmentNumber);
+
+        return { plan, installments };
+      }),
+
+    // Eliminar plan (solo si no hay cuotas pagadas)
+    delete: staff
+      .input(z.object({ quoteId: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
+        if (!quote || !quote.paymentPlanId) throw new TRPCError({ code: "NOT_FOUND", message: "No hay plan de pagos para este presupuesto" });
+
+        const paidInstallments = await db
+          .select({ id: paymentInstallments.id })
+          .from(paymentInstallments)
+          .where(and(eq(paymentInstallments.planId, quote.paymentPlanId), eq(paymentInstallments.status, "paid")))
+          .limit(1);
+        if (paidInstallments.length > 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede eliminar el plan porque hay cuotas ya pagadas" });
+        }
+
+        await db.delete(paymentInstallments).where(eq(paymentInstallments.planId, quote.paymentPlanId));
+        await db.delete(paymentPlans).where(eq(paymentPlans.id, quote.paymentPlanId));
+        await db.update(quotes).set({ paymentPlanId: null, updatedAt: new Date() }).where(eq(quotes.id, input.quoteId));
+
+        await logActivity("quote", input.quoteId, "payment_plan_deleted", ctx.user.id, ctx.user.name, {});
+        return { success: true };
+      }),
+
+    // Confirmar pago de una cuota manualmente (efectivo / transferencia / tarjeta presencial)
+    confirmInstallment: staff
+      .input(z.object({
+        installmentId: z.number(),
+        paymentMethod: z.enum(["efectivo", "transferencia", "tarjeta"]),
+        paymentNote: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [inst] = await db.select().from(paymentInstallments)
+          .where(eq(paymentInstallments.id, input.installmentId)).limit(1);
+        if (!inst) throw new TRPCError({ code: "NOT_FOUND", message: "Cuota no encontrada" });
+        if (inst.status === "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota ya está pagada" });
+        if (inst.status === "cancelled") throw new TRPCError({ code: "BAD_REQUEST", message: "Esta cuota está cancelada" });
+
+        const now = new Date();
+        await db.update(paymentInstallments).set({
+          status: "paid",
+          paymentMethod: input.paymentMethod,
+          paidAt: now,
+          paidBy: `admin:${ctx.user.id}`,
+          notes: input.paymentNote ?? inst.notes,
+          updatedAt: now,
+        }).where(eq(paymentInstallments.id, input.installmentId));
+
+        await logActivity("quote", inst.quoteId, "installment_paid_manual", ctx.user.id, ctx.user.name, {
+          installmentId: inst.id,
+          installmentNumber: inst.installmentNumber,
+          amountCents: inst.amountCents,
+          paymentMethod: input.paymentMethod,
+        });
+
+        // Si esta cuota era obligatoria para confirmar, verificar si ya se puede confirmar la reserva
+        if (inst.isRequiredForConfirmation) {
+          await _checkAndConfirmReservation(inst.quoteId, ctx.user.id, ctx.user.name);
+        }
+
+        return { success: true };
+      }),
+
+    // Obtener cuotas próximas a vencer o vencidas (para dashboard)
+    upcoming: staff
+      .input(z.object({
+        daysAhead: z.number().default(7),
+        status: z.enum(["pending", "overdue"]).optional(),
+      }))
+      .query(async ({ input }) => {
+        const now = new Date();
+        const future = new Date(now.getTime() + input.daysAhead * 86400000);
+        const todayStr = now.toISOString().split("T")[0];
+        const futureStr = future.toISOString().split("T")[0];
+
+        const conditions = [ne(paymentInstallments.status, "paid"), ne(paymentInstallments.status, "cancelled")];
+        if (input.status === "overdue") {
+          conditions.push(lte(paymentInstallments.dueDate, todayStr));
+        } else if (!input.status) {
+          conditions.push(lte(paymentInstallments.dueDate, futureStr));
+        }
+
+        const rows = await db
+          .select({
+            id: paymentInstallments.id,
+            planId: paymentInstallments.planId,
+            quoteId: paymentInstallments.quoteId,
+            installmentNumber: paymentInstallments.installmentNumber,
+            amountCents: paymentInstallments.amountCents,
+            dueDate: paymentInstallments.dueDate,
+            status: paymentInstallments.status,
+            isRequiredForConfirmation: paymentInstallments.isRequiredForConfirmation,
+            merchantOrder: paymentInstallments.merchantOrder,
+            reservationId: paymentInstallments.reservationId,
+            paymentMethod: paymentInstallments.paymentMethod,
+            paidAt: paymentInstallments.paidAt,
+            paidBy: paymentInstallments.paidBy,
+            remindersSent: paymentInstallments.remindersSent,
+            lastReminderAt: paymentInstallments.lastReminderAt,
+            notes: paymentInstallments.notes,
+            createdAt: paymentInstallments.createdAt,
+            updatedAt: paymentInstallments.updatedAt,
+            quoteNumber: quotes.quoteNumber,
+            quoteTitle: quotes.title,
+          })
+          .from(paymentInstallments)
+          .innerJoin(quotes, eq(quotes.id, paymentInstallments.quoteId))
+          .where(and(...conditions))
+          .orderBy(paymentInstallments.dueDate)
+          .limit(50);
+
+        return rows;
+      }),
+
+    // Marcar cuotas vencidas automáticamente (llamado por job)
+    markOverdue: staff
+      .input(z.object({}))
+      .mutation(async ({ ctx }) => {
+        const todayStr = new Date().toISOString().split("T")[0];
+        const result = await db.update(paymentInstallments)
+          .set({ status: "overdue", updatedAt: new Date() })
+          .where(and(
+            eq(paymentInstallments.status, "pending"),
+            lte(paymentInstallments.dueDate, todayStr)
+          ));
+        const affected = (result[0] as any).affectedRows ?? 0;
+        if (affected > 0) {
+          console.log(`[InstallmentJob] ${affected} cuota(s) marcadas como vencidas`);
+        }
+        return { marked: affected };
+      }),
+  }),
+
   // ─── QUOTES TIMELINE ─────────────────────────────────────────────────────────
   timeline: router({
     get: staff.input(z.object({ quoteId: z.number() })).query(async ({ input }) => {
@@ -2859,7 +3139,7 @@ export const crmRouter = router({
 
         const rows = await db
           .select({
-            ...reservations,
+            ...getTableColumns(reservations),
             invoicePdfUrl: invoices.pdfUrl,
           })
           .from(reservations)
@@ -2974,7 +3254,7 @@ export const crmRouter = router({
         } else if (input.statusPayment === "PAGADO") {
           updateData.status = "paid";
           updateData.paidAt = now;
-        } else if (input.statusPayment !== undefined && input.statusPayment !== "PAGADO") {
+        } else if (input.statusPayment !== undefined) {
           // Si el pago retrocede desde pagado, liberar el status legacy para permitir borrado
           updateData.status = "pending_payment";
         }
