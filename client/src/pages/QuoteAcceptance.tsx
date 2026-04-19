@@ -29,6 +29,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  CalendarDays,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -171,6 +172,16 @@ export default function QuoteAcceptance() {
 
   const items = quote.items ?? [];
   const canAct = !quote.isPaid && !quote.isExpired && !quote.isRejected && !rejected;
+
+  const installmentPlan = quote.installmentPlan ?? null;
+  const firstRequiredCents = installmentPlan?.firstRequiredAmountCents ?? null;
+  const payAmountCents = firstRequiredCents ?? Math.round(Number(quote.total) * 100);
+  const payAmountEuros = payAmountCents / 100;
+
+  function formatInstallmentStatus(s: string) {
+    const map: Record<string, string> = { pending: "Pendiente", paid: "Pagada", overdue: "Vencida", cancelled: "Cancelada" };
+    return map[s] ?? s;
+  }
 
   // ── Already paid ──
   if (quote.isPaid) {
@@ -360,6 +371,54 @@ export default function QuoteAcceptance() {
           </div>
         </div>
 
+        {/* Plan de pagos fraccionado */}
+        {installmentPlan && installmentPlan.installments.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-700 to-purple-900 px-6 py-4">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="w-5 h-5 text-purple-200" />
+                <h2 className="text-white font-bold text-base">Plan de pago fraccionado</h2>
+              </div>
+              <p className="text-purple-200 text-xs mt-1">
+                Este presupuesto se abona en {installmentPlan.installments.length} cuota{installmentPlan.installments.length !== 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {installmentPlan.installments.map((inst) => {
+                const isPaid = inst.status === "paid";
+                const isOverdue = inst.status === "overdue";
+                const isRequired = inst.isRequiredForConfirmation;
+                return (
+                  <div key={inst.id} className={`px-6 py-4 flex items-center justify-between ${isPaid ? "bg-emerald-50" : isOverdue ? "bg-red-50" : ""}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${isPaid ? "bg-emerald-500 text-white" : isOverdue ? "bg-red-500 text-white" : "bg-purple-100 text-purple-700"}`}>
+                        {isPaid ? "✓" : inst.installmentNumber}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">
+                          Cuota {inst.installmentNumber}
+                          {isRequired && <span className="ml-2 text-xs text-purple-600 font-semibold bg-purple-50 px-2 py-0.5 rounded-full">Cuota inaplazable</span>}
+                        </p>
+                        <p className="text-xs text-gray-400 flex items-center gap-1">
+                          <CalendarDays className="w-3 h-3" /> Vence: {formatDate(inst.dueDate)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-bold text-base ${isPaid ? "text-emerald-600" : isOverdue ? "text-red-600" : "text-gray-900"}`}>
+                        {formatCurrency(inst.amountCents / 100)}
+                      </p>
+                      <p className={`text-xs ${isPaid ? "text-emerald-500" : isOverdue ? "text-red-500" : "text-gray-400"}`}>
+                        {formatInstallmentStatus(inst.status)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Notes */}
         {quote.notes && (
           <div className="bg-white rounded-xl shadow p-5">
@@ -402,10 +461,17 @@ export default function QuoteAcceptance() {
             >
               {payMutation.isPending ? (
                 <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Preparando pago...</>
+              ) : installmentPlan ? (
+                <><CreditCard className="w-5 h-5 mr-2" /> Pagar 1ª cuota: {formatCurrency(payAmountEuros)}</>
               ) : (
                 <><CreditCard className="w-5 h-5 mr-2" /> Aceptar y pagar {formatCurrency(quote.total)}</>
               )}
             </Button>
+            {installmentPlan && (
+              <p className="text-center text-xs text-gray-400">
+                Importe total del presupuesto: {formatCurrency(quote.total)} · Pago fraccionado en {installmentPlan.installments.length} cuotas
+              </p>
+            )}
 
             {/* Reject */}
             {!showRejectForm ? (

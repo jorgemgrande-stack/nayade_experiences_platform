@@ -706,6 +706,15 @@ export interface QuoteEmailData {
   notes?: string;
   conditions?: string;
   paymentLinkUrl?: string;
+  installmentPlan?: {
+    firstRequiredAmountCents: number | null;
+    installments: {
+      installmentNumber: number;
+      amountCents: number;
+      dueDate: string;
+      isRequiredForConfirmation: boolean;
+    }[];
+  };
 }
 
 export function buildQuoteHtml(d: QuoteEmailData): string {
@@ -767,6 +776,49 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
       </td></tr>`
     : "";
 
+  const installmentBlock = d.installmentPlan && d.installmentPlan.installments.length > 0
+    ? (() => {
+        const plan = d.installmentPlan!;
+        const firstAmountEuros = plan.firstRequiredAmountCents ? (plan.firstRequiredAmountCents / 100).toFixed(2) : null;
+        const rowsHtml = plan.installments.map((inst) => {
+          const isRequired = inst.isRequiredForConfirmation;
+          const euros = (inst.amountCents / 100).toFixed(2);
+          const dueDateStr = inst.dueDate;
+          return `<tr>
+            <td style="padding:9px 12px;border-bottom:1px solid #ede9fe;color:#374151;font-size:13px;font-family:Arial,sans-serif;">
+              Cuota ${inst.installmentNumber}${isRequired ? ` <span style="font-size:11px;color:#7c3aed;font-weight:700;">(inaplazable)</span>` : ""}
+            </td>
+            <td style="padding:9px 12px;border-bottom:1px solid #ede9fe;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${dueDateStr}</td>
+            <td style="padding:9px 12px;border-bottom:1px solid #ede9fe;text-align:right;color:#7c3aed;font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${euros} &euro;</td>
+          </tr>`;
+        }).join("");
+        return `<tr><td style="padding:0 32px 12px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:#faf5ff;border:2px solid #ddd6fe;border-radius:10px;">
+            <tr><td style="padding:16px 22px 0;">
+              <p style="color:#5b21b6;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;font-family:Arial,sans-serif;">&#128197; Plan de Pago Fraccionado</p>
+              <p style="color:#7c3aed;font-size:13px;margin:0 0 12px;font-family:Arial,sans-serif;">
+                Este presupuesto se abona en ${plan.installments.length} cuota${plan.installments.length !== 1 ? "s" : ""}.
+                ${firstAmountEuros ? `El primer pago que se realizar&aacute; ahora es de <strong>${firstAmountEuros} &euro;</strong>.` : ""}
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                <thead>
+                  <tr style="background:#7c3aed;">
+                    <th style="padding:8px 12px;text-align:left;color:#fff;font-size:11px;font-family:Arial,sans-serif;">Cuota</th>
+                    <th style="padding:8px 12px;text-align:left;color:#fff;font-size:11px;font-family:Arial,sans-serif;">Fecha</th>
+                    <th style="padding:8px 12px;text-align:right;color:#fff;font-size:11px;font-family:Arial,sans-serif;">Importe</th>
+                  </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </td></tr>
+            <tr><td style="padding:12px 22px;">
+              <p style="color:#9ca3af;font-size:12px;margin:0;font-family:Arial,sans-serif;">Importe total del presupuesto: ${Number(d.total).toFixed(2)} &euro;</p>
+            </td></tr>
+          </table>
+        </td></tr>`;
+      })()
+    : "";
+
   const ctaBlock = d.paymentLinkUrl
     ? `<tr><td style="padding:0 32px 12px;">
         <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border:2px solid #fed7aa;border-radius:10px;">
@@ -813,6 +865,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
     </td></tr>
     ${totalsBlock}
     ${validUntilBlock}
+    ${installmentBlock}
     ${notesBlock}
     ${ctaBlock}
     ${conditionsBlock}

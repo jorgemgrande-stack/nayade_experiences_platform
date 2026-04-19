@@ -287,6 +287,10 @@ async function sendQuoteEmail(quote: {
   notes?: string | null;
   conditions?: string | null;
   paymentLinkUrl?: string | null;
+  installmentPlan?: {
+    firstRequiredAmountCents: number | null;
+    installments: { installmentNumber: number; amountCents: number; dueDate: string; isRequiredForConfirmation: boolean }[];
+  } | null;
 }) {
   const html = buildQuoteHtml({
     quoteNumber: quote.quoteNumber,
@@ -301,6 +305,7 @@ async function sendQuoteEmail(quote: {
     notes: quote.notes ?? undefined,
     conditions: quote.conditions ?? undefined,
     paymentLinkUrl: quote.paymentLinkUrl ?? undefined,
+    installmentPlan: quote.installmentPlan ?? undefined,
   });
 
   await sendEmail({
@@ -1220,6 +1225,19 @@ export const crmRouter = router({
           .where(eq(leads.id, quote.leadId));
 
         // Send email con el enlace de aceptación
+        let quoteInstallmentPlan = null;
+        if (quote.paymentPlanId) {
+          const planInsts = await db.select({
+            installmentNumber: paymentInstallments.installmentNumber,
+            amountCents: paymentInstallments.amountCents,
+            dueDate: paymentInstallments.dueDate,
+            isRequiredForConfirmation: paymentInstallments.isRequiredForConfirmation,
+          }).from(paymentInstallments)
+            .where(eq(paymentInstallments.quoteId, quote.id))
+            .orderBy(paymentInstallments.installmentNumber);
+          const firstReq = planInsts.find(i => i.isRequiredForConfirmation) ?? null;
+          quoteInstallmentPlan = { firstRequiredAmountCents: firstReq?.amountCents ?? null, installments: planInsts };
+        }
         await sendQuoteEmail({
           quoteNumber: quote.quoteNumber,
           title: quote.title,
@@ -1234,6 +1252,7 @@ export const crmRouter = router({
           notes: quote.notes,
           conditions: quote.conditions,
           paymentLinkUrl: acceptUrl,
+          installmentPlan: quoteInstallmentPlan,
         });
 
         await logActivity("quote", input.id, "quote_sent", ctx.user.id, ctx.user.name, { email: lead.email, acceptUrl });
@@ -1267,6 +1286,19 @@ export const crmRouter = router({
           }).where(eq(quotes.id, input.id));
         }
 
+        let resendInstallmentPlan = null;
+        if (quote.paymentPlanId) {
+          const planInsts = await db.select({
+            installmentNumber: paymentInstallments.installmentNumber,
+            amountCents: paymentInstallments.amountCents,
+            dueDate: paymentInstallments.dueDate,
+            isRequiredForConfirmation: paymentInstallments.isRequiredForConfirmation,
+          }).from(paymentInstallments)
+            .where(eq(paymentInstallments.quoteId, quote.id))
+            .orderBy(paymentInstallments.installmentNumber);
+          const firstReq = planInsts.find(i => i.isRequiredForConfirmation) ?? null;
+          resendInstallmentPlan = { firstRequiredAmountCents: firstReq?.amountCents ?? null, installments: planInsts };
+        }
         await sendQuoteEmail({
           quoteNumber: quote.quoteNumber,
           title: quote.title,
@@ -1281,6 +1313,7 @@ export const crmRouter = router({
           notes: quote.notes,
           conditions: quote.conditions,
           paymentLinkUrl,
+          installmentPlan: resendInstallmentPlan,
         });
         await logActivity("quote", input.id, "quote_resent", ctx.user.id, ctx.user.name, { paymentLinkUrl });
         return { success: true };
@@ -2414,6 +2447,45 @@ export const crmRouter = router({
         const isPaid = !!quote.paidAt;
         const isRejected = quote.status === "rechazado";
 
+        // Cargar plan de pagos si existe
+        let installmentPlan: {
+          planId: number;
+          firstRequiredAmountCents: number | null;
+          installments: {
+            id: number;
+            installmentNumber: number;
+            amountCents: number;
+            dueDate: string;
+            status: string;
+            isRequiredForConfirmation: boolean;
+          }[];
+        } | null = null;
+
+        if (quote.paymentPlanId) {
+          const planInstallments = await db
+            .select({
+              id: paymentInstallments.id,
+              installmentNumber: paymentInstallments.installmentNumber,
+              amountCents: paymentInstallments.amountCents,
+              dueDate: paymentInstallments.dueDate,
+              status: paymentInstallments.status,
+              isRequiredForConfirmation: paymentInstallments.isRequiredForConfirmation,
+            })
+            .from(paymentInstallments)
+            .where(eq(paymentInstallments.quoteId, quote.id))
+            .orderBy(paymentInstallments.installmentNumber);
+
+          const firstRequired = planInstallments.find(
+            (i) => i.isRequiredForConfirmation && i.status === "pending"
+          ) ?? planInstallments.find((i) => i.isRequiredForConfirmation) ?? null;
+
+          installmentPlan = {
+            planId: quote.paymentPlanId,
+            firstRequiredAmountCents: firstRequired?.amountCents ?? null,
+            installments: planInstallments,
+          };
+        }
+
         return {
           id: quote.id,
           quoteNumber: quote.quoteNumber,
@@ -2436,6 +2508,7 @@ export const crmRouter = router({
           clientPhone: lead?.phone ?? "",
           invoicePdfUrl: quote.invoicePdfUrl,
           invoiceNumber: quote.invoiceNumber,
+          installmentPlan,
         };
       }),
 
@@ -2506,7 +2579,28 @@ export const crmRouter = router({
         if (!(totalEuros > 0)) {
           throw new TRPCError({ code: "BAD_REQUEST", message: `El presupuesto tiene un importe inválido (${quote.total}). Contacta con el equipo.` });
         }
-        const amountCents = Math.round(totalEuros * 100);
+
+        // Si hay plan de pagos, cobrar solo la primera cuota requerida pendiente
+        let amountCents = Math.round(totalEuros * 100);
+        let firstRequiredInstallment: { id: number; amountCents: number; installmentNumber: number } | null = null;
+
+        if (quote.paymentPlanId) {
+          const [inst] = await db
+            .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber })
+            .from(paymentInstallments)
+            .where(and(
+              eq(paymentInstallments.quoteId, quote.id),
+              eq(paymentInstallments.isRequiredForConfirmation, true),
+              eq(paymentInstallments.status, "pending"),
+            ))
+            .orderBy(paymentInstallments.installmentNumber)
+            .limit(1);
+          if (!inst) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "No hay cuotas pendientes de pago en el plan fraccionado. Contacta con el equipo." });
+          }
+          firstRequiredInstallment = inst;
+          amountCents = inst.amountCents;
+        }
 
         const customerName = input.customerName ?? lead.name;
         const customerEmail = input.customerEmail ?? lead.email ?? "";
@@ -2579,7 +2673,20 @@ export const crmRouter = router({
           })
           .where(eq(quotes.id, quote.id));
 
-        await logActivity("quote", quote.id, "payment_initiated", null, null, { merchantOrder, reservationId });
+        // Vincular la reserva a la cuota del plan de pagos
+        if (firstRequiredInstallment) {
+          await db
+            .update(paymentInstallments)
+            .set({ reservationId, merchantOrder, updatedAt: new Date() })
+            .where(eq(paymentInstallments.id, firstRequiredInstallment.id));
+        }
+
+        await logActivity("quote", quote.id, "payment_initiated", null, null, {
+          merchantOrder,
+          reservationId,
+          installmentId: firstRequiredInstallment?.id ?? null,
+          installmentNumber: firstRequiredInstallment?.installmentNumber ?? null,
+        });
 
         // Construir formulario Redsys
         const redsysForm = buildRedsysForm({

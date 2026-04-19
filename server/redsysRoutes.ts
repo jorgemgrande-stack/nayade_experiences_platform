@@ -10,7 +10,7 @@ import { updateReservationPayment, getReservationByMerchantOrder, getAllReservat
 import { calcularREAVSimple, validarConfiguracionREAV } from "./reav";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { quotes, leads, invoices, reservations, transactions } from "../drizzle/schema";
+import { quotes, leads, invoices, reservations, transactions, paymentInstallments } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
 import { getBookingByMerchantOrder, updateBooking, updateBookingPaymentAtomic, addBookingLog } from "./restaurantsDb";
@@ -151,8 +151,56 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       });
     }
 
+    // ── Detectar si la reserva corresponde a una cuota de plan de pagos ──────────
+    let linkedInstallmentId: number | null = null;
+    let linkedInstallmentQuoteId: number | null = null;
+    let allRequiredInstallmentsPaid = false;
+
+    if (result.isAuthorized && updatedReservation?.id) {
+      try {
+        const [linkedInst] = await _db
+          .select({ id: paymentInstallments.id, quoteId: paymentInstallments.quoteId, isRequiredForConfirmation: paymentInstallments.isRequiredForConfirmation })
+          .from(paymentInstallments)
+          .where(eq(paymentInstallments.reservationId, updatedReservation.id))
+          .limit(1);
+
+        if (linkedInst) {
+          linkedInstallmentId = linkedInst.id;
+          linkedInstallmentQuoteId = linkedInst.quoteId;
+
+          // Marcar cuota como pagada
+          await _db.update(paymentInstallments).set({
+            status: "paid",
+            paidAt: new Date(),
+            paidBy: "redsys",
+            updatedAt: new Date(),
+          }).where(eq(paymentInstallments.id, linkedInst.id));
+
+          // Verificar si todas las cuotas requeridas están pagadas
+          const allInstallments = await _db.select({
+            id: paymentInstallments.id,
+            status: paymentInstallments.status,
+            isRequiredForConfirmation: paymentInstallments.isRequiredForConfirmation,
+          }).from(paymentInstallments).where(eq(paymentInstallments.quoteId, linkedInst.quoteId));
+
+          const required = allInstallments.filter(i => i.isRequiredForConfirmation);
+          allRequiredInstallmentsPaid = required.length > 0 && required.every(
+            i => i.status === "paid" || i.id === linkedInst.id
+          );
+
+          console.log(`[Redsys IPN] Cuota id=${linkedInst.id} marcada como pagada (quoteId=${linkedInst.quoteId}). Todas requeridas pagadas: ${allRequiredInstallmentsPaid}`);
+        }
+      } catch (instErr: any) {
+        console.error("[Redsys IPN] Error procesando cuota de plan de pagos:", instErr.message);
+      }
+    }
+
     // ── Si la reserva viene de un presupuesto, marcar el presupuesto como pagado ──
-    if (result.isAuthorized && updatedReservation?.quoteSource === "presupuesto" && updatedReservation?.quoteId) {
+    // Para planes de pago: solo confirmar cuando TODAS las cuotas requeridas estén pagadas
+    const isInstallmentPayment = linkedInstallmentId !== null;
+    const shouldConfirmQuote = !isInstallmentPayment || allRequiredInstallmentsPaid;
+
+    if (result.isAuthorized && updatedReservation?.quoteSource === "presupuesto" && updatedReservation?.quoteId && shouldConfirmQuote) {
       try {
         const [quote] = await _db.select().from(quotes).where(eq(quotes.id, updatedReservation.quoteId));
         if (quote && !quote.paidAt) {
