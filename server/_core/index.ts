@@ -144,6 +144,26 @@ async function startServer() {
   app.use("/local-storage", express.static(localStorageDir));
   // File upload endpoint
   app.use(uploadRouter);
+  // [DEBUG TEMPORAL] Inspeccionar reserva por merchantOrder
+  app.get("/api/debug/reservation/:merchantOrder", async (req, res) => {
+    try {
+      const mysql = await import("mysql2/promise");
+      const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+      const [rows] = await conn.execute(
+        "SELECT id, merchantOrder, status, channel, quoteId, customerEmail, customerName, createdAt, updatedAt FROM reservations WHERE merchantOrder = ? LIMIT 5",
+        [req.params.merchantOrder]
+      ) as any[];
+      const [leads] = await conn.execute(
+        "SELECT id, source, opportunityStatus, message, createdAt FROM leads WHERE message LIKE ? LIMIT 5",
+        [`%${req.params.merchantOrder}%`]
+      ) as any[];
+      await conn.end();
+      res.json({ reservations: rows, ventaPerdidaLeads: leads });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // Redsys IPN notification endpoint
   app.use(redsysRouter);
   // Settlement Excel export endpoint
