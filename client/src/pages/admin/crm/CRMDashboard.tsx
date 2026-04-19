@@ -2523,6 +2523,11 @@ function QuoteDetailModal({
   const [paymentLink, setPaymentLink] = useState("");
   const [showPaymentInput, setShowPaymentInput] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  // Payment plan state
+  const [showPlanEditor, setShowPlanEditor] = useState(false);
+  type DraftInstallment = { installmentNumber: number; amountCents: number; dueDate: string; isRequiredForConfirmation: boolean; notes: string };
+  const [draftInstallments, setDraftInstallments] = useState<DraftInstallment[]>([]);
+  const [planEditMode, setPlanEditMode] = useState(false);
   // Transfer proof modal state
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferFile, setTransferFile] = useState<File | null>(null);
@@ -2627,6 +2632,32 @@ function QuoteDetailModal({
       setPendingDueDate("");
       setPendingReason("");
       onClose();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const planQuery = trpc.crm.paymentPlans.get.useQuery({ quoteId }, { enabled: showPlanEditor });
+  const upsertPlan = trpc.crm.paymentPlans.upsert.useMutation({
+    onSuccess: () => {
+      toast.success("Plan de pago guardado");
+      planQuery.refetch();
+      setPlanEditMode(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deletePlan = trpc.crm.paymentPlans.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Plan de pago eliminado");
+      planQuery.refetch();
+      setDraftInstallments([]);
+      setPlanEditMode(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const confirmInstallmentMut = trpc.crm.paymentPlans.confirmInstallment.useMutation({
+    onSuccess: () => {
+      toast.success("Cuota marcada como pagada");
+      planQuery.refetch();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -2906,6 +2937,182 @@ function QuoteDetailModal({
             />
           </div>
         )}
+
+        {/* ─── PLAN DE PAGO FRACCIONADO ─── */}
+        {showPlanEditor && (
+          <div className="bg-foreground/[0.04] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-violet-400" />
+                Plan de Pago Fraccionado
+              </h4>
+              <div className="flex items-center gap-2">
+                {planQuery.data && !planEditMode && (
+                  <button
+                    onClick={() => {
+                      setDraftInstallments(planQuery.data.installments.map(i => ({
+                        installmentNumber: i.installmentNumber,
+                        amountCents: i.amountCents,
+                        dueDate: i.dueDate,
+                        isRequiredForConfirmation: i.isRequiredForConfirmation,
+                        notes: i.notes ?? "",
+                      })));
+                      setPlanEditMode(true);
+                    }}
+                    className="text-xs text-violet-400 hover:text-violet-300 underline"
+                  >Editar</button>
+                )}
+                {planQuery.data && !planEditMode && (
+                  <button
+                    onClick={() => { if (confirm("¿Eliminar el plan de pago fraccionado?")) deletePlan.mutate({ quoteId }); }}
+                    className="text-xs text-red-400 hover:text-red-300 underline"
+                  >Eliminar</button>
+                )}
+                {planEditMode && (
+                  <button onClick={() => setPlanEditMode(false)} className="text-xs text-foreground/50 hover:text-foreground underline">Cancelar</button>
+                )}
+              </div>
+            </div>
+
+            {/* Vista de cuotas existentes (solo lectura) */}
+            {planQuery.data && !planEditMode && (
+              <div className="space-y-2">
+                {planQuery.data.installments.map((inst) => {
+                  const isOverdue = inst.status === "overdue" || (inst.status === "pending" && inst.dueDate < new Date().toISOString().split("T")[0]);
+                  return (
+                    <div key={inst.id} className="flex items-center gap-3 py-2 border-b border-foreground/[0.08] last:border-0">
+                      <span className="text-xs text-foreground/40 w-5">#{inst.installmentNumber}</span>
+                      <span className="text-sm font-semibold text-white flex-1">{(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                      <span className="text-xs text-foreground/55">{inst.dueDate}</span>
+                      {inst.isRequiredForConfirmation && <span className="text-xs bg-violet-500/15 text-violet-300 border border-violet-500/25 px-1.5 py-0.5 rounded">Requerida</span>}
+                      {inst.status === "paid" ? (
+                        <span className="text-xs bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 px-1.5 py-0.5 rounded">Pagada</span>
+                      ) : inst.status === "cancelled" ? (
+                        <span className="text-xs text-foreground/30">Cancelada</span>
+                      ) : isOverdue ? (
+                        <span className="text-xs bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">Vencida</span>
+                      ) : (
+                        <button
+                          onClick={() => confirmInstallmentMut.mutate({ installmentId: inst.id, paymentMethod: "admin_manual" })}
+                          disabled={confirmInstallmentMut.isPending}
+                          className="text-xs bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/25 px-2 py-0.5 rounded transition-colors"
+                        >
+                          {confirmInstallmentMut.isPending ? "..." : "Confirmar pago"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {(() => {
+                  const total = planQuery.data.installments.reduce((s, i) => s + i.amountCents, 0);
+                  const quoteTotalCents = Math.round(Number(quote.total ?? 0) * 100);
+                  return (
+                    <div className="flex justify-between items-center pt-1 text-xs text-foreground/50">
+                      <span>Total plan: <strong className="text-white">{(total / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</strong></span>
+                      {Math.abs(total - quoteTotalCents) > 1 && (
+                        <span className="text-amber-400">⚠ Diferencia con presupuesto ({(quoteTotalCents / 100).toFixed(2)} €)</span>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Editor de cuotas (modo edición o nuevo plan) */}
+            {(!planQuery.data || planEditMode) && (
+              <div className="space-y-3">
+                {draftInstallments.length === 0 && (
+                  <p className="text-xs text-foreground/45 text-center py-2">Sin cuotas definidas. Añade la primera cuota abajo.</p>
+                )}
+                {draftInstallments.map((inst, idx) => (
+                  <div key={idx} className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-2 items-center">
+                    <span className="text-xs text-foreground/40">#{idx + 1}</span>
+                    <div>
+                      <input
+                        type="number"
+                        placeholder="Importe (€)"
+                        value={inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : ""}
+                        onChange={(e) => {
+                          const updated = [...draftInstallments];
+                          updated[idx] = { ...updated[idx], amountCents: Math.round(parseFloat(e.target.value || "0") * 100) };
+                          setDraftInstallments(updated);
+                        }}
+                        className="w-full bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="date"
+                        value={inst.dueDate}
+                        onChange={(e) => {
+                          const updated = [...draftInstallments];
+                          updated[idx] = { ...updated[idx], dueDate: e.target.value };
+                          setDraftInstallments(updated);
+                        }}
+                        className="w-full bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                      />
+                    </div>
+                    <label className="flex items-center gap-1 text-xs text-violet-300 cursor-pointer whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={inst.isRequiredForConfirmation}
+                        onChange={(e) => {
+                          const updated = [...draftInstallments];
+                          updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
+                          setDraftInstallments(updated);
+                        }}
+                        className="accent-violet-500"
+                      />
+                      Req.
+                    </label>
+                    <button
+                      onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))}
+                      className="text-red-400 hover:text-red-300 text-xs"
+                    >✕</button>
+                  </div>
+                ))}
+
+                <button
+                  onClick={() => setDraftInstallments([...draftInstallments, {
+                    installmentNumber: draftInstallments.length + 1,
+                    amountCents: 0,
+                    dueDate: "",
+                    isRequiredForConfirmation: draftInstallments.length === 0,
+                    notes: "",
+                  }])}
+                  className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                >
+                  + Añadir cuota
+                </button>
+
+                {draftInstallments.length > 0 && (() => {
+                  const sum = draftInstallments.reduce((s, i) => s + i.amountCents, 0);
+                  const quoteTotalCents = Math.round(Number(quote.total ?? 0) * 100);
+                  const diff = Math.abs(sum - quoteTotalCents);
+                  return (
+                    <div className={`text-xs px-3 py-1.5 rounded flex justify-between ${diff <= 1 ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}>
+                      <span>Suma cuotas: {(sum / 100).toFixed(2)} €</span>
+                      <span>Total presupuesto: {Number(quote.total ?? 0).toFixed(2)} €</span>
+                      {diff > 1 && <span>⚠ Diferencia: {(diff / 100).toFixed(2)} €</span>}
+                    </div>
+                  );
+                })()}
+
+                <Button
+                  size="sm"
+                  className="bg-violet-600 hover:bg-violet-700 text-white text-xs w-full"
+                  disabled={draftInstallments.length === 0 || upsertPlan.isPending}
+                  onClick={() => upsertPlan.mutate({
+                    quoteId,
+                    installments: draftInstallments.map((i, idx) => ({ ...i, installmentNumber: idx + 1 })),
+                  })}
+                >
+                  {upsertPlan.isPending ? <><RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" />Guardando...</> : "Guardar plan de pago"}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       </div>
@@ -2959,6 +3166,26 @@ function QuoteDetailModal({
           >
             <Clock className="w-3.5 h-3.5 mr-1" />
             Pago Pendiente
+          </Button>
+        )}
+        {/* Plan Fraccionado */}
+        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "aceptado") && (
+          <Button
+            size="sm"
+            variant="outline"
+            className={`text-xs ${showPlanEditor ? "border-violet-500/60 text-violet-300 bg-violet-500/10" : "border-violet-500/30 text-violet-400 hover:bg-violet-500/10"}`}
+            onClick={() => {
+              if (!showPlanEditor) {
+                setShowPlanEditor(true);
+                setPlanEditMode(false);
+              } else {
+                setShowPlanEditor(false);
+                setPlanEditMode(false);
+              }
+            }}
+          >
+            <CreditCard className="w-3.5 h-3.5 mr-1" />
+            Plan Fraccionado
           </Button>
         )}
         {/* Descargar PDF */}
