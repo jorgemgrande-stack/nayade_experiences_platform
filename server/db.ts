@@ -1757,9 +1757,9 @@ export async function getDashboardOverview() {
       // Hoy en el complejo — Restaurantes (reservas de hoy activas)
       db.select({ count: sql<number>`count(*)`, covers: sql<string>`COALESCE(SUM(guests), 0)` }).from(restaurantBookings)
         .where(sql`date = ${todayISO} AND status NOT IN ('cancelled','payment_failed','no_show')`),
-      // Leads sin atender hace más de 3 días (activos, no cerrados)
+      // Leads sin atender hace más de 3 días (activos, no cerrados, creados hace >3 días)
       db.select({ count: sql<number>`count(*)` }).from(leads)
-        .where(sql`status NOT IN ('convertido','perdido') AND (lastContactAt IS NULL OR lastContactAt < ${threeDaysAgo})`),
+        .where(sql`status NOT IN ('convertido','perdido') AND createdAt < ${threeDaysAgo} AND (lastContactAt IS NULL OR lastContactAt < ${threeDaysAgo})`),
     ]);
 
     // Enriquecer reservas con nombres de experiencias
