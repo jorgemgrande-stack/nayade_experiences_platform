@@ -537,7 +537,7 @@ export default function AdminDashboard() {
                 icon={Calendar} color="blue" href="/admin/operaciones/reservas"
               />
               <KpiCard
-                label="Leads nuevos"
+                label="Leads sin gestionar"
                 value={kpis?.leadsNew ?? 0}
                 subLabel={`Total acum: ${kpis?.leadsTotal ?? 0} leads`}
                 icon={Users} color="violet" href="/admin/crm?tab=leads"
