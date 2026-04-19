@@ -1719,8 +1719,8 @@ export async function getDashboardOverview() {
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status IN ('paid','pending_payment') AND created_at >= ${startOfMonthMs}`),
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'pending_payment'`),
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'paid'`),
-      // KPIs: Leads — "nuevos" = sin acción tomada (no convertidos a presupuesto ni cerrados)
-      db.select({ count: sql<number>`count(*)` }).from(leads).where(sql`opportunityStatus = 'nueva'`),
+      // KPIs: Leads — "sin gestionar" = admin no ha visto el lead aún (seenAt IS NULL)
+      db.select({ count: sql<number>`count(*)` }).from(leads).where(sql`seenAt IS NULL`),
       db.select({ count: sql<number>`count(*)` }).from(leads),
       // KPIs: Presupuestos
       db.select({ count: sql<number>`count(*)` }).from(quotes).where(sql`status IN ('enviado', 'visualizado')`),
