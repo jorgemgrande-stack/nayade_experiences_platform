@@ -153,12 +153,34 @@ async function startServer() {
         "SELECT id, merchant_order, status, channel, quote_id, customer_email, customer_name, created_at, updated_at FROM reservations WHERE merchant_order = ? LIMIT 5",
         [req.params.merchantOrder]
       ) as any[];
-      const [leads] = await conn.execute(
+      const [leadsRows] = await conn.execute(
         "SELECT id, source, opportunityStatus, message, createdAt FROM leads WHERE message LIKE ? LIMIT 5",
         [`%${req.params.merchantOrder}%`]
       ) as any[];
       await conn.end();
-      res.json({ reservations: rows, ventaPerdidaLeads: leads });
+
+      // Intentar ejecutar createVentaPerdidaLead para ver si falla y por qué
+      let createLeadResult: string = "not_attempted";
+      if ((rows as any[]).length > 0) {
+        try {
+          const { drizzle } = await import("drizzle-orm/mysql2");
+          const mysql2 = await import("mysql2/promise");
+          const pool = mysql2.default.createPool(process.env.DATABASE_URL!);
+          const db = drizzle(pool);
+          const { reservations: resSchema } = await import("../../drizzle/schema");
+          const { eq } = await import("drizzle-orm");
+          const group = await db.select().from(resSchema)
+            .where(eq(resSchema.merchantOrder, req.params.merchantOrder)).limit(5);
+          const { createVentaPerdidaLead } = await import("../db");
+          await createVentaPerdidaLead(group as any);
+          await pool.end();
+          createLeadResult = "success";
+        } catch (leErr: any) {
+          createLeadResult = `error: ${leErr.message}`;
+        }
+      }
+
+      res.json({ reservations: rows, ventaPerdidaLeads: leadsRows, createLeadResult });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
