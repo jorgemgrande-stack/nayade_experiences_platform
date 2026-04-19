@@ -3941,6 +3941,7 @@ export default function CRMDashboard() {
   const { data: leadCounters } = trpc.crm.leads.counters.useQuery();
   const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery();
   const { data: resCounters } = trpc.crm.reservations.counters.useQuery();
+  const { data: upcomingInstallments } = trpc.crm.paymentPlans.upcoming.useQuery({ daysAhead: 7 });
 
   const leadsFilter = useMemo(() => ({
     opportunityStatus: filterStatus !== "all" && tab === "leads" ? (filterStatus as OpportunityStatus) : undefined,
@@ -4525,6 +4526,92 @@ export default function CRMDashboard() {
               />
             </div>
           </div>
+
+          {/* Grupo 5: Próximos Pagos Fraccionados */}
+          {upcomingInstallments && upcomingInstallments.length > 0 && (() => {
+            const today = new Date().toISOString().split("T")[0];
+            const vencenHoy = upcomingInstallments.filter(i => i.dueDate === today);
+            const enDeuda = upcomingInstallments.filter(i => i.status === "overdue" || (i.status === "pending" && i.dueDate < today));
+            const totalPendienteCents = upcomingInstallments
+              .filter(i => i.status !== "paid" && i.status !== "cancelled")
+              .reduce((s, i) => s + i.amountCents, 0);
+            return (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-1 h-4 rounded-full bg-gradient-to-b from-violet-400 to-violet-600" />
+                  <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Próximos Pagos Fraccionados</span>
+                  <div className="flex-1 h-px bg-foreground/[0.05]" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <CounterCard
+                    label="Vencen en 7 días"
+                    value={upcomingInstallments.filter(i => i.status === "pending" && i.dueDate >= today).length}
+                    icon={CreditCard}
+                    color="violet"
+                    subtitle="Cuotas pendientes"
+                  />
+                  <CounterCard
+                    label="Vencen Hoy"
+                    value={vencenHoy.length}
+                    icon={AlertCircle}
+                    color={vencenHoy.length > 0 ? "amber" : "slate"}
+                    subtitle="Requieren cobro"
+                  />
+                  <CounterCard
+                    label="En Deuda"
+                    value={enDeuda.length}
+                    icon={AlertTriangle}
+                    color={enDeuda.length > 0 ? "red" : "slate"}
+                    subtitle="Vencidas sin pagar"
+                  />
+                  <CounterCard
+                    label="Total Pendiente"
+                    value={`${(totalPendienteCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 0 })} €`}
+                    icon={Banknote}
+                    color="violet"
+                    subtitle="Suma cuotas activas"
+                  />
+                </div>
+                {/* Mini-tabla de cuotas próximas */}
+                <div className="mt-3 bg-foreground/[0.03] border border-foreground/[0.07] rounded-xl overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
+                        <th className="text-left px-3 py-2 text-foreground/45 font-medium">Presupuesto</th>
+                        <th className="text-left px-3 py-2 text-foreground/45 font-medium">Cuota</th>
+                        <th className="text-right px-3 py-2 text-foreground/45 font-medium">Importe</th>
+                        <th className="text-center px-3 py-2 text-foreground/45 font-medium">Vencimiento</th>
+                        <th className="text-center px-3 py-2 text-foreground/45 font-medium">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {upcomingInstallments.slice(0, 8).map((inst) => {
+                        const isOverdue = inst.status === "overdue" || (inst.status === "pending" && inst.dueDate < today);
+                        const isToday = inst.dueDate === today;
+                        return (
+                          <tr key={inst.id} className="border-b border-foreground/[0.06] last:border-0 hover:bg-foreground/[0.03]">
+                            <td className="px-3 py-2 text-foreground/70">{inst.quoteNumber}</td>
+                            <td className="px-3 py-2 text-foreground/55">#{inst.installmentNumber}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-white">{(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</td>
+                            <td className="px-3 py-2 text-center text-foreground/55">{inst.dueDate}</td>
+                            <td className="px-3 py-2 text-center">
+                              {isOverdue ? (
+                                <span className="bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">Vencida</span>
+                              ) : isToday ? (
+                                <span className="bg-amber-500/15 text-amber-400 border border-amber-500/25 px-1.5 py-0.5 rounded">Hoy</span>
+                              ) : (
+                                <span className="bg-violet-500/15 text-violet-300 border border-violet-500/25 px-1.5 py-0.5 rounded">Pendiente</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Grupo 4: Bonos compensatorios */}
           <div>
