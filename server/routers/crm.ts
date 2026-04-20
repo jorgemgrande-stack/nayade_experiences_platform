@@ -445,9 +445,11 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
 
   const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
   const now = new Date();
-  const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+  const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string }[]) ?? [];
+  // IVA solo sobre líneas general_21 (las REAV no llevan IVA repercutido al cliente)
+  const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
   const subtotal = Number(quote.subtotal);
-  const taxAmount = parseFloat((subtotal * 0.21).toFixed(2));
+  const taxAmount = parseFloat((generalSubtotal * 0.21).toFixed(2));
   const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
   // Generar factura
@@ -479,7 +481,7 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
     invoiceNumber,
     quoteId: quote.id,
     clientName: lead?.name ?? quote.title,
-    clientEmail: lead?.email ?? null,
+    clientEmail: lead?.email ?? "",
     clientPhone: lead?.phone ?? null,
     itemsJson: items,
     subtotal: String(subtotal),
@@ -487,7 +489,8 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
     taxAmount: String(taxAmount),
     total: String(total),
     status: "cobrada",
-    paymentMethod: "plan_fraccionado",
+    paymentMethod: "otro",
+    isAutomatic: false,
     issuedAt: now,
     pdfUrl,
     pdfKey,
