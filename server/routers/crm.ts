@@ -1148,6 +1148,7 @@ export const crmRouter = router({
             updatedAt: quotes.updatedAt,
             leadId: quotes.leadId,
             agentId: quotes.agentId,
+            paymentPlanId: quotes.paymentPlanId,
             // Datos del cliente (desde el lead)
             clientName: leads.name,
             clientEmail: leads.email,
