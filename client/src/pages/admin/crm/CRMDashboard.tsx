@@ -71,6 +71,7 @@ import {
   AlertCircle,
   Archive,
   X,
+  CalendarDays,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -5418,10 +5419,15 @@ export default function CRMDashboard() {
                               <RefreshCw className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                          {/* Confirmar pago */}
-                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido" || (quote.status === "aceptado" && !quote.paidAt)) && (
+                          {/* Confirmar pago — solo sin plan fraccionado; con plan, hacerlo cuota a cuota desde el detalle */}
+                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido" || (quote.status === "aceptado" && !quote.paidAt)) && !quote.paymentPlanId && (
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-emerald-300 h-7 w-7 p-0" onClick={() => setConfirmPaymentId(quote.id)} title="Confirmar pago recibido">
                               <CheckCircle className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {(quote.status === "enviado" || quote.status === "visualizado" || quote.status === "convertido_carrito" || quote.status === "pago_fallido") && !!quote.paymentPlanId && (
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-violet-300 h-7 w-7 p-0" onClick={() => setSelectedQuoteId(quote.id)} title="Plan fraccionado — confirma cuotas en el detalle">
+                              <CalendarDays className="w-3.5 h-3.5" />
                             </Button>
                           )}
                           {/* Convertir a reserva pendiente de cobro */}
