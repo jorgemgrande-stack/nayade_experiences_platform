@@ -1734,7 +1734,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                       }
                       setDraftInstallmentsD(updated);
                     }}
-                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                    className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
                   />
                   <input
                     type="date"
@@ -2198,7 +2198,7 @@ function QuoteBuilderModal({
                       }
                       setDraftInstallments(updated);
                     }}
-                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                    className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
                   />
                   <input
                     type="date"
@@ -3314,7 +3314,7 @@ function QuoteDetailModal({
                           }
                           setDraftInstallments(updated);
                         }}
-                        className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                        className="w-20 shrink-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
                       />
                       <input
                         type="date"
