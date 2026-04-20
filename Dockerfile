@@ -29,6 +29,17 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
+# Chromium + dependencias de sistema para puppeteer-core (generación de PDFs)
+# chromium-browser queda en /usr/bin/chromium-browser (ruta ya declarada en pdfGenerator.ts)
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    font-noto
+
 # Copiar node_modules y artefactos del builder (evita reinstalar)
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist

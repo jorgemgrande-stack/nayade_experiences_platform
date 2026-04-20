@@ -93,6 +93,21 @@ export async function createGHLContact(
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[GHL] Error al crear contacto (${response.status}): ${errorText}`);
+
+      // GHL devuelve 400 cuando el location no permite contactos duplicados.
+      // La respuesta incluye meta.contactId con el ID del contacto existente —
+      // lo tratamos como upsert exitoso para añadir la nota igualmente.
+      if (response.status === 400) {
+        try {
+          const errJson = JSON.parse(errorText) as { meta?: { contactId?: string } };
+          const existingId = errJson?.meta?.contactId ?? null;
+          if (existingId) {
+            console.log(`[GHL] Contacto duplicado detectado — reutilizando ${existingId} (${payload.email ?? payload.name})`);
+            if (payload.notes) await addGHLNote(existingId, payload.notes, apiKey);
+            return existingId;
+          }
+        } catch { /* JSON inválido — caer al return null */ }
+      }
       return null;
     }
 
