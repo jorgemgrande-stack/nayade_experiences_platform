@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,10 @@ import { toast } from "sonner";
 import {
   Users, Plus, Search, Pencil, Trash2, RefreshCw, Phone, Mail,
   Building2, FileText, ChevronRight, UserCheck, UserPlus, ArrowRight,
-  MapPin, CreditCard, Calendar, Globe, Tag, Ticket
+  MapPin, CreditCard, Calendar, Globe, Tag, Ticket,
+  History, FileCheck, Ban, BadgePercent, Activity,
+  TrendingUp, ShoppingBag, Receipt, AlertCircle, CheckCircle2,
+  Clock, Eye, ChevronDown, ChevronUp, Euro
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Link } from "wouter";
@@ -292,6 +295,442 @@ function ClientFormModal({
   );
 }
 
+// ─── CLIENT HISTORY MODAL ────────────────────────────────────────────────────
+
+type HistoryTab = "resumen" | "timeline" | "actividad";
+
+function fmtDate(d: Date | string | number | null | undefined): string {
+  if (!d) return "—";
+  const date = d instanceof Date ? d : new Date(d);
+  return date.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fmtEuros(cents: number): string {
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(cents / 100);
+}
+
+type QuoteStatus = "borrador" | "enviado" | "aceptado" | "rechazado" | "convertido_carrito" | string;
+
+function quoteStatusLabel(s: QuoteStatus): { label: string; color: string } {
+  const map: Record<string, { label: string; color: string }> = {
+    borrador: { label: "Borrador", color: "text-white/40 bg-white/5 border-white/10" },
+    enviado: { label: "Enviado", color: "text-blue-300 bg-blue-500/10 border-blue-500/20" },
+    aceptado: { label: "Aceptado", color: "text-green-300 bg-green-500/10 border-green-500/20" },
+    rechazado: { label: "Rechazado", color: "text-red-300 bg-red-500/10 border-red-500/20" },
+    convertido_carrito: { label: "Reservado", color: "text-purple-300 bg-purple-500/10 border-purple-500/20" },
+  };
+  return map[s] ?? { label: s, color: "text-white/40 bg-white/5 border-white/10" };
+}
+
+function resStatusLabel(s: string): { label: string; color: string } {
+  const map: Record<string, { label: string; color: string }> = {
+    paid: { label: "Pagada", color: "text-green-300 bg-green-500/10 border-green-500/20" },
+    pending_payment: { label: "Pendiente pago", color: "text-yellow-300 bg-yellow-500/10 border-yellow-500/20" },
+    draft: { label: "Borrador", color: "text-white/40 bg-white/5 border-white/10" },
+    failed: { label: "Fallida", color: "text-red-300 bg-red-500/10 border-red-500/20" },
+    cancelled: { label: "Cancelada", color: "text-red-300 bg-red-500/10 border-red-500/20" },
+  };
+  return map[s] ?? { label: s, color: "text-white/40 bg-white/5 border-white/10" };
+}
+
+function TimelineDot({ color }: { color: string }) {
+  return (
+    <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${color}`} />
+  );
+}
+
+function ClientHistoryModal({ client, onClose }: { client: ClientRow; onClose: () => void }) {
+  const [tab, setTab] = useState<HistoryTab>("resumen");
+  const { data, isLoading } = trpc.crm.clients.getHistory.useQuery({ id: client.id });
+
+  const tabs: { id: HistoryTab; label: string; icon: ReactNode }[] = [
+    { id: "resumen", label: "Resumen", icon: <TrendingUp className="w-3.5 h-3.5" /> },
+    { id: "timeline", label: "Historial", icon: <History className="w-3.5 h-3.5" /> },
+    { id: "actividad", label: "Actividad", icon: <Activity className="w-3.5 h-3.5" /> },
+  ];
+
+  // Build unified timeline
+  const timeline = useMemo(() => {
+    if (!data) return [];
+    const events: Array<{
+      id: string;
+      date: Date;
+      type: "lead" | "quote" | "reservation" | "invoice" | "cancellation" | "discount";
+      title: string;
+      subtitle: string;
+      color: string;
+      dotColor: string;
+      icon: ReactNode;
+      href?: string;
+    }> = [];
+
+    if (data.lead) {
+      events.push({
+        id: `lead-${data.lead.id}`,
+        date: new Date(data.lead.createdAt),
+        type: "lead",
+        title: `Lead #${data.lead.id} — ${data.lead.opportunityName ?? data.lead.name}`,
+        subtitle: `Origen: ${data.lead.source ?? "—"} · Estado: ${data.lead.opportunityStatus ?? "—"}`,
+        color: "border-l-blue-500",
+        dotColor: "bg-blue-500 border-blue-300",
+        icon: <UserPlus className="w-3.5 h-3.5 text-blue-400" />,
+        href: `/admin/crm?lead=${data.lead.id}`,
+      });
+    }
+
+    for (const q of data.quotes) {
+      const st = quoteStatusLabel(q.status);
+      events.push({
+        id: `quote-${q.id}`,
+        date: new Date(q.createdAt),
+        type: "quote",
+        title: `Presupuesto ${q.quoteNumber ?? `#${q.id}`} — ${q.title ?? "Sin título"}`,
+        subtitle: `${st.label} · Total: ${q.total ? `${parseFloat(q.total).toFixed(2)} €` : "—"}`,
+        color: "border-l-indigo-500",
+        dotColor: "bg-indigo-500 border-indigo-300",
+        icon: <FileText className="w-3.5 h-3.5 text-indigo-400" />,
+      });
+    }
+
+    for (const r of data.reservations) {
+      const st = resStatusLabel(r.status ?? "pending");
+      events.push({
+        id: `res-${r.id}`,
+        date: new Date(r.createdAt),
+        type: "reservation",
+        title: `Reserva ${r.merchantOrder ?? `#${r.id}`} — ${r.productName ?? "—"}`,
+        subtitle: `${st.label} · Pagado: ${r.amountPaid ? `${(r.amountPaid / 100).toFixed(2)} €` : "0 €"}`,
+        color: "border-l-green-500",
+        dotColor: "bg-green-500 border-green-300",
+        icon: <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />,
+      });
+    }
+
+    for (const inv of data.invoices) {
+      events.push({
+        id: `inv-${inv.id}`,
+        date: new Date(inv.createdAt),
+        type: "invoice",
+        title: `Factura ${inv.invoiceNumber}`,
+        subtitle: `Total: ${inv.total ? `${parseFloat(inv.total).toFixed(2)} €` : "—"} · ${inv.pdfUrl ? "PDF disponible" : "Sin PDF"}`,
+        color: "border-l-yellow-500",
+        dotColor: "bg-yellow-500 border-yellow-300",
+        icon: <Receipt className="w-3.5 h-3.5 text-yellow-400" />,
+      });
+    }
+
+    for (const c of data.cancellations) {
+      events.push({
+        id: `cancel-${c.id}`,
+        date: new Date(c.createdAt),
+        type: "cancellation",
+        title: `Anulación ${c.cancellationNumber ?? `#${c.id}`}`,
+        subtitle: `${c.operationalStatus} · ${c.resolutionStatus} · ${c.refundableAmount ? `Reembolso: ${parseFloat(c.refundableAmount).toFixed(2)} €` : "Sin reembolso"}`,
+        color: "border-l-red-500",
+        dotColor: "bg-red-500 border-red-300",
+        icon: <Ban className="w-3.5 h-3.5 text-red-400" />,
+      });
+    }
+
+    for (const d of data.discountUses) {
+      events.push({
+        id: `disc-${d.id}`,
+        date: new Date(d.appliedAt),
+        type: "discount",
+        title: `Cupón aplicado: ${d.code}`,
+        subtitle: `Descuento: ${d.discountPercent}% · Ahorro: ${d.discountAmount ? `${parseFloat(d.discountAmount).toFixed(2)} €` : "—"}`,
+        color: "border-l-purple-500",
+        dotColor: "bg-purple-500 border-purple-300",
+        icon: <BadgePercent className="w-3.5 h-3.5 text-purple-400" />,
+      });
+    }
+
+    return events.sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [data]);
+
+  return (
+    <DialogContent className="max-w-3xl bg-[#0d1526] border-white/10 text-white max-h-[90vh] flex flex-col p-0">
+      {/* Header */}
+      <div className="flex items-center gap-4 p-6 pb-4 border-b border-white/10 flex-shrink-0">
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border border-blue-500/30 flex items-center justify-center text-blue-300 font-bold text-lg">
+          {client.name.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-lg font-bold text-white leading-tight">{client.name}</h2>
+          <div className="flex items-center gap-3 mt-0.5">
+            <span className="text-white/40 text-xs flex items-center gap-1"><Mail className="w-3 h-3" />{client.email}</span>
+            {client.phone && <span className="text-white/40 text-xs flex items-center gap-1"><Phone className="w-3 h-3" />{client.phone}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {client.isConverted ? (
+            <span className="px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 text-xs flex items-center gap-1">
+              <UserCheck className="w-3 h-3" /> Cliente
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs flex items-center gap-1">
+              <UserPlus className="w-3 h-3" /> Lead
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 px-6 pt-3 flex-shrink-0">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              tab === t.id
+                ? "bg-blue-500/15 text-blue-300 border border-blue-500/25"
+                : "text-white/40 hover:text-white/70 hover:bg-white/5"
+            }`}
+          >
+            {t.icon}{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <RefreshCw className="w-6 h-6 text-white/20 animate-spin" />
+          </div>
+        ) : !data ? (
+          <div className="text-center py-12 text-white/30">No se pudo cargar el historial</div>
+        ) : (
+          <>
+            {/* ── RESUMEN ── */}
+            {tab === "resumen" && (
+              <div className="space-y-4">
+                {/* KPI grid */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-xl p-4 bg-indigo-500/5 border border-indigo-500/15">
+                    <div className="text-2xl font-bold text-indigo-400">{data.kpis.totalQuotes}</div>
+                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><FileText className="w-3 h-3" />Presupuestos</div>
+                  </div>
+                  <div className="rounded-xl p-4 bg-green-500/5 border border-green-500/15">
+                    <div className="text-2xl font-bold text-green-400">{data.kpis.paidReservations}</div>
+                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Reservas pagadas</div>
+                  </div>
+                  <div className="rounded-xl p-4 bg-yellow-500/5 border border-yellow-500/15">
+                    <div className="text-2xl font-bold text-yellow-400">{data.kpis.totalInvoices}</div>
+                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Receipt className="w-3 h-3" />Facturas</div>
+                  </div>
+                  <div className="col-span-2 rounded-xl p-4 bg-blue-500/5 border border-blue-500/15">
+                    <div className="text-2xl font-bold text-blue-400">{fmtEuros(data.kpis.totalSpentCents)}</div>
+                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Euro className="w-3 h-3" />Total gastado (reservas pagadas)</div>
+                  </div>
+                  <div className="rounded-xl p-4 bg-red-500/5 border border-red-500/15">
+                    <div className="text-2xl font-bold text-red-400">{data.kpis.totalCancellations}</div>
+                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Ban className="w-3 h-3" />Anulaciones</div>
+                  </div>
+                </div>
+
+                {/* Lead info */}
+                {data.lead && (
+                  <div className="rounded-xl p-4 bg-white/[0.03] border border-white/10 space-y-2">
+                    <div className="text-white/50 text-xs font-medium uppercase tracking-wider mb-2">Lead origen</div>
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                        <UserPlus className="w-4 h-4 text-blue-400" />
+                      </div>
+                      <div>
+                        <div className="text-white text-sm font-medium">{data.lead.opportunityName ?? data.lead.name}</div>
+                        <div className="text-white/40 text-xs">Lead #{data.lead.id} · {fmtDate(data.lead.createdAt)} · {data.lead.source ?? "—"}</div>
+                      </div>
+                      <Link href={`/admin/crm?lead=${data.lead.id}`} className="ml-auto">
+                        <Button size="sm" variant="ghost" className="text-blue-400 hover:text-blue-300 h-7 px-2 text-xs">
+                          <ArrowRight className="w-3.5 h-3.5 mr-1" />Ver lead
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                {/* Quick lists */}
+                {data.quotes.length > 0 && (
+                  <div className="rounded-xl overflow-hidden border border-white/10">
+                    <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
+                      <FileText className="w-3.5 h-3.5" />Presupuestos ({data.quotes.length})
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {data.quotes.map((q) => {
+                        const st = quoteStatusLabel(q.status);
+                        return (
+                          <div key={q.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white text-sm font-medium truncate">{q.quoteNumber ?? `#${q.id}`} — {q.title ?? "Sin título"}</div>
+                              <div className="text-white/30 text-xs">{fmtDate(q.createdAt)}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {q.total && <span className="text-white/60 text-xs">{parseFloat(q.total).toFixed(2)} €</span>}
+                              <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${st.color}`}>{st.label}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {data.invoices.length > 0 && (
+                  <div className="rounded-xl overflow-hidden border border-white/10">
+                    <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
+                      <Receipt className="w-3.5 h-3.5" />Facturas ({data.invoices.length})
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {data.invoices.map((inv) => (
+                        <div key={inv.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white text-sm font-medium">{inv.invoiceNumber}</div>
+                            <div className="text-white/30 text-xs">{fmtDate(inv.createdAt)}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {inv.total && <span className="text-white/60 text-xs">{parseFloat(inv.total).toFixed(2)} €</span>}
+                            {inv.pdfUrl && (
+                              <a href={inv.pdfUrl} target="_blank" rel="noreferrer">
+                                <Button size="sm" variant="ghost" className="text-yellow-400 hover:text-yellow-300 h-6 px-2 text-xs">
+                                  <FileCheck className="w-3 h-3 mr-1" />PDF
+                                </Button>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {data.cancellations.length > 0 && (
+                  <div className="rounded-xl overflow-hidden border border-white/10">
+                    <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
+                      <Ban className="w-3.5 h-3.5 text-red-400" />Anulaciones ({data.cancellations.length})
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {data.cancellations.map((c) => (
+                        <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white text-sm font-medium">{c.cancellationNumber ?? `Anulación #${c.id}`}</div>
+                            <div className="text-white/30 text-xs">{fmtDate(c.createdAt)} · {c.reason}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${c.resolutionStatus === "aceptada_total" ? "text-green-300 bg-green-500/10 border-green-500/20" : c.resolutionStatus === "rechazada" ? "text-red-300 bg-red-500/10 border-red-500/20" : "text-yellow-300 bg-yellow-500/10 border-yellow-500/20"}`}>
+                              {c.resolutionStatus}
+                            </span>
+                            {c.refundableAmount && <span className="text-white/50 text-xs">{parseFloat(c.refundableAmount).toFixed(2)} €</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── TIMELINE ── */}
+            {tab === "timeline" && (
+              <div className="space-y-1">
+                {timeline.length === 0 ? (
+                  <div className="text-center py-12 text-white/30">No hay eventos registrados</div>
+                ) : (
+                  <div className="relative">
+                    {/* Vertical line */}
+                    <div className="absolute left-[7px] top-3 bottom-3 w-px bg-white/10" />
+                    <div className="space-y-0">
+                      {timeline.map((event, i) => (
+                        <div key={event.id} className="relative flex items-start gap-4 py-3">
+                          <TimelineDot color={event.dotColor} />
+                          <div className={`flex-1 min-w-0 rounded-xl p-3 bg-white/[0.03] border border-white/10 border-l-2 ${event.color} hover:bg-white/[0.05] transition-colors`}>
+                            <div className="flex items-start gap-2">
+                              <div className="p-1 rounded-md bg-white/5 mt-0.5">{event.icon}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-white text-sm font-medium">{event.title}</span>
+                                  {event.href && (
+                                    <Link href={event.href}>
+                                      <span className="text-blue-400/70 text-xs hover:text-blue-300 flex items-center gap-0.5">
+                                        <Eye className="w-3 h-3" />Ver
+                                      </span>
+                                    </Link>
+                                  )}
+                                </div>
+                                <div className="text-white/40 text-xs mt-0.5">{event.subtitle}</div>
+                              </div>
+                              <div className="text-white/25 text-xs flex-shrink-0 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />{fmtDate(event.date)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── ACTIVIDAD ── */}
+            {tab === "actividad" && (
+              <div className="space-y-1">
+                {data.activityLog.length === 0 ? (
+                  <div className="text-center py-12 text-white/30">No hay registros de actividad</div>
+                ) : (
+                  data.activityLog.map((entry) => {
+                    const entityColors: Record<string, string> = {
+                      lead: "text-blue-300 bg-blue-500/10 border-blue-500/20",
+                      quote: "text-indigo-300 bg-indigo-500/10 border-indigo-500/20",
+                      reservation: "text-green-300 bg-green-500/10 border-green-500/20",
+                      invoice: "text-yellow-300 bg-yellow-500/10 border-yellow-500/20",
+                    };
+                    const badgeClass = entityColors[entry.entityType] ?? "text-white/40 bg-white/5 border-white/10";
+                    return (
+                      <div key={entry.id} className="flex items-start gap-3 py-2.5 border-b border-white/5 last:border-0">
+                        <div className="w-1.5 h-1.5 rounded-full bg-white/20 mt-2 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${badgeClass}`}>
+                              {entry.entityType} #{entry.entityId}
+                            </span>
+                            <span className="text-white/70 text-sm">{entry.action}</span>
+                          </div>
+                          {entry.actorName && (
+                            <div className="text-white/30 text-xs mt-0.5">por {entry.actorName}</div>
+                          )}
+                          {entry.details && Object.keys(entry.details).length > 0 && (
+                            <div className="mt-1 text-white/25 text-xs font-mono bg-white/[0.03] rounded p-2 max-h-20 overflow-y-auto">
+                              {JSON.stringify(entry.details, null, 2)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-white/25 text-xs flex-shrink-0 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />{fmtDate(entry.createdAt)}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between px-6 py-4 border-t border-white/10 flex-shrink-0">
+        <div className="text-white/30 text-xs">
+          Cliente desde {fmtDate(client.createdAt)}
+        </div>
+        <Button variant="outline" size="sm" onClick={onClose} className="border-white/15 text-white/60">
+          Cerrar
+        </Button>
+      </div>
+    </DialogContent>
+  );
+}
+
 // ─── SOURCE BADGE ─────────────────────────────────────────────────────────────
 
 function SourceBadge({ source, leadId }: { source: string; leadId: number | null }) {
@@ -320,6 +759,7 @@ export default function ClientsManager() {
   const [search, setSearch] = useState("");
   const [editClient, setEditClient] = useState<ClientRow | null | undefined>(undefined);
   const [expandClient, setExpandClient] = useState<ClientRow | null>(null);
+  const [historyClient, setHistoryClient] = useState<ClientRow | null>(null);
   const [deleteClientId, setDeleteClientId] = useState<number | null>(null);
 
   const searchInput = useMemo(() => ({ q: search, limit: 50 }), [search]);
@@ -535,6 +975,12 @@ export default function ClientsManager() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      <Button size="sm" variant="ghost"
+                        className="text-purple-400 hover:text-purple-300 h-7 px-2"
+                        onClick={() => setHistoryClient(client)}
+                        title="Ver historial completo">
+                        <History className="w-3.5 h-3.5" />
+                      </Button>
                       {!client.isConverted && (
                         <Button size="sm" variant="ghost"
                           className="text-green-400 hover:text-green-300 h-7 px-2"
@@ -563,6 +1009,13 @@ export default function ClientsManager() {
           </table>
         </div>
       </div>
+
+      {/* Client History Modal */}
+      <Dialog open={historyClient !== null} onOpenChange={(o) => !o && setHistoryClient(null)}>
+        {historyClient && (
+          <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} />
+        )}
+      </Dialog>
 
       {/* Expand Data Modal */}
       <Dialog open={expandClient !== null} onOpenChange={(o) => !o && setExpandClient(null)}>

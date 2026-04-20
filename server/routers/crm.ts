@@ -27,6 +27,8 @@ import {
   discountCodes,
   paymentPlans,
   paymentInstallments,
+  cancellationRequests,
+  discountCodeUses,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray, inArray, isNotNull, getTableColumns } from "drizzle-orm";
@@ -4927,6 +4929,91 @@ export const crmRouter = router({
     delete: staff.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
       await db.delete(clients).where(eq(clients.id, input.id));
       return { success: true };
+    }),
+
+    getHistory: staff.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      const [client] = await db.select().from(clients).where(eq(clients.id, input.id));
+      if (!client) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Lead vinculado
+      const lead = client.leadId
+        ? (await db.select().from(leads).where(eq(leads.id, client.leadId)))[0] ?? null
+        : null;
+
+      // Presupuestos vinculados al lead (o por email si no hay lead directo)
+      let clientQuotes: typeof quotes.$inferSelect[] = [];
+      let resolvedLeadId = client.leadId;
+      if (!resolvedLeadId && client.email) {
+        const [leadByEmail] = await db.select({ id: leads.id }).from(leads).where(eq(leads.email, client.email)).limit(1);
+        if (leadByEmail) resolvedLeadId = leadByEmail.id;
+      }
+      if (resolvedLeadId) {
+        clientQuotes = await db.select().from(quotes)
+          .where(eq(quotes.leadId, resolvedLeadId))
+          .orderBy(desc(quotes.createdAt));
+      }
+
+      const quoteIds = clientQuotes.map((q) => q.id);
+
+      // Reservas, facturas, anulaciones en paralelo
+      const [clientReservations, clientInvoices, clientCancellations] = await Promise.all([
+        quoteIds.length
+          ? db.select().from(reservations).where(inArray(reservations.quoteId, quoteIds)).orderBy(desc(reservations.createdAt))
+          : Promise.resolve([]),
+        quoteIds.length
+          ? db.select().from(invoices).where(inArray(invoices.quoteId, quoteIds)).orderBy(desc(invoices.createdAt))
+          : Promise.resolve([]),
+        quoteIds.length
+          ? db.select().from(cancellationRequests).where(inArray(cancellationRequests.linkedQuoteId, quoteIds)).orderBy(desc(cancellationRequests.createdAt))
+          : Promise.resolve([]),
+      ]);
+
+      // Usos de descuento vinculados a las reservas
+      const reservationIds = clientReservations.map((r) => r.id);
+      const clientDiscountUses = reservationIds.length
+        ? await db.select().from(discountCodeUses).where(inArray(discountCodeUses.reservationId, reservationIds)).orderBy(desc(discountCodeUses.appliedAt))
+        : [];
+
+      // Activity log para todas las entidades relacionadas
+      const invoiceIds = clientInvoices.map((i) => i.id);
+      const leadIds = lead ? [lead.id] : [];
+
+      const activityConditions = [];
+      if (leadIds.length) activityConditions.push(and(eq(crmActivityLog.entityType, "lead"), inArray(crmActivityLog.entityId, leadIds)));
+      if (quoteIds.length) activityConditions.push(and(eq(crmActivityLog.entityType, "quote"), inArray(crmActivityLog.entityId, quoteIds)));
+      if (reservationIds.length) activityConditions.push(and(eq(crmActivityLog.entityType, "reservation"), inArray(crmActivityLog.entityId, reservationIds)));
+      if (invoiceIds.length) activityConditions.push(and(eq(crmActivityLog.entityType, "invoice"), inArray(crmActivityLog.entityId, invoiceIds)));
+
+      const activityLog = activityConditions.length
+        ? await db.select().from(crmActivityLog)
+            .where(or(...activityConditions))
+            .orderBy(desc(crmActivityLog.createdAt))
+            .limit(200)
+        : [];
+
+      // KPIs
+      const totalSpentCents = clientReservations
+        .filter((r) => r.status === "paid")
+        .reduce((acc, r) => acc + (r.amountPaid ?? 0), 0);
+
+      return {
+        client,
+        lead,
+        quotes: clientQuotes,
+        reservations: clientReservations,
+        invoices: clientInvoices,
+        cancellations: clientCancellations,
+        discountUses: clientDiscountUses,
+        activityLog,
+        kpis: {
+          totalQuotes: clientQuotes.length,
+          totalReservations: clientReservations.length,
+          totalInvoices: clientInvoices.length,
+          totalCancellations: clientCancellations.length,
+          totalSpentCents,
+          paidReservations: clientReservations.filter((r) => r.status === "paid").length,
+        },
+      };
     }),
   }),
 
