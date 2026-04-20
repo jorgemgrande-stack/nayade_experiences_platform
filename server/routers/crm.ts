@@ -445,152 +445,213 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
     .where(eq(paymentInstallments.quoteId, quoteId));
   const required = installments.filter(i => i.isRequiredForConfirmation);
   if (required.length === 0) return;
-  const allPaid = required.every(i => i.status === "paid");
-  if (!allPaid) return;
+  const allRequiredPaid = required.every(i => i.status === "paid");
+  if (!allRequiredPaid) return;
+
+  const allInstallmentsPaid = installments.every(i => i.status === "paid");
 
   const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId)).limit(1);
   if (!quote) return;
-  // Idempotencia: si el quote ya está confirmado, no duplicar
-  if (quote.paidAt) return;
 
   const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
   const now = new Date();
   const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string }[]) ?? [];
-  // IVA solo sobre líneas general_21 (las REAV no llevan IVA repercutido al cliente)
   const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
   const subtotal = Number(quote.subtotal);
   const taxAmount = parseFloat((generalSubtotal * 0.21).toFixed(2));
   const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
-  // Generar factura
-  const invoiceNumber = await generateInvoiceNumber("crm:installments", String(userId));
-  let pdfUrl: string | null = null;
-  let pdfKey: string | null = null;
-  try {
-    const pdf = await generateInvoicePdf({
+  // ── FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ──────
+  // Idempotente: sólo si el quote aún no está aceptado
+  if (quote.status !== "aceptado") {
+    const [reservation] = await db.select().from(reservations)
+      .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
+      .orderBy(desc(reservations.createdAt))
+      .limit(1);
+
+    const paidAmountCents = installments.filter(i => i.status === "paid").reduce((s, i) => s + i.amountCents, 0);
+
+    if (reservation && reservation.status !== "paid") {
+      await db.update(reservations)
+        .set({ status: "paid", amountPaid: paidAmountCents, updatedAt: Date.now() } as any)
+        .where(eq(reservations.id, reservation.id));
+    }
+
+    await db.update(quotes).set({
+      status: "aceptado",
+      paymentLinkToken: null,
+      updatedAt: now,
+    }).where(eq(quotes.id, quoteId));
+
+    if (lead) {
+      await db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
+    }
+
+    // Crear pendingPayments para cuotas aún sin pagar
+    const stillPending = installments.filter(i => i.status === "pending");
+    if (stillPending.length > 0) {
+      const nowMs = Date.now();
+      for (const inst of stillPending) {
+        await db.insert(pendingPayments).values({
+          quoteId: quote.id,
+          reservationId: reservation?.id ?? null,
+          clientName: lead?.name ?? quote.title ?? "",
+          clientEmail: lead?.email ?? undefined,
+          clientPhone: lead?.phone ?? undefined,
+          productName: quote.title ?? undefined,
+          amountCents: inst.amountCents,
+          dueDate: inst.dueDate ?? undefined,
+          reason: `Plan fraccionado — Cuota #${inst.installmentNumber}${inst.notes ? `: ${inst.notes}` : ""}`,
+          status: "pending",
+          createdBy: userId,
+          createdAt: nowMs,
+          updatedAt: nowMs,
+        } as any);
+      }
+    }
+
+    await db.insert(crmActivityLog).values({
+      entityType: "quote",
+      entityId: quoteId,
+      action: "confirmed_by_installments",
+      actorId: userId,
+      actorName: userName,
+      details: { message: "Cuotas obligatorias pagadas — reserva confirmada, plan activo" },
+      createdAt: now,
+    });
+
+    // Email de confirmación (sin factura — el plan sigue en curso)
+    if (lead?.email) {
+      try {
+        await sendConfirmationEmail({
+          clientName: lead.name,
+          clientEmail: lead.email,
+          reservationRef: quote.quoteNumber ?? `PRES-${quoteId}`,
+          quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
+          items,
+          total: String(total),
+          invoiceUrl: null,
+          installmentPlan: {
+            installments: installments.map(i => ({
+              installmentNumber: i.installmentNumber,
+              amountCents: i.amountCents,
+              dueDate: i.dueDate ?? "",
+              status: i.status ?? "pending",
+              isRequiredForConfirmation: i.isRequiredForConfirmation ?? false,
+            })),
+          },
+        });
+      } catch (emailErr) {
+        console.error("[_checkAndConfirmReservation] Error enviando email confirmación:", emailErr);
+      }
+    }
+  }
+
+  // ── FASE 2: Generar factura sólo cuando TODAS las cuotas están pagadas ─────
+  if (allInstallmentsPaid) {
+    // Re-leer el quote para verificar idempotencia (evitar doble factura en llamadas concurrentes)
+    const [freshQuote] = await db.select().from(quotes).where(eq(quotes.id, quoteId)).limit(1);
+    if (freshQuote?.paidAt) return;
+
+    const [reservation] = await db.select().from(reservations)
+      .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
+      .orderBy(desc(reservations.createdAt))
+      .limit(1);
+
+    const invoiceNumber = await generateInvoiceNumber("crm:installments", String(userId));
+    let pdfUrl: string | null = null;
+    let pdfKey: string | null = null;
+    try {
+      const pdf = await generateInvoicePdf({
+        invoiceNumber,
+        clientName: lead?.name ?? quote.title,
+        clientEmail: lead?.email ?? "",
+        clientPhone: lead?.phone ?? null,
+        clientNif: null,
+        clientAddress: null,
+        itemsJson: items,
+        subtotal: String(subtotal),
+        taxRate: "21",
+        taxAmount: String(taxAmount),
+        total: String(total),
+        issuedAt: now,
+      });
+      pdfUrl = pdf.url;
+      pdfKey = pdf.key;
+    } catch (e) {
+      console.error("[_checkAndConfirmReservation] Error generando PDF:", e);
+    }
+
+    const [invResult] = await db.insert(invoices).values({
       invoiceNumber,
+      quoteId: quote.id,
+      reservationId: reservation?.id ?? null,
       clientName: lead?.name ?? quote.title,
       clientEmail: lead?.email ?? "",
       clientPhone: lead?.phone ?? null,
-      clientNif: null,
-      clientAddress: null,
       itemsJson: items,
       subtotal: String(subtotal),
       taxRate: "21",
       taxAmount: String(taxAmount),
       total: String(total),
+      status: "cobrada",
+      paymentMethod: "otro",
+      isAutomatic: false,
       issuedAt: now,
+      pdfUrl,
+      pdfKey,
+      createdAt: now,
+      updatedAt: now,
     });
-    pdfUrl = pdf.url;
-    pdfKey = pdf.key;
-  } catch (e) {
-    console.error("[_checkAndConfirmReservation] Error generando PDF:", e);
-  }
+    const invoiceId = (invResult as { insertId: number }).insertId;
 
-  const [invResult] = await db.insert(invoices).values({
-    invoiceNumber,
-    quoteId: quote.id,
-    clientName: lead?.name ?? quote.title,
-    clientEmail: lead?.email ?? "",
-    clientPhone: lead?.phone ?? null,
-    itemsJson: items,
-    subtotal: String(subtotal),
-    taxRate: "21",
-    taxAmount: String(taxAmount),
-    total: String(total),
-    status: "cobrada",
-    paymentMethod: "otro",
-    isAutomatic: false,
-    issuedAt: now,
-    pdfUrl,
-    pdfKey,
-    createdAt: now,
-    updatedAt: now,
-  });
-  const invoiceId = (invResult as { insertId: number }).insertId;
-
-  // Marcar/crear reserva
-  const [reservation] = await db.select().from(reservations)
-    .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
-    .orderBy(desc(reservations.createdAt))
-    .limit(1);
-
-  if (reservation && reservation.status !== "paid") {
-    await db.update(reservations)
-      .set({ status: "paid", amountPaid: Math.round(total * 100), invoiceId, invoiceNumber, paidAt: Date.now(), updatedAt: Date.now() } as any)
-      .where(eq(reservations.id, reservation.id));
-  }
-
-  // Crear pendingPayments para cuotas aún pendientes
-  const stillPending = installments.filter(i => i.status === "pending");
-  if (stillPending.length > 0) {
-    const nowMs = Date.now();
-    for (const inst of stillPending) {
-      await db.insert(pendingPayments).values({
-        quoteId: quote.id,
-        reservationId: reservation?.id ?? null,
-        clientName: lead?.name ?? quote.title ?? "",
-        clientEmail: lead?.email ?? undefined,
-        clientPhone: lead?.phone ?? undefined,
-        productName: quote.title ?? undefined,
-        amountCents: inst.amountCents,
-        dueDate: inst.dueDate ?? undefined,
-        reason: `Plan fraccionado — Cuota #${inst.installmentNumber}${inst.notes ? `: ${inst.notes}` : ""}`,
-        status: "pending",
-        createdBy: userId,
-        createdAt: nowMs,
-        updatedAt: nowMs,
-      } as any);
+    if (reservation) {
+      await db.update(reservations)
+        .set({ amountPaid: Math.round(total * 100), invoiceId, invoiceNumber, paidAt: Date.now(), updatedAt: Date.now() } as any)
+        .where(eq(reservations.id, reservation.id));
     }
-  }
 
-  // Actualizar quote a aceptado
-  await db.update(quotes).set({
-    status: "aceptado",
-    paidAt: now,
-    invoiceNumber,
-    invoicePdfUrl: pdfUrl,
-    paymentLinkToken: null,
-    updatedAt: now,
-  }).where(eq(quotes.id, quoteId));
+    await db.update(quotes).set({
+      paidAt: now,
+      invoiceNumber,
+      invoicePdfUrl: pdfUrl,
+      updatedAt: now,
+    }).where(eq(quotes.id, quoteId));
 
-  if (lead) {
-    await db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
-  }
+    await db.insert(crmActivityLog).values({
+      entityType: "quote",
+      entityId: quoteId,
+      action: "invoice_generated",
+      actorId: userId,
+      actorName: userName,
+      details: { invoiceNumber, message: "Plan de pagos completado — factura generada" },
+      createdAt: now,
+    });
 
-  await db.insert(crmActivityLog).values({
-    entityType: "quote",
-    entityId: quoteId,
-    action: "confirmed_by_installments",
-    actorId: userId,
-    actorName: userName,
-    details: { invoiceNumber, message: "Todas las cuotas obligatorias pagadas" },
-    createdAt: now,
-  });
-
-  // Email de confirmación al cliente
-  if (lead?.email) {
-    try {
-      await sendConfirmationEmail({
-        clientName: lead.name,
-        clientEmail: lead.email,
-        reservationRef: invoiceNumber,
-        quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
-        items,
-        total: String(total),
-        invoiceUrl: pdfUrl,
-        installmentPlan: {
-          installments: installments.map(i => ({
-            installmentNumber: i.installmentNumber,
-            amountCents: i.amountCents,
-            dueDate: i.dueDate ?? "",
-            status: i.status ?? "pending",
-            isRequiredForConfirmation: i.isRequiredForConfirmation ?? false,
-          })),
-        },
-      });
-    } catch (emailErr) {
-      console.error("[_checkAndConfirmReservation] Error enviando email:", emailErr);
+    // Email final con factura adjunta
+    if (lead?.email) {
+      try {
+        await sendConfirmationEmail({
+          clientName: lead.name,
+          clientEmail: lead.email,
+          reservationRef: invoiceNumber,
+          quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
+          items,
+          total: String(total),
+          invoiceUrl: pdfUrl,
+          installmentPlan: {
+            installments: installments.map(i => ({
+              installmentNumber: i.installmentNumber,
+              amountCents: i.amountCents,
+              dueDate: i.dueDate ?? "",
+              status: i.status ?? "paid",
+              isRequiredForConfirmation: i.isRequiredForConfirmation ?? false,
+            })),
+          },
+        });
+      } catch (emailErr) {
+        console.error("[_checkAndConfirmReservation] Error enviando email factura:", emailErr);
+      }
     }
   }
 }
@@ -3109,7 +3170,6 @@ export const crmRouter = router({
           .where(and(
             eq(paymentInstallments.status, "pending"),
             lte(paymentInstallments.dueDate, todayStr),
-            sql.raw(`EXISTS (SELECT 1 FROM payment_installments pi2 WHERE pi2.quote_id = payment_installments.quote_id AND pi2.status = 'paid')`),
           ));
         const affected = (result[0] as any).affectedRows ?? 0;
         if (affected > 0) {
