@@ -556,9 +556,12 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
     const [freshQuote] = await db.select().from(quotes).where(eq(quotes.id, quoteId)).limit(1);
     if (freshQuote?.paidAt) return;
 
+    // Usar la reserva MÁS ANTIGUA (la original del primer pago), no la más reciente.
+    // En planes multi-cuota, payWithToken crea una nueva reserva por cada pago, pero la
+    // factura debe vincularse a la reserva original (la que el cliente ve como "su reserva").
     const [reservation] = await db.select().from(reservations)
       .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
-      .orderBy(desc(reservations.createdAt))
+      .orderBy(reservations.createdAt)
       .limit(1);
 
     const invoiceNumber = await generateInvoiceNumber("crm:installments", String(userId));
@@ -3644,7 +3647,14 @@ export const crmRouter = router({
         const [reservation] = await db.select().from(reservations).where(eq(reservations.id, input.id));
         if (!reservation) throw new TRPCError({ code: "NOT_FOUND" });
 
-        const relatedInvoices = await db.select().from(invoices).where(eq(invoices.reservationId, input.id));
+        // Buscar facturas por reservationId O por quoteId (planes de pago multi-cuota
+        // vinculan la factura a la reserva de la última cuota, no necesariamente a la primera)
+        const invoiceCondition = reservation.quoteId
+          ? or(eq(invoices.reservationId, input.id), eq(invoices.quoteId, reservation.quoteId))
+          : eq(invoices.reservationId, input.id);
+        const relatedInvoices = await db.select().from(invoices)
+          .where(invoiceCondition)
+          .orderBy(desc(invoices.createdAt));
         const activity = await db
           .select()
           .from(crmActivityLog)
