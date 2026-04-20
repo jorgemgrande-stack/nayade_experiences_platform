@@ -2930,6 +2930,10 @@ function QuoteDetailModal({
     },
     onError: (e) => toast.error(e.message),
   });
+  const generateInstallmentLink = trpc.crm.paymentPlans.generateInstallmentLink.useMutation({
+    onSuccess: (d) => toast.success(`Enlace enviado al cliente — Cuota #${d.installmentNumber}`),
+    onError: (e) => toast.error(e.message),
+  });
 
   const confirmPaymentWithMethod = trpc.crm.quotes.confirmPayment.useMutation({
     onSuccess: (data) => {
@@ -3257,11 +3261,24 @@ function QuoteDetailModal({
             {(() => {
               const paidTotal = planQuery.data.installments.filter(i => i.status === "paid").reduce((s, i) => s + i.amountCents, 0);
               const pendingTotal = planQuery.data.installments.filter(i => i.status !== "paid").reduce((s, i) => s + i.amountCents, 0);
+              const hasPending = pendingTotal > 0;
               return (
-                <div className="flex justify-between pt-1 text-xs text-foreground/60">
-                  <span>Cobrado: <span className="text-emerald-300 font-medium">{(paidTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
-                  <span>Pendiente: <span className="text-amber-300 font-medium">{(pendingTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
-                </div>
+                <>
+                  <div className="flex justify-between pt-1 text-xs text-foreground/60">
+                    <span>Cobrado: <span className="text-emerald-300 font-medium">{(paidTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                    <span>Pendiente: <span className="text-amber-300 font-medium">{(pendingTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                  </div>
+                  {hasPending && (
+                    <button
+                      onClick={() => generateInstallmentLink.mutate({ quoteId, origin: window.location.origin })}
+                      disabled={generateInstallmentLink.isPending}
+                      className="w-full mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-violet-300 border border-violet-500/40 hover:bg-violet-500/10 rounded-lg py-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      {generateInstallmentLink.isPending ? "Enviando..." : "Enviar enlace de pago al cliente"}
+                    </button>
+                  )}
+                </>
               );
             })()}
           </div>

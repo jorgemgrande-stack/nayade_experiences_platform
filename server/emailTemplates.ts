@@ -1834,6 +1834,7 @@ export interface InstallmentReminderData {
   amountFormatted: string;
   dueDate: string;
   ibanInfo?: string;
+  paymentUrl?: string;
 }
 
 export function buildInstallmentReminderHtml(d: InstallmentReminderData): string {
@@ -1873,6 +1874,13 @@ export function buildInstallmentReminderHtml(d: InstallmentReminderData): string
         </td></tr>
       </table>
     </td></tr>
+    ${d.paymentUrl ? `
+    <tr><td style="padding:8px 32px 4px;text-align:center;">
+      <a href="${d.paymentUrl}" style="display:inline-block;background:#6d28d9;color:#fff;font-size:15px;font-weight:700;padding:14px 36px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;">
+        💳 Pagar cuota ${d.installmentNumber} — ${d.amountFormatted}
+      </a>
+      <p style="color:#94a3b8;font-size:11px;margin:8px 0 0;font-family:Arial,sans-serif;">O copia este enlace: <a href="${d.paymentUrl}" style="color:#6d28d9;">${d.paymentUrl}</a></p>
+    </td></tr>` : ""}
     ${d.ibanInfo ? `
     <tr><td style="padding:8px 32px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">

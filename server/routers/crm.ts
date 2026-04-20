@@ -2782,12 +2782,15 @@ export const crmRouter = router({
           throw new TRPCError({ code: "BAD_REQUEST", message: `El presupuesto tiene un importe inválido (${quote.total}). Contacta con el equipo.` });
         }
 
-        // Si hay plan de pagos, cobrar solo la primera cuota requerida pendiente
+        // Si hay plan de pagos, cobrar la siguiente cuota pendiente:
+        // 1º prioridad: cuotas requeridas para confirmar reserva
+        // 2º prioridad: cualquier cuota pendiente (cuotas posteriores a la confirmación)
         let amountCents = Math.round(totalEuros * 100);
         let firstRequiredInstallment: { id: number; amountCents: number; installmentNumber: number } | null = null;
 
         if (quote.paymentPlanId) {
-          const [inst] = await db
+          // Buscar primera cuota requerida pendiente
+          const [requiredInst] = await db
             .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber })
             .from(paymentInstallments)
             .where(and(
@@ -2797,11 +2800,27 @@ export const crmRouter = router({
             ))
             .orderBy(paymentInstallments.installmentNumber)
             .limit(1);
-          if (!inst) {
-            throw new TRPCError({ code: "BAD_REQUEST", message: "No hay cuotas pendientes de pago en el plan fraccionado. Contacta con el equipo." });
+
+          if (requiredInst) {
+            firstRequiredInstallment = requiredInst;
+            amountCents = requiredInst.amountCents;
+          } else {
+            // No quedan requeridas — buscar la próxima cuota pendiente (plan en curso)
+            const [nextInst] = await db
+              .select({ id: paymentInstallments.id, amountCents: paymentInstallments.amountCents, installmentNumber: paymentInstallments.installmentNumber })
+              .from(paymentInstallments)
+              .where(and(
+                eq(paymentInstallments.quoteId, quote.id),
+                eq(paymentInstallments.status, "pending"),
+              ))
+              .orderBy(paymentInstallments.installmentNumber)
+              .limit(1);
+            if (!nextInst) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: "No hay cuotas pendientes de pago. El plan está completamente cobrado." });
+            }
+            firstRequiredInstallment = nextInst;
+            amountCents = nextInst.amountCents;
           }
-          firstRequiredInstallment = inst;
-          amountCents = inst.amountCents;
         }
 
         const customerName = input.customerName ?? lead.name;
@@ -2864,12 +2883,12 @@ export const crmRouter = router({
         });
         const reservationId = (resResult as { insertId: number }).insertId;
 
-        // Actualizar quote: estado convertido_carrito + merchantOrder de referencia
+        // Actualizar quote: solo cambiar a convertido_carrito si aún no está confirmado (aceptado)
+        // Un quote "aceptado" ya pasó la Fase 1 — no debe degradarse de estado
         await db
           .update(quotes)
           .set({
-            status: "convertido_carrito",
-            acceptedAt: new Date(),
+            ...(quote.status !== "aceptado" ? { status: "convertido_carrito" as const, acceptedAt: new Date() } : {}),
             redsysOrderId: merchantOrder,
             updatedAt: new Date(),
           })
@@ -3157,18 +3176,13 @@ export const crmRouter = router({
         const todayStr = now.toISOString().split("T")[0];
         const futureStr = future.toISOString().split("T")[0];
 
-        // Solo cuotas de planes activos: el plan se considera activo cuando
-        // al menos una cuota del mismo presupuesto ya está pagada.
-        const activePlanFilter = sql.raw(`EXISTS (
-          SELECT 1 FROM payment_installments pi2
-          WHERE pi2.quote_id = payment_installments.quote_id
-          AND pi2.status = 'paid'
-        )`);
-
+        // Mostrar cuotas de presupuestos activos (enviados, en proceso o aceptados).
+        // Excluye borradores y rechazados — incluye planes donde aún no se ha pagado ninguna cuota.
         const conditions = [
           ne(paymentInstallments.status, "paid"),
           ne(paymentInstallments.status, "cancelled"),
-          activePlanFilter,
+          ne(quotes.status, "borrador"),
+          ne(quotes.status, "rechazado"),
         ];
         if (input.status === "overdue") {
           conditions.push(lte(paymentInstallments.dueDate, todayStr));
@@ -3206,6 +3220,75 @@ export const crmRouter = router({
           .limit(50);
 
         return rows;
+      }),
+
+    // Generar enlace de pago para la siguiente cuota pendiente y enviarlo al cliente
+    generateInstallmentLink: staff
+      .input(z.object({
+        quoteId: z.number(),
+        origin: z.string().url(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
+        if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
+        if (!quote.paymentPlanId) throw new TRPCError({ code: "BAD_REQUEST", message: "Este presupuesto no tiene plan de pagos" });
+        if (quote.paidAt) throw new TRPCError({ code: "BAD_REQUEST", message: "El plan ya está completamente cobrado" });
+
+        // Verificar que hay cuotas pendientes
+        const [nextPending] = await db
+          .select({ id: paymentInstallments.id, installmentNumber: paymentInstallments.installmentNumber, amountCents: paymentInstallments.amountCents, dueDate: paymentInstallments.dueDate })
+          .from(paymentInstallments)
+          .where(and(
+            eq(paymentInstallments.quoteId, input.quoteId),
+            eq(paymentInstallments.status, "pending"),
+          ))
+          .orderBy(paymentInstallments.installmentNumber)
+          .limit(1);
+        if (!nextPending) throw new TRPCError({ code: "BAD_REQUEST", message: "No hay cuotas pendientes de cobro" });
+
+        // Generar nuevo token y actualizar el quote
+        const { randomBytes } = await import("crypto");
+        const token = randomBytes(32).toString("hex");
+        await db.update(quotes)
+          .set({ paymentLinkToken: token, updatedAt: new Date() })
+          .where(eq(quotes.id, input.quoteId));
+
+        const paymentUrl = `${input.origin}/presupuesto/${token}`;
+
+        // Enviar email al cliente con el enlace
+        const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
+        const allInstallments = await db.select({ id: paymentInstallments.id })
+          .from(paymentInstallments).where(eq(paymentInstallments.quoteId, input.quoteId));
+
+        if (lead?.email) {
+          try {
+            const html = buildInstallmentReminderHtml({
+              clientName: lead.name ?? "Cliente",
+              clientEmail: lead.email,
+              quoteNumber: quote.quoteNumber ?? "",
+              installmentNumber: nextPending.installmentNumber,
+              totalInstallments: allInstallments.length,
+              amountFormatted: `${(nextPending.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €`,
+              dueDate: nextPending.dueDate,
+              paymentUrl,
+            });
+            await sendEmail({
+              to: lead.email,
+              subject: `💳 Enlace de pago — Cuota ${nextPending.installmentNumber}/${allInstallments.length} — ${quote.quoteNumber}`,
+              html,
+            });
+          } catch (emailErr) {
+            console.error("[generateInstallmentLink] Error enviando email:", emailErr);
+          }
+        }
+
+        await logActivity("quote", input.quoteId, "installment_link_sent", ctx.user.id, ctx.user.name, {
+          installmentNumber: nextPending.installmentNumber,
+          amountCents: nextPending.amountCents,
+          paymentUrl,
+        });
+
+        return { paymentUrl, installmentNumber: nextPending.installmentNumber, amountCents: nextPending.amountCents };
       }),
 
     // Marcar cuotas vencidas automáticamente (llamado por job)
