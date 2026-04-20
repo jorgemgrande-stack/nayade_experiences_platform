@@ -325,6 +325,15 @@ async function sendConfirmationEmail(data: {
   invoiceUrl?: string | null;
   bookingDate?: string | null;
   selectedTime?: string | null;
+  installmentPlan?: {
+    installments: Array<{
+      installmentNumber: number;
+      amountCents: number;
+      dueDate: string;
+      status: string;
+      isRequiredForConfirmation: boolean;
+    }>;
+  };
 }) {
   const html = buildConfirmationHtml({
     clientName: data.clientName,
@@ -335,6 +344,7 @@ async function sendConfirmationEmail(data: {
     invoiceUrl: data.invoiceUrl ?? undefined,
     bookingDate: data.bookingDate ?? undefined,
     selectedTime: data.selectedTime ?? undefined,
+    installmentPlan: data.installmentPlan,
   });
 
   await sendEmail({
@@ -511,6 +521,29 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
       .where(eq(reservations.id, reservation.id));
   }
 
+  // Crear pendingPayments para cuotas aún pendientes
+  const stillPending = installments.filter(i => i.status === "pending");
+  if (stillPending.length > 0) {
+    const nowMs = Date.now();
+    for (const inst of stillPending) {
+      await db.insert(pendingPayments).values({
+        quoteId: quote.id,
+        reservationId: reservation?.id ?? null,
+        clientName: lead?.name ?? quote.title ?? "",
+        clientEmail: lead?.email ?? undefined,
+        clientPhone: lead?.phone ?? undefined,
+        productName: quote.title ?? undefined,
+        amountCents: inst.amountCents,
+        dueDate: inst.dueDate ?? undefined,
+        reason: `Plan fraccionado — Cuota #${inst.installmentNumber}${inst.notes ? `: ${inst.notes}` : ""}`,
+        status: "pending",
+        createdBy: userId,
+        createdAt: nowMs,
+        updatedAt: nowMs,
+      } as any);
+    }
+  }
+
   // Actualizar quote a aceptado
   await db.update(quotes).set({
     status: "aceptado",
@@ -546,6 +579,15 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
         items,
         total: String(total),
         invoiceUrl: pdfUrl,
+        installmentPlan: {
+          installments: installments.map(i => ({
+            installmentNumber: i.installmentNumber,
+            amountCents: i.amountCents,
+            dueDate: i.dueDate ?? "",
+            status: i.status ?? "pending",
+            isRequiredForConfirmation: i.isRequiredForConfirmation ?? false,
+          })),
+        },
       });
     } catch (emailErr) {
       console.error("[_checkAndConfirmReservation] Error enviando email:", emailErr);

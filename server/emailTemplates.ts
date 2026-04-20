@@ -898,6 +898,15 @@ export interface ConfirmationEmailData {
   selectedTime?: string;     // horario seleccionado (time slot) - opcional
   contactPhone?: string;
   contactEmail?: string;
+  installmentPlan?: {
+    installments: Array<{
+      installmentNumber: number;
+      amountCents: number;
+      dueDate: string;
+      status: string;
+      isRequiredForConfirmation: boolean;
+    }>;
+  };
 }
 
 export function buildConfirmationHtml(d: ConfirmationEmailData): string {
@@ -941,6 +950,54 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
   const contactPhone = d.contactPhone ?? "+34 930 34 77 91";
   const contactEmail = d.contactEmail ?? "reservas@nayadeexperiences.es";
 
+  const installmentBlock = d.installmentPlan?.installments?.length
+    ? (() => {
+        const rows = d.installmentPlan!.installments.map((inst) => {
+          const isPaid = inst.status === "paid";
+          const bg = isPaid ? "#f0fdf4" : "#fffbeb";
+          const amtColor = isPaid ? "#166534" : "#92400e";
+          const badgeBg = isPaid ? "#dcfce7" : "#fef3c7";
+          const badgeColor = isPaid ? "#166534" : "#92400e";
+          const badgeText = isPaid ? "✓ Pagada" : "Pendiente";
+          return `<tr style="background:${bg};">
+            <td style="padding:8px 14px;color:#374151;font-size:12px;font-family:Arial,sans-serif;border-bottom:1px solid #e5e7eb;">Cuota #${inst.installmentNumber}${inst.isRequiredForConfirmation ? " <span style='color:#7c3aed;font-size:10px;'>(inaplazable)</span>" : ""}</td>
+            <td style="padding:8px 14px;font-weight:700;font-size:13px;font-family:Arial,sans-serif;border-bottom:1px solid #e5e7eb;color:${amtColor};">${(inst.amountCents / 100).toFixed(2)} &euro;</td>
+            <td style="padding:8px 14px;color:#6b7280;font-size:12px;font-family:Arial,sans-serif;border-bottom:1px solid #e5e7eb;">Vence: ${inst.dueDate}</td>
+            <td style="padding:8px 14px;text-align:right;font-size:11px;font-family:Arial,sans-serif;border-bottom:1px solid #e5e7eb;">
+              <span style="background:${badgeBg};color:${badgeColor};padding:3px 10px;border-radius:12px;font-weight:700;">${badgeText}</span>
+            </td>
+          </tr>`;
+        }).join("");
+        const paidTotal = d.installmentPlan!.installments.filter(i => i.status === "paid").reduce((s, i) => s + i.amountCents, 0);
+        const pendingTotal = d.installmentPlan!.installments.filter(i => i.status !== "paid").reduce((s, i) => s + i.amountCents, 0);
+        return `<tr><td style="padding:0 32px 14px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #ddd6fe;">
+            <tr style="background:#6d28d9;">
+              <td colspan="4" style="padding:14px 18px;">
+                <p style="color:#fff;font-size:13px;font-weight:700;margin:0;font-family:Arial,sans-serif;">&#x1F4B3; Plan de Pago Fraccionado</p>
+                <p style="color:#ede9fe;font-size:11px;margin:6px 0 0;font-family:Arial,sans-serif;">Tu reserva se ha confirmado con el pago de la cuota inicial. Recuerda abonar las cuotas pendientes en las fechas indicadas.</p>
+              </td>
+            </tr>
+            ${rows}
+            <tr style="background:#f5f3ff;">
+              <td colspan="2" style="padding:10px 14px;font-size:12px;color:#4c1d95;font-family:Arial,sans-serif;">
+                Cobrado: <strong style="color:#166534;">${(paidTotal / 100).toFixed(2)} &euro;</strong>
+                ${pendingTotal > 0 ? `&nbsp;&nbsp;|&nbsp;&nbsp;Pendiente: <strong style="color:#92400e;">${(pendingTotal / 100).toFixed(2)} &euro;</strong>` : ""}
+              </td>
+              <td colspan="2" style="padding:10px 14px;text-align:right;font-size:11px;font-family:Arial,sans-serif;color:#5b21b6;">
+                Total plan: <strong>${((paidTotal + pendingTotal) / 100).toFixed(2)} &euro;</strong>
+              </td>
+            </tr>
+            <tr><td colspan="4" style="background:#ede9fe;padding:12px 18px;border-top:1px solid #ddd6fe;">
+              <p style="color:#5b21b6;font-size:11px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+                &#x26A0;&#xFE0F; <strong>Compromiso de pago:</strong> Al confirmar esta reserva, te comprometes a abonar las cuotas pendientes en las fechas indicadas seg&uacute;n el plan acordado.
+              </p>
+            </td></tr>
+          </table>
+        </td></tr>`;
+      })()
+    : "";
+
   const body = `
     ${emailHeader("Reserva Confirmada", "Tu experiencia perfecta empieza aqu&iacute;")}
     <tr><td style="padding:28px 32px 0;">
@@ -978,6 +1035,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
         </td></tr>
       </table>
     </td></tr>
+    ${installmentBlock}
     ${invoiceButtonBlock}
     ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto en el lago!")}
     <tr><td style="padding:0 32px 28px;">

@@ -2898,7 +2898,7 @@ function QuoteDetailModal({
     onError: (e) => toast.error(e.message),
   });
 
-  const planQuery = trpc.crm.paymentPlans.get.useQuery({ quoteId }, { enabled: showPlanEditor });
+  const planQuery = trpc.crm.paymentPlans.get.useQuery({ quoteId }, { enabled: showPlanEditor || !!quote.paymentPlanId });
   const upsertPlan = trpc.crm.paymentPlans.upsert.useMutation({
     onSuccess: () => {
       toast.success("Plan de pago guardado");
@@ -3204,6 +3204,66 @@ function QuoteDetailModal({
               placeholder="https://..."
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1 text-sm"
             />
+          </div>
+        )}
+
+        {/* ─── RESUMEN PLAN DE PAGOS (siempre visible si existe) ─── */}
+        {!showPlanEditor && planQuery.data && planQuery.data.installments.length > 0 && (
+          <div className="bg-violet-950/30 border border-violet-500/30 rounded-xl p-4 space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-violet-400" />
+                Plan de Pago Fraccionado
+              </h4>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                planQuery.data.installments.every(i => i.status === "paid")
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                  : planQuery.data.installments.some(i => i.status === "paid")
+                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                  : "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+              }`}>
+                {planQuery.data.installments.every(i => i.status === "paid")
+                  ? "Completado"
+                  : planQuery.data.installments.some(i => i.status === "paid")
+                  ? "En curso"
+                  : "Pendiente"}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {planQuery.data.installments.map((inst) => (
+                <div key={inst.id} className="flex items-center justify-between text-xs py-1 border-b border-foreground/[0.06] last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-foreground/40 w-5">#{inst.installmentNumber}</span>
+                    <span className={inst.status === "paid" ? "text-emerald-300 font-medium" : "text-foreground/80"}>
+                      {(inst.amountCents / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                    </span>
+                    {inst.isRequiredForConfirmation && (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">Inaplazable</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {inst.dueDate && <span className="text-foreground/40">{inst.dueDate}</span>}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+                      inst.status === "paid"
+                        ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                        : "bg-foreground/[0.06] text-foreground/50 border-foreground/[0.12]"
+                    }`}>
+                      {inst.status === "paid" ? "Pagada" : "Pendiente"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {(() => {
+              const paidTotal = planQuery.data.installments.filter(i => i.status === "paid").reduce((s, i) => s + i.amountCents, 0);
+              const pendingTotal = planQuery.data.installments.filter(i => i.status !== "paid").reduce((s, i) => s + i.amountCents, 0);
+              return (
+                <div className="flex justify-between pt-1 text-xs text-foreground/60">
+                  <span>Cobrado: <span className="text-emerald-300 font-medium">{(paidTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                  <span>Pendiente: <span className="text-amber-300 font-medium">{(pendingTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -3867,6 +3927,10 @@ function ReservationDetailModal({
   onCancel?: (id: number, name: string) => void;
 }) {
   const { data, isLoading } = trpc.crm.reservations.get.useQuery({ id: reservationId });
+  const planQuery = trpc.crm.paymentPlans.get.useQuery(
+    { quoteId: data?.reservation?.quoteId ?? 0 },
+    { enabled: !!data?.reservation?.quoteId }
+  );
 
   const ACTION_LABELS: Record<string, string> = {
     reservation_created:   "Reserva creada",
@@ -3971,6 +4035,11 @@ function ReservationDetailModal({
           <div className="flex items-center gap-3 flex-wrap">
             {getStatusBadge(res.status)}
             {getPaymentBadge(res.paymentMethod)}
+            {planQuery.data && planQuery.data.installments.length > 0 && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2.5 py-1 rounded-full">
+                <CreditCard className="w-3 h-3" /> Plan de Pagos
+              </span>
+            )}
             {res.channel === "tpv" && (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 rounded-full">
                 🖥️ TPV Presencial
@@ -4069,6 +4138,66 @@ function ReservationDetailModal({
               )}
             </div>
           </div>
+
+          {/* Plan de pago fraccionado */}
+          {planQuery.data && planQuery.data.installments.length > 0 && (
+            <div className="bg-violet-950/30 border border-violet-500/30 rounded-xl p-4 space-y-2">
+              <div className="flex items-center justify-between mb-1">
+                <h4 className="text-sm font-semibold text-violet-300 flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-violet-400" />
+                  Plan de Pago Fraccionado
+                </h4>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                  planQuery.data.installments.every(i => i.status === "paid")
+                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                    : planQuery.data.installments.some(i => i.status === "paid")
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                    : "bg-violet-500/20 text-violet-300 border-violet-500/30"
+                }`}>
+                  {planQuery.data.installments.every(i => i.status === "paid")
+                    ? "Completado"
+                    : planQuery.data.installments.some(i => i.status === "paid")
+                    ? "En curso"
+                    : "Pendiente"}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {planQuery.data.installments.map((inst) => (
+                  <div key={inst.id} className="flex items-center justify-between text-xs py-1 border-b border-foreground/[0.06] last:border-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-foreground/40 w-5">#{inst.installmentNumber}</span>
+                      <span className={inst.status === "paid" ? "text-emerald-300 font-medium" : "text-foreground/80"}>
+                        {(inst.amountCents / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                      </span>
+                      {inst.isRequiredForConfirmation && (
+                        <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded-full">Inaplazable</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {inst.dueDate && <span className="text-foreground/40">{inst.dueDate}</span>}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${
+                        inst.status === "paid"
+                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                          : "bg-foreground/[0.06] text-foreground/50 border-foreground/[0.12]"
+                      }`}>
+                        {inst.status === "paid" ? "Pagada" : "Pendiente"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {(() => {
+                const paidTotal = planQuery.data.installments.filter(i => i.status === "paid").reduce((s, i) => s + i.amountCents, 0);
+                const pendingTotal = planQuery.data.installments.filter(i => i.status !== "paid").reduce((s, i) => s + i.amountCents, 0);
+                return (
+                  <div className="flex justify-between pt-1 text-xs text-foreground/60">
+                    <span>Cobrado: <span className="text-emerald-300 font-medium">{(paidTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                    <span>Pendiente: <span className="text-amber-300 font-medium">{(pendingTotal / 100).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}</span></span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {/* Justificante de transferencia */}
           {res.transferProofUrl && (
