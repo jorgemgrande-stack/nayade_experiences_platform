@@ -3616,18 +3616,30 @@ function QuoteDetailModal({
                 <Label className="text-foreground/70 text-xs">Justificante de transferencia</Label>
                 {!instProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${isUploadingInstProof ? "border-violet-500/40 bg-violet-500/5" : "border-foreground/[0.15] hover:border-foreground/30"}`}>
-                    <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" disabled={isUploadingInstProof} onChange={async (e) => {
+                    <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" disabled={isUploadingInstProof} onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      const allowed = ["image/jpeg", "image/png", "application/pdf"];
+                      if (!allowed.includes(file.type)) { toast.error("Solo se permiten JPG, PNG o PDF"); return; }
+                      if (file.size > 10 * 1024 * 1024) { toast.error("El archivo no puede superar 10 MB"); return; }
                       setIsUploadingInstProof(true);
-                      try {
-                        const form = new FormData();
-                        form.append("file", file);
-                        const res = await fetch("/api/upload", { method: "POST", body: form });
-                        const json = await res.json();
-                        if (json.url) { setInstProofUrl(json.url); setInstProofKey(json.key ?? null); }
-                      } catch { toast.error("Error al subir el justificante"); }
-                      setIsUploadingInstProof(false);
+                      const reader = new FileReader();
+                      reader.onload = async (ev) => {
+                        try {
+                          const base64 = (ev.target?.result as string).split(",")[1];
+                          const result = await uploadProofOnly.mutateAsync({
+                            quoteId,
+                            fileBase64: base64,
+                            fileName: file.name,
+                            mimeType: file.type as "image/jpeg" | "image/png" | "application/pdf",
+                          });
+                          setInstProofUrl(result.url);
+                          setInstProofKey(result.fileKey);
+                          toast.success("Justificante subido correctamente");
+                        } catch { toast.error("Error al subir el justificante"); }
+                        setIsUploadingInstProof(false);
+                      };
+                      reader.readAsDataURL(file);
                     }} />
                     {isUploadingInstProof ? <><RefreshCw className="w-4 h-4 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">Subiendo...</span></> : <><Upload className="w-4 h-4 text-foreground/50" /><span className="text-xs text-foreground/60">Subir justificante (PDF, JPG, PNG)</span></>}
                   </label>
