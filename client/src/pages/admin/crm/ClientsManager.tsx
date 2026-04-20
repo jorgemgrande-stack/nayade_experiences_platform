@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -328,6 +328,23 @@ export default function ClientsManager() {
   );
   const clientsList = clientsData?.items as ClientRow[] | undefined;
   const utils = trpc.useUtils();
+
+  // Auto-open client modal when URL has ?clientId=X
+  useEffect(() => {
+    if (!clientsList) return;
+    const params = new URLSearchParams(window.location.search);
+    const clientIdParam = params.get("clientId");
+    if (!clientIdParam) return;
+    const targetId = parseInt(clientIdParam, 10);
+    const found = clientsList.find((c) => c.id === targetId);
+    if (found) {
+      setEditClient(found);
+      // Clean up URL param without page reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete("clientId");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [clientsList]);
 
   const convertedCount = clientsList?.filter((c) => c.isConverted).length ?? 0;
   const fromLeadCount = clientsList?.filter((c) => c.source === "lead").length ?? 0;

@@ -5292,7 +5292,15 @@ export default function CRMDashboard() {
                           )}
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-medium text-foreground">{lead.name}</span>
+                              {(lead as typeof lead & { clientId?: number }).clientId ? (
+                                <a
+                                  href={`/admin/crm/clientes?clientId=${(lead as typeof lead & { clientId?: number }).clientId}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors"
+                                >{lead.name}</a>
+                              ) : (
+                                <span className="text-sm font-medium text-foreground">{lead.name}</span>
+                              )}
                               {!lead.seenAt && <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">Nuevo</span>}
                             </div>
                             <div className="text-xs text-foreground/50">{lead.email}</div>
@@ -5402,7 +5410,15 @@ export default function CRMDashboard() {
                         <div className="text-[10px] text-foreground/40 mt-0.5">{new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-foreground/90">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
+                        {(quote as typeof quote & { clientId?: number }).clientId ? (
+                          <a
+                            href={`/admin/crm/clientes?clientId=${(quote as typeof quote & { clientId?: number }).clientId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-sm font-medium text-foreground/90 hover:text-blue-300 hover:underline transition-colors block"
+                          >{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</a>
+                        ) : (
+                          <div className="text-sm font-medium text-foreground/90">{(quote as typeof quote & { clientName?: string }).clientName ?? "—"}</div>
+                        )}
                         <div className="text-[10px] text-foreground/50 truncate max-w-[140px]">{(quote as typeof quote & { clientEmail?: string }).clientEmail ?? ""}</div>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
@@ -5577,7 +5593,15 @@ export default function CRMDashboard() {
                       </td>
                       {/* Cliente */}
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-foreground">{res.customerName}</div>
+                        {(res as typeof res & { clientId?: number }).clientId ? (
+                          <a
+                            href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors block"
+                          >{res.customerName}</a>
+                        ) : (
+                          <div className="text-sm font-medium text-foreground">{res.customerName}</div>
+                        )}
                         <div className="text-xs text-foreground/50">{res.customerEmail}</div>
                         {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5">{res.customerPhone}</div>}
                         {res.merchantOrder && <div className="text-xs font-mono text-foreground/30 mt-0.5">{res.merchantOrder}</div>}

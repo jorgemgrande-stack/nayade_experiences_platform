@@ -594,8 +594,9 @@ export const crmRouter = router({
         if (input.to) conditions.push(lte(leads.createdAt, new Date(input.to)));
 
         const rows = await db
-          .select()
+          .select({ ...getTableColumns(leads), clientId: clients.id })
           .from(leads)
+          .leftJoin(clients, eq(clients.leadId, leads.id))
           .where(conditions.length ? and(...conditions) : undefined)
           .orderBy(desc(leads.createdAt))
           .limit(input.limit)
@@ -1157,9 +1158,11 @@ export const crmRouter = router({
             clientEmail: leads.email,
             clientPhone: leads.phone,
             clientCompany: leads.company,
+            clientId: clients.id,
           })
           .from(quotes)
-          .leftJoin(leads, eq(quotes.leadId, leads.id));
+          .leftJoin(leads, eq(quotes.leadId, leads.id))
+          .leftJoin(clients, eq(clients.leadId, quotes.leadId));
         // Build search condition including joined lead fields
         if (input.search) {
           const s = `%${input.search}%`;
@@ -3364,9 +3367,12 @@ export const crmRouter = router({
           .select({
             ...getTableColumns(reservations),
             invoicePdfUrl: invoices.pdfUrl,
+            clientId: clients.id,
           })
           .from(reservations)
           .leftJoin(invoices, eq(invoices.id, reservations.invoiceId as any))
+          .leftJoin(quotes, eq(quotes.id, reservations.quoteId as any))
+          .leftJoin(clients, eq(clients.leadId, quotes.leadId))
           .where(conditions.length ? and(...conditions) : undefined)
           .orderBy(desc(reservations.createdAt))
           .limit(input.limit)
@@ -4637,7 +4643,35 @@ export const crmRouter = router({
       notes: z.string().optional(),
     })).mutation(async ({ input }) => {
       const { id, ...data } = input;
+
+      // Get current client to find its leadId for cascade
+      const [current] = await db.select({ leadId: clients.leadId }).from(clients).where(eq(clients.id, id));
+
       await db.update(clients).set(data as any).where(eq(clients.id, id));
+
+      // Propagate name/email/phone changes to lead, quotes and reservations
+      if (current?.leadId) {
+        const leadUpdate: Record<string, string> = {};
+        if (data.name) leadUpdate.name = data.name;
+        if (data.email) leadUpdate.email = data.email;
+        if (data.phone !== undefined) leadUpdate.phone = data.phone as string;
+
+        if (Object.keys(leadUpdate).length > 0) {
+          await db.update(leads).set(leadUpdate as any).where(eq(leads.id, current.leadId));
+
+          // Propagate to reservations linked through quotes
+          const relatedQuotes = await db.select({ id: quotes.id }).from(quotes).where(eq(quotes.leadId, current.leadId));
+          if (relatedQuotes.length > 0) {
+            const qIds = relatedQuotes.map((q) => q.id);
+            const resUpdate: Record<string, string> = {};
+            if (data.name) resUpdate.customerName = data.name;
+            if (data.email) resUpdate.customerEmail = data.email;
+            if (data.phone !== undefined) resUpdate.customerPhone = data.phone as string;
+            await db.update(reservations).set(resUpdate as any).where(inArray(reservations.quoteId, qIds));
+          }
+        }
+      }
+
       return { success: true };
     }),
     // Ampliar datos del cliente cuando se convierte (presupuesto → reserva)
