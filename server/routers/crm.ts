@@ -43,6 +43,7 @@ import {
   buildQuotePdfHtml,
   buildPendingPaymentHtml,
   buildPendingPaymentReminderHtml,
+  buildInstallmentReminderHtml,
 } from "../emailTemplates";
 
 // DB helper — usa la misma pool que el resto del servidor
@@ -440,7 +441,7 @@ async function sendTransferConfirmationEmail(data: {
 
 const staff = staffProcedure();
 
-async function _checkAndConfirmReservation(quoteId: number, userId: number, userName: string) {
+export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: number, userName: string) {
   const installments = await db.select().from(paymentInstallments)
     .where(eq(paymentInstallments.quoteId, quoteId));
   const required = installments.filter(i => i.isRequiredForConfirmation);
@@ -520,8 +521,8 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
       createdAt: now,
     });
 
-    // Email de confirmación (sin factura — el plan sigue en curso)
-    if (lead?.email) {
+    // Email de confirmación solo si quedan cuotas pendientes (si todas pagadas, Fase 2 envía el email con factura)
+    if (!allInstallmentsPaid && lead?.email) {
       try {
         await sendConfirmationEmail({
           clientName: lead.name,
@@ -569,7 +570,7 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
         clientPhone: lead?.phone ?? null,
         clientNif: null,
         clientAddress: null,
-        itemsJson: items,
+        itemsJson: items as any,
         subtotal: String(subtotal),
         taxRate: "21",
         taxAmount: String(taxAmount),
@@ -579,7 +580,7 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
       pdfUrl = pdf.url;
       pdfKey = pdf.key;
     } catch (e) {
-      console.error("[_checkAndConfirmReservation] Error generando PDF:", e);
+      console.error("[checkAndConfirmInstallmentPlan] Error generando PDF:", e);
     }
 
     const [invResult] = await db.insert(invoices).values({
@@ -589,7 +590,7 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
       clientName: lead?.name ?? quote.title,
       clientEmail: lead?.email ?? "",
       clientPhone: lead?.phone ?? null,
-      itemsJson: items,
+      itemsJson: items as any,
       subtotal: String(subtotal),
       taxRate: "21",
       taxAmount: String(taxAmount),
@@ -2933,9 +2934,9 @@ export const crmRouter = router({
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId)).limit(1);
         if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado" });
 
-        // No permitir si el presupuesto ya está pagado o convertido a reserva
-        if (["pagado", "facturado", "convertido_reserva"].includes(quote.status ?? "")) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede modificar el plan de un presupuesto ya cerrado" });
+        // No permitir si el presupuesto ya está completamente pagado (plan finalizado)
+        if (quote.paidAt) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede modificar el plan de un presupuesto ya cerrado (todas las cuotas cobradas)" });
         }
 
         // Si ya existe plan, verificar que no haya cuotas pagadas
@@ -3090,9 +3091,56 @@ export const crmRouter = router({
           transferProofUrl: input.transferProofUrl ?? null,
         });
 
-        // Si esta cuota era obligatoria para confirmar, verificar si ya se puede confirmar la reserva principal
-        // _checkAndConfirmReservation genera la factura y envía email cuando todas las cuotas requeridas están pagadas
-        await _checkAndConfirmReservation(inst.quoteId, ctx.user.id, ctx.user.name);
+        // Marcar el pendingPayments vinculado como cobrado (primera coincidencia por quoteId + amountCents)
+        try {
+          const [matchingPP] = await db.select({ id: pendingPayments.id })
+            .from(pendingPayments)
+            .where(and(
+              eq(pendingPayments.quoteId, inst.quoteId),
+              eq(pendingPayments.amountCents, inst.amountCents),
+              eq(pendingPayments.status, "pending"),
+            ))
+            .limit(1);
+          if (matchingPP) {
+            await db.update(pendingPayments)
+              .set({ status: "paid", updatedAt: Date.now() } as any)
+              .where(eq(pendingPayments.id, matchingPP.id));
+          }
+        } catch (ppErr) {
+          console.error("[confirmInstallment] Error actualizando pendingPayments:", ppErr);
+        }
+
+        // Enviar email de confirmación de pago al cliente
+        try {
+          const [quote] = await db.select({ leadId: quotes.leadId, quoteNumber: quotes.quoteNumber, title: quotes.title })
+            .from(quotes).where(eq(quotes.id, inst.quoteId)).limit(1);
+          if (quote) {
+            const [lead] = await db.select({ name: leads.name, email: leads.email })
+              .from(leads).where(eq(leads.id, quote.leadId)).limit(1);
+            const allInstallments = await db.select({ id: paymentInstallments.id })
+              .from(paymentInstallments).where(eq(paymentInstallments.quoteId, inst.quoteId));
+            if (lead?.email) {
+              const html = buildInstallmentReminderHtml({
+                clientName: lead.name ?? "Cliente",
+                clientEmail: lead.email,
+                quoteNumber: quote.quoteNumber ?? "",
+                installmentNumber: inst.installmentNumber,
+                totalInstallments: allInstallments.length,
+                amountFormatted: `${(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €`,
+                dueDate: inst.dueDate,
+              });
+              await sendEmail({
+                to: lead.email,
+                subject: `✅ Pago recibido — Cuota ${inst.installmentNumber}/${allInstallments.length} — ${quote.quoteNumber}`,
+                html,
+              });
+            }
+          }
+        } catch (emailErr) {
+          console.error("[confirmInstallment] Error enviando email al cliente:", emailErr);
+        }
+
+        await checkAndConfirmInstallmentPlan(inst.quoteId, ctx.user.id, ctx.user.name ?? "Admin");
 
         return { success: true };
       }),

@@ -597,14 +597,13 @@ function startInstallmentOverdueJob() {
       const db = drizzle(pool);
       const todayStr = new Date().toISOString().split("T")[0];
 
-      // 1. Marcar como vencidas solo cuotas de planes activos (al menos una cuota pagada)
+      // 1. Marcar como vencidas cuotas pending cuya fecha de vencimiento ha pasado
       const overdueResult = await db
         .update(paymentInstallments)
         .set({ status: "overdue", updatedAt: new Date() })
         .where(and(
           eq(paymentInstallments.status, "pending"),
           lte(paymentInstallments.dueDate, todayStr),
-          sql.raw(`EXISTS (SELECT 1 FROM payment_installments pi2 WHERE pi2.quote_id = payment_installments.quote_id AND pi2.status = 'paid')`),
         ));
       const overdueCount = (overdueResult[0] as any).affectedRows ?? 0;
       if (overdueCount > 0) {

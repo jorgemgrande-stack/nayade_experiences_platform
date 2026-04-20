@@ -19,6 +19,7 @@ import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { generateDocumentNumber } from "./documentNumbers";
+import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = mysql.createPool(process.env.DATABASE_URL!);
@@ -195,106 +196,105 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       }
     }
 
-    // ── Si la reserva viene de un presupuesto, marcar el presupuesto como pagado ──
-    // Para planes de pago: solo confirmar cuando TODAS las cuotas requeridas estén pagadas
+    // ── Si la reserva viene de un presupuesto, confirmar según el tipo de pago ──
     const isInstallmentPayment = linkedInstallmentId !== null;
-    const shouldConfirmQuote = !isInstallmentPayment || allRequiredInstallmentsPaid;
 
-    if (result.isAuthorized && updatedReservation?.quoteSource === "presupuesto" && updatedReservation?.quoteId && shouldConfirmQuote) {
-      try {
-        const [quote] = await _db.select().from(quotes).where(eq(quotes.id, updatedReservation.quoteId));
-        if (quote && !quote.paidAt) {
-          const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
-          const now = new Date();
-          const invoiceNumber = await generateDocumentNumber("factura", "redsys:ipn", "system");
-          const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
-          const total = Number(quote.total);
-          const subtotal = Number(quote.subtotal);
-          const taxAmount = subtotal * 0.21;
+    if (result.isAuthorized && updatedReservation?.quoteSource === "presupuesto" && updatedReservation?.quoteId) {
+      if (isInstallmentPayment) {
+        // Plan de pagos: delegar en checkAndConfirmInstallmentPlan (gestiona fases, factura y emails)
+        try {
+          await checkAndConfirmInstallmentPlan(linkedInstallmentQuoteId!, 0, "Sistema (Redsys)");
+          console.log(`[Redsys IPN] checkAndConfirmInstallmentPlan ejecutado para quoteId=${linkedInstallmentQuoteId}`);
+        } catch (e) {
+          console.error("[Redsys IPN] Error en checkAndConfirmInstallmentPlan:", e);
+        }
+      } else {
+        // Pago único (sin plan fraccionado): flujo clásico — generar factura completa ahora
+        try {
+          const [quote] = await _db.select().from(quotes).where(eq(quotes.id, updatedReservation.quoteId));
+          if (quote && !quote.paidAt) {
+            const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
+            const now = new Date();
+            const invoiceNumber = await generateDocumentNumber("factura", "redsys:ipn", "system");
+            const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+            const total = Number(quote.total);
+            const subtotal = Number(quote.subtotal);
+            const taxAmount = subtotal * 0.21;
 
-          // Determinar productId principal desde las líneas del presupuesto
-          const mainProductIdRedsys = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? updatedReservation.productId ?? 0;
+            const mainProductIdRedsys = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? updatedReservation.productId ?? 0;
 
-          // Insert invoice
-          const [invResRedsys] = await _db.insert(invoices).values({
-            invoiceNumber,
-            quoteId: quote.id,
-            reservationId: updatedReservation.id, // FIX: vincular a la reserva desde el inicio
-            clientName: lead?.name ?? updatedReservation.customerName,
-            clientEmail: lead?.email ?? updatedReservation.customerEmail,
-            clientPhone: lead?.phone ?? updatedReservation.customerPhone,
-            itemsJson: items,
-            subtotal: String(subtotal),
-            taxRate: "21",
-            taxAmount: String(taxAmount),
-            total: String(total),
-            status: "cobrada", // FIX: Redsys confirma pago, debe ser cobrada
-            paymentMethod: "redsys",
-            issuedAt: now,
-            createdAt: now,
-            updatedAt: now,
-          });
-          const invoiceIdRedsys = (invResRedsys as { insertId: number }).insertId;
+            const [invResRedsys] = await _db.insert(invoices).values({
+              invoiceNumber,
+              quoteId: quote.id,
+              reservationId: updatedReservation.id,
+              clientName: lead?.name ?? updatedReservation.customerName,
+              clientEmail: lead?.email ?? updatedReservation.customerEmail,
+              clientPhone: lead?.phone ?? updatedReservation.customerPhone,
+              itemsJson: items,
+              subtotal: String(subtotal),
+              taxRate: "21",
+              taxAmount: String(taxAmount),
+              total: String(total),
+              status: "cobrada",
+              paymentMethod: "redsys",
+              issuedAt: now,
+              createdAt: now,
+              updatedAt: now,
+            });
+            const invoiceIdRedsys = (invResRedsys as { insertId: number }).insertId;
 
-          // FIX: Actualizar reserva con invoiceId e invoiceNumber
-          await _db.update(reservations).set({
-            productId: mainProductIdRedsys,
-            invoiceId: invoiceIdRedsys,
-            invoiceNumber,
-            updatedAt: Date.now(),
-          } as any).where(eq(reservations.id, updatedReservation.id));
+            await _db.update(reservations).set({
+              productId: mainProductIdRedsys,
+              invoiceId: invoiceIdRedsys,
+              invoiceNumber,
+              updatedAt: Date.now(),
+            } as any).where(eq(reservations.id, updatedReservation.id));
 
-          // Update quote to paid — invalidar paymentLinkToken para evitar re-uso del enlace
-          await _db.update(quotes).set({
-            status: "aceptado",
-            paidAt: now,
-            redsysOrderId: result.merchantOrder,
-            invoiceNumber,
-            paymentLinkToken: null,
-            updatedAt: now,
-          }).where(eq(quotes.id, quote.id));
+            await _db.update(quotes).set({
+              status: "aceptado",
+              paidAt: now,
+              redsysOrderId: result.merchantOrder,
+              invoiceNumber,
+              paymentLinkToken: null,
+              updatedAt: now,
+            }).where(eq(quotes.id, quote.id));
 
-          // Update lead
-          if (lead) {
-            await _db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
-          }
+            if (lead) {
+              await _db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
+            }
 
-          console.log(`[Redsys IPN] Presupuesto ${quote.quoteNumber} marcado como PAGADO. Factura: ${invoiceNumber}`);
+            console.log(`[Redsys IPN] Presupuesto ${quote.quoteNumber} marcado como PAGADO. Factura: ${invoiceNumber}`);
 
-          // ── Enviar email de confirmación al cliente ──
-          const clientEmail = lead?.email ?? updatedReservation.customerEmail;
-          const clientName  = lead?.name  ?? updatedReservation.customerName;
-          const COPY_EMAIL  = "reservas@nayadeexperiences.es";
-          if (clientEmail) {
-            try {
-              const html = buildConfirmationHtml({
-                clientName,
-                reservationRef: invoiceNumber,
-                quoteNumber: quote.quoteNumber,
-                quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
-                items,
-                subtotal: String(subtotal),
-                taxAmount: String(taxAmount),
-                total: String(total),
-                bookingDate: updatedReservation.bookingDate ?? undefined,
-                selectedTime: (updatedReservation as any).selectedTime ?? undefined,
-                contactEmail: COPY_EMAIL,
-                contactPhone: "+34 930 34 77 91",
-              });
-              await sendEmail({
-                to: clientEmail,
-                subject: `✅ Reserva confirmada — ${quote.quoteNumber} — Náyade Experiences`,
-                html,
-              });
-              await sendEmail({ to: COPY_EMAIL, subject: `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`, html });
-              console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail} (BCC: ${COPY_EMAIL})`);
-            } catch (emailErr) {
-              console.error("[Redsys IPN] Error al enviar email de confirmación:", emailErr);
+            const clientEmail = lead?.email ?? updatedReservation.customerEmail;
+            const clientName  = lead?.name  ?? updatedReservation.customerName;
+            const COPY_EMAIL  = "reservas@nayadeexperiences.es";
+            if (clientEmail) {
+              try {
+                const html = buildConfirmationHtml({
+                  clientName,
+                  reservationRef: invoiceNumber,
+                  quoteNumber: quote.quoteNumber,
+                  quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
+                  items,
+                  subtotal: String(subtotal),
+                  taxAmount: String(taxAmount),
+                  total: String(total),
+                  bookingDate: updatedReservation.bookingDate ?? undefined,
+                  selectedTime: (updatedReservation as any).selectedTime ?? undefined,
+                  contactEmail: COPY_EMAIL,
+                  contactPhone: "+34 930 34 77 91",
+                });
+                await sendEmail({ to: clientEmail, subject: `✅ Reserva confirmada — ${quote.quoteNumber} — Náyade Experiences`, html });
+                await sendEmail({ to: COPY_EMAIL, subject: `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`, html });
+                console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail}`);
+              } catch (emailErr) {
+                console.error("[Redsys IPN] Error al enviar email de confirmación:", emailErr);
+              }
             }
           }
+        } catch (e) {
+          console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
         }
-      } catch (e) {
-        console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
       }
     }
     // ── Booking operativo + transacción contable + REAV para CADA artículo del carrito ──

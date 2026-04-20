@@ -2898,7 +2898,7 @@ function QuoteDetailModal({
     onError: (e) => toast.error(e.message),
   });
 
-  const planQuery = trpc.crm.paymentPlans.get.useQuery({ quoteId }, { enabled: showPlanEditor || !!quote.paymentPlanId });
+  const planQuery = trpc.crm.paymentPlans.get.useQuery({ quoteId }, { enabled: showPlanEditor || !!data?.quote?.paymentPlanId });
   const upsertPlan = trpc.crm.paymentPlans.upsert.useMutation({
     onSuccess: () => {
       toast.success("Plan de pago guardado");
@@ -3279,7 +3279,7 @@ function QuoteDetailModal({
                 {planQuery.data && !planEditMode && (
                   <button
                     onClick={() => {
-                      setDraftInstallments(planQuery.data.installments.map(i => ({
+                      setDraftInstallments((planQuery.data?.installments ?? []).map(i => ({
                         installmentNumber: i.installmentNumber,
                         amountCents: i.amountCents,
                         dueDate: i.dueDate,
