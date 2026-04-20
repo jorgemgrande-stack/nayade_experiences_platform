@@ -1713,40 +1713,42 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
           <div className="px-4 pb-4 space-y-3 border-t border-foreground/[0.08]">
             <p className="text-xs text-foreground/45 pt-3">Define las cuotas ahora. Se guardarán automáticamente al crear el presupuesto.</p>
             {draftInstallmentsD.map((inst, idx) => (
-              <div key={idx} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
-                <span className="text-xs text-foreground/40">#{idx + 1}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Importe (€)"
-                  value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const cents = Math.round(parseFloat(val.replace(",", ".") || "0") * 100) || 0;
-                    const totalCents = Math.round(total * 100);
-                    const updated = [...draftInstallmentsD];
-                    updated[idx] = { ...updated[idx], amountCents: cents, _amountStr: val };
-                    if (idx + 1 < updated.length && !updated[idx + 1]._amountStr && updated[idx + 1].amountCents === 0) {
-                      const sumOthers = updated.reduce((s, inst, i) => i !== idx + 1 ? s + inst.amountCents : s, 0);
-                      const remaining = totalCents - sumOthers;
-                      if (remaining > 0) updated[idx + 1] = { ...updated[idx + 1], amountCents: remaining, _amountStr: (remaining / 100).toFixed(2) };
-                    }
-                    setDraftInstallmentsD(updated);
-                  }}
-                  className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
-                />
-                <input
-                  type="date"
-                  value={inst.dueDate}
-                  onChange={(e) => {
-                    const updated = [...draftInstallmentsD];
-                    updated[idx] = { ...updated[idx], dueDate: e.target.value };
-                    setDraftInstallmentsD(updated);
-                  }}
-                  className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
-                />
+              <div key={idx} className="space-y-1.5 py-1.5 border-b border-foreground/[0.07] last:border-0">
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1 text-xs text-violet-300 cursor-pointer whitespace-nowrap">
+                  <span className="text-xs text-foreground/40 w-5 shrink-0">#{idx + 1}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Importe (€)"
+                    value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const cents = Math.round(parseFloat(val.replace(",", ".") || "0") * 100) || 0;
+                      const updated = [...draftInstallmentsD];
+                      updated[idx] = { ...updated[idx], amountCents: cents, _amountStr: val };
+                      if (idx + 1 < updated.length) {
+                        const totalCents = Math.round(total * 100);
+                        const sumOthers = updated.reduce((s, it, j) => j !== idx + 1 ? s + it.amountCents : s, 0);
+                        const remaining = Math.max(0, totalCents - sumOthers);
+                        updated[idx + 1] = { ...updated[idx + 1], amountCents: remaining, _amountStr: remaining > 0 ? (remaining / 100).toFixed(2) : "" };
+                      }
+                      setDraftInstallmentsD(updated);
+                    }}
+                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                  />
+                  <input
+                    type="date"
+                    value={inst.dueDate}
+                    onChange={(e) => {
+                      const updated = [...draftInstallmentsD];
+                      updated[idx] = { ...updated[idx], dueDate: e.target.value };
+                      setDraftInstallmentsD(updated);
+                    }}
+                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                  />
+                </div>
+                <div className="flex items-center justify-between pl-7">
+                  <label className="flex items-center gap-1.5 text-xs text-violet-300 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={inst.isRequiredForConfirmation}
@@ -1755,22 +1757,29 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                         updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
                         setDraftInstallmentsD(updated);
                       }}
-                      className="accent-violet-500"
+                      className="accent-violet-500 shrink-0"
                     />
                     Cuota inaplazable
                   </label>
-                  <button onClick={() => setDraftInstallmentsD(draftInstallmentsD.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs shrink-0">✕</button>
+                  <button onClick={() => setDraftInstallmentsD(draftInstallmentsD.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">✕ Eliminar</button>
                 </div>
               </div>
             ))}
             <button
               type="button"
-              onClick={() => setDraftInstallmentsD([...draftInstallmentsD, {
-                installmentNumber: draftInstallmentsD.length + 1,
-                amountCents: 0, dueDate: "",
-                isRequiredForConfirmation: draftInstallmentsD.length === 0,
-                notes: "",
-              }])}
+              onClick={() => {
+                const totalCents = Math.round(total * 100);
+                const sumExisting = draftInstallmentsD.reduce((s, i) => s + i.amountCents, 0);
+                const remaining = Math.max(0, totalCents - sumExisting);
+                setDraftInstallmentsD([...draftInstallmentsD, {
+                  installmentNumber: draftInstallmentsD.length + 1,
+                  amountCents: remaining,
+                  _amountStr: remaining > 0 ? (remaining / 100).toFixed(2) : undefined,
+                  dueDate: "",
+                  isRequiredForConfirmation: draftInstallmentsD.length === 0,
+                  notes: "",
+                }]);
+              }}
               className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
             >+ Añadir cuota</button>
             {draftInstallmentsD.length > 0 && (() => {
@@ -2168,40 +2177,42 @@ function QuoteBuilderModal({
           <div className="px-4 pb-4 space-y-3 border-t border-foreground/[0.08]">
             <p className="text-xs text-foreground/45 pt-3">Define las cuotas ahora. Se guardarán automáticamente al crear el presupuesto.</p>
             {draftInstallments.map((inst, idx) => (
-              <div key={idx} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
-                <span className="text-xs text-foreground/40">#{idx + 1}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Importe (€)"
-                  value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const cents = Math.round(parseFloat(val.replace(",", ".") || "0") * 100) || 0;
-                    const totalCents = Math.round(total * 100);
-                    const updated = [...draftInstallments];
-                    updated[idx] = { ...updated[idx], amountCents: cents, _amountStr: val };
-                    if (idx + 1 < updated.length && !updated[idx + 1]._amountStr && updated[idx + 1].amountCents === 0) {
-                      const sumOthers = updated.reduce((s, inst, i) => i !== idx + 1 ? s + inst.amountCents : s, 0);
-                      const remaining = totalCents - sumOthers;
-                      if (remaining > 0) updated[idx + 1] = { ...updated[idx + 1], amountCents: remaining, _amountStr: (remaining / 100).toFixed(2) };
-                    }
-                    setDraftInstallments(updated);
-                  }}
-                  className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
-                />
-                <input
-                  type="date"
-                  value={inst.dueDate}
-                  onChange={(e) => {
-                    const updated = [...draftInstallments];
-                    updated[idx] = { ...updated[idx], dueDate: e.target.value };
-                    setDraftInstallments(updated);
-                  }}
-                  className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
-                />
+              <div key={idx} className="space-y-1.5 py-1.5 border-b border-foreground/[0.07] last:border-0">
                 <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1 text-xs text-violet-300 cursor-pointer whitespace-nowrap">
+                  <span className="text-xs text-foreground/40 w-5 shrink-0">#{idx + 1}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Importe (€)"
+                    value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const cents = Math.round(parseFloat(val.replace(",", ".") || "0") * 100) || 0;
+                      const updated = [...draftInstallments];
+                      updated[idx] = { ...updated[idx], amountCents: cents, _amountStr: val };
+                      if (idx + 1 < updated.length) {
+                        const totalCents = Math.round(total * 100);
+                        const sumOthers = updated.reduce((s, it, j) => j !== idx + 1 ? s + it.amountCents : s, 0);
+                        const remaining = Math.max(0, totalCents - sumOthers);
+                        updated[idx + 1] = { ...updated[idx + 1], amountCents: remaining, _amountStr: remaining > 0 ? (remaining / 100).toFixed(2) : "" };
+                      }
+                      setDraftInstallments(updated);
+                    }}
+                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                  />
+                  <input
+                    type="date"
+                    value={inst.dueDate}
+                    onChange={(e) => {
+                      const updated = [...draftInstallments];
+                      updated[idx] = { ...updated[idx], dueDate: e.target.value };
+                      setDraftInstallments(updated);
+                    }}
+                    className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                  />
+                </div>
+                <div className="flex items-center justify-between pl-7">
+                  <label className="flex items-center gap-1.5 text-xs text-violet-300 cursor-pointer select-none">
                     <input
                       type="checkbox"
                       checked={inst.isRequiredForConfirmation}
@@ -2210,23 +2221,29 @@ function QuoteBuilderModal({
                         updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
                         setDraftInstallments(updated);
                       }}
-                      className="accent-violet-500"
+                      className="accent-violet-500 shrink-0"
                     />
                     Cuota inaplazable
                   </label>
-                  <button onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs shrink-0">✕</button>
+                  <button onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 text-xs">✕ Eliminar</button>
                 </div>
               </div>
             ))}
             <button
               type="button"
-              onClick={() => setDraftInstallments([...draftInstallments, {
-                installmentNumber: draftInstallments.length + 1,
-                amountCents: 0,
-                dueDate: "",
-                isRequiredForConfirmation: draftInstallments.length === 0,
-                notes: "",
-              }])}
+              onClick={() => {
+                const totalCents = Math.round(total * 100);
+                const sumExisting = draftInstallments.reduce((s, i) => s + i.amountCents, 0);
+                const remaining = Math.max(0, totalCents - sumExisting);
+                setDraftInstallments([...draftInstallments, {
+                  installmentNumber: draftInstallments.length + 1,
+                  amountCents: remaining,
+                  _amountStr: remaining > 0 ? (remaining / 100).toFixed(2) : undefined,
+                  dueDate: "",
+                  isRequiredForConfirmation: draftInstallments.length === 0,
+                  notes: "",
+                }]);
+              }}
               className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
             >+ Añadir cuota</button>
             {draftInstallments.length > 0 && (() => {
@@ -3276,40 +3293,42 @@ function QuoteDetailModal({
                   <p className="text-xs text-foreground/45 text-center py-2">Sin cuotas definidas. Añade la primera cuota abajo.</p>
                 )}
                 {draftInstallments.map((inst, idx) => (
-                  <div key={idx} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center">
-                    <span className="text-xs text-foreground/40">#{idx + 1}</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="Importe (€)"
-                      value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const cents = Math.round(parseFloat(val.replace(",", ".") || "0") * 100) || 0;
-                        const totalCents = Math.round(Number(quote.total ?? 0) * 100);
-                        const updated = [...draftInstallments];
-                        updated[idx] = { ...updated[idx], amountCents: cents, _amountStr: val };
-                        if (idx + 1 < updated.length && !updated[idx + 1]._amountStr && updated[idx + 1].amountCents === 0) {
-                          const sumOthers = updated.reduce((s, inst, i) => i !== idx + 1 ? s + inst.amountCents : s, 0);
-                          const remaining = totalCents - sumOthers;
-                          if (remaining > 0) updated[idx + 1] = { ...updated[idx + 1], amountCents: remaining, _amountStr: (remaining / 100).toFixed(2) };
-                        }
-                        setDraftInstallments(updated);
-                      }}
-                      className="bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
-                    />
-                    <input
-                      type="date"
-                      value={inst.dueDate}
-                      onChange={(e) => {
-                        const updated = [...draftInstallments];
-                        updated[idx] = { ...updated[idx], dueDate: e.target.value };
-                        setDraftInstallments(updated);
-                      }}
-                      className="w-full bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
-                    />
+                  <div key={idx} className="space-y-1.5 py-1.5 border-b border-foreground/[0.07] last:border-0">
                     <div className="flex items-center gap-2">
-                      <label className="flex items-center gap-1 text-xs text-violet-300 cursor-pointer whitespace-nowrap">
+                      <span className="text-xs text-foreground/40 w-5 shrink-0">#{idx + 1}</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Importe (€)"
+                        value={inst._amountStr ?? (inst.amountCents > 0 ? (inst.amountCents / 100).toFixed(2) : "")}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const cents = Math.round(parseFloat(val.replace(",", ".") || "0") * 100) || 0;
+                          const updated = [...draftInstallments];
+                          updated[idx] = { ...updated[idx], amountCents: cents, _amountStr: val };
+                          if (idx + 1 < updated.length) {
+                            const totalCents = Math.round(Number(quote.total ?? 0) * 100);
+                            const sumOthers = updated.reduce((s, it, j) => j !== idx + 1 ? s + it.amountCents : s, 0);
+                            const remaining = Math.max(0, totalCents - sumOthers);
+                            updated[idx + 1] = { ...updated[idx + 1], amountCents: remaining, _amountStr: remaining > 0 ? (remaining / 100).toFixed(2) : "" };
+                          }
+                          setDraftInstallments(updated);
+                        }}
+                        className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white placeholder:text-foreground/40 focus:outline-none focus:border-violet-500/50"
+                      />
+                      <input
+                        type="date"
+                        value={inst.dueDate}
+                        onChange={(e) => {
+                          const updated = [...draftInstallments];
+                          updated[idx] = { ...updated[idx], dueDate: e.target.value };
+                          setDraftInstallments(updated);
+                        }}
+                        className="flex-1 min-w-0 bg-foreground/[0.07] border border-foreground/[0.12] rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-violet-500/50"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pl-7">
+                      <label className="flex items-center gap-1.5 text-xs text-violet-300 cursor-pointer select-none">
                         <input
                           type="checkbox"
                           checked={inst.isRequiredForConfirmation}
@@ -3318,26 +3337,32 @@ function QuoteDetailModal({
                             updated[idx] = { ...updated[idx], isRequiredForConfirmation: e.target.checked };
                             setDraftInstallments(updated);
                           }}
-                          className="accent-violet-500"
+                          className="accent-violet-500 shrink-0"
                         />
                         Cuota inaplazable
                       </label>
                       <button
                         onClick={() => setDraftInstallments(draftInstallments.filter((_, i) => i !== idx))}
-                        className="text-red-400 hover:text-red-300 text-xs shrink-0"
-                      >✕</button>
+                        className="text-red-400 hover:text-red-300 text-xs"
+                      >✕ Eliminar</button>
                     </div>
                   </div>
                 ))}
 
                 <button
-                  onClick={() => setDraftInstallments([...draftInstallments, {
-                    installmentNumber: draftInstallments.length + 1,
-                    amountCents: 0,
-                    dueDate: "",
-                    isRequiredForConfirmation: draftInstallments.length === 0,
-                    notes: "",
-                  }])}
+                  onClick={() => {
+                    const totalCents = Math.round(Number(quote.total ?? 0) * 100);
+                    const sumExisting = draftInstallments.reduce((s, i) => s + i.amountCents, 0);
+                    const remaining = Math.max(0, totalCents - sumExisting);
+                    setDraftInstallments([...draftInstallments, {
+                      installmentNumber: draftInstallments.length + 1,
+                      amountCents: remaining,
+                      _amountStr: remaining > 0 ? (remaining / 100).toFixed(2) : undefined,
+                      dueDate: "",
+                      isRequiredForConfirmation: draftInstallments.length === 0,
+                      notes: "",
+                    }]);
+                  }}
                   className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
                 >
                   + Añadir cuota
