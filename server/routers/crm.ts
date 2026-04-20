@@ -437,26 +437,117 @@ async function _checkAndConfirmReservation(quoteId: number, userId: number, user
   if (required.length === 0) return;
   const allPaid = required.every(i => i.status === "paid");
   if (!allPaid) return;
-  // Todas las cuotas obligatorias pagadas → confirmar la reserva principal del quote
+
   const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId)).limit(1);
   if (!quote) return;
+  // Idempotencia: si el quote ya está confirmado, no duplicar
+  if (quote.paidAt) return;
+
+  const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
+  const now = new Date();
+  const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+  const subtotal = Number(quote.subtotal);
+  const taxAmount = parseFloat((subtotal * 0.21).toFixed(2));
+  const total = parseFloat((subtotal + taxAmount).toFixed(2));
+
+  // Generar factura
+  const invoiceNumber = await generateInvoiceNumber("crm:installments", String(userId));
+  let pdfUrl: string | null = null;
+  let pdfKey: string | null = null;
+  try {
+    const pdf = await generateInvoicePdf({
+      invoiceNumber,
+      clientName: lead?.name ?? quote.title,
+      clientEmail: lead?.email ?? "",
+      clientPhone: lead?.phone ?? null,
+      clientNif: null,
+      clientAddress: null,
+      itemsJson: items,
+      subtotal: String(subtotal),
+      taxRate: "21",
+      taxAmount: String(taxAmount),
+      total: String(total),
+      issuedAt: now,
+    });
+    pdfUrl = pdf.url;
+    pdfKey = pdf.key;
+  } catch (e) {
+    console.error("[_checkAndConfirmReservation] Error generando PDF:", e);
+  }
+
+  const [invResult] = await db.insert(invoices).values({
+    invoiceNumber,
+    quoteId: quote.id,
+    clientName: lead?.name ?? quote.title,
+    clientEmail: lead?.email ?? null,
+    clientPhone: lead?.phone ?? null,
+    itemsJson: items,
+    subtotal: String(subtotal),
+    taxRate: "21",
+    taxAmount: String(taxAmount),
+    total: String(total),
+    status: "cobrada",
+    paymentMethod: "plan_fraccionado",
+    issuedAt: now,
+    pdfUrl,
+    pdfKey,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const invoiceId = (invResult as { insertId: number }).insertId;
+
+  // Marcar/crear reserva
   const [reservation] = await db.select().from(reservations)
     .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
     .orderBy(desc(reservations.createdAt))
     .limit(1);
-  if (!reservation || reservation.status === "paid") return;
-  await db.update(reservations)
-    .set({ status: "paid", paidAt: Date.now(), updatedAt: Date.now() })
-    .where(eq(reservations.id, reservation.id));
+
+  if (reservation && reservation.status !== "paid") {
+    await db.update(reservations)
+      .set({ status: "paid", amountPaid: Math.round(total * 100), invoiceId, invoiceNumber, paidAt: Date.now(), updatedAt: Date.now() } as any)
+      .where(eq(reservations.id, reservation.id));
+  }
+
+  // Actualizar quote a aceptado
+  await db.update(quotes).set({
+    status: "aceptado",
+    paidAt: now,
+    invoiceNumber,
+    invoicePdfUrl: pdfUrl,
+    paymentLinkToken: null,
+    updatedAt: now,
+  }).where(eq(quotes.id, quoteId));
+
+  if (lead) {
+    await db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now }).where(eq(leads.id, lead.id));
+  }
+
   await db.insert(crmActivityLog).values({
-    entityType: "reservation",
-    entityId: reservation.id,
+    entityType: "quote",
+    entityId: quoteId,
     action: "confirmed_by_installments",
     actorId: userId,
     actorName: userName,
-    details: { quoteId, message: "Todas las cuotas obligatorias pagadas" },
-    createdAt: new Date(),
+    details: { invoiceNumber, message: "Todas las cuotas obligatorias pagadas" },
+    createdAt: now,
   });
+
+  // Email de confirmación al cliente
+  if (lead?.email) {
+    try {
+      await sendConfirmationEmail({
+        clientName: lead.name,
+        clientEmail: lead.email,
+        reservationRef: invoiceNumber,
+        quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
+        items,
+        total: String(total),
+        invoiceUrl: pdfUrl,
+      });
+    } catch (emailErr) {
+      console.error("[_checkAndConfirmReservation] Error enviando email:", emailErr);
+    }
+  }
 }
 
 export const crmRouter = router({
@@ -2855,6 +2946,9 @@ export const crmRouter = router({
         installmentId: z.number(),
         paymentMethod: z.enum(["efectivo", "transferencia", "tarjeta"]),
         paymentNote: z.string().optional(),
+        tpvOperationNumber: z.string().optional(),
+        transferProofUrl: z.string().optional(),
+        transferProofKey: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         const [inst] = await db.select().from(paymentInstallments)
@@ -2869,7 +2963,11 @@ export const crmRouter = router({
           paymentMethod: input.paymentMethod,
           paidAt: now,
           paidBy: `admin:${ctx.user.id}`,
-          notes: input.paymentNote ?? inst.notes,
+          notes: [
+            input.paymentNote,
+            input.tpvOperationNumber ? `Nº operación TPV: ${input.tpvOperationNumber}` : null,
+            input.transferProofUrl ? `Justificante: ${input.transferProofUrl}` : null,
+          ].filter(Boolean).join(" · ") || inst.notes,
           updatedAt: now,
         }).where(eq(paymentInstallments.id, input.installmentId));
 
@@ -2878,12 +2976,13 @@ export const crmRouter = router({
           installmentNumber: inst.installmentNumber,
           amountCents: inst.amountCents,
           paymentMethod: input.paymentMethod,
+          tpvOperationNumber: input.tpvOperationNumber ?? null,
+          transferProofUrl: input.transferProofUrl ?? null,
         });
 
-        // Si esta cuota era obligatoria para confirmar, verificar si ya se puede confirmar la reserva
-        if (inst.isRequiredForConfirmation) {
-          await _checkAndConfirmReservation(inst.quoteId, ctx.user.id, ctx.user.name);
-        }
+        // Si esta cuota era obligatoria para confirmar, verificar si ya se puede confirmar la reserva principal
+        // _checkAndConfirmReservation genera la factura y envía email cuando todas las cuotas requeridas están pagadas
+        await _checkAndConfirmReservation(inst.quoteId, ctx.user.id, ctx.user.name);
 
         return { success: true };
       }),

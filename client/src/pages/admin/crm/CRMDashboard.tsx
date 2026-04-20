@@ -2759,6 +2759,14 @@ function QuoteDetailModal({
   const [showPendingPaymentModal, setShowPendingPaymentModal] = useState(false);
   const [pendingDueDate, setPendingDueDate] = useState("");
   const [pendingReason, setPendingReason] = useState("");
+  // Per-installment manual confirmation mini-modal
+  const [confirmingInstallment, setConfirmingInstallment] = useState<{ id: number; installmentNumber: number; amountCents: number } | null>(null);
+  const [instPayMethod, setInstPayMethod] = useState<"tarjeta" | "transferencia" | "efectivo">("transferencia");
+  const [instTpvOp, setInstTpvOp] = useState("");
+  const [instPayNote, setInstPayNote] = useState("");
+  const [instProofUrl, setInstProofUrl] = useState<string | null>(null);
+  const [instProofKey, setInstProofKey] = useState<string | null>(null);
+  const [isUploadingInstProof, setIsUploadingInstProof] = useState(false);
 
   const sendQuote = trpc.crm.quotes.send.useMutation({
     onSuccess: () => {
@@ -2870,8 +2878,15 @@ function QuoteDetailModal({
   });
   const confirmInstallmentMut = trpc.crm.paymentPlans.confirmInstallment.useMutation({
     onSuccess: () => {
-      toast.success("Cuota marcada como pagada");
+      toast.success("Cuota confirmada");
+      setConfirmingInstallment(null);
+      setInstPayMethod("transferencia");
+      setInstTpvOp("");
+      setInstPayNote("");
+      setInstProofUrl(null);
+      setInstProofKey(null);
       planQuery.refetch();
+      utils.crm.quotes.get.invalidate({ id: quoteId });
     },
     onError: (e) => toast.error(e.message),
   });
@@ -3207,11 +3222,10 @@ function QuoteDetailModal({
                         <span className="text-xs bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded">Vencida</span>
                       ) : (
                         <button
-                          onClick={() => confirmInstallmentMut.mutate({ installmentId: inst.id, paymentMethod: "admin_manual" })}
-                          disabled={confirmInstallmentMut.isPending}
+                          onClick={() => setConfirmingInstallment({ id: inst.id, installmentNumber: inst.installmentNumber, amountCents: inst.amountCents })}
                           className="text-xs bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/25 px-2 py-0.5 rounded transition-colors"
                         >
-                          {confirmInstallmentMut.isPending ? "..." : "Confirmar pago"}
+                          Confirmar pago
                         </button>
                       )}
                     </div>
@@ -3337,8 +3351,8 @@ function QuoteDetailModal({
 
       </div>
       <DialogFooter className="flex gap-2 flex-wrap pt-3 pb-4 px-6 border-t border-foreground/[0.12] shrink-0">
-        {/* Confirmar Pago — botón unificado */}
-        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && (
+        {/* Confirmar Pago — solo para presupuestos SIN plan fraccionado */}
+        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && !quote.paymentPlanId && (
           <Button
             size="sm"
             className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
@@ -3347,6 +3361,12 @@ function QuoteDetailModal({
             <CheckCircle className="w-3.5 h-3.5 mr-1" />
             Confirmar Pago
           </Button>
+        )}
+        {/* Con plan fraccionado: recordar al admin que confirme cuota a cuota */}
+        {(quote.status === "enviado" || quote.status === "borrador" || quote.status === "convertido_carrito" || quote.status === "visualizado" || quote.status === "pago_fallido") && !!quote.paymentPlanId && (
+          <span className="text-xs text-violet-300/70 italic self-center">
+            Plan fraccionado: confirma cada cuota desde el panel ↑
+          </span>
         )}
         {/* Enviar / Reenviar */}
         {quote.status === "borrador" && (
@@ -3499,6 +3519,102 @@ function QuoteDetailModal({
               ) : (
                 <><CheckCircle className="w-4 h-4 mr-2" /> Validar pago y generar factura</>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── MODAL: Confirmar pago de cuota individual ─── */}
+      <Dialog open={!!confirmingInstallment} onOpenChange={(o) => { if (!o) { setConfirmingInstallment(null); setInstPayMethod("transferencia"); setInstTpvOp(""); setInstPayNote(""); setInstProofUrl(null); setInstProofKey(null); } }}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-400" />
+              Confirmar cuota #{confirmingInstallment?.installmentNumber}
+            </DialogTitle>
+            {confirmingInstallment && (
+              <p className="text-foreground/60 text-sm pt-1">
+                Importe: <strong className="text-white">{(confirmingInstallment.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</strong>
+              </p>
+            )}
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-3 gap-2">
+              {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setInstPayMethod(m)}
+                  className={`py-2 px-3 rounded-lg border text-xs font-medium transition-colors capitalize ${instPayMethod === m ? "bg-violet-600 border-violet-500 text-white" : "bg-foreground/[0.05] border-foreground/[0.12] text-foreground/60 hover:border-foreground/30"}`}
+                >
+                  {m === "tarjeta" ? "Tarjeta" : m === "transferencia" ? "Transferencia" : "Efectivo"}
+                </button>
+              ))}
+            </div>
+            {instPayMethod === "tarjeta" && (
+              <div className="space-y-1.5">
+                <Label className="text-foreground/70 text-xs">Nº operación TPV *</Label>
+                <Input value={instTpvOp} onChange={(e) => setInstTpvOp(e.target.value)} placeholder="Ej: 12345" className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm" />
+              </div>
+            )}
+            {instPayMethod === "transferencia" && (
+              <div className="space-y-1.5">
+                <Label className="text-foreground/70 text-xs">Justificante de transferencia</Label>
+                {!instProofUrl ? (
+                  <label className={`flex flex-col items-center justify-center gap-1 p-3 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${isUploadingInstProof ? "border-violet-500/40 bg-violet-500/5" : "border-foreground/[0.15] hover:border-foreground/30"}`}>
+                    <input type="file" accept="image/jpeg,image/png,application/pdf" className="hidden" disabled={isUploadingInstProof} onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setIsUploadingInstProof(true);
+                      try {
+                        const form = new FormData();
+                        form.append("file", file);
+                        const res = await fetch("/api/upload", { method: "POST", body: form });
+                        const json = await res.json();
+                        if (json.url) { setInstProofUrl(json.url); setInstProofKey(json.key ?? null); }
+                      } catch { toast.error("Error al subir el justificante"); }
+                      setIsUploadingInstProof(false);
+                    }} />
+                    {isUploadingInstProof ? <><RefreshCw className="w-4 h-4 text-foreground/50 animate-spin" /><span className="text-xs text-foreground/50">Subiendo...</span></> : <><Upload className="w-4 h-4 text-foreground/50" /><span className="text-xs text-foreground/60">Subir justificante (PDF, JPG, PNG)</span></>}
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="text-xs text-emerald-300 flex-1 truncate">Justificante subido</span>
+                    <a href={instProofUrl} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline">Ver</a>
+                    <button onClick={() => { setInstProofUrl(null); setInstProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
+                  </div>
+                )}
+              </div>
+            )}
+            {instPayMethod === "efectivo" && (
+              <div className="space-y-1.5">
+                <Label className="text-foreground/70 text-xs">Notas *</Label>
+                <Textarea value={instPayNote} onChange={(e) => setInstPayNote(e.target.value)} placeholder="Ej: Cobrado en recepción el 20/04/2026" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm resize-none" rows={2} />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" className="text-foreground/65" onClick={() => setConfirmingInstallment(null)}>Cancelar</Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={
+                confirmInstallmentMut.isPending ||
+                (instPayMethod === "tarjeta" && !instTpvOp.trim()) ||
+                (instPayMethod === "efectivo" && !instPayNote.trim())
+              }
+              onClick={() => {
+                if (!confirmingInstallment) return;
+                confirmInstallmentMut.mutate({
+                  installmentId: confirmingInstallment.id,
+                  paymentMethod: instPayMethod,
+                  tpvOperationNumber: instPayMethod === "tarjeta" ? instTpvOp : undefined,
+                  transferProofUrl: instPayMethod === "transferencia" ? instProofUrl ?? undefined : undefined,
+                  transferProofKey: instPayMethod === "transferencia" ? instProofKey ?? undefined : undefined,
+                  paymentNote: instPayMethod === "efectivo" ? instPayNote : undefined,
+                });
+              }}
+            >
+              {confirmInstallmentMut.isPending ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Confirmando...</> : <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar cuota</>}
             </Button>
           </DialogFooter>
         </DialogContent>
