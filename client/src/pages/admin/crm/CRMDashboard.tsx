@@ -5513,12 +5513,18 @@ export default function CRMDashboard() {
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {auditData.sinFactura.map(r => (
-                    <span key={r.id} className="inline-flex items-center gap-1 text-[11px] bg-amber-900/40 text-amber-200 rounded px-2 py-0.5">
+                    <button
+                      key={r.id}
+                      onClick={() => setGenInvoiceResId(r.id)}
+                      className="inline-flex items-center gap-1.5 text-[11px] bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 rounded px-2 py-1 transition-colors cursor-pointer"
+                      title="Generar factura para esta reserva"
+                    >
                       <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
                       <span className="text-amber-300/60">·</span>
                       <span>{r.customerName}</span>
                       {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur)}</span>}
-                    </span>
+                      <FilePlus className="w-3 h-3 text-amber-400 ml-0.5" />
+                    </button>
                   ))}
                 </div>
               </div>
@@ -5526,15 +5532,21 @@ export default function CRMDashboard() {
             {auditData.sinReavCount > 0 && (
               <div>
                 <p className="text-xs text-amber-300/80 font-medium mb-1">
-                  {auditData.sinReavCount} reserva{auditData.sinReavCount !== 1 ? "s" : ""} REAV sin expediente:
+                  {auditData.sinReavCount} reserva{auditData.sinReavCount !== 1 ? "s" : ""} REAV sin expediente (revisar en Fiscal REAV):
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {auditData.sinReav.map(r => (
-                    <span key={r.id} className="inline-flex items-center gap-1 text-[11px] bg-amber-900/40 text-amber-200 rounded px-2 py-0.5">
+                    <button
+                      key={r.id}
+                      onClick={() => { handleTabChange("reservations"); setViewResId(r.id); }}
+                      className="inline-flex items-center gap-1.5 text-[11px] bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 rounded px-2 py-1 transition-colors cursor-pointer"
+                      title="Ver reserva"
+                    >
                       <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
                       <span className="text-amber-300/60">·</span>
                       <span>{r.customerName}</span>
-                    </span>
+                      <ExternalLink className="w-3 h-3 text-amber-400 ml-0.5" />
+                    </button>
                   ))}
                 </div>
               </div>
