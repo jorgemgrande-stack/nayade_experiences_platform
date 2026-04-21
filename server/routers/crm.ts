@@ -5020,26 +5020,45 @@ export const crmRouter = router({
             ? eq(reservations.customerEmail, client.email)
             : null;
 
-      const [clientReservations, clientInvoices, clientCancellations] = await Promise.all([
-        reservationCondition
-          ? db.select().from(reservations).where(reservationCondition).orderBy(desc(reservations.createdAt))
-          : Promise.resolve([]),
-        quoteIds.length
-          ? db.select().from(invoices).where(inArray(invoices.quoteId, quoteIds)).orderBy(desc(invoices.createdAt))
+      // Reservas primero — necesitamos sus IDs para ampliar la búsqueda de facturas
+      const clientReservations = reservationCondition
+        ? await db.select().from(reservations).where(reservationCondition).orderBy(desc(reservations.createdAt))
+        : [];
+
+      const reservationIds = clientReservations.map((r) => r.id);
+
+      // Facturas: por quoteId (flujo CRM) OR por reservationId (flujo Redsys/TPV directo)
+      // Las reservas online no pasan por presupuesto → quoteId = null en la factura
+      const invoiceConditions: ReturnType<typeof inArray>[] = [];
+      if (quoteIds.length) invoiceConditions.push(inArray(invoices.quoteId, quoteIds));
+      if (reservationIds.length) invoiceConditions.push(inArray(invoices.reservationId, reservationIds));
+
+      const [clientInvoices, clientCancellations] = await Promise.all([
+        invoiceConditions.length
+          ? db.select().from(invoices)
+              .where(invoiceConditions.length === 1 ? invoiceConditions[0] : or(...invoiceConditions))
+              .orderBy(desc(invoices.createdAt))
           : Promise.resolve([]),
         quoteIds.length
           ? db.select().from(cancellationRequests).where(inArray(cancellationRequests.linkedQuoteId, quoteIds)).orderBy(desc(cancellationRequests.createdAt))
           : Promise.resolve([]),
       ]);
 
+      // Deduplicar facturas por si aparecen por ambas condiciones (quoteId y reservationId)
+      const seenInvoiceIds = new Set<number>();
+      const dedupedInvoices = clientInvoices.filter((inv) => {
+        if (seenInvoiceIds.has(inv.id)) return false;
+        seenInvoiceIds.add(inv.id);
+        return true;
+      });
+
       // Usos de descuento vinculados a las reservas
-      const reservationIds = clientReservations.map((r) => r.id);
       const clientDiscountUses = reservationIds.length
         ? await db.select().from(discountCodeUses).where(inArray(discountCodeUses.reservationId, reservationIds)).orderBy(desc(discountCodeUses.appliedAt))
         : [];
 
       // Activity log para todas las entidades relacionadas
-      const invoiceIds = clientInvoices.map((i) => i.id);
+      const invoiceIds = dedupedInvoices.map((i) => i.id);
       const leadIds = lead ? [lead.id] : [];
 
       const activityConditions = [];
@@ -5056,7 +5075,7 @@ export const crmRouter = router({
         : [];
 
       // KPIs — totalSpentCents desde facturas activas (fuente de verdad del cobro real)
-      const totalSpentCents = clientInvoices
+      const totalSpentCents = dedupedInvoices
         .filter((inv) => inv.status !== "anulada" && inv.status !== "abonada")
         .reduce((acc, inv) => acc + Math.round(parseFloat(inv.total ?? "0") * 100), 0);
 
@@ -5065,14 +5084,14 @@ export const crmRouter = router({
         lead,
         quotes: clientQuotes,
         reservations: clientReservations,
-        invoices: clientInvoices,
+        invoices: dedupedInvoices,
         cancellations: clientCancellations,
         discountUses: clientDiscountUses,
         activityLog,
         kpis: {
           totalQuotes: clientQuotes.length,
           totalReservations: clientReservations.length,
-          totalInvoices: clientInvoices.length,
+          totalInvoices: dedupedInvoices.length,
           totalCancellations: clientCancellations.length,
           totalSpentCents,
           paidReservations: clientReservations.filter((r) => r.status === "paid").length,
