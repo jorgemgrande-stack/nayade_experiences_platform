@@ -4627,6 +4627,9 @@ export default function CRMDashboard() {
   const { data: voucherCounters } = trpc.cancellations.getVoucherCounters.useQuery(undefined, {
     refetchInterval: 60000,
   });
+  const { data: auditData } = trpc.crm.reservations.auditOrphans.useQuery(undefined, {
+    refetchInterval: 120000,
+  });
   const deleteAnulMutation = trpc.cancellations.deleteRequest.useMutation({
     onSuccess: () => {
       toast.success("Solicitud eliminada");
@@ -5495,6 +5498,49 @@ export default function CRMDashboard() {
           </div>
         )}
         </div>{/* /KPI colapsable */}
+
+        {/* ── Banner auditoría reservas sin factura / sin REAV ─────────────── */}
+        {auditData && (auditData.sinFacturaCount > 0 || auditData.sinReavCount > 0) && (
+          <div className="mx-6 mb-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-amber-400 font-semibold text-sm">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              Auditoría — se detectaron incidencias en reservas pagadas
+            </div>
+            {auditData.sinFacturaCount > 0 && (
+              <div>
+                <p className="text-xs text-amber-300/80 font-medium mb-1">
+                  {auditData.sinFacturaCount} reserva{auditData.sinFacturaCount !== 1 ? "s" : ""} pagada{auditData.sinFacturaCount !== 1 ? "s" : ""} sin factura asociada:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {auditData.sinFactura.map(r => (
+                    <span key={r.id} className="inline-flex items-center gap-1 text-[11px] bg-amber-900/40 text-amber-200 rounded px-2 py-0.5">
+                      <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
+                      <span className="text-amber-300/60">·</span>
+                      <span>{r.customerName}</span>
+                      {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur)}</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {auditData.sinReavCount > 0 && (
+              <div>
+                <p className="text-xs text-amber-300/80 font-medium mb-1">
+                  {auditData.sinReavCount} reserva{auditData.sinReavCount !== 1 ? "s" : ""} REAV sin expediente:
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {auditData.sinReav.map(r => (
+                    <span key={r.id} className="inline-flex items-center gap-1 text-[11px] bg-amber-900/40 text-amber-200 rounded px-2 py-0.5">
+                      <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
+                      <span className="text-amber-300/60">·</span>
+                      <span>{r.customerName}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="px-6">

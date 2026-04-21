@@ -3583,6 +3583,109 @@ export const crmRouter = router({
       };
     }),
 
+    // ─── Auditoría: reservas pagadas sin factura o sin expediente REAV ──────
+    auditOrphans: staff.query(async () => {
+      // 1. Reservas pagadas sin factura asociada
+      const paidRes = await db
+        .select({
+          id: reservations.id,
+          reservationNumber: reservations.reservationNumber,
+          customerName: reservations.customerName,
+          customerEmail: reservations.customerEmail,
+          productName: reservations.productName,
+          amountTotal: reservations.amountTotal,
+          createdAt: reservations.createdAt,
+          quoteId: reservations.quoteId,
+          invoiceId: reservations.invoiceId,
+          productId: reservations.productId,
+        })
+        .from(reservations)
+        .where(eq(reservations.status, "paid"));
+
+      const paidIds = paidRes.map(r => r.id);
+      const paidQuoteIds = paidRes.map(r => r.quoteId).filter((q): q is number => q != null);
+
+      // Facturas vinculadas por reservationId o quoteId
+      const linkedInvoices = paidIds.length > 0
+        ? await db.select({ reservationId: invoices.reservationId, quoteId: invoices.quoteId })
+            .from(invoices)
+            .where(
+              or(
+                inArray(invoices.reservationId, paidIds),
+                paidQuoteIds.length > 0 ? inArray(invoices.quoteId, paidQuoteIds) : sql`false`
+              )
+            )
+        : [];
+
+      const invoicedResIds = new Set<number>();
+      for (const inv of linkedInvoices) {
+        if (inv.reservationId) invoicedResIds.add(inv.reservationId);
+      }
+      // También cubrir la relación por quoteId: si la factura tiene quoteId, marcar todas las reservas de ese quote
+      const invoicedQuoteIds = new Set(linkedInvoices.map(i => i.quoteId).filter((q): q is number => q != null));
+      for (const r of paidRes) {
+        if (r.quoteId && invoicedQuoteIds.has(r.quoteId)) invoicedResIds.add(r.id);
+        if (r.invoiceId) invoicedResIds.add(r.id); // campo directo en la reserva
+      }
+
+      const sinFactura = paidRes.filter(r => !invoicedResIds.has(r.id)).map(r => ({
+        id: r.id,
+        reservationNumber: r.reservationNumber,
+        customerName: r.customerName,
+        customerEmail: r.customerEmail,
+        productName: r.productName,
+        amountEur: (r.amountTotal ?? 0) / 100,
+        createdAt: r.createdAt,
+      }));
+
+      // 2. Reservas pagadas vinculadas a producto REAV sin expediente REAV
+      const reavProductIds = paidRes
+        .map(r => r.productId)
+        .filter((pid): pid is number => pid != null && pid > 0);
+
+      let reavProductSet = new Set<number>();
+      if (reavProductIds.length > 0) {
+        const reavProds = await db
+          .select({ id: experiences.id })
+          .from(experiences)
+          .where(and(inArray(experiences.id, reavProductIds), eq(experiences.fiscalRegime, "reav")));
+        reavProductSet = new Set(reavProds.map(p => p.id));
+      }
+
+      const reavReservationIds = paidRes
+        .filter(r => r.productId != null && reavProductSet.has(r.productId!))
+        .map(r => r.id);
+
+      let expedientedIds = new Set<number>();
+      if (reavReservationIds.length > 0) {
+        const expedients = await db
+          .select({ reservationId: reavExpedients.reservationId })
+          .from(reavExpedients)
+          .where(inArray(reavExpedients.reservationId, reavReservationIds));
+        expedientedIds = new Set(expedients.map(e => e.reservationId).filter((id): id is number => id != null));
+      }
+
+      const sinReav = paidRes
+        .filter(r => r.productId != null && reavProductSet.has(r.productId!) && !expedientedIds.has(r.id))
+        .map(r => ({
+          id: r.id,
+          reservationNumber: r.reservationNumber,
+          customerName: r.customerName,
+          customerEmail: r.customerEmail,
+          productName: r.productName,
+          amountEur: (r.amountTotal ?? 0) / 100,
+          createdAt: r.createdAt,
+        }));
+
+      return {
+        sinFactura,
+        sinReav,
+        totalPagadas: paidRes.length,
+        sinFacturaCount: sinFactura.length,
+        sinReavCount: sinReav.length,
+      };
+    }),
+
     get: staff
       .input(z.object({ id: z.number() }))
       .query(async ({ input }) => {
@@ -5049,35 +5152,47 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         const now = Date.now();
 
-        // Si no se pasa reservationId, crear la reserva automáticamente como CONFIRMADA
+        // Si no se pasa reservationId, buscar una existente para este quote antes de crear una nueva
         let resolvedReservationId = input.reservationId;
         if (!resolvedReservationId) {
-          const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
-          const reservationRef = `PP-${Date.now().toString(36).toUpperCase()}`;
-          const reservationNumberPP = await generateReservationNum("crm:pagoPendiente", String(ctx.user.id));
-          const [resResult] = await db.insert(reservations).values({
-            productId: 0,
-            productName: input.productName,
-            bookingDate: new Date().toISOString().split("T")[0],
-            people: 1,
-            amountTotal: input.amountCents,
-            amountPaid: 0,
-            status: "pending_payment",
-            statusReservation: "CONFIRMADA",
-            statusPayment: "PENDIENTE",
-            customerName: input.clientName,
-            customerEmail: input.clientEmail,
-            customerPhone: input.clientPhone,
-            merchantOrder: reservationRef.substring(0, 12),
-            reservationNumber: reservationNumberPP,
-            channel: "ONLINE_ASISTIDO",
-            quoteId: input.quoteId,
-            quoteSource: "presupuesto",
-            notes: `Pago pendiente desde presupuesto ${quote?.quoteNumber ?? input.quoteId}`,
-            createdAt: now,
-            updatedAt: now,
-          });
-          resolvedReservationId = (resResult as { insertId: number }).insertId;
+          // Reutilizar reserva existente no cancelada del mismo presupuesto
+          const [existingRes] = await db.select({ id: reservations.id })
+            .from(reservations)
+            .where(and(eq(reservations.quoteId, input.quoteId), sql`${reservations.status} != 'cancelled'`))
+            .orderBy(desc(reservations.createdAt))
+            .limit(1);
+
+          if (existingRes) {
+            resolvedReservationId = existingRes.id;
+          } else {
+            // Solo crear placeholder si no hay ninguna reserva para este presupuesto
+            const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
+            const reservationRef = `PP-${Date.now().toString(36).toUpperCase()}`;
+            const reservationNumberPP = await generateReservationNum("crm:pagoPendiente", String(ctx.user.id));
+            const [resResult] = await db.insert(reservations).values({
+              productId: 0,
+              productName: input.productName,
+              bookingDate: new Date().toISOString().split("T")[0],
+              people: 1,
+              amountTotal: input.amountCents,
+              amountPaid: 0,
+              status: "pending_payment",
+              statusReservation: "CONFIRMADA",
+              statusPayment: "PENDIENTE",
+              customerName: input.clientName,
+              customerEmail: input.clientEmail,
+              customerPhone: input.clientPhone,
+              merchantOrder: reservationRef.substring(0, 12),
+              reservationNumber: reservationNumberPP,
+              channel: "ONLINE_ASISTIDO",
+              quoteId: input.quoteId,
+              quoteSource: "presupuesto",
+              notes: `Pago pendiente desde presupuesto ${quote?.quoteNumber ?? input.quoteId}`,
+              createdAt: now,
+              updatedAt: now,
+            });
+            resolvedReservationId = (resResult as { insertId: number }).insertId;
+          }
         }
 
         const [result] = await db.insert(pendingPayments).values({
@@ -5225,6 +5340,64 @@ export const crmRouter = router({
               const invoiceId = (invRes as { insertId: number }).insertId;
               await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId));
               console.log(`[pendingPayments.confirm] Factura ${invoiceNumber} generada para reserva ${pp.reservationId}`);
+
+              // Crear expediente REAV si el producto tiene régimen REAV
+              try {
+                const productId = resForInv.productId;
+                if (productId && productId > 0) {
+                  const [prod] = await db.select({
+                    fiscalRegime: experiences.fiscalRegime,
+                    providerPercent: experiences.providerPercent,
+                    agencyMarginPercent: experiences.agencyMarginPercent,
+                  }).from(experiences).where(eq(experiences.id, productId)).limit(1);
+
+                  if (prod?.fiscalRegime === "reav") {
+                    const reavErrors = validarConfiguracionREAV(prod);
+                    const costePct = reavErrors.length === 0 ? parseFloat(String(prod.providerPercent)) : 0;
+                    const margenPct = reavErrors.length === 0 ? parseFloat(String(prod.agencyMarginPercent)) : 0;
+                    const calc = calcularREAVSimple(amountEur, costePct, margenPct);
+                    const reavResult = await createReavExpedient({
+                      invoiceId,
+                      reservationId: pp.reservationId!,
+                      quoteId: pp.quoteId ?? undefined,
+                      serviceDescription: resForInv.productName,
+                      serviceDate: resForInv.bookingDate,
+                      numberOfPax: resForInv.people,
+                      saleAmountTotal: String(amountEur.toFixed(2)),
+                      providerCostEstimated: String(calc.costeProveedor.toFixed(2)),
+                      agencyMarginEstimated: String(calc.margenAgencia.toFixed(2)),
+                      clientName: pp.clientName,
+                      clientEmail: pp.clientEmail ?? undefined,
+                      clientPhone: pp.clientPhone ?? undefined,
+                      channel: "crm",
+                      sourceRef: invoiceNumber,
+                      internalNotes: [
+                        `Expediente creado automáticamente al confirmar pago pendiente.`,
+                        `Cliente: ${pp.clientName}`,
+                        pp.clientEmail ? `Email: ${pp.clientEmail}` : null,
+                        `Factura: ${invoiceNumber}`,
+                        `Agente: ${ctx.user.name ?? ctx.user.email}`,
+                        reavErrors.length > 0 ? `⚠ Config REAV incompleta — revisar producto ${productId}` : null,
+                      ].filter(Boolean).join(" · "),
+                    });
+                    if (pdfUrl && reavResult?.id) {
+                      await attachReavDocument({
+                        expedientId: reavResult.id,
+                        side: "client",
+                        docType: "factura_emitida",
+                        title: `Factura ${invoiceNumber}`,
+                        fileUrl: pdfUrl,
+                        mimeType: "application/pdf",
+                        notes: `Generada al confirmar pago pendiente.`,
+                        uploadedBy: ctx.user.id,
+                      });
+                    }
+                    console.log(`[pendingPayments.confirm] Expediente REAV ${reavResult?.expedientNumber} creado para reserva ${pp.reservationId}`);
+                  }
+                }
+              } catch (reavErr) {
+                console.error("[pendingPayments.confirm] Error creando expediente REAV:", reavErr);
+              }
             }
           } catch (invErr) {
             console.error("[pendingPayments.confirm] Error generando factura:", invErr);
