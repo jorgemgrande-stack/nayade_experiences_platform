@@ -14,6 +14,7 @@ import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
 import settlementExportRouter from "../settlementExportRoutes";
+import invoicePreviewRouter from "../invoicePreviewRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { serveStatic, setupVite } from "./vite";
 
@@ -149,6 +150,8 @@ async function startServer() {
   app.use(redsysRouter);
   // Settlement Excel export endpoint
   app.use(settlementExportRouter);
+  // Invoice HTML on-demand preview (no storage required)
+  app.use(invoicePreviewRouter);
   // tRPC API
   app.use(
     "/api/trpc",
