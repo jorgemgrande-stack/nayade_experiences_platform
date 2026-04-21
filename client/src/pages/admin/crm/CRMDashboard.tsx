@@ -239,6 +239,11 @@ function AnulFinBadge({ status }: { status: string }) {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${s.cls}`}>{s.label}</span>;
 }
 
+function fmtAmount(n: number): string {
+  if (n === 0) return "";
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+}
+
 function CounterCard({
   label,
   value,
@@ -247,6 +252,7 @@ function CounterCard({
   onClick,
   color = "blue",
   subtitle,
+  amount,
 }: {
   label: string;
   value: number | string;
@@ -255,6 +261,7 @@ function CounterCard({
   onClick?: () => void;
   color?: keyof typeof COUNTER_STYLES;
   subtitle?: string;
+  amount?: number;
 }) {
   const s = COUNTER_STYLES[color] ?? COUNTER_STYLES.blue;
   const numericValue = typeof value === "number" ? value : null;
@@ -281,12 +288,19 @@ function CounterCard({
         </div>
       </div>
 
-      {/* Number */}
-      <div className="relative z-10">
-        <span className={`text-2xl font-black tabular-nums tracking-tight ${s.number}`}>
-          {numericValue !== null ? animated : displayValue}
-        </span>
-        {subtitle && <p className={`text-[10px] mt-0.5 ${s.label}`}>{subtitle}</p>}
+      {/* Number + Amount */}
+      <div className="relative z-10 flex items-end justify-between gap-1">
+        <div>
+          <span className={`text-2xl font-black tabular-nums tracking-tight ${s.number}`}>
+            {numericValue !== null ? animated : displayValue}
+          </span>
+          {subtitle && <p className={`text-[10px] mt-0.5 ${s.label}`}>{subtitle}</p>}
+        </div>
+        {amount != null && amount > 0 && (
+          <span className={`text-[11px] font-semibold tabular-nums pb-0.5 ${s.number} opacity-70`}>
+            {fmtAmount(amount)}
+          </span>
+        )}
       </div>
 
       {/* Active indicator bar */}
@@ -4977,6 +4991,7 @@ export default function CRMDashboard() {
                 icon={Users}
                 color="blue"
                 subtitle="Leads sin gestionar"
+                amount={leadCounters?.valorNueva}
                 active={tab === "leads" && filterStatus === "nueva"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("nueva"); }}
               />
@@ -4986,6 +5001,7 @@ export default function CRMDashboard() {
                 icon={Send}
                 color="amber"
                 subtitle="Presupuesto en cliente"
+                amount={leadCounters?.valorEnviada}
                 active={tab === "leads" && filterStatus === "enviada"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("enviada"); }}
               />
@@ -4995,6 +5011,7 @@ export default function CRMDashboard() {
                 icon={Star}
                 color="green"
                 subtitle="Reservas confirmadas"
+                amount={leadCounters?.valorGanada}
                 active={tab === "leads" && filterStatus === "ganada"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("ganada"); }}
               />
@@ -5004,6 +5021,7 @@ export default function CRMDashboard() {
                 icon={XCircle}
                 color="red"
                 subtitle="Descartadas manualmente"
+                amount={leadCounters?.valorPerdida}
                 active={tab === "leads" && filterStatus === "perdida"}
                 onClick={() => { handleTabChange("leads"); setFilterStatus("perdida"); }}
               />
@@ -5024,6 +5042,7 @@ export default function CRMDashboard() {
                 icon={FileText}
                 color="slate"
                 subtitle="Pendientes de enviar"
+                amount={quoteCounters?.importeBorrador}
                 active={tab === "quotes" && filterStatus === "borrador"}
                 onClick={() => { handleTabChange("quotes"); setFilterStatus("borrador"); }}
               />
@@ -5033,6 +5052,7 @@ export default function CRMDashboard() {
                 icon={Clock}
                 color="amber"
                 subtitle="Esperando respuesta"
+                amount={quoteCounters?.importeEnviado}
                 active={tab === "quotes" && filterStatus === "enviado"}
                 onClick={() => { handleTabChange("quotes"); setFilterStatus("enviado"); }}
               />
@@ -5043,6 +5063,7 @@ export default function CRMDashboard() {
                   icon={XCircle}
                   color="red"
                   subtitle="Recuperables"
+                  amount={quoteCounters?.importePagoFallido}
                   active={tab === "quotes" && filterStatus === "pago_fallido"}
                   onClick={() => { handleTabChange("quotes"); setFilterStatus("pago_fallido"); }}
                 />
@@ -5083,6 +5104,7 @@ export default function CRMDashboard() {
                 icon={AlertTriangle}
                 color="red"
                 subtitle="Sin resolver"
+                amount={anulCounters?.importePendiente}
                 active={tab === "anulaciones"}
                 onClick={() => handleTabChange("anulaciones")}
               />
@@ -5092,6 +5114,7 @@ export default function CRMDashboard() {
                 icon={AlertCircle}
                 color="red"
                 subtitle="Requieren atención"
+                amount={anulCounters?.importeIncidencias}
                 active={tab === "anulaciones"}
                 onClick={() => handleTabChange("anulaciones")}
               />
@@ -5101,6 +5124,7 @@ export default function CRMDashboard() {
                 icon={Archive}
                 color="slate"
                 subtitle="Todas las solicitudes"
+                amount={anulCounters?.importeTotal}
                 active={tab === "anulaciones"}
                 onClick={() => handleTabChange("anulaciones")}
               />
@@ -5207,6 +5231,7 @@ export default function CRMDashboard() {
                 icon={Gift}
                 color="purple"
                 subtitle="Pendientes de canjear"
+                amount={voucherCounters?.importePendiente}
                 active={tab === "bonos"}
                 onClick={() => handleTabChange("bonos")}
               />

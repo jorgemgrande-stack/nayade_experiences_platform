@@ -884,15 +884,24 @@ export const cancellationsRouter = router({
   // ── Contadores para sidebar badge ──────────────────────────────────────────
   getCounters: adminProcedure
     .query(async () => {
-      const countsByStatus = await db
-        .select({ status: cancellationRequests.operationalStatus, count: sql<number>`COUNT(*)` })
+      const rows = await db
+        .select({
+          status: cancellationRequests.operationalStatus,
+          count: sql<number>`COUNT(*)`,
+          totalRefundable: sql<number>`COALESCE(SUM(CAST(refundable_amount AS DECIMAL(10,2))), 0)`,
+        })
         .from(cancellationRequests)
         .groupBy(cancellationRequests.operationalStatus);
-      const get = (s: string) => Number(countsByStatus.find(r => r.status === s)?.count ?? 0);
+      const get = (s: string) => Number(rows.find(r => r.status === s)?.count ?? 0);
+      const val = (s: string) => Number(rows.find(r => r.status === s)?.totalRefundable ?? 0);
+      const pendingStatuses = ["recibida", "en_revision", "pendiente_documentacion", "pendiente_decision"];
       return {
-        total: countsByStatus.reduce((s, r) => s + Number(r.count), 0),
+        total: rows.reduce((s, r) => s + Number(r.count), 0),
         pending: get("recibida") + get("en_revision") + get("pendiente_documentacion") + get("pendiente_decision"),
         incidencias: get("incidencia"),
+        importePendiente: pendingStatuses.reduce((s, st) => s + val(st), 0),
+        importeIncidencias: val("incidencia"),
+        importeTotal: rows.reduce((s, r) => s + Number(r.totalRefundable), 0),
       };
     }),
 

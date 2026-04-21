@@ -601,7 +601,8 @@ export const crmRouter = router({
       const startOfWeek = new Date(now);
       startOfWeek.setDate(now.getDate() - now.getDay());
 
-      const [total, nueva, enviada, ganada, perdida, hoy, semana, sinLeer] = await Promise.all([
+      const [total, nueva, enviada, ganada, perdida, hoy, semana, sinLeer,
+             valorNueva, valorEnviada, valorGanada, valorPerdida] = await Promise.all([
         db.select({ cnt: count() }).from(leads),
         db.select({ cnt: count() }).from(leads).where(eq(leads.opportunityStatus, "nueva")),
         db.select({ cnt: count() }).from(leads).where(eq(leads.opportunityStatus, "enviada")),
@@ -610,6 +611,13 @@ export const crmRouter = router({
         db.select({ cnt: count() }).from(leads).where(gte(leads.createdAt, startOfDay)),
         db.select({ cnt: count() }).from(leads).where(gte(leads.createdAt, startOfWeek)),
         db.select({ cnt: count() }).from(leads).where(isNull(leads.seenAt)),
+        // Valor económico por estado (suma de budget del lead)
+        db.select({ total: sum(leads.budget) }).from(leads).where(eq(leads.opportunityStatus, "nueva")),
+        db.select({ total: sum(leads.budget) }).from(leads).where(eq(leads.opportunityStatus, "enviada")),
+        db.select({ total: sum(quotes.total) }).from(quotes)
+          .innerJoin(leads, eq(quotes.leadId, leads.id))
+          .where(and(eq(leads.opportunityStatus, "ganada"), eq(quotes.status, "aceptado"))),
+        db.select({ total: sum(leads.budget) }).from(leads).where(eq(leads.opportunityStatus, "perdida")),
       ]);
 
       return {
@@ -621,6 +629,10 @@ export const crmRouter = router({
         hoy: hoy[0]?.cnt ?? 0,
         semana: semana[0]?.cnt ?? 0,
         sinLeer: sinLeer[0]?.cnt ?? 0,
+        valorNueva: Number(valorNueva[0]?.total ?? 0),
+        valorEnviada: Number(valorEnviada[0]?.total ?? 0),
+        valorGanada: Number(valorGanada[0]?.total ?? 0),
+        valorPerdida: Number(valorPerdida[0]?.total ?? 0),
       };
     }),
 
@@ -1178,7 +1190,8 @@ export const crmRouter = router({
       }),
 
     counters: staff.query(async () => {
-      const [borrador, enviado, pagoFallido, pendientePago, ganado, perdido, totalImporte] = await Promise.all([
+      const [borrador, enviado, pagoFallido, pendientePago, ganado, perdido, totalImporte,
+             importeBorrador, importeEnviado, importePagoFallido] = await Promise.all([
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "borrador")),
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "enviado")),
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "pago_fallido")),
@@ -1186,6 +1199,9 @@ export const crmRouter = router({
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "aceptado")),
         db.select({ cnt: count() }).from(quotes).where(eq(quotes.status, "perdido")),
         db.select({ total: sum(quotes.total) }).from(quotes).where(eq(quotes.status, "aceptado")),
+        db.select({ total: sum(quotes.total) }).from(quotes).where(eq(quotes.status, "borrador")),
+        db.select({ total: sum(quotes.total) }).from(quotes).where(eq(quotes.status, "enviado")),
+        db.select({ total: sum(quotes.total) }).from(quotes).where(eq(quotes.status, "pago_fallido")),
       ]);
 
       const totalEnviados = (enviado[0]?.cnt ?? 0);
@@ -1200,6 +1216,9 @@ export const crmRouter = router({
         ganado: totalGanados,
         perdido: perdido[0]?.cnt ?? 0,
         importeTotal: Number(totalImporte[0]?.total ?? 0).toFixed(2),
+        importeBorrador: Number(importeBorrador[0]?.total ?? 0),
+        importeEnviado: Number(importeEnviado[0]?.total ?? 0),
+        importePagoFallido: Number(importePagoFallido[0]?.total ?? 0),
         ratioConversion: ratio,
       };
     }),
