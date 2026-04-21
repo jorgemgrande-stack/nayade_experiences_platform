@@ -311,14 +311,51 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   // ── FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ──────
   // Idempotente: sólo si el quote aún no está aceptado
   if (quote.status !== "aceptado") {
-    const [reservation] = await db.select().from(reservations)
+    let [reservation] = await db.select().from(reservations)
       .where(and(eq(reservations.quoteId, quoteId), ne(reservations.status, "cancelled")))
       .orderBy(desc(reservations.createdAt))
       .limit(1);
 
     const paidAmountCents = installments.filter(i => i.status === "paid").reduce((s, i) => s + i.amountCents, 0);
+    const totalAmountCents = installments.reduce((s, i) => s + i.amountCents, 0);
 
-    if (reservation && reservation.status !== "paid") {
+    if (!reservation) {
+      // Pago manual de la primera cuota: no existe reserva previa — crearla ahora
+      const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? lead?.experienceId ?? 0;
+      const serviceDate = lead?.preferredDate
+        ? new Date(lead.preferredDate).toISOString().split("T")[0]
+        : now.toISOString().split("T")[0];
+      const reservationNumber = await generateReservationNum("crm:installments:manual", String(userId));
+      const merchantOrder = reservationNumber.replace(/[^A-Z0-9]/gi, "").substring(0, 12);
+      const [resResult] = await db.insert(reservations).values({
+        productId: mainProductId,
+        productName: quote.title ?? "Presupuesto",
+        bookingDate: serviceDate,
+        people: lead?.numberOfPersons ?? lead?.numberOfAdults ?? 1,
+        amountTotal: totalAmountCents,
+        amountPaid: paidAmountCents,
+        status: "paid",
+        statusReservation: "CONFIRMADA",
+        statusPayment: allInstallmentsPaid ? "PAGADO" : "PAGO_PARCIAL",
+        channel: "ONLINE_ASISTIDO",
+        customerName: lead?.name ?? quote.title ?? "",
+        customerEmail: lead?.email ?? "",
+        customerPhone: lead?.phone ?? "",
+        merchantOrder,
+        reservationNumber,
+        quoteId,
+        quoteSource: "presupuesto",
+        paymentMethod: "otro",
+        notes: `Plan fraccionado — confirmado desde presupuesto ${quote.quoteNumber}`,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        paidAt: Date.now(),
+      } as any);
+      const newReservationId = (resResult as { insertId: number }).insertId;
+      const [newRes] = await db.select().from(reservations).where(eq(reservations.id, newReservationId)).limit(1);
+      reservation = newRes;
+      console.log(`[checkAndConfirmInstallmentPlan] Reserva ${reservationNumber} creada para plan fraccionado manual — quoteId=${quoteId}`);
+    } else if (reservation.status !== "paid") {
       await db.update(reservations)
         .set({ status: "paid", amountPaid: paidAmountCents, updatedAt: Date.now() } as any)
         .where(eq(reservations.id, reservation.id));
