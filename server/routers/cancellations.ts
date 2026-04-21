@@ -20,7 +20,7 @@ import {
   invoices,
   type CancellationRequest,
 } from "../../drizzle/schema";
-import { eq, desc, and, like, or, sql } from "drizzle-orm";
+import { eq, desc, and, like, or, sql, lt } from "drizzle-orm";
 import { sendEmail } from "../mailer";
 import {
   buildCancellationReceivedHtml,
@@ -78,7 +78,7 @@ async function propagateCancellation(params: {
   requestId: number;
   req: CancellationRequest;
   refundAmount?: number;       // Solo para devoluciones monetarias
-  compensationType: "devolucion" | "bono";
+  compensationType: "devolucion" | "bono" | "ninguna";
   adminUserId: number;
   adminUserName: string;
 }): Promise<{ cancellationNumber: string; creditNoteNumber?: string }> {
@@ -203,7 +203,7 @@ async function propagateCancellation(params: {
     }
 
     // ── Transacción contable de devolución (solo si hay importe a devolver) ─
-    if (compensationType === "devolucion" && refundAmount && refundAmount > 0) {
+    if (compensationType === "devolucion" && refundAmount != null && refundAmount > 0) {
       const txNumber = await generateDocumentNumber(
         "factura",
         `cancellations:refundTransaction:${requestId}`,
@@ -325,6 +325,46 @@ export const cancellationsRouter = router({
       });
 
       const requestId = (result as { insertId: number }).insertId;
+
+      // ── Auto-vinculación: buscar reserva por localizador ─────────────────
+      // Si el cliente proporcionó un localizador que coincide con una reserva real,
+      // vinculamos automáticamente para que la propagación no quede huérfana.
+      if (input.locator?.trim()) {
+        try {
+          const loc = input.locator.trim();
+          const [matchedRes] = await db
+            .select({ id: reservations.id, reservationNumber: reservations.reservationNumber })
+            .from(reservations)
+            .where(
+              and(
+                or(
+                  eq(reservations.reservationNumber, loc),
+                  eq(reservations.merchantOrder, loc),
+                ),
+                sql`${reservations.status} != 'cancelled'`
+              )
+            )
+            .limit(1);
+
+          if (matchedRes) {
+            await db.update(cancellationRequests)
+              .set({ linkedReservationId: matchedRes.id })
+              .where(eq(cancellationRequests.id, requestId));
+
+            await db.update(reservations)
+              .set({ cancellationRequestId: requestId } as any)
+              .where(eq(reservations.id, matchedRes.id));
+
+            await addLog(requestId, "linked_reservation", {
+              source: "auto_locator",
+              reservationId: matchedRes.id,
+              reservationNumber: matchedRes.reservationNumber,
+            });
+          }
+        } catch (linkErr) {
+          console.error("[cancellations] Error en auto-vinculación por localizador:", linkErr);
+        }
+      }
 
       // Log de creación
       await addLog(requestId, "created", {
@@ -516,18 +556,20 @@ export const cancellationsRouter = router({
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
 
+      // Al rechazar cerramos directamente el expediente — no hay pasos pendientes.
       await db.update(cancellationRequests).set({
-        operationalStatus: "resuelta",
+        operationalStatus: "cerrada",
         resolutionStatus: "rechazada",
         financialStatus: "sin_compensacion",
         compensationType: "ninguna",
+        closedAt: new Date(),
       }).where(eq(cancellationRequests.id, input.id));
 
       await addLog(
         input.id, "rejected",
         { adminText: input.adminText, emailSent: input.sendEmail && !!req.email },
         ctx.user.id, ctx.user.name ?? "Admin",
-        req.operationalStatus, "resuelta"
+        req.operationalStatus, "cerrada"
       );
 
       if (input.sendEmail && req.email) {
@@ -567,8 +609,16 @@ export const cancellationsRouter = router({
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
 
+      // Guard idempotencia: no permitir doble aceptación
+      if (req.resolutionStatus !== "sin_resolver") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Esta solicitud ya tiene resolución: "${req.resolutionStatus}". No se puede aceptar de nuevo.`,
+        });
+      }
+
       const resolutionStatus = input.isPartial ? "aceptada_parcial" : "aceptada_total";
-      let financialStatus: "pendiente_devolucion" | "pendiente_bono" = "pendiente_devolucion";
+      let financialStatus: "pendiente_devolucion" | "pendiente_bono" | "compensada_bono" = "pendiente_devolucion";
       let voucherId: number | undefined;
 
       if (input.compensationType === "devolucion") {
@@ -800,11 +850,32 @@ export const cancellationsRouter = router({
   markRefundExecuted: adminProcedure
     .input(z.object({ id: z.number(), note: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
+      const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND" });
+      if (req.compensationType !== "devolucion") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `Este expediente tiene compensación "${req.compensationType}", no una devolución económica.`,
+        });
+      }
+      if (req.financialStatus === "devuelta_economicamente") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "La devolución ya fue marcada como ejecutada anteriormente.",
+        });
+      }
+      if (req.financialStatus !== "pendiente_devolucion") {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `El estado financiero actual es "${req.financialStatus}". Solo se puede marcar como ejecutada cuando está en "pendiente_devolucion".`,
+        });
+      }
+
       await db.update(cancellationRequests).set({
         financialStatus: "devuelta_economicamente",
       }).where(eq(cancellationRequests.id, input.id));
 
-      await addLog(input.id, "refund_executed", { note: input.note }, ctx.user.id, ctx.user.name ?? "Admin");
+      await addLog(input.id, "refund_executed", { note: input.note, oldStatus: req.financialStatus }, ctx.user.id, ctx.user.name ?? "Admin");
       return { success: true };
     }),
 
@@ -888,7 +959,7 @@ export const cancellationsRouter = router({
         .select({
           status: cancellationRequests.operationalStatus,
           count: sql<number>`COUNT(*)`,
-          totalRefundable: sql<number>`COALESCE(SUM(CAST(refundable_amount AS DECIMAL(10,2))), 0)`,
+          totalRefundable: sql<number>`COALESCE(SUM(CAST(resolved_amount AS DECIMAL(10,2))), 0)`,
         })
         .from(cancellationRequests)
         .groupBy(cancellationRequests.operationalStatus);
@@ -1179,7 +1250,7 @@ export const cancellationsRouter = router({
         requestId,
         req: reqRecord,
         refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
-        compensationType: input.compensationType === "ninguna" ? "devolucion" : input.compensationType,
+        compensationType: input.compensationType,
         adminUserId: ctx.user.id,
         adminUserName: ctx.user.name ?? "Admin",
       });

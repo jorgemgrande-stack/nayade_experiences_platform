@@ -16,6 +16,7 @@ import redsysRouter from "../redsysRoutes";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
+import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { serveStatic, setupVite } from "./vite";
 
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
@@ -690,4 +691,5 @@ runMigrations()
   .then(() => startQuoteReminderJob())
   .then(() => startAbandonedCheckoutCleanup())
   .then(() => startInstallmentOverdueJob())
+  .then(() => startCancellationStaleJob())
   .catch(console.error);
