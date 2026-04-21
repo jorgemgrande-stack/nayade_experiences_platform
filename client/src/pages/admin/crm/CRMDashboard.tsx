@@ -72,6 +72,8 @@ import {
   Archive,
   X,
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -199,6 +201,36 @@ const COUNTER_STYLES = {
     number: "text-orange-700 dark:text-orange-300",
     label: "text-orange-600/70 dark:text-orange-300/70",
     dot: "bg-orange-500 dark:bg-orange-400",
+  },
+  indigo: {
+    bg: "bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/80 dark:via-indigo-900/30 dark:to-[#080e1c]",
+    border: "border-indigo-200 dark:border-indigo-500/30",
+    activeBorder: "border-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.35)]",
+    glow: "bg-indigo-500/10",
+    icon: "text-indigo-600 dark:text-indigo-400",
+    number: "text-indigo-700 dark:text-indigo-300",
+    label: "text-indigo-600/70 dark:text-indigo-300/70",
+    dot: "bg-indigo-500 dark:bg-indigo-400",
+  },
+  violet: {
+    bg: "bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/80 dark:via-violet-900/30 dark:to-[#080e1c]",
+    border: "border-violet-200 dark:border-violet-500/30",
+    activeBorder: "border-violet-400 shadow-[0_0_20px_rgba(139,92,246,0.35)]",
+    glow: "bg-violet-500/10",
+    icon: "text-violet-600 dark:text-violet-400",
+    number: "text-violet-700 dark:text-violet-300",
+    label: "text-violet-600/70 dark:text-violet-300/70",
+    dot: "bg-violet-500 dark:bg-violet-400",
+  },
+  purple: {
+    bg: "bg-gradient-to-br from-purple-50 to-white dark:from-purple-950/80 dark:via-purple-900/30 dark:to-[#080e1c]",
+    border: "border-purple-200 dark:border-purple-500/30",
+    activeBorder: "border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.35)]",
+    glow: "bg-purple-500/10",
+    icon: "text-purple-600 dark:text-purple-400",
+    number: "text-purple-700 dark:text-purple-300",
+    label: "text-purple-600/70 dark:text-purple-300/70",
+    dot: "bg-purple-500 dark:bg-purple-400",
   },
 };
 
@@ -4454,6 +4486,14 @@ export default function CRMDashboard() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [kpisExpanded, setKpisExpanded] = useState<boolean>(() => {
+    try { return localStorage.getItem("crm_kpis_expanded") !== "false"; } catch { return true; }
+  });
+  const toggleKpis = () => setKpisExpanded(prev => {
+    const next = !prev;
+    try { localStorage.setItem("crm_kpis_expanded", String(next)); } catch {}
+    return next;
+  });
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [editLeadId, setEditLeadId] = useState<number | null>(null);
   const [deleteLeadId, setDeleteLeadId] = useState<number | null>(null);
@@ -4971,7 +5011,58 @@ export default function CRMDashboard() {
           );
         })()}
 
+        {/* ── KPI PANEL COLAPSABLE ─────────────────────────────────────────── */}
+        <div className="px-6 pb-1">
+          {/* Cabecera toggle — siempre visible */}
+          <button
+            onClick={toggleKpis}
+            className="w-full flex items-center gap-3 py-2.5 px-4 rounded-xl bg-foreground/[0.03] border border-foreground/[0.08] hover:bg-foreground/[0.06] transition-colors group"
+          >
+            <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap gap-y-1">
+              {/* Pills resumen cuando está colapsado */}
+              {!kpisExpanded && (
+                <>
+                  {(leadCounters?.ganada ?? 0) > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 text-[11px] font-medium">
+                      <Star className="w-2.5 h-2.5" />{leadCounters?.ganada} ganadas
+                    </span>
+                  )}
+                  {(leadCounters?.enviada ?? 0) > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-medium">
+                      <Send className="w-2.5 h-2.5" />{leadCounters?.enviada} enviadas
+                    </span>
+                  )}
+                  {(resCounters?.confirmadas ?? 0) > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] font-medium">
+                      <CheckCircle className="w-2.5 h-2.5" />{resCounters?.confirmadas} reservas
+                      {(resCounters?.importeConfirmadas ?? 0) > 0 && <span className="opacity-60">· {Math.round(resCounters!.importeConfirmadas).toLocaleString("es-ES")} €</span>}
+                    </span>
+                  )}
+                  {(resCounters?.pendientePago ?? 0) > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[11px] font-medium">
+                      <Clock className="w-2.5 h-2.5" />{resCounters?.pendientePago} pend. pago
+                    </span>
+                  )}
+                  {(anulCounters?.pending ?? 0) > 0 && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-300 text-[11px] font-medium">
+                      <AlertTriangle className="w-2.5 h-2.5" />{anulCounters?.pending} anulaciones
+                    </span>
+                  )}
+                </>
+              )}
+              {kpisExpanded && (
+                <span className="text-xs text-foreground/40 font-medium">Panel de indicadores</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 text-foreground/40 group-hover:text-foreground/70 transition-colors flex-shrink-0">
+              <span className="text-[11px]">{kpisExpanded ? "Ocultar" : "Ver KPIs"}</span>
+              {kpisExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </div>
+          </button>
+        </div>
+
         {/* Top KPI strip — dos grupos diferenciados */}
+        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${kpisExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"}`}>
         <div className="px-6 py-5 space-y-4">
 
           {/* Grupo 1: Pipeline de Oportunidades */}
@@ -5403,6 +5494,7 @@ export default function CRMDashboard() {
             </div>
           </div>
         )}
+        </div>{/* /KPI colapsable */}
 
         {/* Tabs */}
         <div className="px-6">
