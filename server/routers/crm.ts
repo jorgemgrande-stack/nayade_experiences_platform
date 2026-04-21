@@ -4229,13 +4229,13 @@ export const crmRouter = router({
             .limit(input.limit).offset(input.offset),
           db.select({ total: count() }).from(invoices).where(whereClause),
           db.select({
-            subtotalSum: sql<string>`COALESCE(SUM(CASE WHEN invoice_type = 'factura' THEN subtotal ELSE 0 END), 0)`,
-            taxSum: sql<string>`COALESCE(SUM(CASE WHEN invoice_type = 'factura' THEN tax_amount ELSE 0 END), 0)`,
-            grandTotal: sql<string>`COALESCE(SUM(CASE WHEN invoice_type = 'factura' THEN total ELSE 0 END), 0)`,
+            subtotalSum: sql<string>`COALESCE(SUM(CASE WHEN \`invoiceType\` = 'factura' THEN \`subtotal\` ELSE 0 END), 0)`,
+            taxSum: sql<string>`COALESCE(SUM(CASE WHEN \`invoiceType\` = 'factura' THEN \`taxAmount\` ELSE 0 END), 0)`,
+            grandTotal: sql<string>`COALESCE(SUM(CASE WHEN \`invoiceType\` = 'factura' THEN \`total\` ELSE 0 END), 0)`,
           }).from(invoices).where(whereClause),
           db.select({
-            abonosTotal: sql<string>`COALESCE(SUM(ABS(total)), 0)`,
-          }).from(invoices).where(and(...abonoOnlyConditions.length ? abonoOnlyConditions : [eq(invoices.invoiceType, "abono")])),
+            abonosTotal: sql<string>`COALESCE(SUM(ABS(\`total\`)), 0)`,
+          }).from(invoices).where(and(...(abonoOnlyConditions.length ? abonoOnlyConditions : [eq(invoices.invoiceType, "abono")]))),
         ]);
 
         // Enriquecer filas: para facturas abonadas → buscar su nº de abono; para abonos → nº de factura original
