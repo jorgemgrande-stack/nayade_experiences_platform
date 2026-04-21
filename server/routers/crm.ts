@@ -3523,19 +3523,61 @@ export const crmRouter = router({
       const todayStr = now.toISOString().split("T")[0];
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
       const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).getTime();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      const endOfWeekStr = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-      const [confirmadas, hoy, proximas, ingresos, facturas] = await Promise.all([
+      const [
+        confirmadas, importeConfirmadas,
+        pendientePago, importePendientePago,
+        canceladas,
+        servicioHoy, importeServicioHoy,
+        proximasSemana, importeProximasSemana,
+        esteMes, importeEsteMes,
+        ingresos, facturas,
+      ] = await Promise.all([
+        // Confirmadas (paid)
         db.select({ cnt: count() }).from(reservations).where(eq(reservations.status, "paid")),
-        db.select({ cnt: count() }).from(reservations).where(and(eq(reservations.status, "paid"), eq(reservations.bookingDate, todayStr))),
-        db.select({ cnt: count() }).from(reservations).where(and(eq(reservations.status, "paid"), gte(reservations.createdAt, startOfDay), lte(reservations.createdAt, nextWeek))),
+        db.select({ total: sum(reservations.amountTotal) }).from(reservations).where(eq(reservations.status, "paid")),
+        // Pendiente de pago
+        db.select({ cnt: count() }).from(reservations).where(eq(reservations.status, "pending_payment")),
+        db.select({ total: sum(reservations.amountTotal) }).from(reservations).where(eq(reservations.status, "pending_payment")),
+        // Canceladas
+        db.select({ cnt: count() }).from(reservations).where(eq(reservations.status, "cancelled")),
+        // Servicio hoy (bookingDate = hoy, cualquier estado activo)
+        db.select({ cnt: count() }).from(reservations)
+          .where(and(eq(reservations.bookingDate, todayStr), sql`${reservations.status} != 'cancelled'`)),
+        db.select({ total: sum(reservations.amountTotal) }).from(reservations)
+          .where(and(eq(reservations.bookingDate, todayStr), sql`${reservations.status} != 'cancelled'`)),
+        // Próximas 7 días (servicio confirmado)
+        db.select({ cnt: count() }).from(reservations)
+          .where(and(eq(reservations.status, "paid"), sql`${reservations.bookingDate} > ${todayStr}`, sql`${reservations.bookingDate} <= ${endOfWeekStr}`)),
+        db.select({ total: sum(reservations.amountTotal) }).from(reservations)
+          .where(and(eq(reservations.status, "paid"), sql`${reservations.bookingDate} > ${todayStr}`, sql`${reservations.bookingDate} <= ${endOfWeekStr}`)),
+        // Este mes (creadas este mes, pagadas)
+        db.select({ cnt: count() }).from(reservations)
+          .where(and(eq(reservations.status, "paid"), gte(reservations.createdAt, startOfMonth))),
+        db.select({ total: sum(reservations.amountTotal) }).from(reservations)
+          .where(and(eq(reservations.status, "paid"), gte(reservations.createdAt, startOfMonth))),
+        // Legacy: ingresos totales (amountPaid) y facturas
         db.select({ total: sum(reservations.amountPaid) }).from(reservations).where(eq(reservations.status, "paid")),
         db.select({ cnt: count() }).from(invoices).where(eq(invoices.status, "generada")),
       ]);
 
       return {
         confirmadas: confirmadas[0]?.cnt ?? 0,
-        hoy: hoy[0]?.cnt ?? 0,
-        proximas: proximas[0]?.cnt ?? 0,
+        importeConfirmadas: ((importeConfirmadas[0]?.total ?? 0) as number) / 100,
+        pendientePago: pendientePago[0]?.cnt ?? 0,
+        importePendientePago: ((importePendientePago[0]?.total ?? 0) as number) / 100,
+        canceladas: canceladas[0]?.cnt ?? 0,
+        servicioHoy: servicioHoy[0]?.cnt ?? 0,
+        importeServicioHoy: ((importeServicioHoy[0]?.total ?? 0) as number) / 100,
+        proximasSemana: proximasSemana[0]?.cnt ?? 0,
+        importeProximasSemana: ((importeProximasSemana[0]?.total ?? 0) as number) / 100,
+        esteMes: esteMes[0]?.cnt ?? 0,
+        importeEsteMes: ((importeEsteMes[0]?.total ?? 0) as number) / 100,
+        // legacy
+        hoy: servicioHoy[0]?.cnt ?? 0,
+        proximas: proximasSemana[0]?.cnt ?? 0,
         ingresos: ((ingresos[0]?.total ?? 0) as number) / 100,
         facturas: facturas[0]?.cnt ?? 0,
       };

@@ -5087,6 +5087,81 @@ export default function CRMDashboard() {
               />
             </div>
           </div>
+          {/* Grupo 2b: Reservas */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-1 h-4 rounded-full bg-gradient-to-b from-green-400 to-green-600" />
+              <span className="text-xs font-bold uppercase tracking-[0.15em] text-foreground/50">Reservas</span>
+              <div className="flex-1 h-px bg-foreground/[0.05]" />
+              {(resCounters?.confirmadas ?? 0) > 0 && (
+                <span className="text-xs text-foreground/40">{resCounters?.confirmadas ?? 0} confirmadas</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <CounterCard
+                label="Confirmadas"
+                value={resCounters?.confirmadas ?? 0}
+                icon={CheckCircle}
+                color="green"
+                subtitle="Reservas pagadas"
+                amount={resCounters?.importeConfirmadas}
+                active={tab === "reservations"}
+                onClick={() => handleTabChange("reservations")}
+              />
+              <CounterCard
+                label="Pendiente de Pago"
+                value={resCounters?.pendientePago ?? 0}
+                icon={Clock}
+                color="amber"
+                subtitle="Esperando cobro"
+                amount={resCounters?.importePendientePago}
+                active={tab === "reservations"}
+                onClick={() => handleTabChange("reservations")}
+              />
+              <CounterCard
+                label="Servicio Hoy"
+                value={resCounters?.servicioHoy ?? 0}
+                icon={CalendarCheck}
+                color={resCounters?.servicioHoy ? "blue" : "slate"}
+                subtitle="Actividades programadas"
+                amount={resCounters?.importeServicioHoy}
+                active={tab === "reservations"}
+                onClick={() => handleTabChange("reservations")}
+              />
+              <CounterCard
+                label="Próximos 7 días"
+                value={resCounters?.proximasSemana ?? 0}
+                icon={Calendar}
+                color="indigo"
+                subtitle="Servicios confirmados"
+                amount={resCounters?.importeProximasSemana}
+                active={tab === "reservations"}
+                onClick={() => handleTabChange("reservations")}
+              />
+              <CounterCard
+                label="Este Mes"
+                value={resCounters?.esteMes ?? 0}
+                icon={Banknote}
+                color="orange"
+                subtitle="Confirmadas este mes"
+                amount={resCounters?.importeEsteMes}
+                active={tab === "reservations"}
+                onClick={() => handleTabChange("reservations")}
+              />
+              {(resCounters?.canceladas ?? 0) > 0 && (
+                <CounterCard
+                  label="Canceladas"
+                  value={resCounters?.canceladas ?? 0}
+                  icon={XCircle}
+                  color="red"
+                  subtitle="Reservas anuladas"
+                  active={tab === "reservations"}
+                  onClick={() => handleTabChange("reservations")}
+                />
+              )}
+            </div>
+          </div>
+
           {/* Grupo 3: Anulaciones */}
           <div>
             <div className="flex items-center gap-2 mb-3">
