@@ -3552,8 +3552,20 @@ export const crmRouter = router({
         // Servicio hoy (bookingDate = hoy, cualquier estado activo)
         db.select({ cnt: count() }).from(reservations)
           .where(and(eq(reservations.bookingDate, todayStr), sql`${reservations.status} != 'cancelled'`)),
-        db.select({ total: sum(reservations.amountTotal) }).from(reservations)
-          .where(and(eq(reservations.bookingDate, todayStr), sql`${reservations.status} != 'cancelled'`)),
+        // Importe servicio hoy: usa amountTotal cuando está disponible, si no cae a pendingPayments.amountCents
+        // (las reservas placeholder del flujo pendingPayments tienen amountTotal=0)
+        db.select({
+          total: sql<number>`
+            COALESCE(SUM(
+              CASE WHEN r.amount_total > 0 THEN r.amount_total
+                   ELSE COALESCE(pp.amount_cents, 0)
+              END
+            ), 0)
+          `
+        })
+        .from(sql`reservations r`)
+        .leftJoin(sql`pending_payments pp`, sql`pp.reservation_id = r.id AND pp.status = 'paid'`)
+        .where(sql`r.booking_date = ${todayStr} AND r.status != 'cancelled'`),
         // Próximas 7 días (servicio confirmado)
         db.select({ cnt: count() }).from(reservations)
           .where(and(eq(reservations.status, "paid"), sql`${reservations.bookingDate} > ${todayStr}`, sql`${reservations.bookingDate} <= ${endOfWeekStr}`)),

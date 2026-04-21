@@ -5168,6 +5168,7 @@ export default function CRMDashboard() {
                 icon={CalendarCheck}
                 color="green"
                 subtitle="Confirmadas hoy"
+                amount={resCounters?.importeServicioHoy}
                 active={tab === "reservations"}
                 onClick={() => handleTabChange("reservations")}
               />
@@ -5322,6 +5323,7 @@ export default function CRMDashboard() {
                     icon={CreditCard}
                     color="violet"
                     subtitle="Cuotas pendientes"
+                    amount={upcomingInstallments.filter(i => i.status === "pending" && i.dueDate >= today).reduce((s, i) => s + i.amountCents, 0) / 100}
                   />
                   <CounterCard
                     label="Vencen Hoy"
@@ -5329,6 +5331,7 @@ export default function CRMDashboard() {
                     icon={AlertCircle}
                     color={vencenHoy.length > 0 ? "amber" : "slate"}
                     subtitle="Requieren cobro"
+                    amount={vencenHoy.reduce((s, i) => s + i.amountCents, 0) / 100}
                   />
                   <CounterCard
                     label="En Deuda"
@@ -5336,6 +5339,7 @@ export default function CRMDashboard() {
                     icon={AlertTriangle}
                     color={enDeuda.length > 0 ? "red" : "slate"}
                     subtitle="Vencidas sin pagar"
+                    amount={enDeuda.reduce((s, i) => s + i.amountCents, 0) / 100}
                   />
                   <CounterCard
                     label="Total Pendiente"
