@@ -4882,10 +4882,10 @@ export const crmRouter = router({
             .limit(200)
         : [];
 
-      // KPIs
-      const totalSpentCents = clientReservations
-        .filter((r) => r.status === "paid")
-        .reduce((acc, r) => acc + (r.amountPaid ?? 0), 0);
+      // KPIs — totalSpentCents desde facturas activas (fuente de verdad del cobro real)
+      const totalSpentCents = clientInvoices
+        .filter((inv) => inv.status !== "anulada" && inv.status !== "abonada")
+        .reduce((acc, inv) => acc + Math.round(parseFloat(inv.total ?? "0") * 100), 0);
 
       return {
         client,

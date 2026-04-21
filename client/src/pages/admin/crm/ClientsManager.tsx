@@ -576,30 +576,58 @@ function ClientHistoryModal({ client, onClose }: { client: ClientRow; onClose: (
                   </div>
                 )}
 
+                {data.reservations.length > 0 && (
+                  <div className="rounded-xl overflow-hidden border border-white/10">
+                    <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />Reservas ({data.reservations.length})
+                    </div>
+                    <div className="divide-y divide-white/5">
+                      {data.reservations.map((r) => {
+                        const st = resStatusLabel(r.status ?? "pending");
+                        return (
+                          <div key={r.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white text-sm font-medium">{r.reservationNumber ?? r.merchantOrder ?? `#${r.id}`} — {r.productName ?? "—"}</div>
+                              <div className="text-white/30 text-xs">{fmtDate(r.createdAt)} · {r.people ? `${r.people} pax` : ""}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {r.amountTotal != null && (
+                                <span className="text-white/60 text-xs">{(r.amountTotal / 100).toFixed(2)} €</span>
+                              )}
+                              <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${st.color}`}>{st.label}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {data.invoices.length > 0 && (
                   <div className="rounded-xl overflow-hidden border border-white/10">
                     <div className="px-4 py-2.5 bg-white/[0.03] border-b border-white/10 text-white/50 text-xs font-medium uppercase tracking-wider flex items-center gap-2">
                       <Receipt className="w-3.5 h-3.5" />Facturas ({data.invoices.length})
                     </div>
                     <div className="divide-y divide-white/5">
-                      {data.invoices.map((inv) => (
-                        <div key={inv.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-white text-sm font-medium">{inv.invoiceNumber}</div>
-                            <div className="text-white/30 text-xs">{fmtDate(inv.createdAt)}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {inv.total && <span className="text-white/60 text-xs">{parseFloat(inv.total).toFixed(2)} €</span>}
-                            {inv.pdfUrl && (
-                              <a href={inv.pdfUrl} target="_blank" rel="noreferrer">
+                      {data.invoices.map((inv) => {
+                        const viewUrl = inv.pdfUrl ?? `/api/invoices/preview?n=${encodeURIComponent(inv.invoiceNumber)}`;
+                        return (
+                          <div key={inv.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.02]">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-white text-sm font-medium">{inv.invoiceNumber}</div>
+                              <div className="text-white/30 text-xs">{fmtDate(inv.createdAt)}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {inv.total && <span className="text-white/60 text-xs">{parseFloat(inv.total).toFixed(2)} €</span>}
+                              <a href={viewUrl} target="_blank" rel="noreferrer">
                                 <Button size="sm" variant="ghost" className="text-yellow-400 hover:text-yellow-300 h-6 px-2 text-xs">
                                   <FileCheck className="w-3 h-3 mr-1" />PDF
                                 </Button>
                               </a>
-                            )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
