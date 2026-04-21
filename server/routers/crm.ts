@@ -611,12 +611,18 @@ export const crmRouter = router({
         db.select({ cnt: count() }).from(leads).where(gte(leads.createdAt, startOfDay)),
         db.select({ cnt: count() }).from(leads).where(gte(leads.createdAt, startOfWeek)),
         db.select({ cnt: count() }).from(leads).where(isNull(leads.seenAt)),
-        // Valor económico por estado (suma de budget del lead)
+        // Valor económico por estado: suma del presupuesto más reciente de cada lead
+        // "nueva": lead sin presupuesto aún → usa leads.budget (estimación del cliente)
         db.select({ total: sum(leads.budget) }).from(leads).where(eq(leads.opportunityStatus, "nueva")),
-        db.select({ total: sum(leads.budget) }).from(leads).where(eq(leads.opportunityStatus, "enviada")),
+        // "enviada": presupuesto ya enviado → suma quotes.total (importe real del presupuesto)
+        db.select({ total: sum(quotes.total) }).from(quotes)
+          .innerJoin(leads, eq(quotes.leadId, leads.id))
+          .where(and(eq(leads.opportunityStatus, "enviada"), sql`${quotes.status} NOT IN ('rechazado')`)),
+        // "ganada": presupuesto aceptado → suma quotes.total del presupuesto aceptado
         db.select({ total: sum(quotes.total) }).from(quotes)
           .innerJoin(leads, eq(quotes.leadId, leads.id))
           .where(and(eq(leads.opportunityStatus, "ganada"), eq(quotes.status, "aceptado"))),
+        // "perdida": lead descartado → usa leads.budget (ya no tiene presupuesto activo)
         db.select({ total: sum(leads.budget) }).from(leads).where(eq(leads.opportunityStatus, "perdida")),
       ]);
 
