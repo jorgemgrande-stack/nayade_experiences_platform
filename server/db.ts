@@ -284,38 +284,61 @@ export async function createLead(data: {
   // 4. Sincronizar con GoHighLevel CRM (fire-and-forget, no bloquea el flujo)
   const ghlSource = data.source ?? "web";
   (async () => {
+    const db = await getDb();
+    let ghlApiKey = process.env.GHL_API_KEY;
+    let ghlLocationId = process.env.GHL_LOCATION_ID;
+    if ((!ghlApiKey || !ghlLocationId) && db) {
+      const rows = await db.select().from(siteSettings)
+        .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
+      const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+      ghlApiKey = ghlApiKey || map.ghlApiKey || undefined;
+      ghlLocationId = ghlLocationId || map.ghlLocationId || undefined;
+    }
+
+    if (!ghlApiKey || !ghlLocationId) return; // credenciales no configuradas — skip silencioso
+
     try {
-      // Resolve credentials: env vars first, then DB siteSettings
-      let ghlApiKey = process.env.GHL_API_KEY;
-      let ghlLocationId = process.env.GHL_LOCATION_ID;
-      if (!ghlApiKey || !ghlLocationId) {
-        const db = await getDb();
-        if (db) {
-          const rows = await db.select().from(siteSettings)
-            .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
-          const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
-          ghlApiKey = ghlApiKey || map.ghlApiKey || undefined;
-          ghlLocationId = ghlLocationId || map.ghlLocationId || undefined;
-        }
+      const ghlContactId = await createGHLContact(
+        {
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          companyName: data.company,
+          source: ghlSource,
+          tags: getGHLTagsFromSource(ghlSource),
+          notes: data.message
+            ? `[Lead #${leadId}] ${data.message}`
+            : `[Lead #${leadId}] Origen: ${ghlSource}`,
+        },
+        { apiKey: ghlApiKey, locationId: ghlLocationId }
+      );
+
+      if (ghlContactId && db) {
+        // Persistir el ID del contacto GHL en el lead para futuros updates
+        await db.update(leads)
+          .set({ ghlContactId, updatedAt: new Date() } as any)
+          .where(eq(leads.id, leadId));
+        console.log(`[GHL] ghlContactId ${ghlContactId} persistido en lead #${leadId}`);
+      } else if (!ghlContactId && db) {
+        // GHL devolvió null — registrar el fallo en ghlWebhookLogs para trazabilidad
+        await db.insert(ghlWebhookLogs).values({
+          event: "create_contact_failed",
+          payload: { leadId, name: data.name, email: data.email, source: ghlSource },
+          status: "error",
+          errorMessage: `createGHLContact devolvió null para lead #${leadId} (${data.email ?? data.name})`,
+        });
+        console.error(`[GHL] createGHLContact devolvió null para lead #${leadId} — fallo registrado en ghl_webhook_logs`);
       }
-      if (ghlApiKey && ghlLocationId) {
-        await createGHLContact(
-          {
-            name: data.name,
-            email: data.email,
-            phone: data.phone,
-            companyName: data.company,
-            source: ghlSource,
-            tags: getGHLTagsFromSource(ghlSource),
-            notes: data.message
-              ? `[Lead #${leadId}] ${data.message}`
-              : `[Lead #${leadId}] Origen: ${ghlSource}`,
-          },
-          { apiKey: ghlApiKey, locationId: ghlLocationId }
-        );
+    } catch (err: any) {
+      console.error(`[GHL] Error inesperado sincronizando lead #${leadId}:`, err);
+      if (db) {
+        await db.insert(ghlWebhookLogs).values({
+          event: "create_contact_exception",
+          payload: { leadId, name: data.name, email: data.email, source: ghlSource },
+          status: "error",
+          errorMessage: err?.message ?? String(err),
+        }).catch(() => {}); // no bloquear si falla el log
       }
-    } catch (err) {
-      console.warn("[GHL] Error en fire-and-forget:", err);
     }
   })();
 

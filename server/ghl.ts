@@ -10,6 +10,40 @@
 const GHL_API_URL = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
 
+/** Log estructurado para operaciones GHL — visible y trazable en producción */
+function ghlLog(
+  level: "info" | "warn" | "error",
+  op: string,
+  msg: string,
+  ctx?: {
+    leadId?: number | string;
+    contactId?: string;
+    email?: string;
+    phone?: string;
+    httpStatus?: number;
+    errorBody?: string;
+    stack?: string;
+  }
+) {
+  const entry = {
+    ts: new Date().toISOString(),
+    context: "GHL",
+    op,
+    msg,
+    ...(ctx?.leadId    !== undefined && { leadId: ctx.leadId }),
+    ...(ctx?.contactId !== undefined && { contactId: ctx.contactId }),
+    ...(ctx?.email     !== undefined && { email: ctx.email }),
+    ...(ctx?.phone     !== undefined && { phone: ctx.phone }),
+    ...(ctx?.httpStatus !== undefined && { httpStatus: ctx.httpStatus }),
+    ...(ctx?.errorBody !== undefined && { errorBody: ctx.errorBody?.slice(0, 300) }),
+    ...(ctx?.stack     !== undefined && { stack: ctx.stack }),
+  };
+  const line = JSON.stringify(entry);
+  if (level === "error") console.error(line);
+  else if (level === "warn")  console.warn(line);
+  else                        console.log(line);
+}
+
 export interface GHLContactPayload {
   name: string;
   email?: string;
@@ -51,6 +85,7 @@ export async function testGHLConnection(
     const text = await response.text();
     return { ok: false, error: `HTTP ${response.status}: ${text.slice(0, 120)}` };
   } catch (err: any) {
+    ghlLog("error", "test_connection", "Excepción al verificar credenciales GHL", { stack: err?.stack });
     return { ok: false, error: err.message ?? "Error de red" };
   }
 }
@@ -63,7 +98,7 @@ export async function createGHLContact(
   const locationId = overrideCredentials?.locationId ?? process.env.GHL_LOCATION_ID;
 
   if (!apiKey || !locationId) {
-    console.warn("[GHL] GHL_API_KEY o GHL_LOCATION_ID no configurados. Saltando integración CRM.");
+    ghlLog("warn", "create_contact", "Credenciales GHL no configuradas — integración omitida");
     return null;
   }
 
@@ -92,7 +127,6 @@ export async function createGHLContact(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[GHL] Error al crear contacto (${response.status}): ${errorText}`);
 
       // GHL devuelve 400 cuando el location no permite contactos duplicados.
       // La respuesta incluye meta.contactId con el ID del contacto existente —
@@ -102,27 +136,36 @@ export async function createGHLContact(
           const errJson = JSON.parse(errorText) as { meta?: { contactId?: string } };
           const existingId = errJson?.meta?.contactId ?? null;
           if (existingId) {
-            console.log(`[GHL] Contacto duplicado detectado — reutilizando ${existingId} (${payload.email ?? payload.name})`);
+            ghlLog("info", "create_contact", "Contacto duplicado — reutilizando ID existente", {
+              contactId: existingId, email: payload.email,
+            });
             if (payload.notes) await addGHLNote(existingId, payload.notes, apiKey);
             return existingId;
           }
-        } catch { /* JSON inválido — caer al return null */ }
+        } catch { /* JSON inválido — caer al error genérico */ }
       }
+
+      ghlLog("error", "create_contact", "Error HTTP al crear contacto en GHL", {
+        email: payload.email, httpStatus: response.status, errorBody: errorText,
+      });
       return null;
     }
 
     const data = await response.json() as { contact?: { id?: string } };
     const contactId = data?.contact?.id ?? null;
 
-    // Si hay notas/mensaje, añadirlas como nota al contacto
     if (contactId && payload.notes) {
       await addGHLNote(contactId, payload.notes, apiKey);
     }
 
-    console.log(`[GHL] Contacto creado/actualizado: ${contactId} (${payload.email ?? payload.name})`);
+    ghlLog("info", "create_contact", "Contacto creado/actualizado en GHL", {
+      contactId: contactId ?? undefined, email: payload.email,
+    });
     return contactId;
-  } catch (err) {
-    console.error("[GHL] Error inesperado al crear contacto:", err);
+  } catch (err: any) {
+    ghlLog("error", "create_contact", "Excepción inesperada al crear contacto en GHL", {
+      email: payload.email, stack: err?.stack,
+    });
     return null;
   }
 }
@@ -145,10 +188,14 @@ async function addGHLNote(contactId: string, body: string, apiKey: string): Prom
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.warn(`[GHL] No se pudo añadir nota al contacto ${contactId}: ${errorText}`);
+      ghlLog("warn", "add_note", "No se pudo añadir nota al contacto GHL", {
+        contactId, httpStatus: response.status, errorBody: errorText,
+      });
     }
-  } catch (err) {
-    console.warn("[GHL] Error al añadir nota:", err);
+  } catch (err: any) {
+    ghlLog("warn", "add_note", "Excepción al añadir nota al contacto GHL", {
+      contactId, stack: err?.stack,
+    });
   }
 }
 
