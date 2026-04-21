@@ -4847,9 +4847,18 @@ export const crmRouter = router({
       const quoteIds = clientQuotes.map((q) => q.id);
 
       // Reservas, facturas, anulaciones en paralelo
+      // Reservas: por quoteId O por email del cliente (cubre reservas directas sin presupuesto)
+      const reservationCondition = quoteIds.length && client.email
+        ? or(inArray(reservations.quoteId, quoteIds), eq(reservations.customerEmail, client.email))
+        : quoteIds.length
+          ? inArray(reservations.quoteId, quoteIds)
+          : client.email
+            ? eq(reservations.customerEmail, client.email)
+            : null;
+
       const [clientReservations, clientInvoices, clientCancellations] = await Promise.all([
-        quoteIds.length
-          ? db.select().from(reservations).where(inArray(reservations.quoteId, quoteIds)).orderBy(desc(reservations.createdAt))
+        reservationCondition
+          ? db.select().from(reservations).where(reservationCondition).orderBy(desc(reservations.createdAt))
           : Promise.resolve([]),
         quoteIds.length
           ? db.select().from(invoices).where(inArray(invoices.quoteId, quoteIds)).orderBy(desc(invoices.createdAt))
