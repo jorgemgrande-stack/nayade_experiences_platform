@@ -1711,10 +1711,11 @@ export async function getDashboardOverview() {
       [restaurantToday],
       [leadsAgingRow],
     ] = await Promise.all([
-      // KPIs: Ingresos
-      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfMonth}`),
-      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`),
-      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada'`),
+      // KPIs: Ingresos — incluye todas las facturas emitidas válidas (generada/enviada/cobrada)
+      // 'anulada' y 'abonada' se excluyen (canceladas o ya rectificadas)
+      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status NOT IN ('anulada','abonada') AND issuedAt >= ${startOfMonth}`),
+      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status NOT IN ('anulada','abonada') AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`),
+      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status NOT IN ('anulada','abonada')`),
       // KPIs: Reservas (migrado desde bookings → reservations)
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status IN ('paid','pending_payment') AND created_at >= ${startOfMonthMs}`),
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'pending_payment'`),
@@ -1743,7 +1744,7 @@ export async function getDashboardOverview() {
       // Upcoming bookings (migrado desde bookings → reservations)
       db.select({ id: reservations.id, bookingNumber: reservations.merchantOrder, clientName: reservations.customerName, scheduledDate: reservations.bookingDate, numberOfPersons: reservations.people, status: reservations.status, experienceId: reservations.productId }).from(reservations).where(sql`booking_date > ${endOfToday.toISOString().slice(0,10)} AND booking_date <= ${in7Days.toISOString().slice(0,10)} AND status NOT IN ('cancelled','failed')`).orderBy(reservations.bookingDate).limit(5),
       // Top experiencias
-      db.select({ productId: reservations.productId, productName: reservations.productName, count: sql<number>`count(*)`, revenue: sql<string>`COALESCE(SUM(amount_total), 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`).groupBy(reservations.productId, reservations.productName).orderBy(sql`count(*) DESC`).limit(5),
+      db.select({ productId: reservations.productId, productName: reservations.productName, count: sql<number>`count(*)`, revenue: sql<string>`COALESCE(SUM(amountTotal), 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`).groupBy(reservations.productId, reservations.productName).orderBy(sql`count(*) DESC`).limit(5),
       // Alertas
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`paymentMethod = 'transferencia' AND status = 'pending_payment'`),
       db.select({ count: sql<number>`count(*)` }).from(quotes).where(sql`validUntil IS NOT NULL AND validUntil <= ${in7Days} AND validUntil >= ${now} AND status IN ('enviado', 'visualizado')`),
