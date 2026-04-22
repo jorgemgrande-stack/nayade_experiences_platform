@@ -7444,6 +7444,11 @@ export default function CRMDashboard() {
             setSelectedAnulId(null);
             utils.cancellations.listRequests.invalidate();
           }}
+          onNavigateToReservation={(reservationId) => {
+            setSelectedAnulId(null);
+            handleTabChange("reservations");
+            setViewResId(reservationId);
+          }}
         />
       )}
       {/* Confirmar eliminación anulación */}

@@ -177,9 +177,10 @@ function TimelineEntry({ log }: { log: { id: number; actionType: string; adminUs
 interface Props {
   requestId: number;
   onClose: () => void;
+  onNavigateToReservation?: (reservationId: number) => void;
 }
 
-export default function CancellationDetailModal({ requestId, onClose }: Props) {
+export default function CancellationDetailModal({ requestId, onClose, onNavigateToReservation }: Props) {
   const utils = trpc.useUtils();
   const [activePanel, setActivePanel] = useState<ActionPanel>("none");
 
@@ -324,7 +325,17 @@ export default function CancellationDetailModal({ requestId, onClose }: Props) {
               {req.locator && (
                 <div className="flex items-center gap-2">
                   <Hash className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                  <span className="text-gray-300 text-sm font-mono">{req.locator}</span>
+                  {req.linkedReservationId && onNavigateToReservation ? (
+                    <button
+                      onClick={() => { onNavigateToReservation(req.linkedReservationId!); onClose(); }}
+                      className="text-blue-400 text-sm font-mono hover:text-blue-300 hover:underline underline-offset-2 transition-colors text-left"
+                      title="Ver reserva en el CRM"
+                    >
+                      {req.locator}
+                    </button>
+                  ) : (
+                    <span className="text-gray-300 text-sm font-mono">{req.locator}</span>
+                  )}
                 </div>
               )}
             </div>
