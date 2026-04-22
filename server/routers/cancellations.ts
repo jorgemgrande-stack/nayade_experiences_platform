@@ -672,12 +672,12 @@ export const cancellationsRouter = router({
 
           if (!hasExtras && r.quoteId) {
             const [q] = await db
-              .select({ itemsJson: quotes.itemsJson })
+              .select({ items: quotes.items })
               .from(quotes)
               .where(eq(quotes.id, r.quoteId))
               .limit(1);
-            if (q?.itemsJson && Array.isArray(q.itemsJson) && q.itemsJson.length > 0) {
-              const normalized = q.itemsJson.map((item: any) => ({
+            if (q?.items && Array.isArray(q.items) && q.items.length > 0) {
+              const normalized = q.items.map((item: any) => ({
                 name: item.description ?? "Línea",
                 price: Math.round((item.unitPrice ?? 0) * 100),
                 quantity: item.quantity ?? 1,
