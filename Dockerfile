@@ -22,7 +22,8 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Build del cliente Vite y del servidor TypeScript
-RUN pnpm build
+# NODE_OPTIONS aumenta heap para compilar CRMDashboard (~900 kB chunk)
+RUN NODE_OPTIONS="--max-old-space-size=4096" pnpm build
 
 # ─── Etapa 2: Producción ──────────────────────────────────────
 FROM node:22-alpine AS runner
