@@ -789,7 +789,7 @@ export const cancellationsRouter = router({
           compensationType: "devolucion",
           resolvedAmount: String(input.refundAmount),
           cancellationScope: input.cancellationScope,
-          cancelledItemsJson: input.cancelledItems ?? null,
+          cancelledItemsJson: input.cancelledItems ? JSON.stringify(input.cancelledItems) : null,
         }).where(eq(cancellationRequests.id, input.id));
 
         await addLog(
@@ -871,7 +871,7 @@ export const cancellationsRouter = router({
           resolvedAmount: String(input.voucherValue),
           voucherId,
           cancellationScope: input.cancellationScope,
-          cancelledItemsJson: input.cancelledItems ?? null,
+          cancelledItemsJson: input.cancelledItems ? JSON.stringify(input.cancelledItems) : null,
         }).where(eq(cancellationRequests.id, input.id));
 
         await addLog(

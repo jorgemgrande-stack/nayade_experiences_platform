@@ -1959,13 +1959,8 @@ export const cancellationRequests = mysqlTable("cancellation_requests", {
   voucherId: int("voucher_id"),
   cancellationNumber: varchar("cancellation_number", { length: 32 }),
   // Scope of cancellation: "total" = whole reservation, "lineas" = specific extra lines only
-  cancellationScope: varchar("cancellation_scope", { length: 10 }).default("total"),
-  cancelledItemsJson: json("cancelled_items_json").$type<Array<{
-    index: number;
-    name: string;
-    priceCents: number;
-    quantity: number;
-  }>>(),
+  cancellationScope: varchar("cancellation_scope", { length: 10 }),
+  cancelledItemsJson: text("cancelled_items_json"),
   adminNotes: text("admin_notes"),
   assignedUserId: int("assigned_user_id"),
   closedAt: timestamp("closed_at"),
