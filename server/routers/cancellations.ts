@@ -670,19 +670,39 @@ export const cancellationsRouter = router({
           let cancellableItemsJson: string | null = null;
           const hasExtras = (() => { try { return JSON.parse(r.extrasJson ?? "[]").length > 0; } catch { return false; } })();
 
-          if (!hasExtras && r.quoteId) {
-            const [q] = await db
-              .select({ items: quotes.items })
-              .from(quotes)
-              .where(eq(quotes.id, r.quoteId))
-              .limit(1);
-            if (q?.items && Array.isArray(q.items) && q.items.length > 0) {
-              const normalized = q.items.map((item: any) => ({
-                name: item.description ?? "Línea",
-                price: Math.round((item.unitPrice ?? 0) * 100),
-                quantity: item.quantity ?? 1,
-              }));
-              cancellableItemsJson = JSON.stringify(normalized);
+          if (!hasExtras) {
+            // Resolver quoteId por varios caminos cuando reservations.quoteId es NULL
+            let quoteId: number | null = r.quoteId ?? null;
+
+            // Fallback 1: linkedQuoteId en la propia solicitud de anulación
+            if (!quoteId && req.linkedQuoteId) {
+              quoteId = req.linkedQuoteId;
+            }
+
+            // Fallback 2: buscar en invoices por reservationId (siempre almacena quoteId + reservationId)
+            if (!quoteId) {
+              const [inv] = await db
+                .select({ quoteId: invoices.quoteId })
+                .from(invoices)
+                .where(eq(invoices.reservationId, r.id))
+                .limit(1);
+              quoteId = inv?.quoteId ?? null;
+            }
+
+            if (quoteId) {
+              const [q] = await db
+                .select({ items: quotes.items })
+                .from(quotes)
+                .where(eq(quotes.id, quoteId))
+                .limit(1);
+              if (q?.items && Array.isArray(q.items) && q.items.length > 0) {
+                const normalized = q.items.map((item: any) => ({
+                  name: item.description ?? "Línea",
+                  price: Math.round((item.unitPrice ?? 0) * 100),
+                  quantity: item.quantity ?? 1,
+                }));
+                cancellableItemsJson = JSON.stringify(normalized);
+              }
             }
           }
 
