@@ -18,6 +18,7 @@ import {
   couponRedemptions,
   discountCodes,
   invoices,
+  quotes,
   type CancellationRequest,
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql, lt } from "drizzle-orm";
@@ -641,6 +642,7 @@ export const cancellationsRouter = router({
         pricingType: string | null;
         unitsBooked: number | null;
         unitCapacity: number | null;
+        cancellableItemsJson: string | null;
       } | null = null;
       if (req.linkedReservationId) {
         const [r] = await db
@@ -657,10 +659,35 @@ export const cancellationsRouter = router({
             pricingType: reservations.pricingType,
             unitsBooked: reservations.unitsBooked,
             unitCapacity: reservations.unitCapacity,
+            quoteId: reservations.quoteId,
           })
           .from(reservations)
           .where(eq(reservations.id, req.linkedReservationId));
-        linkedReservation = r ?? null;
+
+        if (r) {
+          // Si extrasJson está vacío pero la reserva viene de un presupuesto,
+          // usamos las líneas del presupuesto como items cancelables
+          let cancellableItemsJson: string | null = null;
+          const hasExtras = (() => { try { return JSON.parse(r.extrasJson ?? "[]").length > 0; } catch { return false; } })();
+
+          if (!hasExtras && r.quoteId) {
+            const [q] = await db
+              .select({ itemsJson: quotes.itemsJson })
+              .from(quotes)
+              .where(eq(quotes.id, r.quoteId))
+              .limit(1);
+            if (q?.itemsJson && Array.isArray(q.itemsJson) && q.itemsJson.length > 0) {
+              const normalized = q.itemsJson.map((item: any) => ({
+                name: item.description ?? "Línea",
+                price: Math.round((item.unitPrice ?? 0) * 100),
+                quantity: item.quantity ?? 1,
+              }));
+              cancellableItemsJson = JSON.stringify(normalized);
+            }
+          }
+
+          linkedReservation = { ...r, cancellableItemsJson };
+        }
       }
 
       return { request: req, logs, voucher, linkedReservation };

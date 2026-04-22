@@ -400,22 +400,23 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                       {(() => {
                         let extrasTotal = 0;
                         try {
-                          const ex = JSON.parse(linkedReservation.extrasJson ?? "[]");
-                          if (Array.isArray(ex)) extrasTotal = ex.reduce((s: number, e: any) => {
+                          const src = (() => { const a = JSON.parse(linkedReservation.extrasJson ?? "[]"); return (Array.isArray(a) && a.length > 0) ? a : JSON.parse(linkedReservation.cancellableItemsJson ?? "[]"); })();
+                          if (Array.isArray(src)) extrasTotal = src.reduce((s: number, e: any) => {
                             const price = e.price ?? (e.unitPrice != null ? e.unitPrice * 100 : 0);
                             return s + price * (e.quantity ?? 1);
                           }, 0);
                         } catch { /* ignore */ }
                         const mainCents = linkedReservation.amountTotal - extrasTotal;
-                        return `${(mainCents / 100).toFixed(2)} €`;
+                        return mainCents > 0 ? `${(mainCents / 100).toFixed(2)} €` : null;
                       })()}
                     </span>
                   </div>
 
-                  {/* Extras */}
+                  {/* Extras / líneas de presupuesto */}
                   {(() => {
                     try {
-                      const extras = JSON.parse(linkedReservation.extrasJson ?? "[]");
+                      const raw = JSON.parse(linkedReservation.extrasJson ?? "[]");
+                      const extras = (Array.isArray(raw) && raw.length > 0) ? raw : JSON.parse(linkedReservation.cancellableItemsJson ?? "[]");
                       if (!Array.isArray(extras) || extras.length === 0) return null;
                       return extras.map((ex: any, i: number) => {
                         const name = ex.name ?? ex.experienceTitle ?? ex.productName ?? `Extra ${i + 1}`;
@@ -623,12 +624,16 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
             {/* ── Panel: Aceptar (unificado) ── */}
             {activePanel === "aceptar" && (() => {
-              // Parse extras from linked reservation
+              // Parse extras: primero extrasJson, si vacío usar cancellableItemsJson (líneas de presupuesto)
               const extras: Array<{ name: string; priceCents: number; quantity: number }> = (() => {
                 try {
-                  const raw = JSON.parse(linkedReservation?.extrasJson ?? "[]");
-                  if (!Array.isArray(raw)) return [];
-                  return raw.map((e: any) => ({
+                  const src = (() => {
+                    const fromExtras = JSON.parse(linkedReservation?.extrasJson ?? "[]");
+                    if (Array.isArray(fromExtras) && fromExtras.length > 0) return fromExtras;
+                    return JSON.parse(linkedReservation?.cancellableItemsJson ?? "[]");
+                  })();
+                  if (!Array.isArray(src)) return [];
+                  return src.map((e: any) => ({
                     name: e.name ?? e.experienceTitle ?? e.productName ?? "Extra",
                     priceCents: e.price ?? (e.unitPrice != null ? Math.round(e.unitPrice * 100) : 0),
                     quantity: e.quantity ?? 1,
