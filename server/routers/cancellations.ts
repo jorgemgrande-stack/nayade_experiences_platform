@@ -546,7 +546,28 @@ export const cancellationsRouter = router({
       }
 
       const rows = await db
-        .select()
+        .select({
+          id: cancellationRequests.id,
+          fullName: cancellationRequests.fullName,
+          email: cancellationRequests.email,
+          phone: cancellationRequests.phone,
+          activityDate: cancellationRequests.activityDate,
+          reason: cancellationRequests.reason,
+          reasonDetail: cancellationRequests.reasonDetail,
+          locator: cancellationRequests.locator,
+          linkedReservationId: cancellationRequests.linkedReservationId,
+          operationalStatus: cancellationRequests.operationalStatus,
+          resolutionStatus: cancellationRequests.resolutionStatus,
+          financialStatus: cancellationRequests.financialStatus,
+          compensationType: cancellationRequests.compensationType,
+          resolvedAmount: cancellationRequests.resolvedAmount,
+          cancellationNumber: cancellationRequests.cancellationNumber,
+          voucherId: cancellationRequests.voucherId,
+          assignedUserId: cancellationRequests.assignedUserId,
+          createdAt: cancellationRequests.createdAt,
+          updatedAt: cancellationRequests.updatedAt,
+          closedAt: cancellationRequests.closedAt,
+        })
         .from(cancellationRequests)
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(cancellationRequests.createdAt))

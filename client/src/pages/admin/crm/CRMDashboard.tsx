@@ -4612,7 +4612,7 @@ export default function CRMDashboard() {
   const [anulReasonFilter, setAnulReasonFilter] = useState("all");
   const [selectedAnulId, setSelectedAnulId] = useState<number | null>(null);
   const [deleteAnulId, setDeleteAnulId] = useState<number | null>(null);
-  const { data: anulData, isLoading: anulLoading, refetch: refetchAnul } = trpc.cancellations.listRequests.useQuery({
+  const { data: anulData, isLoading: anulLoading, isError: anulError, refetch: refetchAnul } = trpc.cancellations.listRequests.useQuery({
     search: anulSearch || undefined,
     operationalStatus: anulOpFilter !== "all" ? anulOpFilter : undefined,
     resolutionStatus: anulResFilter !== "all" ? anulResFilter : undefined,
@@ -4620,7 +4620,7 @@ export default function CRMDashboard() {
     reason: anulReasonFilter !== "all" ? anulReasonFilter : undefined,
     limit: 100,
     offset: 0,
-  }, { enabled: tab === "anulaciones" });
+  }, { enabled: tab === "anulaciones", retry: 1 });
   const { data: anulCounters } = trpc.cancellations.getCounters.useQuery(undefined, {
     refetchInterval: 60000,
   });
@@ -6605,7 +6605,16 @@ export default function CRMDashboard() {
                           </td>
                         </tr>
                       )}
-                      {!anulLoading && anulRows.length === 0 && (
+                      {!anulLoading && anulError && (
+                        <tr>
+                          <td colSpan={9} className="text-center py-12">
+                            <AlertTriangle className="w-8 h-8 text-red-400/60 mx-auto mb-2" />
+                            <p className="text-red-400/70 text-sm font-medium">Error al cargar las solicitudes</p>
+                            <button onClick={() => refetchAnul()} className="mt-2 text-xs text-foreground/40 hover:text-foreground/70 underline">Reintentar</button>
+                          </td>
+                        </tr>
+                      )}
+                      {!anulLoading && !anulError && anulRows.length === 0 && (
                         <tr>
                           <td colSpan={9} className="text-center py-12">
                             <AlertTriangle className="w-8 h-8 text-foreground/30 mx-auto mb-2" />
