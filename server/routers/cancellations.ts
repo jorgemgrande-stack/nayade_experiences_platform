@@ -1294,6 +1294,17 @@ export const cancellationsRouter = router({
         { fullName: input.fullName, reason: input.reason, activityDate: input.activityDate }
       ).catch(() => {});
 
+      // Email acuse de recibo al cliente (mismo que en la landing pública)
+      if (input.email) {
+        await sendEmail({
+          to: input.email,
+          cc: COPY_EMAIL,
+          subject: `Solicitud de anulación recibida — Ref. #${requestId}`,
+          html: emailAcuseRecibo(input.fullName, requestId, input.locator, input.reason),
+        }).catch(() => {});
+        await addLog(requestId, "email_sent", { type: "acuse_recibo", to: input.email }, ctx.user.id, ctx.user.name ?? "Admin");
+      }
+
       return { success: true, requestId };
     }),
 
@@ -1466,6 +1477,27 @@ export const cancellationsRouter = router({
         ctx.user.name ?? "Admin",
         { cancellationNumber, creditNoteNumber: creditNoteNumber ?? null, reason: input.reason }
       ).catch(() => {});
+
+      // Email de resolución al cliente (mismo template que acceptRequest)
+      if (res.customerEmail) {
+        if (input.compensationType === "devolucion" && input.refundAmount) {
+          await sendEmail({
+            to: res.customerEmail,
+            cc: COPY_EMAIL,
+            subject: `Aceptación de tu solicitud de anulación #${requestId}`,
+            html: emailAceptacionDevolucion(res.customerName, requestId, String(input.refundAmount), false),
+          }).catch(() => {});
+        } else {
+          // Sin compensación o bono sin datos de voucher: notificamos la aceptación sin importe
+          await sendEmail({
+            to: res.customerEmail,
+            cc: COPY_EMAIL,
+            subject: `Aceptación de tu solicitud de anulación #${requestId}`,
+            html: emailAceptacionDevolucion(res.customerName, requestId, "0.00", false),
+          }).catch(() => {});
+        }
+        await addLog(requestId, "email_sent", { type: "aceptacion", to: res.customerEmail }, ctx.user.id, ctx.user.name ?? "Admin");
+      }
 
       return { success: true, requestId, cancellationNumber, creditNoteNumber };
     }),
