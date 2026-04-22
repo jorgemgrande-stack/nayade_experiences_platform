@@ -14,7 +14,7 @@ import {
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type ActionPanel = "none" | "rechazar" | "aceptar_total" | "aceptar_parcial" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion";
+type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const REASON_LABELS: Record<string, string> = {
@@ -204,6 +204,10 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   const [linkSearch, setLinkSearch] = useState("");
   const [linkSearchQuery, setLinkSearchQuery] = useState("");
   const [reclamationText, setReclamationText] = useState("");
+
+  // ── Accept panel scope state ──
+  const [acceptScope, setAcceptScope] = useState<"total" | "lineas">("total");
+  const [selectedLineIndices, setSelectedLineIndices] = useState<Set<number>>(new Set());
 
   const { data, isLoading } = trpc.cancellations.getRequest.useQuery({ id: requestId });
 
@@ -575,8 +579,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
             <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Acciones</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
               <ActionButton label="Rechazar" icon={<XCircle className="w-4 h-4" />} color="red" active={activePanel === "rechazar"} onClick={() => togglePanel("rechazar")} />
-              <ActionButton label="Aceptar" icon={<CheckCircle2 className="w-4 h-4" />} color="green" active={activePanel === "aceptar_total"} onClick={() => togglePanel("aceptar_total")} />
-              <ActionButton label="Parcial" icon={<CheckCircle2 className="w-4 h-4" />} color="amber" active={activePanel === "aceptar_parcial"} onClick={() => togglePanel("aceptar_parcial")} />
+              <ActionButton label="Aceptar" icon={<CheckCircle2 className="w-4 h-4" />} color="green" active={activePanel === "aceptar"} onClick={() => togglePanel("aceptar")} />
               <ActionButton label="Pedir docs" icon={<FileQuestion className="w-4 h-4" />} color="blue" active={activePanel === "solicitar_docs"} onClick={() => togglePanel("solicitar_docs")} />
               <ActionButton label="Incidencia" icon={<AlertTriangle className="w-4 h-4" />} color="orange" active={activePanel === "incidencia"} onClick={() => togglePanel("incidencia")} />
               <ActionButton label="Nota interna" icon={<Plus className="w-4 h-4" />} color="purple" active={activePanel === "nota"} onClick={() => togglePanel("nota")} />
@@ -609,130 +612,206 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
               </ActionPanelWrapper>
             )}
 
-            {/* ── Panel: Aceptar total ── */}
-            {activePanel === "aceptar_total" && (
-              <ActionPanelWrapper title="Aceptar solicitud — Compensación total" color="green">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setAcceptCompType("devolucion")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "devolucion" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
-                  >
-                    <Banknote className="w-4 h-4" /> Devolución
-                  </button>
-                  <button
-                    onClick={() => setAcceptCompType("bono")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "bono" ? "border-purple-500/50 bg-purple-500/10 text-purple-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
-                  >
-                    <Gift className="w-4 h-4" /> Bono
-                  </button>
-                </div>
-                {acceptCompType === "devolucion" ? (
-                  <>
-                    <div>
-                      <Label className="text-gray-400 text-xs">Importe a devolver (€)</Label>
-                      <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-gray-400 text-xs">Nota de devolución (opcional)</Label>
-                      <Input value={refundNote} onChange={(e) => setRefundNote(e.target.value)} placeholder="Ej: Transferencia bancaria en 5 días hábiles" className="bg-[#111] border-white/10 text-white mt-1" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <Label className="text-gray-400 text-xs">Valor del bono (€)</Label>
-                      <Input value={voucherValue} onChange={(e) => setVoucherValue(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-gray-400 text-xs">Actividad del bono</Label>
-                      <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder="Ej: Nayade Day Pass" className="bg-[#111] border-white/10 text-white mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-gray-400 text-xs">Fecha de caducidad (opcional)</Label>
-                      <Input value={voucherExpires} onChange={(e) => setVoucherExpires(e.target.value)} type="date" className="bg-[#111] border-white/10 text-white mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-gray-400 text-xs">Condiciones del bono (opcional)</Label>
-                      <Textarea value={voucherConditions} onChange={(e) => setVoucherConditions(e.target.value)} rows={2} placeholder="Condiciones de uso..." className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none mt-1" />
-                    </div>
-                  </>
-                )}
-                <Button
-                  className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  disabled={acceptMut.isPending}
-                  onClick={() =>
-                    acceptMut.mutate({
-                      id: req.id,
-                      isPartial: false,
-                      compensationType: acceptCompType,
-                      refundAmount: acceptCompType === "devolucion" ? parseFloat(refundAmount) : undefined,
-                      refundNote: acceptCompType === "devolucion" ? refundNote : undefined,
-                      voucherValue: acceptCompType === "bono" ? parseFloat(voucherValue) : undefined,
-                      activityName: acceptCompType === "bono" ? voucherActivity : undefined,
-                      voucherExpiresAt: acceptCompType === "bono" ? voucherExpires : undefined,
-                      voucherConditions: acceptCompType === "bono" ? voucherConditions : undefined,
-                      sendEmail: true,
-                    })
-                  }
-                >
-                  {acceptMut.isPending ? "Procesando..." : "Confirmar aceptación total"}
-                </Button>
-              </ActionPanelWrapper>
-            )}
+            {/* ── Panel: Aceptar (unificado) ── */}
+            {activePanel === "aceptar" && (() => {
+              // Parse extras from linked reservation
+              const extras: Array<{ name: string; priceCents: number; quantity: number }> = (() => {
+                try {
+                  const raw = JSON.parse(linkedReservation?.extrasJson ?? "[]");
+                  if (!Array.isArray(raw)) return [];
+                  return raw.map((e: any) => ({
+                    name: e.name ?? e.experienceTitle ?? e.productName ?? "Extra",
+                    priceCents: e.price ?? (e.unitPrice != null ? Math.round(e.unitPrice * 100) : 0),
+                    quantity: e.quantity ?? 1,
+                  }));
+                } catch { return []; }
+              })();
+              const hasExtras = extras.length > 0 && !!linkedReservation;
 
-            {/* ── Panel: Aceptar parcial ── */}
-            {activePanel === "aceptar_parcial" && (
-              <ActionPanelWrapper title="Aceptar solicitud — Compensación parcial" color="amber">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setAcceptCompType("devolucion")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "devolucion" ? "border-amber-500/50 bg-amber-500/10 text-amber-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
-                  >
-                    <Banknote className="w-4 h-4" /> Devolución parcial
-                  </button>
-                  <button
-                    onClick={() => setAcceptCompType("bono")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "bono" ? "border-purple-500/50 bg-purple-500/10 text-purple-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
-                  >
-                    <Gift className="w-4 h-4" /> Bono parcial
-                  </button>
-                </div>
-                {acceptCompType === "devolucion" ? (
+              // Compute auto amount from scope + selection
+              const scopeAmountCents = acceptScope === "total"
+                ? (linkedReservation?.amountTotal ?? 0)
+                : Array.from(selectedLineIndices).reduce((s, idx) => {
+                    const ex = extras[idx];
+                    return ex ? s + ex.priceCents * ex.quantity : s;
+                  }, 0);
+              const scopeAmountEur = (scopeAmountCents / 100).toFixed(2);
+
+              const isPartial = (() => {
+                const entered = acceptCompType === "devolucion" ? parseFloat(refundAmount) : parseFloat(voucherValue);
+                return !isNaN(entered) && entered < scopeAmountCents / 100;
+              })();
+
+              const toggleLine = (idx: number) => {
+                setSelectedLineIndices((prev) => {
+                  const next = new Set(prev);
+                  next.has(idx) ? next.delete(idx) : next.add(idx);
+                  return next;
+                });
+              };
+
+              return (
+                <ActionPanelWrapper title="Aceptar solicitud" color="green">
+                  {/* ── Paso 1: Ámbito ── */}
+                  {hasExtras && (
+                    <div>
+                      <p className="text-gray-400 text-xs font-semibold mb-2">1. ¿Qué se anula?</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setAcceptScope("total"); setSelectedLineIndices(new Set()); }}
+                          className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "total" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
+                        >
+                          Reserva completa
+                        </button>
+                        <button
+                          onClick={() => setAcceptScope("lineas")}
+                          className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "lineas" ? "border-blue-500/50 bg-blue-500/10 text-blue-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
+                        >
+                          Líneas específicas
+                        </button>
+                      </div>
+                      {acceptScope === "lineas" && (
+                        <div className="mt-2 space-y-1.5 bg-[#111] rounded-lg border border-white/5 p-3">
+                          {extras.map((ex, idx) => (
+                            <label key={idx} className="flex items-center gap-3 cursor-pointer group">
+                              <input
+                                type="checkbox"
+                                checked={selectedLineIndices.has(idx)}
+                                onChange={() => toggleLine(idx)}
+                                className="rounded border-white/20 bg-transparent"
+                              />
+                              <span className="flex-1 text-xs text-gray-300 group-hover:text-white transition-colors truncate">{ex.name}</span>
+                              <span className="text-xs text-gray-500 font-mono flex-shrink-0">
+                                {ex.quantity > 1 && `×${ex.quantity} · `}{((ex.priceCents * ex.quantity) / 100).toFixed(2)} €
+                              </span>
+                            </label>
+                          ))}
+                          {selectedLineIndices.size === 0 && (
+                            <p className="text-gray-600 text-xs">Selecciona al menos una línea</p>
+                          )}
+                          {selectedLineIndices.size > 0 && (
+                            <p className="text-blue-400 text-xs font-medium pt-1 border-t border-white/5 mt-1">
+                              Total seleccionado: {scopeAmountEur} €
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Paso 2: Tipo de compensación ── */}
                   <div>
-                    <Label className="text-gray-400 text-xs">Importe parcial a devolver (€)</Label>
-                    <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white mt-1" />
+                    <p className="text-gray-400 text-xs font-semibold mb-2">{hasExtras ? "2." : "1."} Tipo de compensación</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setAcceptCompType("devolucion")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "devolucion" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
+                      >
+                        <Banknote className="w-4 h-4" /> Devolución
+                      </button>
+                      <button
+                        onClick={() => setAcceptCompType("bono")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border text-xs font-medium transition-all ${acceptCompType === "bono" ? "border-purple-500/50 bg-purple-500/10 text-purple-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
+                      >
+                        <Gift className="w-4 h-4" /> Bono
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <>
-                    <div>
-                      <Label className="text-gray-400 text-xs">Valor del bono parcial (€)</Label>
-                      <Input value={voucherValue} onChange={(e) => setVoucherValue(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-gray-400 text-xs">Actividad del bono</Label>
-                      <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder="Ej: Nayade Day Pass" className="bg-[#111] border-white/10 text-white mt-1" />
-                    </div>
-                  </>
-                )}
-                <Button
-                  className="w-full bg-amber-600 hover:bg-amber-700 text-white"
-                  disabled={acceptMut.isPending}
-                  onClick={() =>
-                    acceptMut.mutate({
-                      id: req.id,
-                      isPartial: true,
-                      compensationType: acceptCompType,
-                      refundAmount: acceptCompType === "devolucion" ? parseFloat(refundAmount) : undefined,
-                      voucherValue: acceptCompType === "bono" ? parseFloat(voucherValue) : undefined,
-                      activityName: acceptCompType === "bono" ? voucherActivity : undefined,
-                      sendEmail: true,
-                    })
-                  }
-                >
-                  {acceptMut.isPending ? "Procesando..." : "Confirmar aceptación parcial"}
-                </Button>
-              </ActionPanelWrapper>
-            )}
+
+                  {/* ── Paso 3: Importe ── */}
+                  <div>
+                    <p className="text-gray-400 text-xs font-semibold mb-2">{hasExtras ? "3." : "2."} Importe</p>
+                    {acceptCompType === "devolucion" ? (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Label className="text-gray-400 text-xs">Importe a devolver (€)</Label>
+                          {scopeAmountCents > 0 && (
+                            <button
+                              onClick={() => setRefundAmount(scopeAmountEur)}
+                              className="text-xs text-blue-400 hover:text-blue-300 ml-auto"
+                            >
+                              Usar {scopeAmountEur} €
+                            </button>
+                          )}
+                        </div>
+                        <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white" />
+                        {isPartial && <p className="text-amber-400 text-xs mt-1">Compensación parcial del importe afectado</p>}
+                        <div className="mt-2">
+                          <Label className="text-gray-400 text-xs">Nota de devolución (opcional)</Label>
+                          <Input value={refundNote} onChange={(e) => setRefundNote(e.target.value)} placeholder="Ej: Transferencia en 5 días hábiles" className="bg-[#111] border-white/10 text-white mt-1" />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Label className="text-gray-400 text-xs">Valor del bono (€)</Label>
+                          {scopeAmountCents > 0 && (
+                            <button
+                              onClick={() => setVoucherValue(scopeAmountEur)}
+                              className="text-xs text-blue-400 hover:text-blue-300 ml-auto"
+                            >
+                              Usar {scopeAmountEur} €
+                            </button>
+                          )}
+                        </div>
+                        <Input value={voucherValue} onChange={(e) => setVoucherValue(e.target.value)} type="number" min="0" step="0.01" placeholder="0.00" className="bg-[#111] border-white/10 text-white" />
+                        {isPartial && <p className="text-amber-400 text-xs mt-1">Bono parcial del importe afectado</p>}
+                        <div className="mt-2">
+                          <Label className="text-gray-400 text-xs">Actividad del bono</Label>
+                          <Input value={voucherActivity} onChange={(e) => setVoucherActivity(e.target.value)} placeholder="Ej: Nayade Day Pass" className="bg-[#111] border-white/10 text-white mt-1" />
+                        </div>
+                        <div className="mt-2">
+                          <Label className="text-gray-400 text-xs">Caducidad (opcional)</Label>
+                          <Input value={voucherExpires} onChange={(e) => setVoucherExpires(e.target.value)} type="date" className="bg-[#111] border-white/10 text-white mt-1" />
+                        </div>
+                        <div className="mt-2">
+                          <Label className="text-gray-400 text-xs">Condiciones (opcional)</Label>
+                          <Textarea value={voucherConditions} onChange={(e) => setVoucherConditions(e.target.value)} rows={2} placeholder="Condiciones de uso..." className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none mt-1" />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                    disabled={
+                      acceptMut.isPending ||
+                      (acceptScope === "lineas" && selectedLineIndices.size === 0)
+                    }
+                    onClick={() => {
+                      const cancelledItems = acceptScope === "lineas"
+                        ? Array.from(selectedLineIndices).map((idx) => ({
+                            index: idx,
+                            name: extras[idx].name,
+                            priceCents: extras[idx].priceCents,
+                            quantity: extras[idx].quantity,
+                          }))
+                        : undefined;
+                      acceptMut.mutate({
+                        id: req.id,
+                        isPartial,
+                        cancellationScope: acceptScope,
+                        cancelledItems,
+                        compensationType: acceptCompType,
+                        refundAmount: acceptCompType === "devolucion" ? parseFloat(refundAmount) : undefined,
+                        refundNote: acceptCompType === "devolucion" ? refundNote : undefined,
+                        voucherValue: acceptCompType === "bono" ? parseFloat(voucherValue) : undefined,
+                        activityName: acceptCompType === "bono" ? voucherActivity : undefined,
+                        voucherExpiresAt: acceptCompType === "bono" ? voucherExpires : undefined,
+                        voucherConditions: acceptCompType === "bono" ? voucherConditions : undefined,
+                        sendEmail: true,
+                      });
+                    }}
+                  >
+                    {acceptMut.isPending
+                      ? "Procesando..."
+                      : acceptScope === "lineas"
+                        ? `Confirmar anulación de ${selectedLineIndices.size} línea${selectedLineIndices.size > 1 ? "s" : ""}`
+                        : "Confirmar anulación completa"}
+                  </Button>
+                </ActionPanelWrapper>
+              );
+            })()}
 
             {/* ── Panel: Solicitar documentación ── */}
             {activePanel === "solicitar_docs" && (

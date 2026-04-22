@@ -252,6 +252,97 @@ async function propagateCancellation(params: {
   return { cancellationNumber, creditNoteNumber };
 }
 
+// ─── Partial line cancellation ────────────────────────────────────────────────
+
+type CancelledLineItem = { index: number; name: string; priceCents: number; quantity: number };
+
+async function partialLineCancellation(params: {
+  requestId: number;
+  req: CancellationRequest;
+  cancelledItems: CancelledLineItem[];
+  refundAmount?: number;
+  compensationType: "devolucion" | "bono" | "ninguna";
+  adminUserId: number;
+  adminUserName: string;
+}): Promise<{ cancellationNumber: string }> {
+  const { requestId, req, cancelledItems, refundAmount, compensationType, adminUserId, adminUserName } = params;
+
+  const cancellationNumber = await generateDocumentNumber(
+    "anulacion",
+    `cancellations:partialLine:${requestId}`,
+    String(adminUserId)
+  );
+
+  if (req.linkedReservationId) {
+    const [res] = await db
+      .select({ extrasJson: reservations.extrasJson, amountTotal: reservations.amountTotal })
+      .from(reservations)
+      .where(eq(reservations.id, req.linkedReservationId))
+      .limit(1);
+
+    if (res) {
+      const extras: any[] = (() => { try { return JSON.parse(res.extrasJson ?? "[]"); } catch { return []; } })();
+      const cancelledIndices = new Set(cancelledItems.map((i) => i.index));
+      const remainingExtras = extras.filter((_, idx) => !cancelledIndices.has(idx));
+      const cancelledCents = cancelledItems.reduce((s, i) => s + i.priceCents * i.quantity, 0);
+      const newAmountTotal = Math.max(0, res.amountTotal - cancelledCents);
+
+      await db.transaction(async (tx) => {
+        await tx.update(reservations)
+          .set({ extrasJson: JSON.stringify(remainingExtras), amountTotal: newAmountTotal })
+          .where(eq(reservations.id, req.linkedReservationId!));
+
+        await tx.update(cancellationRequests)
+          .set({ cancellationNumber })
+          .where(eq(cancellationRequests.id, requestId));
+
+        if (compensationType === "devolucion" && refundAmount != null && refundAmount > 0) {
+          const txNum = await generateDocumentNumber(
+            "factura",
+            `cancellations:partialLineRefund:${requestId}`,
+            String(adminUserId)
+          );
+          await tx.insert(transactions).values({
+            transactionNumber: txNum.replace("FAC-", "DEV-"),
+            type: "reembolso",
+            amount: String(-Math.abs(refundAmount)),
+            currency: "EUR",
+            paymentMethod: "transferencia",
+            status: "completado",
+            description: `Devolución línea anulada ${cancellationNumber} — ${req.fullName}`,
+            processedAt: new Date(),
+            clientName: req.fullName,
+            clientEmail: req.email ?? undefined,
+            clientPhone: req.phone ?? undefined,
+            saleChannel: (req.saleChannel as any) ?? "admin",
+            operationStatus: "parcial",
+            reservationId: req.linkedReservationId ?? undefined,
+            invoiceNumber: req.invoiceRef ?? cancellationNumber,
+            sellerUserId: adminUserId,
+            sellerName: adminUserName,
+          } as any);
+        }
+      });
+    }
+  }
+
+  await addLog(
+    requestId,
+    "system_propagation",
+    {
+      cancellationNumber,
+      scope: "lineas",
+      cancelledItems,
+      reservationUpdated: !!req.linkedReservationId,
+      refundTransactionCreated: compensationType === "devolucion" && !!refundAmount,
+    },
+    adminUserId,
+    adminUserName
+  );
+
+  return { cancellationNumber };
+}
+
 // ─── Email templates ──────────────────────────────────────────────────────────
 
 function emailAcuseRecibo(fullName: string, requestId: number, locator?: string, reason?: string): string {
@@ -627,6 +718,14 @@ export const cancellationsRouter = router({
         id: z.number(),
         isPartial: z.boolean().default(false),
         compensationType: z.enum(["devolucion", "bono"]),
+        // Scope: "total" = cancel whole reservation, "lineas" = cancel specific extras only
+        cancellationScope: z.enum(["total", "lineas"]).default("total"),
+        cancelledItems: z.array(z.object({
+          index: z.number(),
+          name: z.string(),
+          priceCents: z.number(),
+          quantity: z.number(),
+        })).optional(),
         // Devolución
         refundAmount: z.number().optional(),
         refundNote: z.string().optional(),
@@ -668,6 +767,8 @@ export const cancellationsRouter = router({
           financialStatus,
           compensationType: "devolucion",
           resolvedAmount: String(input.refundAmount),
+          cancellationScope: input.cancellationScope,
+          cancelledItemsJson: input.cancelledItems ?? null,
         }).where(eq(cancellationRequests.id, input.id));
 
         await addLog(
@@ -748,6 +849,8 @@ export const cancellationsRouter = router({
           compensationType: "bono",
           resolvedAmount: String(input.voucherValue),
           voucherId,
+          cancellationScope: input.cancellationScope,
+          cancelledItemsJson: input.cancelledItems ?? null,
         }).where(eq(cancellationRequests.id, input.id));
 
         await addLog(
@@ -776,15 +879,32 @@ export const cancellationsRouter = router({
         }
       }
 
-      // ── Propagación transversal (reserva, operaciones, REAV, contabilidad, número ANU-, abono) ──
-      const { cancellationNumber, creditNoteNumber } = await propagateCancellation({
-        requestId: input.id,
-        req,
-        refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
-        compensationType: input.compensationType,
-        adminUserId: ctx.user.id,
-        adminUserName: ctx.user.name ?? "Admin",
-      });
+      // ── Propagación: bifurca según ámbito ────────────────────────────────────
+      let cancellationNumber: string;
+      let creditNoteNumber: string | undefined;
+
+      if (input.cancellationScope === "lineas" && input.cancelledItems?.length) {
+        // Anulación parcial de líneas — la reserva NO se cancela
+        ({ cancellationNumber } = await partialLineCancellation({
+          requestId: input.id,
+          req,
+          cancelledItems: input.cancelledItems,
+          refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
+          compensationType: input.compensationType,
+          adminUserId: ctx.user.id,
+          adminUserName: ctx.user.name ?? "Admin",
+        }));
+      } else {
+        // Anulación total — reserva pasa a cancelled, REAV, abono contable
+        ({ cancellationNumber, creditNoteNumber } = await propagateCancellation({
+          requestId: input.id,
+          req,
+          refundAmount: input.compensationType === "devolucion" ? input.refundAmount : undefined,
+          compensationType: input.compensationType,
+          adminUserId: ctx.user.id,
+          adminUserName: ctx.user.name ?? "Admin",
+        }));
+      }
 
       return { success: true, voucherId, cancellationNumber, creditNoteNumber };
     }),
