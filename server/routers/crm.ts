@@ -3466,12 +3466,14 @@ export const crmRouter = router({
         } else {
           // Regla de negocio: solo mostrar reservas reales.
           // - "paid": confirmadas por Redsys o admin.
+          // - "cancelled": anuladas (deben seguir visibles con estado "Anulada").
           // - "pending_payment" + canal NO ONLINE_DIRECTO: autorizadas por admin (link de pago desde CRM).
-          // Quedan excluidos: intentos de checkout web no pagados (pending_payment+ONLINE_DIRECTO),
-          // pagos fallidos (failed) y cancelaciones (cancelled).
+          // Quedan excluidos: intentos de checkout web no pagados (pending_payment+ONLINE_DIRECTO)
+          // y pagos fallidos (failed).
           conditions.push(
             or(
               eq(reservations.status, "paid"),
+              eq(reservations.status, "cancelled"),
               and(
                 eq(reservations.status, "pending_payment"),
                 ne(reservations.channel, "ONLINE_DIRECTO")
@@ -5051,14 +5053,21 @@ export const crmRouter = router({
       if (quoteIds.length) invoiceConditions.push(inArray(invoices.quoteId, quoteIds));
       if (reservationIds.length) invoiceConditions.push(inArray(invoices.reservationId, reservationIds));
 
+      // Condiciones de anulaciones: por quoteId O por reservationId (las creadas manualmente usan linkedReservationId)
+      const cancellationConditions: ReturnType<typeof inArray>[] = [];
+      if (quoteIds.length) cancellationConditions.push(inArray(cancellationRequests.linkedQuoteId, quoteIds));
+      if (reservationIds.length) cancellationConditions.push(inArray(cancellationRequests.linkedReservationId, reservationIds));
+
       const [clientInvoices, clientCancellations] = await Promise.all([
         invoiceConditions.length
           ? db.select().from(invoices)
               .where(invoiceConditions.length === 1 ? invoiceConditions[0] : or(...invoiceConditions))
               .orderBy(desc(invoices.createdAt))
           : Promise.resolve([]),
-        quoteIds.length
-          ? db.select().from(cancellationRequests).where(inArray(cancellationRequests.linkedQuoteId, quoteIds)).orderBy(desc(cancellationRequests.createdAt))
+        cancellationConditions.length
+          ? db.select().from(cancellationRequests)
+              .where(cancellationConditions.length === 1 ? cancellationConditions[0] : or(...cancellationConditions))
+              .orderBy(desc(cancellationRequests.createdAt))
           : Promise.resolve([]),
       ]);
 
