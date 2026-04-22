@@ -399,7 +399,7 @@ export default function ReservationsManager() {
                 paddingLeft: "2.25rem", paddingRight: "1rem",
                 paddingTop: "0.5rem", paddingBottom: "0.5rem",
                 border: "1px solid #d1d5db", borderRadius: "0.5rem",
-                fontSize: "0.875rem", background: "#fff", cursor: "pointer",
+                fontSize: "0.875rem", background: "var(--background)", color: "var(--foreground)", cursor: "pointer",
               }}
             >
               <option value="">Todos los estados</option>
@@ -420,7 +420,8 @@ export default function ReservationsManager() {
               border: channelFilter === "groupon" ? "2px solid #7c3aed" : "1px solid #d1d5db",
               borderRadius: "0.5rem",
               fontSize: "0.875rem",
-              background: channelFilter === "groupon" ? "#f5f3ff" : "#fff",
+              background: channelFilter === "groupon" ? "#f5f3ff" : "var(--background)",
+              color: "var(--foreground)",
               cursor: "pointer",
             }}
           >

@@ -653,7 +653,7 @@ export default function ExperiencesManager() {
                   <div>
                     <Label className="text-xs text-muted-foreground">Régimen</Label>
                     <select
-                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background"
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.fiscalRegime}
                       onChange={(e) => setForm({ ...form, fiscalRegime: e.target.value })}
                     >
@@ -664,7 +664,7 @@ export default function ExperiencesManager() {
                   <div>
                     <Label className="text-xs text-muted-foreground">Tipo de producto</Label>
                     <select
-                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background"
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.productType}
                       onChange={(e) => setForm({ ...form, productType: e.target.value })}
                     >
@@ -724,7 +724,7 @@ export default function ExperiencesManager() {
                   <div>
                     <Label className="text-xs text-muted-foreground">Tipo de coste</Label>
                     <select
-                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background"
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.supplierCostType}
                       onChange={(e) => setForm({ ...form, supplierCostType: e.target.value })}
                     >
@@ -746,7 +746,7 @@ export default function ExperiencesManager() {
                   <div>
                     <Label className="text-xs text-muted-foreground">Frecuencia de liquidación</Label>
                     <select
-                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background"
+                      className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
                       value={form.settlementFrequency}
                       onChange={(e) => setForm({ ...form, settlementFrequency: e.target.value })}
                     >

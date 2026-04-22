@@ -492,6 +492,20 @@ select::placeholder {
   color: oklch(0.42 0.04 228);
 }
 
+/* ─── NATIVE SELECT COLOR-SCHEME ─────────────────────────────────────────────
+   When the admin is in dark mode the browser renders native <select> dropdowns
+   with an OS-default light background. color-scheme: dark instructs the browser
+   to use a dark popup, so white text stays legible against a dark background.
+   Also ensures text/background match the theme in light-mode selects.
+────────────────────────────────────────────────────────────────────────────── */
+html.dark select {
+  color-scheme: dark;
+}
+html:not(.dark) select {
+  color-scheme: light;
+  color: var(--foreground);
+}
+
 @layer components {
   /**
    * Custom container utility that centers content and adds responsive padding.

@@ -156,7 +156,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
             <select
               value={form.categoryId}
               onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
-              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
             >
               <option value="">Sin categoría</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -412,7 +412,7 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
                 <select
                   value={form.treatmentId}
                   onChange={e => setForm(f => ({ ...f, treatmentId: e.target.value }))}
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
                 >
                   <option value="">Seleccionar...</option>
                   {treatments.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -423,7 +423,7 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
                 <select
                   value={form.dayOfWeek}
                   onChange={e => setForm(f => ({ ...f, dayOfWeek: e.target.value }))}
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
                 >
                   {DOW.map((d, i) => <option key={i} value={i}>{d}</option>)}
                 </select>
