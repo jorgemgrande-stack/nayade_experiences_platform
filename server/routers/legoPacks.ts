@@ -489,6 +489,161 @@ export const legoPacksRouter = router({
       return rows;
     }),
 
+  // ── Auditoría completa de configuración ──────────────────────────────────
+  audit: adminProcedure
+    .query(async () => {
+      const allPacks = await db.select().from(legoPacks).orderBy(asc(legoPacks.sortOrder));
+      const allLines = await db.select().from(legoPackLines);
+
+      // Cargar todos los productos origen de una vez (evitar N+1)
+      const expIds = [...new Set(allLines.filter(l => l.sourceType === "experience").map(l => l.sourceId))];
+      const packIds = [...new Set(allLines.filter(l => l.sourceType === "pack").map(l => l.sourceId))];
+
+      const expMap: Record<number, { title: string; basePrice: string; isActive: boolean; fiscalRegime: string }> = {};
+      const packMap: Record<number, { title: string; basePrice: string; isActive: boolean; fiscalRegime: string }> = {};
+
+      if (expIds.length > 0) {
+        const exps = await db.select({
+          id: experiences.id, title: experiences.title, basePrice: experiences.basePrice,
+          isActive: experiences.isActive, fiscalRegime: experiences.fiscalRegime,
+        }).from(experiences).where(inArray(experiences.id, expIds));
+        for (const e of exps) expMap[e.id] = { title: e.title, basePrice: e.basePrice ?? "0", isActive: e.isActive, fiscalRegime: e.fiscalRegime };
+      }
+
+      if (packIds.length > 0) {
+        const pks = await db.select({
+          id: packs.id, title: packs.title, basePrice: packs.basePrice,
+          isActive: packs.isActive, fiscalRegime: packs.fiscalRegime,
+        }).from(packs).where(inArray(packs.id, packIds));
+        for (const p of pks) packMap[p.id] = { title: p.title, basePrice: p.basePrice ?? "0", isActive: p.isActive, fiscalRegime: p.fiscalRegime };
+      }
+
+      const now = new Date();
+      const report: Array<{
+        id: number; slug: string; title: string;
+        status: { isActive: boolean; isPublished: boolean; isOnlineSale: boolean; isPresentialSale: boolean; availabilityMode: string; category: string };
+        isSellable: boolean;
+        errors: string[]; warnings: string[];
+        lineCount: number; activeLineCount: number;
+        pricingTotal: number | null;
+        lines: Array<{ id: number; internalName: string | null; sourceType: string; sourceId: number; sourceName: string; isActive: boolean; isRequired: boolean; isOptional: boolean; basePrice: number; overridePrice: number | null; finalPrice: number; errors: string[]; warnings: string[] }>;
+      }> = [];
+
+      for (const pack of allPacks) {
+        const packLines = allLines.filter(l => l.legoPackId === pack.id).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        const activePackLines = packLines.filter(l => l.isActive);
+        const errors: string[] = [];
+        const warnings: string[] = [];
+
+        // ── Pack-level checks ────────────────────────────────────────────────
+        if (!pack.isActive) errors.push("Pack desactivado (isActive=false)");
+        if (!pack.isPublished) warnings.push("No publicado — invisible en la web pública");
+        if (!pack.isOnlineSale && !pack.isPresentialSale) errors.push("Sin canal de venta: ni isOnlineSale ni isPresentialSale están activos");
+        else if (!pack.isOnlineSale && pack.isPresentialSale) warnings.push("Solo venta presencial (isOnlineSale=false) — no aparece en web");
+        if (!pack.coverImageUrl) warnings.push("Sin imagen de portada (coverImageUrl vacío)");
+        if (!pack.shortDescription && !pack.description) warnings.push("Sin descripción (ni shortDescription ni description)");
+        if (!pack.priceLabel) warnings.push("Sin etiqueta de precio (priceLabel vacío) — el listado público no mostrará precio orientativo");
+        if (packLines.length === 0) errors.push("Sin líneas configuradas — no se puede vender");
+        else if (activePackLines.length === 0) errors.push("Todas las líneas están desactivadas — precio total = 0€");
+
+        if (pack.discountPercent && pack.discountExpiresAt && new Date(pack.discountExpiresAt) < now) {
+          warnings.push(`Descuento del ${pack.discountPercent}% configurado pero caducó el ${new Date(pack.discountExpiresAt).toLocaleDateString("es-ES")}`);
+        }
+
+        // ── Line-level checks ────────────────────────────────────────────────
+        const lineReports = [];
+        let pricingTotal = 0;
+        let anyActiveLineHasPrice = false;
+
+        for (const line of packLines) {
+          const lineErrors: string[] = [];
+          const lineWarnings: string[] = [];
+
+          const src = line.sourceType === "experience" ? expMap[line.sourceId] : packMap[line.sourceId];
+          const sourceName = src?.title ?? "(producto no encontrado)";
+
+          if (!src) {
+            lineErrors.push(`Producto origen no existe (${line.sourceType} id=${line.sourceId}) — HUÉRFANO`);
+          } else {
+            if (!src.isActive) lineErrors.push(`Producto origen "${src.title}" está desactivado`);
+          }
+
+          const rawBase = parseFloat(src?.basePrice ?? "0");
+          const rawOverride = line.overridePrice ? parseFloat(String(line.overridePrice)) : null;
+          const basePrice = rawBase > 0 ? rawBase : (rawOverride ?? 0);
+          const qty = line.defaultQuantity ?? 1;
+          const discVal = parseFloat(String(line.discountValue ?? "0"));
+          const discAmt = line.discountType === "percent" ? (basePrice * qty * discVal / 100) : (discVal * qty);
+          const finalPrice = basePrice * qty - discAmt;
+
+          if (basePrice === 0 && line.isActive) {
+            lineErrors.push("Sin precio: ni el producto origen tiene basePrice > 0 ni hay overridePrice → se venderá a 0€");
+          }
+
+          if (line.isRequired && line.isOptional) {
+            lineErrors.push("Flags contradictorios: isRequired=true AND isOptional=true simultáneamente");
+          }
+          if (!line.isRequired && !line.isOptional) {
+            lineWarnings.push("Ni required ni optional: la línea existe pero no tiene rol definido para el cliente");
+          }
+          if (line.isRequired && !line.isClientVisible) {
+            lineWarnings.push("Línea obligatoria oculta al cliente (isRequired=true + isClientVisible=false)");
+          }
+          if (line.isActive && pack.availabilityMode === "strict" && src && !src.isActive) {
+            errors.push(`Modo strict + producto de línea "${src.title}" desactivado → pack NUNCA disponible`);
+          }
+
+          if (line.isActive) {
+            pricingTotal += finalPrice;
+            if (basePrice > 0) anyActiveLineHasPrice = true;
+          }
+
+          lineReports.push({
+            id: line.id, internalName: line.internalName ?? null,
+            sourceType: line.sourceType, sourceId: line.sourceId, sourceName,
+            isActive: line.isActive, isRequired: line.isRequired, isOptional: line.isOptional,
+            basePrice: rawBase, overridePrice: rawOverride, finalPrice,
+            errors: lineErrors, warnings: lineWarnings,
+          });
+        }
+
+        if (activePackLines.length > 0 && !anyActiveLineHasPrice) {
+          errors.push("Ninguna línea activa tiene precio configurado → el pack se vendería a 0€");
+        }
+
+        // ── Sellability final verdict ────────────────────────────────────────
+        const isSellable =
+          pack.isActive &&
+          pack.isPublished &&
+          (pack.isOnlineSale || pack.isPresentialSale) &&
+          activePackLines.length > 0 &&
+          errors.length === 0;
+
+        report.push({
+          id: pack.id, slug: pack.slug, title: pack.title,
+          status: {
+            isActive: pack.isActive, isPublished: pack.isPublished,
+            isOnlineSale: pack.isOnlineSale, isPresentialSale: pack.isPresentialSale,
+            availabilityMode: pack.availabilityMode, category: pack.category,
+          },
+          isSellable,
+          errors, warnings,
+          lineCount: packLines.length, activeLineCount: activePackLines.length,
+          pricingTotal: packLines.length > 0 ? pricingTotal : null,
+          lines: lineReports,
+        });
+      }
+
+      const totalErrors = report.reduce((s, p) => s + p.errors.length + p.lines.reduce((ls, l) => ls + l.errors.length, 0), 0);
+      const totalWarnings = report.reduce((s, p) => s + p.warnings.length + p.lines.reduce((ls, l) => ls + l.warnings.length, 0), 0);
+      const sellableCount = report.filter(p => p.isSellable).length;
+
+      return {
+        summary: { totalPacks: allPacks.length, sellable: sellableCount, totalErrors, totalWarnings },
+        packs: report,
+      };
+    }),
+
   // ── Stats for reports ─────────────────────────────────────────────────────
   stats: adminProcedure
     .query(async () => {
