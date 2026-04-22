@@ -419,6 +419,27 @@ async function ensurePricingColumns() {
       console.error("[DB] ❌ Test query FALLÓ:", qErr.message);
     }
 
+    // ── Columnas de anulaciones parciales ────────────────────────────────────
+    const [cancelCols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cancellation_requests'
+       AND COLUMN_NAME IN ('cancellation_scope','cancelled_items_json')`
+    ) as any[];
+    const foundCancel = new Set((cancelCols as any[]).map((c: any) => c.COLUMN_NAME));
+
+    if (!foundCancel.has("cancellation_scope")) {
+      await conn.execute(
+        "ALTER TABLE `cancellation_requests` ADD COLUMN `cancellation_scope` VARCHAR(10) NOT NULL DEFAULT 'total' AFTER `cancellation_number`"
+      );
+      console.log("[DB] ✅ cancellation_requests.cancellation_scope añadida");
+    }
+    if (!foundCancel.has("cancelled_items_json")) {
+      await conn.execute(
+        "ALTER TABLE `cancellation_requests` ADD COLUMN `cancelled_items_json` TEXT NULL AFTER `cancellation_scope`"
+      );
+      console.log("[DB] ✅ cancellation_requests.cancelled_items_json añadida");
+    }
+
     await conn.end();
   } catch (err: any) {
     console.error("[DB] Error en ensurePricingColumns:", err.message);
