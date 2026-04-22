@@ -9,7 +9,7 @@ import {
   Clock, CheckCircle2, XCircle, FileQuestion, AlertTriangle,
   Archive, Banknote, Gift, Plus,
   ChevronDown, ChevronUp, CloudLightning, HeartPulse, Car, HelpCircle,
-  Link, Search, MessageSquareWarning,
+  Link, Search, MessageSquareWarning, ShoppingBag, Users, PackagePlus, Euro,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -271,7 +271,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
     );
   }
 
-  const { request: req, logs, voucher } = data;
+  const { request: req, logs, voucher, linkedReservation } = data;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -340,6 +340,117 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
               )}
             </div>
           </section>
+
+          {/* ── Bloque 1b: Desglose de la reserva vinculada ── */}
+          {linkedReservation && (
+            <section>
+              <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-3">Desglose de la reserva</h3>
+              <div className="bg-[#1a1a1a] rounded-xl border border-white/5 overflow-hidden">
+                {/* Cabecera reserva */}
+                <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    {linkedReservation.reservationNumber && (
+                      <span className="text-xs font-mono font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20 rounded px-1.5 py-0.5">
+                        {linkedReservation.reservationNumber}
+                      </span>
+                    )}
+                    <span className="text-gray-500 text-xs">{linkedReservation.bookingDate}</span>
+                  </div>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                    linkedReservation.status === "paid" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" :
+                    linkedReservation.status === "cancelled" ? "text-red-400 bg-red-500/10 border-red-500/20" :
+                    "text-gray-400 bg-gray-500/10 border-gray-500/20"
+                  }`}>
+                    {linkedReservation.status === "paid" ? "Pagada" :
+                     linkedReservation.status === "cancelled" ? "Cancelada" :
+                     linkedReservation.status === "pending_payment" ? "Pend. pago" :
+                     linkedReservation.status}
+                  </span>
+                </div>
+
+                {/* Líneas */}
+                <div className="divide-y divide-white/5">
+                  {/* Servicio principal */}
+                  <div className="flex items-center gap-3 px-4 py-3">
+                    <ShoppingBag className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-gray-200 text-sm font-medium truncate">{linkedReservation.productName}</p>
+                      <p className="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
+                        <Users className="w-3 h-3" />
+                        {linkedReservation.pricingType === "per_unit" && linkedReservation.unitsBooked
+                          ? `${linkedReservation.unitsBooked} unidad${linkedReservation.unitsBooked > 1 ? "es" : ""} × ${linkedReservation.unitCapacity ?? 1} pax`
+                          : `${linkedReservation.people} persona${linkedReservation.people > 1 ? "s" : ""}`
+                        }
+                      </p>
+                    </div>
+                    <span className="text-gray-300 text-sm font-mono flex-shrink-0">
+                      {(() => {
+                        let extrasTotal = 0;
+                        try {
+                          const ex = JSON.parse(linkedReservation.extrasJson ?? "[]");
+                          if (Array.isArray(ex)) extrasTotal = ex.reduce((s: number, e: any) => {
+                            const price = e.price ?? (e.unitPrice != null ? e.unitPrice * 100 : 0);
+                            return s + price * (e.quantity ?? 1);
+                          }, 0);
+                        } catch { /* ignore */ }
+                        const mainCents = linkedReservation.amountTotal - extrasTotal;
+                        return `${(mainCents / 100).toFixed(2)} €`;
+                      })()}
+                    </span>
+                  </div>
+
+                  {/* Extras */}
+                  {(() => {
+                    try {
+                      const extras = JSON.parse(linkedReservation.extrasJson ?? "[]");
+                      if (!Array.isArray(extras) || extras.length === 0) return null;
+                      return extras.map((ex: any, i: number) => {
+                        const name = ex.name ?? ex.experienceTitle ?? ex.productName ?? `Extra ${i + 1}`;
+                        const qty = ex.quantity ?? 1;
+                        const priceCents = ex.price ?? (ex.unitPrice != null ? ex.unitPrice * 100 : null);
+                        return (
+                          <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                            <PackagePlus className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-gray-400 text-sm truncate">{name}</p>
+                              {qty > 1 && <p className="text-gray-600 text-xs">×{qty}</p>}
+                            </div>
+                            {priceCents != null && (
+                              <span className="text-gray-400 text-sm font-mono flex-shrink-0">
+                                {((priceCents * qty) / 100).toFixed(2)} €
+                              </span>
+                            )}
+                          </div>
+                        );
+                      });
+                    } catch { return null; }
+                  })()}
+                </div>
+
+                {/* Totales */}
+                <div className="border-t border-white/10 px-4 py-3 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-xs flex items-center gap-1.5"><Euro className="w-3 h-3" />Total reserva</span>
+                    <span className="text-white text-sm font-bold font-mono">{(linkedReservation.amountTotal / 100).toFixed(2)} €</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400 text-xs">Importe cobrado</span>
+                    <span className={`text-sm font-mono ${(linkedReservation.amountPaid ?? 0) >= linkedReservation.amountTotal ? "text-emerald-400" : "text-amber-400"}`}>
+                      {((linkedReservation.amountPaid ?? 0) / 100).toFixed(2)} €
+                    </span>
+                  </div>
+                  {(linkedReservation.amountPaid ?? 0) < linkedReservation.amountTotal && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500 text-xs">Pendiente de cobro</span>
+                      <span className="text-red-400 text-sm font-mono">
+                        {((linkedReservation.amountTotal - (linkedReservation.amountPaid ?? 0)) / 100).toFixed(2)} €
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* ── Bloque 2: Motivo ── */}
           <section>

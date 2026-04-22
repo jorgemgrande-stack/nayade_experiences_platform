@@ -516,7 +516,42 @@ export const cancellationsRouter = router({
         voucher = v ?? null;
       }
 
-      return { request: req, logs, voucher };
+      let linkedReservation: {
+        id: number;
+        reservationNumber: string | null;
+        productName: string;
+        bookingDate: string;
+        people: number;
+        amountTotal: number;
+        amountPaid: number | null;
+        status: string;
+        extrasJson: string | null;
+        pricingType: string | null;
+        unitsBooked: number | null;
+        unitCapacity: number | null;
+      } | null = null;
+      if (req.linkedReservationId) {
+        const [r] = await db
+          .select({
+            id: reservations.id,
+            reservationNumber: reservations.reservationNumber,
+            productName: reservations.productName,
+            bookingDate: reservations.bookingDate,
+            people: reservations.people,
+            amountTotal: reservations.amountTotal,
+            amountPaid: reservations.amountPaid,
+            status: reservations.status,
+            extrasJson: reservations.extrasJson,
+            pricingType: reservations.pricingType,
+            unitsBooked: reservations.unitsBooked,
+            unitCapacity: reservations.unitCapacity,
+          })
+          .from(reservations)
+          .where(eq(reservations.id, req.linkedReservationId));
+        linkedReservation = r ?? null;
+      }
+
+      return { request: req, logs, voucher, linkedReservation };
     }),
 
   // ── Actualizar notas internas ─────────────────────────────────────────────
