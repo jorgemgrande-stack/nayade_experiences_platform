@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -178,11 +178,13 @@ interface Props {
   requestId: number;
   onClose: () => void;
   onNavigateToReservation?: (reservationId: number) => void;
+  autoOpenAccept?: boolean;
 }
 
-export default function CancellationDetailModal({ requestId, onClose, onNavigateToReservation }: Props) {
+export default function CancellationDetailModal({ requestId, onClose, onNavigateToReservation, autoOpenAccept }: Props) {
   const utils = trpc.useUtils();
   const [activePanel, setActivePanel] = useState<ActionPanel>("none");
+  const didAutoOpen = useRef(false);
 
   // Form states
   const [rejectNote, setRejectNote] = useState("");
@@ -210,6 +212,13 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   const [selectedLineIndices, setSelectedLineIndices] = useState<Set<number>>(new Set());
 
   const { data, isLoading } = trpc.cancellations.getRequest.useQuery({ id: requestId });
+
+  useEffect(() => {
+    if (!didAutoOpen.current && data && autoOpenAccept && data.request.resolutionStatus === "sin_resolver") {
+      didAutoOpen.current = true;
+      setActivePanel("aceptar");
+    }
+  }, [data, autoOpenAccept]);
 
   const invalidate = () => utils.cancellations.getRequest.invalidate({ id: requestId });
 
