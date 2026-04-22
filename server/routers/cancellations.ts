@@ -21,7 +21,7 @@ import {
   quotes,
   type CancellationRequest,
 } from "../../drizzle/schema";
-import { eq, desc, and, like, or, sql, lt } from "drizzle-orm";
+import { eq, desc, and, like, or, sql, lt, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
 import {
   buildCancellationReceivedHtml,
@@ -1647,5 +1647,34 @@ export const cancellationsRouter = router({
 
       await addLog(voucher.requestId, "voucher_cancelled", { voucherId: input.voucherId, reason: input.reason ?? null }, ctx.user.id, ctx.user.name ?? "Admin");
       return { success: true };
+    }),
+
+  // ── Anulación masiva directa (solo para limpieza de datos de prueba) ────────
+  batchCancelDirect: adminProcedure
+    .input(z.object({
+      reservationNumbers: z.array(z.string()).min(1).max(50),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const rows = await db
+        .select({ id: reservations.id, reservationNumber: reservations.reservationNumber, status: reservations.status })
+        .from(reservations)
+        .where(inArray(reservations.reservationNumber, input.reservationNumbers));
+
+      const toCancel = rows.filter(r => r.status !== "cancelled");
+      if (toCancel.length === 0) return { cancelled: 0, alreadyCancelled: rows.length, numbers: [] };
+
+      await db.update(reservations)
+        .set({ status: "cancelled" } as any)
+        .where(inArray(reservations.id, toCancel.map(r => r.id)));
+
+      await Promise.all(toCancel.map(r =>
+        logActivity("reservation", r.id, "reservation_cancelled_direct", ctx.user.id, ctx.user.name ?? "Admin", { method: "batch_direct" }).catch(() => {})
+      ));
+
+      return {
+        cancelled: toCancel.length,
+        alreadyCancelled: rows.length - toCancel.length,
+        numbers: toCancel.map(r => r.reservationNumber),
+      };
     }),
 });
