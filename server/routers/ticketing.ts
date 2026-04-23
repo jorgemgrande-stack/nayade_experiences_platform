@@ -293,14 +293,31 @@ export const ticketingRouter = router({
       return { success: true };
     }),
 
-  /** Público: listar productos ticketing activos (para el formulario de canje) */
+  /** Público: listar productos activos de plataforma para el formulario de canje */
   listActiveProducts: publicProcedure
     .input(z.object({ provider: z.string().default("Groupon") }))
     .query(async ({ input }) => {
-      return db
-        .select({ id: ticketingProducts.id, name: ticketingProducts.name, provider: ticketingProducts.provider })
-        .from(ticketingProducts)
-        .where(and(eq(ticketingProducts.active, true), eq(ticketingProducts.provider, input.provider)));
+      const rows = await db
+        .select({
+          id: platformProducts.id,
+          name: platformProducts.externalProductName,
+          provider: platforms.name,
+          expiresAt: platformProducts.expiresAt,
+        })
+        .from(platformProducts)
+        .innerJoin(platforms, eq(platformProducts.platformId, platforms.id))
+        .where(
+          and(
+            eq(platformProducts.active, true),
+            eq(platforms.active, true),
+            sql`LOWER(${platforms.name}) = LOWER(${input.provider})`,
+          )
+        )
+        .orderBy(platformProducts.externalProductName);
+      const now = new Date();
+      return rows
+        .filter((r): r is { id: number; name: string; provider: string; expiresAt: Date | null } => !!r.name)
+        .filter((r) => !r.expiresAt || r.expiresAt > now);
     }),
 
   // ── UPLOAD ADJUNTO CUPÓN (base64, público) ───────────────────────────────
@@ -349,6 +366,7 @@ export const ticketingRouter = router({
         couponCode: z.string().min(1),
         securityCode: z.string().optional(),
         productTicketingId: z.number().optional(),
+        platformProductId: z.number().optional(),
         attachmentUrl: z.string().optional(),
         provider: z.string().default("Groupon"),
       })).min(1).max(10),
@@ -377,6 +395,7 @@ export const ticketingRouter = router({
         const [result] = await db.insert(couponRedemptions).values({
           provider: coupon.provider ?? input.provider,
           productTicketingId: coupon.productTicketingId ?? null,
+          platformProductId: coupon.platformProductId ?? null,
           customerName: input.customerName,
           email: input.email,
           phone: input.phone ?? null,

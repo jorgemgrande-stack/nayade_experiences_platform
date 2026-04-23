@@ -31,7 +31,7 @@ const PROVIDERS = [
 interface CouponEntry {
   id: string; // UUID local para key React
   provider: string;
-  productTicketingId: string;
+  platformProductId: string;
   couponCode: string;
   securityCode: string;
   attachmentFile: File | null;
@@ -62,7 +62,7 @@ function makeCoupon(): CouponEntry {
   return {
     id: Math.random().toString(36).slice(2),
     provider: "Groupon",
-    productTicketingId: "",
+    platformProductId: "",
     couponCode: "",
     securityCode: "",
     attachmentFile: null,
@@ -163,7 +163,7 @@ function CouponBlock({
             <button
               key={id}
               type="button"
-              onClick={() => onUpdate(coupon.id, { provider: id, productTicketingId: "" })}
+              onClick={() => onUpdate(coupon.id, { provider: id, platformProductId: "" })}
               className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs transition-all ${
                 coupon.provider === id
                   ? "bg-amber-500/15 border-amber-500/50 text-amber-300"
@@ -183,8 +183,8 @@ function CouponBlock({
           <Label className="text-white/50 text-xs mb-1.5 block">Experiencia del cupón</Label>
           <div className="relative">
             <select
-              value={coupon.productTicketingId}
-              onChange={(e) => onUpdate(coupon.id, { productTicketingId: e.target.value })}
+              value={coupon.platformProductId}
+              onChange={(e) => onUpdate(coupon.id, { platformProductId: e.target.value })}
               className="w-full h-9 bg-white/[0.07] border border-white/10 text-white rounded-xl text-xs px-3 pr-8 appearance-none focus:border-amber-500/50 focus:outline-none"
               style={{ background: "rgba(255,255,255,0.07)" }}
             >
@@ -366,7 +366,7 @@ export default function CanjearCupon() {
       comments: form.comments || undefined,
       coupons: coupons.map((c) => ({
         provider: c.provider,
-        productTicketingId: c.productTicketingId ? parseInt(c.productTicketingId) : undefined,
+        platformProductId: c.platformProductId ? parseInt(c.platformProductId) : undefined,
         couponCode: c.couponCode.trim().toUpperCase(),
         securityCode: c.securityCode.trim() || undefined,
         attachmentUrl: c.attachmentUrl || undefined,
