@@ -473,6 +473,58 @@ async function ensureRefundColumns() {
   }
 }
 
+async function ensureDiscountColumns() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+
+    const [cols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'discount_codes'
+       AND COLUMN_NAME IN ('discount_type', 'discount_amount', 'origin', 'compensation_voucher_id', 'client_email', 'client_name')`
+    ) as any[];
+    const found = new Set(cols.map((c: any) => c.COLUMN_NAME));
+
+    if (!found.has("discount_type")) {
+      await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `discount_type` enum('percent','fixed') NOT NULL DEFAULT 'percent'");
+      console.log("[DB] ✅ discount_codes.discount_type añadida");
+    }
+    if (!found.has("discount_amount")) {
+      await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `discount_amount` decimal(10,2) NULL");
+      console.log("[DB] ✅ discount_codes.discount_amount añadida");
+    }
+    if (!found.has("origin")) {
+      await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `origin` enum('manual','voucher') NOT NULL DEFAULT 'manual'");
+      console.log("[DB] ✅ discount_codes.origin añadida");
+    }
+    if (!found.has("compensation_voucher_id")) {
+      await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `compensation_voucher_id` int NULL");
+      console.log("[DB] ✅ discount_codes.compensation_voucher_id añadida");
+    }
+    if (!found.has("client_email")) {
+      await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `client_email` varchar(256) NULL");
+      console.log("[DB] ✅ discount_codes.client_email añadida");
+    }
+    if (!found.has("client_name")) {
+      await conn.execute("ALTER TABLE `discount_codes` ADD COLUMN `client_name` varchar(256) NULL");
+      console.log("[DB] ✅ discount_codes.client_name añadida");
+    }
+
+    // Corregir retroactivamente bonos de compensación: si discount_amount > 0 y discount_type = 'percent' → fijar como 'fixed'
+    const [fixed] = await conn.execute(
+      `UPDATE \`discount_codes\` SET \`discount_type\` = 'fixed'
+       WHERE \`origin\` = 'voucher' AND \`discount_amount\` > 0 AND \`discount_type\` = 'percent'`
+    ) as any[];
+    if ((fixed as any).affectedRows > 0) {
+      console.log(`[DB] ✅ ${(fixed as any).affectedRows} código(s) bono corregidos a discount_type='fixed'`);
+    }
+
+    await conn.end();
+  } catch (err: any) {
+    console.error("[DB] Error en ensureDiscountColumns:", err.message);
+  }
+}
+
 // ─── WIPE TEST DATA (one-shot, gated by WIPE_TEST_DATA=true env var) ──────────
 async function wipeTestDataIfRequested() {
   if (process.env.WIPE_TEST_DATA !== "true") return;
@@ -734,6 +786,7 @@ function startInstallmentOverdueJob() {
 runMigrations()
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
+  .then(() => ensureDiscountColumns())
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
