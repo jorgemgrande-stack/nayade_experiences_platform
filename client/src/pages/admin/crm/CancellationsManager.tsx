@@ -31,6 +31,7 @@ import {
   AlertCircle,
   Archive,
   Plus,
+  Mail,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -285,6 +286,17 @@ export default function CancellationsManager() {
     onError: (err) => toast.error(err.message),
   });
 
+  const sendTestEmails = trpc.cancellations.sendTestEmails.useMutation({
+    onSuccess: (d) => {
+      if (d.failed === 0) {
+        toast.success(`${d.total} emails de prueba enviados correctamente`);
+      } else {
+        toast.error(`${d.failed} de ${d.total} emails fallaron. Revisa los logs del servidor.`);
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const rows = data?.rows ?? [];
   const kpis = data?.kpis;
 
@@ -319,6 +331,17 @@ export default function CancellationsManager() {
             className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
           >
             Ver formulario público
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={sendTestEmails.isPending}
+            onClick={() => sendTestEmails.mutate({ to: "jorgemgrande@gmail.com" })}
+            className="gap-1.5 border-white/10 text-gray-400 hover:text-white"
+            title="Envía los 8 templates de email a jorgemgrande@gmail.com"
+          >
+            <Mail className="w-4 h-4" />
+            {sendTestEmails.isPending ? "Enviando..." : "Test emails"}
           </Button>
           <Button
             size="sm"

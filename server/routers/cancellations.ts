@@ -1246,6 +1246,94 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
+  // ── Enviar todos los templates de email a una dirección (test/auditoría) ────
+  sendTestEmails: adminProcedure
+    .input(z.object({ to: z.string().email() }))
+    .mutation(async ({ input }) => {
+      const SAMPLE_NAME = "Carlos García López";
+      const SAMPLE_ID = 99;
+      const SAMPLE_LOCATOR = "NYD-2026-TEST";
+      const SAMPLE_DATE = "20 de abril de 2026";
+
+      const templates: { subject: string; html: string }[] = [
+        {
+          subject: `[1/8] Solicitud de anulación recibida — Ref. #${SAMPLE_ID}`,
+          html: buildCancellationReceivedHtml({
+            fullName: SAMPLE_NAME,
+            requestId: SAMPLE_ID,
+            locator: SAMPLE_LOCATOR,
+            reason: "meteorologicas",
+          }),
+        },
+        {
+          subject: `[2/8] Documentación requerida — Solicitud #${SAMPLE_ID}`,
+          html: emailSolicitudDocumentacion(
+            SAMPLE_NAME,
+            SAMPLE_ID,
+            "Por favor, adjunta el parte meteorológico oficial de AEMET correspondiente al día de la actividad, o cualquier justificante oficial que acredite las condiciones adversas."
+          ),
+        },
+        {
+          subject: `[3/8] Resolución de tu solicitud de anulación #${SAMPLE_ID} — RECHAZADA`,
+          html: emailRechazo(
+            SAMPLE_NAME,
+            SAMPLE_ID,
+            "Según nuestras condiciones generales, las cancelaciones por condiciones meteorológicas deben solicitarse con un mínimo de 24h de antelación a la actividad."
+          ),
+        },
+        {
+          subject: `[4/8] Aceptación de tu solicitud #${SAMPLE_ID} — Devolución TOTAL`,
+          html: emailAceptacionDevolucion(SAMPLE_NAME, SAMPLE_ID, "405.00", false),
+        },
+        {
+          subject: `[5/8] Aceptación de tu solicitud #${SAMPLE_ID} — Devolución PARCIAL`,
+          html: emailAceptacionDevolucion(SAMPLE_NAME, SAMPLE_ID, "135.00", true),
+        },
+        {
+          subject: `[6/8] Bono de compensación TOTAL — Solicitud #${SAMPLE_ID}`,
+          html: emailAceptacionBono(
+            SAMPLE_NAME,
+            SAMPLE_ID,
+            "BON-2026-TEST1",
+            "Cableski & Wakeboard Angeles de San Rafael",
+            "405.00",
+            "31 de diciembre de 2026",
+            false
+          ),
+        },
+        {
+          subject: `[7/8] Bono de compensación PARCIAL — Solicitud #${SAMPLE_ID}`,
+          html: emailAceptacionBono(
+            SAMPLE_NAME,
+            SAMPLE_ID,
+            "BON-2026-TEST2",
+            "Cableski & Wakeboard Angeles de San Rafael",
+            "135.00",
+            "31 de diciembre de 2026",
+            true
+          ),
+        },
+        {
+          subject: `[8/8] Devolución realizada — Solicitud #${SAMPLE_ID}`,
+          html: buildCancellationRefundExecutedHtml({
+            fullName: SAMPLE_NAME,
+            requestId: SAMPLE_ID,
+            amount: "405.00",
+            executedAt: SAMPLE_DATE,
+          }),
+        },
+      ];
+
+      const results: { subject: string; sent: boolean }[] = [];
+      for (const t of templates) {
+        const sent = await sendEmail({ to: input.to, subject: t.subject, html: t.html });
+        results.push({ subject: t.subject, sent });
+      }
+
+      const failed = results.filter(r => !r.sent).length;
+      return { total: templates.length, failed, results };
+    }),
+
   // ── Eliminar solicitud ────────────────────────────────────────────────────
   deleteRequest: adminProcedure
     .input(z.object({ id: z.number() }))
