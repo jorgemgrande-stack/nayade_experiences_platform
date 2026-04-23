@@ -1764,11 +1764,14 @@ export const cancellationsRouter = router({
           clientName: cancellationRequests.fullName,
           clientEmail: cancellationRequests.email,
           cancellationNumber: cancellationRequests.cancellationNumber,
+          linkedReservationId: cancellationRequests.linkedReservationId,
+          reservationNumber: reservations.reservationNumber,
           discountCodeStatus: discountCodes.status,
           currentUses: discountCodes.currentUses,
         })
         .from(compensationVouchers)
         .leftJoin(cancellationRequests, eq(cancellationRequests.id, compensationVouchers.requestId))
+        .leftJoin(reservations, eq(reservations.id, cancellationRequests.linkedReservationId))
         .leftJoin(discountCodes, eq(discountCodes.compensationVoucherId, compensationVouchers.id))
         .where(conditions.length ? and(...conditions) : undefined)
         .orderBy(desc(compensationVouchers.issuedAt))

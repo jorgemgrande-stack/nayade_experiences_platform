@@ -6707,7 +6707,7 @@ export default function CRMDashboard() {
 
           {/* ─── TAB: Pagos Pendientes ─── */}
           {tab === "bonos" && (
-            <BonosManager onOpenCancellation={(id) => { setSelectedAnulId(id); }} />
+            <BonosManager onOpenCancellation={(id) => { setSelectedAnulId(id); }} onOpenReservation={(id) => setViewResId(id)} />
           )}
 
           {tab === "pagos_pendientes" && (
@@ -7655,7 +7655,7 @@ function AnularReservaModal({
 }
 
 // ─── BONOS MANAGER ───────────────────────────────────────────────────────────
-function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number) => void }) {
+function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancellation: (id: number) => void; onOpenReservation: (id: number) => void }) {
   const utils = trpc.useUtils();
   const [statusFilter, setStatusFilter] = useState<"all" | "generado" | "enviado" | "canjeado" | "caducado" | "anulado">("all");
   const [search, setSearch] = useState("");
@@ -7749,114 +7749,151 @@ function BonosManager({ onOpenCancellation }: { onOpenCancellation: (id: number)
       </div>
 
       {/* Tabla */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-5 h-5 animate-spin text-purple-400" />
-        </div>
-      ) : !vouchers || vouchers.length === 0 ? (
-        <div className="text-center py-12 text-foreground/40 text-sm">No se encontraron bonos</div>
-      ) : (
-        <div className="space-y-2">
-          {vouchers.map((v) => {
-            const isActive = v.status === "enviado" || v.status === "generado";
-            const badge = STATUS_BADGE[v.status] ?? STATUS_BADGE.generado;
-            const isExpired = v.expiresAt && new Date(v.expiresAt) < new Date();
-            return (
-              <div key={v.id} className={`bg-foreground/[0.03] border rounded-xl p-4 ${isActive ? "border-green-500/10" : "border-foreground/[0.08]"}`}>
-                <div className="flex flex-wrap items-start gap-3">
-                  {/* Código y estado */}
-                  <div className="min-w-[160px]">
-                    <p className="font-mono font-bold text-sm text-purple-300">{v.code}</p>
-                    <span className={`inline-flex items-center border rounded-full px-2 py-0.5 text-xs font-semibold mt-1 ${badge.cls}`}>
-                      {badge.label}
-                    </span>
-                  </div>
+      <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px]">
+            <thead>
+              <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Código</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Valor</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Generado</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Reserva</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Anulación</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Caduca</th>
+                <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
+                <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={9} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+              ) : !vouchers || vouchers.length === 0 ? (
+                <tr><td colSpan={9} className="text-center py-12 text-foreground/40 text-sm">No se encontraron bonos</td></tr>
+              ) : vouchers.map((v) => {
+                const isActive = v.status === "enviado" || v.status === "generado";
+                const badge = STATUS_BADGE[v.status] ?? STATUS_BADGE.generado;
+                const isExpired = v.expiresAt && new Date(v.expiresAt) < new Date();
+                return (
+                  <tr key={v.id} className="border-b border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors last:border-0">
+                    {/* Código */}
+                    <td className="px-4 py-3">
+                      <span className="font-mono font-bold text-sm text-purple-300">{v.code}</span>
+                      {v.activityName && <p className="text-foreground/40 text-xs mt-0.5 truncate max-w-[160px]">{v.activityName}</p>}
+                    </td>
 
-                  {/* Cliente */}
-                  <div className="flex-1 min-w-[160px]">
-                    <p className="text-white text-sm font-medium">{v.clientName ?? "—"}</p>
-                    <p className="text-foreground/50 text-xs">{v.clientEmail ?? ""}</p>
-                  </div>
+                    {/* Cliente */}
+                    <td className="px-4 py-3">
+                      <p className="text-white text-sm font-medium">{v.clientName ?? "—"}</p>
+                      {v.clientEmail && <p className="text-foreground/40 text-xs">{v.clientEmail}</p>}
+                    </td>
 
-                  {/* Valor + actividad */}
-                  <div className="min-w-[100px]">
-                    <p className="text-orange-400 font-bold">{Number(v.value).toFixed(2)} €</p>
-                    {v.activityName && <p className="text-foreground/50 text-xs truncate max-w-[140px]">{v.activityName}</p>}
-                  </div>
-
-                  {/* Caducidad */}
-                  <div className="min-w-[100px]">
-                    {v.expiresAt ? (
-                      <>
-                        <p className={`text-xs font-medium ${isExpired && isActive ? "text-red-400" : "text-foreground/65"}`}>
-                          {isExpired && isActive ? "⚠️ " : ""}{new Date(v.expiresAt).toLocaleDateString("es-ES")}
+                    {/* Valor */}
+                    <td className="px-4 py-3">
+                      <span className="text-orange-400 font-bold font-mono">{Number(v.value).toFixed(2)} €</span>
+                      {v.redeemedAt && (
+                        <p className="text-purple-300/60 text-xs mt-0.5">
+                          Canjeado {new Date(v.redeemedAt).toLocaleDateString("es-ES")}
                         </p>
-                        <p className="text-foreground/40 text-xs">Caduca</p>
-                      </>
-                    ) : (
-                      <p className="text-foreground/40 text-xs italic">Sin caducidad</p>
-                    )}
-                    {v.redeemedAt && (
-                      <p className="text-purple-300/60 text-xs mt-0.5">Canjeado {new Date(v.redeemedAt).toLocaleDateString("es-ES")}</p>
-                    )}
-                  </div>
+                      )}
+                    </td>
 
-                  {/* Expediente */}
-                  {v.cancellationNumber && (
-                    <button
-                      className="text-xs font-mono text-orange-400/70 hover:text-orange-400 border border-orange-500/20 rounded px-2 py-0.5 transition-colors"
-                      onClick={() => onOpenCancellation(v.requestId)}
-                    >
-                      {v.cancellationNumber}
-                    </button>
-                  )}
+                    {/* Generado */}
+                    <td className="px-4 py-3 text-foreground/55 text-xs">
+                      {v.issuedAt ? new Date(v.issuedAt).toLocaleDateString("es-ES") : "—"}
+                    </td>
 
-                  {/* Acciones */}
-                  <div className="flex gap-1.5 ml-auto items-center flex-wrap">
-                    {isActive && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2.5 text-xs border-sky-500/30 text-sky-300 hover:bg-sky-500/10"
-                        disabled={resendMut.isPending}
-                        onClick={() => resendMut.mutate({ voucherId: v.id })}
-                        title="Reenviar email al cliente"
-                      >
-                        <Send className="w-3 h-3 mr-1" /> Reenviar
-                      </Button>
-                    )}
-                    {(isActive || v.status === "caducado") && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2.5 text-xs border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
-                        onClick={() => {
-                          setNewExpiry(v.expiresAt ? new Date(v.expiresAt).toISOString().split("T")[0] : "");
-                          setExtendModal({ id: v.id, code: v.code, current: v.expiresAt ? new Date(v.expiresAt).toLocaleDateString("es-ES") : null });
-                        }}
-                        title="Ampliar fecha de caducidad"
-                      >
-                        <CalendarClock className="w-3 h-3 mr-1" /> Ampliar
-                      </Button>
-                    )}
-                    {v.status !== "canjeado" && v.status !== "anulado" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2.5 text-xs border-red-500/30 text-red-400 hover:bg-red-500/10"
-                        onClick={() => { setCancelReason(""); setCancelModal({ id: v.id, code: v.code }); }}
-                        title="Anular bono"
-                      >
-                        <Ban className="w-3 h-3 mr-1" /> Anular
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                    {/* Reserva */}
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      {v.linkedReservationId && v.reservationNumber ? (
+                        <button
+                          onClick={() => onOpenReservation(v.linkedReservationId!)}
+                          className="font-mono text-xs text-orange-400 hover:text-orange-300 hover:underline transition-colors"
+                          title="Ver reserva"
+                        >
+                          {v.reservationNumber}
+                        </button>
+                      ) : (
+                        <span className="text-foreground/25 text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* Anulación */}
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      {v.cancellationNumber && v.requestId ? (
+                        <button
+                          onClick={() => onOpenCancellation(v.requestId)}
+                          className="font-mono text-xs text-amber-400/80 hover:text-amber-300 hover:underline transition-colors"
+                          title="Ver expediente de anulación"
+                        >
+                          {v.cancellationNumber}
+                        </button>
+                      ) : (
+                        <span className="text-foreground/25 text-xs">—</span>
+                      )}
+                    </td>
+
+                    {/* Caduca */}
+                    <td className="px-4 py-3">
+                      {v.expiresAt ? (
+                        <span className={`text-xs font-medium ${isExpired && isActive ? "text-red-400" : "text-foreground/55"}`}>
+                          {isExpired && isActive && "⚠ "}{new Date(v.expiresAt).toLocaleDateString("es-ES")}
+                        </span>
+                      ) : (
+                        <span className="text-foreground/25 text-xs italic">Sin límite</span>
+                      )}
+                    </td>
+
+                    {/* Estado */}
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center border rounded-full px-2 py-0.5 text-xs font-semibold ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                    </td>
+
+                    {/* Acciones */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {isActive && (
+                          <button
+                            onClick={() => resendMut.mutate({ voucherId: v.id })}
+                            disabled={resendMut.isPending}
+                            className="p-1.5 rounded-lg text-sky-400/60 hover:text-sky-300 hover:bg-sky-500/10 transition-colors"
+                            title="Reenviar email al cliente"
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                        )}
+                        {(isActive || v.status === "caducado") && (
+                          <button
+                            onClick={() => {
+                              setNewExpiry(v.expiresAt ? new Date(v.expiresAt).toISOString().split("T")[0] : "");
+                              setExtendModal({ id: v.id, code: v.code, current: v.expiresAt ? new Date(v.expiresAt).toLocaleDateString("es-ES") : null });
+                            }}
+                            className="p-1.5 rounded-lg text-amber-400/60 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                            title="Ampliar fecha de caducidad"
+                          >
+                            <CalendarClock className="w-4 h-4" />
+                          </button>
+                        )}
+                        {v.status !== "canjeado" && v.status !== "anulado" && (
+                          <button
+                            onClick={() => { setCancelReason(""); setCancelModal({ id: v.id, code: v.code }); }}
+                            className="p-1.5 rounded-lg text-foreground/30 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            title="Anular bono"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
       {/* Modal: Ampliar caducidad */}
       <Dialog open={!!extendModal} onOpenChange={(o) => !o && setExtendModal(null)}>
