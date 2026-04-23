@@ -687,6 +687,9 @@ export const ticketingRouter = router({
       if (item.statusOperational === "reserva_generada") {
         throw new TRPCError({ code: "CONFLICT", message: "Esta solicitud ya tiene una reserva generada" });
       }
+      if (item.statusFinancial !== "canjeado") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El cupón debe estar marcado como canjeado por la plataforma antes de poder convertirlo en reserva" });
+      }
 
       // Resolver producto: primero por platformProductId, luego por productRealId
       let resolvedExperienceId: number | null = null;
@@ -756,10 +759,10 @@ export const ticketingRouter = router({
       const reservationId = (resResult as { insertId: number }).insertId;
 
       // Actualizar cupón con todos los datos de trazabilidad
+      // statusFinancial se mantiene "canjeado" (ya verificado arriba)
       await db.update(couponRedemptions)
         .set({
           statusOperational: "reserva_generada",
-          statusFinancial: "pendiente_canjear",
           productRealId: resolvedExperienceId ?? (input.productRealId ?? null),
           reservationId,
           platformProductId: input.platformProductId ?? null,
@@ -950,16 +953,15 @@ export const ticketingRouter = router({
       justificantBase64: z.string().optional(),
       justificantFileName: z.string().optional(),
       justificantMimeType: z.string().optional(),
-      // Datos para crear la reserva
-      platformProductId: z.number().optional(),
-      reservationDate: z.string().optional(),
-      participants: z.number().int().min(1).default(1),
     }))
     .mutation(async ({ input, ctx }) => {
       const [item] = await db.select().from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
       if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+      if (item.statusFinancial === "canjeado") {
+        throw new TRPCError({ code: "CONFLICT", message: "Este cupón ya está marcado como canjeado" });
+      }
 
-      // ── 1. Subir comprobante si se adjuntó ────────────────────────────────
+      // ── Subir comprobante de canje si se adjuntó ──────────────────────────
       let justificantUrl: string | null = null;
       if (input.justificantBase64 && input.justificantFileName && input.justificantMimeType) {
         const buffer = Buffer.from(input.justificantBase64, "base64");
@@ -972,106 +974,22 @@ export const ticketingRouter = router({
         }
       }
 
-      // ── 2. Crear reserva en CRM si no existe ya ───────────────────────────
-      let reservationId = item.reservationId ?? null;
-      if (!reservationId && input.reservationDate) {
-        // Resolver producto de plataforma
-        let resolvedExperienceId: number | null = null;
-        let resolvedProductName = "Experiencia Náyade";
-        let resolvedPvpPrice = "0";
-        let resolvedNetPrice = "0";
-
-        if (input.platformProductId) {
-          const [pp] = await db
-            .select({ experienceId: platformProducts.experienceId, externalProductName: platformProducts.externalProductName, pvpPrice: platformProducts.pvpPrice, netPrice: platformProducts.netPrice, expTitle: experiences.title })
-            .from(platformProducts)
-            .leftJoin(experiences, eq(platformProducts.experienceId, experiences.id))
-            .where(eq(platformProducts.id, input.platformProductId))
-            .limit(1);
-          if (pp) {
-            resolvedExperienceId = pp.experienceId ?? null;
-            resolvedProductName = pp.externalProductName ?? pp.expTitle ?? "Experiencia Náyade";
-            resolvedPvpPrice = pp.pvpPrice ?? "0";
-            resolvedNetPrice = pp.netPrice ?? "0";
-          }
-        }
-
-        // Obtener o crear cliente
-        const [existingClient] = await db.select({ id: clients.id }).from(clients).where(sql`${clients.email} = ${item.email}`).limit(1);
-        let clientId = existingClient?.id ?? null;
-        if (!clientId) {
-          const [newClient] = await db.insert(clients).values({ name: item.customerName, email: item.email, phone: item.phone ?? null, source: "ticketing" });
-          clientId = (newClient as { insertId: number }).insertId;
-        }
-
-        const merchantOrder = `TKT-${Date.now()}`;
-        const now = Date.now();
-        const couponNotes = `Canje cupón ${item.provider} — Código: ${item.couponCode} — Producto: ${resolvedProductName}${input.notes ? ` — ${input.notes}` : ""}`;
-        const reservationNumber = await generateReservationNumber();
-        const [resResult] = await db.insert(reservations).values({
-          productId: resolvedExperienceId ?? 0,
-          productName: resolvedProductName,
-          bookingDate: input.reservationDate,
-          people: input.participants,
-          amountTotal: Math.round(parseFloat(resolvedPvpPrice) * input.participants * 100),
-          amountPaid: Math.round(parseFloat(resolvedNetPrice) * input.participants * 100),
-          status: "paid",
-          channel: "PARTNER",
-          statusReservation: "CONFIRMADA",
-          statusPayment: "PAGADO",
-          originSource: "coupon_redemption",
-          platformName: item.provider ?? null,
-          redemptionId: item.id,
-          merchantOrder,
-          reservationNumber,
-          notes: couponNotes,
-          customerName: item.customerName,
-          customerEmail: item.email,
-          customerPhone: item.phone ?? null,
-          createdAt: now,
-          updatedAt: now,
-          paidAt: now,
-        });
-        reservationId = (resResult as { insertId: number }).insertId;
-
-        // postConfirmOperation (booking operativo + transacción)
-        try {
-          const pvpTotal = parseFloat(resolvedPvpPrice) * input.participants;
-          const netTotal = parseFloat(resolvedNetPrice) * input.participants;
-          await postConfirmOperation({
-            reservationId,
-            experienceId: resolvedExperienceId ?? 0,
-            date: input.reservationDate,
-            people: input.participants,
-            pvpTotal,
-            netTotal,
-            customerName: item.customerName,
-            customerEmail: item.email,
-            sourceChannel: "otro",
-          });
-        } catch (e) {
-          console.error("[markAsRedeemed] Error en postConfirmOperation:", e);
-        }
-
-        await logActivity("reservation", reservationId, "coupon_converted_to_reservation", ctx.user.id, ctx.user.name, {
-          provider: item.provider, couponCode: item.couponCode, productName: resolvedProductName, customerName: item.customerName,
-        });
-      }
-
-      // ── 3. Actualizar el cupón: canjeado + reserva_generada ───────────────
+      // ── Marcar como canjeado (la plataforma dio el OK) ────────────────────
       const updateData: Record<string, unknown> = {
         statusFinancial: "canjeado",
-        statusOperational: reservationId ? "reserva_generada" : item.statusOperational,
         settledAt: new Date(),
         adminUserId: ctx.user.id,
       };
-      if (reservationId && !item.reservationId) updateData.reservationId = reservationId;
-      if (input.platformProductId && !item.platformProductId) updateData.platformProductId = input.platformProductId;
       if (justificantUrl) updateData.settlementJustificantUrl = justificantUrl;
       if (input.notes) updateData.notes = input.notes;
 
       await db.update(couponRedemptions).set(updateData).where(eq(couponRedemptions.id, input.id));
-      return { success: true, justificantUrl, reservationId };
+
+      await logActivity("coupon_redemption", input.id, "coupon_marked_redeemed", ctx.user.id, ctx.user.name, {
+        provider: item.provider, couponCode: item.couponCode, customerName: item.customerName,
+      }).catch(() => {});
+
+      return { success: true, justificantUrl };
     }),
 
   /** Admin: eliminar un cupón por ID (borrado físico) */

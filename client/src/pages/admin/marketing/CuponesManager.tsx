@@ -121,10 +121,11 @@ function StatCard({ label, value, sub, gradient, icon }: {
 }
 
 // ─── DETAIL MODAL ─────────────────────────────────────────────────────────────
-function DetailModal({ coupon, onClose, onConvert, onPostpone, onIncidence }: {
+function DetailModal({ coupon, onClose, onConvert, onRedeem, onPostpone, onIncidence }: {
   coupon: Coupon;
   onClose: () => void;
   onConvert: (c: Coupon) => void;
+  onRedeem: (c: Coupon) => void;
   onPostpone: (c: Coupon) => void;
   onIncidence: (c: Coupon) => void;
 }) {
@@ -234,22 +235,25 @@ function DetailModal({ coupon, onClose, onConvert, onPostpone, onIncidence }: {
         </div>
         <DialogFooter className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={onClose} className="border-white/10 text-white/70">Cerrar</Button>
-          {coupon.statusOperational !== "reserva_generada" && (
-            <>
-              {coupon.statusOperational === "recibido" && (
-                <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => { onClose(); onPostpone(coupon); }}>
-                  <Pause className="w-4 h-4 mr-1" /> Posponer
-                </Button>
-              )}
-              {coupon.statusFinancial !== "incidencia" && (
-                <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={() => { onClose(); onIncidence(coupon); }}>
-                  <AlertTriangle className="w-4 h-4 mr-1" /> Incidencia
-                </Button>
-              )}
-              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { onClose(); onConvert(coupon); }}>
-                <CalendarCheck className="w-4 h-4 mr-1" /> Convertir en reserva
-              </Button>
-            </>
+          {coupon.statusOperational === "recibido" && (
+            <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => { onClose(); onPostpone(coupon); }}>
+              <Pause className="w-4 h-4 mr-1" /> Posponer
+            </Button>
+          )}
+          {coupon.statusFinancial !== "incidencia" && coupon.statusOperational !== "reserva_generada" && (
+            <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={() => { onClose(); onIncidence(coupon); }}>
+              <AlertTriangle className="w-4 h-4 mr-1" /> Incidencia
+            </Button>
+          )}
+          {coupon.statusFinancial === "pendiente_canjear" && (
+            <Button className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => { onClose(); onRedeem(coupon); }}>
+              <BadgeCheck className="w-4 h-4 mr-1" /> Confirmar canje
+            </Button>
+          )}
+          {coupon.statusFinancial === "canjeado" && coupon.statusOperational !== "reserva_generada" && (
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => { onClose(); onConvert(coupon); }}>
+              <CalendarCheck className="w-4 h-4 mr-1" /> Convertir en reserva
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>
@@ -408,7 +412,7 @@ function ConvertModal({
           )}
 
           <p className="text-xs text-white/30">
-            Se creará una reserva en el CRM con origen "Plataforma" y etiqueta del proveedor. El cupón pasará a estado "Reserva generada".
+            La plataforma ya confirmó el canje. Se creará la reserva en el CRM con origen "Plataforma". El cupón pasará a estado "Reserva generada".
           </p>
         </div>
         <DialogFooter>
@@ -491,7 +495,7 @@ export default function CuponesManager() {
 
   // ── MUTATIONS ─────────────────────────────────────────────────────────────
   const convertMutation = trpc.ticketing.convertToReservation.useMutation({
-    onSuccess: () => { toast.success("Reserva creada en el CRM con origen Plataforma"); setConvertCoupon(null); setConvertForm({ reservationDate: "", participants: 1, platformProductId: undefined, selectedPlatformId: undefined }); invalidate(); },
+    onSuccess: () => { toast.success("Reserva creada en el CRM — cupón completamente procesado"); setConvertCoupon(null); setConvertForm({ reservationDate: "", participants: 1, platformProductId: undefined, selectedPlatformId: undefined }); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
   const postponeMutation = trpc.ticketing.postponeCoupon.useMutation({
@@ -503,8 +507,8 @@ export default function CuponesManager() {
     onError: (e) => toast.error(e.message),
   });
   const markAsRedeemedMutation = trpc.ticketing.markAsRedeemed.useMutation({
-    onSuccess: (res) => {
-      toast.success(res.reservationId ? "Cupón canjeado y reserva creada en el CRM" : "Cupón marcado como canjeado");
+    onSuccess: () => {
+      toast.success("Cupón marcado como canjeado — ya puedes crear la reserva en el CRM");
       setRedeemCoupon(null);
       invalidate();
     },
@@ -704,9 +708,9 @@ export default function CuponesManager() {
                               className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors" aria-label="Ver detalle">
                               <Eye className="w-4 h-4" />
                             </button>
-                            {c.statusOperational !== "reserva_generada" && (
+                            {c.statusFinancial === "canjeado" && c.statusOperational !== "reserva_generada" && (
                               <button onClick={() => setConvertCoupon(c)}
-                                className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400/60 hover:text-emerald-400 transition-colors" aria-label="Convertir en reserva">
+                                className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400/60 hover:text-emerald-400 transition-colors" aria-label="Convertir en reserva (plataforma ya confirmó)">
                                 <CalendarCheck className="w-4 h-4" />
                               </button>
                             )}
@@ -767,6 +771,7 @@ export default function CuponesManager() {
           coupon={detailCoupon}
           onClose={() => setDetailCoupon(null)}
           onConvert={(c) => setConvertCoupon(c)}
+          onRedeem={(c) => setRedeemCoupon(c)}
           onPostpone={(c) => { setPostponeCoupon(c); setPostponeNotes(""); }}
           onIncidence={(c) => { setIncidenceCoupon(c); setIncidenceNotes(""); }}
         />
@@ -863,7 +868,7 @@ export default function CuponesManager() {
         <RedeemModal
           coupon={redeemCoupon}
           onClose={() => setRedeemCoupon(null)}
-          onConfirm={(data) => markAsRedeemedMutation.mutate({ id: redeemCoupon.id, ...data, participants: data.participants ?? 1 })}
+          onConfirm={(data) => markAsRedeemedMutation.mutate({ id: redeemCoupon.id, ...data })}
           isPending={markAsRedeemedMutation.isPending}
         />
       )}
@@ -1049,25 +1054,12 @@ export default function CuponesManager() {
 function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
   coupon: Coupon;
   onClose: () => void;
-  onConfirm: (data: { notes?: string; justificantBase64?: string; justificantFileName?: string; justificantMimeType?: string; platformProductId?: number; reservationDate?: string; participants: number }) => void;
+  onConfirm: (data: { notes?: string; justificantBase64?: string; justificantFileName?: string; justificantMimeType?: string }) => void;
   isPending: boolean;
 }) {
   const [notes, setNotes] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [filePreview, setFilePreview] = React.useState<string | null>(null);
-  const [reservationDate, setReservationDate] = React.useState(coupon.requestedDate ?? "");
-  const [participants, setParticipants] = React.useState(coupon.participants ?? 1);
-  const [selectedPlatformId, setSelectedPlatformId] = React.useState<number | undefined>();
-  const [platformProductId, setPlatformProductId] = React.useState<number | undefined>();
-
-  const platformsQuery = trpc.ticketing.listPlatforms.useQuery();
-  const platforms = platformsQuery.data ?? [];
-  const productsQuery = trpc.ticketing.listPlatformProducts.useQuery(
-    { platformId: selectedPlatformId! },
-    { enabled: !!selectedPlatformId }
-  );
-  const products = (productsQuery.data ?? []).filter((p: { active: boolean }) => p.active);
-  const selectedProduct = products.find((p: { id: number }) => p.id === platformProductId);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -1082,8 +1074,8 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
     }
   };
 
-  const handleConfirm = async () => {
-    const base = { notes: notes || undefined, platformProductId, reservationDate: reservationDate || undefined, participants };
+  const handleConfirm = () => {
+    const base = { notes: notes || undefined };
     if (file) {
       const reader = new FileReader();
       reader.onload = (ev) => {
@@ -1098,96 +1090,28 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <BadgeCheck className="w-5 h-5 text-emerald-400" />
-            Marcar como canjeado
+            <BadgeCheck className="w-5 h-5 text-violet-400" />
+            Confirmar canje de plataforma
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-300">
-            El cupón pasará a <strong>Canjeado</strong> y se creará automáticamente una reserva en el CRM.
+          <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 text-sm text-violet-300">
+            Confirma que <strong>{coupon.provider}</strong> ha dado el OK para este cupón. El estado pasará a <strong>Canjeado</strong> y podrás crear la reserva en el CRM en el siguiente paso.
           </div>
           <div className="p-3 rounded-lg bg-white/5 text-sm space-y-1">
-            <p className="text-white/60">Cliente: <span className="text-white">{coupon.customerName}</span></p>
+            <p className="text-white/60">Cliente: <span className="text-white font-medium">{coupon.customerName}</span></p>
             <p className="text-white/60">Cupón: <code className="text-violet-300">{coupon.couponCode}</code> · <ProviderBadge provider={coupon.provider} /></p>
           </div>
 
-          {/* Plataforma */}
+          {/* Comprobante opcional */}
           <div>
-            <Label className="text-white/70 text-sm">Plataforma *</Label>
-            <Select value={selectedPlatformId?.toString() ?? ""} onValueChange={(v) => { setSelectedPlatformId(parseInt(v)); setPlatformProductId(undefined); }}>
-              <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
-                <SelectValue placeholder="Selecciona la plataforma del cupón" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1a1a2e] border-white/10">
-                {platforms.map((pl: { id: number; name: string }) => (
-                  <SelectItem key={pl.id} value={pl.id.toString()}>{pl.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Producto */}
-          {selectedPlatformId && (
-            <div>
-              <Label className="text-white/70 text-sm">Producto *</Label>
-              {productsQuery.isPending ? (
-                <p className="text-white/40 text-sm mt-2">Cargando...</p>
-              ) : products.length === 0 ? (
-                <p className="text-amber-400 text-sm mt-2">No hay productos activos. Configúralos en Plataformas.</p>
-              ) : (
-                <Select value={platformProductId?.toString() ?? ""} onValueChange={(v) => setPlatformProductId(parseInt(v))}>
-                  <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1">
-                    <SelectValue placeholder="Selecciona el producto" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1a1a2e] border-white/10">
-                    {products.map((p: { id: number; externalProductName?: string | null; pvpPrice?: string | null }) => (
-                      <SelectItem key={p.id} value={p.id.toString()}>
-                        {p.externalProductName ?? `Producto #${p.id}`}
-                        {p.pvpPrice && <span className="ml-2 text-white/40 text-xs">PVP: {p.pvpPrice}€</span>}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          )}
-
-          {selectedProduct && (
-            <div className="grid grid-cols-2 gap-2">
-              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
-                <p className="text-xs text-white/40 mb-0.5">PVP</p>
-                <p className="text-emerald-400 font-bold">{selectedProduct.pvpPrice ?? "—"}€</p>
-              </div>
-              <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-center">
-                <p className="text-xs text-white/40 mb-0.5">Precio neto</p>
-                <p className="text-blue-400 font-bold">{selectedProduct.netPrice ?? "—"}€</p>
-              </div>
-            </div>
-          )}
-
-          {/* Fecha y participantes */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-white/70 text-sm">Fecha de reserva *</Label>
-              <Input type="date" value={reservationDate} onChange={(e) => setReservationDate(e.target.value)}
-                className="bg-white/5 border-white/10 text-white mt-1" />
-            </div>
-            <div>
-              <Label className="text-white/70 text-sm">Participantes</Label>
-              <Input type="number" min={1} value={participants} onChange={(e) => setParticipants(parseInt(e.target.value) || 1)}
-                className="bg-white/5 border-white/10 text-white mt-1" />
-            </div>
-          </div>
-
-          {/* Comprobante */}
-          <div>
-            <Label className="text-white/70 text-sm mb-2 block">Comprobante de canje (opcional)</Label>
-            <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed border-white/10 hover:border-emerald-500/40 cursor-pointer transition-colors bg-white/3">
+            <Label className="text-white/70 text-sm mb-2 block">Comprobante de la plataforma (opcional)</Label>
+            <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed border-white/10 hover:border-violet-500/40 cursor-pointer transition-colors bg-white/3">
               <Upload className="w-5 h-5 text-white/30" />
-              <span className="text-xs text-white/40">{file ? file.name : "Arrastra o haz clic para subir"}</span>
+              <span className="text-xs text-white/40">{file ? file.name : "Adjunta captura o PDF del OK de la plataforma"}</span>
               <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleFileChange} />
             </label>
             {file && (
@@ -1207,10 +1131,10 @@ function RedeemModal({ coupon, onClose, onConfirm, isPending }: {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} className="border-white/10 text-white/70">Cancelar</Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            disabled={isPending || !reservationDate || !platformProductId}
+          <Button className="bg-violet-600 hover:bg-violet-700 text-white"
+            disabled={isPending}
             onClick={handleConfirm}>
-            {isPending ? "Guardando..." : "✅ Confirmar canje y crear reserva"}
+            {isPending ? "Guardando..." : "Confirmar canje de plataforma"}
           </Button>
         </DialogFooter>
       </DialogContent>
