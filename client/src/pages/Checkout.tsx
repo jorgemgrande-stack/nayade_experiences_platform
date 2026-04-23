@@ -41,17 +41,21 @@ export default function Checkout() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Promo code
   const [promoInput, setPromoInput] = useState("");
-  const [promoData, setPromoData] = useState<{ id: number; code: string; discountPercent: number } | null>(null);
+  const [promoData, setPromoData] = useState<{ id: number; code: string; discountType: "percent" | "fixed"; discountPercent: number; discountAmount: number } | null>(null);
   const validatePromo = trpc.discounts.validate.useMutation({
     onSuccess: (data) => {
-      setPromoData({ id: data.id, code: data.code, discountPercent: data.discountPercent });
+      setPromoData({ id: data.id, code: data.code, discountType: data.discountType, discountPercent: data.discountPercent, discountAmount: data.discountAmount });
     },
     onError: (e) => {
       setPromoData(null);
       setErrors(p => ({ ...p, promo: e.message }));
     },
   });
-  const promoDiscount = promoData ? Math.round(totalEstimated * promoData.discountPercent) / 100 : 0;
+  const promoDiscount = promoData
+    ? promoData.discountType === "fixed"
+      ? promoData.discountAmount
+      : Math.round(totalEstimated * promoData.discountPercent) / 100
+    : 0;
   const finalTotal = Math.max(0, totalEstimated - promoDiscount);
 
   const cartCheckout = trpc.reservations.cartCheckout.useMutation();
@@ -266,7 +270,11 @@ export default function Checkout() {
                     <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-3 py-2">
                       <div>
                         <span className="font-mono font-bold text-green-700 text-sm">{promoData.code}</span>
-                        <span className="text-xs text-green-600 ml-2">-{promoData.discountPercent}% aplicado</span>
+                        <span className="text-xs text-green-600 ml-2">
+                          {promoData.discountType === "fixed"
+                            ? `-${promoData.discountAmount.toFixed(2).replace(".", ",")} € aplicado`
+                            : `-${promoData.discountPercent}% aplicado`}
+                        </span>
                       </div>
                       <button
                         onClick={() => { setPromoData(null); setPromoInput(""); }}

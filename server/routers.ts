@@ -1470,7 +1470,7 @@ export const appRouter = router({
         if (input.discountCodeId) {
           const db = await getDb();
           const [discountRow] = await db!
-            .select({ discountPercent: discountCodes.discountPercent, status: discountCodes.status, expiresAt: discountCodes.expiresAt, maxUses: discountCodes.maxUses, currentUses: discountCodes.currentUses })
+            .select({ discountType: discountCodes.discountType, discountPercent: discountCodes.discountPercent, discountAmount: discountCodes.discountAmount, status: discountCodes.status, expiresAt: discountCodes.expiresAt, maxUses: discountCodes.maxUses, currentUses: discountCodes.currentUses })
             .from(discountCodes)
             .where(eq(discountCodes.id, input.discountCodeId))
             .limit(1);
@@ -1478,8 +1478,14 @@ export const appRouter = router({
             const expired = (discountRow.expiresAt && new Date(discountRow.expiresAt) < new Date())
               || (discountRow.maxUses !== null && discountRow.currentUses >= discountRow.maxUses);
             if (!expired) {
-              const pct = parseFloat(discountRow.discountPercent as unknown as string);
-              const discountCents = Math.round(totalAmountCents * pct / 100);
+              let discountCents: number;
+              if (discountRow.discountType === "fixed") {
+                const fixedEuros = parseFloat((discountRow.discountAmount as unknown as string) ?? "0");
+                discountCents = Math.round(fixedEuros * 100);
+              } else {
+                const pct = parseFloat(discountRow.discountPercent as unknown as string);
+                discountCents = Math.round(totalAmountCents * pct / 100);
+              }
               finalAmountCents = Math.max(0, totalAmountCents - discountCents);
             }
           }

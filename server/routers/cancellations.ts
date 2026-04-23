@@ -1213,6 +1213,39 @@ export const cancellationsRouter = router({
       return { success: true };
     }),
 
+  // ── ACCIÓN: Revertir resolución (deshacer aceptación o rechazo) ─────────────
+  revertResolution: adminProcedure
+    .input(z.object({ id: z.number(), reason: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND" });
+      if (req.resolutionStatus === "sin_resolver") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta solicitud no tiene resolución que revertir." });
+      }
+
+      const oldResolution = req.resolutionStatus;
+      const oldOperational = req.operationalStatus;
+      const oldFinancial = req.financialStatus;
+
+      await db.update(cancellationRequests).set({
+        resolutionStatus: "sin_resolver",
+        operationalStatus: "en_revision",
+        financialStatus: "sin_compensacion",
+        compensationType: null,
+        resolvedAmount: null,
+        closedAt: null,
+      }).where(eq(cancellationRequests.id, input.id));
+
+      await addLog(
+        input.id, "resolution_reverted",
+        { reason: input.reason, oldResolution, oldOperational, oldFinancial },
+        ctx.user.id, ctx.user.name ?? "Admin",
+        oldResolution, "sin_resolver"
+      );
+
+      return { success: true };
+    }),
+
   // ── Eliminar solicitud ────────────────────────────────────────────────────
   deleteRequest: adminProcedure
     .input(z.object({ id: z.number() }))

@@ -18,12 +18,14 @@ function isCodeExpired(code: typeof discountCodes.$inferSelect): boolean {
   return false;
 }
 
-/** Valida un código y devuelve el porcentaje de descuento o lanza error */
+/** Valida un código y devuelve tipo + importe/porcentaje de descuento o lanza error */
 export async function validateAndGetDiscount(codeStr: string): Promise<{
   id: number;
   code: string;
   name: string;
+  discountType: "percent" | "fixed";
   discountPercent: number;
+  discountAmount: number;
 }> {
   const [row] = await db
     .select()
@@ -38,7 +40,6 @@ export async function validateAndGetDiscount(codeStr: string): Promise<{
     throw new TRPCError({ code: "BAD_REQUEST", message: "El código de descuento está inactivo" });
   }
   if (isCodeExpired(row)) {
-    // Auto-mark as expired
     await db.update(discountCodes).set({ status: "expired" }).where(eq(discountCodes.id, row.id));
     throw new TRPCError({ code: "BAD_REQUEST", message: "El código de descuento ha caducado o alcanzó su límite de usos" });
   }
@@ -46,7 +47,9 @@ export async function validateAndGetDiscount(codeStr: string): Promise<{
     id: row.id,
     code: row.code,
     name: row.name,
+    discountType: (row.discountType ?? "percent") as "percent" | "fixed",
     discountPercent: parseFloat(row.discountPercent as unknown as string),
+    discountAmount: parseFloat((row.discountAmount as unknown as string) ?? "0"),
   };
 }
 

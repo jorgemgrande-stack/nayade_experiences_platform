@@ -10,11 +10,12 @@ import {
   Archive, Banknote, Gift, Plus,
   ChevronDown, ChevronUp, CloudLightning, HeartPulse, Car, HelpCircle,
   Link, Search, MessageSquareWarning, ShoppingBag, Users, PackagePlus, Euro,
+  RotateCcw, Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion" | "marcar_devolucion";
+type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion" | "marcar_devolucion" | "revertir_resolucion" | "cambiar_financiero";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const REASON_LABELS: Record<string, string> = {
@@ -291,6 +292,19 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
     onError: (e) => toast.error(e.message),
   });
 
+  const revertMut = trpc.cancellations.revertResolution.useMutation({
+    onSuccess: () => { toast.success("Resolución revertida — expediente en revisión"); setActivePanel("none"); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const financialOverrideMut = trpc.cancellations.updateFinancialStatus.useMutation({
+    onSuccess: () => { toast.success("Estado financiero actualizado"); setActivePanel("none"); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const [revertReason, setRevertReason] = useState("");
+  const [financialOverrideStatus, setFinancialOverrideStatus] = useState<string>("");
+
   function togglePanel(panel: ActionPanel) {
     setActivePanel((prev) => (prev === panel ? "none" : panel));
   }
@@ -540,6 +554,15 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   → {OP_STATUS_LABELS[s]}
                 </button>
               ))}
+              {req.operationalStatus === "incidencia" && (
+                <button
+                  onClick={() => statusMut.mutate({ id: req.id, status: "en_revision" })}
+                  disabled={statusMut.isPending}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/40 text-orange-400 hover:text-white hover:bg-orange-500/20 transition-all"
+                >
+                  ✓ Resolver incidencia
+                </button>
+              )}
             </div>
           </section>
 
@@ -618,6 +641,10 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
               {req.financialStatus === "pendiente_devolucion" && (
                 <ActionButton label="Marcar devuelta" icon={<Banknote className="w-4 h-4" />} color="green" active={activePanel === "marcar_devolucion"} onClick={() => togglePanel("marcar_devolucion")} />
               )}
+              {req.resolutionStatus !== "sin_resolver" && req.operationalStatus !== "cerrada" && (
+                <ActionButton label="Revertir resolución" icon={<RotateCcw className="w-4 h-4" />} color="orange" active={activePanel === "revertir_resolucion"} onClick={() => togglePanel("revertir_resolucion")} />
+              )}
+              <ActionButton label="Estado financiero" icon={<Settings className="w-4 h-4" />} color="gray" active={activePanel === "cambiar_financiero"} onClick={() => togglePanel("cambiar_financiero")} />
             </div>
 
             {/* ── Panel: Rechazar ── */}
@@ -1071,6 +1098,59 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   })}
                 >
                   {markRefundExecMut.isPending ? "Guardando..." : "Confirmar devolución realizada"}
+                </Button>
+              </ActionPanelWrapper>
+            )}
+
+            {/* ── Panel: Revertir resolución ── */}
+            {activePanel === "revertir_resolucion" && (
+              <ActionPanelWrapper title="Revertir resolución" color="orange">
+                <p className="text-xs text-gray-500">
+                  Revierte la resolución actual (<strong>{req.resolutionStatus}</strong>) y devuelve el expediente a "En revisión". El estado financiero se reseteará a "Sin compensación". Úsalo solo si la resolución fue un error.
+                </p>
+                <Textarea
+                  value={revertReason}
+                  onChange={(e) => setRevertReason(e.target.value)}
+                  placeholder="Motivo de la reversión (opcional)..."
+                  rows={2}
+                  className="bg-[#111] border-white/10 text-white placeholder:text-gray-600 resize-none"
+                />
+                <Button
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                  disabled={revertMut.isPending}
+                  onClick={() => revertMut.mutate({ id: req.id, reason: revertReason || undefined })}
+                >
+                  {revertMut.isPending ? "Revirtiendo..." : "Confirmar reversión"}
+                </Button>
+              </ActionPanelWrapper>
+            )}
+
+            {/* ── Panel: Cambiar estado financiero ── */}
+            {activePanel === "cambiar_financiero" && (
+              <ActionPanelWrapper title="Override estado financiero" color="gray">
+                <p className="text-xs text-gray-500">
+                  Cambio manual del estado financiero. Úsalo para corregir estados que no se actualizaron automáticamente.
+                </p>
+                <select
+                  value={financialOverrideStatus}
+                  onChange={(e) => setFinancialOverrideStatus(e.target.value)}
+                  className="w-full bg-[#111] border border-white/10 text-white rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">— Selecciona estado —</option>
+                  <option value="sin_compensacion">Sin compensación</option>
+                  <option value="pendiente_devolucion">Pendiente devolución</option>
+                  <option value="devuelta_economicamente">Devuelta económicamente</option>
+                  <option value="pendiente_bono">Pendiente bono</option>
+                  <option value="compensada_bono">Compensada con bono</option>
+                  <option value="compensacion_mixta">Compensación mixta</option>
+                  <option value="incidencia_economica">Incidencia económica</option>
+                </select>
+                <Button
+                  className="w-full bg-gray-600 hover:bg-gray-700 text-white"
+                  disabled={financialOverrideMut.isPending || !financialOverrideStatus}
+                  onClick={() => financialOverrideMut.mutate({ id: req.id, financialStatus: financialOverrideStatus as any })}
+                >
+                  {financialOverrideMut.isPending ? "Actualizando..." : "Aplicar cambio"}
                 </Button>
               </ActionPanelWrapper>
             )}
