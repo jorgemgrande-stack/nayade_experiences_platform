@@ -428,6 +428,7 @@ export default function CancellationsManager() {
               <tr className="border-b border-white/5">
                 <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">#</th>
                 <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Solicitante</th>
+                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Reserva</th>
                 <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Motivo</th>
                 <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Fecha actividad</th>
                 <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Estado op.</th>
@@ -440,14 +441,14 @@ export default function CancellationsManager() {
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-500">
+                  <td colSpan={10} className="text-center py-12 text-gray-500">
                     Cargando solicitudes...
                   </td>
                 </tr>
               )}
               {!isLoading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-12">
+                  <td colSpan={10} className="text-center py-12">
                     <AlertTriangle className="w-8 h-8 text-gray-600 mx-auto mb-2" />
                     <p className="text-gray-500">No hay solicitudes que coincidan con los filtros</p>
                   </td>
@@ -465,6 +466,9 @@ export default function CancellationsManager() {
                     {row.locator && (
                       <p className="text-gray-600 text-xs font-mono">{row.locator}</p>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-400 text-xs font-mono">
+                    {row.reservationNumber ?? "—"}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1.5">

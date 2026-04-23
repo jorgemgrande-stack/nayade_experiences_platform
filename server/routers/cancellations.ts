@@ -565,6 +565,7 @@ export const cancellationsRouter = router({
           reasonDetail: cancellationRequests.reasonDetail,
           locator: cancellationRequests.locator,
           linkedReservationId: cancellationRequests.linkedReservationId,
+          reservationNumber: reservations.reservationNumber,
           operationalStatus: cancellationRequests.operationalStatus,
           resolutionStatus: cancellationRequests.resolutionStatus,
           financialStatus: cancellationRequests.financialStatus,
@@ -578,6 +579,7 @@ export const cancellationsRouter = router({
           closedAt: cancellationRequests.closedAt,
         })
         .from(cancellationRequests)
+        .leftJoin(reservations, eq(cancellationRequests.linkedReservationId, reservations.id))
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .orderBy(desc(cancellationRequests.createdAt))
         .limit(input.limit)
