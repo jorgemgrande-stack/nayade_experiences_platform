@@ -324,7 +324,7 @@ async function partialLineCancellation(params: {
             clientEmail: req.email ?? undefined,
             clientPhone: req.phone ?? undefined,
             saleChannel: (req.saleChannel as any) ?? "admin",
-            operationStatus: "parcial",
+            operationStatus: "reembolsada",
             reservationId: req.linkedReservationId ?? undefined,
             invoiceNumber: req.invoiceRef ?? cancellationNumber,
             sellerUserId: adminUserId,
