@@ -6590,6 +6590,7 @@ export default function CRMDashboard() {
                       <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">#</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Solicitante</th>
+                        <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Reserva</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Motivo</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Fecha actividad</th>
                         <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado op.</th>
@@ -6602,14 +6603,14 @@ export default function CRMDashboard() {
                     <tbody>
                       {anulLoading && (
                         <tr>
-                          <td colSpan={9} className="text-center py-12 text-foreground/40">
+                          <td colSpan={10} className="text-center py-12 text-foreground/40">
                             <RefreshCw className="w-5 h-5 animate-spin mx-auto" />
                           </td>
                         </tr>
                       )}
                       {!anulLoading && anulError && (
                         <tr>
-                          <td colSpan={9} className="text-center py-12">
+                          <td colSpan={10} className="text-center py-12">
                             <AlertTriangle className="w-8 h-8 text-red-400/60 mx-auto mb-2" />
                             <p className="text-red-400/70 text-sm font-medium">Error al cargar las solicitudes</p>
                             <button onClick={() => refetchAnul()} className="mt-2 text-xs text-foreground/40 hover:text-foreground/70 underline">Reintentar</button>
@@ -6618,7 +6619,7 @@ export default function CRMDashboard() {
                       )}
                       {!anulLoading && !anulError && anulRows.length === 0 && (
                         <tr>
-                          <td colSpan={9} className="text-center py-12">
+                          <td colSpan={10} className="text-center py-12">
                             <AlertTriangle className="w-8 h-8 text-foreground/30 mx-auto mb-2" />
                             <p className="text-foreground/40 text-sm">No hay solicitudes que coincidan con los filtros</p>
                           </td>
@@ -6635,6 +6636,19 @@ export default function CRMDashboard() {
                             <p className="text-white text-sm font-medium">{row.fullName}</p>
                             {row.email && <p className="text-foreground/50 text-xs">{row.email}</p>}
                             {row.locator && <p className="text-foreground/40 text-xs font-mono">{row.locator}</p>}
+                          </td>
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            {row.linkedReservationId && row.reservationNumber ? (
+                              <button
+                                onClick={() => setViewResId(row.linkedReservationId!)}
+                                className="font-mono text-xs text-orange-400 hover:text-orange-300 hover:underline transition-colors"
+                                title="Ver reserva"
+                              >
+                                {row.reservationNumber}
+                              </button>
+                            ) : (
+                              <span className="text-foreground/30 text-xs">—</span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5">
