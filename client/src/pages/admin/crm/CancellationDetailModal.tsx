@@ -209,7 +209,8 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
   // ── Accept panel scope state ──
   const [acceptScope, setAcceptScope] = useState<"total" | "lineas">("total");
-  const [selectedLineIndices, setSelectedLineIndices] = useState<Set<number>>(new Set());
+  // Map<lineIndex, quantityToCancel>
+  const [selectedLineQuantities, setSelectedLineQuantities] = useState<Map<number, number>>(new Map());
 
   const { data, isLoading } = trpc.cancellations.getRequest.useQuery({ id: requestId });
 
@@ -645,9 +646,9 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
               // Compute auto amount from scope + selection
               const scopeAmountCents = acceptScope === "total"
                 ? (linkedReservation?.amountTotal ?? 0)
-                : Array.from(selectedLineIndices).reduce((s, idx) => {
+                : Array.from(selectedLineQuantities.entries()).reduce((s, [idx, qty]) => {
                     const ex = extras[idx];
-                    return ex ? s + ex.priceCents * ex.quantity : s;
+                    return ex ? s + ex.priceCents * qty : s;
                   }, 0);
               const scopeAmountEur = (scopeAmountCents / 100).toFixed(2);
 
@@ -656,10 +657,19 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 return !isNaN(entered) && entered < scopeAmountCents / 100;
               })();
 
-              const toggleLine = (idx: number) => {
-                setSelectedLineIndices((prev) => {
-                  const next = new Set(prev);
-                  next.has(idx) ? next.delete(idx) : next.add(idx);
+              const toggleLine = (idx: number, maxQty: number) => {
+                setSelectedLineQuantities((prev) => {
+                  const next = new Map(prev);
+                  next.has(idx) ? next.delete(idx) : next.set(idx, maxQty);
+                  return next;
+                });
+              };
+
+              const setLineQty = (idx: number, qty: number, maxQty: number) => {
+                setSelectedLineQuantities((prev) => {
+                  const next = new Map(prev);
+                  const clamped = Math.min(Math.max(1, qty), maxQty);
+                  next.set(idx, clamped);
                   return next;
                 });
               };
@@ -672,7 +682,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                       <p className="text-gray-400 text-xs font-semibold mb-2">1. ¿Qué se anula?</p>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => { setAcceptScope("total"); setSelectedLineIndices(new Set()); }}
+                          onClick={() => { setAcceptScope("total"); setSelectedLineQuantities(new Map()); }}
                           className={`flex-1 py-2 rounded-lg border text-xs font-medium transition-all ${acceptScope === "total" ? "border-green-500/50 bg-green-500/10 text-green-400" : "border-white/10 text-gray-500 hover:text-gray-300"}`}
                         >
                           Reserva completa
@@ -686,24 +696,49 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                       </div>
                       {acceptScope === "lineas" && (
                         <div className="mt-2 space-y-1.5 bg-[#111] rounded-lg border border-white/5 p-3">
-                          {extras.map((ex, idx) => (
-                            <label key={idx} className="flex items-center gap-3 cursor-pointer group">
-                              <input
-                                type="checkbox"
-                                checked={selectedLineIndices.has(idx)}
-                                onChange={() => toggleLine(idx)}
-                                className="rounded border-white/20 bg-transparent"
-                              />
-                              <span className="flex-1 text-xs text-gray-300 group-hover:text-white transition-colors truncate">{ex.name}</span>
-                              <span className="text-xs text-gray-500 font-mono flex-shrink-0">
-                                {ex.quantity > 1 && `×${ex.quantity} · `}{((ex.priceCents * ex.quantity) / 100).toFixed(2)} €
-                              </span>
-                            </label>
-                          ))}
-                          {selectedLineIndices.size === 0 && (
+                          {extras.map((ex, idx) => {
+                            const isChecked = selectedLineQuantities.has(idx);
+                            const selectedQty = selectedLineQuantities.get(idx) ?? ex.quantity;
+                            return (
+                              <div key={idx} className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => toggleLine(idx, ex.quantity)}
+                                  className="rounded border-white/20 bg-transparent flex-shrink-0"
+                                />
+                                <span className="flex-1 text-xs text-gray-300 truncate">{ex.name}</span>
+                                {ex.quantity > 1 && isChecked ? (
+                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => setLineQty(idx, selectedQty - 1, ex.quantity)}
+                                      disabled={selectedQty <= 1}
+                                      className="w-5 h-5 rounded bg-white/10 text-white text-xs disabled:opacity-30 hover:bg-white/20 flex items-center justify-center"
+                                    >−</button>
+                                    <span className="text-xs text-white font-mono w-4 text-center">{selectedQty}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setLineQty(idx, selectedQty + 1, ex.quantity)}
+                                      disabled={selectedQty >= ex.quantity}
+                                      className="w-5 h-5 rounded bg-white/10 text-white text-xs disabled:opacity-30 hover:bg-white/20 flex items-center justify-center"
+                                    >+</button>
+                                    <span className="text-xs text-gray-500 font-mono ml-1">
+                                      {((ex.priceCents * selectedQty) / 100).toFixed(2)} €
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-500 font-mono flex-shrink-0">
+                                    {ex.quantity > 1 && `×${ex.quantity} · `}{((ex.priceCents * ex.quantity) / 100).toFixed(2)} €
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {selectedLineQuantities.size === 0 && (
                             <p className="text-gray-600 text-xs">Selecciona al menos una línea</p>
                           )}
-                          {selectedLineIndices.size > 0 && (
+                          {selectedLineQuantities.size > 0 && (
                             <p className="text-blue-400 text-xs font-medium pt-1 border-t border-white/5 mt-1">
                               Total seleccionado: {scopeAmountEur} €
                             </p>
@@ -790,15 +825,15 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     className="w-full bg-green-600 hover:bg-green-700 text-white"
                     disabled={
                       acceptMut.isPending ||
-                      (acceptScope === "lineas" && selectedLineIndices.size === 0)
+                      (acceptScope === "lineas" && selectedLineQuantities.size === 0)
                     }
                     onClick={() => {
                       const cancelledItems = acceptScope === "lineas"
-                        ? Array.from(selectedLineIndices).map((idx) => ({
+                        ? Array.from(selectedLineQuantities.entries()).map(([idx, qty]) => ({
                             index: idx,
                             name: extras[idx].name,
                             priceCents: extras[idx].priceCents,
-                            quantity: extras[idx].quantity,
+                            quantity: qty,
                           }))
                         : undefined;
                       acceptMut.mutate({
@@ -820,7 +855,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                     {acceptMut.isPending
                       ? "Procesando..."
                       : acceptScope === "lineas"
-                        ? `Confirmar anulación de ${selectedLineIndices.size} línea${selectedLineIndices.size > 1 ? "s" : ""}`
+                        ? `Confirmar anulación de ${selectedLineQuantities.size} línea${selectedLineQuantities.size > 1 ? "s" : ""}`
                         : "Confirmar anulación completa"}
                   </Button>
                 </ActionPanelWrapper>

@@ -283,8 +283,16 @@ async function partialLineCancellation(params: {
 
     if (res) {
       const extras: any[] = (() => { try { return JSON.parse(res.extrasJson ?? "[]"); } catch { return []; } })();
-      const cancelledIndices = new Set(cancelledItems.map((i) => i.index));
-      const remainingExtras = extras.filter((_, idx) => !cancelledIndices.has(idx));
+      const cancelledByIndex = new Map(cancelledItems.map((i) => [i.index, i.quantity]));
+      const remainingExtras = extras
+        .map((extra, idx) => {
+          const cancelQty = cancelledByIndex.get(idx);
+          if (cancelQty == null) return extra; // not touched
+          const remaining = (extra.quantity ?? 1) - cancelQty;
+          if (remaining <= 0) return null; // fully cancelled
+          return { ...extra, quantity: remaining }; // partially cancelled — reduce quantity
+        })
+        .filter(Boolean);
       const cancelledCents = cancelledItems.reduce((s, i) => s + i.priceCents * i.quantity, 0);
       const newAmountTotal = Math.max(0, res.amountTotal - cancelledCents);
 
