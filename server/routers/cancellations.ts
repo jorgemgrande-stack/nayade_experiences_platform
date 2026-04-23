@@ -1788,6 +1788,106 @@ export const cancellationsRouter = router({
       return rows;
     }),
 
+  // ── Reenviar todos los emails de un expediente a una dirección concreta ──────
+  resendRequestEmails: adminProcedure
+    .input(z.object({
+      id: z.number(),
+      to: z.string().email(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const sent: { label: string; ok: boolean }[] = [];
+
+      // 1. Acuse de recibo
+      const ackOk = await sendEmail({
+        to: input.to,
+        subject: `Solicitud de anulación recibida — Ref. #${req.id}`,
+        html: buildCancellationReceivedHtml({
+          fullName: req.fullName,
+          requestId: req.id,
+          locator: req.locator ?? undefined,
+          reason: req.reason ?? undefined,
+        }),
+      });
+      sent.push({ label: "Acuse de recibo", ok: ackOk });
+
+      // 2. Email de resolución (si la hay)
+      if (req.resolutionStatus === "rechazada") {
+        const ok = await sendEmail({
+          to: input.to,
+          subject: `Resolución de tu solicitud de anulación #${req.id}`,
+          html: emailRechazo(req.fullName, req.id, undefined),
+        });
+        sent.push({ label: "Rechazo", ok });
+
+      } else if (req.resolutionStatus === "aceptada_total" || req.resolutionStatus === "aceptada_parcial") {
+        const isPartial = req.resolutionStatus === "aceptada_parcial";
+
+        if (req.compensationType === "devolucion") {
+          const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "—";
+          const ok = await sendEmail({
+            to: input.to,
+            subject: `Aceptación de tu solicitud de anulación #${req.id}`,
+            html: emailAceptacionDevolucion(req.fullName, req.id, amount, isPartial),
+          });
+          sent.push({ label: "Aceptación devolución", ok });
+
+        } else if (req.compensationType === "bono") {
+          // Buscar el bono vinculado
+          const [voucher] = await db
+            .select()
+            .from(compensationVouchers)
+            .where(eq(compensationVouchers.requestId, req.id))
+            .limit(1);
+
+          if (voucher) {
+            const expiresStr = voucher.expiresAt
+              ? new Date(voucher.expiresAt).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })
+              : "Sin caducidad";
+            const ok = await sendEmail({
+              to: input.to,
+              subject: `Bono de compensación — Solicitud #${req.id}`,
+              html: emailAceptacionBono(
+                req.fullName,
+                req.id,
+                voucher.code,
+                voucher.activityName ?? "Actividad Náyade Experiences",
+                Number(voucher.value).toFixed(2),
+                expiresStr,
+                isPartial
+              ),
+            });
+            sent.push({ label: `Bono ${voucher.code}`, ok });
+          } else {
+            sent.push({ label: "Bono (no encontrado)", ok: false });
+          }
+        }
+      }
+
+      // 3. Si ya está devuelto, también el email de confirmación de ejecución
+      if (req.financialStatus === "devuelta_economicamente" && req.refundExecutedAt) {
+        const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "—";
+        const dateStr = new Date(req.refundExecutedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
+        const ok = await sendEmail({
+          to: input.to,
+          subject: `Devolución realizada — Solicitud #${req.id}`,
+          html: buildCancellationRefundExecutedHtml({
+            fullName: req.fullName,
+            requestId: req.id,
+            amount,
+            executedAt: dateStr,
+          }),
+        });
+        sent.push({ label: "Devolución ejecutada", ok });
+      }
+
+      const failed = sent.filter(s => !s.ok).length;
+      await addLog(req.id, "emails_resent", { to: input.to, sent }, ctx.user.id, ctx.user.name ?? "Admin");
+      return { sent, failed };
+    }),
+
   resendVoucherEmail: adminProcedure
     .input(z.object({ voucherId: z.number() }))
     .mutation(async ({ input, ctx }) => {

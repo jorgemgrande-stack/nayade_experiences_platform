@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion" | "marcar_devolucion" | "revertir_resolucion" | "cambiar_financiero";
+type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion" | "marcar_devolucion" | "revertir_resolucion" | "cambiar_financiero" | "reenviar_emails";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const REASON_LABELS: Record<string, string> = {
@@ -289,6 +289,20 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
   const statusMut = trpc.cancellations.updateOperationalStatus.useMutation({
     onSuccess: () => { toast.success("Estado actualizado"); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const [resendTo, setResendTo] = useState("");
+  const resendMut = trpc.cancellations.resendRequestEmails.useMutation({
+    onSuccess: (d) => {
+      const lines = d.sent.map(s => `${s.ok ? "✓" : "✗"} ${s.label}`).join("\n");
+      if (d.failed === 0) {
+        toast.success(`${d.sent.length} email(s) enviados:\n${lines}`);
+      } else {
+        toast.error(`${d.failed} email(s) fallaron:\n${lines}`);
+      }
+      setActivePanel("none");
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -645,6 +659,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 <ActionButton label="Revertir resolución" icon={<RotateCcw className="w-4 h-4" />} color="orange" active={activePanel === "revertir_resolucion"} onClick={() => togglePanel("revertir_resolucion")} />
               )}
               <ActionButton label="Estado financiero" icon={<Settings className="w-4 h-4" />} color="gray" active={activePanel === "cambiar_financiero"} onClick={() => togglePanel("cambiar_financiero")} />
+              <ActionButton label="Reenviar emails" icon={<Mail className="w-4 h-4" />} color="blue" active={activePanel === "reenviar_emails"} onClick={() => { setResendTo(req.email ?? ""); togglePanel("reenviar_emails"); }} />
             </div>
 
             {/* ── Panel: Rechazar ── */}
@@ -1174,6 +1189,62 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                   onClick={() => reclamationMut.mutate({ id: req.id, description: reclamationText.trim() })}
                 >
                   {reclamationMut.isPending ? "Registrando..." : "Registrar reclamación"}
+                </Button>
+              </ActionPanelWrapper>
+            )}
+
+            {/* ── Panel: Reenviar emails ── */}
+            {activePanel === "reenviar_emails" && (
+              <ActionPanelWrapper title="Reenviar emails del expediente" color="blue">
+                <p className="text-xs text-gray-500">
+                  Reenvía todos los correos correspondientes al estado actual del expediente (acuse de recibo, resolución, bono). Útil si el cliente no los recibió.
+                </p>
+                <div className="bg-[#111] rounded-lg border border-white/5 p-3 space-y-1">
+                  <p className="text-gray-400 text-xs font-semibold mb-2">Emails que se enviarán:</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <Mail className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                    Acuse de recibo de la solicitud
+                  </div>
+                  {req.resolutionStatus !== "sin_resolver" && (
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <Mail className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                      {req.resolutionStatus === "rechazada" ? "Resolución: rechazada" :
+                       req.compensationType === "bono" ? "Resolución: compensación con bono" :
+                       "Resolución: devolución económica"}
+                    </div>
+                  )}
+                  {voucher && (
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <Mail className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                      Envío del bono {voucher.code}
+                    </div>
+                  )}
+                  {req.financialStatus === "devuelta_economicamente" && (
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                      <Mail className="w-3 h-3 text-green-400 flex-shrink-0" />
+                      Confirmación de devolución ejecutada
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs mb-1 block">Destinatario</Label>
+                  <Input
+                    value={resendTo}
+                    onChange={(e) => setResendTo(e.target.value)}
+                    placeholder="email@ejemplo.com"
+                    type="email"
+                    className="bg-[#111] border-white/10 text-white"
+                  />
+                  <p className="text-gray-600 text-xs mt-1">
+                    Por defecto el email del solicitante. Cambia aquí para enviar a otra dirección de prueba.
+                  </p>
+                </div>
+                <Button
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={resendMut.isPending || !resendTo.trim()}
+                  onClick={() => resendMut.mutate({ id: req.id, to: resendTo.trim() })}
+                >
+                  {resendMut.isPending ? "Enviando..." : "Reenviar emails"}
                 </Button>
               </ActionPanelWrapper>
             )}
