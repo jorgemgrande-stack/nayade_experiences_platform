@@ -1079,7 +1079,12 @@ export const cancellationsRouter = router({
 
   // ── ACCIÓN: Marcar devolución ejecutada ──────────────────────────────────
   markRefundExecuted: adminProcedure
-    .input(z.object({ id: z.number(), note: z.string().optional() }))
+    .input(z.object({
+      id: z.number(),
+      note: z.string().optional(),
+      executedAt: z.string().optional(),
+      proofUrl: z.string().optional(),
+    }))
     .mutation(async ({ input, ctx }) => {
       const [req] = await db.select().from(cancellationRequests).where(eq(cancellationRequests.id, input.id));
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1102,11 +1107,14 @@ export const cancellationsRouter = router({
         });
       }
 
+      const executedAt = input.executedAt ? new Date(input.executedAt) : new Date();
       await db.update(cancellationRequests).set({
         financialStatus: "devuelta_economicamente",
+        refundExecutedAt: executedAt,
+        refundProofUrl: input.proofUrl ?? null,
       }).where(eq(cancellationRequests.id, input.id));
 
-      await addLog(input.id, "refund_executed", { note: input.note, oldStatus: req.financialStatus }, ctx.user.id, ctx.user.name ?? "Admin");
+      await addLog(input.id, "refund_executed", { note: input.note, proofUrl: input.proofUrl, executedAt: executedAt.toISOString(), oldStatus: req.financialStatus }, ctx.user.id, ctx.user.name ?? "Admin");
       return { success: true };
     }),
 

@@ -1961,6 +1961,8 @@ export const cancellationRequests = mysqlTable("cancellation_requests", {
   // Scope of cancellation: "total" = whole reservation, "lineas" = specific extra lines only
   cancellationScope: varchar("cancellation_scope", { length: 10 }),
   cancelledItemsJson: text("cancelled_items_json"),
+  refundExecutedAt: timestamp("refund_executed_at"),
+  refundProofUrl: varchar("refund_proof_url", { length: 512 }),
   adminNotes: text("admin_notes"),
   assignedUserId: int("assigned_user_id"),
   closedAt: timestamp("closed_at"),

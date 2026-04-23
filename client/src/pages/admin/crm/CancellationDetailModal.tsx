@@ -14,7 +14,7 @@ import {
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion";
+type ActionPanel = "none" | "rechazar" | "aceptar" | "solicitar_docs" | "incidencia" | "cerrar" | "nota" | "vincular" | "reclamacion" | "marcar_devolucion";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const REASON_LABELS: Record<string, string> = {
@@ -207,6 +207,11 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   const [linkSearchQuery, setLinkSearchQuery] = useState("");
   const [reclamationText, setReclamationText] = useState("");
 
+  // ── Marcar devolución realizada ──
+  const [refundExecDate, setRefundExecDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [refundExecNote, setRefundExecNote] = useState("");
+  const [refundExecProofUrl, setRefundExecProofUrl] = useState("");
+
   // ── Accept panel scope state ──
   const [acceptScope, setAcceptScope] = useState<"total" | "lineas">("total");
   // Map<lineIndex, quantityToCancel>
@@ -260,6 +265,11 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
 
   const reclamationMut = trpc.cancellations.addClientReclamation.useMutation({
     onSuccess: () => { toast.success("Reclamación registrada"); setReclamationText(""); setActivePanel("none"); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const markRefundExecMut = trpc.cancellations.markRefundExecuted.useMutation({
+    onSuccess: () => { toast.success("Devolución marcada como realizada"); setRefundExecNote(""); setRefundExecProofUrl(""); setActivePanel("none"); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -597,6 +607,9 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
               <ActionButton label="Cerrar" icon={<Archive className="w-4 h-4" />} color="gray" active={activePanel === "cerrar"} onClick={() => togglePanel("cerrar")} />
               <ActionButton label="Vincular reserva" icon={<Link className="w-4 h-4" />} color="blue" active={activePanel === "vincular"} onClick={() => togglePanel("vincular")} />
               <ActionButton label="Reclamación cliente" icon={<MessageSquareWarning className="w-4 h-4" />} color="red" active={activePanel === "reclamacion"} onClick={() => togglePanel("reclamacion")} />
+              {req.financialStatus === "pendiente_devolucion" && (
+                <ActionButton label="Marcar devuelta" icon={<Banknote className="w-4 h-4" />} color="green" active={activePanel === "marcar_devolucion"} onClick={() => togglePanel("marcar_devolucion")} />
+              )}
             </div>
 
             {/* ── Panel: Rechazar ── */}
@@ -838,7 +851,7 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                         : undefined;
                       acceptMut.mutate({
                         id: req.id,
-                        isPartial,
+                        isPartial: acceptScope === "lineas",
                         cancellationScope: acceptScope,
                         cancelledItems,
                         compensationType: acceptCompType,
@@ -1003,6 +1016,54 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
                 {searchResults && searchResults.length === 0 && linkSearchQuery && (
                   <p className="text-gray-500 text-xs text-center py-2">Sin resultados para "{linkSearchQuery}"</p>
                 )}
+              </ActionPanelWrapper>
+            )}
+
+            {/* ── Panel: Marcar devolución realizada ── */}
+            {activePanel === "marcar_devolucion" && (
+              <ActionPanelWrapper title="Registrar devolución realizada" color="green">
+                <p className="text-xs text-gray-500">
+                  Confirma que la transferencia bancaria ha sido ejecutada. El estado financiero pasará a "Devuelta económicamente".
+                </p>
+                <div>
+                  <Label className="text-gray-400 text-xs mb-1 block">Fecha de la transferencia</Label>
+                  <Input
+                    type="date"
+                    value={refundExecDate}
+                    onChange={(e) => setRefundExecDate(e.target.value)}
+                    className="bg-[#111] border-white/10 text-white"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs mb-1 block">URL del comprobante (opcional)</Label>
+                  <Input
+                    value={refundExecProofUrl}
+                    onChange={(e) => setRefundExecProofUrl(e.target.value)}
+                    placeholder="https://… o ruta al archivo"
+                    className="bg-[#111] border-white/10 text-white"
+                  />
+                </div>
+                <div>
+                  <Label className="text-gray-400 text-xs mb-1 block">Nota interna (opcional)</Label>
+                  <Input
+                    value={refundExecNote}
+                    onChange={(e) => setRefundExecNote(e.target.value)}
+                    placeholder="Ej: Transferencia Banco Santander ref. 123…"
+                    className="bg-[#111] border-white/10 text-white"
+                  />
+                </div>
+                <Button
+                  className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  disabled={markRefundExecMut.isPending || !refundExecDate}
+                  onClick={() => markRefundExecMut.mutate({
+                    id: req.id,
+                    executedAt: refundExecDate,
+                    proofUrl: refundExecProofUrl || undefined,
+                    note: refundExecNote || undefined,
+                  })}
+                >
+                  {markRefundExecMut.isPending ? "Guardando..." : "Confirmar devolución realizada"}
+                </Button>
               </ActionPanelWrapper>
             )}
 

@@ -330,6 +330,13 @@
       "when": 1745080000000,
       "tag": "0048_cancellation_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1776977519377,
+      "tag": "0049_refund_proof_columns",
+      "breakpoints": true
     }
   ]
 }
