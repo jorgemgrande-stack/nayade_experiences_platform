@@ -239,7 +239,15 @@ export default function CancellationDetailModal({ requestId, onClose, onNavigate
   });
 
   const docsMut = trpc.cancellations.requestDocumentation.useMutation({
-    onSuccess: () => { toast.success("Documentación solicitada"); setActivePanel("none"); invalidate(); },
+    onSuccess: (data) => {
+      if (data.emailSent === false) {
+        toast.error("Estado actualizado, pero el email NO pudo enviarse al cliente. Revisa la configuración del mailer.");
+      } else {
+        toast.success("Documentación solicitada — email enviado al cliente");
+      }
+      setActivePanel("none");
+      invalidate();
+    },
     onError: (e) => toast.error(e.message),
   });
 

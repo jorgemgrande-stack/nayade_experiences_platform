@@ -1501,6 +1501,51 @@ export function buildCancellationDocumentationHtml(d: {
   return emailWrapper(`Documentación requerida — Solicitud #${d.requestId} · Náyade Experiences`, body);
 }
 
+// PLANTILLA 17: Confirmación de devolución ejecutada
+export function buildCancellationRefundExecutedHtml(d: {
+  fullName: string;
+  requestId: number;
+  amount: string;
+  executedAt: string;
+}): string {
+  const body = `
+    ${emailHeader("Devolución Realizada", "Tu dinero está en camino")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.fullName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Te confirmamos que la devolución correspondiente a tu solicitud <strong>#${d.requestId}</strong> ha sido procesada y enviada.
+      </p>
+      ${statusBlock("success", "Devolución ejecutada", "El importe ha sido enviado por el mismo medio de pago original.")}
+    </td></tr>
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;">
+        <tr><td style="padding:18px 22px;">
+          <p style="color:#166534;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Detalle de la devolución</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#374151;font-size:14px;font-family:Arial,sans-serif;padding:3px 0;">Importe</td>
+              <td style="color:#166534;font-size:16px;font-weight:700;font-family:Arial,sans-serif;text-align:right;">${d.amount} €</td>
+            </tr>
+            <tr>
+              <td style="color:#374151;font-size:14px;font-family:Arial,sans-serif;padding:3px 0;">Fecha de ejecución</td>
+              <td style="color:#374151;font-size:14px;font-family:Arial,sans-serif;text-align:right;">${d.executedAt}</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        El plazo de recepción depende de tu entidad bancaria (habitualmente 1-5 días hábiles).
+        Si pasados 10 días hábiles no recibes el importe, contáctanos en
+        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        indicando la referencia <strong>#${d.requestId}</strong>.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Devolución realizada — Solicitud #${d.requestId} · Náyade Experiences`, body);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PLANTILLA TPV — Ticket de compra presencial
 // ═══════════════════════════════════════════════════════════════════════════════

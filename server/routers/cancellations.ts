@@ -29,6 +29,7 @@ import {
   buildCancellationAcceptedRefundHtml,
   buildCancellationAcceptedVoucherHtml,
   buildCancellationDocumentationHtml,
+  buildCancellationRefundExecutedHtml,
 } from "../emailTemplates";
 import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
@@ -1011,17 +1012,23 @@ export const cancellationsRouter = router({
         req.operationalStatus, "pendiente_documentacion"
       );
 
+      let emailSent = false;
       if (input.sendEmail && req.email) {
-        await sendEmail({
+        emailSent = await sendEmail({
           to: req.email,
           cc: COPY_EMAIL,
           subject: `Documentación requerida — Solicitud #${input.id}`,
           html: emailSolicitudDocumentacion(req.fullName, input.id, input.text),
-        }).catch(() => {});
-        await addLog(input.id, "email_sent", { type: "solicitud_documentacion", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
+        });
+        if (emailSent) {
+          await addLog(input.id, "email_sent", { type: "solicitud_documentacion", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
+        } else {
+          console.error(`[Cancellations] requestDocumentation email FAILED for request #${input.id} → ${req.email}`);
+          await addLog(input.id, "email_failed", { type: "solicitud_documentacion", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
+        }
       }
 
-      return { success: true };
+      return { success: true, emailSent };
     }),
 
   // ── ACCIÓN: Marcar incidencia ─────────────────────────────────────────────
@@ -1117,6 +1124,28 @@ export const cancellationsRouter = router({
       }).where(eq(cancellationRequests.id, input.id));
 
       await addLog(input.id, "refund_executed", { note: input.note, proofUrl: input.proofUrl, executedAt: executedAt.toISOString(), oldStatus: req.financialStatus }, ctx.user.id, ctx.user.name ?? "Admin");
+
+      if (req.email) {
+        const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "—";
+        const executedAtFormatted = executedAt.toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
+        const emailSent = await sendEmail({
+          to: req.email,
+          cc: COPY_EMAIL,
+          subject: `Devolución realizada — Solicitud #${input.id}`,
+          html: buildCancellationRefundExecutedHtml({
+            fullName: req.fullName,
+            requestId: input.id,
+            amount,
+            executedAt: executedAtFormatted,
+          }),
+        });
+        if (emailSent) {
+          await addLog(input.id, "email_sent", { type: "refund_executed_notification", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
+        } else {
+          console.error(`[Cancellations] markRefundExecuted email FAILED for request #${input.id} → ${req.email}`);
+        }
+      }
+
       return { success: true };
     }),
 
