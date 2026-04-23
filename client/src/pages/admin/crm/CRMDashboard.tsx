@@ -7931,6 +7931,7 @@ function PagosPendientesTab() {
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [confirmMethod, setConfirmMethod] = useState<"transferencia" | "efectivo" | "tarjeta">("transferencia");
   const [cancelId, setCancelId] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const { data, isLoading, refetch } = trpc.crm.pendingPayments.list.useQuery({
     status: filterStatus === "all" ? undefined : filterStatus as "pending" | "paid" | "cancelled" | "incidentado",
@@ -7959,6 +7960,15 @@ function PagosPendientesTab() {
     onSuccess: () => {
       toast.success("Pago pendiente cancelado");
       setCancelId(null);
+      utils.crm.pendingPayments.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMut = trpc.crm.pendingPayments.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Registro eliminado");
+      setDeleteId(null);
       utils.crm.pendingPayments.list.invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -8108,6 +8118,13 @@ function PagosPendientesTab() {
                             </button>
                           </>
                         )}
+                        <button
+                          onClick={() => setDeleteId(row.id)}
+                          title="Eliminar registro"
+                          className="p-1.5 rounded-lg bg-foreground/[0.05] hover:bg-red-500/20 text-foreground/30 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -8176,6 +8193,35 @@ function PagosPendientesTab() {
             >
               {cancelMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
               Cancelar pago
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete modal */}
+      <Dialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-red-400" /> Eliminar registro
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <p className="text-foreground/65 text-sm">Esta acción eliminará el registro de forma permanente y no se puede deshacer.</p>
+            <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+              Solo elimina el registro de pago pendiente. La reserva y el presupuesto asociados no se modifican.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteId(null)} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button
+              size="sm"
+              onClick={() => deleteId !== null && deleteMut.mutate({ id: deleteId })}
+              disabled={deleteMut.isPending}
+              className="bg-red-700 hover:bg-red-800 text-white"
+            >
+              {deleteMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Eliminar definitivamente
             </Button>
           </DialogFooter>
         </DialogContent>

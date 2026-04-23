@@ -5501,6 +5501,16 @@ export const crmRouter = router({
         await logActivity("quote", pp.quoteId, "pending_payment_incident", ctx.user.id, ctx.user.name, { ppId: input.id, note: input.note });
         return { success: true };
       }),
+
+    delete: staff
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input, ctx }) => {
+        const [pp] = await db.select().from(pendingPayments).where(eq(pendingPayments.id, input.id));
+        if (!pp) throw new TRPCError({ code: "NOT_FOUND" });
+        await db.delete(pendingPayments).where(eq(pendingPayments.id, input.id));
+        await logActivity("quote", pp.quoteId, "pending_payment_deleted", ctx.user.id, ctx.user.name, { ppId: input.id });
+        return { success: true };
+      }),
   }),
 
   // ─── CATALOG SEARCH (autocomplete en líneas de presupuesto) ──────────────────
