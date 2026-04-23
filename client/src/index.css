@@ -150,6 +150,12 @@
   input[type="radio"]:not(:disabled) {
     @apply cursor-pointer;
   }
+  /* Fondo oscuro en las opciones de selects dentro del tema dark,
+     evita opciones con fondo blanco sobre UI oscura en Windows/Chrome */
+  .dark select option {
+    background-color: #0d1526;
+    color: #e8eaf0;
+  }
 }
 
 @layer utilities {
