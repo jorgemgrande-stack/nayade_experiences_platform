@@ -446,6 +446,33 @@ async function ensurePricingColumns() {
   }
 }
 
+async function ensureRefundColumns() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+
+    const [cols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cancellation_requests'
+       AND COLUMN_NAME IN ('refund_executed_at', 'refund_proof_url')`
+    ) as any[];
+    const found = new Set(cols.map((c: any) => c.COLUMN_NAME));
+
+    if (!found.has("refund_executed_at")) {
+      await conn.execute("ALTER TABLE `cancellation_requests` ADD COLUMN `refund_executed_at` TIMESTAMP NULL");
+      console.log("[DB] ✅ cancellation_requests.refund_executed_at añadida");
+    }
+    if (!found.has("refund_proof_url")) {
+      await conn.execute("ALTER TABLE `cancellation_requests` ADD COLUMN `refund_proof_url` VARCHAR(512) NULL");
+      console.log("[DB] ✅ cancellation_requests.refund_proof_url añadida");
+    }
+
+    await conn.end();
+  } catch (err: any) {
+    console.error("[DB] Error en ensureRefundColumns:", err.message);
+  }
+}
+
 // ─── WIPE TEST DATA (one-shot, gated by WIPE_TEST_DATA=true env var) ──────────
 async function wipeTestDataIfRequested() {
   if (process.env.WIPE_TEST_DATA !== "true") return;
@@ -706,6 +733,7 @@ function startInstallmentOverdueJob() {
 
 runMigrations()
   .then(() => ensurePricingColumns())
+  .then(() => ensureRefundColumns())
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
