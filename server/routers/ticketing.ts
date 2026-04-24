@@ -1424,6 +1424,15 @@ export const ticketingRouter = router({
         .where(eq(platformProducts.platformId, input.platformId));
       const productIdList = productRows.map((p) => p.id);
 
+      console.log("[generateSettlement] platform:", platformRow.name, "| productIds:", productIdList, "| period:", input.periodFrom, "→", input.periodTo);
+
+      // Sin filtro de fecha: listar todos los canjeados sin liquidar de esta plataforma para debug
+      const allCanjeados = await db
+        .select({ id: couponRedemptions.id, provider: couponRedemptions.provider, statusFinancial: couponRedemptions.statusFinancial, settlementId: couponRedemptions.settlementId, platformProductId: couponRedemptions.platformProductId, createdAt: couponRedemptions.createdAt })
+        .from(couponRedemptions)
+        .where(eq(couponRedemptions.statusFinancial, "canjeado"));
+      console.log("[generateSettlement] TODOS canjeados en sistema:", JSON.stringify(allCanjeados));
+
       // Matching: por platformProductId (fiable) o por nombre de proveedor (fallback)
       const platformMatch = productIdList.length > 0
         ? or(
@@ -1451,6 +1460,8 @@ export const ticketingRouter = router({
           sql`${couponRedemptions.createdAt} >= ${dateFrom}`,
           sql`${couponRedemptions.createdAt} <= ${dateTo}`,
         ));
+
+      console.log("[generateSettlement] couponsInPeriod:", couponIds?.length ?? couponsInPeriod.length, "| dateFrom:", dateFrom, "| dateTo:", dateTo);
 
       const couponIds = couponsInPeriod.map((c) => c.id);
       const netTotal = couponsInPeriod.reduce((sum, c) => sum + parseFloat(c.netPrice ?? "0"), 0);
