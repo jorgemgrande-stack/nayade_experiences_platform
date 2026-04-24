@@ -785,10 +785,32 @@ function startInstallmentOverdueJob() {
   console.log("[InstallmentJob] Job iniciado — cuotas vencidas + recordatorios cada hora");
 }
 
+async function fixBrokenInvoicePdfUrls() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const { drizzle } = await import("drizzle-orm/mysql2");
+    const { sql } = await import("drizzle-orm");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    const db = drizzle(conn);
+    const result = await db.execute(sql`
+      UPDATE invoices
+      SET \`pdfUrl\` = CONCAT('/api/invoices/preview?n=', \`invoiceNumber\`),
+          \`pdfKey\` = ''
+      WHERE \`pdfUrl\` LIKE '/local-storage/%'
+    `);
+    const affected = (result[0] as any).affectedRows ?? 0;
+    if (affected > 0) console.log(`[Startup] Corregidas ${affected} facturas con URL /local-storage/ rota → on-demand`);
+    await conn.end();
+  } catch (e) {
+    console.error("[Startup] Error corrigiendo URLs de facturas:", e);
+  }
+}
+
 runMigrations()
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
   .then(() => ensureDiscountColumns())
+  .then(() => fixBrokenInvoicePdfUrls())
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
