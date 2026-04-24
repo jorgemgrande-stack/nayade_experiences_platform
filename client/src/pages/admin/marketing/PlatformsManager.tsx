@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import {
   Settings, Plus, Edit2, Trash2, ToggleLeft, ToggleRight, Package,
   Banknote, Globe, RefreshCw, ChevronRight, CheckCircle, Clock, ArrowLeft,
-  Zap, AlertCircle, ExternalLink, CalendarDays, Euro,
+  Zap, AlertCircle, ExternalLink, CalendarDays, Euro, Eye, Download, FileText,
 } from "lucide-react";
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
@@ -99,6 +99,134 @@ function isExpiringSoon(d: Date | string | null | undefined): boolean {
 function isExpired(d: Date | string | null | undefined): boolean {
   if (!d) return false;
   return new Date(d).getTime() < Date.now();
+}
+
+type SettlementCouponRow = {
+  id: number;
+  couponCode: string | null;
+  customerName: string;
+  productName?: string | null;
+  pvpPrice?: string | null;
+  netPrice?: string | null;
+  settledAt?: Date | string | null;
+};
+
+function downloadSettlementCSV(settlement: Settlement, platformName: string, coupons: SettlementCouponRow[]) {
+  const totalPvp = coupons.reduce((s, c) => s + (c.pvpPrice ? parseFloat(c.pvpPrice) : 0), 0);
+  const totalNet = coupons.reduce((s, c) => s + (c.netPrice ? parseFloat(c.netPrice) : 0), 0);
+  const statusLabel: Record<string, string> = { pendiente: "Pendiente", emitida: "Emitida", pagada: "Pagada" };
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const lines = [
+    `# Liquidación: ${settlement.periodLabel}`,
+    `# Plataforma: ${platformName}`,
+    `# Periodo: ${settlement.periodFrom ?? "—"} – ${settlement.periodTo ?? "—"}`,
+    `# Estado: ${statusLabel[settlement.status] ?? settlement.status}`,
+    ...(settlement.invoiceRef ? [`# Referencia: ${settlement.invoiceRef}`] : []),
+    ``,
+    ["Código", "Cliente", "Producto", "Fecha canje", "PVP (€)", "Neto (€)"].map(esc).join(","),
+    ...coupons.map(c =>
+      [
+        c.couponCode ?? "",
+        c.customerName,
+        c.productName ?? "",
+        c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES") : "",
+        c.pvpPrice ? parseFloat(c.pvpPrice).toFixed(2) : "",
+        c.netPrice ? parseFloat(c.netPrice).toFixed(2) : "",
+      ].map(esc).join(",")
+    ),
+    ["TOTAL", `${coupons.length} cupones`, "", "", totalPvp.toFixed(2), totalNet.toFixed(2)].map(esc).join(","),
+  ].join("\n");
+  const blob = new Blob(["﻿" + lines], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `liquidacion-${platformName.toLowerCase().replace(/\s+/g, "-")}-${settlement.periodLabel.toLowerCase().replace(/\s+/g, "-")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadSettlementPDF(settlement: Settlement, platformName: string, coupons: SettlementCouponRow[]) {
+  const totalPvp = coupons.reduce((s, c) => s + (c.pvpPrice ? parseFloat(c.pvpPrice) : 0), 0);
+  const totalNet = coupons.reduce((s, c) => s + (c.netPrice ? parseFloat(c.netPrice) : 0), 0);
+  const pct = totalPvp > 0 ? ((totalNet / totalPvp) * 100).toFixed(1) : "—";
+  const statusLabel: Record<string, string> = { pendiente: "Pendiente", emitida: "Emitida", pagada: "Pagada" };
+  const rows = coupons.map((c, i) => `
+    <tr style="background:${i % 2 === 0 ? "#f9fafb" : "#fff"}">
+      <td style="padding:7px 10px;font-family:monospace;font-size:12px;color:#7c3aed">${c.couponCode ?? "—"}</td>
+      <td style="padding:7px 10px;font-size:13px">${c.customerName}</td>
+      <td style="padding:7px 10px;font-size:12px;color:#6b7280">${c.productName ?? "—"}</td>
+      <td style="padding:7px 10px;font-size:12px;color:#6b7280;text-align:center">${c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES") : "—"}</td>
+      <td style="padding:7px 10px;font-size:13px;text-align:right">${c.pvpPrice ? parseFloat(c.pvpPrice).toFixed(2) + " €" : "—"}</td>
+      <td style="padding:7px 10px;font-size:13px;font-weight:600;text-align:right;color:#059669">${c.netPrice ? parseFloat(c.netPrice).toFixed(2) + " €" : "—"}</td>
+    </tr>`).join("");
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Liquidación ${settlement.periodLabel} — ${platformName}</title>
+  <style>
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; padding:32px; color:#111; font-size:14px; }
+    header { margin-bottom:24px; }
+    header h1 { font-size:22px; font-weight:700; }
+    header .meta { font-size:13px; color:#6b7280; margin-top:6px; }
+    .summary { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:28px; }
+    .card { border:1px solid #e5e7eb; border-radius:8px; padding:12px 16px; }
+    .card .label { font-size:11px; color:#9ca3af; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+    .card .val { font-size:22px; font-weight:700; }
+    table { width:100%; border-collapse:collapse; }
+    thead tr { background:#f3f4f6; }
+    th { padding:9px 10px; text-align:left; font-size:11px; text-transform:uppercase; color:#6b7280; font-weight:600; border-bottom:2px solid #e5e7eb; }
+    td { border-bottom:1px solid #f3f4f6; }
+    tfoot td { padding:9px 10px; font-weight:700; border-top:2px solid #d1d5db; font-size:13px; background:#f9fafb; }
+    @media print { @page { margin:1.5cm; } body { padding:0; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Liquidación: ${settlement.periodLabel}</h1>
+    <div class="meta">
+      Plataforma: <strong>${platformName}</strong>
+      ${settlement.periodFrom ? ` &nbsp;·&nbsp; Periodo: ${settlement.periodFrom} – ${settlement.periodTo ?? ""}` : ""}
+      ${settlement.invoiceRef ? ` &nbsp;·&nbsp; Ref: <strong>${settlement.invoiceRef}</strong>` : ""}
+      &nbsp;·&nbsp; Estado: <strong>${statusLabel[settlement.status] ?? settlement.status}</strong>
+    </div>
+  </header>
+  <div class="summary">
+    <div class="card"><div class="label">Cupones</div><div class="val">${coupons.length}</div></div>
+    <div class="card"><div class="label">PVP Total</div><div class="val">${totalPvp.toFixed(2)} €</div></div>
+    <div class="card" style="border-color:#d1fae5"><div class="label">Neto Total</div><div class="val" style="color:#059669">${totalNet.toFixed(2)} €</div></div>
+    <div class="card" style="border-color:#ede9fe"><div class="label">% Neto / PVP</div><div class="val" style="color:#7c3aed">${pct}%</div></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Código</th><th>Cliente</th><th>Producto</th>
+        <th style="text-align:center">Fecha canje</th>
+        <th style="text-align:right">PVP</th><th style="text-align:right">Neto</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4">TOTAL — ${coupons.length} cupones</td>
+        <td style="text-align:right">${totalPvp.toFixed(2)} €</td>
+        <td style="text-align:right;color:#059669">${totalNet.toFixed(2)} €</td>
+      </tr>
+    </tfoot>
+  </table>
+  ${settlement.notes ? `<p style="margin-top:24px;font-size:13px;color:#6b7280;padding-top:16px;border-top:1px solid #e5e7eb"><strong>Notas:</strong> ${settlement.notes}</p>` : ""}
+  <p style="margin-top:32px;font-size:11px;color:#d1d5db;text-align:right">Generado el ${new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })}</p>
+</body>
+</html>`;
+  const win = window.open("", "_blank", "width=950,height=750");
+  if (!win) { toast.error("No se pudo abrir la ventana de impresión. Permite ventanas emergentes."); return; }
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 500);
 }
 
 // ─── PLATFORM CARD ────────────────────────────────────────────────────────────
@@ -734,6 +862,12 @@ export default function PlatformsManager() {
                                             {s.status === "pendiente" ? "→ Emitida" : "→ Pagada"}
                                           </button>
                                         )}
+                                        <button
+                                          onClick={() => setDetailSettlement(s)}
+                                          title="Ver detalle de operaciones"
+                                          className="p-1.5 rounded-lg hover:bg-violet-500/20 text-violet-400/50 hover:text-violet-400 transition-colors">
+                                          <Eye className="w-3.5 h-3.5" />
+                                        </button>
                                         <button onClick={() => openEditSettlement(s)}
                                           className="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition-colors">
                                           <Edit2 className="w-3.5 h-3.5" />
@@ -1030,18 +1164,52 @@ export default function PlatformsManager() {
         </DialogContent>
       </Dialog>
 
-      {/* ── MODAL: DETALLE CUPONES DE LIQUIDACIÓN ─────────────────────────── */}
+      {/* ── MODAL: DETALLE OPERACIONES DE LIQUIDACIÓN ─────────────────────── */}
       <Dialog open={!!detailSettlement} onOpenChange={(o) => { if (!o) setDetailSettlement(null); }}>
-        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-2xl">
+        <DialogContent className="bg-[#0f0f1a] border-white/10 text-white max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Banknote className="w-5 h-5 text-violet-400" />
-              Cupones de la liquidación: {detailSettlement?.periodLabel}
+              Detalle de operaciones — {detailSettlement?.periodLabel}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {/* Summary cards */}
+            {detailSettlement && (
+              <div className="grid grid-cols-4 gap-3">
+                <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3">
+                  <p className="text-xs text-white/40">Cupones</p>
+                  <p className="text-2xl font-bold text-white">{detailSettlement.totalCoupons}</p>
+                </div>
+                <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3">
+                  <p className="text-xs text-white/40">PVP Total</p>
+                  <p className="text-2xl font-bold text-white">{parseFloat(detailSettlement.totalAmount).toFixed(2)} €</p>
+                </div>
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                  <p className="text-xs text-emerald-400/70">Neto Total</p>
+                  <p className="text-2xl font-bold text-emerald-400">{parseFloat(detailSettlement.netTotal ?? "0").toFixed(2)} €</p>
+                </div>
+                <div className="rounded-lg border border-white/5 bg-white/[0.03] p-3">
+                  <p className="text-xs text-white/40 mb-1.5">Estado</p>
+                  {(() => {
+                    const cfg = SETTLEMENT_STATUS_CONFIG[detailSettlement.status] ?? SETTLEMENT_STATUS_CONFIG.pendiente;
+                    const Icon = cfg.icon;
+                    return (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
+                        <Icon className="w-3 h-3" /> {cfg.label}
+                      </span>
+                    );
+                  })()}
+                  {detailSettlement.invoiceRef && (
+                    <p className="text-violet-400 text-xs mt-1">Ref: {detailSettlement.invoiceRef}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Coupon table */}
             {settlementCouponsQuery.isPending ? (
-              <div className="text-center text-white/40 py-8">Cargando cupones...</div>
+              <div className="text-center text-white/40 py-8">Cargando operaciones...</div>
             ) : (settlementCouponsQuery.data?.length ?? 0) === 0 ? (
               <div className="text-center text-white/30 py-8 text-sm">No hay cupones vinculados a esta liquidación.</div>
             ) : (
@@ -1052,27 +1220,70 @@ export default function PlatformsManager() {
                       <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Código</th>
                       <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Cliente</th>
                       <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Producto</th>
-                      <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">PVP</th>
-                      <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Neto</th>
+                      <th className="text-left px-4 py-3 text-white/40 font-medium text-xs">Fecha canje</th>
+                      <th className="text-right px-4 py-3 text-white/40 font-medium text-xs">PVP</th>
+                      <th className="text-right px-4 py-3 text-white/40 font-medium text-xs">Neto</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(settlementCouponsQuery.data ?? []).map((c: { id: number; couponCode: string | null; customerName: string; productName?: string | null; pvpPrice?: string | null; netPrice?: string | null }) => (
+                    {(settlementCouponsQuery.data ?? []).map((c: SettlementCouponRow) => (
                       <tr key={c.id} className="border-b border-white/5 hover:bg-white/[0.03]">
                         <td className="px-4 py-3 font-mono text-violet-300 text-xs">{c.couponCode ?? "—"}</td>
                         <td className="px-4 py-3 text-white text-sm">{c.customerName}</td>
                         <td className="px-4 py-3 text-white/60 text-xs">{c.productName ?? "—"}</td>
-                        <td className="px-4 py-3 text-white text-sm">{c.pvpPrice ? `${parseFloat(c.pvpPrice).toFixed(2)} €` : "—"}</td>
-                        <td className="px-4 py-3 text-emerald-400 font-semibold text-sm">{c.netPrice ? `${parseFloat(c.netPrice).toFixed(2)} €` : "—"}</td>
+                        <td className="px-4 py-3 text-white/50 text-xs">{c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES") : "—"}</td>
+                        <td className="px-4 py-3 text-white text-sm text-right">{c.pvpPrice ? `${parseFloat(c.pvpPrice).toFixed(2)} €` : "—"}</td>
+                        <td className="px-4 py-3 text-emerald-400 font-semibold text-sm text-right">{c.netPrice ? `${parseFloat(c.netPrice).toFixed(2)} €` : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-white/[0.03] border-t border-white/10">
+                      <td colSpan={4} className="px-4 py-2 text-white/40 text-xs font-medium">
+                        TOTAL — {settlementCouponsQuery.data?.length ?? 0} operaciones
+                      </td>
+                      <td className="px-4 py-2 text-white font-semibold text-sm text-right">
+                        {(settlementCouponsQuery.data as SettlementCouponRow[] ?? []).reduce((s, c) => s + (c.pvpPrice ? parseFloat(c.pvpPrice) : 0), 0).toFixed(2)} €
+                      </td>
+                      <td className="px-4 py-2 text-emerald-400 font-bold text-sm text-right">
+                        {(settlementCouponsQuery.data as SettlementCouponRow[] ?? []).reduce((s, c) => s + (c.netPrice ? parseFloat(c.netPrice) : 0), 0).toFixed(2)} €
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDetailSettlement(null)} className="border-white/10 text-white/70">Cerrar</Button>
+          <DialogFooter className="gap-2 flex-wrap">
+            <Button variant="outline" onClick={() => setDetailSettlement(null)} className="border-white/10 text-white/70 mr-auto">
+              Cerrar
+            </Button>
+            {(settlementCouponsQuery.data?.length ?? 0) > 0 && detailSettlement && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => downloadSettlementCSV(
+                    detailSettlement,
+                    selectedPlatform?.name ?? detailSettlement.platformName ?? "Plataforma",
+                    settlementCouponsQuery.data as SettlementCouponRow[]
+                  )}
+                  className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                >
+                  <Download className="w-4 h-4 mr-1.5" /> Descargar Excel (.csv)
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => downloadSettlementPDF(
+                    detailSettlement,
+                    selectedPlatform?.name ?? detailSettlement.platformName ?? "Plataforma",
+                    settlementCouponsQuery.data as SettlementCouponRow[]
+                  )}
+                  className="border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                >
+                  <FileText className="w-4 h-4 mr-1.5" /> Descargar PDF
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
