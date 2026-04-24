@@ -1461,7 +1461,7 @@ export const ticketingRouter = router({
           sql`${couponRedemptions.createdAt} <= ${dateTo}`,
         ));
 
-      console.log("[generateSettlement] couponsInPeriod:", couponIds?.length ?? couponsInPeriod.length, "| dateFrom:", dateFrom, "| dateTo:", dateTo);
+      console.log("[generateSettlement] couponsInPeriod:", couponsInPeriod.length, "| dateFrom:", dateFrom, "| dateTo:", dateTo);
 
       const couponIds = couponsInPeriod.map((c) => c.id);
       const netTotal = couponsInPeriod.reduce((sum, c) => sum + parseFloat(c.netPrice ?? "0"), 0);
