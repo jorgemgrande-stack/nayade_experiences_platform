@@ -90,6 +90,7 @@ const navItems = [
       { label: "Categ. gastos", href: "/admin/contabilidad/gastos/categorias" },
       { label: "Proveedores gastos", href: "/admin/contabilidad/gastos/proveedores" },
       { label: "Cuenta Resultados", href: "/admin/contabilidad/cuenta-resultados" },
+      { label: "Movimientos bancarios", href: "/admin/contabilidad/movimientos-bancarios" },
     ],
   },
   {

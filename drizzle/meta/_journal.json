@@ -337,6 +337,13 @@
       "when": 1776977519377,
       "tag": "0049_refund_proof_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "5",
+      "when": 1745480000000,
+      "tag": "0050_bank_movements",
+      "breakpoints": true
     }
   ]
 }

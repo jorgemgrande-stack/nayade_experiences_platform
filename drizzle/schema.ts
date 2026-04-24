@@ -1972,6 +1972,38 @@ export const cancellationRequests = mysqlTable("cancellation_requests", {
 export type CancellationRequest = typeof cancellationRequests.$inferSelect;
 export type InsertCancellationRequest = typeof cancellationRequests.$inferInsert;
 
+// ── Importaciones de ficheros bancarios ────────────────────────────────────────
+export const bankFileImports = mysqlTable("bank_file_imports", {
+  id: int("id").autoincrement().primaryKey(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  fileType: varchar("file_type", { length: 10 }).notNull(), // xls, xlsx, csv
+  importedRows: int("imported_rows").default(0).notNull(),
+  duplicatesSkipped: int("duplicates_skipped").default(0).notNull(),
+  status: mysqlEnum("status", ["ok", "error", "parcial"]).default("ok").notNull(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type BankFileImport = typeof bankFileImports.$inferSelect;
+export type InsertBankFileImport = typeof bankFileImports.$inferInsert;
+
+// ── Movimientos bancarios ──────────────────────────────────────────────────────
+export const bankMovements = mysqlTable("bank_movements", {
+  id: int("id").autoincrement().primaryKey(),
+  importId: int("import_id").notNull(), // → bank_file_imports.id
+  fecha: varchar("fecha", { length: 12 }).notNull(),           // YYYY-MM-DD
+  fechaValor: varchar("fecha_valor", { length: 12 }),          // YYYY-MM-DD
+  movimiento: varchar("movimiento", { length: 255 }),
+  masDatos: text("mas_datos"),
+  importe: decimal("importe", { precision: 12, scale: 2 }).notNull(),
+  saldo: decimal("saldo", { precision: 12, scale: 2 }),
+  duplicateKey: varchar("duplicate_key", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["pendiente", "ignorado"]).default("pendiente").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type BankMovement = typeof bankMovements.$inferSelect;
+export type InsertBankMovement = typeof bankMovements.$inferInsert;
+
 // ─── LOGS / TIMELINE DE SOLICITUDES DE ANULACIÓN ─────────────────────────────
 export const cancellationLogs = mysqlTable("cancellation_logs", {
   id: int("id").autoincrement().primaryKey(),

@@ -77,6 +77,7 @@ const ExpenseCategoriesManager = lazy(() => import("./pages/admin/accounting/Exp
 const ExpenseSuppliersManager = lazy(() => import("./pages/admin/accounting/ExpenseSuppliersManager"));
 const RecurringExpensesManager = lazy(() => import("./pages/admin/accounting/RecurringExpensesManager"));
 const ProfitLossReport = lazy(() => import("./pages/admin/accounting/ProfitLossReport"));
+const BankMovementsManager = lazy(() => import("./pages/admin/accounting/BankMovementsManager"));
 
 // Hotel & SPA
 const HotelManager = lazy(() => import("./pages/admin/hotel/HotelManager"));
@@ -224,6 +225,7 @@ function Router() {
       <Route path="/admin/contabilidad/gastos/proveedores">{() => <Suspense fallback={<AdminLoadingFallback />}><ExpenseSuppliersManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/gastos/recurrentes">{() => <Suspense fallback={<AdminLoadingFallback />}><RecurringExpensesManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/cuenta-resultados">{() => <Suspense fallback={<AdminLoadingFallback />}><ProfitLossReport /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/movimientos-bancarios">{() => <Suspense fallback={<AdminLoadingFallback />}><BankMovementsManager /></Suspense>}</Route>
 
       {/* Fiscal REAV */}
       <Route path="/admin/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>

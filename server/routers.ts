@@ -168,6 +168,7 @@ import { cancellationsRouter } from "./routers/cancellations";
 import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
 import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { operationsRouter } from "./routers/operations";
+import { bankMovementsRouter } from "./routers/bankMovements";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 // Admin middlewaree
@@ -189,6 +190,7 @@ const staffProcedure = protectedProcedure.use(({ ctx, next }) => {
 export const appRouter = router({
   system: systemRouter,
   financial: expensesModuleRouter,
+  bankMovements: bankMovementsRouter,
   cancellations: cancellationsRouter,
   emailTemplates: emailTemplatesRouter,
   operations: operationsRouter,
