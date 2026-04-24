@@ -341,7 +341,7 @@
     {
       "idx": 48,
       "version": "5",
-      "when": 1745480000000,
+      "when": 1777063920000,
       "tag": "0050_bank_movements",
       "breakpoints": true
     }

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS `bank_file_imports` (
 	`created_at` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT `bank_file_imports_id` PRIMARY KEY(`id`)
 );
-
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `bank_movements` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`import_id` int NOT NULL,
