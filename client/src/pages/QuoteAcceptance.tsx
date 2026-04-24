@@ -186,27 +186,189 @@ export default function QuoteAcceptance() {
   // ── Already paid ──
   if (quote.isPaid) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] to-[#1a3a6b] flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
-          <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">¡Reserva confirmada!</h1>
-          <p className="text-gray-500 text-sm mb-6">
-            Tu pago ha sido procesado correctamente. Recibirás la factura en tu email.
-          </p>
-          {quote.invoiceNumber && (
-            <p className="text-xs text-gray-400 mb-4">Factura: <strong>{quote.invoiceNumber}</strong></p>
+      <div className="min-h-screen bg-gradient-to-br from-[#0a1628] via-[#0d1f3c] to-[#1a3a6b]">
+        {/* Header */}
+        <header className="bg-white/5 backdrop-blur-sm border-b border-white/10">
+          <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full border-2 border-orange-400 bg-white/10 flex items-center justify-center">
+                <span className="text-orange-400 font-bold text-sm">N</span>
+              </div>
+              <div>
+                <p className="text-white font-semibold text-sm">Náyade Experiences</p>
+                <p className="text-white/50 text-xs">Skicenter — Reserva confirmada</p>
+              </div>
+            </div>
+            <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border text-xs font-medium">
+              Aceptado y pagado
+            </Badge>
+          </div>
+        </header>
+
+        <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+          {/* Confirmed banner */}
+          <div className="bg-emerald-500/15 border border-emerald-500/30 rounded-2xl px-6 py-5 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+              <CheckCircle className="w-8 h-8 text-emerald-400" />
+            </div>
+            <div>
+              <h1 className="text-white text-xl font-bold">¡Reserva confirmada!</h1>
+              <p className="text-white/60 text-sm mt-0.5">
+                Tu pago ha sido procesado correctamente. Recibirás la factura en tu email.
+              </p>
+            </div>
+          </div>
+
+          {/* Quote detail card — same layout as pending state */}
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+            <div className="bg-gradient-to-r from-[#1a3a6b] to-[#0d2a5e] px-6 py-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-orange-400 text-xs font-semibold uppercase tracking-wider mb-1">
+                    Presupuesto {quote.quoteNumber}
+                  </p>
+                  <h2 className="text-white text-xl font-bold leading-tight">{quote.title}</h2>
+                </div>
+                <FileText className="w-8 h-8 text-white/30 flex-shrink-0 mt-1" />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+              <div className="flex flex-wrap gap-4 text-sm">
+                <div>
+                  <span className="text-gray-400 text-xs uppercase tracking-wide">Cliente</span>
+                  <p className="font-medium text-gray-800">{quote.clientName}</p>
+                </div>
+                {quote.invoiceNumber && (
+                  <div>
+                    <span className="text-gray-400 text-xs uppercase tracking-wide">Factura</span>
+                    <p className="font-medium text-gray-800">{quote.invoiceNumber}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Items */}
+            <div className="px-6 py-4">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2">Concepto</th>
+                    <th className="text-center text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-16">Uds.</th>
+                    <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-24">P. Unit.</th>
+                    <th className="text-right text-xs font-semibold text-gray-400 uppercase tracking-wide pb-2 w-24">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, i) => (
+                    <tr key={i} className="border-b border-gray-50 last:border-0">
+                      <td className="py-3 text-gray-800 font-medium">{item.description}</td>
+                      <td className="py-3 text-center text-gray-500">{item.quantity}</td>
+                      <td className="py-3 text-right text-gray-600">{formatCurrency(item.unitPrice)}</td>
+                      <td className="py-3 text-right font-semibold text-gray-800">{formatCurrency(item.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Totals */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
+              <div className="flex flex-col items-end gap-1 text-sm">
+                {Number(quote.subtotal) > 0 && (
+                  <div className="flex justify-between w-48">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span className="text-gray-700">{formatCurrency(quote.subtotal)}</span>
+                  </div>
+                )}
+                {Number(quote.discount) > 0 && (
+                  <div className="flex justify-between w-48">
+                    <span className="text-gray-500">Descuento</span>
+                    <span className="text-emerald-600">−{formatCurrency(quote.discount)}</span>
+                  </div>
+                )}
+                {Number(quote.tax) > 0 && (
+                  <div className="flex justify-between w-48">
+                    <span className="text-gray-500">IVA</span>
+                    <span className="text-gray-700">{formatCurrency(quote.tax)}</span>
+                  </div>
+                )}
+                <Separator className="w-48 my-1" />
+                <div className="flex justify-between w-48">
+                  <span className="font-bold text-gray-900 text-base">Total pagado</span>
+                  <span className="font-bold text-emerald-600 text-xl">{formatCurrency(quote.total)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Plan de pagos (si aplica) */}
+          {installmentPlan && installmentPlan.installments.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-700 to-purple-900 px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-5 h-5 text-purple-200" />
+                  <h2 className="text-white font-bold text-base">Plan de pago fraccionado</h2>
+                </div>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {installmentPlan.installments.map((inst) => {
+                  const isPaid = inst.status === "paid";
+                  return (
+                    <div key={inst.id} className={`px-6 py-4 flex items-center justify-between ${isPaid ? "bg-emerald-50" : ""}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${isPaid ? "bg-emerald-500 text-white" : "bg-purple-100 text-purple-700"}`}>
+                          {isPaid ? "✓" : inst.installmentNumber}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-800">Cuota {inst.installmentNumber}</p>
+                          <p className="text-xs text-gray-400 flex items-center gap-1">
+                            <CalendarDays className="w-3 h-3" /> Vence: {formatDate(inst.dueDate)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold text-base ${isPaid ? "text-emerald-600" : "text-gray-900"}`}>
+                          {formatCurrency(inst.amountCents / 100)}
+                        </p>
+                        <p className={`text-xs ${isPaid ? "text-emerald-500" : "text-gray-400"}`}>
+                          {formatInstallmentStatus(inst.status)}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
+
+          {/* Actions */}
           {quote.invoicePdfUrl && (
-            <a
-              href={quote.invoicePdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Download className="w-4 h-4" /> Descargar factura
-            </a>
+            <div className="bg-white rounded-2xl shadow-xl p-6 text-center">
+              <a
+                href={quote.invoicePdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-orange-500/20"
+              >
+                <Download className="w-4 h-4" /> Descargar factura
+              </a>
+            </div>
           )}
-        </div>
+
+          {/* Footer */}
+          <div className="text-center text-white/40 text-xs pb-8 space-y-1">
+            <p>¿Tienes dudas? Contacta con nosotros</p>
+            <div className="flex justify-center gap-4">
+              <a href="tel:+34930347791" className="hover:text-orange-400 flex items-center gap-1">
+                <Phone className="w-3 h-3" /> +34 930 34 77 91
+              </a>
+              <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">
+                <Mail className="w-3 h-3" /> reservas@nayadeexperiences.es
+              </a>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }

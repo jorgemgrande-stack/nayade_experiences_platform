@@ -894,6 +894,7 @@ export interface ConfirmationEmailData {
   taxAmount?: string;
   total: string;
   invoiceUrl?: string;
+  quoteUrl?: string;        // URL pública /presupuesto/:token para "Visualiza tu reserva"
   bookingDate?: string;     // fecha del evento si aplica
   selectedTime?: string;     // horario seleccionado (time slot) - opcional
   contactPhone?: string;
@@ -926,6 +927,18 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
            style="display:inline-block;background:#f0f4f8;color:${BRAND_BLUE};border:1px solid #dce4f0;font-size:14px;font-weight:600;padding:12px 28px;border-radius:50px;text-decoration:none;font-family:Arial,sans-serif;">
           &#128196; Descargar Factura
         </a>
+      </td></tr>`
+    : "";
+
+  const quoteUrlBlock = d.quoteUrl
+    ? `<tr><td style="padding:0 32px 20px;text-align:center;">
+        <a href="${d.quoteUrl}"
+           style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:15px;font-weight:700;padding:15px 36px;border-radius:50px;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:0.3px;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
+          &#128203; Visualiza tu reserva
+        </a>
+        <p style="color:#9ca3af;font-size:11px;margin:8px 0 0;font-family:Arial,sans-serif;">
+          Consulta el detalle completo de tu reserva en cualquier momento
+        </p>
       </td></tr>`
     : "";
 
@@ -1036,6 +1049,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
       </table>
     </td></tr>
     ${installmentBlock}
+    ${quoteUrlBlock}
     ${invoiceButtonBlock}
     ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto en el lago!")}
     <tr><td style="padding:0 32px 28px;">

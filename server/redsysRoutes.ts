@@ -270,6 +270,9 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const COPY_EMAIL  = "reservas@nayadeexperiences.es";
             if (clientEmail) {
               try {
+                const quoteUrl = quote.paymentLinkToken
+                  ? `${process.env.APP_URL ?? "https://www.nayadeexperiences.es"}/presupuesto/${quote.paymentLinkToken}`
+                  : undefined;
                 const html = buildConfirmationHtml({
                   clientName,
                   reservationRef: invoiceNumber,
@@ -283,6 +286,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   selectedTime: (updatedReservation as any).selectedTime ?? undefined,
                   contactEmail: COPY_EMAIL,
                   contactPhone: "+34 930 34 77 91",
+                  quoteUrl,
                 });
                 await sendEmail({ to: clientEmail, subject: `✅ Reserva confirmada — ${quote.quoteNumber} — Náyade Experiences`, html });
                 await sendEmail({ to: COPY_EMAIL, subject: `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`, html });
