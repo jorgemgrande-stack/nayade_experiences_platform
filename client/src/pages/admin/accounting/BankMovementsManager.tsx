@@ -437,26 +437,26 @@ export default function BankMovementsManager() {
               )}
             </div>
 
-            <div className="rounded-lg border border-gray-200 overflow-hidden">
+            <div className="rounded-lg border border-white/10 overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-white/5 border-b border-white/10">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 w-28">Fecha</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600 w-28">F. Valor</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">Movimiento</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">Más datos</th>
-                    <th className="px-4 py-3 text-right font-medium text-gray-600 w-32">Importe</th>
-                    <th className="px-4 py-3 text-right font-medium text-gray-600 w-32">Saldo</th>
-                    <th className="px-4 py-3 text-center font-medium text-gray-600 w-24">Estado</th>
-                    <th className="px-4 py-3 text-center font-medium text-gray-600 w-32">Conciliación</th>
-                    <th className="px-4 py-3 text-center font-medium text-gray-600 w-16"></th>
+                    <th className="px-4 py-3 text-left font-medium text-white/50 w-28">Fecha</th>
+                    <th className="px-4 py-3 text-left font-medium text-white/50 w-28">F. Valor</th>
+                    <th className="px-4 py-3 text-left font-medium text-white/50">Movimiento</th>
+                    <th className="px-4 py-3 text-left font-medium text-white/50">Más datos</th>
+                    <th className="px-4 py-3 text-right font-medium text-white/50 w-32">Importe</th>
+                    <th className="px-4 py-3 text-right font-medium text-white/50 w-32">Saldo</th>
+                    <th className="px-4 py-3 text-center font-medium text-white/50 w-24">Estado</th>
+                    <th className="px-4 py-3 text-center font-medium text-white/50 w-32">Conciliación</th>
+                    <th className="px-4 py-3 text-center font-medium text-white/50 w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {movementsQ.isLoading ? (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-white/40">Cargando...</td></tr>
                   ) : movements.length === 0 ? (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No hay movimientos con los filtros seleccionados</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-white/40">No hay movimientos con los filtros seleccionados</td></tr>
                   ) : movements.map((mv) => {
                     const amount = parseFloat(mv.importe);
                     const isPos = amount >= 0;
@@ -464,16 +464,16 @@ export default function BankMovementsManager() {
                     return (
                       <tr
                         key={mv.id}
-                        className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${mv.status === "ignorado" ? "opacity-50" : ""}`}
+                        className={`border-b border-white/[0.06] hover:bg-white/[0.04] transition-colors ${mv.status === "ignorado" ? "opacity-40" : ""}`}
                       >
-                        <td className="px-4 py-3 font-mono text-xs">{fmtDate(mv.fecha)}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-gray-400">{fmtDate(mv.fechaValor)}</td>
-                        <td className="px-4 py-3 text-gray-700 max-w-[180px] truncate">{mv.movimiento || "–"}</td>
-                        <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate text-xs">{mv.masDatos || "–"}</td>
-                        <td className={`px-4 py-3 text-right font-semibold font-mono ${isPos ? "text-green-700" : "text-red-700"}`}>
+                        <td className="px-4 py-3 font-mono text-xs text-white/80">{fmtDate(mv.fecha)}</td>
+                        <td className="px-4 py-3 font-mono text-xs text-white/40">{fmtDate(mv.fechaValor)}</td>
+                        <td className="px-4 py-3 text-white/80 max-w-[180px] truncate">{mv.movimiento || "–"}</td>
+                        <td className="px-4 py-3 text-white/50 max-w-[200px] truncate text-xs">{mv.masDatos || "–"}</td>
+                        <td className={`px-4 py-3 text-right font-semibold font-mono ${isPos ? "text-green-400" : "text-red-400"}`}>
                           {fmtAmount(mv.importe)}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-xs text-gray-500">{fmtAmount(mv.saldo)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-white/40">{fmtAmount(mv.saldo)}</td>
                         <td className="px-4 py-3 text-center">
                           <Badge className={STATUS_BADGE[mv.status].cls}>{STATUS_BADGE[mv.status].label}</Badge>
                         </td>
@@ -524,40 +524,40 @@ export default function BankMovementsManager() {
                 <p className="text-xs mt-1">Usa el botón "Importar fichero" para cargar un extracto de CaixaBank</p>
               </div>
             ) : (
-              <div className="rounded-lg border border-gray-200 overflow-hidden">
+              <div className="rounded-lg border border-white/10 overflow-hidden">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-white/5 border-b border-white/10">
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium text-gray-600">Fichero</th>
-                      <th className="px-4 py-3 text-center font-medium text-gray-600 w-20">Tipo</th>
-                      <th className="px-4 py-3 text-center font-medium text-gray-600 w-28">Importados</th>
-                      <th className="px-4 py-3 text-center font-medium text-gray-600 w-28">Duplicados</th>
-                      <th className="px-4 py-3 text-center font-medium text-gray-600 w-24">Estado</th>
-                      <th className="px-4 py-3 text-left font-medium text-gray-600 w-40">Fecha</th>
+                      <th className="px-4 py-3 text-left font-medium text-white/50">Fichero</th>
+                      <th className="px-4 py-3 text-center font-medium text-white/50 w-20">Tipo</th>
+                      <th className="px-4 py-3 text-center font-medium text-white/50 w-28">Importados</th>
+                      <th className="px-4 py-3 text-center font-medium text-white/50 w-28">Duplicados</th>
+                      <th className="px-4 py-3 text-center font-medium text-white/50 w-24">Estado</th>
+                      <th className="px-4 py-3 text-left font-medium text-white/50 w-40">Fecha</th>
                       <th className="px-4 py-3 w-16"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {imports.map((imp) => (
-                      <tr key={imp.id} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium text-gray-800">
+                      <tr key={imp.id} className="border-b border-white/[0.06] hover:bg-white/[0.04]">
+                        <td className="px-4 py-3 font-medium text-white/80">
                           <div className="flex items-center gap-2">
-                            <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                            <FileSpreadsheet className="w-4 h-4 text-green-400" />
                             {imp.fileName}
                           </div>
                           {imp.errorMessage && (
-                            <div className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                            <div className="text-xs text-red-400 mt-1 flex items-center gap-1">
                               <AlertCircle className="w-3 h-3" /> {imp.errorMessage}
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center font-mono text-xs uppercase text-gray-500">{imp.fileType}</td>
-                        <td className="px-4 py-3 text-center font-semibold text-blue-700">{imp.importedRows}</td>
-                        <td className="px-4 py-3 text-center text-gray-500">{imp.duplicatesSkipped}</td>
+                        <td className="px-4 py-3 text-center font-mono text-xs uppercase text-white/40">{imp.fileType}</td>
+                        <td className="px-4 py-3 text-center font-semibold text-blue-400">{imp.importedRows}</td>
+                        <td className="px-4 py-3 text-center text-white/50">{imp.duplicatesSkipped}</td>
                         <td className="px-4 py-3 text-center">
                           <Badge className={IMPORT_STATUS_BADGE[imp.status].cls}>{IMPORT_STATUS_BADGE[imp.status].label}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500">{new Date(imp.createdAt).toLocaleString("es-ES")}</td>
+                        <td className="px-4 py-3 text-xs text-white/40">{new Date(imp.createdAt).toLocaleString("es-ES")}</td>
                         <td className="px-4 py-3 text-center">
                           <Button
                             variant="ghost" size="sm"
