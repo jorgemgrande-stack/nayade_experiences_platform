@@ -2833,6 +2833,10 @@ function QuoteDetailModal({
   const [transferFile, setTransferFile] = useState<File | null>(null);
   const [transferProofUrl, setTransferProofUrl] = useState<string | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
+  // FASE 2A: banco movement linking
+  const [selectedBankMovementId, setSelectedBankMovementId] = useState<number | null>(null);
+  const [showBankMovementSearch, setShowBankMovementSearch] = useState(false);
+  const [bankMovementSearch, setBankMovementSearch] = useState("");
   // Unified payment modal state
   const [showConfirmPaymentModal, setShowConfirmPaymentModal] = useState(false);
   const [paymentMethodSelected, setPaymentMethodSelected] = useState<"tarjeta" | "transferencia" | "efectivo">("tarjeta");
@@ -2927,10 +2931,18 @@ function QuoteDetailModal({
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.counters.invalidate();
       setShowTransferModal(false);
+      setSelectedBankMovementId(null);
+      setShowBankMovementSearch(false);
       onClose();
     },
     onError: (e) => toast.error(e.message),
   });
+
+  // FASE 2A: movimientos bancarios pendientes para vincular
+  const bankMovementsQ = trpc.bankMovements.listMovements.useQuery(
+    { status: "pendiente", search: bankMovementSearch || undefined, pageSize: 20, page: 1 },
+    { enabled: showBankMovementSearch && showTransferModal }
+  );
   const createPendingPayment = trpc.crm.pendingPayments.create.useMutation({
     onSuccess: () => {
       toast.success("Pago pendiente registrado · Email enviado al cliente");
@@ -3625,8 +3637,11 @@ function QuoteDetailModal({
     </DialogContent>
 
       {/* ─── MODAL: Confirmar pago por transferencia bancaria ─── */}
-      <Dialog open={showTransferModal} onOpenChange={setShowTransferModal}>
-        <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
+      <Dialog open={showTransferModal} onOpenChange={(o) => {
+        setShowTransferModal(o);
+        if (!o) { setTransferFile(null); setTransferProofUrl(null); setSelectedBankMovementId(null); setShowBankMovementSearch(false); setBankMovementSearch(""); }
+      }}>
+        <DialogContent className="max-w-lg bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
               <Banknote className="w-5 h-5 text-blue-400" />
@@ -3634,66 +3649,152 @@ function QuoteDetailModal({
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-foreground/65">
-              Para validar el pago por transferencia bancaria debes adjuntar obligatoriamente el justificante (JPG, PNG o PDF).
-              Solo cuando esté adjunto podrás confirmar el pago, generar la reserva y la factura.
+            <p className="text-xs text-foreground/50">
+              Puedes confirmar la transferencia manualmente con justificante o vincularla a un movimiento bancario importado para dejarla conciliada.
             </p>
-            <div className="border-2 border-dashed border-foreground/[0.18] rounded-lg p-4 text-center hover:border-blue-500/50 transition-colors">
-              <input
-                type="file"
-                accept=".jpg,.jpeg,.png,.pdf"
-                onChange={handleTransferFileChange}
-                className="hidden"
-                id="transfer-proof-input"
-              />
-              <label htmlFor="transfer-proof-input" className="cursor-pointer">
-                {isUploadingProof ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
-                    <span className="text-sm text-foreground/65">Subiendo justificante...</span>
-                  </div>
-                ) : transferProofUrl ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <CheckCircle className="w-8 h-8 text-emerald-400" />
-                    <span className="text-sm text-emerald-400 font-medium">Justificante adjuntado</span>
-                    <span className="text-xs text-foreground/50">{transferFile?.name}</span>
-                    <span className="text-xs text-blue-400 underline">Cambiar archivo</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <Upload className="w-8 h-8 text-foreground/50" />
-                    <span className="text-sm text-foreground/65">Haz clic para adjuntar el justificante</span>
-                    <span className="text-xs text-foreground/40">JPG, PNG o PDF · Máx. 10 MB</span>
-                  </div>
-                )}
-              </label>
+
+            {/* ── Justificante (opcional si hay movimiento vinculado) ── */}
+            <div>
+              <div className="text-xs text-foreground/60 font-medium mb-2 uppercase tracking-wide">
+                Justificante {selectedBankMovementId ? "(opcional)" : "(obligatorio si no vinculas movimiento)"}
+              </div>
+              <div className="border-2 border-dashed border-foreground/[0.18] rounded-lg p-4 text-center hover:border-blue-500/50 transition-colors">
+                <input type="file" accept=".jpg,.jpeg,.png,.pdf" onChange={handleTransferFileChange} className="hidden" id="transfer-proof-input" />
+                <label htmlFor="transfer-proof-input" className="cursor-pointer">
+                  {isUploadingProof ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
+                      <span className="text-sm text-foreground/65">Subiendo justificante...</span>
+                    </div>
+                  ) : transferProofUrl ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <CheckCircle className="w-8 h-8 text-emerald-400" />
+                      <span className="text-sm text-emerald-400 font-medium">Justificante adjuntado</span>
+                      <span className="text-xs text-foreground/50">{transferFile?.name}</span>
+                      <span className="text-xs text-blue-400 underline">Cambiar archivo</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <Upload className="w-8 h-8 text-foreground/50" />
+                      <span className="text-sm text-foreground/65">Haz clic para adjuntar el justificante</span>
+                      <span className="text-xs text-foreground/40">JPG, PNG o PDF · Máx. 10 MB</span>
+                    </div>
+                  )}
+                </label>
+              </div>
+              {transferProofUrl && (
+                <a href={transferProofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300 underline mt-2">
+                  <Eye className="w-3.5 h-3.5" /> Ver justificante adjuntado
+                </a>
+              )}
             </div>
-            {transferProofUrl && (
-              <a
-                href={transferProofUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-xs text-blue-400 hover:text-blue-300 underline"
-              >
-                <Eye className="w-3.5 h-3.5" /> Ver justificante adjuntado
-              </a>
-            )}
+
+            {/* ── FASE 2A: Vincular movimiento bancario ── */}
+            <div className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.03] p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-medium text-foreground/70 uppercase tracking-wide flex items-center gap-1.5">
+                  <span className="w-4 h-4 inline-flex items-center justify-center rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold">2A</span>
+                  Vincular movimiento bancario
+                </div>
+                {!selectedBankMovementId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-blue-400 hover:text-blue-300 text-xs h-7 px-2"
+                    onClick={() => setShowBankMovementSearch(!showBankMovementSearch)}
+                  >
+                    {showBankMovementSearch ? "Ocultar" : "Buscar movimiento"}
+                  </Button>
+                )}
+              </div>
+
+              {selectedBankMovementId ? (
+                (() => {
+                  const mv = (bankMovementsQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementId)
+                    ?? { id: selectedBankMovementId, fecha: "–", movimiento: "Movimiento seleccionado", importe: "–" };
+                  return (
+                    <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-400 font-medium flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5" /> Movimiento seleccionado
+                        </span>
+                        <button onClick={() => { setSelectedBankMovementId(null); setShowBankMovementSearch(true); }} className="text-foreground/40 hover:text-foreground/70">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="text-foreground/70">
+                        {mv.fecha} · {mv.movimiento || "–"} · <span className="text-emerald-400 font-semibold">{mv.importe ? `${parseFloat(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                      </div>
+                      {mv.masDatos && <div className="text-foreground/40 truncate">{mv.masDatos}</div>}
+                    </div>
+                  );
+                })()
+              ) : (
+                <p className="text-xs text-foreground/40">
+                  Opcional. Si vinculas un movimiento bancario el sistema registrará la conciliación automáticamente.
+                </p>
+              )}
+
+              {showBankMovementSearch && !selectedBankMovementId && (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/40" />
+                    <input
+                      className="w-full text-xs bg-foreground/[0.05] border border-foreground/[0.12] rounded-md pl-8 pr-3 py-1.5 text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      placeholder="Buscar por concepto, importe o fecha..."
+                      value={bankMovementSearch}
+                      onChange={(e) => setBankMovementSearch(e.target.value)}
+                    />
+                  </div>
+                  {bankMovementsQ.isLoading ? (
+                    <div className="text-xs text-foreground/40 text-center py-2">
+                      <RefreshCw className="w-3 h-3 animate-spin inline mr-1" />Buscando...
+                    </div>
+                  ) : (bankMovementsQ.data?.data as any[] ?? []).filter((m: any) => parseFloat(m.importe) > 0 && m.conciliationStatus !== "conciliado").length === 0 ? (
+                    <p className="text-xs text-foreground/40 text-center py-2">No hay movimientos pendientes disponibles.</p>
+                  ) : (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {(bankMovementsQ.data?.data as any[] ?? [])
+                        .filter((m: any) => parseFloat(m.importe) > 0 && m.conciliationStatus !== "conciliado")
+                        .map((mv: any) => (
+                          <button
+                            key={mv.id}
+                            onClick={() => { setSelectedBankMovementId(mv.id); setShowBankMovementSearch(false); }}
+                            className="w-full text-left rounded-md border border-foreground/[0.08] hover:border-blue-500/40 bg-foreground/[0.04] hover:bg-blue-500/10 p-2 text-xs transition-colors space-y-0.5"
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="text-foreground/70 font-medium">{mv.fecha}</span>
+                              <span className="text-emerald-400 font-semibold">{parseFloat(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                            </div>
+                            <div className="text-foreground/50 truncate">{mv.movimiento || "–"}</div>
+                            {mv.masDatos && <div className="text-foreground/30 truncate">{mv.masDatos}</div>}
+                          </button>
+                        ))
+                      }
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+
           <DialogFooter className="gap-2">
             <Button
               variant="ghost"
               className="text-foreground/65 hover:text-foreground"
-              onClick={() => { setShowTransferModal(false); setTransferFile(null); setTransferProofUrl(null); }}
+              onClick={() => { setShowTransferModal(false); setTransferFile(null); setTransferProofUrl(null); setSelectedBankMovementId(null); setShowBankMovementSearch(false); setBankMovementSearch(""); }}
             >
               Cancelar
             </Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={!transferProofUrl || confirmTransfer.isPending}
-              onClick={() => confirmTransfer.mutate({ quoteId })}
+              disabled={(!transferProofUrl && !selectedBankMovementId) || confirmTransfer.isPending}
+              onClick={() => confirmTransfer.mutate({ quoteId, bankMovementId: selectedBankMovementId ?? undefined })}
             >
               {confirmTransfer.isPending ? (
                 <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Confirmando...</>
+              ) : selectedBankMovementId ? (
+                <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y conciliar</>
               ) : (
                 <><CheckCircle className="w-4 h-4 mr-2" /> Validar pago y generar factura</>
               )}

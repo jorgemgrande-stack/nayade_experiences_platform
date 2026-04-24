@@ -1998,11 +1998,33 @@ export const bankMovements = mysqlTable("bank_movements", {
   saldo: decimal("saldo", { precision: 12, scale: 2 }),
   duplicateKey: varchar("duplicate_key", { length: 255 }).notNull(),
   status: mysqlEnum("status", ["pendiente", "ignorado"]).default("pendiente").notNull(),
+  conciliationStatus: mysqlEnum("conciliation_status", ["pendiente", "conciliado"]).default("pendiente").notNull(),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type BankMovement = typeof bankMovements.$inferSelect;
 export type InsertBankMovement = typeof bankMovements.$inferInsert;
+
+// ── Vínculos movimiento bancario ↔ entidad ─────────────────────────────────────
+export const bankMovementLinks = mysqlTable("bank_movement_links", {
+  id: int("id").autoincrement().primaryKey(),
+  bankMovementId: int("bank_movement_id").notNull(),
+  entityType: mysqlEnum("entity_type", ["quote", "reservation", "invoice", "expense"]).notNull(),
+  entityId: int("entity_id").notNull(),
+  linkType: mysqlEnum("link_type", ["income_transfer", "card_income", "cash_income", "expense_payment"]).notNull().default("income_transfer"),
+  amountLinked: decimal("amount_linked", { precision: 12, scale: 2 }).notNull(),
+  status: mysqlEnum("status", ["proposed", "confirmed", "rejected", "unlinked"]).notNull().default("proposed"),
+  confidenceScore: int("confidence_score").default(0),
+  matchedBy: varchar("matched_by", { length: 255 }),
+  matchedAt: timestamp("matched_at"),
+  rejectedAt: timestamp("rejected_at"),
+  unlinkedAt: timestamp("unlinked_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type BankMovementLink = typeof bankMovementLinks.$inferSelect;
+export type InsertBankMovementLink = typeof bankMovementLinks.$inferInsert;
 
 // ─── LOGS / TIMELINE DE SOLICITUDES DE ANULACIÓN ─────────────────────────────
 export const cancellationLogs = mysqlTable("cancellation_logs", {

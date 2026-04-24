@@ -29,6 +29,8 @@ import {
   paymentInstallments,
   cancellationRequests,
   discountCodeUses,
+  bankMovements,
+  bankMovementLinks,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray, inArray, isNotNull, getTableColumns } from "drizzle-orm";
@@ -1993,17 +1995,31 @@ export const crmRouter = router({
         z.object({
           quoteId: z.number(),
           paidAmount: z.number().optional(),
+          bankMovementId: z.number().optional(), // FASE 2A: vínculo bancario opcional
         })
       )
       .mutation(async ({ input, ctx }) => {
         const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
         if (!quote) throw new TRPCError({ code: "NOT_FOUND" });
         const proofUrl = (quote as Record<string, unknown>).transferProofUrl as string | null;
-        if (!proofUrl) {
+
+        // Si se vincula movimiento bancario, el justificante no es obligatorio
+        if (!proofUrl && !input.bankMovementId) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Debes adjuntar el justificante de transferencia antes de confirmar el pago.",
+            message: "Debes adjuntar el justificante de transferencia o vincular un movimiento bancario.",
           });
+        }
+
+        // Validar movimiento bancario si se proporciona
+        if (input.bankMovementId) {
+          const [movement] = await db.select().from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
+          if (!movement) throw new TRPCError({ code: "NOT_FOUND", message: "Movimiento bancario no encontrado." });
+          if (movement.status === "ignorado") throw new TRPCError({ code: "BAD_REQUEST", message: "El movimiento bancario está marcado como ignorado." });
+          if (movement.conciliationStatus === "conciliado") throw new TRPCError({ code: "BAD_REQUEST", message: "Este movimiento bancario ya está conciliado con otro pago." });
+          const existingConfirmed = await db.select({ id: bankMovementLinks.id }).from(bankMovementLinks)
+            .where(and(eq(bankMovementLinks.bankMovementId, input.bankMovementId), eq(bankMovementLinks.status, "confirmed"))).limit(1);
+          if (existingConfirmed.length > 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Este movimiento bancario ya tiene una conciliación confirmada." });
         }
         const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId));
         if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
@@ -2288,6 +2304,32 @@ export const crmRouter = router({
             await logActivity("invoice", invoiceId, "reav_expedient_created", ctx.user.id, ctx.user.name, { expedientId: reavExpedientIdT, expedientNumber: reavExpedientNumberT });
           } catch (e) {
             console.error("[confirmTransfer] Error al crear expediente REAV:", e);
+          }
+        }
+
+        // FASE 2A: crear vínculo bancario y marcar movimiento como conciliado
+        if (input.bankMovementId) {
+          try {
+            const now2 = new Date();
+            await db.insert(bankMovementLinks).values({
+              bankMovementId: input.bankMovementId,
+              entityType: "quote",
+              entityId: input.quoteId,
+              linkType: "income_transfer",
+              amountLinked: String(total),
+              status: "confirmed",
+              confidenceScore: 100,
+              matchedBy: ctx.user.name ?? undefined,
+              matchedAt: now2,
+            });
+            await db.update(bankMovements)
+              .set({ conciliationStatus: "conciliado" })
+              .where(eq(bankMovements.id, input.bankMovementId));
+            await logActivity("quote", input.quoteId, "bank_movement_linked", ctx.user.id, ctx.user.name, {
+              bankMovementId: input.bankMovementId, invoiceId, invoiceNumber,
+            });
+          } catch (e) {
+            console.error("[confirmTransfer] Error al crear vínculo bancario:", e);
           }
         }
 

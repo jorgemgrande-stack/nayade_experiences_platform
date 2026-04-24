@@ -344,6 +344,13 @@
       "when": 1777063920000,
       "tag": "0050_bank_movements",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "5",
+      "when": 1777150320000,
+      "tag": "0051_bank_movement_links",
+      "breakpoints": true
     }
   ]
 }

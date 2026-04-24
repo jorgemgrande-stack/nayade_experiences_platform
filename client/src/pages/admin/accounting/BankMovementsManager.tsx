@@ -4,12 +4,13 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -22,7 +23,8 @@ import { toast } from "sonner";
 import {
   Upload, Trash2, Search, Eye, TrendingUp, TrendingDown,
   FileSpreadsheet, RefreshCw, X, ChevronLeft, ChevronRight,
-  CheckCircle, MinusCircle, AlertCircle,
+  CheckCircle, MinusCircle, AlertCircle, Link2, Link2Off,
+  Sparkles, ThumbsDown, Info,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -49,6 +51,38 @@ type BankMovement = {
   saldo: string | null;
   duplicateKey: string;
   status: "pendiente" | "ignorado";
+  conciliationStatus: "pendiente" | "conciliado";
+  notes: string | null;
+  createdAt: string;
+};
+
+type QuoteMatch = {
+  quoteId: number;
+  quoteNumber: string;
+  title: string;
+  total: number;
+  status: string;
+  sentAt: string | null;
+  clientName: string | null;
+  clientEmail: string | null;
+  clientPhone: string | null;
+  confidenceScore: number;
+  isRejected: boolean;
+};
+
+type BankMovementLink = {
+  id: number;
+  bankMovementId: number;
+  entityType: string;
+  entityId: number;
+  linkType: string;
+  amountLinked: string;
+  status: "proposed" | "confirmed" | "rejected" | "unlinked";
+  confidenceScore: number | null;
+  matchedBy: string | null;
+  matchedAt: string | null;
+  rejectedAt: string | null;
+  unlinkedAt: string | null;
   notes: string | null;
   createdAt: string;
 };
@@ -62,14 +96,27 @@ function fmtAmount(v: string | number | null | undefined): string {
   return n.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 }
 
-function fmtDate(d: string | null | undefined): string {
+function fmtDate(d: string | Date | null | undefined): string {
   if (!d) return "–";
+  if (d instanceof Date) return d.toLocaleDateString("es-ES");
+  if (d.includes("T")) return new Date(d).toLocaleDateString("es-ES");
   return d;
+}
+
+function scoreColor(score: number): string {
+  if (score >= 70) return "text-green-700 bg-green-100";
+  if (score >= 40) return "text-yellow-700 bg-yellow-100";
+  return "text-gray-600 bg-gray-100";
 }
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   pendiente: { label: "Pendiente", cls: "bg-yellow-100 text-yellow-800" },
   ignorado:  { label: "Ignorado",  cls: "bg-gray-100 text-gray-500" },
+};
+
+const CONCILIATION_BADGE: Record<string, { label: string; cls: string; icon?: string }> = {
+  pendiente:   { label: "Sin conciliar", cls: "bg-orange-100 text-orange-700" },
+  conciliado:  { label: "Conciliado",    cls: "bg-green-100 text-green-700" },
 };
 
 const IMPORT_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
@@ -102,6 +149,12 @@ export default function BankMovementsManager() {
   const [editStatus, setEditStatus] = useState<"pendiente" | "ignorado">("pendiente");
   const [savingDetail, setSavingDetail] = useState(false);
 
+  // Conciliation panel state
+  const [showMatches, setShowMatches] = useState(false);
+  const [confirmingQuoteId, setConfirmingQuoteId] = useState<number | null>(null);
+  const [rejectingQuoteId, setRejectingQuoteId] = useState<number | null>(null);
+  const [unlinkConfirm, setUnlinkConfirm] = useState(false);
+
   // ── Queries ────────────────────────────────────────────────────────────────
 
   const importsQ = trpc.bankMovements.listImports.useQuery();
@@ -115,6 +168,16 @@ export default function BankMovementsManager() {
     page,
     pageSize: PAGE_SIZE,
   });
+
+  const matchesQ = trpc.bankMovements.findMatches.useQuery(
+    { bankMovementId: selectedMovement?.id ?? 0 },
+    { enabled: !!selectedMovement && showMatches }
+  );
+
+  const linksQ = trpc.bankMovements.getLinks.useQuery(
+    { bankMovementId: selectedMovement?.id ?? 0 },
+    { enabled: !!selectedMovement }
+  );
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -153,19 +216,59 @@ export default function BankMovementsManager() {
     },
   });
 
+  const confirmTransferMut = trpc.crm.quotes.confirmTransfer.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Conciliación confirmada · Factura ${data.invoiceNumber} generada`);
+      movementsQ.refetch();
+      linksQ.refetch();
+      matchesQ.refetch();
+      setConfirmingQuoteId(null);
+      setShowMatches(false);
+      // Actualizar el movimiento seleccionado para reflejar conciliado
+      if (selectedMovement) {
+        setSelectedMovement({ ...selectedMovement, conciliationStatus: "conciliado" });
+      }
+    },
+    onError: (e) => {
+      toast.error("Error al confirmar: " + e.message);
+      setConfirmingQuoteId(null);
+    },
+  });
+
+  const rejectLinkMut = trpc.bankMovements.rejectLink.useMutation({
+    onSuccess: () => {
+      toast.success("Propuesta rechazada");
+      matchesQ.refetch();
+      linksQ.refetch();
+      setRejectingQuoteId(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const unlinkMut = trpc.bankMovements.unlinkMovement.useMutation({
+    onSuccess: () => {
+      toast.success("Conciliación desvinculada. El movimiento vuelve a estar pendiente.");
+      movementsQ.refetch();
+      linksQ.refetch();
+      setUnlinkConfirm(false);
+      if (selectedMovement) {
+        setSelectedMovement({ ...selectedMovement, conciliationStatus: "pendiente" });
+      }
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   // ── File upload ────────────────────────────────────────────────────────────
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     if (!["xls", "xlsx", "csv"].includes(ext)) {
       toast.error("Formato no soportado. Usa .xls, .xlsx o .csv");
       return;
     }
-
     setUploading(true);
     const reader = new FileReader();
     reader.onload = async (ev) => {
@@ -179,12 +282,16 @@ export default function BankMovementsManager() {
     reader.readAsArrayBuffer(file);
   }, [uploadMut]);
 
-  // ── Detail modal open ──────────────────────────────────────────────────────
+  // ── Detail modal ───────────────────────────────────────────────────────────
 
   const openDetail = (mv: BankMovement) => {
     setSelectedMovement(mv);
     setEditNotes(mv.notes ?? "");
     setEditStatus(mv.status);
+    setShowMatches(false);
+    setConfirmingQuoteId(null);
+    setRejectingQuoteId(null);
+    setUnlinkConfirm(false);
   };
 
   const saveDetail = () => {
@@ -203,6 +310,11 @@ export default function BankMovementsManager() {
   const totalIngresado = movData?.totalIngresado ?? 0;
   const totalCargado = movData?.totalCargado ?? 0;
 
+  const confirmedLink = (linksQ.data as unknown as BankMovementLink[] | undefined)?.find(l => l.status === "confirmed");
+  const matches: QuoteMatch[] = (matchesQ.data as any)?.matches ?? [];
+  const isConciliated = selectedMovement?.conciliationStatus === "conciliado";
+  const isPositive = selectedMovement ? parseFloat(selectedMovement.importe) > 0 : false;
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
@@ -210,7 +322,7 @@ export default function BankMovementsManager() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Movimientos Bancarios</h1>
-            <p className="text-sm text-gray-500 mt-1">Importa y gestiona el histórico de movimientos de cuenta CaixaBank</p>
+            <p className="text-sm text-gray-500 mt-1">Importa, gestiona y concilia los movimientos bancarios de CaixaBank</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -224,13 +336,7 @@ export default function BankMovementsManager() {
                 <><Upload className="w-4 h-4 mr-2" /> Importar fichero</>
               )}
             </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xls,.xlsx,.csv"
-              className="hidden"
-              onChange={handleFileChange}
-            />
+            <input ref={fileInputRef} type="file" accept=".xls,.xlsx,.csv" className="hidden" onChange={handleFileChange} />
           </div>
         </div>
 
@@ -239,9 +345,7 @@ export default function BankMovementsManager() {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                </div>
+                <div className="p-2 bg-blue-100 rounded-lg"><FileSpreadsheet className="w-5 h-5 text-blue-600" /></div>
                 <div>
                   <div className="text-xs text-gray-500">Total movimientos</div>
                   <div className="text-xl font-bold text-gray-900">{totalMovs}</div>
@@ -252,9 +356,7 @@ export default function BankMovementsManager() {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-green-600" />
-                </div>
+                <div className="p-2 bg-green-100 rounded-lg"><TrendingUp className="w-5 h-5 text-green-600" /></div>
                 <div>
                   <div className="text-xs text-gray-500">Total ingresado</div>
                   <div className="text-xl font-bold text-green-700">{fmtAmount(totalIngresado)}</div>
@@ -265,9 +367,7 @@ export default function BankMovementsManager() {
           <Card>
             <CardContent className="pt-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <TrendingDown className="w-5 h-5 text-red-600" />
-                </div>
+                <div className="p-2 bg-red-100 rounded-lg"><TrendingDown className="w-5 h-5 text-red-600" /></div>
                 <div>
                   <div className="text-xs text-gray-500">Total cargado</div>
                   <div className="text-xl font-bold text-red-700">{fmtAmount(totalCargado)}</div>
@@ -284,9 +384,7 @@ export default function BankMovementsManager() {
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-medium capitalize border-b-2 transition-colors ${
-                tab === t
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
               {t === "movimientos" ? "Movimientos" : `Importaciones (${imports.length})`}
@@ -297,7 +395,6 @@ export default function BankMovementsManager() {
         {/* ── TAB: Movimientos ── */}
         {tab === "movimientos" && (
           <div className="space-y-4">
-            {/* Filters */}
             <div className="flex flex-wrap gap-3">
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -308,10 +405,8 @@ export default function BankMovementsManager() {
                   className="pl-9"
                 />
               </div>
-              <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v as "todos" | "pendiente" | "ignorado"); setPage(1); }}>
-                <SelectTrigger className="w-36">
-                  <SelectValue />
-                </SelectTrigger>
+              <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v as any); setPage(1); }}>
+                <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
                   <SelectItem value="pendiente">Pendiente</SelectItem>
@@ -322,47 +417,26 @@ export default function BankMovementsManager() {
                 value={filterImportId ? String(filterImportId) : "todos"}
                 onValueChange={(v) => { setFilterImportId(v === "todos" ? undefined : Number(v)); setPage(1); }}
               >
-                <SelectTrigger className="w-52">
-                  <SelectValue placeholder="Todas las importaciones" />
-                </SelectTrigger>
+                <SelectTrigger className="w-52"><SelectValue placeholder="Todas las importaciones" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todas las importaciones</SelectItem>
                   {imports.map((imp) => (
-                    <SelectItem key={imp.id} value={String(imp.id)}>
-                      {imp.fileName}
-                    </SelectItem>
+                    <SelectItem key={imp.id} value={String(imp.id)}>{imp.fileName}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                type="date"
-                className="w-36"
-                value={filterFechaFrom}
-                onChange={(e) => { setFilterFechaFrom(e.target.value); setPage(1); }}
-                placeholder="Desde"
-              />
-              <Input
-                type="date"
-                className="w-36"
-                value={filterFechaTo}
-                onChange={(e) => { setFilterFechaTo(e.target.value); setPage(1); }}
-                placeholder="Hasta"
-              />
+              <Input type="date" className="w-36" value={filterFechaFrom} onChange={(e) => { setFilterFechaFrom(e.target.value); setPage(1); }} />
+              <Input type="date" className="w-36" value={filterFechaTo} onChange={(e) => { setFilterFechaTo(e.target.value); setPage(1); }} />
               {(search || filterStatus !== "todos" || filterImportId || filterFechaFrom || filterFechaTo) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearch(""); setFilterStatus("todos");
-                    setFilterImportId(undefined); setFilterFechaFrom(""); setFilterFechaTo(""); setPage(1);
-                  }}
-                >
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setSearch(""); setFilterStatus("todos"); setFilterImportId(undefined);
+                  setFilterFechaFrom(""); setFilterFechaTo(""); setPage(1);
+                }}>
                   <X className="w-4 h-4 mr-1" /> Limpiar
                 </Button>
               )}
             </div>
 
-            {/* Table */}
             <div className="rounded-lg border border-gray-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
@@ -373,18 +447,20 @@ export default function BankMovementsManager() {
                     <th className="px-4 py-3 text-left font-medium text-gray-600">Más datos</th>
                     <th className="px-4 py-3 text-right font-medium text-gray-600 w-32">Importe</th>
                     <th className="px-4 py-3 text-right font-medium text-gray-600 w-32">Saldo</th>
-                    <th className="px-4 py-3 text-center font-medium text-gray-600 w-28">Estado</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-600 w-24">Estado</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-600 w-32">Conciliación</th>
                     <th className="px-4 py-3 text-center font-medium text-gray-600 w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {movementsQ.isLoading ? (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>
                   ) : movements.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No hay movimientos con los filtros seleccionados</td></tr>
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No hay movimientos con los filtros seleccionados</td></tr>
                   ) : movements.map((mv) => {
                     const amount = parseFloat(mv.importe);
                     const isPos = amount >= 0;
+                    const concBadge = CONCILIATION_BADGE[mv.conciliationStatus ?? "pendiente"];
                     return (
                       <tr
                         key={mv.id}
@@ -399,9 +475,14 @@ export default function BankMovementsManager() {
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-xs text-gray-500">{fmtAmount(mv.saldo)}</td>
                         <td className="px-4 py-3 text-center">
-                          <Badge className={STATUS_BADGE[mv.status].cls}>
-                            {STATUS_BADGE[mv.status].label}
-                          </Badge>
+                          <Badge className={STATUS_BADGE[mv.status].cls}>{STATUS_BADGE[mv.status].label}</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {isPos ? (
+                            <Badge className={concBadge.cls}>{concBadge.label}</Badge>
+                          ) : (
+                            <span className="text-xs text-gray-300">–</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <Button variant="ghost" size="sm" onClick={() => openDetail(mv)}>
@@ -415,7 +496,6 @@ export default function BankMovementsManager() {
               </table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between text-sm text-gray-600">
                 <span>{totalMovs} registros · página {page}/{totalPages}</span>
@@ -475,17 +555,12 @@ export default function BankMovementsManager() {
                         <td className="px-4 py-3 text-center font-semibold text-blue-700">{imp.importedRows}</td>
                         <td className="px-4 py-3 text-center text-gray-500">{imp.duplicatesSkipped}</td>
                         <td className="px-4 py-3 text-center">
-                          <Badge className={IMPORT_STATUS_BADGE[imp.status].cls}>
-                            {IMPORT_STATUS_BADGE[imp.status].label}
-                          </Badge>
+                          <Badge className={IMPORT_STATUS_BADGE[imp.status].cls}>{IMPORT_STATUS_BADGE[imp.status].label}</Badge>
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500">
-                          {new Date(imp.createdAt).toLocaleString("es-ES")}
-                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{new Date(imp.createdAt).toLocaleString("es-ES")}</td>
                         <td className="px-4 py-3 text-center">
                           <Button
-                            variant="ghost"
-                            size="sm"
+                            variant="ghost" size="sm"
                             className="text-red-500 hover:text-red-700"
                             onClick={() => {
                               if (!confirm(`¿Eliminar importación "${imp.fileName}" y todos sus movimientos?`)) return;
@@ -507,12 +582,21 @@ export default function BankMovementsManager() {
 
       {/* ── Movement detail modal ── */}
       <Dialog open={!!selectedMovement} onOpenChange={(o) => !o && setSelectedMovement(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Detalle del movimiento</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              Detalle del movimiento
+              {selectedMovement && (
+                <Badge className={CONCILIATION_BADGE[selectedMovement.conciliationStatus ?? "pendiente"].cls}>
+                  {CONCILIATION_BADGE[selectedMovement.conciliationStatus ?? "pendiente"].label}
+                </Badge>
+              )}
+            </DialogTitle>
           </DialogHeader>
+
           {selectedMovement && (
-            <div className="space-y-4">
+            <div className="space-y-5">
+              {/* Datos del movimiento */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <div className="text-xs text-gray-500 mb-1">Fecha</div>
@@ -548,6 +632,194 @@ export default function BankMovementsManager() {
 
               <hr />
 
+              {/* ── Sección conciliación (solo ingresos) ── */}
+              {isPositive && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                      <Link2 className="w-4 h-4 text-blue-500" />
+                      Conciliación bancaria
+                    </h3>
+                    {isConciliated ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
+                        onClick={() => setUnlinkConfirm(true)}
+                      >
+                        <Link2Off className="w-3.5 h-3.5 mr-1" /> Desvincular
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 border-blue-200 hover:bg-blue-50 text-xs"
+                        onClick={() => setShowMatches(!showMatches)}
+                      >
+                        <Sparkles className="w-3.5 h-3.5 mr-1" />
+                        {showMatches ? "Ocultar propuestas" : "Buscar coincidencias"}
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Vínculo confirmado */}
+                  {isConciliated && confirmedLink && (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm">
+                      <div className="flex items-center gap-2 text-green-800 font-medium mb-2">
+                        <CheckCircle className="w-4 h-4" /> Conciliado con presupuesto
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-green-700">
+                        <span>Entidad: {confirmedLink.entityType} #{confirmedLink.entityId}</span>
+                        <span>Importe: {fmtAmount(confirmedLink.amountLinked)}</span>
+                        <span>Por: {confirmedLink.matchedBy ?? "–"}</span>
+                        <span>Fecha: {confirmedLink.matchedAt ? fmtDate(confirmedLink.matchedAt) : "–"}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Panel de propuestas */}
+                  {!isConciliated && showMatches && (
+                    <div className="space-y-2">
+                      {matchesQ.isLoading ? (
+                        <div className="text-sm text-gray-400 text-center py-4">
+                          <RefreshCw className="w-4 h-4 animate-spin inline mr-2" />Buscando coincidencias...
+                        </div>
+                      ) : matches.length === 0 ? (
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center text-sm text-gray-500">
+                          <Info className="w-4 h-4 inline mr-1" />
+                          No se encontraron presupuestos pendientes que coincidan con este ingreso.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-xs text-gray-500">
+                            {matches.length} presupuesto{matches.length > 1 ? "s" : ""} posible{matches.length > 1 ? "s" : ""} encontrado{matches.length > 1 ? "s" : ""}
+                          </p>
+                          {matches.map((m) => (
+                            <div
+                              key={m.quoteId}
+                              className={`rounded-lg border p-3 text-sm space-y-2 ${m.isRejected ? "opacity-50 border-gray-200 bg-gray-50" : "border-blue-100 bg-blue-50/50"}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="space-y-0.5">
+                                  <div className="font-semibold text-gray-800">{m.quoteNumber} — {m.title}</div>
+                                  <div className="text-xs text-gray-500">
+                                    {m.clientName && <span>{m.clientName} · </span>}
+                                    {m.clientEmail && <span>{m.clientEmail} · </span>}
+                                    Total: <span className="font-medium text-gray-700">{fmtAmount(m.total)}</span>
+                                  </div>
+                                  {m.sentAt && (
+                                    <div className="text-xs text-gray-400">Enviado: {fmtDate(m.sentAt)}</div>
+                                  )}
+                                </div>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${scoreColor(m.confidenceScore)}`}>
+                                    {m.confidenceScore}% coincidencia
+                                  </span>
+                                  {m.isRejected && <span className="text-xs text-gray-400">Rechazado</span>}
+                                </div>
+                              </div>
+
+                              {confirmingQuoteId === m.quoteId ? (
+                                <div className="rounded-md border border-orange-200 bg-orange-50 p-3 space-y-2">
+                                  <p className="text-xs text-orange-800 font-medium">
+                                    ¿Confirmar conciliación?
+                                  </p>
+                                  <p className="text-xs text-orange-700">
+                                    Este movimiento del {fmtDate(selectedMovement.fecha)} por {fmtAmount(selectedMovement.importe)} quedará vinculado
+                                    al presupuesto <strong>{m.quoteNumber}</strong> y se generará la reserva y factura correspondiente.
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                      disabled={confirmTransferMut.isPending}
+                                      onClick={() => {
+                                        confirmTransferMut.mutate({
+                                          quoteId: m.quoteId,
+                                          bankMovementId: selectedMovement.id,
+                                        });
+                                      }}
+                                    >
+                                      {confirmTransferMut.isPending
+                                        ? <><RefreshCw className="w-3 h-3 mr-1 animate-spin" />Procesando...</>
+                                        : <><CheckCircle className="w-3 h-3 mr-1" />Sí, confirmar</>
+                                      }
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="text-xs" onClick={() => setConfirmingQuoteId(null)}>
+                                      Cancelar
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : rejectingQuoteId === m.quoteId ? (
+                                <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-2">
+                                  <p className="text-xs text-gray-700">¿Rechazar esta propuesta? No se modificará nada.</p>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-xs border-red-200 text-red-600 hover:bg-red-50"
+                                      disabled={rejectLinkMut.isPending}
+                                      onClick={() => rejectLinkMut.mutate({ bankMovementId: selectedMovement.id, quoteId: m.quoteId })}
+                                    >
+                                      {rejectLinkMut.isPending ? "..." : "Sí, rechazar"}
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="text-xs" onClick={() => setRejectingQuoteId(null)}>
+                                      Cancelar
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                    onClick={() => setConfirmingQuoteId(m.quoteId)}
+                                  >
+                                    <CheckCircle className="w-3 h-3 mr-1" /> Aceptar conciliación
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs text-gray-500"
+                                    onClick={() => setRejectingQuoteId(m.quoteId)}
+                                  >
+                                    <ThumbsDown className="w-3 h-3 mr-1" /> Rechazar
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Historial de vínculos */}
+                  {linksQ.data && (linksQ.data as unknown as BankMovementLink[]).length > 0 && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-gray-400 hover:text-gray-600">Ver historial de vínculos ({(linksQ.data as unknown as BankMovementLink[]).length})</summary>
+                      <div className="mt-2 space-y-1 pl-2 border-l-2 border-gray-100">
+                        {(linksQ.data as unknown as BankMovementLink[]).map(l => (
+                          <div key={l.id} className="text-gray-500">
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs mr-1 ${
+                              l.status === "confirmed" ? "bg-green-100 text-green-700" :
+                              l.status === "rejected" ? "bg-red-100 text-red-600" :
+                              l.status === "unlinked" ? "bg-gray-100 text-gray-500" :
+                              "bg-blue-100 text-blue-600"
+                            }`}>{l.status}</span>
+                            {l.entityType} #{l.entityId} · {fmtAmount(l.amountLinked)}
+                            {l.matchedBy && ` · ${l.matchedBy}`}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              <hr />
+
+              {/* Estado y notas */}
               <div className="space-y-3">
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Estado</label>
@@ -557,14 +829,10 @@ export default function BankMovementsManager() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="pendiente">
-                        <span className="flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4 text-yellow-500" /> Pendiente
-                        </span>
+                        <span className="flex items-center gap-2"><CheckCircle className="w-4 h-4 text-yellow-500" /> Pendiente</span>
                       </SelectItem>
                       <SelectItem value="ignorado">
-                        <span className="flex items-center gap-2">
-                          <MinusCircle className="w-4 h-4 text-gray-400" /> Ignorado
-                        </span>
+                        <span className="flex items-center gap-2"><MinusCircle className="w-4 h-4 text-gray-400" /> Ignorado</span>
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -582,19 +850,38 @@ export default function BankMovementsManager() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setSelectedMovement(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={saveDetail}
-                  disabled={savingDetail}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
+                <Button variant="outline" onClick={() => setSelectedMovement(null)}>Cancelar</Button>
+                <Button onClick={saveDetail} disabled={savingDetail} className="bg-blue-600 hover:bg-blue-700 text-white">
                   {savingDetail ? "Guardando..." : "Guardar"}
                 </Button>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Confirmar desvinculación ── */}
+      <Dialog open={unlinkConfirm} onOpenChange={setUnlinkConfirm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Desvincular conciliación</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Se romperá el vínculo contable entre este movimiento bancario y el presupuesto asociado.
+            <strong> La reserva y la factura no se modificarán.</strong>
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setUnlinkConfirm(false)}>Cancelar</Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={unlinkMut.isPending}
+              onClick={() => {
+                if (selectedMovement) unlinkMut.mutate({ bankMovementId: selectedMovement.id });
+              }}
+            >
+              {unlinkMut.isPending ? "Desvinculando..." : "Desvincular"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AdminLayout>

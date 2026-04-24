@@ -3,9 +3,9 @@ import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, ne, inArray, isNull, or, sql } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
-import { bankFileImports, bankMovements } from "../../drizzle/schema";
+import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -263,6 +263,210 @@ export const bankMovementsRouter = router({
       await db.update(bankMovements)
         .set({ status: input.status, notes: input.notes ?? null })
         .where(eq(bankMovements.id, input.id));
+      return { success: true };
+    }),
+
+  // ── FASE 2A: Conciliación bancaria (solo transferencias) ──────────────────
+
+  /** Busca presupuestos pendientes que podrían corresponder a un movimiento bancario. */
+  findMatches: adminProc
+    .input(z.object({ bankMovementId: z.number() }))
+    .query(async ({ input }) => {
+      const [movement] = await db.select().from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
+      if (!movement) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const movAmount = parseFloat(movement.importe);
+      if (movAmount <= 0) return { movement, matches: [] };
+
+      // IDs de presupuestos ya vinculados con status confirmed (excluir)
+      const confirmedLinks = await db
+        .select({ entityId: bankMovementLinks.entityId })
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.entityType, "quote"),
+          eq(bankMovementLinks.status, "confirmed"),
+        ));
+      const confirmedQuoteIds = confirmedLinks.map(l => l.entityId);
+
+      // IDs ya rechazados para ESTE movimiento (no mostrar como propuesta principal)
+      const rejectedLinks = await db
+        .select({ entityId: bankMovementLinks.entityId })
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.bankMovementId, input.bankMovementId),
+          eq(bankMovementLinks.entityType, "quote"),
+          eq(bankMovementLinks.status, "rejected"),
+        ));
+      const rejectedQuoteIds = rejectedLinks.map(l => l.entityId);
+
+      // Presupuestos candidatos: enviados/visualizados sin pagar
+      const candidateConditions = [
+        inArray(quotes.status, ["enviado", "visualizado"]),
+        isNull(quotes.paidAt),
+      ];
+      if (confirmedQuoteIds.length > 0) {
+        // No incluir ya conciliados
+      }
+
+      const allQuotes = await db
+        .select({
+          id: quotes.id,
+          quoteNumber: quotes.quoteNumber,
+          title: quotes.title,
+          total: quotes.total,
+          status: quotes.status,
+          sentAt: quotes.sentAt,
+          leadId: quotes.leadId,
+        })
+        .from(quotes)
+        .where(and(...candidateConditions))
+        .orderBy(desc(quotes.sentAt))
+        .limit(200);
+
+      // Obtener leads para enriquecer con nombre/email/teléfono
+      const leadIds = Array.from(new Set(allQuotes.map(q => q.leadId)));
+      const leadsData = leadIds.length > 0
+        ? await db.select({ id: leads.id, name: leads.name, email: leads.email, phone: leads.phone })
+            .from(leads).where(inArray(leads.id, leadIds))
+        : [];
+      const leadsMap = new Map(leadsData.map(l => [l.id, l]));
+
+      const concept = `${movement.movimiento ?? ""} ${movement.masDatos ?? ""}`.toLowerCase();
+      const movDate = movement.fecha;
+
+      const matches = allQuotes
+        .filter(q => !confirmedQuoteIds.includes(q.id))
+        .map(q => {
+          const lead = leadsMap.get(q.leadId);
+          const qTotal = parseFloat(String(q.total));
+          let score = 0;
+
+          // +50 importe exacto
+          if (Math.abs(qTotal - movAmount) < 0.02) score += 50;
+          // +20 fecha dentro de 7 días
+          if (movDate && q.sentAt) {
+            const diffDays = Math.abs((new Date(movDate).getTime() - new Date(q.sentAt).getTime()) / 86400000);
+            if (diffDays <= 7) score += 20;
+          }
+          // +15 nombre/apellido en concepto
+          if (lead?.name) {
+            const nameParts = lead.name.toLowerCase().split(/\s+/);
+            if (nameParts.some(p => p.length > 2 && concept.includes(p))) score += 15;
+          }
+          // +10 número de presupuesto en concepto
+          if (q.quoteNumber && concept.includes(q.quoteNumber.toLowerCase())) score += 10;
+          // +10 email o teléfono en concepto
+          if (lead?.email && concept.includes(lead.email.toLowerCase().split("@")[0])) score += 10;
+          if (lead?.phone && concept.includes(lead.phone.replace(/\D/g, "").slice(-6))) score += 10;
+          // -30 ya rechazado para este movimiento
+          if (rejectedQuoteIds.includes(q.id)) score -= 30;
+
+          return {
+            quoteId: q.id,
+            quoteNumber: q.quoteNumber,
+            title: q.title,
+            total: qTotal,
+            status: q.status,
+            sentAt: q.sentAt,
+            clientName: lead?.name ?? null,
+            clientEmail: lead?.email ?? null,
+            clientPhone: lead?.phone ?? null,
+            confidenceScore: score,
+            isRejected: rejectedQuoteIds.includes(q.id),
+          };
+        })
+        .filter(m => m.confidenceScore > 0)
+        .sort((a, b) => b.confidenceScore - a.confidenceScore)
+        .slice(0, 10);
+
+      return { movement, matches };
+    }),
+
+  /** Devuelve los vínculos (confirmado + historial) de un movimiento. */
+  getLinks: adminProc
+    .input(z.object({ bankMovementId: z.number() }))
+    .query(async ({ input }) => {
+      const links = await db
+        .select()
+        .from(bankMovementLinks)
+        .where(eq(bankMovementLinks.bankMovementId, input.bankMovementId))
+        .orderBy(desc(bankMovementLinks.createdAt));
+      return links;
+    }),
+
+  /** Rechaza una propuesta de vínculo (no modifica presupuesto ni movimiento). */
+  rejectLink: adminProc
+    .input(z.object({
+      bankMovementId: z.number(),
+      quoteId: z.number(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // Upsert: si ya existe propuesta para este par, actualizarla; si no, crear
+      const [existing] = await db
+        .select({ id: bankMovementLinks.id })
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.bankMovementId, input.bankMovementId),
+          eq(bankMovementLinks.entityType, "quote"),
+          eq(bankMovementLinks.entityId, input.quoteId),
+          ne(bankMovementLinks.status, "confirmed"),
+        ))
+        .limit(1);
+
+      const now = new Date();
+      if (existing) {
+        await db.update(bankMovementLinks)
+          .set({ status: "rejected", rejectedAt: now, matchedBy: ctx.user.name ?? undefined, notes: input.notes ?? null })
+          .where(eq(bankMovementLinks.id, existing.id));
+      } else {
+        const [movement] = await db.select({ importe: bankMovements.importe })
+          .from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
+        const [quote] = await db.select({ total: quotes.total })
+          .from(quotes).where(eq(quotes.id, input.quoteId));
+        await db.insert(bankMovementLinks).values({
+          bankMovementId: input.bankMovementId,
+          entityType: "quote",
+          entityId: input.quoteId,
+          linkType: "income_transfer",
+          amountLinked: String(quote?.total ?? movement?.importe ?? "0"),
+          status: "rejected",
+          rejectedAt: now,
+          matchedBy: ctx.user.name ?? undefined,
+          notes: input.notes ?? null,
+        });
+      }
+      return { success: true };
+    }),
+
+  /** Desvincula una conciliación ya confirmada (no borra factura/reserva/presupuesto). */
+  unlinkMovement: adminProc
+    .input(z.object({
+      bankMovementId: z.number(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [confirmedLink] = await db
+        .select()
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.bankMovementId, input.bankMovementId),
+          eq(bankMovementLinks.status, "confirmed"),
+        ))
+        .limit(1);
+
+      if (!confirmedLink) throw new TRPCError({ code: "NOT_FOUND", message: "No hay conciliación confirmada para este movimiento." });
+
+      const now = new Date();
+      await db.update(bankMovementLinks)
+        .set({ status: "unlinked", unlinkedAt: now, matchedBy: ctx.user.name ?? undefined, notes: input.notes ?? null })
+        .where(eq(bankMovementLinks.id, confirmedLink.id));
+
+      // Devolver movimiento a pendiente de conciliación
+      await db.update(bankMovements)
+        .set({ conciliationStatus: "pendiente" })
+        .where(eq(bankMovements.id, input.bankMovementId));
+
       return { success: true };
     }),
 });
