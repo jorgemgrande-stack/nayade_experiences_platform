@@ -1417,10 +1417,14 @@ export const ticketingRouter = router({
         .limit(1);
       if (!platformRow) throw new TRPCError({ code: "NOT_FOUND", message: "Plataforma no encontrada" });
 
-      // Cupones canjeados del periodo sin liquidación asignada.
-      // Matching de plataforma: por JOIN a platformProducts.platformId (fiable)
-      //   OR por campo provider (fallback para cupones sin producto asignado).
-      // DATE() en createdAt evita problemas de timezone al comparar rangos de día.
+      // Liberar cupones cuya liquidación fue borrada sin pasar por deleteSettlement
+      await db.execute(sql`
+        UPDATE coupon_redemptions
+        SET settlementId = NULL
+        WHERE settlementId IS NOT NULL
+          AND settlementId NOT IN (SELECT id FROM platform_settlements)
+      `);
+
       const couponsInPeriod = await db
         .select({
           id: couponRedemptions.id,
@@ -1439,8 +1443,6 @@ export const ticketingRouter = router({
           sql`DATE(${couponRedemptions.createdAt}) >= ${input.periodFrom}`,
           sql`DATE(${couponRedemptions.createdAt}) <= ${input.periodTo}`,
         ));
-
-      console.log(`[generateSettlement] plataforma="${platformRow.name}" periodo=${input.periodFrom}→${input.periodTo} cupones=${couponsInPeriod.length}`);
 
       const couponIds = couponsInPeriod.map((c) => c.id);
       const netTotal = couponsInPeriod.reduce((sum, c) => sum + parseFloat(c.netPrice ?? "0"), 0);
@@ -1552,6 +1554,10 @@ export const ticketingRouter = router({
   deleteSettlement: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
+      // Liberar los cupones vinculados antes de borrar la liquidación
+      await db.update(couponRedemptions)
+        .set({ settlementId: null })
+        .where(eq(couponRedemptions.settlementId, input.id));
       await db.delete(platformSettlements).where(eq(platformSettlements.id, input.id));
       return { success: true };
     }),
