@@ -37,7 +37,7 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { generateDocumentNumber } from "../documentNumbers";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
-import { storagePut } from "../storage";
+import { storagePut, hasExternalStorage } from "../storage";
 import {
   buildQuoteHtml,
   buildConfirmationHtml,
@@ -48,6 +48,7 @@ import {
   buildInstallmentReminderHtml,
 } from "../emailTemplates";
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
+import { syncLeadUrlsToGHL } from "../ghl";
 
 // DB helper — usa la misma pool que el resto del servidor
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -103,8 +104,13 @@ async function generateInvoicePdf(invoice: {
   total: string;
   issuedAt: Date;
 }): Promise<{ url: string; key: string }> {
-  const html = await buildInvoiceHtml(invoice);
+  // Sin almacenamiento externo (S3/Forge) → URL on-demand desde BD, sin archivos temporales
+  if (!hasExternalStorage()) {
+    const url = `/api/invoices/preview?n=${encodeURIComponent(invoice.invoiceNumber)}`;
+    return { url, key: "" };
+  }
 
+  const html = await buildInvoiceHtml(invoice);
   try {
     const pdfBuffer = await htmlToPdf(html);
     const key = `invoices/${invoice.invoiceNumber}-${Date.now()}.pdf`;
@@ -112,7 +118,6 @@ async function generateInvoicePdf(invoice: {
     return { url, key };
   } catch (pdfErr) {
     console.error("[PDF] Error generando factura PDF, usando vista on-demand:", pdfErr);
-    // Fallback: URL on-demand generada desde BD (no requiere almacenamiento externo)
     const url = `/api/invoices/preview?n=${encodeURIComponent(invoice.invoiceNumber)}`;
     return { url, key: "" };
   }
@@ -1371,6 +1376,13 @@ export const crmRouter = router({
         await logActivity("quote", input.id, "quote_sent", ctx.user.id, ctx.user.name, { email: lead.email, acceptUrl });
         await logActivity("lead", quote.leadId, "quote_sent_to_client", ctx.user.id, ctx.user.name, { quoteId: input.id });
 
+        // Sync URL del presupuesto al contacto GHL (fire-and-forget)
+        syncLeadUrlsToGHL({
+          ghlContactId: (lead as any).ghlContactId,
+          quoteUrl: acceptUrl,
+          quoteNumber: quote.quoteNumber,
+        });
+
         return { success: true, acceptUrl, token };
       }),
 
@@ -1429,6 +1441,14 @@ export const crmRouter = router({
           installmentPlan: resendInstallmentPlan,
         });
         await logActivity("quote", input.id, "quote_resent", ctx.user.id, ctx.user.name, { paymentLinkUrl });
+
+        // Sync URL del presupuesto regenerado al contacto GHL (fire-and-forget)
+        syncLeadUrlsToGHL({
+          ghlContactId: (lead as any).ghlContactId,
+          quoteUrl: paymentLinkUrl ?? undefined,
+          quoteNumber: quote.quoteNumber,
+        });
+
         return { success: true };
       }),
 
@@ -1649,6 +1669,13 @@ export const crmRouter = router({
         await logActivity("quote", quote.id, "payment_confirmed", ctx.user.id, ctx.user.name, { invoiceId, reservationId });
         await logActivity("lead", quote.leadId, "opportunity_won", ctx.user.id, ctx.user.name, { quoteId: quote.id });
         await logActivity("invoice", invoiceId, "invoice_generated", ctx.user.id, ctx.user.name, { pdfUrl });
+
+        // Sync URL de factura al contacto GHL (fire-and-forget)
+        syncLeadUrlsToGHL({
+          ghlContactId: (lead as any).ghlContactId,
+          invoiceUrl: pdfUrl ?? undefined,
+          invoiceNumber,
+        });
 
         // Send emails
         try {
@@ -4555,7 +4582,8 @@ export const crmRouter = router({
         const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[]) ?? [];
         let finalPdfUrl = invoice.pdfUrl ?? null;
         let finalPdfKey = invoice.pdfKey ?? null;
-        if (!finalPdfUrl) {
+        // Regenerar si no hay URL o si apunta a /local-storage (archivo temporal ya perdido)
+        if (!finalPdfUrl || finalPdfUrl.startsWith("/local-storage")) {
           try {
             const pdf = await generateInvoicePdf({
               invoiceNumber: invoice.invoiceNumber,

@@ -161,3 +161,8 @@ export async function storagePut(
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
   return useForge() ? forgeGet(relKey) : s3Get(relKey);
 }
+
+/** Retorna true si hay almacenamiento externo (Forge o S3) configurado. */
+export function hasExternalStorage(): boolean {
+  return useForge() || !!(ENV.s3AccessKey && ENV.s3SecretKey);
+}

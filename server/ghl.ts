@@ -171,6 +171,64 @@ export async function createGHLContact(
 }
 
 /**
+ * Actualiza campos de un contacto GHL existente.
+ * customFields: array de { key, field_value } donde key es el nombre del campo
+ * personalizado definido en GHL (ej: "nayade_quote_url").
+ * tags: tags a añadir/reemplazar (opcional).
+ */
+export async function updateGHLContact(
+  contactId: string,
+  fields: {
+    customFields?: Array<{ key: string; field_value: string }>;
+    tags?: string[];
+    notes?: string;
+  },
+  overrideCredentials?: { apiKey: string; locationId: string }
+): Promise<boolean> {
+  const apiKey = overrideCredentials?.apiKey ?? process.env.GHL_API_KEY;
+  if (!apiKey) {
+    ghlLog("warn", "update_contact", "Credenciales GHL no configuradas — update omitido", { contactId });
+    return false;
+  }
+
+  try {
+    const body: Record<string, unknown> = {};
+    if (fields.customFields?.length) body.customFields = fields.customFields;
+    if (fields.tags?.length) body.tags = fields.tags;
+
+    const response = await fetch(`${GHL_API_URL}/contacts/${contactId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "Version": GHL_API_VERSION,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      ghlLog("warn", "update_contact", "Error HTTP al actualizar contacto en GHL", {
+        contactId, httpStatus: response.status, errorBody: errorText,
+      });
+      // Si el campo no existe en GHL devuelve 422 — no es fatal
+      return false;
+    }
+
+    if (fields.notes) await addGHLNote(contactId, fields.notes, apiKey);
+
+    ghlLog("info", "update_contact", "Contacto GHL actualizado correctamente", { contactId });
+    return true;
+  } catch (err: any) {
+    ghlLog("error", "update_contact", "Excepción al actualizar contacto GHL", {
+      contactId, stack: err?.stack,
+    });
+    return false;
+  }
+}
+
+/**
  * Añade una nota a un contacto existente en GHL.
  */
 async function addGHLNote(contactId: string, body: string, apiKey: string): Promise<void> {
@@ -197,6 +255,48 @@ async function addGHLNote(contactId: string, body: string, apiKey: string): Prom
       contactId, stack: err?.stack,
     });
   }
+}
+
+/**
+ * Actualiza el contacto GHL de un lead con la URL del presupuesto y/o factura.
+ * Fire-and-forget — no lanza excepciones.
+ */
+export function syncLeadUrlsToGHL(params: {
+  ghlContactId: string | null | undefined;
+  quoteUrl?: string | null;
+  invoiceUrl?: string | null;
+  quoteNumber?: string | null;
+  invoiceNumber?: string | null;
+  credentials?: { apiKey: string; locationId: string };
+}): void {
+  if (!params.ghlContactId) return;
+
+  const customFields: Array<{ key: string; field_value: string }> = [];
+  if (params.quoteUrl) customFields.push({ key: "nayade_quote_url", field_value: params.quoteUrl });
+  if (params.invoiceUrl) customFields.push({ key: "nayade_invoice_url", field_value: params.invoiceUrl });
+
+  if (!customFields.length) return;
+
+  const noteParts: string[] = [];
+  if (params.quoteUrl && params.quoteNumber) noteParts.push(`Presupuesto ${params.quoteNumber}: ${params.quoteUrl}`);
+  if (params.invoiceUrl && params.invoiceNumber) noteParts.push(`Factura ${params.invoiceNumber}: ${params.invoiceUrl}`);
+
+  const notes = noteParts.length ? noteParts.join("\n") : undefined;
+
+  // Fire-and-forget: ejecutar en segundo plano
+  (async () => {
+    try {
+      await updateGHLContact(
+        params.ghlContactId!,
+        { customFields, notes },
+        params.credentials,
+      );
+    } catch (err: any) {
+      ghlLog("error", "sync_lead_urls", "Error sincronizando URLs al contacto GHL", {
+        contactId: params.ghlContactId!, stack: err?.stack,
+      });
+    }
+  })();
 }
 
 /**

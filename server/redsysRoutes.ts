@@ -20,6 +20,7 @@ import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { generateDocumentNumber } from "./documentNumbers";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
+import { syncLeadUrlsToGHL } from "./ghl";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = mysql.createPool(process.env.DATABASE_URL!);
@@ -295,6 +296,16 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                 console.error("[Redsys IPN] Error al enviar email de confirmación:", emailErr);
               }
             }
+
+            // Sync URL del presupuesto + factura al contacto GHL (fire-and-forget)
+            syncLeadUrlsToGHL({
+              ghlContactId: (lead as any)?.ghlContactId,
+              quoteUrl: quote.paymentLinkToken
+                ? `${process.env.APP_URL ?? "https://www.nayadeexperiences.es"}/presupuesto/${quote.paymentLinkToken}`
+                : undefined,
+              invoiceNumber,
+              quoteNumber: quote.quoteNumber,
+            });
           }
         } catch (e) {
           console.error("[Redsys IPN] Error al procesar pago de presupuesto:", e);
