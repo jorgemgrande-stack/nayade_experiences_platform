@@ -2833,10 +2833,14 @@ function QuoteDetailModal({
   const [transferFile, setTransferFile] = useState<File | null>(null);
   const [transferProofUrl, setTransferProofUrl] = useState<string | null>(null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
-  // FASE 2A: banco movement linking
+  // FASE 2A: banco movement linking (transfer modal)
   const [selectedBankMovementId, setSelectedBankMovementId] = useState<number | null>(null);
   const [showBankMovementSearch, setShowBankMovementSearch] = useState(false);
   const [bankMovementSearch, setBankMovementSearch] = useState("");
+  // FASE 2A: banco movement linking (confirm payment modal)
+  const [selectedBankMovementIdForConfirm, setSelectedBankMovementIdForConfirm] = useState<number | null>(null);
+  const [showBankMovementSearchForConfirm, setShowBankMovementSearchForConfirm] = useState(false);
+  const [bankMovementSearchForConfirm, setBankMovementSearchForConfirm] = useState("");
   // Unified payment modal state
   const [showConfirmPaymentModal, setShowConfirmPaymentModal] = useState(false);
   const [paymentMethodSelected, setPaymentMethodSelected] = useState<"tarjeta" | "transferencia" | "efectivo">("tarjeta");
@@ -2938,10 +2942,15 @@ function QuoteDetailModal({
     onError: (e) => toast.error(e.message),
   });
 
-  // FASE 2A: movimientos bancarios pendientes para vincular
+  // FASE 2A: movimientos bancarios pendientes para vincular (transfer modal)
   const bankMovementsQ = trpc.bankMovements.listMovements.useQuery(
     { status: "pendiente", search: bankMovementSearch || undefined, pageSize: 20, page: 1 },
     { enabled: showBankMovementSearch && showTransferModal }
+  );
+  // FASE 2A: movimientos bancarios pendientes para vincular (confirm payment modal)
+  const bankMovementsForConfirmQ = trpc.bankMovements.listMovements.useQuery(
+    { status: "pendiente", search: bankMovementSearchForConfirm || undefined, pageSize: 20, page: 1 },
+    { enabled: showBankMovementSearchForConfirm && showConfirmPaymentModal && paymentMethodSelected === "transferencia" }
   );
   const createPendingPayment = trpc.crm.pendingPayments.create.useMutation({
     onSuccess: () => {
@@ -3001,7 +3010,11 @@ function QuoteDetailModal({
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.counters.invalidate();
+      if (selectedBankMovementIdForConfirm) utils.bankMovements.listMovements.invalidate();
       setShowConfirmPaymentModal(false);
+      setSelectedBankMovementIdForConfirm(null);
+      setShowBankMovementSearchForConfirm(false);
+      setBankMovementSearchForConfirm("");
       onClose();
     },
     onError: (e) => toast.error(e.message),
@@ -3913,7 +3926,7 @@ function QuoteDetailModal({
 
       {/* ─── MODAL: Confirmar Pago (método unificado con campos específicos) ─── */}
       <Dialog open={showConfirmPaymentModal} onOpenChange={(o) => {
-        if (!o) { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }
+        if (!o) { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); }
       }}>
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
@@ -3928,7 +3941,7 @@ function QuoteDetailModal({
             <div className="grid grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button key={m}
-                  onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }}
+                  onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
                     paymentMethodSelected === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
                   }`}
@@ -3949,7 +3962,9 @@ function QuoteDetailModal({
             )}
             {paymentMethodSelected === "transferencia" && (
               <div className="space-y-2">
-                <Label className="text-foreground/70 text-xs">Justificante de transferencia *</Label>
+                <div className="text-xs text-foreground/60 font-medium uppercase tracking-wide">
+                  Justificante {selectedBankMovementIdForConfirm ? "(opcional)" : "(obligatorio si no vinculas movimiento)"}
+                </div>
                 {!viewProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
                     isUploadingViewProof ? "border-foreground/[0.18] bg-foreground/[0.05]" : "border-foreground/[0.18] bg-foreground/[0.05] hover:border-emerald-500/50 hover:bg-emerald-500/5"
@@ -3969,6 +3984,75 @@ function QuoteDetailModal({
                     <button onClick={() => { setViewProofUrl(null); setViewProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
                   </div>
                 )}
+
+                {/* Bank movement linking block */}
+                <div className="flex items-center justify-between pt-1">
+                  <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
+                    <Banknote className="w-3.5 h-3.5 text-blue-400" />
+                    Vincular movimiento bancario
+                  </div>
+                  {!selectedBankMovementIdForConfirm && (
+                    <button
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                      onClick={() => setShowBankMovementSearchForConfirm(!showBankMovementSearchForConfirm)}
+                    >
+                      {showBankMovementSearchForConfirm ? "Ocultar" : "Buscar movimiento"}
+                    </button>
+                  )}
+                </div>
+
+                {selectedBankMovementIdForConfirm ? (
+                  (() => {
+                    const mv = (bankMovementsForConfirmQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementIdForConfirm)
+                      ?? { id: selectedBankMovementIdForConfirm, fecha: "–", movimiento: "Movimiento seleccionado", importe: "–" };
+                    return (
+                      <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-emerald-300">Movimiento vinculado</span>
+                          <button
+                            className="text-foreground/40 hover:text-foreground/70 transition-colors"
+                            onClick={() => { setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); }}
+                          >×</button>
+                        </div>
+                        <div className="text-foreground/70 truncate">{mv.movimiento ?? "–"}</div>
+                        <div className="flex gap-3 text-foreground/50">
+                          <span>{mv.fecha ?? "–"}</span>
+                          <span className="text-emerald-400 font-medium">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : showBankMovementSearchForConfirm ? (
+                  <div className="space-y-2">
+                    <input
+                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      placeholder="Buscar por concepto, importe o fecha..."
+                      value={bankMovementSearchForConfirm}
+                      onChange={(e) => setBankMovementSearchForConfirm(e.target.value)}
+                    />
+                    {bankMovementsForConfirmQ.isLoading ? (
+                      <div className="text-xs text-foreground/40 py-2 text-center">Buscando...</div>
+                    ) : (bankMovementsForConfirmQ.data?.data as any[] | undefined)?.length === 0 ? (
+                      <div className="text-xs text-foreground/40 py-2 text-center">No hay movimientos pendientes</div>
+                    ) : (
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {(bankMovementsForConfirmQ.data?.data as any[] | undefined)?.map((mv: any) => (
+                          <button
+                            key={mv.id}
+                            className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/5 transition-colors"
+                            onClick={() => { setSelectedBankMovementIdForConfirm(mv.id); setShowBankMovementSearchForConfirm(false); }}
+                          >
+                            <div className="text-xs text-white/80 truncate">{mv.movimiento ?? "–"}</div>
+                            <div className="flex gap-3 mt-0.5 text-xs text-white/50">
+                              <span>{mv.fecha ?? "–"}</span>
+                              <span className="text-emerald-400">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             )}
             {paymentMethodSelected === "efectivo" && (
@@ -3979,13 +4063,13 @@ function QuoteDetailModal({
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); }}>Cancelar</Button>
+            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); }}>Cancelar</Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               disabled={
                 confirmPaymentWithMethod.isPending ||
                 (paymentMethodSelected === "tarjeta" && !viewTpvOp.trim()) ||
-                (paymentMethodSelected === "transferencia" && !viewProofUrl) ||
+                (paymentMethodSelected === "transferencia" && !viewProofUrl && !selectedBankMovementIdForConfirm) ||
                 (paymentMethodSelected === "efectivo" && !viewPayNote.trim())
               }
               onClick={() => {
@@ -3997,11 +4081,14 @@ function QuoteDetailModal({
                   paymentNote: paymentMethodSelected === "efectivo" ? viewPayNote : undefined,
                   transferProofUrl: paymentMethodSelected === "transferencia" ? viewProofUrl ?? undefined : undefined,
                   transferProofKey: paymentMethodSelected === "transferencia" ? viewProofKey ?? undefined : undefined,
+                  bankMovementId: paymentMethodSelected === "transferencia" ? selectedBankMovementIdForConfirm ?? undefined : undefined,
                 });
               }}
             >
               {confirmPaymentWithMethod.isPending ? (
                 <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Procesando...</>
+              ) : selectedBankMovementIdForConfirm && paymentMethodSelected === "transferencia" ? (
+                <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y conciliar</>
               ) : (
                 <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y generar factura</>
               )}

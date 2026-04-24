@@ -1513,6 +1513,7 @@ export const crmRouter = router({
           paymentNote: z.string().optional(),        // Justificación (efectivo) o nota interna
           transferProofUrl: z.string().optional(),   // URL S3 del justificante de transferencia
           transferProofKey: z.string().optional(),   // Key S3 del justificante de transferencia
+          bankMovementId: z.number().optional(),     // Vincular movimiento bancario conciliado
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1870,6 +1871,31 @@ export const crmRouter = router({
           await logActivity("reservation", reservationId, "booking_and_transaction_created", ctx.user.id, ctx.user.name, { invoiceNumber, serviceDate });
         } catch (e) {
           console.error("[confirmPayment] Error en postConfirmOperation:", e);
+        }
+
+        // ── Conciliación bancaria opcional ──────────────────────────────────────
+        if (input.bankMovementId) {
+          const [bm] = await db.select().from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
+          if (bm && bm.conciliationStatus !== "conciliado") {
+            await db.insert(bankMovementLinks).values({
+              bankMovementId: input.bankMovementId,
+              entityType: "quote",
+              entityId: input.quoteId,
+              linkType: "income_transfer",
+              amountLinked: String(total),
+              status: "confirmed",
+              confidenceScore: 100,
+              matchedBy: ctx.user.name ?? undefined,
+              matchedAt: now,
+            });
+            await db.update(bankMovements)
+              .set({ conciliationStatus: "conciliado" })
+              .where(eq(bankMovements.id, input.bankMovementId));
+            await logActivity("quote", input.quoteId, "bank_movement_linked", ctx.user.id, ctx.user.name, {
+              bankMovementId: input.bankMovementId,
+              amount: total,
+            });
+          }
         }
 
         return { success: true, invoiceId, invoiceNumber, reservationId, pdfUrl, reavExpedientId, reavExpedientNumber };
