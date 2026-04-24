@@ -15,6 +15,7 @@ import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
+import { kbRouter } from "../kbRoute";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { serveStatic, setupVite } from "./vite";
@@ -153,6 +154,7 @@ async function startServer() {
   app.use(settlementExportRouter);
   // Invoice HTML on-demand preview (no storage required)
   app.use(invoicePreviewRouter);
+  app.use(kbRouter);
   // tRPC API
   app.use(
     "/api/trpc",
