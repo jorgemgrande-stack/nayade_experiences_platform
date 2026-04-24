@@ -1405,12 +1405,11 @@ export const ticketingRouter = router({
     .input(z.object({
       platformId: z.number(),
       periodLabel: z.string().min(1),
-      periodFrom: z.string(),  // ISO date YYYY-MM-DD
-      periodTo: z.string(),    // ISO date YYYY-MM-DD
+      periodFrom: z.string(),  // YYYY-MM-DD
+      periodTo: z.string(),    // YYYY-MM-DD
       notes: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      // Obtener nombre e IDs de productos de la plataforma
       const [platformRow] = await db
         .select({ name: platforms.name })
         .from(platforms)
@@ -1418,33 +1417,10 @@ export const ticketingRouter = router({
         .limit(1);
       if (!platformRow) throw new TRPCError({ code: "NOT_FOUND", message: "Plataforma no encontrada" });
 
-      const productRows = await db
-        .select({ id: platformProducts.id })
-        .from(platformProducts)
-        .where(eq(platformProducts.platformId, input.platformId));
-      const productIdList = productRows.map((p) => p.id);
-
-      console.log("[generateSettlement] platform:", platformRow.name, "| productIds:", productIdList, "| period:", input.periodFrom, "→", input.periodTo);
-
-      // Sin filtro de fecha: listar todos los canjeados sin liquidar de esta plataforma para debug
-      const allCanjeados = await db
-        .select({ id: couponRedemptions.id, provider: couponRedemptions.provider, statusFinancial: couponRedemptions.statusFinancial, settlementId: couponRedemptions.settlementId, platformProductId: couponRedemptions.platformProductId, createdAt: couponRedemptions.createdAt })
-        .from(couponRedemptions)
-        .where(eq(couponRedemptions.statusFinancial, "canjeado"));
-      console.log("[generateSettlement] TODOS canjeados en sistema:", JSON.stringify(allCanjeados));
-
-      // Matching: por platformProductId (fiable) o por nombre de proveedor (fallback)
-      const platformMatch = productIdList.length > 0
-        ? or(
-            inArray(couponRedemptions.platformProductId, productIdList),
-            eq(couponRedemptions.provider, platformRow.name),
-          )!
-        : eq(couponRedemptions.provider, platformRow.name);
-
-      // periodTo incluye todo el día
-      const dateFrom = new Date(input.periodFrom + "T00:00:00");
-      const dateTo   = new Date(input.periodTo   + "T23:59:59");
-
+      // Cupones canjeados del periodo sin liquidación asignada.
+      // Matching de plataforma: por JOIN a platformProducts.platformId (fiable)
+      //   OR por campo provider (fallback para cupones sin producto asignado).
+      // DATE() en createdAt evita problemas de timezone al comparar rangos de día.
       const couponsInPeriod = await db
         .select({
           id: couponRedemptions.id,
@@ -1454,14 +1430,17 @@ export const ticketingRouter = router({
         .from(couponRedemptions)
         .leftJoin(platformProducts, eq(couponRedemptions.platformProductId, platformProducts.id))
         .where(and(
-          platformMatch,
+          or(
+            eq(platformProducts.platformId, input.platformId),
+            eq(couponRedemptions.provider, platformRow.name),
+          )!,
           eq(couponRedemptions.statusFinancial, "canjeado"),
           sql`${couponRedemptions.settlementId} IS NULL`,
-          sql`${couponRedemptions.createdAt} >= ${dateFrom}`,
-          sql`${couponRedemptions.createdAt} <= ${dateTo}`,
+          sql`DATE(${couponRedemptions.createdAt}) >= ${input.periodFrom}`,
+          sql`DATE(${couponRedemptions.createdAt}) <= ${input.periodTo}`,
         ));
 
-      console.log("[generateSettlement] couponsInPeriod:", couponsInPeriod.length, "| dateFrom:", dateFrom, "| dateTo:", dateTo);
+      console.log(`[generateSettlement] plataforma="${platformRow.name}" periodo=${input.periodFrom}→${input.periodTo} cupones=${couponsInPeriod.length}`);
 
       const couponIds = couponsInPeriod.map((c) => c.id);
       const netTotal = couponsInPeriod.reduce((sum, c) => sum + parseFloat(c.netPrice ?? "0"), 0);
