@@ -22,14 +22,21 @@ const adminProc = protectedProcedure.use(({ ctx, next }) => {
 
 function parseExcelDate(v: unknown): string {
   if (v == null || v === "") return "";
-  // Numeric serial (Excel date)
+  // JS Date (when cellDates:true)
+  if (v instanceof Date) {
+    const y = v.getUTCFullYear();
+    const m = String(v.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(v.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  // Numeric serial (Excel epoch: 1 = Jan 1 1900, with 1900 leap-year bug offset)
   if (typeof v === "number") {
-    const d = XLSX.SSF.parse_date_code(v);
-    if (d) {
-      const mm = String(d.m).padStart(2, "0");
-      const dd = String(d.d).padStart(2, "0");
-      return `${d.y}-${mm}-${dd}`;
-    }
+    const ms = (v - 25569) * 86400 * 1000;
+    const dt = new Date(ms);
+    const y = dt.getUTCFullYear();
+    const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(dt.getUTCDate()).padStart(2, "0");
+    if (y > 1900 && y < 2100) return `${y}-${m}-${d}`;
   }
   // String DD/MM/YYYY or YYYY-MM-DD
   const s = String(v).trim();
@@ -74,9 +81,9 @@ interface ParsedRow {
 }
 
 function parseCaixaBankBuffer(buffer: Buffer, ext: string): ParsedRow[] {
-  const wb = XLSX.read(buffer, { type: "buffer", cellDates: false, raw: false });
+  const wb = XLSX.read(buffer, { type: "buffer", cellDates: true, raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as unknown[][];
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true }) as unknown[][];
 
   // Find header row by searching for known column names
   const COL_MAP: Record<string, number> = {};
@@ -149,14 +156,16 @@ export const bankMovementsRouter = router({
         rows = parseCaixaBankBuffer(buffer, input.fileType);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        const [imp] = await db.insert(bankFileImports).values({
-          fileName: input.fileName,
-          fileType: input.fileType,
-          importedRows: 0,
-          duplicatesSkipped: 0,
-          status: "error",
-          errorMessage: msg,
-        });
+        try {
+          await db.insert(bankFileImports).values({
+            fileName: input.fileName,
+            fileType: input.fileType,
+            importedRows: 0,
+            duplicatesSkipped: 0,
+            status: "error",
+            errorMessage: msg,
+          });
+        } catch (_) { /* tabla aún no disponible, ignorar */ }
         throw new TRPCError({ code: "BAD_REQUEST", message: msg });
       }
 
