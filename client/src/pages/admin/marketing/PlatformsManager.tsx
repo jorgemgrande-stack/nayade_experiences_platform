@@ -111,36 +111,57 @@ type SettlementCouponRow = {
   settledAt?: Date | string | null;
 };
 
-function downloadSettlementCSV(settlement: Settlement, platformName: string, coupons: SettlementCouponRow[]) {
+function downloadSettlementExcel(settlement: Settlement, platformName: string, coupons: SettlementCouponRow[]) {
   const totalPvp = coupons.reduce((s, c) => s + (c.pvpPrice ? parseFloat(c.pvpPrice) : 0), 0);
   const totalNet = coupons.reduce((s, c) => s + (c.netPrice ? parseFloat(c.netPrice) : 0), 0);
   const statusLabel: Record<string, string> = { pendiente: "Pendiente", emitida: "Emitida", pagada: "Pagada" };
-  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-  const lines = [
-    `# Liquidación: ${settlement.periodLabel}`,
-    `# Plataforma: ${platformName}`,
-    `# Periodo: ${settlement.periodFrom ?? "—"} – ${settlement.periodTo ?? "—"}`,
-    `# Estado: ${statusLabel[settlement.status] ?? settlement.status}`,
-    ...(settlement.invoiceRef ? [`# Referencia: ${settlement.invoiceRef}`] : []),
-    ``,
-    ["Código", "Cliente", "Producto", "Fecha canje", "PVP (€)", "Neto (€)"].map(esc).join(","),
-    ...coupons.map(c =>
-      [
-        c.couponCode ?? "",
-        c.customerName,
-        c.productName ?? "",
-        c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES") : "",
-        c.pvpPrice ? parseFloat(c.pvpPrice).toFixed(2) : "",
-        c.netPrice ? parseFloat(c.netPrice).toFixed(2) : "",
-      ].map(esc).join(",")
-    ),
-    ["TOTAL", `${coupons.length} cupones`, "", "", totalPvp.toFixed(2), totalNet.toFixed(2)].map(esc).join(","),
-  ].join("\n");
-  const blob = new Blob(["﻿" + lines], { type: "text/csv;charset=utf-8;" });
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const dataRows = coupons.map(c => `
+    <tr>
+      <td>${esc(c.couponCode ?? "")}</td>
+      <td>${esc(c.customerName)}</td>
+      <td>${esc(c.productName ?? "")}</td>
+      <td>${c.settledAt ? new Date(c.settledAt).toLocaleDateString("es-ES") : ""}</td>
+      <td style="mso-number-format:'0.00'">${c.pvpPrice ? parseFloat(c.pvpPrice).toFixed(2) : ""}</td>
+      <td style="mso-number-format:'0.00'">${c.netPrice ? parseFloat(c.netPrice).toFixed(2) : ""}</td>
+    </tr>`).join("");
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8">
+<!--[if gte mso 9]><xml>
+  <x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+    <x:Name>Liquidaci&#xF3;n</x:Name>
+  </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+</xml><![endif]-->
+<style>
+  .meta td { color:#6b7280; font-size:11pt; }
+  .hdr th { background:#7c3aed; color:#ffffff; font-weight:bold; font-size:11pt; padding:6px; }
+  .total-row td { font-weight:bold; background:#f3f4f6; border-top:2px solid #d1d5db; }
+  td, th { border:1px solid #e5e7eb; padding:5px 8px; font-size:11pt; }
+</style>
+</head>
+<body>
+<table>
+  <tr class="meta"><td colspan="6"><b>Liquidación:</b> ${esc(settlement.periodLabel)}</td></tr>
+  <tr class="meta"><td colspan="6"><b>Plataforma:</b> ${esc(platformName)}</td></tr>
+  <tr class="meta"><td colspan="6"><b>Periodo:</b> ${settlement.periodFrom ?? "—"} – ${settlement.periodTo ?? "—"}</td></tr>
+  <tr class="meta"><td colspan="6"><b>Estado:</b> ${statusLabel[settlement.status] ?? settlement.status}${settlement.invoiceRef ? ` &nbsp;|&nbsp; Ref: ${esc(settlement.invoiceRef)}` : ""}</td></tr>
+  <tr><td colspan="6"></td></tr>
+  <tr class="hdr">
+    <th>Código</th><th>Cliente</th><th>Producto</th><th>Fecha canje</th><th>PVP (€)</th><th>Neto (€)</th>
+  </tr>
+  ${dataRows}
+  <tr class="total-row">
+    <td>TOTAL</td><td>${coupons.length} cupones</td><td></td><td></td>
+    <td style="mso-number-format:'0.00'">${totalPvp.toFixed(2)}</td>
+    <td style="mso-number-format:'0.00'">${totalNet.toFixed(2)}</td>
+  </tr>
+</table>
+</body></html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `liquidacion-${platformName.toLowerCase().replace(/\s+/g, "-")}-${settlement.periodLabel.toLowerCase().replace(/\s+/g, "-")}.csv`;
+  a.download = `liquidacion-${platformName.toLowerCase().replace(/\s+/g, "-")}-${settlement.periodLabel.toLowerCase().replace(/\s+/g, "-")}.xls`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1262,14 +1283,14 @@ export default function PlatformsManager() {
               <>
                 <Button
                   variant="outline"
-                  onClick={() => downloadSettlementCSV(
+                  onClick={() => downloadSettlementExcel(
                     detailSettlement,
                     selectedPlatform?.name ?? detailSettlement.platformName ?? "Plataforma",
                     settlementCouponsQuery.data as SettlementCouponRow[]
                   )}
                   className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
                 >
-                  <Download className="w-4 h-4 mr-1.5" /> Descargar Excel (.csv)
+                  <Download className="w-4 h-4 mr-1.5" /> Descargar Excel (.xls)
                 </Button>
                 <Button
                   variant="outline"
