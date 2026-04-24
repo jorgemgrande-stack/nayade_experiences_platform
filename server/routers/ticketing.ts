@@ -1404,13 +1404,38 @@ export const ticketingRouter = router({
   generateSettlement: adminProc
     .input(z.object({
       platformId: z.number(),
-      periodLabel: z.string().min(1),   // ej: "2025-01" o "2025-S1"
-      periodFrom: z.string(),            // ISO date
-      periodTo: z.string(),              // ISO date
+      periodLabel: z.string().min(1),
+      periodFrom: z.string(),  // ISO date YYYY-MM-DD
+      periodTo: z.string(),    // ISO date YYYY-MM-DD
       notes: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      // Buscar cupones canjeados de esta plataforma en el periodo sin liquidación asignada
+      // Obtener nombre e IDs de productos de la plataforma
+      const [platformRow] = await db
+        .select({ name: platforms.name })
+        .from(platforms)
+        .where(eq(platforms.id, input.platformId))
+        .limit(1);
+      if (!platformRow) throw new TRPCError({ code: "NOT_FOUND", message: "Plataforma no encontrada" });
+
+      const productRows = await db
+        .select({ id: platformProducts.id })
+        .from(platformProducts)
+        .where(eq(platformProducts.platformId, input.platformId));
+      const productIdList = productRows.map((p) => p.id);
+
+      // Matching: por platformProductId (fiable) o por nombre de proveedor (fallback)
+      const platformMatch = productIdList.length > 0
+        ? or(
+            inArray(couponRedemptions.platformProductId, productIdList),
+            eq(couponRedemptions.provider, platformRow.name),
+          )!
+        : eq(couponRedemptions.provider, platformRow.name);
+
+      // periodTo incluye todo el día
+      const dateFrom = new Date(input.periodFrom + "T00:00:00");
+      const dateTo   = new Date(input.periodTo   + "T23:59:59");
+
       const couponsInPeriod = await db
         .select({
           id: couponRedemptions.id,
@@ -1420,11 +1445,11 @@ export const ticketingRouter = router({
         .from(couponRedemptions)
         .leftJoin(platformProducts, eq(couponRedemptions.platformProductId, platformProducts.id))
         .where(and(
-          eq(couponRedemptions.provider, (await db.select({ name: platforms.name }).from(platforms).where(eq(platforms.id, input.platformId)).limit(1))[0]?.name ?? ""),
+          platformMatch,
           eq(couponRedemptions.statusFinancial, "canjeado"),
           sql`${couponRedemptions.settlementId} IS NULL`,
-          sql`${couponRedemptions.createdAt} >= ${new Date(input.periodFrom)}`,
-          sql`${couponRedemptions.createdAt} <= ${new Date(input.periodTo)}`,
+          sql`${couponRedemptions.createdAt} >= ${dateFrom}`,
+          sql`${couponRedemptions.createdAt} <= ${dateTo}`,
         ));
 
       const couponIds = couponsInPeriod.map((c) => c.id);
