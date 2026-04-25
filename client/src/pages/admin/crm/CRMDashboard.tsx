@@ -2952,6 +2952,11 @@ function QuoteDetailModal({
     { status: "pendiente", search: bankMovementSearchForConfirm || undefined, pageSize: 20, page: 1 },
     { enabled: showBankMovementSearchForConfirm && showConfirmPaymentModal && paymentMethodSelected === "transferencia" }
   );
+  // FASE 2A: movimientos bancarios pendientes para vincular (row confirm payment modal)
+  const bankMovementsForRowQ = trpc.bankMovements.listMovements.useQuery(
+    { status: "pendiente", search: bankMovementSearchForRow || undefined, pageSize: 20, page: 1 },
+    { enabled: showBankMovementSearchForRow && confirmPaymentId !== null && confirmPayMethodRow === "transferencia" }
+  );
   const createPendingPayment = trpc.crm.pendingPayments.create.useMutation({
     onSuccess: () => {
       toast.success("Pago pendiente registrado · Email enviado al cliente");
@@ -4698,6 +4703,9 @@ export default function CRMDashboard() {
   const [confirmPayRowProofUrl, setConfirmPayRowProofUrl] = useState<string | null>(null);
   const [confirmPayRowProofKey, setConfirmPayRowProofKey] = useState<string | null>(null);
   const [isUploadingRowProof, setIsUploadingRowProof] = useState(false);
+  const [selectedBankMovementIdForRow, setSelectedBankMovementIdForRow] = useState<number | null>(null);
+  const [showBankMovementSearchForRow, setShowBankMovementSearchForRow] = useState(false);
+  const [bankMovementSearchForRow, setBankMovementSearchForRow] = useState("");
   const [convertReservationId, setConvertReservationId] = useState<number | null>(null);
   // Estado para el modal de pago pendiente desde fila (icono 5)
   const [rowPendingPayQuoteId, setRowPendingPayQuoteId] = useState<number | null>(null);
@@ -4875,10 +4883,14 @@ export default function CRMDashboard() {
     onSuccess: () => {
       toast.success("Pago confirmado — reserva y factura generadas");
       setConfirmPaymentId(null);
+      setSelectedBankMovementIdForRow(null);
+      setShowBankMovementSearchForRow(false);
+      setBankMovementSearchForRow("");
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.list.invalidate();
+      utils.bankMovements.listMovements.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -7162,7 +7174,7 @@ export default function CRMDashboard() {
       </Dialog>
 
       {/* Confirm Payment — con paso previo por método */}
-      <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => { if (!o) { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); } }}>
+      <Dialog open={confirmPaymentId !== null} onOpenChange={(o) => { if (!o) { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); } }}>
         <DialogContent className="max-w-md bg-[#0d1526] border-foreground/[0.12] text-white">
           <DialogHeader>
             <DialogTitle className="text-white flex items-center gap-2">
@@ -7176,7 +7188,7 @@ export default function CRMDashboard() {
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button
                   key={m}
-                  onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }}
+                  onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
                     confirmPayMethodRow === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
                   }`}
@@ -7197,7 +7209,9 @@ export default function CRMDashboard() {
             )}
             {confirmPayMethodRow === "transferencia" && (
               <div className="space-y-2">
-                <Label className="text-foreground/70 text-xs">Justificante de transferencia *</Label>
+                <div className="text-xs text-foreground/60 font-medium uppercase tracking-wide">
+                  Justificante {selectedBankMovementIdForRow ? "(opcional)" : "(obligatorio si no vinculas movimiento)"}
+                </div>
                 {!confirmPayRowProofUrl ? (
                   <label className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
                     isUploadingRowProof ? "border-foreground/[0.18] bg-foreground/[0.05]" : "border-foreground/[0.18] bg-foreground/[0.05] hover:border-emerald-500/50 hover:bg-emerald-500/5"
@@ -7217,6 +7231,69 @@ export default function CRMDashboard() {
                     <button onClick={() => { setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="text-foreground/40 hover:text-foreground/65 ml-1">×</button>
                   </div>
                 )}
+                <div className="flex items-center justify-between pt-1">
+                  <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
+                    <Banknote className="w-3.5 h-3.5 text-blue-400" />
+                    Vincular movimiento bancario
+                  </div>
+                  {!selectedBankMovementIdForRow && (
+                    <button
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                      onClick={() => setShowBankMovementSearchForRow(!showBankMovementSearchForRow)}
+                    >
+                      {showBankMovementSearchForRow ? "Ocultar" : "Buscar movimiento"}
+                    </button>
+                  )}
+                </div>
+                {selectedBankMovementIdForRow ? (
+                  (() => {
+                    const mv = (bankMovementsForRowQ.data?.data as any[])?.find((m: any) => m.id === selectedBankMovementIdForRow)
+                      ?? { id: selectedBankMovementIdForRow, fecha: "–", movimiento: "Movimiento seleccionado", importe: "–" };
+                    return (
+                      <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-emerald-300">Movimiento vinculado</span>
+                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); }}>×</button>
+                        </div>
+                        <div className="text-foreground/70 truncate">{mv.movimiento ?? "–"}</div>
+                        <div className="flex gap-3 text-foreground/50">
+                          <span>{mv.fecha ?? "–"}</span>
+                          <span className="text-emerald-400 font-medium">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : showBankMovementSearchForRow ? (
+                  <div className="space-y-2">
+                    <input
+                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                      placeholder="Buscar por concepto, importe o fecha..."
+                      value={bankMovementSearchForRow}
+                      onChange={(e) => setBankMovementSearchForRow(e.target.value)}
+                    />
+                    {bankMovementsForRowQ.isLoading ? (
+                      <div className="text-xs text-foreground/40 py-2 text-center">Buscando...</div>
+                    ) : (bankMovementsForRowQ.data?.data as any[] | undefined)?.length === 0 ? (
+                      <div className="text-xs text-foreground/40 py-2 text-center">No hay movimientos pendientes</div>
+                    ) : (
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {(bankMovementsForRowQ.data?.data as any[] | undefined)?.map((mv: any) => (
+                          <button
+                            key={mv.id}
+                            className="w-full text-left px-2.5 py-2 rounded border border-white/10 hover:border-blue-500/40 hover:bg-blue-500/5 transition-colors"
+                            onClick={() => { setSelectedBankMovementIdForRow(mv.id); setShowBankMovementSearchForRow(false); }}
+                          >
+                            <div className="text-xs text-white/80 truncate">{mv.movimiento ?? "–"}</div>
+                            <div className="flex gap-3 mt-0.5 text-xs text-white/50">
+                              <span>{mv.fecha ?? "–"}</span>
+                              <span className="text-emerald-400">{mv.importe != null ? `${Number(mv.importe).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             )}
             {confirmPayMethodRow === "efectivo" && (
@@ -7227,13 +7304,13 @@ export default function CRMDashboard() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               disabled={
                 confirmPaymentMutation.isPending ||
                 (confirmPayMethodRow === "tarjeta" && !confirmPayTpvOp.trim()) ||
-                (confirmPayMethodRow === "transferencia" && !confirmPayRowProofUrl) ||
+                (confirmPayMethodRow === "transferencia" && !confirmPayRowProofUrl && !selectedBankMovementIdForRow) ||
                 (confirmPayMethodRow === "efectivo" && !confirmPayNote.trim())
               }
               onClick={() => {
@@ -7246,12 +7323,13 @@ export default function CRMDashboard() {
                   paymentNote: confirmPayMethodRow === "efectivo" ? confirmPayNote : undefined,
                   transferProofUrl: confirmPayMethodRow === "transferencia" ? confirmPayRowProofUrl ?? undefined : undefined,
                   transferProofKey: confirmPayMethodRow === "transferencia" ? confirmPayRowProofKey ?? undefined : undefined,
+                  bankMovementId: confirmPayMethodRow === "transferencia" ? selectedBankMovementIdForRow ?? undefined : undefined,
                 });
               }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {confirmPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-              Confirmar y generar factura
+              {selectedBankMovementIdForRow && confirmPayMethodRow === "transferencia" ? "Confirmar y conciliar" : "Confirmar y generar factura"}
             </Button>
           </DialogFooter>
         </DialogContent>
