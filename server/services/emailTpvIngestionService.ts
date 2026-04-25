@@ -13,7 +13,7 @@ import {
   quotes,
 } from "../../drizzle/schema";
 
-// ─── CONFIG ───────────────────────────────────────────────────────────────────
+// CONFIG
 
 const IMAP_HOST = process.env.IMAP_TPV_HOST ?? "nayadeexperiences.es.correoseguro.dinaserver.com";
 const IMAP_PORT = parseInt(process.env.IMAP_TPV_PORT ?? "993");
@@ -24,33 +24,61 @@ const IMAP_MAILBOX = process.env.IMAP_TPV_MAILBOX ?? "INBOX";
 const IMAP_ALLOWED_SENDER = process.env.IMAP_TPV_ALLOWED_SENDER ?? "copia@ticket.comerciaglobalpay.com";
 const IMAP_BATCH_SIZE = parseInt(process.env.IMAP_TPV_BATCH_SIZE ?? "50");
 
-// ─── CONCURRENCY LOCK ────────────────────────────────────────────────────────
+// CONCURRENCY LOCK
 
 let isRunning = false;
 
-// ─── DB ───────────────────────────────────────────────────────────────────────
+// DB
 
 function makeDb() {
   const pool = mysql.createPool(process.env.DATABASE_URL!);
   return drizzle(pool);
 }
 
-// ─── TEXT NORMALIZATION ───────────────────────────────────────────────────────
+// TEXT NORMALIZATION
+// Strips accents (NFD decompose + remove combining marks) so all patterns can use plain ASCII.
+// Example: "Transacción" -> "TRANSACCION", "Número" -> "NUMERO"
 
 function normalizeText(raw: string): string {
   return raw
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip combining diacritics
     .toUpperCase()
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
-    .replace(/[​­﻿ ]/g, " ")
+    .replace(/[​‌‍­﻿ ]/g, " ") // invisible/nbsp chars
     .replace(/ {2,}/g, " ")
     .trim();
 }
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+/** Extract readable text from parsed email. Falls back to stripping HTML tags if no text/plain part. */
+function getEmailText(parsed: { text?: string | null; html?: string | false | null }): string {
+  if (parsed.text && parsed.text.trim().length > 10) return parsed.text;
+  if (parsed.html && typeof parsed.html === "string") {
+    return parsed.html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<\/li>/gi, "\n")
+      .replace(/<\/tr>/gi, "\n")
+      .replace(/<\/td>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#\d+;/g, " ");
+  }
+  return "";
+}
+
+// HELPERS
 
 function normalizeStr(s: string | null | undefined): string {
-  return (s ?? "").trim().toUpperCase();
+  return (s ?? "").trim().toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
 
 function makeDuplicateKey(
@@ -70,7 +98,8 @@ function makeDuplicateKey(
   ].join("|");
 }
 
-// ─── PARSER HELPERS ───────────────────────────────────────────────────────────
+// PARSER HELPERS
+// All functions expect text already passed through normalizeText() — plain ASCII uppercase.
 
 interface ParsedOperation {
   operationNumber: string;
@@ -85,15 +114,19 @@ interface ParsedOperation {
 
 type ParsingStrategy = "pdf" | "body" | "excel";
 
+// Exact Comercia Global Payments format (verified from real email):
+//   Transaccion: 193598
+//   numero de operacion 193598  (in body text)
+//   Op.: VENTA  (operation type, NOT the number)
+
 function extractOperationNumber(text: string): string | null {
   const patterns = [
-    /OP\.\s*:\s*(\d{4,12})/,
-    /OP\s*\.\s+(\d{4,12})/,
-    /TRANSACCI[OÓ]N\s*[:\s]+(\d{4,12})/,
-    /N[ÚU]MERO\s+DE\s+OPERACI[OÓ]N\s*[:\s]+(\d{4,12})/,
-    /N\.\s*OPERACI[OÓ]N\s*[:\s]+(\d{4,12})/,
-    /OPERACI[OÓ]N\s*[:\s.]+(\d{4,12})/,
-    /N[ÚU]M\.?\s*OP[.\s]*[:\s]+(\d{4,12})/,
+    /TRANSACCION[:\s]+(\d{4,12})/,           // Transaccion: 193598
+    /NUMERO\s+DE\s+OPERACION[:\s]+(\d{4,12})/, // Numero de operacion 193598
+    /N\.\s*OPERACION[:\s]+(\d{4,12})/,
+    /OP\.\s*:\s*(\d{4,12})/,                  // Op.: 193598  (only when numeric)
+    /OP\.\s+(\d{4,12})/,                       // Op. 193598
+    /OPERACION[:\s.]+(\d{4,12})/,
   ];
   for (const p of patterns) {
     const m = text.match(p);
@@ -104,23 +137,18 @@ function extractOperationNumber(text: string): string | null {
 
 function extractAmount(text: string): number | null {
   const patterns = [
-    /IMPORTE\s*[:\s]+([\d.,]+)\s*EUR/,
-    /TOTAL\s*[:\s]+([\d.,]+)\s*EUR/,
+    /IMPORTE[:\s]+([\d.,]+)\s*EUR/,
+    /TOTAL[:\s]+([\d.,]+)\s*EUR/,
     /([\d.,]+)\s*EUR/,
   ];
   for (const p of patterns) {
     const m = text.match(p);
     if (!m) continue;
     const raw = m[1].trim();
-    // Handle both formats: Spanish 1.234,56 and ISO 1234.56
-    let cleaned: string;
-    if (raw.includes(",") && raw.includes(".")) {
-      // Thousand-dot + comma-decimal: 1.234,56 → 1234.56
-      cleaned = raw.replace(/\./g, "").replace(",", ".");
-    } else {
-      // Comma-only decimal: 1234,56 → 1234.56
-      cleaned = raw.replace(",", ".");
-    }
+    // Spanish format 1.234,56 -> 1234.56  OR  plain 1,00 -> 1.00
+    const cleaned = (raw.includes(",") && raw.includes("."))
+      ? raw.replace(/\./g, "").replace(",", ".")
+      : raw.replace(",", ".");
     const val = parseFloat(cleaned);
     if (!isNaN(val) && val > 0 && val < 1_000_000) return val;
   }
@@ -128,16 +156,14 @@ function extractAmount(text: string): number | null {
 }
 
 function extractDate(text: string): Date | null {
-  // With time (priority): DD/MM/YYYY HH:MM or DD-MM-YYYY HH:MM
-  // Also handles: "COMERCIO - 24/04/2026 12:34"
-  const withTime = text.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}:\d{2})/);
+  // Priority: date + time  — e.g. "FECHA: 24/04/2026 12:34"
+  const withTime = text.match(/(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})\s+(\d{1,2}:\d{2})/);
   if (withTime) {
     const [, d, mo, y, time] = withTime;
     const dt = new Date(`${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${time}:00`);
     if (!isNaN(dt.getTime())) return dt;
   }
-  // Date only
-  const dateOnly = text.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  const dateOnly = text.match(/(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})/);
   if (dateOnly) {
     const [, d, mo, y] = dateOnly;
     const dt = new Date(`${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T00:00:00`);
@@ -148,10 +174,10 @@ function extractDate(text: string): Date | null {
 
 function extractTerminal(text: string): string | null {
   const patterns = [
-    /N[ÚU]MERO\s+DE\s+TERMINAL\s*[:\s]+(\d{5,})/,
-    /C[OÓ]D(?:IGO)?\s*(?:DE\s*)?TERMINAL\s*[:\s]+(\d{5,})/,
-    /TERMINAL\s*[:\s]+(\d{5,})/,
-    /TPV\s*[:\s]+(\d{5,})/,
+    /NUMERO\s+DE\s+TERMINAL[:\s]+(\d{5,})/, // Numero de terminal 01510839
+    /TERMINAL[:\s]+(\d{5,})/,
+    /COD(?:IGO)?\s*(?:DE\s*)?TERMINAL[:\s]+(\d{5,})/,
+    /TPV[:\s]+(\d{5,})/,
   ];
   for (const p of patterns) {
     const m = text.match(p);
@@ -162,10 +188,10 @@ function extractTerminal(text: string): string | null {
 
 function extractCommerce(text: string): string | null {
   const patterns = [
-    /C[OÓ]D(?:IGO)?\s*(?:DE\s*)?COMERCIO\s*[:\s]+(\d{5,})/,
-    /COMERCIO\s*[:\s]+(\d{5,})/,
+    /TPV\s+NAYADE\s+EXPERIENCES\s+(\d{5,})/, // TPV NAYADE EXPERIENCES 369471107
     /NAYADE\s+EXPERIENCES\s+(\d{5,})/,
-    /TPV\s+NAYADE\s+EXPERIENCES\s+(\d{5,})/,
+    /COD(?:IGO)?\s*(?:DE\s*)?COMERCIO[:\s]+(\d{5,})/,
+    /COMERCIO[:\s]+(\d{5,})/,
   ];
   for (const p of patterns) {
     const m = text.match(p);
@@ -174,13 +200,22 @@ function extractCommerce(text: string): string | null {
   return null;
 }
 
+// Op.: VENTA / Op.: DEVOLUCION / Op.: ANULACION — read the explicit type field first
 function extractOperationType(text: string): ParsedOperation["operationType"] {
-  if (/DEVOLUCI[OÓ]N/.test(text)) return "DEVOLUCION";
-  if (/ANULACI[OÓ]N/.test(text)) return "ANULACION";
+  const explicit = text.match(/OP\.[:\s]+(VENTA|DEVOLUCION|ANULACION|OTRO)/);
+  if (explicit) {
+    const v = explicit[1];
+    if (v === "DEVOLUCION") return "DEVOLUCION";
+    if (v === "ANULACION") return "ANULACION";
+    if (v === "OTRO") return "OTRO";
+    return "VENTA";
+  }
+  if (/DEVOLUCION/.test(text)) return "DEVOLUCION";
+  if (/ANULACION/.test(text)) return "ANULACION";
   return "VENTA";
 }
 
-// ─── TEXT → OPS ───────────────────────────────────────────────────────────────
+// TEXT -> OPS
 
 function parseTicketText(text: string): ParsedOperation | null {
   try {
@@ -188,8 +223,10 @@ function parseTicketText(text: string): ParsedOperation | null {
     if (!operationNumber) return null;
     const amount = extractAmount(text);
     if (!amount) return null;
-    const authMatch = text.match(/AUTORIZACI[OÓ]N\s*[:\s]+([A-Z0-9]{4,})/);
-    const cardMatch = text.match(/TARJETA\s*[:\s]+([\*\dX]{4,})/);
+
+    const authMatch = text.match(/AUTORIZACION[:\s]+([A-Z0-9]{4,})/);
+    const cardMatch = text.match(/(?:TARJETA|NUMERO DE TARJETA)[:\s]+([\*\dX]+)/);
+
     return {
       operationNumber,
       operationType: extractOperationType(text),
@@ -207,10 +244,17 @@ function parseTicketText(text: string): ParsedOperation | null {
 
 function parseSummaryText(text: string): ParsedOperation[] {
   const ops: ParsedOperation[] = [];
+  // Try full-text first in case it's a single-page PDF summary
+  const single = parseTicketText(text);
+  if (single) {
+    ops.push(single);
+  }
+  // Then scan line by line for multi-operation summaries
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   for (const line of lines) {
     const operationNumber = extractOperationNumber(line);
     if (!operationNumber) continue;
+    if (ops.some((o) => o.operationNumber === operationNumber)) continue; // dedup
     const amount = extractAmount(line);
     if (!amount) continue;
     ops.push({
@@ -227,7 +271,7 @@ function parseSummaryText(text: string): ParsedOperation[] {
   return ops;
 }
 
-// ─── FORMAT-SPECIFIC PARSERS ─────────────────────────────────────────────────
+// FORMAT-SPECIFIC PARSERS
 
 function parseExcelBuffer(buf: Buffer): ParsedOperation[] {
   try {
@@ -265,7 +309,6 @@ function parseExcelBuffer(buf: Buffer): ParsedOperation[] {
 
 async function extractTextFromPdf(buf: Buffer): Promise<string | null> {
   try {
-    // Dynamic import avoids test-fixture issue with pdf-parse at module load time
     const pdfModule = await import("pdf-parse");
     const pdfParse = (pdfModule as any).default ?? pdfModule;
     const data = await pdfParse(buf);
@@ -276,19 +319,20 @@ async function extractTextFromPdf(buf: Buffer): Promise<string | null> {
   }
 }
 
-// ─── EMAIL → OPS DISPATCHER ───────────────────────────────────────────────────
+// EMAIL -> OPS DISPATCHER
 
 async function extractOpsFromEmail(parsed: {
   text?: string | null;
+  html?: string | false | null;
   attachments?: any[];
   subject?: string | null;
 }): Promise<{ ops: ParsedOperation[]; strategy: ParsingStrategy }> {
   const attachments = parsed.attachments ?? [];
   const subject = normalizeText(parsed.subject ?? "");
-  const isDailySummary =
-    subject.includes("DÍA") || subject.includes("DIA") || subject.includes("RESUMEN");
+  // After accent stripping: "Ticket electronico Dia 24/4/2026" -> contains "DIA"
+  const isDailySummary = subject.includes("DIA") || subject.includes("RESUMEN");
 
-  // 1. PDF attachment — priority
+  // 1. PDF attachment (priority)
   for (const att of attachments) {
     const isPdf =
       att.contentType === "application/pdf" ||
@@ -296,9 +340,7 @@ async function extractOpsFromEmail(parsed: {
     if (!isPdf) continue;
     const pdfText = await extractTextFromPdf(att.content as Buffer);
     if (!pdfText) continue;
-    const ops = isDailySummary
-      ? parseSummaryText(pdfText)
-      : ([parseTicketText(pdfText)].filter(Boolean) as ParsedOperation[]);
+    const ops = isDailySummary ? parseSummaryText(pdfText) : ([parseTicketText(pdfText)].filter(Boolean) as ParsedOperation[]);
     if (ops.length > 0) return { ops, strategy: "pdf" };
   }
 
@@ -313,15 +355,16 @@ async function extractOpsFromEmail(parsed: {
     if (ops.length > 0) return { ops, strategy: "excel" };
   }
 
-  // 3. Email body (HTML stripped to plain text by mailparser)
-  const bodyText = normalizeText(parsed.text ?? "");
+  // 3. Email body (text/plain or stripped HTML)
+  const rawText = getEmailText(parsed);
+  const bodyText = normalizeText(rawText);
   const ops = isDailySummary
     ? parseSummaryText(bodyText)
     : ([parseTicketText(bodyText)].filter(Boolean) as ParsedOperation[]);
   return { ops, strategy: "body" };
 }
 
-// ─── AUTO-LINK ────────────────────────────────────────────────────────────────
+// AUTO-LINK
 
 async function tryAutoLink(
   db: ReturnType<typeof makeDb>,
@@ -337,16 +380,13 @@ async function tryAutoLink(
     .where(like(reservations.notes, pattern))
     .limit(1);
   if (res) {
-    await db
-      .update(cardTerminalOperations)
-      .set({
-        linkedEntityType: "reservation",
-        linkedEntityId: res.id,
-        linkedAt: now,
-        linkedBy: "auto-email",
-        status: "conciliado",
-      })
-      .where(eq(cardTerminalOperations.id, operationId));
+    await db.update(cardTerminalOperations).set({
+      linkedEntityType: "reservation",
+      linkedEntityId: res.id,
+      linkedAt: now,
+      linkedBy: "auto-email",
+      status: "conciliado",
+    }).where(eq(cardTerminalOperations.id, operationId));
     return true;
   }
 
@@ -356,23 +396,20 @@ async function tryAutoLink(
     .where(like(quotes.notes, pattern))
     .limit(1);
   if (qt) {
-    await db
-      .update(cardTerminalOperations)
-      .set({
-        linkedEntityType: "quote",
-        linkedEntityId: qt.id,
-        linkedAt: now,
-        linkedBy: "auto-email",
-        status: "conciliado",
-      })
-      .where(eq(cardTerminalOperations.id, operationId));
+    await db.update(cardTerminalOperations).set({
+      linkedEntityType: "quote",
+      linkedEntityId: qt.id,
+      linkedAt: now,
+      linkedBy: "auto-email",
+      status: "conciliado",
+    }).where(eq(cardTerminalOperations.id, operationId));
     return true;
   }
 
   return false;
 }
 
-// ─── RESULT TYPE ─────────────────────────────────────────────────────────────
+// RESULT TYPE
 
 export interface IngestionResult {
   messagesChecked: number;
@@ -399,7 +436,7 @@ function emptyResult(extra?: Partial<IngestionResult>): IngestionResult {
   };
 }
 
-// ─── CORE INGESTION ───────────────────────────────────────────────────────────
+// CORE INGESTION
 
 export async function runEmailIngestion(retryErrors = false): Promise<IngestionResult> {
   if (isRunning) {
@@ -429,7 +466,6 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
     const lock = await client.getMailboxLock(IMAP_MAILBOX);
 
     try {
-      // Collect unseen UIDs from allowed sender
       const uids: number[] = [];
       for await (const msg of client.fetch({ seen: false }, { uid: true, envelope: true })) {
         const from = msg.envelope?.from?.[0]?.address ?? "";
@@ -437,18 +473,13 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
         uids.push(msg.uid);
       }
 
-      // Process newest first (UIDs are ascending → slice from end)
+      // Newest IMAP_BATCH_SIZE emails (UIDs ascending = oldest first, slice from end = newest)
       const batch = uids.slice(-IMAP_BATCH_SIZE);
       result.messagesChecked = batch.length;
 
       for (const uid of batch) {
-        // Isolate each email — never abort the loop on single failure
         try {
-          const msgData = (await client.fetchOne(
-            uid,
-            { source: true },
-            { uid: true }
-          )) as any;
+          const msgData = (await client.fetchOne(uid, { source: true }, { uid: true })) as any;
           if (!msgData?.source) continue;
 
           const parsed = await simpleParser(msgData.source as Buffer);
@@ -456,7 +487,6 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
           const subject = parsed.subject ?? "";
           const receivedAt = parsed.date ?? new Date();
 
-          // Check existing log entry
           const [existingLog] = await db
             .select({
               id: emailIngestionLogs.id,
@@ -467,13 +497,13 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
             .where(eq(emailIngestionLogs.messageId, messageId))
             .limit(1);
 
-          // Skip ok emails always; skip errored emails unless manual retry
+          // ok = always skip; error = skip on cron, allow on manual retry; skipped = re-try always
           if (existingLog?.status === "ok") continue;
           if (existingLog?.status === "error" && !retryErrors) continue;
 
-          // Extract operations from email (pdf / excel / body)
           const { ops, strategy } = await extractOpsFromEmail({
             text: parsed.text,
+            html: parsed.html,
             attachments: parsed.attachments ?? [],
             subject,
           });
@@ -560,7 +590,7 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
               .update(emailIngestionLogs)
               .set({ ...logValues, retryCount: (existingLog.retryCount ?? 0) + 1 })
               .where(eq(emailIngestionLogs.id, existingLog.id));
-          } else {
+          } else if (!existingLog) {
             await db.insert(emailIngestionLogs).values({
               messageId,
               subject,
@@ -587,18 +617,15 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
     console.error("[EmailTPV] IMAP connection error:", msg);
   } finally {
     isRunning = false;
-    try {
-      await client.logout();
-    } catch {}
+    try { await client.logout(); } catch {}
   }
 
   return result;
 }
 
-// ─── CRON + BOOT ─────────────────────────────────────────────────────────────
+// CRON + BOOT
 
 export function startEmailIngestionJob(): void {
-  // Immediate run at boot (non-blocking — cron lock prevents double execution)
   setImmediate(() => {
     runEmailIngestion(false)
       .then((r) =>
@@ -609,7 +636,6 @@ export function startEmailIngestionJob(): void {
       .catch((e) => console.error("[EmailTPV] Boot run error:", e));
   });
 
-  // Cron every 5 minutes (auto-retry = false)
   cron.schedule("*/5 * * * *", async () => {
     try {
       const r = await runEmailIngestion(false);
