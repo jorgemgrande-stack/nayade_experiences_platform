@@ -594,6 +594,101 @@ export const cardTerminalBatchesRouter = router({
       };
     }),
 
+  // ── Alert / stats procedures ────────────────────────���────────────────────
+
+  getCriticalAlerts: adminProc
+    .query(async () => {
+      const now = new Date();
+      const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const [staleBatches, differenceBatches, staleMovements, unlinkedOps] = await Promise.all([
+        db.select({ cnt: count() }).from(cardTerminalBatches)
+          .where(and(
+            sql`${cardTerminalBatches.status} IN ('pending','suggested','auto_ready','review_required')`,
+            lte(cardTerminalBatches.batchDate, twoDaysAgo)
+          )),
+        db.select({ cnt: count() }).from(cardTerminalBatches)
+          .where(eq(cardTerminalBatches.status, "difference")),
+        db.select({ cnt: count() }).from(bankMovements)
+          .where(and(
+            sql`CAST(${bankMovements.importe} AS DECIMAL(12,2)) > 0`,
+            eq(bankMovements.conciliationStatus, "pendiente"),
+            eq(bankMovements.status, "pendiente"),
+            lte(bankMovements.fecha, twoDaysAgo)
+          )),
+        db.select({ cnt: count() }).from(cardTerminalOperations)
+          .where(sql`${cardTerminalOperations.linkedEntityId} IS NULL AND ${cardTerminalOperations.status} NOT IN ('ignorado','incidencia','included_in_batch','settled')`),
+      ]);
+
+      return {
+        staleBatches: Number(staleBatches[0]?.cnt ?? 0),
+        differenceBatches: Number(differenceBatches[0]?.cnt ?? 0),
+        staleIncomingMovements: Number(staleMovements[0]?.cnt ?? 0),
+        unlinkedOperations: Number(unlinkedOps[0]?.cnt ?? 0),
+      };
+    }),
+
+  getReconciliationStats: adminProc
+    .query(async () => {
+      const now = new Date();
+      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+
+      const [totalRows, reconciledRows, differenceRows, pendingRows, movementsRows, unlinkedOpsRows] = await Promise.all([
+        db.select({ cnt: count() }).from(cardTerminalBatches)
+          .where(gte(cardTerminalBatches.batchDate, monthStart)),
+        db.select({ cnt: count() }).from(cardTerminalBatches)
+          .where(and(eq(cardTerminalBatches.status, "reconciled"), gte(cardTerminalBatches.batchDate, monthStart))),
+        db.select({ cnt: count() }).from(cardTerminalBatches)
+          .where(and(eq(cardTerminalBatches.status, "difference"), gte(cardTerminalBatches.batchDate, monthStart))),
+        db.select({ cnt: count(), totalNet: sum(cardTerminalBatches.totalNet) }).from(cardTerminalBatches)
+          .where(and(
+            sql`${cardTerminalBatches.status} IN ('pending','suggested','auto_ready','review_required')`,
+            gte(cardTerminalBatches.batchDate, monthStart)
+          )),
+        db.select({ cnt: count(), totalAmt: sum(bankMovements.importe) }).from(bankMovements)
+          .where(and(
+            sql`CAST(${bankMovements.importe} AS DECIMAL(12,2)) > 0`,
+            eq(bankMovements.conciliationStatus, "pendiente"),
+            eq(bankMovements.status, "pendiente"),
+            gte(bankMovements.fecha, monthStart)
+          )),
+        db.select({ cnt: count() }).from(cardTerminalOperations)
+          .where(sql`${cardTerminalOperations.linkedEntityId} IS NULL AND ${cardTerminalOperations.status} NOT IN ('ignorado','incidencia','included_in_batch','settled')`),
+      ]);
+
+      const total = Number(totalRows[0]?.cnt ?? 0);
+      const reconciled = Number(reconciledRows[0]?.cnt ?? 0);
+
+      return {
+        pctReconciled: total > 0 ? Math.round((reconciled / total) * 100) : 0,
+        totalBatches: total,
+        reconciledBatches: reconciled,
+        differenceBatches: Number(differenceRows[0]?.cnt ?? 0),
+        pendingBatches: Number(pendingRows[0]?.cnt ?? 0),
+        pendingAmount: parseFloat(String(pendingRows[0]?.totalNet ?? "0")),
+        staleMovementsCount: Number(movementsRows[0]?.cnt ?? 0),
+        staleMovementsAmount: parseFloat(String(movementsRows[0]?.totalAmt ?? "0")),
+        unlinkedOps: Number(unlinkedOpsRows[0]?.cnt ?? 0),
+        periodLabel: monthStart.slice(0, 7),
+      };
+    }),
+
+  getCrmPaymentAlerts: adminProc
+    .query(async () => {
+      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+
+      const [unlinkedOps, staleFailedResult] = await Promise.all([
+        db.select({ cnt: count() }).from(cardTerminalOperations)
+          .where(sql`${cardTerminalOperations.linkedEntityId} IS NULL AND ${cardTerminalOperations.status} NOT IN ('ignorado','incidencia','included_in_batch','settled')`),
+        db.execute(sql`SELECT COUNT(*) as cnt FROM quotes WHERE status = 'pago_fallido' AND updated_at < ${twoDaysAgo}`),
+      ]);
+
+      return {
+        unlinkedTpvOps: Number(unlinkedOps[0]?.cnt ?? 0),
+        staleFailedPayments: Number((staleFailedResult[0] as any[])?.[0]?.cnt ?? 0),
+      };
+    }),
+
   deleteBatch: adminProc
     .input(z.object({ batchId: z.number() }))
     .mutation(async ({ input }) => {

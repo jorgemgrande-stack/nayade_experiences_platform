@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { BarChart3, TrendingUp, TrendingDown, Euro, Download, Calendar, Filter, FileText, CreditCard, CheckCircle, Clock, XCircle } from "lucide-react";
+import { Link } from "wouter";
+import { BarChart3, TrendingUp, TrendingDown, Euro, Download, Calendar, Filter, FileText, CreditCard, CheckCircle, Clock, XCircle, AlertTriangle, Banknote, Package, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,6 +9,10 @@ import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+function fmtEur(v: number): string {
+  return v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+}
 
 const COLORS = ["#d4a017", "#2563eb", "#10b981", "#8b5cf6", "#ef4444"];
 
@@ -47,6 +52,9 @@ export default function AccountingDashboard() {
 
   const { data: metrics } = trpc.accounting.getDashboardMetrics.useQuery();
   const { data: transactions } = trpc.accounting.getTransactions.useQuery({ limit: 20, offset: 0 });
+  const { data: reconStats } = trpc.cardTerminalBatches.getReconciliationStats.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
 
   const handleExport = (format: "csv" | "excel") => {
     toast.success(`Exportando informe en formato ${format.toUpperCase()}... (Función disponible próximamente)`);
@@ -144,6 +152,114 @@ export default function AccountingDashboard() {
             <div className="text-sm text-muted-foreground">{kpi.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* ── Control de conciliación ──────────────────────────────────────── */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-4 rounded-full bg-gradient-to-b from-orange-400 to-blue-600" />
+          <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Control de conciliación · {reconStats?.periodLabel ?? "—"}</h3>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* 1. % TPV conciliado */}
+          <Link href="/admin/contabilidad/conciliacion-tpv">
+            <div className={cn(
+              "bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all",
+              (reconStats?.pctReconciled ?? 0) >= 80 ? "border-emerald-500/30" : (reconStats?.pctReconciled ?? 0) >= 50 ? "border-amber-500/30" : "border-red-500/30"
+            )}>
+              <div className="flex items-center justify-between mb-3">
+                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (reconStats?.pctReconciled ?? 0) >= 80 ? "bg-emerald-50 dark:bg-emerald-900/30" : "bg-amber-50 dark:bg-amber-900/30")}>
+                  <CheckCircle className={cn("w-4 h-4", (reconStats?.pctReconciled ?? 0) >= 80 ? "text-emerald-500" : "text-amber-500")} />
+                </div>
+              </div>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.pctReconciled ?? 0) >= 80 ? "text-emerald-600 dark:text-emerald-400" : (reconStats?.pctReconciled ?? 0) >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400")}>
+                {reconStats?.pctReconciled ?? "—"}%
+              </div>
+              <div className="text-xs text-muted-foreground">% TPV conciliado</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">{reconStats?.reconciledBatches ?? 0}/{reconStats?.totalBatches ?? 0} remesas</div>
+            </div>
+          </Link>
+
+          {/* 2. Remesas TPV pendientes */}
+          <Link href="/admin/contabilidad/remesas-tpv">
+            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.pendingBatches ?? 0) > 0 ? "border-amber-500/30" : "border-border/50")}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-amber-50 dark:bg-amber-900/30">
+                  <Clock className="w-4 h-4 text-amber-500" />
+                </div>
+              </div>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.pendingBatches ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
+                {reconStats?.pendingBatches ?? "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Remesas pendientes</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">pending / suggested / auto_ready</div>
+            </div>
+          </Link>
+
+          {/* 3. Remesas con diferencias */}
+          <Link href="/admin/contabilidad/remesas-tpv">
+            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.differenceBatches ?? 0) > 0 ? "border-orange-500/30" : "border-border/50")}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-orange-50 dark:bg-orange-900/30">
+                  <AlertTriangle className="w-4 h-4 text-orange-500" />
+                </div>
+              </div>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.differenceBatches ?? 0) > 0 ? "text-orange-600 dark:text-orange-400" : "text-foreground")}>
+                {reconStats?.differenceBatches ?? "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Con diferencias</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Importe ≠ banco</div>
+            </div>
+          </Link>
+
+          {/* 4. Importe TPV pendiente */}
+          <Link href="/admin/contabilidad/remesas-tpv">
+            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.pendingAmount ?? 0) > 0 ? "border-amber-500/30" : "border-border/50")}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-amber-50 dark:bg-amber-900/30">
+                  <Package className="w-4 h-4 text-amber-500" />
+                </div>
+              </div>
+              <div className="text-lg font-bold mb-1 text-amber-600 dark:text-amber-400 leading-tight">
+                {reconStats ? fmtEur(reconStats.pendingAmount) : "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Importe pend. conciliar</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Total neto remesas</div>
+            </div>
+          </Link>
+
+          {/* 5. Ingresos bancarios sin conciliar */}
+          <Link href="/admin/contabilidad/movimientos-bancarios">
+            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.staleMovementsCount ?? 0) > 0 ? "border-rose-500/30" : "border-border/50")}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-rose-50 dark:bg-rose-900/30">
+                  <Banknote className="w-4 h-4 text-rose-500" />
+                </div>
+              </div>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.staleMovementsCount ?? 0) > 0 ? "text-rose-600 dark:text-rose-400" : "text-foreground")}>
+                {reconStats?.staleMovementsCount ?? "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Ingresos sin conciliar</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">{reconStats ? fmtEur(reconStats.staleMovementsAmount) : "—"}</div>
+            </div>
+          </Link>
+
+          {/* 6. Operaciones TPV sin vincular */}
+          <Link href="/admin/contabilidad/operaciones-tpv">
+            <div className={cn("bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all", (reconStats?.unlinkedOps ?? 0) > 0 ? "border-blue-500/30" : "border-border/50")}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-blue-50 dark:bg-blue-900/30">
+                  <CreditCard className="w-4 h-4 text-blue-500" />
+                </div>
+              </div>
+              <div className={cn("text-2xl font-bold mb-1", (reconStats?.unlinkedOps ?? 0) > 0 ? "text-blue-600 dark:text-blue-400" : "text-foreground")}>
+                {reconStats?.unlinkedOps ?? "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Ops TPV sin vincular</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Sin reserva/factura</div>
+            </div>
+          </Link>
+        </div>
       </div>
 
       {/* Charts */}

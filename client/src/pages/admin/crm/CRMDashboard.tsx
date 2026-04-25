@@ -4903,6 +4903,10 @@ export default function CRMDashboard() {
   const { data: auditData } = trpc.crm.reservations.auditOrphans.useQuery(undefined, {
     refetchInterval: 120000,
   });
+  const { data: tpvPaymentAlerts } = trpc.cardTerminalBatches.getCrmPaymentAlerts.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
   const deleteAnulMutation = trpc.cancellations.deleteRequest.useMutation({
     onSuccess: () => {
       toast.success("Solicitud eliminada");
@@ -5845,6 +5849,26 @@ export default function CRMDashboard() {
                   ))}
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Banner alertas TPV / coherencia cobros ──────────────────────── */}
+        {tpvPaymentAlerts && (tpvPaymentAlerts.unlinkedTpvOps > 0 || tpvPaymentAlerts.staleFailedPayments > 0) && (
+          <div className="mx-6 mb-2 rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-3 flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 text-blue-400 font-semibold text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              Coherencia de cobros — incidencias detectadas
+            </div>
+            {tpvPaymentAlerts.unlinkedTpvOps > 0 && (
+              <a href="/admin/contabilidad/operaciones-tpv" className="text-xs text-blue-300/80 hover:text-blue-200 transition-colors">
+                • {tpvPaymentAlerts.unlinkedTpvOps} operación{tpvPaymentAlerts.unlinkedTpvOps !== 1 ? "es" : ""} TPV sin vincular a reserva/factura → Operaciones TPV
+              </a>
+            )}
+            {tpvPaymentAlerts.staleFailedPayments > 0 && (
+              <span className="text-xs text-amber-300/80">
+                • {tpvPaymentAlerts.staleFailedPayments} presupuesto{tpvPaymentAlerts.staleFailedPayments !== 1 ? "s" : ""} con pago fallido sin resolver +48h
+              </span>
             )}
           </div>
         )}

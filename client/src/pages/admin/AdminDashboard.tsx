@@ -321,6 +321,12 @@ export default function AdminDashboard() {
     { enabled: isAuthenticated, staleTime: 60 * 1000 }
   );
 
+  // Conciliación TPV: alertas críticas
+  const { data: conciliacionAlerts } = trpc.cardTerminalBatches.getCriticalAlerts.useQuery(undefined, {
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // ── Auth guards ──────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -373,6 +379,11 @@ export default function AdminDashboard() {
   ).length;
   const installmentsUrgent = installmentsOverdue + installmentsDueToday;
 
+  const tpvStaleBatches = conciliacionAlerts?.staleBatches ?? 0;
+  const tpvDifferenceBatches = conciliacionAlerts?.differenceBatches ?? 0;
+  const tpvStaleMovements = conciliacionAlerts?.staleIncomingMovements ?? 0;
+  const tpvUnlinkedOps = conciliacionAlerts?.unlinkedOperations ?? 0;
+
   const totalAlerts =
     (alerts?.transfersToValidate ?? 0) +
     (alerts?.quotesExpiringSoon ?? 0) +
@@ -382,7 +393,11 @@ export default function AdminDashboard() {
     ticketingIncidencias +
     (ticketingRecibidos > 0 ? 1 : 0) +
     (leadsAging > 0 ? 1 : 0) +
-    (installmentsUrgent > 0 ? 1 : 0);
+    (installmentsUrgent > 0 ? 1 : 0) +
+    (tpvStaleBatches > 0 ? 1 : 0) +
+    (tpvDifferenceBatches > 0 ? 1 : 0) +
+    (tpvStaleMovements > 0 ? 1 : 0) +
+    (tpvUnlinkedOps > 0 ? 1 : 0);
 
   return (
     <AdminLayout title="Dashboard">
@@ -549,6 +564,54 @@ export default function AdminDashboard() {
                         <p className="text-[10px] text-amber-400/60">CRM → Pagos fraccionados</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {tpvStaleBatches > 0 && (
+                  <Link href="/admin/contabilidad/remesas-tpv">
+                    <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-amber-500/15 transition-colors">
+                      <Package className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-amber-300">{tpvStaleBatches} remesa{tpvStaleBatches > 1 ? "s" : ""} TPV sin conciliar +2 días</p>
+                        <p className="text-[10px] text-amber-400/60">Contabilidad → Remesas TPV</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {tpvDifferenceBatches > 0 && (
+                  <Link href="/admin/contabilidad/remesas-tpv">
+                    <div className="flex items-center gap-2 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-orange-500/15 transition-colors">
+                      <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-orange-300">{tpvDifferenceBatches} remesa{tpvDifferenceBatches > 1 ? "s" : ""} TPV con diferencias</p>
+                        <p className="text-[10px] text-orange-400/60">Contabilidad → Remesas TPV</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {tpvStaleMovements > 0 && (
+                  <Link href="/admin/contabilidad/movimientos-bancarios">
+                    <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-rose-500/15 transition-colors">
+                      <Banknote className="w-4 h-4 text-rose-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-rose-300">{tpvStaleMovements} ingreso{tpvStaleMovements > 1 ? "s" : ""} bancario{tpvStaleMovements > 1 ? "s" : ""} sin conciliar +2 días</p>
+                        <p className="text-[10px] text-rose-400/60">Contabilidad → Movimientos bancarios</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {tpvUnlinkedOps > 0 && (
+                  <Link href="/admin/contabilidad/operaciones-tpv">
+                    <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-blue-500/15 transition-colors">
+                      <CreditCard className="w-4 h-4 text-blue-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-blue-300">{tpvUnlinkedOps} operación{tpvUnlinkedOps > 1 ? "es" : ""} TPV sin vincular</p>
+                        <p className="text-[10px] text-blue-400/60">Contabilidad → Operaciones TPV</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                     </div>
                   </Link>
                 )}
