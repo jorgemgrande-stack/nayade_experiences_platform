@@ -351,6 +351,13 @@
       "when": 1777150320000,
       "tag": "0051_bank_movement_links",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1777236720000,
+      "tag": "0052_card_terminal_operations",
+      "breakpoints": true
     }
   ]
 }

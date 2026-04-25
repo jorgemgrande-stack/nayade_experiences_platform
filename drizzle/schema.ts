@@ -2303,3 +2303,46 @@ export const paymentInstallments = mysqlTable("payment_installments", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type PaymentInstallment = typeof paymentInstallments.$inferSelect;
+
+// ── TPV (Datafono / Card Terminal) Operations ─────────────────────────────────
+
+export const cardTerminalOperations = mysqlTable("card_terminal_operations", {
+  id: int("id").primaryKey().autoincrement(),
+  // Datos del extracto
+  operationDatetime: timestamp("operation_datetime").notNull(),
+  operationNumber: varchar("operation_number", { length: 64 }).notNull(),
+  commerceCode: varchar("commerce_code", { length: 64 }),
+  terminalCode: varchar("terminal_code", { length: 64 }),
+  operationType: mysqlEnum("operation_type", ["VENTA", "DEVOLUCION", "ANULACION", "OTRO"]).notNull().default("VENTA"),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  card: varchar("card", { length: 32 }),
+  authorizationCode: varchar("authorization_code", { length: 32 }),
+  // Conciliación
+  linkedEntityType: mysqlEnum("linked_entity_type", ["reservation", "quote", "none"]).default("none"),
+  linkedEntityId: int("linked_entity_id"),
+  linkedAt: timestamp("linked_at"),
+  linkedBy: varchar("linked_by", { length: 128 }),
+  // Estado
+  status: mysqlEnum("status", ["pendiente", "conciliado", "incidencia", "ignorado"]).notNull().default("pendiente"),
+  incidentReason: text("incident_reason"),
+  notes: text("notes"),
+  // Importación
+  importId: int("import_id"),
+  duplicateKey: varchar("duplicate_key", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export const tpvFileImports = mysqlTable("tpv_file_imports", {
+  id: int("id").primaryKey().autoincrement(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  fileType: varchar("file_type", { length: 16 }).notNull(),
+  importedRows: int("imported_rows").notNull().default(0),
+  duplicatesSkipped: int("duplicates_skipped").notNull().default(0),
+  status: mysqlEnum("status", ["ok", "error"]).notNull().default("ok"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type CardTerminalOperation = typeof cardTerminalOperations.$inferSelect;
+export type TpvFileImport = typeof tpvFileImports.$inferSelect;
