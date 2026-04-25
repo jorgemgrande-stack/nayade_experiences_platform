@@ -2841,6 +2841,10 @@ function QuoteDetailModal({
   const [selectedBankMovementIdForConfirm, setSelectedBankMovementIdForConfirm] = useState<number | null>(null);
   const [showBankMovementSearchForConfirm, setShowBankMovementSearchForConfirm] = useState(false);
   const [bankMovementSearchForConfirm, setBankMovementSearchForConfirm] = useState("");
+  // TPV op linking (confirm payment modal)
+  const [selectedTpvOpIdForConfirm, setSelectedTpvOpIdForConfirm] = useState<number | null>(null);
+  const [showTpvOpSearchForConfirm, setShowTpvOpSearchForConfirm] = useState(false);
+  const [tpvOpSearchForConfirm, setTpvOpSearchForConfirm] = useState("");
   // Unified payment modal state
   const [showConfirmPaymentModal, setShowConfirmPaymentModal] = useState(false);
   const [paymentMethodSelected, setPaymentMethodSelected] = useState<"tarjeta" | "transferencia" | "efectivo">("tarjeta");
@@ -2957,6 +2961,16 @@ function QuoteDetailModal({
     { status: "pendiente", search: bankMovementSearchForRow || undefined, pageSize: 20, page: 1 },
     { enabled: showBankMovementSearchForRow && confirmPaymentId !== null && confirmPayMethodRow === "transferencia" }
   );
+  // TPV ops pendientes para vincular (confirm payment modal)
+  const tpvOpsForConfirmQ = trpc.cardTerminalOperations.list.useQuery(
+    { status: "pendiente", search: tpvOpSearchForConfirm || undefined, pageSize: 20, page: 1 },
+    { enabled: showTpvOpSearchForConfirm && showConfirmPaymentModal && paymentMethodSelected === "tarjeta" }
+  );
+  // TPV ops pendientes para vincular (row confirm payment modal)
+  const tpvOpsForRowQ = trpc.cardTerminalOperations.list.useQuery(
+    { status: "pendiente", search: tpvOpSearchForRow || undefined, pageSize: 20, page: 1 },
+    { enabled: showTpvOpSearchForRow && confirmPaymentId !== null && confirmPayMethodRow === "tarjeta" }
+  );
   const createPendingPayment = trpc.crm.pendingPayments.create.useMutation({
     onSuccess: () => {
       toast.success("Pago pendiente registrado · Email enviado al cliente");
@@ -3016,10 +3030,14 @@ function QuoteDetailModal({
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.counters.invalidate();
       if (selectedBankMovementIdForConfirm) utils.bankMovements.listMovements.invalidate();
+      if (selectedTpvOpIdForConfirm) utils.cardTerminalOperations.list.invalidate();
       setShowConfirmPaymentModal(false);
       setSelectedBankMovementIdForConfirm(null);
       setShowBankMovementSearchForConfirm(false);
       setBankMovementSearchForConfirm("");
+      setSelectedTpvOpIdForConfirm(null);
+      setShowTpvOpSearchForConfirm(false);
+      setTpvOpSearchForConfirm("");
       onClose();
     },
     onError: (e) => toast.error(e.message),
@@ -3946,7 +3964,7 @@ function QuoteDetailModal({
             <div className="grid grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button key={m}
-                  onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); }}
+                  onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setTpvOpSearchForConfirm(""); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
                     paymentMethodSelected === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
                   }`}
@@ -3960,9 +3978,71 @@ function QuoteDetailModal({
             </div>
             {/* Campo específico por método */}
             {paymentMethodSelected === "tarjeta" && (
-              <div className="space-y-1.5">
-                <Label className="text-foreground/70 text-xs">Nº operación TPV *</Label>
-                <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder="Ej: 000123456789" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm" />
+              <div className="space-y-2">
+                <div className="space-y-1.5">
+                  <Label className="text-foreground/70 text-xs">Nº operación TPV {!selectedTpvOpIdForConfirm ? "*" : "(auto)"}</Label>
+                  <Input value={viewTpvOp} onChange={(e) => setViewTpvOp(e.target.value)} placeholder="Ej: 000123456789" disabled={!!selectedTpvOpIdForConfirm} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm disabled:opacity-50" />
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 text-violet-400" />
+                    Vincular operación TPV
+                  </div>
+                  {!selectedTpvOpIdForConfirm && (
+                    <button
+                      className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                      onClick={() => setShowTpvOpSearchForConfirm(!showTpvOpSearchForConfirm)}
+                    >
+                      {showTpvOpSearchForConfirm ? "Ocultar" : "Buscar operación"}
+                    </button>
+                  )}
+                </div>
+                {selectedTpvOpIdForConfirm ? (
+                  (() => {
+                    const op = (tpvOpsForConfirmQ.data?.data as any[])?.find((o: any) => o.id === selectedTpvOpIdForConfirm)
+                      ?? { id: selectedTpvOpIdForConfirm, operationNumber: viewTpvOp, amount: "–" };
+                    return (
+                      <div className="rounded-md border border-violet-500/30 bg-violet-500/10 p-2.5 text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-violet-300">Operación TPV vinculada</span>
+                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setViewTpvOp(""); }}>×</button>
+                        </div>
+                        <div className="text-foreground/70 font-mono">{op.operationNumber ?? "–"}</div>
+                        <div className="text-violet-400 font-medium">{op.amount != null ? `${Number(op.amount).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</div>
+                      </div>
+                    );
+                  })()
+                ) : showTpvOpSearchForConfirm ? (
+                  <div className="space-y-2">
+                    <input
+                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                      placeholder="Buscar por Nº operación, tarjeta..."
+                      value={tpvOpSearchForConfirm}
+                      onChange={(e) => setTpvOpSearchForConfirm(e.target.value)}
+                    />
+                    <div className="max-h-40 overflow-y-auto rounded-md border border-white/10 divide-y divide-white/5">
+                      {tpvOpsForConfirmQ.isLoading ? (
+                        <div className="p-3 text-xs text-foreground/40 text-center">Buscando...</div>
+                      ) : (tpvOpsForConfirmQ.data?.data as any[] | undefined)?.length === 0 ? (
+                        <div className="p-3 text-xs text-foreground/40 text-center">No hay operaciones pendientes</div>
+                      ) : (
+                        (tpvOpsForConfirmQ.data?.data as any[] | undefined)?.map((op: any) => (
+                          <button
+                            key={op.id}
+                            className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors"
+                            onClick={() => { setSelectedTpvOpIdForConfirm(op.id); setViewTpvOp(op.operationNumber ?? ""); setShowTpvOpSearchForConfirm(false); }}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-mono text-white/80">{op.operationNumber}</span>
+                              <span className="text-xs text-violet-400 font-medium shrink-0">{Number(op.amount).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                            </div>
+                            <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {new Date(op.operationDatetime).toLocaleDateString("es-ES")}</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
             {paymentMethodSelected === "transferencia" && (
@@ -4068,12 +4148,12 @@ function QuoteDetailModal({
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); }}>Cancelar</Button>
+            <Button variant="ghost" className="text-foreground/65 hover:text-foreground" onClick={() => { setShowConfirmPaymentModal(false); setPaymentMethodSelected("tarjeta"); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setTpvOpSearchForConfirm(""); }}>Cancelar</Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               disabled={
                 confirmPaymentWithMethod.isPending ||
-                (paymentMethodSelected === "tarjeta" && !viewTpvOp.trim()) ||
+                (paymentMethodSelected === "tarjeta" && !viewTpvOp.trim() && !selectedTpvOpIdForConfirm) ||
                 (paymentMethodSelected === "transferencia" && !viewProofUrl && !selectedBankMovementIdForConfirm) ||
                 (paymentMethodSelected === "efectivo" && !viewPayNote.trim())
               }
@@ -4087,12 +4167,13 @@ function QuoteDetailModal({
                   transferProofUrl: paymentMethodSelected === "transferencia" ? viewProofUrl ?? undefined : undefined,
                   transferProofKey: paymentMethodSelected === "transferencia" ? viewProofKey ?? undefined : undefined,
                   bankMovementId: paymentMethodSelected === "transferencia" ? selectedBankMovementIdForConfirm ?? undefined : undefined,
+                  cardTerminalOperationId: paymentMethodSelected === "tarjeta" ? selectedTpvOpIdForConfirm ?? undefined : undefined,
                 });
               }}
             >
               {confirmPaymentWithMethod.isPending ? (
                 <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Procesando...</>
-              ) : selectedBankMovementIdForConfirm && paymentMethodSelected === "transferencia" ? (
+              ) : (selectedBankMovementIdForConfirm && paymentMethodSelected === "transferencia") || (selectedTpvOpIdForConfirm && paymentMethodSelected === "tarjeta") ? (
                 <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y conciliar</>
               ) : (
                 <><CheckCircle className="w-4 h-4 mr-2" /> Confirmar y generar factura</>
@@ -4706,6 +4787,10 @@ export default function CRMDashboard() {
   const [selectedBankMovementIdForRow, setSelectedBankMovementIdForRow] = useState<number | null>(null);
   const [showBankMovementSearchForRow, setShowBankMovementSearchForRow] = useState(false);
   const [bankMovementSearchForRow, setBankMovementSearchForRow] = useState("");
+  // TPV op linking (row confirm payment modal)
+  const [selectedTpvOpIdForRow, setSelectedTpvOpIdForRow] = useState<number | null>(null);
+  const [showTpvOpSearchForRow, setShowTpvOpSearchForRow] = useState(false);
+  const [tpvOpSearchForRow, setTpvOpSearchForRow] = useState("");
   const [convertReservationId, setConvertReservationId] = useState<number | null>(null);
   // Estado para el modal de pago pendiente desde fila (icono 5)
   const [rowPendingPayQuoteId, setRowPendingPayQuoteId] = useState<number | null>(null);
@@ -4886,11 +4971,15 @@ export default function CRMDashboard() {
       setSelectedBankMovementIdForRow(null);
       setShowBankMovementSearchForRow(false);
       setBankMovementSearchForRow("");
+      setSelectedTpvOpIdForRow(null);
+      setShowTpvOpSearchForRow(false);
+      setTpvOpSearchForRow("");
       utils.crm.quotes.list.invalidate();
       utils.crm.quotes.counters.invalidate();
       utils.crm.leads.counters.invalidate();
       utils.crm.reservations.list.invalidate();
       utils.bankMovements.listMovements.invalidate();
+      utils.cardTerminalOperations.list.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -7188,7 +7277,7 @@ export default function CRMDashboard() {
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button
                   key={m}
-                  onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); }}
+                  onClick={() => { setConfirmPayMethodRow(m); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setTpvOpSearchForRow(""); }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border text-xs font-medium transition-all ${
                     confirmPayMethodRow === m ? "border-emerald-500 bg-emerald-500/15 text-emerald-300" : "border-foreground/[0.12] bg-foreground/[0.05] text-foreground/60 hover:border-white/25 hover:text-foreground/80"
                   }`}
@@ -7202,9 +7291,71 @@ export default function CRMDashboard() {
             </div>
             {/* Campo específico por método */}
             {confirmPayMethodRow === "tarjeta" && (
-              <div className="space-y-1.5">
-                <Label className="text-foreground/70 text-xs">Nº operación TPV *</Label>
-                <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder="Ej: 000123456789" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm" />
+              <div className="space-y-2">
+                <div className="space-y-1.5">
+                  <Label className="text-foreground/70 text-xs">Nº operación TPV {!selectedTpvOpIdForRow ? "*" : "(auto)"}</Label>
+                  <Input value={confirmPayTpvOp} onChange={(e) => setConfirmPayTpvOp(e.target.value)} placeholder="Ej: 000123456789" disabled={!!selectedTpvOpIdForRow} className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm disabled:opacity-50" />
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <div className="text-xs text-foreground/50 font-medium flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 text-violet-400" />
+                    Vincular operación TPV
+                  </div>
+                  {!selectedTpvOpIdForRow && (
+                    <button
+                      className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                      onClick={() => setShowTpvOpSearchForRow(!showTpvOpSearchForRow)}
+                    >
+                      {showTpvOpSearchForRow ? "Ocultar" : "Buscar operación"}
+                    </button>
+                  )}
+                </div>
+                {selectedTpvOpIdForRow ? (
+                  (() => {
+                    const op = (tpvOpsForRowQ.data?.data as any[])?.find((o: any) => o.id === selectedTpvOpIdForRow)
+                      ?? { id: selectedTpvOpIdForRow, operationNumber: confirmPayTpvOp, amount: "–" };
+                    return (
+                      <div className="rounded-md border border-violet-500/30 bg-violet-500/10 p-2.5 text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-violet-300">Operación TPV vinculada</span>
+                          <button className="text-foreground/40 hover:text-foreground/70" onClick={() => { setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setConfirmPayTpvOp(""); }}>×</button>
+                        </div>
+                        <div className="text-foreground/70 font-mono">{op.operationNumber ?? "–"}</div>
+                        <div className="text-violet-400 font-medium">{op.amount != null ? `${Number(op.amount).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €` : "–"}</div>
+                      </div>
+                    );
+                  })()
+                ) : showTpvOpSearchForRow ? (
+                  <div className="space-y-2">
+                    <input
+                      className="w-full text-xs bg-[#0d1526] border border-white/10 rounded-md px-3 py-1.5 text-white placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                      placeholder="Buscar por Nº operación, tarjeta..."
+                      value={tpvOpSearchForRow}
+                      onChange={(e) => setTpvOpSearchForRow(e.target.value)}
+                    />
+                    <div className="max-h-40 overflow-y-auto rounded-md border border-white/10 divide-y divide-white/5">
+                      {tpvOpsForRowQ.isLoading ? (
+                        <div className="p-3 text-xs text-foreground/40 text-center">Buscando...</div>
+                      ) : (tpvOpsForRowQ.data?.data as any[] | undefined)?.length === 0 ? (
+                        <div className="p-3 text-xs text-foreground/40 text-center">No hay operaciones pendientes</div>
+                      ) : (
+                        (tpvOpsForRowQ.data?.data as any[] | undefined)?.map((op: any) => (
+                          <button
+                            key={op.id}
+                            className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors"
+                            onClick={() => { setSelectedTpvOpIdForRow(op.id); setConfirmPayTpvOp(op.operationNumber ?? ""); setShowTpvOpSearchForRow(false); }}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-mono text-white/80">{op.operationNumber}</span>
+                              <span className="text-xs text-violet-400 font-medium shrink-0">{Number(op.amount).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                            </div>
+                            <div className="text-xs text-foreground/40 mt-0.5">{op.terminalCode ?? ""} · {new Date(op.operationDatetime).toLocaleDateString("es-ES")}</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
             {confirmPayMethodRow === "transferencia" && (
@@ -7304,12 +7455,12 @@ export default function CRMDashboard() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
+            <Button variant="outline" size="sm" onClick={() => { setConfirmPaymentId(null); setConfirmPayMethodRow("tarjeta"); setConfirmPayTpvOp(""); setConfirmPayNote(""); setConfirmPayRowProofUrl(null); setConfirmPayRowProofKey(null); setSelectedBankMovementIdForRow(null); setShowBankMovementSearchForRow(false); setBankMovementSearchForRow(""); setSelectedTpvOpIdForRow(null); setShowTpvOpSearchForRow(false); setTpvOpSearchForRow(""); }} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
             <Button
               size="sm"
               disabled={
                 confirmPaymentMutation.isPending ||
-                (confirmPayMethodRow === "tarjeta" && !confirmPayTpvOp.trim()) ||
+                (confirmPayMethodRow === "tarjeta" && !confirmPayTpvOp.trim() && !selectedTpvOpIdForRow) ||
                 (confirmPayMethodRow === "transferencia" && !confirmPayRowProofUrl && !selectedBankMovementIdForRow) ||
                 (confirmPayMethodRow === "efectivo" && !confirmPayNote.trim())
               }
@@ -7324,12 +7475,13 @@ export default function CRMDashboard() {
                   transferProofUrl: confirmPayMethodRow === "transferencia" ? confirmPayRowProofUrl ?? undefined : undefined,
                   transferProofKey: confirmPayMethodRow === "transferencia" ? confirmPayRowProofKey ?? undefined : undefined,
                   bankMovementId: confirmPayMethodRow === "transferencia" ? selectedBankMovementIdForRow ?? undefined : undefined,
+                  cardTerminalOperationId: confirmPayMethodRow === "tarjeta" ? selectedTpvOpIdForRow ?? undefined : undefined,
                 });
               }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {confirmPaymentMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin mr-1" /> : <CheckCircle className="w-4 h-4 mr-1" />}
-              {selectedBankMovementIdForRow && confirmPayMethodRow === "transferencia" ? "Confirmar y conciliar" : "Confirmar y generar factura"}
+              {(selectedBankMovementIdForRow && confirmPayMethodRow === "transferencia") || (selectedTpvOpIdForRow && confirmPayMethodRow === "tarjeta") ? "Confirmar y conciliar" : "Confirmar y generar factura"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -31,6 +31,7 @@ import {
   discountCodeUses,
   bankMovements,
   bankMovementLinks,
+  cardTerminalOperations,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray, inArray, isNotNull, getTableColumns } from "drizzle-orm";
@@ -1514,6 +1515,7 @@ export const crmRouter = router({
           transferProofUrl: z.string().optional(),   // URL S3 del justificante de transferencia
           transferProofKey: z.string().optional(),   // Key S3 del justificante de transferencia
           bankMovementId: z.number().optional(),     // Vincular movimiento bancario conciliado
+          cardTerminalOperationId: z.number().optional(), // Vincular operación TPV (tarjeta)
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1893,6 +1895,25 @@ export const crmRouter = router({
               .where(eq(bankMovements.id, input.bankMovementId));
             await logActivity("quote", input.quoteId, "bank_movement_linked", ctx.user.id, ctx.user.name, {
               bankMovementId: input.bankMovementId,
+              amount: total,
+            });
+          }
+        }
+
+        // ── Vinculación operación TPV opcional ──────────────────────────────
+        if (input.cardTerminalOperationId) {
+          const [tpvOp] = await db.select().from(cardTerminalOperations).where(eq(cardTerminalOperations.id, input.cardTerminalOperationId));
+          if (tpvOp && tpvOp.status !== "conciliado") {
+            await db.update(cardTerminalOperations).set({
+              linkedEntityType: "quote",
+              linkedEntityId: input.quoteId,
+              linkedAt: now,
+              linkedBy: ctx.user.name ?? "admin",
+              status: "conciliado",
+            }).where(eq(cardTerminalOperations.id, input.cardTerminalOperationId));
+            await logActivity("quote", input.quoteId, "tpv_operation_linked", ctx.user.id, ctx.user.name, {
+              cardTerminalOperationId: input.cardTerminalOperationId,
+              operationNumber: tpvOp.operationNumber,
               amount: total,
             });
           }
