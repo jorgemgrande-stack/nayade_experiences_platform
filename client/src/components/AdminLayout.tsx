@@ -92,6 +92,7 @@ const navItems = [
       { label: "Cuenta Resultados", href: "/admin/contabilidad/cuenta-resultados" },
       { label: "Movimientos bancarios", href: "/admin/contabilidad/movimientos-bancarios" },
       { label: "Operaciones TPV", href: "/admin/contabilidad/operaciones-tpv" },
+      { label: "Remesas TPV", href: "/admin/contabilidad/remesas-tpv" },
     ],
   },
   {

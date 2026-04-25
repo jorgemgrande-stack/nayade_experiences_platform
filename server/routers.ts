@@ -170,6 +170,7 @@ import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { operationsRouter } from "./routers/operations";
 import { bankMovementsRouter } from "./routers/bankMovements";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
+import { cardTerminalBatchesRouter } from "./routers/cardTerminalBatches";
 import { emailIngestionRouter } from "./routers/emailIngestion";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
@@ -194,6 +195,7 @@ export const appRouter = router({
   financial: expensesModuleRouter,
   bankMovements: bankMovementsRouter,
   cardTerminalOperations: cardTerminalOperationsRouter,
+  cardTerminalBatches: cardTerminalBatchesRouter,
   emailIngestion: emailIngestionRouter,
   cancellations: cancellationsRouter,
   emailTemplates: emailTemplatesRouter,

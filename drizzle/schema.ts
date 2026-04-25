@@ -2009,7 +2009,7 @@ export type InsertBankMovement = typeof bankMovements.$inferInsert;
 export const bankMovementLinks = mysqlTable("bank_movement_links", {
   id: int("id").autoincrement().primaryKey(),
   bankMovementId: int("bank_movement_id").notNull(),
-  entityType: mysqlEnum("entity_type", ["quote", "reservation", "invoice", "expense"]).notNull(),
+  entityType: mysqlEnum("entity_type", ["quote", "reservation", "invoice", "expense", "card_terminal_batch"]).notNull(),
   entityId: int("entity_id").notNull(),
   linkType: mysqlEnum("link_type", ["income_transfer", "card_income", "cash_income", "expense_payment"]).notNull().default("income_transfer"),
   amountLinked: decimal("amount_linked", { precision: 12, scale: 2 }).notNull(),
@@ -2323,7 +2323,7 @@ export const cardTerminalOperations = mysqlTable("card_terminal_operations", {
   linkedAt: timestamp("linked_at"),
   linkedBy: varchar("linked_by", { length: 128 }),
   // Estado
-  status: mysqlEnum("status", ["pendiente", "conciliado", "incidencia", "ignorado"]).notNull().default("pendiente"),
+  status: mysqlEnum("status", ["pendiente", "conciliado", "incidencia", "ignorado", "included_in_batch", "settled"]).notNull().default("pendiente"),
   incidentReason: text("incident_reason"),
   notes: text("notes"),
   // Importación
@@ -2346,6 +2346,41 @@ export const tpvFileImports = mysqlTable("tpv_file_imports", {
 
 export type CardTerminalOperation = typeof cardTerminalOperations.$inferSelect;
 export type TpvFileImport = typeof tpvFileImports.$inferSelect;
+
+// ── Remesas TPV (Card Terminal Batches) ──────────────────────────────────────
+
+export const cardTerminalBatches = mysqlTable("card_terminal_batches", {
+  id: int("id").primaryKey().autoincrement(),
+  batchDate: varchar("batch_date", { length: 12 }).notNull(),
+  commerceCode: varchar("commerce_code", { length: 64 }),
+  terminalCode: varchar("terminal_code", { length: 64 }),
+  currency: varchar("currency", { length: 8 }).notNull().default("EUR"),
+  totalSales: decimal("total_sales", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  totalRefunds: decimal("total_refunds", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  totalNet: decimal("total_net", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  operationCount: int("operation_count").notNull().default(0),
+  linkedOperationsCount: int("linked_operations_count").notNull().default(0),
+  status: mysqlEnum("status", ["pending", "suggested_bank_match", "reconciled", "difference", "ignored"]).notNull().default("pending"),
+  bankMovementId: int("bank_movement_id"),
+  reconciledAt: timestamp("reconciled_at"),
+  reconciledBy: varchar("reconciled_by", { length: 128 }),
+  differenceAmount: decimal("difference_amount", { precision: 12, scale: 2 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type CardTerminalBatch = typeof cardTerminalBatches.$inferSelect;
+export type InsertCardTerminalBatch = typeof cardTerminalBatches.$inferInsert;
+
+export const cardTerminalBatchOperations = mysqlTable("card_terminal_batch_operations", {
+  id: int("id").primaryKey().autoincrement(),
+  batchId: int("batch_id").notNull(),
+  cardTerminalOperationId: int("card_terminal_operation_id").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  operationType: mysqlEnum("operation_type", ["VENTA", "DEVOLUCION", "ANULACION", "OTRO"]).notNull().default("VENTA"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type CardTerminalBatchOperation = typeof cardTerminalBatchOperations.$inferSelect;
 
 export const emailIngestionLogs = mysqlTable("email_ingestion_logs", {
   id: int("id").primaryKey().autoincrement(),
