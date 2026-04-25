@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
@@ -240,6 +241,7 @@ export default function CardTerminalOperationsManager() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
+    <AdminLayout>
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -872,5 +874,6 @@ export default function CardTerminalOperationsManager() {
         </DialogContent>
       </Dialog>
     </div>
+    </AdminLayout>
   );
 }
