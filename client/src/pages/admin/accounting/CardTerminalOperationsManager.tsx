@@ -35,6 +35,8 @@ import {
   ChevronUp,
 } from "lucide-react";
 
+const IMAP_ALLOWED_SENDER_LABEL = "copia@ticket.comerciaglobalpay.com";
+
 type OpStatus = "pendiente" | "conciliado" | "incidencia" | "ignorado" | "todos";
 type OpType = "VENTA" | "DEVOLUCION" | "ANULACION" | "OTRO" | "todos";
 
@@ -109,8 +111,11 @@ export default function CardTerminalOperationsManager() {
   const [syncResult, setSyncResult] = useState<{
     messagesChecked: number;
     messagesProcessed: number;
+    operationsDetected: number;
     operationsInserted: number;
     operationsDuplicate: number;
+    operationsLinked: number;
+    operationsFailed: number;
     errors: string[];
   } | null>(null);
   const [showEmailLogs, setShowEmailLogs] = useState(false);
@@ -256,7 +261,7 @@ export default function CardTerminalOperationsManager() {
             onClick={() => {
               setSyncing(true);
               setSyncResult(null);
-              syncEmailMut.mutate();
+              syncEmailMut.mutate({ retryErrors: false });
             }}
           >
             <Mail className="w-4 h-4 mr-1" />
@@ -279,10 +284,16 @@ export default function CardTerminalOperationsManager() {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="mt-1 text-muted-foreground">
-            Emails revisados: {syncResult.messagesChecked} · Procesados: {syncResult.messagesProcessed} ·
-            Operaciones nuevas: <span className="font-semibold text-green-700">{syncResult.operationsInserted}</span> ·
-            Duplicadas: {syncResult.operationsDuplicate}
+          <div className="mt-1 text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+            <span>Emails revisados: <b>{syncResult.messagesChecked}</b></span>
+            <span>Procesados: <b>{syncResult.messagesProcessed}</b></span>
+            <span>Detectadas: <b>{syncResult.operationsDetected}</b></span>
+            <span>Nuevas: <b className="text-green-700">{syncResult.operationsInserted}</b></span>
+            <span>Vinculadas: <b className="text-blue-700">{syncResult.operationsLinked}</b></span>
+            <span>Duplicadas: <b>{syncResult.operationsDuplicate}</b></span>
+            {syncResult.operationsFailed > 0 && (
+              <span>Fallidas: <b className="text-red-700">{syncResult.operationsFailed}</b></span>
+            )}
           </div>
           {syncResult.errors.length > 0 && (
             <ul className="mt-2 text-red-700 list-disc list-inside">
@@ -305,43 +316,80 @@ export default function CardTerminalOperationsManager() {
           {showEmailLogs ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
         {showEmailLogs && (
-          <div className="overflow-x-auto">
-            {emailLogsQ.isLoading ? (
-              <p className="p-4 text-sm text-muted-foreground">Cargando...</p>
-            ) : (emailLogsQ.data?.length ?? 0) === 0 ? (
-              <p className="p-4 text-sm text-muted-foreground">Sin registros todavía.</p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="text-left p-2">Fecha</th>
-                    <th className="text-left p-2">Asunto</th>
-                    <th className="text-left p-2">Estado</th>
-                    <th className="text-right p-2">Insertadas</th>
-                    <th className="text-right p-2">Duplicadas</th>
-                    <th className="text-left p-2">Error</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {emailLogsQ.data!.map((log) => (
-                    <tr key={log.id} className="border-t hover:bg-muted/20">
-                      <td className="p-2 whitespace-nowrap">{fmtDatetime(log.createdAt)}</td>
-                      <td className="p-2 max-w-xs truncate">{log.subject ?? "-"}</td>
-                      <td className="p-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                          log.status === "ok" ? "bg-green-100 text-green-800"
-                          : log.status === "error" ? "bg-red-100 text-red-800"
-                          : "bg-gray-100 text-gray-600"
-                        }`}>{log.status}</span>
-                      </td>
-                      <td className="p-2 text-right">{log.operationsInserted}</td>
-                      <td className="p-2 text-right">{log.operationsDuplicate}</td>
-                      <td className="p-2 text-red-600 max-w-xs truncate">{log.errorMessage ?? ""}</td>
+          <div>
+            <div className="flex items-center justify-between px-4 py-2 border-t bg-muted/10">
+              <span className="text-xs text-muted-foreground">
+                {emailLogsQ.data?.length ?? 0} registros · solo emails de {IMAP_ALLOWED_SENDER_LABEL}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={syncing}
+                onClick={() => {
+                  setSyncing(true);
+                  setSyncResult(null);
+                  syncEmailMut.mutate({ retryErrors: true });
+                }}
+              >
+                <RefreshCw className="w-3 h-3 mr-1" /> Reintentar fallidos
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              {emailLogsQ.isLoading ? (
+                <p className="p-4 text-sm text-muted-foreground">Cargando...</p>
+              ) : (emailLogsQ.data?.length ?? 0) === 0 ? (
+                <p className="p-4 text-sm text-muted-foreground">Sin registros todavía.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-2">Fecha</th>
+                      <th className="text-left p-2">Asunto</th>
+                      <th className="text-left p-2">Estado</th>
+                      <th className="text-left p-2">Fuente</th>
+                      <th className="text-right p-2">Det.</th>
+                      <th className="text-right p-2">Ins.</th>
+                      <th className="text-right p-2">Vinc.</th>
+                      <th className="text-right p-2">Dup.</th>
+                      <th className="text-right p-2">Fail</th>
+                      <th className="text-right p-2">Ret.</th>
+                      <th className="text-left p-2">Error</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                  </thead>
+                  <tbody>
+                    {emailLogsQ.data!.map((log) => (
+                      <tr key={log.id} className="border-t hover:bg-muted/20">
+                        <td className="p-2 whitespace-nowrap">{fmtDatetime(log.createdAt)}</td>
+                        <td className="p-2 max-w-[200px] truncate" title={log.subject ?? ""}>{log.subject ?? "-"}</td>
+                        <td className="p-2">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                            log.status === "ok" ? "bg-green-100 text-green-800"
+                            : log.status === "error" ? "bg-red-100 text-red-800"
+                            : "bg-gray-100 text-gray-600"
+                          }`}>{log.status}</span>
+                        </td>
+                        <td className="p-2">
+                          {log.parsingStrategy ? (
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              log.parsingStrategy === "pdf" ? "bg-orange-100 text-orange-700"
+                              : log.parsingStrategy === "excel" ? "bg-blue-100 text-blue-700"
+                              : "bg-gray-100 text-gray-600"
+                            }`}>{log.parsingStrategy}</span>
+                          ) : "-"}
+                        </td>
+                        <td className="p-2 text-right">{log.operationsDetected ?? 0}</td>
+                        <td className="p-2 text-right font-medium text-green-700">{log.operationsInserted}</td>
+                        <td className="p-2 text-right text-blue-700">{log.operationsLinked ?? 0}</td>
+                        <td className="p-2 text-right text-muted-foreground">{log.operationsDuplicate}</td>
+                        <td className="p-2 text-right text-red-600">{log.operationsFailed ?? 0}</td>
+                        <td className="p-2 text-right text-muted-foreground">{log.retryCount ?? 0}</td>
+                        <td className="p-2 text-red-600 max-w-[180px] truncate" title={log.errorMessage ?? ""}>{log.errorMessage ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
       </div>

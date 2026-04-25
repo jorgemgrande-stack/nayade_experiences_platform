@@ -365,6 +365,13 @@
       "when": 1777323120000,
       "tag": "0053_email_ingestion_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "5",
+      "when": 1777409520000,
+      "tag": "0054_email_ingestion_logs_v2",
+      "breakpoints": true
     }
   ]
 }

@@ -2354,8 +2354,13 @@ export const emailIngestionLogs = mysqlTable("email_ingestion_logs", {
   sender: varchar("sender", { length: 255 }),
   receivedAt: timestamp("received_at"),
   status: mysqlEnum("status", ["ok", "error", "skipped"]).notNull().default("ok"),
+  parsingStrategy: varchar("parsing_strategy", { length: 16 }),
+  operationsDetected: int("operations_detected").notNull().default(0),
   operationsInserted: int("operations_inserted").notNull().default(0),
   operationsDuplicate: int("operations_duplicate").notNull().default(0),
+  operationsLinked: int("operations_linked").notNull().default(0),
+  operationsFailed: int("operations_failed").notNull().default(0),
+  retryCount: int("retry_count").notNull().default(0),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

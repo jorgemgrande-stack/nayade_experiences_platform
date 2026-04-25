@@ -15,10 +15,11 @@ const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
 });
 
 export const emailIngestionRouter = router({
-  triggerSync: adminProc.mutation(async () => {
-    const result = await runEmailIngestion();
-    return result;
-  }),
+  triggerSync: adminProc
+    .input(z.object({ retryErrors: z.boolean().default(false) }).optional())
+    .mutation(async ({ input }) => {
+      return runEmailIngestion(input?.retryErrors ?? false);
+    }),
 
   listLogs: adminProc
     .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
