@@ -2360,8 +2360,12 @@ export const cardTerminalBatches = mysqlTable("card_terminal_batches", {
   totalNet: decimal("total_net", { precision: 12, scale: 2 }).notNull().default("0.00"),
   operationCount: int("operation_count").notNull().default(0),
   linkedOperationsCount: int("linked_operations_count").notNull().default(0),
-  status: mysqlEnum("status", ["pending", "suggested_bank_match", "reconciled", "difference", "ignored"]).notNull().default("pending"),
+  status: mysqlEnum("status", ["pending", "suggested", "auto_ready", "reconciled", "difference", "ignored", "review_required"]).notNull().default("pending"),
   bankMovementId: int("bank_movement_id"),
+  suggestedBankMovementId: int("suggested_bank_movement_id"),
+  suggestedScore: int("suggested_score"),
+  matchingRunAt: timestamp("matching_run_at"),
+  suggestionRejected: boolean("suggestion_rejected").notNull().default(false),
   reconciledAt: timestamp("reconciled_at"),
   reconciledBy: varchar("reconciled_by", { length: 128 }),
   differenceAmount: decimal("difference_amount", { precision: 12, scale: 2 }),
@@ -2381,6 +2385,32 @@ export const cardTerminalBatchOperations = mysqlTable("card_terminal_batch_opera
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type CardTerminalBatchOperation = typeof cardTerminalBatchOperations.$inferSelect;
+
+// ── Audit log for batch matching and reconciliation ───────────────────────────
+
+export const cardTerminalBatchAuditLogs = mysqlTable("card_terminal_batch_audit_logs", {
+  id: int("id").primaryKey().autoincrement(),
+  batchId: int("batch_id").notNull(),
+  action: mysqlEnum("action", [
+    "match_suggested",
+    "match_auto_ready",
+    "match_no_candidate",
+    "match_review_required",
+    "suggestion_accepted",
+    "suggestion_rejected",
+    "auto_reconciled",
+    "manual_reconciled",
+    "unreconciled",
+    "review_flagged",
+  ]).notNull(),
+  bankMovementId: int("bank_movement_id"),
+  score: int("score"),
+  autoReconciled: boolean("auto_reconciled").notNull().default(false),
+  performedBy: varchar("performed_by", { length: 128 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type CardTerminalBatchAuditLog = typeof cardTerminalBatchAuditLogs.$inferSelect;
 
 export const emailIngestionLogs = mysqlTable("email_ingestion_logs", {
   id: int("id").primaryKey().autoincrement(),

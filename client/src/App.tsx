@@ -80,6 +80,7 @@ const ProfitLossReport = lazy(() => import("./pages/admin/accounting/ProfitLossR
 const BankMovementsManager = lazy(() => import("./pages/admin/accounting/BankMovementsManager"));
 const CardTerminalOperationsManager = lazy(() => import("./pages/admin/accounting/CardTerminalOperationsManager"));
 const CardTerminalBatchesManager = lazy(() => import("./pages/admin/accounting/CardTerminalBatchesManager"));
+const CardTerminalConciliationDashboard = lazy(() => import("./pages/admin/accounting/CardTerminalConciliationDashboard"));
 
 // Hotel & SPA
 const HotelManager = lazy(() => import("./pages/admin/hotel/HotelManager"));
@@ -230,6 +231,7 @@ function Router() {
       <Route path="/admin/contabilidad/movimientos-bancarios">{() => <Suspense fallback={<AdminLoadingFallback />}><BankMovementsManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/operaciones-tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><CardTerminalOperationsManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/remesas-tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><CardTerminalBatchesManager /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/conciliacion-tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><CardTerminalConciliationDashboard /></Suspense>}</Route>
 
       {/* Fiscal REAV */}
       <Route path="/admin/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>

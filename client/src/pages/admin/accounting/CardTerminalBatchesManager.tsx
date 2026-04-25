@@ -20,28 +20,42 @@ import {
   Link2,
   Trash2,
   ChevronRight,
-  Euro,
   ArrowUpRight,
   ArrowDownLeft,
+  Play,
+  ThumbsUp,
+  ThumbsDown,
+  Zap,
 } from "lucide-react";
 
-type BatchStatus = "pending" | "suggested_bank_match" | "reconciled" | "difference" | "ignored";
+type BatchStatus = "pending" | "suggested" | "auto_ready" | "reconciled" | "difference" | "ignored" | "review_required";
 
 const STATUS_LABELS: Record<BatchStatus, string> = {
   pending: "Pendiente",
-  suggested_bank_match: "Match sugerido",
+  suggested: "Sugerido",
+  auto_ready: "Listo auto",
   reconciled: "Conciliada",
   difference: "Con diferencia",
   ignored: "Ignorada",
+  review_required: "Revisar",
 };
 
 const STATUS_COLORS: Record<BatchStatus, string> = {
   pending: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  suggested_bank_match: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  suggested: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  auto_ready: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   reconciled: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   difference: "bg-orange-500/15 text-orange-400 border-orange-500/30",
   ignored: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+  review_required: "bg-red-500/15 text-red-400 border-red-500/30",
 };
+
+function scoreIcon(score: number | null | undefined): string {
+  if (score == null) return "";
+  if (score >= 80) return "🟢";
+  if (score >= 50) return "🟡";
+  return "🔴";
+}
 
 function fmt(v: string | number | null | undefined): string {
   if (v == null) return "—";
@@ -61,7 +75,6 @@ function fmtDate(s: string | null | undefined): string {
 }
 
 export default function CardTerminalBatchesManager() {
-  // Filters
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -69,11 +82,8 @@ export default function CardTerminalBatchesManager() {
   });
   const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [statusFilter, setStatusFilter] = useState<BatchStatus | "">("");
-
-  // Detail panel
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // Generate dialog
   const [genOpen, setGenOpen] = useState(false);
   const [genFrom, setGenFrom] = useState(() => {
     const d = new Date();
@@ -82,16 +92,13 @@ export default function CardTerminalBatchesManager() {
   });
   const [genTo, setGenTo] = useState(() => new Date().toISOString().slice(0, 10));
 
-  // Reconcile dialog
   const [recOpen, setRecOpen] = useState(false);
   const [recBmId, setRecBmId] = useState<number | null>(null);
   const [recNotes, setRecNotes] = useState("");
 
-  // Ignore dialog
   const [ignOpen, setIgnOpen] = useState(false);
   const [ignNotes, setIgnNotes] = useState("");
 
-  // tRPC
   const utils = trpc.useUtils();
 
   const listQ = trpc.cardTerminalBatches.list.useQuery({
@@ -109,15 +116,53 @@ export default function CardTerminalBatchesManager() {
   const suggestQ = trpc.cardTerminalBatches.suggestBankMovements.useQuery(
     { batchId: selectedId! },
     {
-      enabled: selectedId != null && !!detailQ.data && !["reconciled", "difference", "ignored"].includes(detailQ.data?.status ?? ""),
+      enabled:
+        selectedId != null &&
+        !!detailQ.data &&
+        !["reconciled", "difference", "ignored"].includes(detailQ.data?.status ?? ""),
     }
   );
+
+  function invalidateAll() {
+    utils.cardTerminalBatches.list.invalidate();
+    if (selectedId) utils.cardTerminalBatches.getById.invalidate({ id: selectedId });
+  }
 
   const generateMut = trpc.cardTerminalBatches.generate.useMutation({
     onSuccess: (res) => {
       toast.success(`${res.batchesCreated} remesa(s) generada(s) con ${res.operationsIncluded} operación(es)`);
       setGenOpen(false);
       utils.cardTerminalBatches.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const runMatchingMut = trpc.cardTerminalBatches.runMatching.useMutation({
+    onSuccess: (res) => {
+      toast.success(
+        `Matching ejecutado: ${res.processed} remesas · ${res.suggested} sugeridas · ${res.autoReady} listas · ${res.autoReconciled} auto-conciliadas`
+      );
+      invalidateAll();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const acceptMut = trpc.cardTerminalBatches.acceptSuggestion.useMutation({
+    onSuccess: (res) => {
+      if (res.hasDifference) {
+        toast.warning(`Conciliada con diferencia de ${res.differenceAmount?.toFixed(2)} €`);
+      } else {
+        toast.success("Sugerencia aceptada — remesa conciliada");
+      }
+      invalidateAll();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const rejectMut = trpc.cardTerminalBatches.rejectSuggestion.useMutation({
+    onSuccess: () => {
+      toast.success("Sugerencia rechazada");
+      invalidateAll();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -131,8 +176,7 @@ export default function CardTerminalBatchesManager() {
       }
       setRecOpen(false);
       setRecBmId(null);
-      utils.cardTerminalBatches.list.invalidate();
-      if (selectedId) utils.cardTerminalBatches.getById.invalidate({ id: selectedId });
+      invalidateAll();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -140,8 +184,7 @@ export default function CardTerminalBatchesManager() {
   const unreconcileMut = trpc.cardTerminalBatches.unreconcile.useMutation({
     onSuccess: () => {
       toast.success("Conciliación deshecha");
-      utils.cardTerminalBatches.list.invalidate();
-      if (selectedId) utils.cardTerminalBatches.getById.invalidate({ id: selectedId });
+      invalidateAll();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -150,8 +193,7 @@ export default function CardTerminalBatchesManager() {
     onSuccess: () => {
       toast.success("Remesa marcada como ignorada");
       setIgnOpen(false);
-      utils.cardTerminalBatches.list.invalidate();
-      if (selectedId) utils.cardTerminalBatches.getById.invalidate({ id: selectedId });
+      invalidateAll();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -171,10 +213,13 @@ export default function CardTerminalBatchesManager() {
 
   const stats = {
     total: batches.length,
-    pending: batches.filter(b => b.status === "pending").length,
-    reconciled: batches.filter(b => b.status === "reconciled").length,
-    difference: batches.filter(b => b.status === "difference").length,
+    pending: batches.filter(b => ["pending", "review_required"].includes(b.status)).length,
+    needsAction: batches.filter(b => ["suggested", "auto_ready"].includes(b.status)).length,
+    reconciled: batches.filter(b => ["reconciled", "difference"].includes(b.status)).length,
   };
+
+  const isSuggested = (s: string) => s === "suggested" || s === "auto_ready";
+  const isReconciled = (s: string) => s === "reconciled" || s === "difference";
 
   return (
     <AdminLayout>
@@ -187,10 +232,21 @@ export default function CardTerminalBatchesManager() {
               Agrupa operaciones TPV diarias y concília con movimientos bancarios
             </p>
           </div>
-          <Button onClick={() => setGenOpen(true)} className="bg-orange-600 hover:bg-orange-500 text-white">
-            <Package className="w-4 h-4 mr-2" />
-            Generar remesas
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => runMatchingMut.mutate()}
+              disabled={runMatchingMut.isPending}
+              className="border-zinc-700 text-zinc-300 hover:text-white text-sm"
+            >
+              <Play className="w-4 h-4 mr-2" />
+              {runMatchingMut.isPending ? "Ejecutando..." : "Ejecutar matching"}
+            </Button>
+            <Button onClick={() => setGenOpen(true)} className="bg-orange-600 hover:bg-orange-500 text-white">
+              <Package className="w-4 h-4 mr-2" />
+              Generar remesas
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}
@@ -198,8 +254,8 @@ export default function CardTerminalBatchesManager() {
           {[
             { label: "Total", value: stats.total, icon: Package, color: "text-zinc-300" },
             { label: "Pendientes", value: stats.pending, icon: Clock, color: "text-yellow-400" },
+            { label: "Acción requerida", value: stats.needsAction, icon: Zap, color: "text-blue-400" },
             { label: "Conciliadas", value: stats.reconciled, icon: CheckCircle2, color: "text-emerald-400" },
-            { label: "Con diferencia", value: stats.difference, icon: AlertTriangle, color: "text-orange-400" },
           ].map(s => (
             <Card key={s.label} className="bg-zinc-900 border-zinc-800">
               <CardContent className="p-4 flex items-center gap-3">
@@ -299,9 +355,14 @@ export default function CardTerminalBatchesManager() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-sm font-medium text-white">{fmtDate(batch.batchDate)}</span>
-                            <Badge className={`text-xs border px-1.5 py-0 ${STATUS_COLORS[batch.status as BatchStatus]}`}>
-                              {STATUS_LABELS[batch.status as BatchStatus]}
+                            <Badge className={`text-xs border px-1.5 py-0 ${STATUS_COLORS[batch.status as BatchStatus] ?? ""}`}>
+                              {STATUS_LABELS[batch.status as BatchStatus] ?? batch.status}
                             </Badge>
+                            {batch.suggestedScore != null && (
+                              <span className="text-xs text-zinc-400">
+                                {scoreIcon(batch.suggestedScore)} {batch.suggestedScore}%
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-zinc-400">
                             <span>Terminal: {batch.terminalCode ?? "—"}</span>
@@ -339,8 +400,8 @@ export default function CardTerminalBatchesManager() {
                         Terminal {detail.terminalCode ?? "—"} · Comercio {detail.commerceCode ?? "—"}
                       </div>
                     </div>
-                    <Badge className={`text-xs border px-1.5 py-0.5 ${STATUS_COLORS[detail.status as BatchStatus]}`}>
-                      {STATUS_LABELS[detail.status as BatchStatus]}
+                    <Badge className={`text-xs border px-1.5 py-0.5 ${STATUS_COLORS[detail.status as BatchStatus] ?? ""}`}>
+                      {STATUS_LABELS[detail.status as BatchStatus] ?? detail.status}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -369,6 +430,51 @@ export default function CardTerminalBatchesManager() {
                     </div>
                   )}
 
+                  {/* Suggested bank movement (auto-matching) */}
+                  {isSuggested(detail.status) && detail.suggestedBankMovementId && (
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-blue-300 font-medium">
+                          {scoreIcon(detail.suggestedScore)} Match automático · Score {detail.suggestedScore}%
+                        </span>
+                      </div>
+                      <div className="text-xs text-zinc-400">
+                        Mov. bancario ID: <span className="text-zinc-200">{detail.suggestedBankMovementId}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => acceptMut.mutate({ batchId: selectedId })}
+                          disabled={acceptMut.isPending}
+                          className="flex-1 bg-emerald-700 hover:bg-emerald-600 text-white text-xs h-7"
+                        >
+                          <ThumbsUp className="w-3 h-3 mr-1" />
+                          Aceptar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => rejectMut.mutate({ batchId: selectedId })}
+                          disabled={rejectMut.isPending}
+                          className="flex-1 border-red-900/50 text-red-400 hover:text-red-300 text-xs h-7"
+                        >
+                          <ThumbsDown className="w-3 h-3 mr-1" />
+                          Rechazar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Review required alert */}
+                  {detail.status === "review_required" && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded p-2 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                      <span className="text-xs text-red-300">
+                        Sin movimiento bancario coincidente. Concilia manualmente.
+                      </span>
+                    </div>
+                  )}
+
                   {/* Bank movement linked */}
                   {detail.bankMovement && (
                     <div className="bg-emerald-500/10 border border-emerald-500/30 rounded p-2">
@@ -384,7 +490,7 @@ export default function CardTerminalBatchesManager() {
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2 pt-1">
-                    {!["reconciled", "difference", "ignored"].includes(detail.status) && (
+                    {!isReconciled(detail.status) && detail.status !== "ignored" && (
                       <Button
                         size="sm"
                         onClick={() => { setRecBmId(null); setRecNotes(""); setRecOpen(true); }}
@@ -394,7 +500,7 @@ export default function CardTerminalBatchesManager() {
                         Conciliar
                       </Button>
                     )}
-                    {(detail.status === "reconciled" || detail.status === "difference") && (
+                    {isReconciled(detail.status) && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -417,7 +523,7 @@ export default function CardTerminalBatchesManager() {
                         Ignorar
                       </Button>
                     )}
-                    {!["reconciled", "difference"].includes(detail.status) && (
+                    {!isReconciled(detail.status) && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -476,8 +582,8 @@ export default function CardTerminalBatchesManager() {
                 </CardContent>
               </Card>
 
-              {/* Bank movement suggestions */}
-              {!["reconciled", "difference", "ignored"].includes(detail.status) && (
+              {/* Bank movement suggestions (manual search) */}
+              {!isReconciled(detail.status) && detail.status !== "ignored" && (
                 <Card className="bg-zinc-900 border-zinc-800">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-xs font-medium text-zinc-400 uppercase tracking-wide">

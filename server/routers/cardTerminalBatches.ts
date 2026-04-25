@@ -3,15 +3,17 @@ import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { and, desc, eq, gte, lte, inArray, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, inArray, sql, sum } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
 import {
   cardTerminalBatches,
   cardTerminalBatchOperations,
+  cardTerminalBatchAuditLogs,
   cardTerminalOperations,
   bankMovements,
   bankMovementLinks,
 } from "../../drizzle/schema";
+import { runMatchingJob } from "../services/cardTerminalMatchingService";
 
 const pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(pool);
@@ -138,7 +140,7 @@ export const cardTerminalBatchesRouter = router({
     .input(z.object({
       fromDate: z.string().optional(),
       toDate: z.string().optional(),
-      status: z.enum(["pending", "suggested_bank_match", "reconciled", "difference", "ignored"]).optional(),
+      status: z.enum(["pending", "suggested", "auto_ready", "reconciled", "difference", "ignored", "review_required"]).optional(),
       terminalCode: z.string().optional(),
       limit: z.number().int().min(1).max(200).default(50),
       offset: z.number().int().min(0).default(0),
@@ -330,6 +332,16 @@ export const cardTerminalBatchesRouter = router({
         .set({ conciliationStatus: "conciliado" })
         .where(eq(bankMovements.id, input.bankMovementId));
 
+      await db.insert(cardTerminalBatchAuditLogs).values({
+        batchId: input.batchId,
+        action: "manual_reconciled",
+        bankMovementId: input.bankMovementId,
+        score: 100,
+        autoReconciled: false,
+        performedBy: String(ctx.user.id),
+        notes: input.notes ?? null,
+      }).catch(() => {});
+
       return { success: true, hasDifference: hasSignificantDiff, differenceAmount: diff };
     }),
 
@@ -373,6 +385,9 @@ export const cardTerminalBatchesRouter = router({
           reconciledBy: null,
           differenceAmount: null,
           status: "pending",
+          suggestedBankMovementId: null,
+          suggestedScore: null,
+          suggestionRejected: false,
         })
         .where(eq(cardTerminalBatches.id, input.batchId));
 
@@ -385,6 +400,16 @@ export const cardTerminalBatchesRouter = router({
           .set({ status: "included_in_batch" })
           .where(inArray(cardTerminalOperations.id, batchOps.map(o => o.cardTerminalOperationId)));
       }
+
+      await db.insert(cardTerminalBatchAuditLogs).values({
+        batchId: input.batchId,
+        action: "unreconciled",
+        bankMovementId: bankMovementId ?? null,
+        score: null,
+        autoReconciled: false,
+        performedBy: "admin",
+        notes: null,
+      }).catch(() => {});
 
       return { success: true };
     }),
@@ -399,6 +424,174 @@ export const cardTerminalBatchesRouter = router({
         .set({ status: "ignored", notes: input.notes ?? null })
         .where(eq(cardTerminalBatches.id, input.batchId));
       return { success: true };
+    }),
+
+  runMatching: adminProc
+    .mutation(async () => {
+      const result = await runMatchingJob();
+      return result;
+    }),
+
+  acceptSuggestion: adminProc
+    .input(z.object({ batchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const [batch] = await db.select()
+        .from(cardTerminalBatches)
+        .where(eq(cardTerminalBatches.id, input.batchId))
+        .limit(1);
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!batch.suggestedBankMovementId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No hay sugerencia activa para esta remesa" });
+      }
+
+      const [bm] = await db.select()
+        .from(bankMovements)
+        .where(eq(bankMovements.id, batch.suggestedBankMovementId))
+        .limit(1);
+      if (!bm) throw new TRPCError({ code: "NOT_FOUND", message: "Movimiento bancario sugerido no encontrado" });
+
+      const existingLink = await db.select({ id: bankMovementLinks.id })
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.bankMovementId, batch.suggestedBankMovementId),
+          eq(bankMovementLinks.entityType, "card_terminal_batch")
+        ))
+        .limit(1);
+      if (existingLink.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Este movimiento bancario ya está conciliado con otra remesa" });
+      }
+
+      const batchNet = parseFloat(String(batch.totalNet));
+      const bmAmount = parseFloat(String(bm.importe));
+      const diff = bmAmount - batchNet;
+      const hasSignificantDiff = Math.abs(diff) > 0.01;
+
+      await db.delete(bankMovementLinks).where(
+        and(
+          eq(bankMovementLinks.entityType, "card_terminal_batch"),
+          eq(bankMovementLinks.entityId, input.batchId)
+        )
+      );
+
+      await db.insert(bankMovementLinks).values({
+        bankMovementId: batch.suggestedBankMovementId,
+        entityType: "card_terminal_batch",
+        entityId: input.batchId,
+        linkType: "card_income",
+        amountLinked: batchNet.toFixed(2),
+        status: "confirmed",
+        confidenceScore: batch.suggestedScore ?? 100,
+        matchedBy: String(ctx.user.id),
+        matchedAt: new Date(),
+        notes: `Sugerencia aceptada manualmente. Score: ${batch.suggestedScore ?? 0}%`,
+      });
+
+      await db.update(cardTerminalBatches)
+        .set({
+          bankMovementId: batch.suggestedBankMovementId,
+          reconciledAt: new Date(),
+          reconciledBy: String(ctx.user.id),
+          differenceAmount: hasSignificantDiff ? diff.toFixed(2) : null,
+          status: hasSignificantDiff ? "difference" : "reconciled",
+        })
+        .where(eq(cardTerminalBatches.id, input.batchId));
+
+      await db.update(bankMovements)
+        .set({ conciliationStatus: "conciliado" })
+        .where(eq(bankMovements.id, batch.suggestedBankMovementId));
+
+      const batchOps = await db.select({ cardTerminalOperationId: cardTerminalBatchOperations.cardTerminalOperationId })
+        .from(cardTerminalBatchOperations)
+        .where(eq(cardTerminalBatchOperations.batchId, input.batchId));
+
+      if (batchOps.length > 0) {
+        await db.update(cardTerminalOperations)
+          .set({ status: "settled" })
+          .where(inArray(cardTerminalOperations.id, batchOps.map(o => o.cardTerminalOperationId)));
+      }
+
+      await db.insert(cardTerminalBatchAuditLogs).values({
+        batchId: input.batchId,
+        action: "suggestion_accepted",
+        bankMovementId: batch.suggestedBankMovementId,
+        score: batch.suggestedScore ?? null,
+        autoReconciled: false,
+        performedBy: String(ctx.user.id),
+        notes: `Sugerencia aceptada. Score: ${batch.suggestedScore ?? 0}%`,
+      }).catch(() => {});
+
+      return { success: true, hasDifference: hasSignificantDiff, differenceAmount: diff };
+    }),
+
+  rejectSuggestion: adminProc
+    .input(z.object({ batchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const [batch] = await db.select()
+        .from(cardTerminalBatches)
+        .where(eq(cardTerminalBatches.id, input.batchId))
+        .limit(1);
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await db.update(cardTerminalBatches)
+        .set({
+          suggestionRejected: true,
+          suggestedBankMovementId: null,
+          suggestedScore: null,
+          status: "pending",
+        })
+        .where(eq(cardTerminalBatches.id, input.batchId));
+
+      await db.insert(cardTerminalBatchAuditLogs).values({
+        batchId: input.batchId,
+        action: "suggestion_rejected",
+        bankMovementId: batch.suggestedBankMovementId ?? null,
+        score: batch.suggestedScore ?? null,
+        autoReconciled: false,
+        performedBy: String(ctx.user.id),
+        notes: null,
+      }).catch(() => {});
+
+      return { success: true };
+    }),
+
+  getDashboardStats: adminProc
+    .query(async () => {
+      const rows = await db.select({
+        status: cardTerminalBatches.status,
+        cnt: count(),
+        totalNet: sum(cardTerminalBatches.totalNet),
+      })
+        .from(cardTerminalBatches)
+        .groupBy(cardTerminalBatches.status);
+
+      const stats: Record<string, { count: number; amount: number }> = {};
+      let totalCount = 0;
+      let totalAmount = 0;
+      for (const r of rows) {
+        const cnt = Number(r.cnt);
+        const amt = parseFloat(String(r.totalNet ?? 0));
+        stats[r.status] = { count: cnt, amount: amt };
+        totalCount += cnt;
+        totalAmount += amt;
+      }
+
+      const reconciledCount = (stats["reconciled"]?.count ?? 0) + (stats["difference"]?.count ?? 0);
+      const reconciledAmount = (stats["reconciled"]?.amount ?? 0) + (stats["difference"]?.amount ?? 0);
+      const pendingCount = (stats["pending"]?.count ?? 0) + (stats["review_required"]?.count ?? 0);
+      const suggestedCount = (stats["suggested"]?.count ?? 0) + (stats["auto_ready"]?.count ?? 0);
+
+      return {
+        total: { count: totalCount, amount: totalAmount },
+        reconciled: { count: reconciledCount, amount: reconciledAmount },
+        pending: { count: pendingCount, amount: stats["pending"]?.amount ?? 0 },
+        suggested: { count: stats["suggested"]?.count ?? 0, amount: stats["suggested"]?.amount ?? 0 },
+        autoReady: { count: stats["auto_ready"]?.count ?? 0, amount: stats["auto_ready"]?.amount ?? 0 },
+        reviewRequired: { count: stats["review_required"]?.count ?? 0, amount: stats["review_required"]?.amount ?? 0 },
+        difference: { count: stats["difference"]?.count ?? 0, amount: stats["difference"]?.amount ?? 0 },
+        ignored: { count: stats["ignored"]?.count ?? 0, amount: stats["ignored"]?.amount ?? 0 },
+        pctReconciled: totalCount > 0 ? Math.round((reconciledCount / totalCount) * 100) : 0,
+        needsAttention: (stats["review_required"]?.count ?? 0) + (stats["auto_ready"]?.count ?? 0) + (stats["suggested"]?.count ?? 0),
+      };
     }),
 
   deleteBatch: adminProc

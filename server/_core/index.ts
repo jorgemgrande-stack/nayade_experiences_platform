@@ -19,6 +19,7 @@ import { kbRouter } from "../kbRoute";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
+import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { serveStatic, setupVite } from "./vite";
 
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
@@ -820,4 +821,5 @@ runMigrations()
   .then(() => startInstallmentOverdueJob())
   .then(() => startCancellationStaleJob())
   .then(() => startEmailIngestionJob())
+  .then(() => startMatchingJob())
   .catch(console.error);
