@@ -2346,3 +2346,18 @@ export const tpvFileImports = mysqlTable("tpv_file_imports", {
 
 export type CardTerminalOperation = typeof cardTerminalOperations.$inferSelect;
 export type TpvFileImport = typeof tpvFileImports.$inferSelect;
+
+export const emailIngestionLogs = mysqlTable("email_ingestion_logs", {
+  id: int("id").primaryKey().autoincrement(),
+  messageId: varchar("message_id", { length: 512 }).notNull(),
+  subject: varchar("subject", { length: 512 }),
+  sender: varchar("sender", { length: 255 }),
+  receivedAt: timestamp("received_at"),
+  status: mysqlEnum("status", ["ok", "error", "skipped"]).notNull().default("ok"),
+  operationsInserted: int("operations_inserted").notNull().default(0),
+  operationsDuplicate: int("operations_duplicate").notNull().default(0),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type EmailIngestionLog = typeof emailIngestionLogs.$inferSelect;

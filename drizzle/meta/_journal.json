@@ -358,6 +358,13 @@
       "when": 1777236720000,
       "tag": "0052_card_terminal_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "5",
+      "when": 1777323120000,
+      "tag": "0053_email_ingestion_logs",
+      "breakpoints": true
     }
   ]
 }

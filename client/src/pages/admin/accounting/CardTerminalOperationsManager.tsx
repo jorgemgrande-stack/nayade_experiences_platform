@@ -30,6 +30,9 @@ import {
   X,
   Trash2,
   CreditCard,
+  Mail,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 type OpStatus = "pendiente" | "conciliado" | "incidencia" | "ignorado" | "todos";
@@ -101,6 +104,17 @@ export default function CardTerminalOperationsManager() {
   // Delete import modal
   const [deleteImportId, setDeleteImportId] = useState<number | null>(null);
 
+  // Email sync
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    messagesChecked: number;
+    messagesProcessed: number;
+    operationsInserted: number;
+    operationsDuplicate: number;
+    errors: string[];
+  } | null>(null);
+  const [showEmailLogs, setShowEmailLogs] = useState(false);
+
   // Queries
   const listQ = trpc.cardTerminalOperations.list.useQuery(
     {
@@ -116,6 +130,11 @@ export default function CardTerminalOperationsManager() {
   );
 
   const importsQ = trpc.cardTerminalOperations.listImports.useQuery(undefined, { refetchOnWindowFocus: false });
+
+  const emailLogsQ = trpc.emailIngestion.listLogs.useQuery(
+    { limit: 50 },
+    { enabled: showEmailLogs, refetchOnWindowFocus: false }
+  );
 
   const detailQ = trpc.cardTerminalOperations.getById.useQuery(
     { id: detailId! },
@@ -173,6 +192,15 @@ export default function CardTerminalOperationsManager() {
     },
   });
 
+  const syncEmailMut = trpc.emailIngestion.triggerSync.useMutation({
+    onSuccess: (data) => {
+      setSyncResult(data);
+      utils.cardTerminalOperations.list.invalidate();
+      utils.emailIngestion.listLogs.invalidate();
+    },
+    onSettled: () => setSyncing(false),
+  });
+
   // Handlers
   async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -221,10 +249,101 @@ export default function CardTerminalOperationsManager() {
           <Button variant="outline" size="sm" onClick={() => listQ.refetch()}>
             <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={syncing}
+            onClick={() => {
+              setSyncing(true);
+              setSyncResult(null);
+              syncEmailMut.mutate();
+            }}
+          >
+            <Mail className="w-4 h-4 mr-1" />
+            {syncing ? "Sincronizando..." : "Sincronizar correo TPV"}
+          </Button>
           <Button size="sm" onClick={() => { setShowImportModal(true); setImportResult(null); }}>
             <Upload className="w-4 h-4 mr-1" /> Importar Excel/PDF
           </Button>
         </div>
+      </div>
+
+      {/* Email sync result */}
+      {syncResult && (
+        <div className={`rounded-lg border p-4 text-sm ${syncResult.errors.length > 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+          <div className="flex items-center justify-between">
+            <div className="font-medium">
+              {syncResult.errors.length > 0 ? "Sincronización con errores" : "Sincronización completada"}
+            </div>
+            <button onClick={() => setSyncResult(null)} className="text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="mt-1 text-muted-foreground">
+            Emails revisados: {syncResult.messagesChecked} · Procesados: {syncResult.messagesProcessed} ·
+            Operaciones nuevas: <span className="font-semibold text-green-700">{syncResult.operationsInserted}</span> ·
+            Duplicadas: {syncResult.operationsDuplicate}
+          </div>
+          {syncResult.errors.length > 0 && (
+            <ul className="mt-2 text-red-700 list-disc list-inside">
+              {syncResult.errors.map((e, i) => <li key={i}>{e}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* Email ingestion logs */}
+      <div className="border rounded-lg overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 text-sm font-medium"
+          onClick={() => setShowEmailLogs((v) => !v)}
+        >
+          <span className="flex items-center gap-2">
+            <Mail className="w-4 h-4 text-muted-foreground" />
+            Logs de ingesta por email
+          </span>
+          {showEmailLogs ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </button>
+        {showEmailLogs && (
+          <div className="overflow-x-auto">
+            {emailLogsQ.isLoading ? (
+              <p className="p-4 text-sm text-muted-foreground">Cargando...</p>
+            ) : (emailLogsQ.data?.length ?? 0) === 0 ? (
+              <p className="p-4 text-sm text-muted-foreground">Sin registros todavía.</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left p-2">Fecha</th>
+                    <th className="text-left p-2">Asunto</th>
+                    <th className="text-left p-2">Estado</th>
+                    <th className="text-right p-2">Insertadas</th>
+                    <th className="text-right p-2">Duplicadas</th>
+                    <th className="text-left p-2">Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {emailLogsQ.data!.map((log) => (
+                    <tr key={log.id} className="border-t hover:bg-muted/20">
+                      <td className="p-2 whitespace-nowrap">{fmtDatetime(log.createdAt)}</td>
+                      <td className="p-2 max-w-xs truncate">{log.subject ?? "-"}</td>
+                      <td className="p-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                          log.status === "ok" ? "bg-green-100 text-green-800"
+                          : log.status === "error" ? "bg-red-100 text-red-800"
+                          : "bg-gray-100 text-gray-600"
+                        }`}>{log.status}</span>
+                      </td>
+                      <td className="p-2 text-right">{log.operationsInserted}</td>
+                      <td className="p-2 text-right">{log.operationsDuplicate}</td>
+                      <td className="p-2 text-red-600 max-w-xs truncate">{log.errorMessage ?? ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       {/* KPIs */}

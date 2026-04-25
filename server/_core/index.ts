@@ -18,6 +18,7 @@ import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
+import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { serveStatic, setupVite } from "./vite";
 
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
@@ -818,4 +819,5 @@ runMigrations()
   .then(() => startAbandonedCheckoutCleanup())
   .then(() => startInstallmentOverdueJob())
   .then(() => startCancellationStaleJob())
+  .then(() => startEmailIngestionJob())
   .catch(console.error);

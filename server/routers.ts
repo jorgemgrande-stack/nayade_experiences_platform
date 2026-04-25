@@ -170,6 +170,7 @@ import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { operationsRouter } from "./routers/operations";
 import { bankMovementsRouter } from "./routers/bankMovements";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
+import { emailIngestionRouter } from "./routers/emailIngestion";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 // Admin middlewaree
@@ -193,6 +194,7 @@ export const appRouter = router({
   financial: expensesModuleRouter,
   bankMovements: bankMovementsRouter,
   cardTerminalOperations: cardTerminalOperationsRouter,
+  emailIngestion: emailIngestionRouter,
   cancellations: cancellationsRouter,
   emailTemplates: emailTemplatesRouter,
   operations: operationsRouter,
