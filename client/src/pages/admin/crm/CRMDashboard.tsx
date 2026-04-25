@@ -2956,20 +2956,10 @@ function QuoteDetailModal({
     { status: "pendiente", search: bankMovementSearchForConfirm || undefined, pageSize: 20, page: 1 },
     { enabled: showBankMovementSearchForConfirm && showConfirmPaymentModal && paymentMethodSelected === "transferencia" }
   );
-  // FASE 2A: movimientos bancarios pendientes para vincular (row confirm payment modal)
-  const bankMovementsForRowQ = trpc.bankMovements.listMovements.useQuery(
-    { status: "pendiente", search: bankMovementSearchForRow || undefined, pageSize: 20, page: 1 },
-    { enabled: showBankMovementSearchForRow && confirmPaymentId !== null && confirmPayMethodRow === "transferencia" }
-  );
-  // TPV ops pendientes para vincular (confirm payment modal)
+  // TPV ops pendientes para vincular (confirm payment modal — Modal 1)
   const tpvOpsForConfirmQ = trpc.cardTerminalOperations.list.useQuery(
     { status: "pendiente", search: tpvOpSearchForConfirm || undefined, pageSize: 20, page: 1 },
     { enabled: showTpvOpSearchForConfirm && showConfirmPaymentModal && paymentMethodSelected === "tarjeta" }
-  );
-  // TPV ops pendientes para vincular (row confirm payment modal)
-  const tpvOpsForRowQ = trpc.cardTerminalOperations.list.useQuery(
-    { status: "pendiente", search: tpvOpSearchForRow || undefined, pageSize: 20, page: 1 },
-    { enabled: showTpvOpSearchForRow && confirmPaymentId !== null && confirmPayMethodRow === "tarjeta" }
   );
   const createPendingPayment = trpc.crm.pendingPayments.create.useMutation({
     onSuccess: () => {
@@ -4963,6 +4953,16 @@ export default function CRMDashboard() {
     },
     onError: (e) => toast.error(e.message),
   });
+
+  // Queries para Modal 2 (CRMDashboard scope)
+  const bankMovementsForRowQ = trpc.bankMovements.listMovements.useQuery(
+    { status: "pendiente", search: bankMovementSearchForRow || undefined, pageSize: 20, page: 1 },
+    { enabled: showBankMovementSearchForRow && confirmPaymentId !== null && confirmPayMethodRow === "transferencia" }
+  );
+  const tpvOpsForRowQ = trpc.cardTerminalOperations.list.useQuery(
+    { status: "pendiente", search: tpvOpSearchForRow || undefined, pageSize: 20, page: 1 },
+    { enabled: showTpvOpSearchForRow && confirmPaymentId !== null && confirmPayMethodRow === "tarjeta" }
+  );
 
   const confirmPaymentMutation = trpc.crm.quotes.confirmPayment.useMutation({
     onSuccess: () => {
