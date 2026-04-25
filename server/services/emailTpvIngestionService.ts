@@ -445,7 +445,7 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
         // Isolate each email — never abort the loop on single failure
         try {
           const msgData = (await client.fetchOne(
-            { uid } as any,
+            uid,
             { source: true },
             { uid: true }
           )) as any;
