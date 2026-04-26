@@ -2602,6 +2602,17 @@ export type OnboardingStatus = typeof onboardingStatus.$inferSelect;
 // Los nuevos roles (is_legacy=false) están preparados para la siguiente fase
 // donde se asignarán permisos y se migrará users.role al sistema RBAC completo.
 
+// ─── RBAC: USER ROLE ASSIGNMENTS ─────────────────────────────────────────────
+// Asigna roles RBAC a usuarios. Coexiste con users.role (legacy) sin reemplazarlo.
+// Composite PK (user_id, role_id) enforced at DB level.
+
+export const rbacUserRoles = mysqlTable("rbac_user_roles", {
+  userId: int("user_id").notNull(),
+  roleId: int("role_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type RbacUserRole = typeof rbacUserRoles.$inferSelect;
+
 // ─── RBAC: PERMISSIONS ───────────────────────────────────────────────────────
 
 export const rbacPermissions = mysqlTable("rbac_permissions", {

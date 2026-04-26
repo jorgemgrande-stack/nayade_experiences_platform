@@ -1145,6 +1145,100 @@ export const appRouter = router({
       if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes eliminarte a ti mismo" });
       return deleteUser(input.userId);
     }),
+    // ─── RBAC Phase 3: user role assignments ─────────────────────────────────
+    getRbacUsersData: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return {} as Record<number, { roles: Array<{ key: string; name: string; isLegacy: boolean }>; permissions: string[] }>;
+      try {
+        const { sql } = await import("drizzle-orm");
+        const result = await db.execute(sql`
+          SELECT
+            ur.user_id,
+            rr.\`key\`       AS role_key,
+            rr.name         AS role_name,
+            rr.is_legacy    AS role_is_legacy,
+            rr.sort_order   AS role_sort_order,
+            p.\`key\`        AS permission_key
+          FROM rbac_user_roles ur
+          JOIN rbac_roles rr ON rr.id = ur.role_id
+          LEFT JOIN rbac_role_permissions rrp ON rrp.role_id = rr.id
+          LEFT JOIN rbac_permissions p ON p.id = rrp.permission_id
+          WHERE rr.is_active = 1
+          ORDER BY ur.user_id, rr.sort_order, p.\`key\`
+        `);
+        const rows = (result as any[][])[0] as Array<{
+          user_id: number;
+          role_key: string;
+          role_name: string;
+          role_is_legacy: number;
+          permission_key: string | null;
+        }>;
+        const map: Record<number, { roles: Array<{ key: string; name: string; isLegacy: boolean }>; permissions: string[] }> = {};
+        for (const row of rows) {
+          const uid = Number(row.user_id);
+          if (!map[uid]) map[uid] = { roles: [], permissions: [] };
+          if (!map[uid].roles.find(r => r.key === row.role_key)) {
+            map[uid].roles.push({ key: row.role_key, name: row.role_name, isLegacy: Boolean(row.role_is_legacy) });
+          }
+          if (row.permission_key && !map[uid].permissions.includes(row.permission_key)) {
+            map[uid].permissions.push(row.permission_key);
+          }
+        }
+        return map;
+      } catch {
+        return {};
+      }
+    }),
+    assignRbacRole: adminProcedure.input(z.object({
+      userId: z.number(),
+      roleKey: z.string().min(1).max(64),
+    })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB no disponible" });
+      const { sql } = await import("drizzle-orm");
+      const roleResult = await db.execute(sql`SELECT id FROM rbac_roles WHERE \`key\` = ${input.roleKey} AND is_active = 1`);
+      const roleRow = (roleResult as any[][])[0]?.[0] as { id: number } | undefined;
+      if (!roleRow) throw new TRPCError({ code: "NOT_FOUND", message: "Rol RBAC no encontrado" });
+      await db.execute(sql`INSERT IGNORE INTO rbac_user_roles (user_id, role_id) VALUES (${input.userId}, ${roleRow.id})`);
+      return { success: true };
+    }),
+    removeRbacRole: adminProcedure.input(z.object({
+      userId: z.number(),
+      roleKey: z.string().min(1).max(64),
+    })).mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB no disponible" });
+      const { sql } = await import("drizzle-orm");
+      if (input.roleKey === 'admin') {
+        // Guard 1: can't remove last RBAC admin globally
+        const cntResult = await db.execute(sql`
+          SELECT COUNT(*) AS cnt FROM rbac_user_roles ur
+          JOIN rbac_roles rr ON rr.id = ur.role_id
+          WHERE rr.\`key\` = 'admin'
+        `);
+        const count = Number((cntResult as any[][])[0]?.[0]?.cnt ?? 0);
+        if (count <= 1) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "No puedes eliminar el rol admin del único administrador RBAC. Asigna primero otro administrador." });
+        }
+        // Guard 2: can't self-demote from admin if no other admin would remain
+        if (input.userId === ctx.user.id) {
+          const otherAdminResult = await db.execute(sql`
+            SELECT COUNT(*) AS cnt FROM rbac_user_roles ur
+            JOIN rbac_roles rr ON rr.id = ur.role_id
+            WHERE rr.\`key\` = 'admin' AND ur.user_id != ${ctx.user.id}
+          `);
+          const otherAdminCount = Number((otherAdminResult as any[][])[0]?.[0]?.cnt ?? 0);
+          if (otherAdminCount === 0) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "No puedes quitarte el rol admin si no hay otro administrador RBAC asignado." });
+          }
+        }
+      }
+      const roleResult = await db.execute(sql`SELECT id FROM rbac_roles WHERE \`key\` = ${input.roleKey}`);
+      const roleRow = (roleResult as any[][])[0]?.[0] as { id: number } | undefined;
+      if (!roleRow) throw new TRPCError({ code: "NOT_FOUND", message: "Rol RBAC no encontrado" });
+      await db.execute(sql`DELETE FROM rbac_user_roles WHERE user_id = ${input.userId} AND role_id = ${roleRow.id}`);
+      return { success: true };
+    }),
     getRbacRolePermissions: adminProcedure.query(async () => {
       const db = await getDb();
       if (!db) return {} as Record<string, string[]>;

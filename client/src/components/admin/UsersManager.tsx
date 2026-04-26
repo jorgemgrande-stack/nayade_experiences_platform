@@ -46,7 +46,7 @@ import {
   UserPlus, MoreVertical, Shield, ShieldCheck, UserCheck, UserX,
   Trash2, Send, CheckCircle, Clock, XCircle, UtensilsCrossed,
   ChevronDown, ChevronUp, Plus, Minus, KeyRound, Eye, Star,
-  Briefcase, MonitorPlay, Info, AlertTriangle, Hourglass, ShoppingCart,
+  Briefcase, MonitorPlay, Info, AlertTriangle, Hourglass, ShoppingCart, X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -218,6 +218,12 @@ function RoleInfoCard({ roleValue }: { roleValue: string }) {
   );
 }
 
+// ─── Lista unificada de todos los roles disponibles para asignar ─────────────
+const ALL_RBAC_ROLES = [
+  ...ROLES.map(r => ({ key: r.value, label: r.label, color: r.color, icon: r.icon })),
+  ...UPCOMING_ROLES.map(r => ({ key: r.key, label: r.label, color: r.color, icon: r.icon })),
+];
+
 // ─── RBAC: permisos en vivo desde base de datos ───────────────────────────────
 function RbacPermissionsCard({ perms }: { perms: string[] }) {
   const grouped = useMemo(() => {
@@ -374,6 +380,7 @@ export default function UsersManager() {
 
   const { data: users = [], isLoading } = trpc.admin.getUsers.useQuery();
   const { data: rbacPermMap = {} } = trpc.admin.getRbacRolePermissions.useQuery();
+  const { data: rbacUserData = {} } = trpc.admin.getRbacUsersData.useQuery();
 
   // ─── FASE 4: contadores y detección de último admin ───────────────────────
   const roleCounts = useMemo(() => {
@@ -443,14 +450,38 @@ export default function UsersManager() {
     onError: (e) => toast.error("Error", { description: e.message }),
   });
 
+  const assignRbacRole = trpc.admin.assignRbacRole.useMutation({
+    onSuccess: () => {
+      utils.admin.getRbacUsersData.invalidate();
+      setAddRoleKey("");
+      toast.success("Rol RBAC asignado");
+    },
+    onError: (e) => toast.error("Error", { description: e.message }),
+  });
+
+  const removeRbacRole = trpc.admin.removeRbacRole.useMutation({
+    onSuccess: () => {
+      utils.admin.getRbacUsersData.invalidate();
+      toast.success("Rol RBAC eliminado");
+    },
+    onError: (e) => toast.error("Error", { description: e.message }),
+  });
+
   // ─── UI state ───────────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "user" as Role });
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<{ id: number; name: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
-  // FASE 4: filtro por rol
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [rbacManageTarget, setRbacManageTarget] = useState<{ id: number; name: string } | null>(null);
+  const [addRoleKey, setAddRoleKey] = useState("");
+
+  // Count of users that have 'admin' RBAC role assigned (for last-admin guard)
+  const rbacAdminCount = useMemo(
+    () => Object.values(rbacUserData).filter(d => d.roles.some(r => r.key === "admin")).length,
+    [rbacUserData]
+  );
 
   // ─── FASE 2: Guardia para cambio de rol ──────────────────────────────────
   function handleRoleChange(targetUserId: number, targetUserRole: string, newRole: string) {
@@ -473,6 +504,35 @@ export default function UsersManager() {
     }
 
     changeRole.mutate({ userId: targetUserId, role: newRole as any });
+  }
+
+  // ─── RBAC role assignment handlers ──────────────────────────────────────
+  function handleAssignRbacRole(userId: number, roleKey: string) {
+    if (!roleKey) return;
+    assignRbacRole.mutate({ userId, roleKey });
+  }
+
+  function handleRemoveRbacRole(userId: number, roleKey: string) {
+    // Guard 1: can't remove last RBAC admin globally
+    if (roleKey === "admin" && rbacAdminCount <= 1) {
+      toast.error("Operación bloqueada", {
+        description: "No puedes eliminar el rol admin del último administrador RBAC.",
+      });
+      return;
+    }
+    // Guard 2: can't self-demote from admin if no other admin exists
+    if (roleKey === "admin" && currentUser?.id === userId) {
+      const otherAdminExists = Object.entries(rbacUserData).some(
+        ([uid, d]) => Number(uid) !== userId && d.roles.some(r => r.key === "admin")
+      );
+      if (!otherAdminExists) {
+        toast.error("No puedes quitarte el acceso de administrador", {
+          description: "Asigna primero el rol admin a otro usuario.",
+        });
+        return;
+      }
+    }
+    removeRbacRole.mutate({ userId, roleKey });
   }
 
   // ─── Filtered users ─────────────────────────────────────────────────────
@@ -657,7 +717,7 @@ export default function UsersManager() {
                           </SelectContent>
                         </Select>
 
-                        {/* Tooltip: RBAC vivo si disponible, fallback estático */}
+                        {/* Tooltip: permisos efectivos del usuario */}
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button className="text-gray-300 hover:text-gray-500 transition-colors">
@@ -665,20 +725,33 @@ export default function UsersManager() {
                             </button>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="max-w-72 p-3">
-                            {rbacPermMap[user.role]?.length > 0
-                              ? <RbacPermissionsCard perms={rbacPermMap[user.role]} />
-                              : <RoleInfoCard roleValue={user.role} />}
+                            {(() => {
+                              const userPerms = rbacUserData[user.id]?.permissions;
+                              if (userPerms && userPerms.length > 0) return <RbacPermissionsCard perms={userPerms} />;
+                              if (rbacPermMap[user.role]?.length > 0) return <RbacPermissionsCard perms={rbacPermMap[user.role]} />;
+                              return <RoleInfoCard roleValue={user.role} />;
+                            })()}
                           </TooltipContent>
                         </Tooltip>
                       </div>
 
-                      {/* Permisos RBAC count */}
-                      {rbacPermMap[user.role]?.length > 0 && (
-                        <p className="text-[10px] text-indigo-500 flex items-center gap-1 mt-0.5">
-                          <Shield className="w-2.5 h-2.5" />
-                          {rbacPermMap[user.role].length} permisos RBAC
-                        </p>
-                      )}
+                      {/* Roles RBAC asignados al usuario */}
+                      {(rbacUserData[user.id]?.roles ?? []).length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {rbacUserData[user.id].roles.map((r) => {
+                            const meta = ALL_RBAC_ROLES.find(x => x.key === r.key);
+                            const Icon = meta?.icon ?? Shield;
+                            return (
+                              <span key={r.key} className={`inline-flex items-center gap-1 text-[10px] font-medium border rounded-full px-1.5 py-0.5 ${meta?.color ?? "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
+                                <Icon className="w-2.5 h-2.5" />
+                                {r.name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : Object.keys(rbacUserData).length > 0 ? (
+                        <p className="text-[10px] text-gray-400 mt-0.5 italic">↳ fallback legacy</p>
+                      ) : null}
 
                       {/* FASE 2: advertencia de último admin */}
                       {isLastAdmin && (
@@ -710,6 +783,19 @@ export default function UsersManager() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-52">
+                          <DropdownMenuItem
+                            onClick={() => { setRbacManageTarget({ id: user.id, name: user.name ?? user.email ?? "Usuario" }); setAddRoleKey(""); }}
+                            className="gap-2"
+                          >
+                            <Shield className="w-4 h-4 text-indigo-600" />
+                            Roles RBAC
+                            {(rbacUserData[user.id]?.roles ?? []).length > 0 && (
+                              <span className="ml-auto text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-1.5">
+                                {rbacUserData[user.id].roles.length}
+                              </span>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           {!user.inviteAccepted && (
                             <DropdownMenuItem
                               onClick={() => resendInvite.mutate({ userId: user.id, email: user.email ?? "", name: user.name ?? "", role: user.role, origin: window.location.origin })}
@@ -811,6 +897,132 @@ export default function UsersManager() {
             })}
           </div>
         </div>
+
+        {/* ── RBAC Role Manager Dialog ── */}
+        <Dialog
+          open={!!rbacManageTarget}
+          onOpenChange={(open) => { if (!open) { setRbacManageTarget(null); setAddRoleKey(""); } }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-indigo-600" />
+                Roles RBAC — {rbacManageTarget?.name}
+              </DialogTitle>
+            </DialogHeader>
+            {rbacManageTarget && (() => {
+              const uid = rbacManageTarget.id;
+              const currentRoles = rbacUserData[uid]?.roles ?? [];
+              const currentPerms = rbacUserData[uid]?.permissions ?? [];
+              const currentRoleKeys = currentRoles.map(r => r.key);
+              const availableToAdd = ALL_RBAC_ROLES.filter(r => !currentRoleKeys.includes(r.key));
+              const legacyRole = users.find(u => u.id === uid)?.role ?? "—";
+
+              return (
+                <div className="space-y-4 py-2">
+                  {/* Roles asignados */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-600 mb-2">Roles asignados:</p>
+                    {currentRoles.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3 text-center">
+                        <p className="text-xs text-gray-500">
+                          Sin roles RBAC — usando rol legacy{" "}
+                          <code className="text-xs bg-white border border-gray-200 rounded px-1">{legacyRole}</code>{" "}
+                          como fallback
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {currentRoles.map((role) => {
+                          const meta = ALL_RBAC_ROLES.find(r => r.key === role.key);
+                          const Icon = meta?.icon ?? Shield;
+                          const isLastAdminRbac = role.key === "admin" && rbacAdminCount <= 1;
+                          const isSelfAdminRemoval = role.key === "admin" && currentUser?.id === uid && rbacAdminCount <= 1;
+                          const isBlocked = isLastAdminRbac || isSelfAdminRemoval;
+                          return (
+                            <div
+                              key={role.key}
+                              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${meta?.color ?? "bg-indigo-100 text-indigo-800 border-indigo-200"}`}
+                            >
+                              <Icon className="w-3 h-3 shrink-0" />
+                              {role.name}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    onClick={() => !isBlocked && handleRemoveRbacRole(uid, role.key)}
+                                    disabled={isBlocked || removeRbacRole.isPending}
+                                    className="ml-0.5 opacity-50 hover:opacity-100 hover:text-red-600 transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </TooltipTrigger>
+                                {isBlocked && (
+                                  <TooltipContent side="top">
+                                    <p className="text-xs">No se puede eliminar: único admin RBAC</p>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Añadir rol */}
+                  {availableToAdd.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-600">Añadir rol:</p>
+                      <div className="flex gap-2">
+                        <Select value={addRoleKey} onValueChange={setAddRoleKey}>
+                          <SelectTrigger className="flex-1 h-9 text-sm">
+                            <SelectValue placeholder="Seleccionar rol…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableToAdd.map((r) => {
+                              const Icon = r.icon;
+                              return (
+                                <SelectItem key={r.key} value={r.key}>
+                                  <div className="flex items-center gap-2 py-0.5">
+                                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] border ${r.color}`}>
+                                      <Icon className="w-2.5 h-2.5" />
+                                      {r.label}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          onClick={() => handleAssignRbacRole(uid, addRoleKey)}
+                          disabled={!addRoleKey || assignRbacRole.isPending}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white h-9 shrink-0"
+                          size="sm"
+                        >
+                          {assignRbacRole.isPending ? "…" : "Asignar"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Permisos efectivos */}
+                  {currentPerms.length > 0 && (
+                    <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 max-h-48 overflow-y-auto">
+                      <RbacPermissionsCard perms={currentPerms} />
+                    </div>
+                  )}
+
+                  {/* Nota de compatibilidad */}
+                  <p className="text-[10px] text-gray-400 flex items-start gap-1">
+                    <Info className="w-3 h-3 mt-0.5 shrink-0" />
+                    Los roles RBAC coexisten con el rol legacy. Los accesos al sistema siguen controlados por el rol legacy hasta que se active la siguiente fase.
+                  </p>
+                </div>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
 
         {/* ── Create User Dialog ── */}
         <Dialog open={showCreate} onOpenChange={setShowCreate}>
