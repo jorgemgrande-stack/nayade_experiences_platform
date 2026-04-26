@@ -292,44 +292,119 @@ function StatusDot({ status }: { status: "ok" | "warning" | "neutral" }) {
 // ─── Audit Log ────────────────────────────────────────────────────────────────
 
 function AuditLog() {
-  const logsQ = trpc.config.listChangeLogs.useQuery({ limit: 50 });
+  const [filterKey,  setFilterKey]  = useState("");
+  const [filterType, setFilterType] = useState<"all" | "feature_flag" | "system_setting">("all");
+  const [filterUser, setFilterUser] = useState("");
+  const [dateFrom,   setDateFrom]   = useState("");
+  const [dateTo,     setDateTo]     = useState("");
 
-  if (logsQ.isLoading) {
-    return <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>;
-  }
+  const logsQ = trpc.config.listChangeLogs.useQuery({
+    limit: 100,
+    ...(filterKey.trim()            && { key: filterKey.trim() }),
+    ...(filterType !== "all"        && { entityType: filterType }),
+    ...(filterUser.trim()           && { changedByName: filterUser.trim() }),
+    ...(dateFrom                    && { dateFrom }),
+    ...(dateTo                      && { dateTo }),
+  });
 
-  const logs = logsQ.data ?? [];
-
-  if (!logs.length) {
-    return <p className="text-sm text-muted-foreground text-center py-8">No hay cambios registrados todavía.</p>;
-  }
+  const hasFilters = filterKey || filterType !== "all" || filterUser || dateFrom || dateTo;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border/50">
-            <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Fecha</th>
-            <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Clave</th>
-            <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Anterior</th>
-            <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Nuevo</th>
-            <th className="text-left py-2 text-xs font-semibold text-muted-foreground">Por</th>
-          </tr>
-        </thead>
-        <tbody>
-          {logs.map(log => (
-            <tr key={log.id} className="border-b border-border/30 last:border-0">
-              <td className="py-2 pr-4 text-xs text-muted-foreground whitespace-nowrap">
-                {new Date(log.changedAt).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })}
-              </td>
-              <td className="py-2 pr-4 font-mono text-xs">{log.key}</td>
-              <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[140px] truncate">{log.oldValue ?? "—"}</td>
-              <td className="py-2 pr-4 text-xs max-w-[140px] truncate">{log.newValue ?? "—"}</td>
-              <td className="py-2 text-xs text-muted-foreground">{log.changedByName ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-4">
+      {/* Filter bar */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Input
+          placeholder="Buscar clave…"
+          value={filterKey}
+          onChange={e => setFilterKey(e.target.value)}
+          className="h-8 text-xs"
+        />
+        <select
+          value={filterType}
+          onChange={e => setFilterType(e.target.value as typeof filterType)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="all">Todos los tipos</option>
+          <option value="feature_flag">Feature flag</option>
+          <option value="system_setting">Setting</option>
+        </select>
+        <Input
+          placeholder="Usuario…"
+          value={filterUser}
+          onChange={e => setFilterUser(e.target.value)}
+          className="h-8 text-xs"
+        />
+        <Input
+          type="date"
+          value={dateFrom}
+          onChange={e => setDateFrom(e.target.value)}
+          className="h-8 text-xs"
+          title="Desde"
+        />
+        <Input
+          type="date"
+          value={dateTo}
+          onChange={e => setDateTo(e.target.value)}
+          className="h-8 text-xs"
+          title="Hasta"
+        />
+      </div>
+      {hasFilters && (
+        <button
+          onClick={() => { setFilterKey(""); setFilterType("all"); setFilterUser(""); setDateFrom(""); setDateTo(""); }}
+          className="text-xs text-muted-foreground hover:text-foreground underline"
+        >
+          Limpiar filtros
+        </button>
+      )}
+
+      {/* Table */}
+      {logsQ.isLoading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : !logsQ.data?.length ? (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          {hasFilters ? "No hay resultados para los filtros aplicados." : "No hay cambios registrados todavía."}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/50">
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Fecha</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Tipo</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Clave</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Anterior</th>
+                <th className="text-left py-2 pr-4 text-xs font-semibold text-muted-foreground">Nuevo</th>
+                <th className="text-left py-2 text-xs font-semibold text-muted-foreground">Por</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logsQ.data.map(log => (
+                <tr key={log.id} className="border-b border-border/30 last:border-0">
+                  <td className="py-2 pr-4 text-xs text-muted-foreground whitespace-nowrap">
+                    {new Date(log.changedAt).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" })}
+                  </td>
+                  <td className="py-2 pr-4">
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                      log.entityType === "feature_flag"
+                        ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                        : "bg-muted text-muted-foreground"
+                    }`}>
+                      {log.entityType === "feature_flag" ? "flag" : "setting"}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 font-mono text-xs">{log.key}</td>
+                  <td className="py-2 pr-4 text-xs text-muted-foreground max-w-[120px] truncate">{log.oldValue ?? "—"}</td>
+                  <td className="py-2 pr-4 text-xs max-w-[120px] truncate">{log.newValue ?? "—"}</td>
+                  <td className="py-2 text-xs text-muted-foreground">{log.changedByName ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

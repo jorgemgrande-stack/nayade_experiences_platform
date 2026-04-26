@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../_core/trpc";
-import { organizations, onboardingStatus } from "../../drizzle/schema";
+import { organizations, onboardingStatus, systemSettings } from "../../drizzle/schema";
 
 // Default tenant — Nayade Experiences (id=1).
 // Phase 5D will parameterize this per-request when multi-tenant is enabled.
@@ -32,6 +32,17 @@ const STEP_FIELDS: Record<string, Partial<typeof onboardingStatus.$inferInsert>>
   integrations:  { integrationsReviewed: true },
 };
 
+// Settings keys used to compute real progress (not just boolean flags)
+const PROGRESS_KEYS = [
+  "brand_name",
+  "brand_nif",
+  "brand_address",
+  "brand_logo_url",
+  "brand_primary_color",
+  "email_reservations",
+  "email_admin_alerts",
+] as const;
+
 // Env vars to check for the integrations step — only presence, never value.
 const ENV_CHECKS = [
   { key: "SMTP_HOST",            label: "SMTP Servidor",               group: "SMTP" },
@@ -48,9 +59,11 @@ const ENV_CHECKS = [
 ] as const;
 
 export const onboardingRouter = router({
-  // Returns onboarding progress for the default org.
+  // Returns onboarding progress for the default org, computed from real DB data.
   getStatus: adminProcedure.query(async () => {
     const db = getDb();
+
+    // Get or create onboarding_status record
     let [status] = await db.select()
       .from(onboardingStatus)
       .where(eq(onboardingStatus.organizationId, DEFAULT_ORG_ID))
@@ -64,21 +77,34 @@ export const onboardingRouter = router({
         .limit(1);
     }
 
-    const steps = [
-      status.businessInfoCompleted,
-      status.fiscalCompleted,
-      status.brandingCompleted,
-      status.emailsCompleted,
-      status.modulesCompleted,
-      status.integrationsReviewed,
-    ];
-    const completed = steps.filter(Boolean).length;
-    const progress = Math.round((completed / steps.length) * 100);
+    // Fetch relevant settings to compute real progress
+    const settingRows = await db
+      .select({ key: systemSettings.key, value: systemSettings.value })
+      .from(systemSettings)
+      .where(inArray(systemSettings.key, [...PROGRESS_KEYS]));
 
-    return { ...status, progress };
+    const val = (key: string) =>
+      settingRows.find(s => s.key === key)?.value?.trim() ?? "";
+    const has = (key: string) => val(key) !== "";
+
+    // Steps 1–4: derived from real setting values.
+    // Steps 5–6: user-confirmed actions (module selection, env review).
+    const computed = {
+      businessInfoCompleted: has("brand_name"),
+      fiscalCompleted:       has("brand_nif") && has("brand_address"),
+      brandingCompleted:     has("brand_logo_url") || has("brand_primary_color"),
+      emailsCompleted:       has("email_reservations") && has("email_admin_alerts"),
+      modulesCompleted:      status.modulesCompleted ?? false,
+      integrationsReviewed:  status.integrationsReviewed ?? false,
+    };
+
+    const steps = Object.values(computed);
+    const progress = Math.round(steps.filter(Boolean).length / steps.length * 100);
+
+    return { ...status, ...computed, progress };
   }),
 
-  // Marks one wizard step as completed.
+  // Marks one wizard step as completed (used for steps 5 & 6 which have no DB-derivable signal).
   completeStep: adminProcedure
     .input(z.object({
       step: z.enum(["business_info", "fiscal", "branding", "emails", "modules", "integrations"]),
@@ -89,7 +115,7 @@ export const onboardingRouter = router({
         .set(STEP_FIELDS[input.step])
         .where(eq(onboardingStatus.organizationId, DEFAULT_ORG_ID));
 
-      // If all 6 steps done, stamp completed_at
+      // Stamp completed_at when all 6 steps are done
       const [status] = await db.select()
         .from(onboardingStatus)
         .where(eq(onboardingStatus.organizationId, DEFAULT_ORG_ID))
