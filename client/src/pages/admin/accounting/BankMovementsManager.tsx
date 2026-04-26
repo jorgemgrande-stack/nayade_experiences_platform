@@ -118,6 +118,7 @@ const CONCILIATION_BADGE: Record<string, { label: string; cls: string; icon?: st
   pendiente:   { label: "Sin conciliar", cls: "bg-orange-100 text-orange-700" },
   conciliado:  { label: "Conciliado",    cls: "bg-green-100 text-green-700" },
 };
+const EXPENSE_CONCILIATION_BADGE = { label: "Gasto vinculado", cls: "bg-emerald-100 text-emerald-700" };
 
 const IMPORT_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   ok:     { label: "OK",      cls: "bg-green-100 text-green-800" },
@@ -480,6 +481,8 @@ export default function BankMovementsManager() {
                         <td className="px-4 py-3 text-center">
                           {isPos ? (
                             <Badge className={concBadge.cls}>{concBadge.label}</Badge>
+                          ) : mv.conciliationStatus === "conciliado" ? (
+                            <Badge className={EXPENSE_CONCILIATION_BADGE.cls}>{EXPENSE_CONCILIATION_BADGE.label}</Badge>
                           ) : (
                             <span className="text-xs text-gray-300">–</span>
                           )}
@@ -586,11 +589,13 @@ export default function BankMovementsManager() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               Detalle del movimiento
-              {selectedMovement && (
-                <Badge className={CONCILIATION_BADGE[selectedMovement.conciliationStatus ?? "pendiente"].cls}>
-                  {CONCILIATION_BADGE[selectedMovement.conciliationStatus ?? "pendiente"].label}
-                </Badge>
-              )}
+              {selectedMovement && (() => {
+                const isNeg = parseFloat(selectedMovement.importe) < 0;
+                const badge = isNeg && selectedMovement.conciliationStatus === "conciliado"
+                  ? EXPENSE_CONCILIATION_BADGE
+                  : CONCILIATION_BADGE[selectedMovement.conciliationStatus ?? "pendiente"];
+                return <Badge className={badge.cls}>{badge.label}</Badge>;
+              })()}
             </DialogTitle>
           </DialogHeader>
 
