@@ -18,6 +18,7 @@ import {
 import { and, desc, eq, gte, lte, sql, inArray } from "drizzle-orm";
 import { storagePut } from "../storage";
 import { TRPCError } from "@trpc/server";
+import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function randomSuffix() {
@@ -236,12 +237,32 @@ const expensesRouter = router({
         productId: input.productId ?? null,
         createdBy: ctx.user.id,
       });
-      return { id: res.insertId };
+      const expenseId = (res as { insertId: number }).insertId;
+      if (input.paymentMethod === "cash" || input.paymentMethod === "tpv_cash") {
+        try {
+          const cashAccountId = await getDefaultCashAccountId();
+          if (cashAccountId) {
+            await createCashMovementIfNotExists({
+              accountId: cashAccountId,
+              date: input.date.slice(0, 10),
+              type: "expense",
+              amount: parseFloat(input.amount),
+              concept: `Pago en efectivo — ${input.concept}`,
+              relatedEntityType: "expense",
+              relatedEntityId: expenseId,
+              createdBy: ctx.user.id,
+            });
+          }
+        } catch (e) {
+          console.error("[expenses.create] Error creando movimiento de caja:", e);
+        }
+      }
+      return { id: expenseId };
     }),
 
   update: protectedProcedure
     .input(expenseInputSchema.extend({ id: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
       await db.update(expenses).set({
         ...data,
@@ -249,6 +270,25 @@ const expensesRouter = router({
         reservationId: data.reservationId ?? null,
         productId: data.productId ?? null,
       }).where(eq(expenses.id, id));
+      if (data.paymentMethod === "cash" || data.paymentMethod === "tpv_cash") {
+        try {
+          const cashAccountId = await getDefaultCashAccountId();
+          if (cashAccountId) {
+            await createCashMovementIfNotExists({
+              accountId: cashAccountId,
+              date: data.date.slice(0, 10),
+              type: "expense",
+              amount: parseFloat(data.amount),
+              concept: `Pago en efectivo — ${data.concept}`,
+              relatedEntityType: "expense",
+              relatedEntityId: id,
+              createdBy: ctx.user.id,
+            });
+          }
+        } catch (e) {
+          console.error("[expenses.update] Error creando movimiento de caja:", e);
+        }
+      }
       return { ok: true };
     }),
 

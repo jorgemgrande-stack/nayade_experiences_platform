@@ -34,6 +34,7 @@ import {
   cardTerminalOperations,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
+import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray, inArray, isNotNull, getTableColumns } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
@@ -1916,6 +1917,27 @@ export const crmRouter = router({
               operationNumber: tpvOp.operationNumber,
               amount: total,
             });
+          }
+        }
+
+        // ── Caja: movimiento automático si pago en efectivo ─────────────────
+        if ((input.paymentMethod ?? "efectivo") === "efectivo") {
+          try {
+            const cashAccountId = await getDefaultCashAccountId();
+            if (cashAccountId) {
+              await createCashMovementIfNotExists({
+                accountId: cashAccountId,
+                date: now.toISOString().slice(0, 10),
+                type: "income",
+                amount: total,
+                concept: `Cobro en efectivo ${quote.quoteNumber} — ${lead.name}`,
+                relatedEntityType: "reservation",
+                relatedEntityId: reservationId,
+                createdBy: ctx.user.id,
+              });
+            }
+          } catch (e) {
+            console.error("[confirmPayment] Error creando movimiento de caja:", e);
           }
         }
 

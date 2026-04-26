@@ -3,8 +3,9 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
-import { finCashAccounts, finCashMovements, finCashClosures } from "../../drizzle/schema";
+import { eq, and, gte, lte, desc, sql, inArray, or } from "drizzle-orm";
+import { finCashAccounts, finCashMovements, finCashClosures, reservations, expenses } from "../../drizzle/schema";
+import { createCashMovementIfNotExists } from "./cashRegisterHelper";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -264,5 +265,173 @@ export const cashRegisterRouter = router({
       todayExpenses,
       todayNet: todayIncome - todayExpenses,
     };
+  }),
+
+  // ── Sincronización ─────────────────────────────────────────────────────────
+  syncCheck: adminProc.query(async () => {
+    // Reservas pagadas en efectivo
+    const cashReservations = await db
+      .select({
+        id: reservations.id,
+        amountTotal: reservations.amountTotal,
+        bookingDate: reservations.bookingDate,
+        customerName: reservations.customerName,
+        reservationNumber: reservations.reservationNumber,
+      })
+      .from(reservations)
+      .where(and(
+        eq(reservations.paymentMethod, "efectivo"),
+        eq(reservations.status, "paid"),
+      ));
+
+    const linkedResIds = new Set<number>();
+    if (cashReservations.length) {
+      const ids = cashReservations.map(r => r.id);
+      const linked = await db
+        .select({ relatedEntityId: finCashMovements.relatedEntityId })
+        .from(finCashMovements)
+        .where(and(
+          eq(finCashMovements.relatedEntityType, "reservation"),
+          eq(finCashMovements.type, "income"),
+          inArray(finCashMovements.relatedEntityId, ids),
+        ));
+      for (const m of linked) if (m.relatedEntityId != null) linkedResIds.add(m.relatedEntityId);
+    }
+
+    // Gastos pagados en efectivo
+    const cashExpenses = await db
+      .select({
+        id: expenses.id,
+        amount: expenses.amount,
+        date: expenses.date,
+        concept: expenses.concept,
+      })
+      .from(expenses)
+      .where(or(
+        eq(expenses.paymentMethod, "cash"),
+        eq(expenses.paymentMethod, "tpv_cash"),
+      ));
+
+    const linkedExpIds = new Set<number>();
+    if (cashExpenses.length) {
+      const ids = cashExpenses.map(e => e.id);
+      const linked = await db
+        .select({ relatedEntityId: finCashMovements.relatedEntityId })
+        .from(finCashMovements)
+        .where(and(
+          eq(finCashMovements.relatedEntityType, "expense"),
+          eq(finCashMovements.type, "expense"),
+          inArray(finCashMovements.relatedEntityId, ids),
+        ));
+      for (const m of linked) if (m.relatedEntityId != null) linkedExpIds.add(m.relatedEntityId);
+    }
+
+    return {
+      missingReservations: cashReservations
+        .filter(r => !linkedResIds.has(r.id))
+        .map(r => ({
+          id: r.id,
+          reservationNumber: r.reservationNumber ?? `#${r.id}`,
+          customerName: r.customerName,
+          amount: (r.amountTotal ?? 0) / 100,
+          date: r.bookingDate ?? "",
+        })),
+      missingExpenses: cashExpenses
+        .filter(e => !linkedExpIds.has(e.id))
+        .map(e => ({
+          id: e.id,
+          concept: e.concept,
+          amount: parseFloat(e.amount),
+          date: e.date,
+        })),
+    };
+  }),
+
+  runSync: adminProc.mutation(async ({ ctx }) => {
+    const [defaultAcc] = await db
+      .select({ id: finCashAccounts.id })
+      .from(finCashAccounts)
+      .where(and(
+        eq(finCashAccounts.type, "principal"),
+        eq(finCashAccounts.isActive, true),
+      ))
+      .limit(1);
+    if (!defaultAcc) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "No hay cuenta de caja principal activa",
+      });
+    }
+
+    const userId = (ctx.user as { id: number }).id;
+
+    // Sincronizar reservas
+    const cashReservations = await db
+      .select({
+        id: reservations.id,
+        amountTotal: reservations.amountTotal,
+        bookingDate: reservations.bookingDate,
+        customerName: reservations.customerName,
+        reservationNumber: reservations.reservationNumber,
+      })
+      .from(reservations)
+      .where(and(
+        eq(reservations.paymentMethod, "efectivo"),
+        eq(reservations.status, "paid"),
+      ));
+
+    let reservationsCreated = 0;
+    for (const r of cashReservations) {
+      try {
+        const result = await createCashMovementIfNotExists({
+          accountId: defaultAcc.id,
+          date: (r.bookingDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10),
+          type: "income",
+          amount: (r.amountTotal ?? 0) / 100,
+          concept: `Cobro en efectivo ${r.reservationNumber ?? `#${r.id}`} — ${r.customerName}`,
+          relatedEntityType: "reservation",
+          relatedEntityId: r.id,
+          createdBy: userId,
+        });
+        if (result.created) reservationsCreated++;
+      } catch (e) {
+        console.error("[runSync] Error en reserva", r.id, e);
+      }
+    }
+
+    // Sincronizar gastos
+    const cashExpenses = await db
+      .select({
+        id: expenses.id,
+        amount: expenses.amount,
+        date: expenses.date,
+        concept: expenses.concept,
+      })
+      .from(expenses)
+      .where(or(
+        eq(expenses.paymentMethod, "cash"),
+        eq(expenses.paymentMethod, "tpv_cash"),
+      ));
+
+    let expensesCreated = 0;
+    for (const e of cashExpenses) {
+      try {
+        const result = await createCashMovementIfNotExists({
+          accountId: defaultAcc.id,
+          date: (e.date ?? "").slice(0, 10),
+          type: "expense",
+          amount: parseFloat(e.amount),
+          concept: `Pago en efectivo — ${e.concept}`,
+          relatedEntityType: "expense",
+          relatedEntityId: e.id,
+          createdBy: userId,
+        });
+        if (result.created) expensesCreated++;
+      } catch (ex) {
+        console.error("[runSync] Error en gasto", e.id, ex);
+      }
+    }
+
+    return { reservationsCreated, expensesCreated };
   }),
 });

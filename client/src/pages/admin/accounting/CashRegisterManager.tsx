@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import {
   Wallet, Plus, Pencil, Trash2, TrendingUp, TrendingDown,
   ArrowLeftRight, Banknote, Calendar, ChevronDown, X, CheckCircle,
+  RefreshCw, AlertTriangle, ShoppingCart, Receipt,
 } from "lucide-react";
 
 const fmtEur = (v: number | string) =>
@@ -37,7 +38,7 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   other: "Otra",
 };
 
-const TABS = ["movimientos", "cuentas", "cierres"] as const;
+const TABS = ["movimientos", "cuentas", "cierres", "sincronizacion"] as const;
 type Tab = (typeof TABS)[number];
 
 // ── Movement form state ──────────────────────────────────────────────────────
@@ -100,12 +101,16 @@ export default function CashRegisterManager() {
   const closuresQ = trpc.cashRegister.listClosures.useQuery({
     accountId: filterAccount !== "all" ? Number(filterAccount) : undefined,
   });
+  const syncCheckQ = trpc.cashRegister.syncCheck.useQuery(undefined, {
+    enabled: tab === "sincronizacion",
+  });
 
   const invalidateAll = () => {
     utils.cashRegister.getSummary.invalidate();
     utils.cashRegister.listAccounts.invalidate();
     utils.cashRegister.listMovements.invalidate();
     utils.cashRegister.listClosures.invalidate();
+    utils.cashRegister.syncCheck.invalidate();
   };
 
   const createMovMut = trpc.cashRegister.createMovement.useMutation({
@@ -134,6 +139,21 @@ export default function CashRegisterManager() {
       toast.success(`Cierre registrado. Saldo cierre: ${fmtEur(res.closingBalance)}`);
       setClosureDialog(false);
       setClosureForm(emptyClosureForm());
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const runSyncMut = trpc.cashRegister.runSync.useMutation({
+    onSuccess: (res) => {
+      invalidateAll();
+      const total = res.reservationsCreated + res.expensesCreated;
+      if (total === 0) {
+        toast.info("Sin movimientos nuevos. Todo estaba ya sincronizado.");
+      } else {
+        toast.success(
+          `Sincronización completa: ${res.reservationsCreated} cobros + ${res.expensesCreated} gastos creados`,
+        );
+      }
     },
     onError: (e) => toast.error(e.message),
   });
@@ -263,7 +283,10 @@ export default function CashRegisterManager() {
                   : "border-transparent text-gray-500 hover:text-gray-700"
               }`}
             >
-              {t === "movimientos" ? "Movimientos" : t === "cuentas" ? "Cuentas" : "Cierres"}
+              {t === "movimientos" ? "Movimientos"
+                : t === "cuentas" ? "Cuentas"
+                : t === "cierres" ? "Cierres"
+                : "Sincronización"}
             </button>
           ))}
         </div>
@@ -485,6 +508,108 @@ export default function CashRegisterManager() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* ── TAB: SINCRONIZACIÓN ── */}
+        {tab === "sincronizacion" && (
+          <div className="space-y-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+              <p className="font-medium mb-1">¿Para qué sirve esto?</p>
+              <p className="text-blue-700">
+                Detecta reservas pagadas en efectivo y gastos en efectivo que no tienen aún un movimiento
+                de caja registrado. Útil para sincronizar datos históricos antes de activar la integración automática.
+              </p>
+            </div>
+
+            {syncCheckQ.isLoading && (
+              <div className="text-center py-10 text-gray-400 text-sm">Analizando movimientos...</div>
+            )}
+
+            {syncCheckQ.data && (
+              <>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className={`rounded-xl border p-4 ${syncCheckQ.data.missingReservations.length > 0 ? "border-orange-200 bg-orange-50" : "border-emerald-200 bg-emerald-50"}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <ShoppingCart className={`w-4 h-4 ${syncCheckQ.data.missingReservations.length > 0 ? "text-orange-600" : "text-emerald-600"}`} />
+                      <span className="font-medium text-sm">Cobros sin movimiento</span>
+                    </div>
+                    {syncCheckQ.data.missingReservations.length === 0 ? (
+                      <p className="text-emerald-700 text-sm flex items-center gap-1">
+                        <CheckCircle className="w-4 h-4" /> Todo sincronizado
+                      </p>
+                    ) : (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {syncCheckQ.data.missingReservations.map(r => (
+                          <div key={r.id} className="flex justify-between text-xs text-orange-800 bg-white rounded px-2 py-1 border border-orange-100">
+                            <span>{r.reservationNumber} — {r.customerName}</span>
+                            <span className="font-medium">{fmtEur(r.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">{syncCheckQ.data.missingReservations.length} reservas pendientes</p>
+                  </div>
+
+                  <div className={`rounded-xl border p-4 ${syncCheckQ.data.missingExpenses.length > 0 ? "border-orange-200 bg-orange-50" : "border-emerald-200 bg-emerald-50"}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Receipt className={`w-4 h-4 ${syncCheckQ.data.missingExpenses.length > 0 ? "text-orange-600" : "text-emerald-600"}`} />
+                      <span className="font-medium text-sm">Gastos sin movimiento</span>
+                    </div>
+                    {syncCheckQ.data.missingExpenses.length === 0 ? (
+                      <p className="text-emerald-700 text-sm flex items-center gap-1">
+                        <CheckCircle className="w-4 h-4" /> Todo sincronizado
+                      </p>
+                    ) : (
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {syncCheckQ.data.missingExpenses.map(e => (
+                          <div key={e.id} className="flex justify-between text-xs text-orange-800 bg-white rounded px-2 py-1 border border-orange-100">
+                            <span className="truncate max-w-[180px]">{e.concept}</span>
+                            <span className="font-medium">{fmtEur(e.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">{syncCheckQ.data.missingExpenses.length} gastos pendientes</p>
+                  </div>
+                </div>
+
+                {(syncCheckQ.data.missingReservations.length > 0 || syncCheckQ.data.missingExpenses.length > 0) && (
+                  <div className="flex items-center justify-between bg-white border rounded-xl p-4">
+                    <div>
+                      <p className="font-medium text-gray-800 text-sm">
+                        {syncCheckQ.data.missingReservations.length + syncCheckQ.data.missingExpenses.length} movimientos pendientes de crear
+                      </p>
+                      <p className="text-xs text-gray-500">Se crearán en la cuenta de caja principal. La operación es segura e idempotente.</p>
+                    </div>
+                    <Button
+                      onClick={() => runSyncMut.mutate()}
+                      disabled={runSyncMut.isPending}
+                      className="bg-emerald-600 hover:bg-emerald-700 ml-4"
+                    >
+                      <RefreshCw className={`w-4 h-4 mr-2 ${runSyncMut.isPending ? "animate-spin" : ""}`} />
+                      {runSyncMut.isPending ? "Sincronizando..." : "Crear movimientos faltantes"}
+                    </Button>
+                  </div>
+                )}
+
+                {syncCheckQ.data.missingReservations.length === 0 && syncCheckQ.data.missingExpenses.length === 0 && (
+                  <div className="flex items-center gap-3 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <CheckCircle className="w-5 h-5 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm">Caja completamente sincronizada</p>
+                      <p className="text-xs text-emerald-600">Todos los cobros y gastos en efectivo tienen su movimiento de caja.</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <Button variant="outline" size="sm" onClick={() => utils.cashRegister.syncCheck.invalidate()}>
+                    <RefreshCw className="w-3 h-3 mr-1" /> Volver a verificar
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
