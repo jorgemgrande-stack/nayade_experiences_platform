@@ -62,7 +62,7 @@ const menuItems: FlatMenuItem[] = [
   { icon: Building2,    label: "Proveedores gastos", path: "/admin/contabilidad/gastos/proveedores", indent: true, roles: ["admin"] },
   { icon: TrendingUp,   label: "Cuenta Resultados",  path: "/admin/contabilidad/cuenta-resultados",  indent: true, roles: ["admin"] },
   // ── Marketing ─────────────────────────────────────────────────────────────────────────────────
-  { icon: ShoppingCart, label: "TPV",             path: "/admin/tpv",                  section: "Marketing", roles: ["admin", "agente"] },
+  { icon: ShoppingCart, label: "TPV",             path: "/admin/tpv",                  section: "Marketing", roles: ["admin", "agente"], rbacPerm: "tpv.access" },
   { icon: Ticket,  label: "Cupones & Ticketing", path: "/admin/marketing/cupones",    indent: true,         roles: ["admin", "agente"], rbacPerm: "ticketing.view" },
   { icon: Percent, label: "Códigos descuento",   path: "/admin/marketing/descuentos", indent: true,         roles: ["admin", "agente"] },
   // ── Otros ───────────────────────────────────────────────────────────────────────────────────

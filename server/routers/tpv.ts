@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { staffProcedure, router } from "../_core/trpc";
+import { permissionProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
@@ -31,6 +31,14 @@ import { generateDocumentNumber } from "../documentNumbers";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
+
+// ─── RBAC-AWARE PROCEDURES ────────────────────────────────────────────────────
+// Fallback: legacy staff roles (admin + agente) for all TPV access.
+// RBAC expands access to commercial_agent / sales_cashier without touching fallback.
+const tpvAccessProc    = permissionProcedure("tpv.access",     ["admin", "agente"]);
+const tpvSellProc      = permissionProcedure("tpv.sell",       ["admin", "agente"]);
+const tpvOpenCloseProc = permissionProcedure("tpv.open_close", ["admin", "agente"]);
+const tpvBackofficeProc= permissionProcedure("tpv.backoffice", ["admin"]);
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 // generateTicketNumber y generateReservationRef reemplazadas por el helper centralizado
@@ -104,12 +112,12 @@ function calcLineFiscal(
 
 export const tpvRouter = router({
   // ── REGISTERS ──────────────────────────────────────────────────────────────
-  getRegisters: staffProcedure.query(async () => {
+  getRegisters: tpvAccessProc.query(async () => {
     return await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
   }),
 
   // ── SESSIONS ───────────────────────────────────────────────────────────────
-  getActiveSession: staffProcedure
+  getActiveSession: tpvAccessProc
     .input(z.object({ registerId: z.number() }))
     .query(async ({ input }) => {
       const sessions = await db
@@ -125,7 +133,7 @@ export const tpvRouter = router({
       return sessions[0] ?? null;
     }),
 
-  openSession: staffProcedure
+  openSession: tpvOpenCloseProc
     .input(
       z.object({
         registerId: z.number(),
@@ -189,7 +197,7 @@ export const tpvRouter = router({
       return session;
     }),
 
-  closeSession: staffProcedure
+  closeSession: tpvOpenCloseProc
     .input(
       z.object({
         sessionId: z.number(),
@@ -411,7 +419,7 @@ export const tpvRouter = router({
       return updated;
     }),
 
-  getSessionSummary: staffProcedure
+  getSessionSummary: tpvOpenCloseProc
     .input(z.object({ sessionId: z.number() }))
     .query(async ({ input }) => {
       const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
@@ -428,7 +436,7 @@ export const tpvRouter = router({
     }),
 
   // ── CASH MOVEMENTS ─────────────────────────────────────────────────────────
-  addCashMovement: staffProcedure
+  addCashMovement: tpvOpenCloseProc
     .input(
       z.object({
         sessionId: z.number(),
@@ -452,7 +460,7 @@ export const tpvRouter = router({
     }),
 
   // ── CATALOG ────────────────────────────────────────────────────────────────
-  getCatalog: staffProcedure.query(async () => {
+  getCatalog: tpvAccessProc.query(async () => {
     const [exps, pkgs, spas, rooms, legoPkgs] = await Promise.all([
       db.select({
         id: experiences.id,
@@ -510,7 +518,7 @@ export const tpvRouter = router({
   }),
 
   // ── SALES ──────────────────────────────────────────────────────────────────
-  createSale: staffProcedure
+  createSale: tpvSellProc
     .input(
       z.object({
         sessionId: z.number(),
@@ -918,7 +926,7 @@ export const tpvRouter = router({
       return { sale, items, payments, reservationId, reavExpedientId, reavExpedientNumber };
     }),
 
-  getSale: staffProcedure
+  getSale: tpvAccessProc
     .input(z.object({ saleId: z.number() }))
     .query(async ({ input }) => {
       const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, input.saleId));
@@ -928,7 +936,7 @@ export const tpvRouter = router({
       return { sale, items, payments };
     }),
 
-  getSessionSales: staffProcedure
+  getSessionSales: tpvAccessProc
     .input(z.object({ sessionId: z.number() }))
     .query(async ({ input }) => {
       return await db
@@ -939,7 +947,7 @@ export const tpvRouter = router({
     }),
 
   // ── BACKOFFICE ─────────────────────────────────────────────────────────────
-  getBackoffice: staffProcedure
+  getBackoffice: tpvBackofficeProc
     .input(
       z.object({
         page: z.number().int().positive().default(1),
@@ -965,7 +973,7 @@ export const tpvRouter = router({
       }));
     }),
 
-  getBackofficeSalesByProduct: staffProcedure
+  getBackofficeSalesByProduct: tpvBackofficeProc
     .input(z.object({ sessionId: z.number().optional() }))
     .query(async ({ input }) => {
       const items = await db.select().from(tpvSaleItems);
@@ -988,7 +996,7 @@ export const tpvRouter = router({
     }),
 
   // ── SEND TICKET EMAIL ─────────────────────────────────────────────────────
-  sendTicketEmail: staffProcedure
+  sendTicketEmail: tpvSellProc
     .input(
       z.object({
         ticketNumber: z.string(),

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
@@ -13,10 +13,12 @@ import { assertModuleEnabled } from "../_core/flagGuard";
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
-const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
-  if ((ctx.user as { role: string }).role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
-  }
+// RBAC-aware procedures. Fallback: admin only (cash module is admin-only by default).
+const cashViewProc   = permissionProcedure("accounting.cash.view",   ["admin"]).use(async ({ ctx, next }) => {
+  await assertModuleEnabled("cash_register_module_enabled");
+  return next({ ctx });
+});
+const cashManageProc = permissionProcedure("accounting.cash.manage", ["admin"]).use(async ({ ctx, next }) => {
   await assertModuleEnabled("cash_register_module_enabled");
   return next({ ctx });
 });
@@ -32,11 +34,11 @@ function balanceDelta(type: string, amount: number): number {
 
 export const cashRegisterRouter = router({
   // ── Accounts ────────────────────────────────────────────────────────────────
-  listAccounts: adminProc.query(async () => {
+  listAccounts: cashViewProc.query(async () => {
     return db.select().from(finCashAccounts).orderBy(finCashAccounts.name);
   }),
 
-  createAccount: adminProc
+  createAccount: cashManageProc
     .input(z.object({
       name: z.string().min(1).max(128),
       description: z.string().optional(),
@@ -54,7 +56,7 @@ export const cashRegisterRouter = router({
       return { ok: true };
     }),
 
-  updateAccount: adminProc
+  updateAccount: cashManageProc
     .input(z.object({
       id: z.number(),
       name: z.string().min(1).max(128).optional(),
@@ -69,7 +71,7 @@ export const cashRegisterRouter = router({
     }),
 
   // ── Movements ──────────────────────────────────────────────────────────────
-  listMovements: adminProc
+  listMovements: cashViewProc
     .input(z.object({
       accountId: z.number().optional(),
       dateFrom: z.string().optional(),
@@ -89,7 +91,7 @@ export const cashRegisterRouter = router({
         .limit(input.limit);
     }),
 
-  createMovement: adminProc
+  createMovement: cashManageProc
     .input(z.object({
       accountId: z.number(),
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -145,7 +147,7 @@ export const cashRegisterRouter = router({
       return { ok: true };
     }),
 
-  deleteMovement: adminProc
+  deleteMovement: cashManageProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [mv] = await db
@@ -167,7 +169,7 @@ export const cashRegisterRouter = router({
     }),
 
   // ── Closures ───────────────────────────────────────────────────────────────
-  listClosures: adminProc
+  listClosures: cashViewProc
     .input(z.object({ accountId: z.number().optional() }))
     .query(async ({ input }) => {
       const conds = input.accountId ? [eq(finCashClosures.accountId, input.accountId)] : [];
@@ -178,7 +180,7 @@ export const cashRegisterRouter = router({
         .orderBy(desc(finCashClosures.date));
     }),
 
-  createClosure: adminProc
+  createClosure: cashManageProc
     .input(z.object({
       accountId: z.number(),
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -241,7 +243,7 @@ export const cashRegisterRouter = router({
     }),
 
   // ── Summary ────────────────────────────────────────────────────────────────
-  getSummary: adminProc.query(async () => {
+  getSummary: cashViewProc.query(async () => {
     const accounts = await db
       .select()
       .from(finCashAccounts)
@@ -272,7 +274,7 @@ export const cashRegisterRouter = router({
   }),
 
   // ── Sincronización ─────────────────────────────────────────────────────────
-  syncCheck: adminProc.query(async () => {
+  syncCheck: cashViewProc.query(async () => {
     // Reservas pagadas en efectivo
     const cashReservations = await db
       .select({
@@ -352,7 +354,7 @@ export const cashRegisterRouter = router({
   }),
 
   // ── Alertas ────────────────────────────────────────────────────────────────
-  listAlerts: adminProc
+  listAlerts: cashViewProc
     .input(z.object({ includeResolved: z.boolean().default(false) }))
     .query(async ({ input }) => {
       const conds = input.includeResolved ? [] : [isNull(finCashAlerts.resolvedAt)];
@@ -364,14 +366,14 @@ export const cashRegisterRouter = router({
         .limit(100);
     }),
 
-  markAlertRead: adminProc
+  markAlertRead: cashViewProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.update(finCashAlerts).set({ isRead: true }).where(eq(finCashAlerts.id, input.id));
       return { ok: true };
     }),
 
-  markAllAlertsRead: adminProc.mutation(async () => {
+  markAllAlertsRead: cashViewProc.mutation(async () => {
     await db.update(finCashAlerts)
       .set({ isRead: true })
       .where(and(eq(finCashAlerts.isRead, false), isNull(finCashAlerts.resolvedAt)));
@@ -379,7 +381,7 @@ export const cashRegisterRouter = router({
   }),
 
   // ── Resolución de descuadres ────────────────────────────────────────────────
-  listClosureActions: adminProc
+  listClosureActions: cashViewProc
     .input(z.object({ closureId: z.number() }))
     .query(async ({ input }) => {
       return db
@@ -389,7 +391,7 @@ export const cashRegisterRouter = router({
         .orderBy(desc(finCashClosureActions.createdAt));
     }),
 
-  reviewClosure: adminProc
+  reviewClosure: cashManageProc
     .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
@@ -424,7 +426,7 @@ export const cashRegisterRouter = router({
       return { ok: true };
     }),
 
-  createClosureAdjustment: adminProc
+  createClosureAdjustment: cashManageProc
     .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
@@ -506,7 +508,7 @@ export const cashRegisterRouter = router({
       return { ok: true, concept, amount: movAmount, movType };
     }),
 
-  acceptDifference: adminProc
+  acceptDifference: cashManageProc
     .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
@@ -542,7 +544,7 @@ export const cashRegisterRouter = router({
       return { ok: true };
     }),
 
-  addClosureNote: adminProc
+  addClosureNote: cashManageProc
     .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
@@ -560,7 +562,7 @@ export const cashRegisterRouter = router({
     }),
 
   // ── Verificación de cierres ────────────────────────────────────────────────
-  verifyCashClosures: adminProc.query(async () => {
+  verifyCashClosures: cashViewProc.query(async () => {
     // Sesiones TPV cerradas sin cierre contable registrado
     const closedSessions = await db
       .select({
@@ -622,7 +624,7 @@ export const cashRegisterRouter = router({
     return { missingSessions, unreviewedAlerts, duplicates };
   }),
 
-  runSync: adminProc.mutation(async ({ ctx }) => {
+  runSync: cashManageProc.mutation(async ({ ctx }) => {
     const [defaultAcc] = await db
       .select({ id: finCashAccounts.id })
       .from(finCashAccounts)
