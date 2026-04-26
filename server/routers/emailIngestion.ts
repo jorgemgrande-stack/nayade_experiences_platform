@@ -3,14 +3,19 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { desc } from "drizzle-orm";
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { emailIngestionLogs } from "../../drizzle/schema";
 import { runEmailIngestion } from "../services/emailTpvIngestionService";
+import { assertModuleEnabled } from "../_core/flagGuard";
 
 const pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(pool);
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
-  if (ctx.user.role !== "admin") throw new Error("Forbidden");
+  if (ctx.user.role !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
+  }
+  await assertModuleEnabled("email_ingestion_enabled");
   return next({ ctx });
 });
 

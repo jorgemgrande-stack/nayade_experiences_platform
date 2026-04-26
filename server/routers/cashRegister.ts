@@ -8,14 +8,16 @@ import { finCashAccounts, finCashMovements, finCashClosures, finCashAlerts, finC
 import { cashSessions } from "../../drizzle/schema";
 import { createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { getSystemSetting } from "../config";
+import { assertModuleEnabled } from "../_core/flagGuard";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
-const adminProc = protectedProcedure.use(({ ctx, next }) => {
+const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if ((ctx.user as { role: string }).role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
   }
+  await assertModuleEnabled("cash_register_module_enabled");
   return next({ ctx });
 });
 

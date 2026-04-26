@@ -7,14 +7,16 @@ import { and, count, desc, eq, gte, lte, ne, inArray, isNull, or, sql, sum } fro
 import { protectedProcedure } from "../_core/trpc";
 import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expenses, reservations } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
+import { assertModuleEnabled } from "../_core/flagGuard";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
-const adminProc = protectedProcedure.use(({ ctx, next }) => {
+const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if ((ctx.user as { role: string }).role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido" });
   }
+  await assertModuleEnabled("bank_movements_module_enabled");
   return next({ ctx });
 });
 

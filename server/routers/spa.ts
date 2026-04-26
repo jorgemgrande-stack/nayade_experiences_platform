@@ -16,11 +16,13 @@ import {
   buildRedsysForm,
   generateMerchantOrder,
 } from "../redsys";
+import { assertModuleEnabled } from "../_core/flagGuard";
 
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
   }
+  await assertModuleEnabled("spa_module_enabled");
   return next({ ctx });
 });
 

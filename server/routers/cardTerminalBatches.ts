@@ -14,14 +14,16 @@ import {
   bankMovementLinks,
 } from "../../drizzle/schema";
 import { runMatchingJob } from "../services/cardTerminalMatchingService";
+import { assertModuleEnabled } from "../_core/flagGuard";
 
 const pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(pool);
 
-const adminProc = protectedProcedure.use(({ ctx, next }) => {
+const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if ((ctx.user as { role: string }).role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido" });
   }
+  await assertModuleEnabled("card_terminal_batches_enabled");
   return next({ ctx });
 });
 

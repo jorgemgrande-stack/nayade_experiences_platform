@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
+import { assertModuleEnabled } from "../_core/flagGuard";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -374,10 +375,11 @@ function emailSolicitudDocumentacion(fullName: string, requestId: number, adminT
 }
 // ─── Admin procedure helper ───────────────────────────────────────────────────
 
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (ctx.user.role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Solo administradores" });
   }
+  await assertModuleEnabled("cancellations_module_enabled");
   return next({ ctx });
 });
 

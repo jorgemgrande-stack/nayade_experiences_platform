@@ -31,9 +31,18 @@ import { sendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
 import { htmlToPdf } from "../pdfGenerator";
+import { assertModuleEnabled } from "../_core/flagGuard";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
+
+const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
+  if ((ctx.user as { role: string }).role !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
+  }
+  await assertModuleEnabled("suppliers_module_enabled");
+  return next({ ctx });
+});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -249,7 +258,7 @@ const settlementLineInput = z.object({
 
 export const suppliersRouter = router({
   // ── List all suppliers ──────────────────────────────────────────────────────
-  list: protectedProcedure
+  list: adminProc
     .input(z.object({
       status: z.enum(["activo", "inactivo", "bloqueado", "all"]).default("all"),
       search: z.string().optional(),
@@ -272,7 +281,7 @@ export const suppliersRouter = router({
     }),
 
   // ── Get single supplier ─────────────────────────────────────────────────────
-  get: protectedProcedure
+  get: adminProc
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const [row] = await db.select().from(suppliers).where(eq(suppliers.id, input.id));
@@ -281,7 +290,7 @@ export const suppliersRouter = router({
     }),
 
   // ── Create supplier ─────────────────────────────────────────────────────────
-  create: protectedProcedure
+  create: adminProc
     .input(supplierSchema)
     .mutation(async ({ input }) => {
       const [result] = await db.insert(suppliers).values({
@@ -305,7 +314,7 @@ export const suppliersRouter = router({
     }),
 
   // ── Update supplier ─────────────────────────────────────────────────────────
-  update: protectedProcedure
+  update: adminProc
     .input(z.object({ id: z.number() }).merge(supplierSchema))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -330,7 +339,7 @@ export const suppliersRouter = router({
     }),
 
   // ── Delete supplier ─────────────────────────────────────────────────────────
-  delete: protectedProcedure
+  delete: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(suppliers).where(eq(suppliers.id, input.id));
@@ -338,7 +347,7 @@ export const suppliersRouter = router({
     }),
 
   // ── Get next settlement periods for a supplier ────────────────────────────
-  getNextPeriods: protectedProcedure
+  getNextPeriods: adminProc
     .input(z.object({ supplierId: z.number() }))
     .query(async ({ input }) => {
       const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, input.supplierId));
@@ -428,7 +437,7 @@ export const suppliersRouter = router({
     }),
 
   // ── Generate pending settlements automatically ───────────────────────────
-  generatePending: protectedProcedure
+  generatePending: adminProc
     .input(z.object({ supplierId: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, input.supplierId));
@@ -526,7 +535,7 @@ export const suppliersRouter = router({
     }),
 
   // ── Get products linked to supplier ─────────────────────────────────────────
-  getProducts: protectedProcedure
+  getProducts: adminProc
     .input(z.object({ supplierId: z.number() }))
     .query(async ({ input }) => {
       const exps = await db
@@ -563,7 +572,7 @@ export const suppliersRouter = router({
 
 export const settlementsRouter = router({
   // ── List settlements ────────────────────────────────────────────────────────
-  list: protectedProcedure
+  list: adminProc
     .input(z.object({
       supplierId: z.number().optional(),
       status: z.string().optional(),
@@ -608,7 +617,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Get single settlement with lines and docs ───────────────────────────────
-  get: protectedProcedure
+  get: adminProc
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const [settlement] = await db
@@ -662,7 +671,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Preview: calculate lines for a period before creating ──────────────────
-  preview: protectedProcedure
+  preview: adminProc
     .input(z.object({
       supplierId: z.number(),
       periodFrom: z.string(),
@@ -962,7 +971,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Create settlement ───────────────────────────────────────────────────────
-  create: protectedProcedure
+  create: adminProc
     .input(z.object({
       supplierId: z.number(),
       periodFrom: z.string(),
@@ -1035,7 +1044,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Update status ───────────────────────────────────────────────────────────
-  updateStatus: protectedProcedure
+  updateStatus: adminProc
     .input(z.object({
       id: z.number(),
       status: z.enum(["emitida", "pendiente_abono", "abonada", "incidencia", "recalculada"]),
@@ -1067,7 +1076,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Update notes ────────────────────────────────────────────────────────────
-  updateNotes: protectedProcedure
+  updateNotes: adminProc
     .input(z.object({ id: z.number(), internalNotes: z.string() }))
     .mutation(async ({ input }) => {
       await db.update(supplierSettlements).set({ internalNotes: input.internalNotes }).where(eq(supplierSettlements.id, input.id));
@@ -1076,7 +1085,7 @@ export const settlementsRouter = router({
 
   // ── Recalculate settlement lines ────────────────────────────────────────────
   // Deletes existing lines and regenerates them from the current data sources
-  recalculate: protectedProcedure
+  recalculate: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       // Load settlement header
@@ -1453,7 +1462,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Add document ────────────────────────────────────────────────────────────
-  addDocument: protectedProcedure
+  addDocument: adminProc
     .input(z.object({
       settlementId: z.number(),
       docType: z.enum(["factura_recibida", "contrato", "justificante_pago", "email", "acuerdo_comision", "otro"]),
@@ -1476,7 +1485,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Delete document ─────────────────────────────────────────────────────────
-  deleteDocument: protectedProcedure
+  deleteDocument: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(settlementDocuments).where(eq(settlementDocuments.id, input.id));
@@ -1484,7 +1493,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Delete settlement ───────────────────────────────────────────────────────
-  delete: protectedProcedure
+  delete: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(settlementLines).where(eq(settlementLines.settlementId, input.id));
@@ -1495,7 +1504,7 @@ export const settlementsRouter = router({
     }),
 
   // ── KPI dashboard ───────────────────────────────────────────────────────────
-  kpis: protectedProcedure.query(async () => {
+  kpis: adminProc.query(async () => {
     const all = await db
       .select({
         status: supplierSettlements.status,
@@ -1564,7 +1573,7 @@ export const settlementsRouter = router({
   }),
 
   // ── Generate PDF ─────────────────────────────────────────────────────────────
-  generatePdf: protectedProcedure
+  generatePdf: adminProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       // Fetch settlement with supplier info
@@ -1643,7 +1652,7 @@ export const settlementsRouter = router({
     }),
 
   // ── Send settlement by email ─────────────────────────────────────────────────
-  sendEmail: protectedProcedure
+  sendEmail: adminProc
     .input(z.object({
       id: z.number(),
       emailOverride: z.string().email().optional(),

@@ -25,11 +25,13 @@ import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
 import { postConfirmOperation, logActivity, generateReservationNumber } from "../db";
+import { assertModuleEnabled } from "../_core/flagGuard";
+import { getSystemSettingSync } from "../config";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
-const COPY_EMAIL = "reservas@nayadeexperiences.es";
+const getCopyEmail = () => getSystemSettingSync("email_reservations", "contacto@tuempresa.com");
 
 // ─── PROVEEDORES FIJOS ────────────────────────────────────────────────────────
 export const FIXED_PROVIDERS = [
@@ -52,14 +54,15 @@ type StatusFinancial = "pendiente_canjear" | "canjeado" | "incidencia";
 async function sendEmail(opts: { to: string; subject: string; html: string }) {
   const sent = await sharedSendEmail(opts);
   if (!sent) console.warn("[Ticketing] SMTP not configured, skipping email");
-  else await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${opts.subject}`, html: opts.html });
+  else await sharedSendEmail({ to: getCopyEmail(), subject: `[COPIA] ${opts.subject}`, html: opts.html });
 }
 
 // ─── ADMIN PROCEDURE ─────────────────────────────────────────────────────────
-const adminProc = protectedProcedure.use(({ ctx, next }) => {
+const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
   if (!["admin", "agente"].includes(ctx.user.role)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores y agentes" });
   }
+  await assertModuleEnabled("ticketing_module_enabled");
   return next({ ctx });
 });
 
@@ -460,7 +463,7 @@ export const ticketingRouter = router({
         // Alerta interna
         const [cfg] = await db.select().from(couponEmailConfig).limit(1);
         if (!cfg || cfg.autoSendInternalAlert) {
-          const alertEmail = cfg?.internalAlertEmail ?? COPY_EMAIL;
+          const alertEmail = cfg?.internalAlertEmail ?? getCopyEmail();
           sendEmail({ to: alertEmail, subject: `[Ticketing] Nuevo envío: ${validResults.length} cupón${validResults.length > 1 ? "es" : ""} — ${input.customerName}`, html: buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate }) }).catch(console.error);
         }
       }
@@ -890,7 +893,7 @@ export const ticketingRouter = router({
   // ── EMAIL CONFIG ─────────────────────────────────────────────────────────
   getEmailConfig: adminProc.query(async () => {
     const [cfg] = await db.select().from(couponEmailConfig).limit(1);
-    return cfg ?? { id: 0, autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission" as const, internalAlertEmail: COPY_EMAIL, updatedAt: new Date() };
+    return cfg ?? { id: 0, autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission" as const, internalAlertEmail: getCopyEmail(), updatedAt: new Date() };
   }),
 
   updateEmailConfig: adminProc
@@ -906,7 +909,7 @@ export const ticketingRouter = router({
       if (existing) {
         await db.update(couponEmailConfig).set(input).where(eq(couponEmailConfig.id, existing.id));
       } else {
-        await db.insert(couponEmailConfig).values({ autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission", internalAlertEmail: COPY_EMAIL, ...input });
+        await db.insert(couponEmailConfig).values({ autoSendCouponReceived: true, autoSendCouponValidated: true, autoSendInternalAlert: true, emailMode: "per_submission", internalAlertEmail: getCopyEmail(), ...input });
       }
       return { success: true };
     }),
