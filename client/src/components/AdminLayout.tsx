@@ -16,6 +16,8 @@ import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { useTheme } from "@/contexts/ThemeContext";
 
+// flagKey: if set, item is hidden when that feature_flag is disabled.
+// Missing flag or flags not yet loaded → item shown (safe default).
 const navItems = [
   {
     label: "Dashboard",
@@ -103,6 +105,7 @@ const navItems = [
     href: "/admin/tpv",
     icon: Monitor,
     roles: ["admin"],
+    flagKey: "tpv_enabled",
     children: [
       { label: "Terminal de venta", href: "/admin/tpv" },
       { label: "Historial de cajas", href: "/admin/tpv/cajas" },
@@ -113,6 +116,7 @@ const navItems = [
     href: "/admin/suppliers",
     icon: Truck,
     roles: ["admin"],
+    flagKey: "suppliers_module_enabled",
     children: [
       { label: "Gestión de proveedores", href: "/admin/suppliers" },
       { label: "Liquidaciones", href: "/admin/settlements" },
@@ -123,6 +127,7 @@ const navItems = [
     href: "/admin/fiscal/reav",
     icon: Receipt,
     roles: ["admin"],
+    flagKey: "reav_module_enabled",
     children: [
       { label: "Expedientes", href: "/admin/fiscal/reav" },
     ],
@@ -132,18 +137,21 @@ const navItems = [
     href: "/admin/hotel",
     icon: BedDouble,
     roles: ["admin"],
+    flagKey: "hotel_module_enabled",
   },
   {
     label: "SPA",
     href: "/admin/spa",
     icon: Sparkles,
     roles: ["admin"],
+    flagKey: "spa_module_enabled",
   },
   {
     label: "Restaurantes",
     href: "/admin/restaurantes",
     icon: UtensilsCrossed,
     roles: ["admin", "adminrest"],
+    flagKey: "restaurants_module_enabled",
     children: [
       { label: "Reservas", href: "/admin/restaurantes/reservas" },
       { label: "Calendario Global", href: "/admin/restaurantes/calendario" },
@@ -173,7 +181,9 @@ const navItems = [
     icon: Settings,
     roles: ["admin"],
     children: [
-      { label: "Ajustes generales", href: "/admin/configuracion" },
+      { label: "Ajustes generales",   href: "/admin/configuracion" },
+      { label: "Estado del sistema",  href: "/admin/configuracion/estado" },
+      { label: "Onboarding",          href: "/admin/onboarding" },
       { label: "Plantillas de Email", href: "/admin/plantillas-email" },
     ],
   },
@@ -232,7 +242,22 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     return location === href || location.startsWith(href + "/") || location.startsWith(href + "?");
   };
 
-  const filteredNav = navItems.filter((item) => item.roles.includes(userRole));
+  // Feature flags — used to hide nav items for disabled modules.
+  // Defaults to showing all items when flags are not yet loaded (safe fallback).
+  const { data: flagsList } = trpc.config.listFeatureFlags.useQuery(undefined, {
+    enabled: isAuthenticated && userRole === "admin",
+    staleTime: 120_000,
+    refetchIntervalInBackground: false,
+  });
+  const flagsMap = new Map<string, boolean>((flagsList ?? []).map(f => [f.key, f.enabled]));
+  const isFlagVisible = (flagKey?: string) => {
+    if (!flagKey || !flagsList) return true;
+    return flagsMap.get(flagKey) !== false;
+  };
+
+  const filteredNav = navItems
+    .filter((item) => item.roles.includes(userRole))
+    .filter((item) => isFlagVisible((item as { flagKey?: string }).flagKey));
 
   // ── Badges de notificación en tiempo real (polling cada 60s) ──
   const { data: leadCounters } = trpc.crm.leads.counters.useQuery(undefined, {

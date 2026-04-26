@@ -2567,4 +2567,34 @@ export const configChangeLogs = mysqlTable("config_change_logs", {
 });
 export type ConfigChangeLog = typeof configChangeLogs.$inferSelect;
 
+// ─── ORGANIZATIONS ────────────────────────────────────────────────────────────
+
+export const organizations = mysqlTable("organizations", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 256 }).notNull(),
+  slug: varchar("slug", { length: 128 }).notNull().unique(),
+  status: mysqlEnum("status", ["active", "inactive", "onboarding"]).notNull().default("onboarding"),
+  ownerUserId: int("owner_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type Organization = typeof organizations.$inferSelect;
+
+// ─── ONBOARDING STATUS ────────────────────────────────────────────────────────
+
+export const onboardingStatus = mysqlTable("onboarding_status", {
+  id: int("id").autoincrement().primaryKey(),
+  organizationId: int("organization_id").notNull().unique(),
+  businessInfoCompleted: boolean("business_info_completed").notNull().default(false),
+  fiscalCompleted: boolean("fiscal_completed").notNull().default(false),
+  brandingCompleted: boolean("branding_completed").notNull().default(false),
+  emailsCompleted: boolean("emails_completed").notNull().default(false),
+  modulesCompleted: boolean("modules_completed").notNull().default(false),
+  integrationsReviewed: boolean("integrations_reviewed").notNull().default(false),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type OnboardingStatus = typeof onboardingStatus.$inferSelect;
+
 export type InsertFinCashClosureAction = typeof finCashClosureActions.$inferInsert;

@@ -98,6 +98,8 @@ const UsersManager = lazy(() => import("./pages/admin/users/UsersManager"));
 const Settings = lazy(() => import("./pages/admin/settings/Settings"));
 const AdvancedSettings = lazy(() => import("./pages/admin/settings/AdvancedSettings"));
 const ConfigPanel = lazy(() => import("./pages/admin/settings/ConfigPanel"));
+const ConfigStatus = lazy(() => import("./pages/admin/settings/ConfigStatus"));
+const OnboardingWizard = lazy(() => import("./pages/admin/onboarding/OnboardingWizard"));
 
 // CRM
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
@@ -284,7 +286,9 @@ function Router() {
       <Route path="/admin/usuarios">{() => <Suspense fallback={<AdminLoadingFallback />}><UsersManager /></Suspense>}</Route>
       <Route path="/admin/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigPanel /></Suspense>}</Route>
       <Route path="/admin/configuracion/sitio">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
+      <Route path="/admin/configuracion/estado">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigStatus /></Suspense>}</Route>
       <Route path="/admin/configuracion/avanzado">{() => <Suspense fallback={<AdminLoadingFallback />}><AdvancedSettings /></Suspense>}</Route>
+      <Route path="/admin/onboarding">{() => <Suspense fallback={<AdminLoadingFallback />}><OnboardingWizard /></Suspense>}</Route>
       <Route path="/admin/numeracion">{() => <Suspense fallback={<AdminLoadingFallback />}><DocumentNumbersAdmin /></Suspense>}</Route>
 
       {/* 404 */}

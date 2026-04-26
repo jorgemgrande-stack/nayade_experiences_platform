@@ -442,6 +442,20 @@
       "when": 1778273520000,
       "tag": "0064_config_change_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "5",
+      "when": 1778359920000,
+      "tag": "0065_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "5",
+      "when": 1778446320000,
+      "tag": "0066_onboarding_status",
+      "breakpoints": true
     }
   ]
 }
