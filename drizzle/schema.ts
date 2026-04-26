@@ -2009,9 +2009,9 @@ export type InsertBankMovement = typeof bankMovements.$inferInsert;
 export const bankMovementLinks = mysqlTable("bank_movement_links", {
   id: int("id").autoincrement().primaryKey(),
   bankMovementId: int("bank_movement_id").notNull(),
-  entityType: mysqlEnum("entity_type", ["quote", "reservation", "invoice", "expense", "card_terminal_batch"]).notNull(),
+  entityType: mysqlEnum("entity_type", ["quote", "reservation", "invoice", "expense", "card_terminal_batch", "manual"]).notNull(),
   entityId: int("entity_id").notNull(),
-  linkType: mysqlEnum("link_type", ["income_transfer", "card_income", "cash_income", "expense_payment"]).notNull().default("income_transfer"),
+  linkType: mysqlEnum("link_type", ["income_transfer", "card_income", "cash_income", "expense_payment", "manual_conciliation"]).notNull().default("income_transfer"),
   amountLinked: decimal("amount_linked", { precision: 12, scale: 2 }).notNull(),
   status: mysqlEnum("status", ["proposed", "confirmed", "rejected", "unlinked"]).notNull().default("proposed"),
   confidenceScore: int("confidence_score").default(0),

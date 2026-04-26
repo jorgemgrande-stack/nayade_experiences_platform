@@ -393,6 +393,13 @@
       "when": 1777668720000,
       "tag": "0057_expense_bank_link",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "5",
+      "when": 1777755120000,
+      "tag": "0058_manual_conciliation",
+      "breakpoints": true
     }
   ]
 }

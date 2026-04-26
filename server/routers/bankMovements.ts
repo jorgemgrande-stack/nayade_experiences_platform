@@ -682,6 +682,48 @@ export const bankMovementsRouter = router({
       return { success: true };
     }),
 
+  /** Conciliación manual para movimientos sin contrapartida en el sistema. */
+  manuallyConciliate: adminProc
+    .input(z.object({
+      bankMovementId: z.number(),
+      manualType: z.enum(["transferencia_interna", "comision_bancaria", "pago_impuesto", "ajuste_contable", "devolucion", "otro"]),
+      notes: z.string().min(1, "La justificación es obligatoria"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [movement] = await db.select().from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
+      if (!movement) throw new TRPCError({ code: "NOT_FOUND", message: "Movimiento no encontrado" });
+
+      const [existing] = await db
+        .select({ id: bankMovementLinks.id })
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.bankMovementId, input.bankMovementId),
+          eq(bankMovementLinks.status, "confirmed"),
+        ))
+        .limit(1);
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "El movimiento ya tiene una conciliación confirmada" });
+
+      const now = new Date();
+      await db.insert(bankMovementLinks).values({
+        bankMovementId: input.bankMovementId,
+        entityType: "manual",
+        entityId: 0,
+        linkType: "manual_conciliation",
+        amountLinked: movement.importe,
+        status: "confirmed",
+        confidenceScore: 100,
+        matchedBy: ctx.user.name ?? undefined,
+        matchedAt: now,
+        notes: `[${input.manualType}] ${input.notes}`,
+      });
+
+      await db.update(bankMovements)
+        .set({ conciliationStatus: "conciliado" })
+        .where(eq(bankMovements.id, input.bankMovementId));
+
+      return { success: true };
+    }),
+
   /** Desvincula una conciliación ya confirmada (no borra factura/reserva/presupuesto). */
   unlinkMovement: adminProc
     .input(z.object({

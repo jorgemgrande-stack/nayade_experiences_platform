@@ -119,6 +119,7 @@ const CONCILIATION_BADGE: Record<string, { label: string; cls: string; icon?: st
   conciliado:  { label: "Conciliado",    cls: "bg-green-100 text-green-700" },
 };
 const EXPENSE_CONCILIATION_BADGE = { label: "Gasto vinculado", cls: "bg-emerald-100 text-emerald-700" };
+const MANUAL_CONCILIATION_BADGE  = { label: "Justificado",     cls: "bg-violet-100 text-violet-700" };
 
 const IMPORT_STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   ok:     { label: "OK",      cls: "bg-green-100 text-green-800" },
@@ -155,6 +156,11 @@ export default function BankMovementsManager() {
   const [confirmingQuoteId, setConfirmingQuoteId] = useState<number | null>(null);
   const [rejectingQuoteId, setRejectingQuoteId] = useState<number | null>(null);
   const [unlinkConfirm, setUnlinkConfirm] = useState(false);
+
+  // Manual conciliation state
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualType, setManualType] = useState<string>("transferencia_interna");
+  const [manualNotes, setManualNotes] = useState("");
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -259,6 +265,20 @@ export default function BankMovementsManager() {
     onError: (e) => toast.error(e.message),
   });
 
+  const manuallyConciliateMut = trpc.bankMovements.manuallyConciliate.useMutation({
+    onSuccess: () => {
+      toast.success("Movimiento conciliado manualmente");
+      movementsQ.refetch();
+      linksQ.refetch();
+      setShowManualForm(false);
+      setManualNotes("");
+      if (selectedMovement) {
+        setSelectedMovement({ ...selectedMovement, conciliationStatus: "conciliado" });
+      }
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   // ── File upload ────────────────────────────────────────────────────────────
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -293,6 +313,9 @@ export default function BankMovementsManager() {
     setConfirmingQuoteId(null);
     setRejectingQuoteId(null);
     setUnlinkConfirm(false);
+    setShowManualForm(false);
+    setManualNotes("");
+    setManualType("transferencia_interna");
   };
 
   const saveDetail = () => {
@@ -591,9 +614,12 @@ export default function BankMovementsManager() {
               Detalle del movimiento
               {selectedMovement && (() => {
                 const isNeg = parseFloat(selectedMovement.importe) < 0;
-                const badge = isNeg && selectedMovement.conciliationStatus === "conciliado"
-                  ? EXPENSE_CONCILIATION_BADGE
-                  : CONCILIATION_BADGE[selectedMovement.conciliationStatus ?? "pendiente"];
+                const isManual = confirmedLink?.entityType === "manual";
+                const badge = isManual
+                  ? MANUAL_CONCILIATION_BADGE
+                  : isNeg && selectedMovement.conciliationStatus === "conciliado"
+                    ? EXPENSE_CONCILIATION_BADGE
+                    : CONCILIATION_BADGE[selectedMovement.conciliationStatus ?? "pendiente"];
                 return <Badge className={badge.cls}>{badge.label}</Badge>;
               })()}
             </DialogTitle>
@@ -819,6 +845,104 @@ export default function BankMovementsManager() {
                       </div>
                     </details>
                   )}
+                </div>
+              )}
+
+              {/* ── Conciliación manual ── */}
+              {!isConciliated && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-violet-500" />
+                      Conciliación manual
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-violet-600 border-violet-200 hover:bg-violet-50 text-xs"
+                      onClick={() => setShowManualForm(!showManualForm)}
+                    >
+                      {showManualForm ? "Cancelar" : "Justificar manualmente"}
+                    </Button>
+                  </div>
+                  {showManualForm && (
+                    <div className="rounded-lg border border-violet-200 bg-violet-50/40 p-4 space-y-3">
+                      <p className="text-xs text-violet-700">
+                        Usa esto cuando el movimiento no corresponde a ninguna operación del sistema (transferencias internas, cuotas bancarias, impuestos, etc.).
+                      </p>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-600 font-medium">Tipo de movimiento *</label>
+                        <Select value={manualType} onValueChange={setManualType}>
+                          <SelectTrigger className="text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="transferencia_interna">Transferencia interna</SelectItem>
+                            <SelectItem value="comision_bancaria">Comisión / cuota bancaria</SelectItem>
+                            <SelectItem value="pago_impuesto">Pago de impuesto / hacienda</SelectItem>
+                            <SelectItem value="ajuste_contable">Ajuste contable</SelectItem>
+                            <SelectItem value="devolucion">Devolución / reembolso</SelectItem>
+                            <SelectItem value="otro">Otro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-600 font-medium">Justificación *</label>
+                        <textarea
+                          className="w-full text-sm border border-violet-200 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white"
+                          rows={2}
+                          value={manualNotes}
+                          onChange={(e) => setManualNotes(e.target.value)}
+                          placeholder="Describe brevemente el motivo de este movimiento…"
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        className="bg-violet-600 hover:bg-violet-700 text-white text-xs w-full"
+                        disabled={!manualNotes.trim() || manuallyConciliateMut.isPending}
+                        onClick={() => {
+                          if (selectedMovement) {
+                            manuallyConciliateMut.mutate({
+                              bankMovementId: selectedMovement.id,
+                              manualType: manualType as any,
+                              notes: manualNotes.trim(),
+                            });
+                          }
+                        }}
+                      >
+                        {manuallyConciliateMut.isPending ? "Guardando..." : "Confirmar conciliación manual"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Info cuando está conciliado manualmente */}
+              {isConciliated && confirmedLink?.entityType === "manual" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-violet-500" />
+                      Conciliación manual
+                    </h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
+                      onClick={() => setUnlinkConfirm(true)}
+                    >
+                      <Link2Off className="w-3.5 h-3.5 mr-1" /> Desvincular
+                    </Button>
+                  </div>
+                  <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm">
+                    <div className="flex items-center gap-2 text-violet-800 font-medium mb-1">
+                      <CheckCircle className="w-4 h-4" /> Justificado manualmente
+                    </div>
+                    <p className="text-xs text-violet-700">{confirmedLink.notes ?? "—"}</p>
+                    <div className="text-xs text-violet-500 mt-1">
+                      Por {confirmedLink.matchedBy ?? "–"} · {confirmedLink.matchedAt ? fmtDate(confirmedLink.matchedAt) : "–"}
+                    </div>
+                  </div>
                 </div>
               )}
 
