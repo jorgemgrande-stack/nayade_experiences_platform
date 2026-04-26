@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { and, count, desc, eq, gte, lte, ne, inArray, isNull, or, sql, sum } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
-import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expenses } from "../../drizzle/schema";
+import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expenses, reservations } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -728,6 +728,65 @@ export const bankMovementsRouter = router({
 
       return { success: true };
     }),
+
+  /** Previsión de tesorería: saldo actual + ingresos/gastos pendientes. */
+  getCashflowForecast: adminProc.query(async () => {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const in7d  = new Date(now.getTime() + 7  * 86400000).toISOString().slice(0, 10);
+    const in30d = new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+
+    const [lastMovementRow, pendingExpRow, pendingRevRow, expIn7d, expIn30d] = await Promise.all([
+      // Último saldo bancario registrado
+      db.select({ saldo: bankMovements.saldo, fecha: bankMovements.fecha })
+        .from(bankMovements)
+        .where(sql`${bankMovements.saldo} IS NOT NULL`)
+        .orderBy(desc(bankMovements.fecha), desc(bankMovements.id))
+        .limit(1),
+
+      // Gastos pendientes de pago (pending + justified)
+      db.select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)` })
+        .from(expenses)
+        .where(inArray(expenses.status, ["pending", "justified"])),
+
+      // Reservas pendientes de pago (ingreso esperado)
+      db.select({
+        total: sql<string>`COALESCE(SUM(${reservations.amountTotal}), 0)`,
+        count: count(),
+      })
+        .from(reservations)
+        .where(inArray(reservations.status, ["pending_payment", "draft"])),
+
+      // Gastos venciendo en ≤7 días (aquellos con fecha <= today+7 y pending)
+      db.select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)` })
+        .from(expenses)
+        .where(and(inArray(expenses.status, ["pending", "justified"]), lte(expenses.date, in7d))),
+
+      // Gastos venciendo en ≤30 días
+      db.select({ total: sql<string>`COALESCE(SUM(${expenses.amount}), 0)` })
+        .from(expenses)
+        .where(and(inArray(expenses.status, ["pending", "justified"]), lte(expenses.date, in30d))),
+    ]);
+
+    const currentBalance     = parseFloat(lastMovementRow[0]?.saldo ?? "0");
+    const lastBalanceDate    = lastMovementRow[0]?.fecha ?? today;
+    const pendingExpenses    = parseFloat(pendingExpRow[0]?.total ?? "0");
+    const pendingIncome      = parseFloat(pendingRevRow[0]?.total ?? "0") / 100; // cents
+    const pendingCount       = Number(pendingRevRow[0]?.count ?? 0);
+    const urgentExpenses7d   = parseFloat(expIn7d[0]?.total ?? "0");
+    const urgentExpenses30d  = parseFloat(expIn30d[0]?.total ?? "0");
+
+    return {
+      currentBalance,
+      lastBalanceDate,
+      pendingIncome,
+      pendingExpenses,
+      pendingReservationCount: pendingCount,
+      estimatedBalance: currentBalance + pendingIncome - pendingExpenses,
+      forecast7d:  currentBalance - urgentExpenses7d,
+      forecast30d: currentBalance + pendingIncome - urgentExpenses30d,
+    };
+  }),
 
   /** Desvincula una conciliación ya confirmada (no borra factura/reserva/presupuesto). */
   unlinkMovement: adminProc

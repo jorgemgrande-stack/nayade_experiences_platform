@@ -488,100 +488,99 @@ const recurringExpensesRouter = router({
     }),
 });
 
+// ─── helpers for profitLoss ───────────────────────────────────────────────────
+async function _profitLossForPeriod(dateFrom: string, dateTo: string, conciliatedOnly: boolean) {
+  const expenseConditions = [gte(expenses.date, dateFrom), lte(expenses.date, dateTo)];
+  if (conciliatedOnly) expenseConditions.push(eq(expenses.status, "conciliado"));
+
+  const [paidReservations, expenseRows] = await Promise.all([
+    db.select().from(reservations).where(
+      and(
+        eq(reservations.status, "paid"),
+        gte(sql`DATE(FROM_UNIXTIME(${reservations.paidAt} / 1000))`, dateFrom),
+        lte(sql`DATE(FROM_UNIXTIME(${reservations.paidAt} / 1000))`, dateTo),
+      )
+    ),
+    db.select().from(expenses).where(and(...expenseConditions)),
+  ]);
+
+  const totalRevenue = paidReservations.reduce((s, r) => s + r.amountTotal / 100, 0);
+  const totalExpenses = expenseRows.reduce((s, r) => s + parseFloat(r.amount), 0);
+  const grossProfit = totalRevenue - totalExpenses;
+  const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+  const revenueByChannel: Record<string, number> = {};
+  const revenueByProduct: Record<string, number> = {};
+  const revenueByChannelCount: Record<string, number> = {};
+  for (const r of paidReservations) {
+    const ch = r.channel ?? "web";
+    revenueByChannel[ch] = (revenueByChannel[ch] ?? 0) + r.amountTotal / 100;
+    revenueByChannelCount[ch] = (revenueByChannelCount[ch] ?? 0) + 1;
+    revenueByProduct[r.productName] = (revenueByProduct[r.productName] ?? 0) + r.amountTotal / 100;
+  }
+
+  const expensesByCategory: Record<number, number> = {};
+  const expensesByCostCenter: Record<number, number> = {};
+  const monthlyRevenue: Record<string, number> = {};
+  const monthlyExpenses: Record<string, number> = {};
+  for (const r of expenseRows) {
+    expensesByCategory[r.categoryId] = (expensesByCategory[r.categoryId] ?? 0) + parseFloat(r.amount);
+    expensesByCostCenter[r.costCenterId] = (expensesByCostCenter[r.costCenterId] ?? 0) + parseFloat(r.amount);
+    const month = r.date.slice(0, 7);
+    monthlyExpenses[month] = (monthlyExpenses[month] ?? 0) + parseFloat(r.amount);
+  }
+  for (const r of paidReservations) {
+    const month = new Date(r.paidAt!).toISOString().slice(0, 7);
+    monthlyRevenue[month] = (monthlyRevenue[month] ?? 0) + r.amountTotal / 100;
+  }
+
+  return {
+    summary: { totalRevenue, totalExpenses, grossProfit, grossMargin, reservationCount: paidReservations.length },
+    revenueByChannel: Object.entries(revenueByChannel).map(([channel, amount]) => ({
+      channel, amount, count: revenueByChannelCount[channel] ?? 0,
+      ticketMedio: revenueByChannelCount[channel] > 0 ? amount / revenueByChannelCount[channel] : 0,
+    })),
+    revenueByProduct: Object.entries(revenueByProduct).sort((a, b) => b[1] - a[1]).slice(0, 20)
+      .map(([product, amount]) => ({ product, amount })),
+    expensesByCategory: Object.entries(expensesByCategory).map(([categoryId, amount]) => ({ categoryId: Number(categoryId), amount })),
+    expensesByCostCenter: Object.entries(expensesByCostCenter).map(([costCenterId, amount]) => ({ costCenterId: Number(costCenterId), amount })),
+    monthly: (() => {
+      const allMonths = new Set([...Object.keys(monthlyRevenue), ...Object.keys(monthlyExpenses)]);
+      return Array.from(allMonths).sort().map((month) => ({
+        month,
+        revenue: monthlyRevenue[month] ?? 0,
+        expenses: monthlyExpenses[month] ?? 0,
+        profit: (monthlyRevenue[month] ?? 0) - (monthlyExpenses[month] ?? 0),
+      }));
+    })(),
+  };
+}
+
 // ─── Profit & Loss (Cuenta de Resultados) ────────────────────────────────────
 const profitLossRouter = router({
   report: protectedProcedure
     .input(z.object({
       dateFrom: z.string(),
       dateTo: z.string(),
+      conciliatedOnly: z.boolean().default(false),
     }))
     .query(async ({ input }) => {
-      // ── Ingresos: reservas pagadas ──────────────────────────────────────────
-      const paidReservations = await db
-        .select()
-        .from(reservations)
-        .where(
-          and(
-            eq(reservations.status, "paid"),
-            gte(sql`DATE(FROM_UNIXTIME(${reservations.paidAt} / 1000))`, input.dateFrom),
-            lte(sql`DATE(FROM_UNIXTIME(${reservations.paidAt} / 1000))`, input.dateTo)
-          )
-        );
+      // Compute previous period (same duration, immediately before)
+      const fromMs = new Date(input.dateFrom).getTime();
+      const toMs = new Date(input.dateTo).getTime();
+      const duration = toMs - fromMs;
+      const prevDateTo = new Date(fromMs - 86400000).toISOString().slice(0, 10);
+      const prevDateFrom = new Date(fromMs - 86400000 - duration).toISOString().slice(0, 10);
 
-      const totalRevenue = paidReservations.reduce((sum: number, r: typeof paidReservations[number]) => sum + r.amountTotal / 100, 0);
-
-      // Revenue by channel
-      const revenueByChannel: Record<string, number> = {};
-      for (const r of paidReservations) {
-        const ch = r.channel ?? "web";
-        revenueByChannel[ch] = (revenueByChannel[ch] ?? 0) + r.amountTotal / 100;
-      }
-
-      // Revenue by product (name)
-      const revenueByProduct: Record<string, number> = {};
-      for (const r of paidReservations) {
-        revenueByProduct[r.productName] = (revenueByProduct[r.productName] ?? 0) + r.amountTotal / 100;
-      }
-
-      // ── Gastos ──────────────────────────────────────────────────────────────
-      const expenseRows = await db
-        .select()
-        .from(expenses)
-        .where(and(gte(expenses.date, input.dateFrom), lte(expenses.date, input.dateTo)));
-
-      const totalExpenses = expenseRows.reduce((sum: number, r: typeof expenseRows[number]) => sum + parseFloat(r.amount), 0);
-
-      // Expenses by category
-      const expensesByCategory: Record<number, number> = {};
-      for (const r of expenseRows) {
-        expensesByCategory[r.categoryId] = (expensesByCategory[r.categoryId] ?? 0) + parseFloat(r.amount);
-      }
-
-      // Expenses by cost center
-      const expensesByCostCenter: Record<number, number> = {};
-      for (const r of expenseRows) {
-        expensesByCostCenter[r.costCenterId] = (expensesByCostCenter[r.costCenterId] ?? 0) + parseFloat(r.amount);
-      }
-
-      // Monthly breakdown
-      const monthlyRevenue: Record<string, number> = {};
-      const monthlyExpenses: Record<string, number> = {};
-      for (const r of paidReservations) {
-        const month = new Date(r.paidAt!).toISOString().slice(0, 7);
-        monthlyRevenue[month] = (monthlyRevenue[month] ?? 0) + r.amountTotal / 100;
-      }
-      for (const r of expenseRows) {
-        const month = r.date.slice(0, 7);
-        monthlyExpenses[month] = (monthlyExpenses[month] ?? 0) + parseFloat(r.amount);
-      }
-
-      const grossProfit = totalRevenue - totalExpenses;
-      const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+      const [current, prev] = await Promise.all([
+        _profitLossForPeriod(input.dateFrom, input.dateTo, input.conciliatedOnly),
+        _profitLossForPeriod(prevDateFrom, prevDateTo, input.conciliatedOnly),
+      ]);
 
       return {
-        summary: {
-          totalRevenue,
-          totalExpenses,
-          grossProfit,
-          grossMargin,
-          reservationCount: paidReservations.length,
-        },
-        revenueByChannel: Object.entries(revenueByChannel).map(([channel, amount]) => ({ channel, amount })),
-        revenueByProduct: Object.entries(revenueByProduct)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 20)
-          .map(([product, amount]) => ({ product, amount })),
-        expensesByCategory: Object.entries(expensesByCategory).map(([categoryId, amount]) => ({ categoryId: Number(categoryId), amount })),
-        expensesByCostCenter: Object.entries(expensesByCostCenter).map(([costCenterId, amount]) => ({ costCenterId: Number(costCenterId), amount })),
-        monthly: (() => {
-          const allMonths = new Set([...Object.keys(monthlyRevenue), ...Object.keys(monthlyExpenses)]);
-          return Array.from(allMonths).sort().map((month) => ({
-            month,
-            revenue: monthlyRevenue[month] ?? 0,
-            expenses: monthlyExpenses[month] ?? 0,
-            profit: (monthlyRevenue[month] ?? 0) - (monthlyExpenses[month] ?? 0),
-          }));
-        })(),
+        ...current,
+        prevSummary: prev.summary,
+        prevPeriod: { dateFrom: prevDateFrom, dateTo: prevDateTo },
       };
     }),
 });

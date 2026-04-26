@@ -58,6 +58,9 @@ export default function AccountingDashboard() {
   const { data: expenseStats } = trpc.bankMovements.getExpenseStats.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
   });
+  const { data: cashflow } = trpc.bankMovements.getCashflowForecast.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
 
   const handleExport = (format: "csv" | "excel") => {
     toast.success(`Exportando informe en formato ${format.toUpperCase()}... (Función disponible próximamente)`);
@@ -156,6 +159,40 @@ export default function AccountingDashboard() {
           </div>
         ))}
       </div>
+
+      {/* ── KPI Caja prevista ────────────────────────────────────────────── */}
+      {cashflow && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-1 h-4 rounded-full bg-gradient-to-b from-blue-400 to-teal-600" />
+            <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Previsión de tesorería</h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-card rounded-2xl border border-blue-200/60 p-4">
+              <p className="text-xs text-muted-foreground mb-1">Saldo bancario</p>
+              <p className="text-xl font-bold text-blue-700">{fmtEur(cashflow.currentBalance)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Último mov. {cashflow.lastBalanceDate}</p>
+            </div>
+            <div className={`bg-card rounded-2xl border p-4 ${cashflow.forecast7d >= 0 ? "border-teal-200/60" : "border-red-300"}`}>
+              <p className="text-xs text-muted-foreground mb-1">Caja prevista 7 días</p>
+              <p className={`text-xl font-bold ${cashflow.forecast7d >= 0 ? "text-teal-700" : "text-red-600"}`}>
+                {fmtEur(cashflow.forecast7d)}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Saldo − gastos urgentes</p>
+            </div>
+            <div className="bg-card rounded-2xl border border-emerald-200/60 p-4">
+              <p className="text-xs text-muted-foreground mb-1">Ingresos pendientes</p>
+              <p className="text-xl font-bold text-emerald-700">{fmtEur(cashflow.pendingIncome)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">{cashflow.pendingReservationCount} reservas</p>
+            </div>
+            <div className="bg-card rounded-2xl border border-amber-200/60 p-4">
+              <p className="text-xs text-muted-foreground mb-1">Gastos pendientes</p>
+              <p className="text-xl font-bold text-amber-700">{fmtEur(cashflow.pendingExpenses)}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Sin pagar registrados</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Control de conciliación ──────────────────────────────────────── */}
       <div className="mb-8">
