@@ -18,6 +18,7 @@ import { notifyOwner } from "./_core/notification";
 import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
+import { getBusinessEmail } from "./config";
 import { generateDocumentNumber } from "./documentNumbers";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL } from "./ghl";
@@ -268,7 +269,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
 
             const clientEmail = lead?.email ?? updatedReservation.customerEmail;
             const clientName  = lead?.name  ?? updatedReservation.customerName;
-            const COPY_EMAIL  = "reservas@nayadeexperiences.es";
+            const COPY_EMAIL  = await getBusinessEmail('reservations');
             if (clientEmail) {
               try {
                 const quoteUrl = quote.paymentLinkToken

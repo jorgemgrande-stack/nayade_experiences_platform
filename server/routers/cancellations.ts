@@ -34,10 +34,11 @@ import {
 import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
 import { logActivity } from "../db";
+import { getBusinessEmail } from "../config";
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
-const COPY_EMAIL = "reservas@nayadeexperiences.es";
+const getCopyEmail = () => getBusinessEmail('cancellations');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -477,7 +478,7 @@ export const cancellationsRouter = router({
       if (input.email) {
         await sendEmail({
           to: input.email,
-          cc: COPY_EMAIL,
+          cc: await getCopyEmail(),
           subject: `Solicitud de anulación recibida — Ref. #${requestId}`,
           html: emailAcuseRecibo(input.fullName, requestId),
         }).catch(() => {});
@@ -485,7 +486,7 @@ export const cancellationsRouter = router({
 
       // Notificación interna a reservas
       await sendEmail({
-        to: COPY_EMAIL,
+        to: await getCopyEmail(),
         subject: `Nueva solicitud de anulación #${requestId} — ${input.fullName}`,
         html: `<p>Nueva solicitud de anulación recibida desde la landing pública.</p>
                <p><strong>Cliente:</strong> ${input.fullName} (${input.email ?? "sin email"})</p>
@@ -780,7 +781,7 @@ export const cancellationsRouter = router({
       if (input.sendEmail && req.email) {
         await sendEmail({
           to: req.email,
-          cc: COPY_EMAIL,
+          cc: await getCopyEmail(),
           subject: `Resolución de tu solicitud de anulación #${input.id}`,
           html: emailRechazo(req.fullName, input.id, input.adminText),
         }).catch(() => {});
@@ -860,7 +861,7 @@ export const cancellationsRouter = router({
         if (input.sendEmail && req.email) {
           await sendEmail({
             to: req.email,
-            cc: COPY_EMAIL,
+            cc: await getCopyEmail(),
             subject: `Aceptación de tu solicitud de anulación #${input.id}`,
             html: emailAceptacionDevolucion(req.fullName, input.id, String(input.refundAmount), input.isPartial),
           }).catch(() => {});
@@ -946,7 +947,7 @@ export const cancellationsRouter = router({
             : "Sin caducidad";
           await sendEmail({
             to: req.email,
-            cc: COPY_EMAIL,
+            cc: await getCopyEmail(),
             subject: `Bono de compensación — Solicitud #${input.id}`,
             html: emailAceptacionBono(
               req.fullName, input.id, code,
@@ -1016,7 +1017,7 @@ export const cancellationsRouter = router({
       if (input.sendEmail && req.email) {
         emailSent = await sendEmail({
           to: req.email,
-          cc: COPY_EMAIL,
+          cc: await getCopyEmail(),
           subject: `Documentación requerida — Solicitud #${input.id}`,
           html: emailSolicitudDocumentacion(req.fullName, input.id, input.text),
         });
@@ -1130,7 +1131,7 @@ export const cancellationsRouter = router({
         const executedAtFormatted = executedAt.toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
         const emailSent = await sendEmail({
           to: req.email,
-          cc: COPY_EMAIL,
+          cc: await getCopyEmail(),
           subject: `Devolución realizada — Solicitud #${input.id}`,
           html: buildCancellationRefundExecutedHtml({
             fullName: req.fullName,
@@ -1486,7 +1487,7 @@ export const cancellationsRouter = router({
       if (input.email) {
         await sendEmail({
           to: input.email,
-          cc: COPY_EMAIL,
+          cc: await getCopyEmail(),
           subject: `Solicitud de anulación recibida — Ref. #${requestId}`,
           html: emailAcuseRecibo(input.fullName, requestId, input.locator, input.reason),
         }).catch(() => {});
@@ -1671,7 +1672,7 @@ export const cancellationsRouter = router({
         if (input.compensationType === "devolucion" && input.refundAmount) {
           await sendEmail({
             to: res.customerEmail,
-            cc: COPY_EMAIL,
+            cc: await getCopyEmail(),
             subject: `Aceptación de tu solicitud de anulación #${requestId}`,
             html: emailAceptacionDevolucion(res.customerName, requestId, String(input.refundAmount), false),
           }).catch(() => {});
@@ -1679,7 +1680,7 @@ export const cancellationsRouter = router({
           // Sin compensación o bono sin datos de voucher: notificamos la aceptación sin importe
           await sendEmail({
             to: res.customerEmail,
-            cc: COPY_EMAIL,
+            cc: await getCopyEmail(),
             subject: `Aceptación de tu solicitud de anulación #${requestId}`,
             html: emailAceptacionDevolucion(res.customerName, requestId, "0.00", false),
           }).catch(() => {});
@@ -1906,7 +1907,7 @@ export const cancellationsRouter = router({
 
       await sendEmail({
         to: req.email,
-        cc: COPY_EMAIL,
+        cc: await getCopyEmail(),
         subject: `Bono de compensación — Código ${voucher.code}`,
         html: buildCancellationAcceptedVoucherHtml({
           fullName: req.fullName,

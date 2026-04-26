@@ -17,7 +17,11 @@
  * Ancho máximo: 600px · Layout: tablas HTML · CSS inline
  */
 
+import { getSystemSettingSync } from "./config";
+
 // ─── Constantes de marca ──────────────────────────────────────────────────────
+// Visual constants remain hardcoded; text data reads from config cache (sync).
+// Cache is populated by Phase 3.1 async callers before templates are rendered.
 const LOGO_URL    = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
 const HERO_IMG    = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_lago_aereo_178815fc.jpg";
 const BRAND_BLUE     = "#0a1628";
@@ -151,11 +155,11 @@ function emailFooter(): string {
           </tr></table>
           <!-- Datos de contacto -->
           <p style="color:#6b5c3e;font-size:13px;margin:0 0 6px;font-family:Arial,sans-serif;line-height:1.8;">
-            ${SVG.phone}&nbsp;<a href="tel:+34930347791" style="color:#8b6914;text-decoration:none;font-weight:600;">+34 930 34 77 91</a>
-            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:reservas@nayadeexperiences.es" style="color:#8b6914;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+            ${SVG.phone}&nbsp;<a href="tel:${getSystemSettingSync('brand_support_phone', '+34 930 34 77 91').replace(/\s/g,'')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('brand_support_phone', '+34 930 34 77 91')}</a>
+            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:${getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es')}</a>
           </p>
           <p style="color:#8b7355;font-size:12px;margin:0 0 12px;font-family:Arial,sans-serif;">
-            ${SVG.map}&nbsp;Los &Aacute;ngeles de San Rafael &middot; El Espinar &middot; Segovia
+            ${SVG.map}&nbsp;${getSystemSettingSync('brand_location', 'Los Ángeles de San Rafael · El Espinar · Segovia')}
           </p>
           <!-- Línea divisoria -->
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;"><tr>
@@ -960,8 +964,8 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
   const quoteRefRow = d.quoteNumber
     ? `<br/><span style="color:#9ca3af;font-size:12px;">Presupuesto original: <strong>${d.quoteNumber}</strong></span>`
     : "";
-  const contactPhone = d.contactPhone ?? "+34 930 34 77 91";
-  const contactEmail = d.contactEmail ?? "reservas@nayadeexperiences.es";
+  const contactPhone = d.contactPhone ?? getSystemSettingSync('brand_support_phone', '+34 930 34 77 91');
+  const contactEmail = d.contactEmail ?? getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es');
 
   const installmentBlock = d.installmentPlan?.installments?.length
     ? (() => {

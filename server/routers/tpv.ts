@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
 import { sendEmail } from "../mailer";
+import { getBusinessEmail, getFeatureFlag, getSystemSetting } from "../config";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity } from "../db";
 import { calcularREAVSimple } from "../reav";
 import {
@@ -164,19 +165,23 @@ export const tpvRouter = router({
 
       // Email de apertura (no bloquea si falla)
       try {
-        const [register] = await db.select({ name: cashRegisters.name }).from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
-        const html = buildCashOpenHtml({
-          sessionId: id,
-          cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
-          registerName: register?.name ?? `Caja #${input.registerId}`,
-          openingAmount: input.openingAmount,
-          openedAt: new Date(),
-        });
-        await sendEmail({
-          to: "administracion@nayadeexperiences.es",
-          subject: `🟢 Apertura de caja — ${register?.name ?? "Caja"} — Náyade Experiences`,
-          html,
-        });
+        const emailEnabled = await getFeatureFlag('tpv_email_notifications_enabled', true);
+        if (emailEnabled) {
+          const [register] = await db.select({ name: cashRegisters.name }).from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
+          const html = buildCashOpenHtml({
+            sessionId: id,
+            cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
+            registerName: register?.name ?? `Caja #${input.registerId}`,
+            openingAmount: input.openingAmount,
+            openedAt: new Date(),
+          });
+          const toEmail = await getBusinessEmail('admin_alerts');
+          await sendEmail({
+            to: toEmail,
+            subject: `🟢 Apertura de caja — ${register?.name ?? "Caja"} — Náyade Experiences`,
+            html,
+          });
+        }
       } catch (e) {
         console.error("[TPV] Error enviando email apertura caja:", e);
       }
@@ -278,7 +283,9 @@ export const tpvRouter = router({
 
           if (!existingClosure) {
             const closureDate = new Date(Number(session.openedAt)).toISOString().slice(0, 10);
-            const closureStatus = Math.abs(cashDifference) < 0.01 ? "balanced" : "difference";
+            const cashTolerance = parseFloat(await getSystemSetting('cash_register_tolerance', '0.01')) || 0.01;
+            const alertThreshold = parseFloat(await getSystemSetting('cash_alert_threshold', '20')) || 20;
+            const closureStatus = Math.abs(cashDifference) < cashTolerance ? "balanced" : "difference";
             const [closureResult] = await db.insert(finCashClosures).values({
               accountId: defaultAcc.id,
               date: closureDate,
@@ -297,8 +304,8 @@ export const tpvRouter = router({
             });
             const closureId = (closureResult as any).insertId as number;
 
-            if (Math.abs(cashDifference) >= 0.01) {
-              const severity: "warning" | "critical" = Math.abs(cashDifference) < 20 ? "warning" : "critical";
+            if (Math.abs(cashDifference) >= cashTolerance) {
+              const severity: "warning" | "critical" = Math.abs(cashDifference) < alertThreshold ? "warning" : "critical";
               await db.insert(finCashAlerts).values({
                 type: "cash_difference",
                 severity,
@@ -316,6 +323,8 @@ export const tpvRouter = router({
 
       // Email de cierre con desglose multicanal (no bloquea si falla)
       try {
+        const closeEmailEnabled = await getFeatureFlag('tpv_email_notifications_enabled', true);
+        if (!closeEmailEnabled) throw new Error("tpv_email_notifications_enabled=false");
         const [register] = await db.select({ name: cashRegisters.name }).from(cashRegisters).where(eq(cashRegisters.id, session.registerId));
 
         // Derivar fecha del día desde openedAt
@@ -389,8 +398,9 @@ export const tpvRouter = router({
           notes: input.notes ?? session.notes,
         });
 
+        const closeToEmail = await getBusinessEmail('admin_alerts');
         await sendEmail({
-          to: "administracion@nayadeexperiences.es",
+          to: closeToEmail,
           subject: `🔴 Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — Náyade Experiences`,
           html,
         });
@@ -876,9 +886,10 @@ export const tpvRouter = router({
           amount: `${total.toFixed(2)} €`,
         });
         const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
-        await sendEmail({ to: "reservas@nayadeexperiences.es", subject, html: emailHtml });
+        const saleNotifyEmail = await getBusinessEmail('reservations');
+        await sendEmail({ to: saleNotifyEmail, subject, html: emailHtml });
         if (input.customerEmail) {
-          await sendEmail({ to: input.customerEmail, cc: "reservas@nayadeexperiences.es", subject, html: emailHtml });
+          await sendEmail({ to: input.customerEmail, cc: saleNotifyEmail, subject, html: emailHtml });
         }
       } catch (e) {
         console.error("[TPV] Error enviando email de confirmación:", e);
@@ -1017,7 +1028,7 @@ export const tpvRouter = router({
       });
       await sendEmail({
         to: input.email,
-        cc: "reservas@nayadeexperiences.es",
+        cc: await getBusinessEmail('reservations'),
         subject: `Tu ticket de compra ${sale.ticketNumber} — Náyade Experiences`,
         html: emailHtml,
       });

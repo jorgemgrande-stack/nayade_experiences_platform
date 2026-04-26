@@ -10,8 +10,7 @@ import mysql from "mysql2/promise";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { cancellationRequests, cancellationLogs } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
-
-const COPY_EMAIL = "reservas@nayadeexperiences.es";
+import { getBusinessEmail } from "./config";
 const STALE_HOURS = 48;
 
 async function runCancellationStaleJob() {
@@ -93,8 +92,9 @@ async function runCancellationStaleJob() {
       <p style="margin-top:16px;">Gestiona estos expedientes en <a href="https://www.nayadeexperiences.es/admin/crm?tab=anulaciones">CRM → Anulaciones</a>.</p>
     `;
 
+    const copyEmail = await getBusinessEmail('cancellations');
     await sendEmail({
-      to: COPY_EMAIL,
+      to: copyEmail,
       subject: `⚠ ${trulyStale.length} anulación${trulyStale.length > 1 ? "es" : ""} sin atender (>48h)`,
       html,
     }).catch(() => {});

@@ -12,6 +12,7 @@ import { quotes, leads } from "../drizzle/schema";
 import { buildQuoteHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { notifyOwner } from "./_core/notification";
+import { getBusinessEmail } from "./config";
 
 const MAX_REMINDERS = 2; // máximo de reenvíos automáticos por presupuesto
 
@@ -88,7 +89,7 @@ async function runQuoteReminderJob() {
       try {
         await sendEmail({
           to: clientEmail,
-          cc: "reservas@nayadeexperiences.es",
+          cc: await getBusinessEmail('reservations'),
           subject: `⏰ Recordatorio: tu presupuesto ${quote.quoteNumber} sigue disponible — Náyade Experiences`,
           html,
         });

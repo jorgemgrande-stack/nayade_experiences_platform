@@ -8,6 +8,7 @@
 import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
+import { getBusinessEmail } from "./config";
 
 export interface ReservationEmailData {
   id: number;
@@ -88,7 +89,7 @@ export async function sendReservationPaidNotifications(
   }
 
   // ── 2. Email de confirmación al cliente ───────────────────────────────────
-  const copyEmail = "reservas@nayadeexperiences.es";
+  const copyEmail = await getBusinessEmail('reservations');
   const adminEmail = process.env.ADMIN_EMAIL;
   const bccList = [copyEmail, ...(adminEmail ? [adminEmail] : [])];
 

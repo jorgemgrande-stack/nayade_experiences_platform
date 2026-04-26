@@ -428,6 +428,13 @@
       "when": 1778100720000,
       "tag": "0062_feature_flags_system_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "5",
+      "when": 1778187120000,
+      "tag": "0063_brand_extra_settings",
+      "breakpoints": true
     }
   ]
 }

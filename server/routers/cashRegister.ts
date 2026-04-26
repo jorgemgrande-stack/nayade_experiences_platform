@@ -7,6 +7,7 @@ import { eq, and, gte, lte, desc, sql, inArray, or, isNull, notInArray } from "d
 import { finCashAccounts, finCashMovements, finCashClosures, finCashAlerts, finCashClosureActions, reservations, expenses } from "../../drizzle/schema";
 import { cashSessions } from "../../drizzle/schema";
 import { createCashMovementIfNotExists } from "./cashRegisterHelper";
+import { getSystemSetting } from "../config";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -442,7 +443,8 @@ export const cashRegisterRouter = router({
       if (existingAdj) throw new TRPCError({ code: "CONFLICT", message: "Ya existe un ajuste para este cierre" });
 
       const difference = parseFloat(closure.difference ?? "0");
-      if (Math.abs(difference) < 0.01) throw new TRPCError({ code: "BAD_REQUEST", message: "No hay diferencia que ajustar" });
+      const cashTolerance = parseFloat(await getSystemSetting('cash_register_tolerance', '0.01')) || 0.01;
+      if (Math.abs(difference) < cashTolerance) throw new TRPCError({ code: "BAD_REQUEST", message: "No hay diferencia que ajustar" });
 
       const [defaultAcc] = await db
         .select({ id: finCashAccounts.id })

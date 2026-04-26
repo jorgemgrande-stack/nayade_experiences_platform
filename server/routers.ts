@@ -170,6 +170,7 @@ import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { operationsRouter } from "./routers/operations";
 import { bankMovementsRouter } from "./routers/bankMovements";
 import { cashRegisterRouter } from "./routers/cashRegister";
+import { getBusinessEmail } from "./config";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
 import { cardTerminalBatchesRouter } from "./routers/cardTerminalBatches";
 import { emailIngestionRouter } from "./routers/emailIngestion";
@@ -363,7 +364,7 @@ export const appRouter = router({
         }).catch(err => console.error("[submitBudget] Email al usuario fallido:", err));
 
         // Email al administrador
-        const adminEmail = process.env.ADMIN_EMAIL ?? "reservas@nayadeexperiences.es";
+        const adminEmail = process.env.ADMIN_EMAIL ?? await getBusinessEmail('reservations');
         sendEmail({
           to: adminEmail,
           subject: `⚠️ Nueva solicitud — ${input.name} (${input.selectedCategory})`,
