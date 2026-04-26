@@ -2602,6 +2602,31 @@ export type OnboardingStatus = typeof onboardingStatus.$inferSelect;
 // Los nuevos roles (is_legacy=false) están preparados para la siguiente fase
 // donde se asignarán permisos y se migrará users.role al sistema RBAC completo.
 
+// ─── RBAC: PERMISSIONS ───────────────────────────────────────────────────────
+
+export const rbacPermissions = mysqlTable("rbac_permissions", {
+  id: int("id").autoincrement().primaryKey(),
+  key: varchar("key", { length: 128 }).notNull().unique(),
+  module: varchar("module", { length: 64 }).notNull(),
+  action: varchar("action", { length: 128 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type RbacPermission = typeof rbacPermissions.$inferSelect;
+
+// Composite PK (role_id, permission_id) enforced at DB level in the migration.
+export const rbacRolePermissions = mysqlTable("rbac_role_permissions", {
+  roleId: int("role_id").notNull(),
+  permissionId: int("permission_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type RbacRolePermission = typeof rbacRolePermissions.$inferSelect;
+
+// ─── RBAC: ROLES ─────────────────────────────────────────────────────────────
+// Catálogo de roles. Los roles con is_legacy=true mapean 1:1 con users.role enum.
+// Los nuevos roles (is_legacy=false) están preparados para la siguiente fase
+// donde se asignarán permisos y se migrará users.role al sistema RBAC completo.
+
 export const rbacRoles = mysqlTable("rbac_roles", {
   id: int("id").autoincrement().primaryKey(),
   key: varchar("key", { length: 64 }).notNull().unique(),

@@ -477,6 +477,13 @@
       "when": 1745708400000,
       "tag": "0069_rbac_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "5",
+      "when": 1745795400000,
+      "tag": "0070_rbac_permissions",
+      "breakpoints": true
     }
   ]
 }

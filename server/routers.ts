@@ -1145,6 +1145,30 @@ export const appRouter = router({
       if (input.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes eliminarte a ti mismo" });
       return deleteUser(input.userId);
     }),
+    getRbacRolePermissions: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return {} as Record<string, string[]>;
+      try {
+        const { sql } = await import("drizzle-orm");
+        const result = await db.execute(sql`
+          SELECT rr.\`key\` AS role_key, p.\`key\` AS permission_key
+          FROM rbac_role_permissions rrp
+          JOIN rbac_roles rr ON rr.id = rrp.role_id
+          JOIN rbac_permissions p ON p.id = rrp.permission_id
+          WHERE rr.is_active = 1
+          ORDER BY rr.sort_order, p.\`key\`
+        `);
+        const rows = (result as any[][])[0] as Array<{ role_key: string; permission_key: string }>;
+        const map: Record<string, string[]> = {};
+        for (const row of rows) {
+          if (!map[row.role_key]) map[row.role_key] = [];
+          map[row.role_key].push(row.permission_key);
+        }
+        return map;
+      } catch {
+        return {} as Record<string, string[]>;
+      }
+    }),
     sendEmailPreview: adminProcedure.input(z.object({
       templateId: z.string(),
       to: z.string().email(),

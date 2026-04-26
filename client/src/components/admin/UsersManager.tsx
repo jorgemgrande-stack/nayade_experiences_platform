@@ -218,6 +218,50 @@ function RoleInfoCard({ roleValue }: { roleValue: string }) {
   );
 }
 
+// ─── RBAC: permisos en vivo desde base de datos ───────────────────────────────
+function RbacPermissionsCard({ perms }: { perms: string[] }) {
+  const grouped = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const p of perms) {
+      const dot = p.indexOf(".");
+      const mod = dot >= 0 ? p.slice(0, dot) : p;
+      const action = dot >= 0 ? p.slice(dot + 1) : p;
+      if (!map[mod]) map[mod] = [];
+      map[mod].push(action);
+    }
+    return map;
+  }, [perms]);
+
+  const moduleLabels: Record<string, string> = {
+    crm: "CRM", tpv: "TPV", accounting: "Contabilidad",
+    settings: "Config", users: "Usuarios", roles: "Roles",
+    operations: "Operaciones", restaurants: "Restaurantes", marketing: "Marketing",
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 flex items-center gap-1">
+        <Shield className="w-3 h-3" />
+        {perms.length} permisos RBAC asignados
+      </p>
+      {Object.entries(grouped).map(([mod, actions]) => (
+        <div key={mod}>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-0.5">
+            {moduleLabels[mod] ?? mod}
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {actions.map((a) => (
+              <span key={a} className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-100 rounded px-1 py-0.5 font-mono">
+                {a}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StatusBadge({ inviteAccepted, isActive }: { inviteAccepted: boolean; isActive: boolean }) {
   if (!isActive) {
     return (
@@ -329,6 +373,7 @@ export default function UsersManager() {
   const utils = trpc.useUtils();
 
   const { data: users = [], isLoading } = trpc.admin.getUsers.useQuery();
+  const { data: rbacPermMap = {} } = trpc.admin.getRbacRolePermissions.useQuery();
 
   // ─── FASE 4: contadores y detección de último admin ───────────────────────
   const roleCounts = useMemo(() => {
@@ -612,18 +657,28 @@ export default function UsersManager() {
                           </SelectContent>
                         </Select>
 
-                        {/* Tooltip con capacidades completas */}
+                        {/* Tooltip: RBAC vivo si disponible, fallback estático */}
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button className="text-gray-300 hover:text-gray-500 transition-colors">
                               <Info className="w-3.5 h-3.5" />
                             </button>
                           </TooltipTrigger>
-                          <TooltipContent side="right" className="max-w-64 p-3">
-                            <RoleInfoCard roleValue={user.role} />
+                          <TooltipContent side="right" className="max-w-72 p-3">
+                            {rbacPermMap[user.role]?.length > 0
+                              ? <RbacPermissionsCard perms={rbacPermMap[user.role]} />
+                              : <RoleInfoCard roleValue={user.role} />}
                           </TooltipContent>
                         </Tooltip>
                       </div>
+
+                      {/* Permisos RBAC count */}
+                      {rbacPermMap[user.role]?.length > 0 && (
+                        <p className="text-[10px] text-indigo-500 flex items-center gap-1 mt-0.5">
+                          <Shield className="w-2.5 h-2.5" />
+                          {rbacPermMap[user.role].length} permisos RBAC
+                        </p>
+                      )}
 
                       {/* FASE 2: advertencia de último admin */}
                       {isLastAdmin && (
@@ -735,7 +790,14 @@ export default function UsersManager() {
                     </span>
                   </div>
                   <p className="text-xs text-gray-600 mb-2">{r.description}</p>
-                  {caps.length > 0 && (
+                  {rbacPermMap[r.key]?.length > 0 ? (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <Shield className="w-3 h-3 text-indigo-400 shrink-0" />
+                      <span className="text-[10px] text-indigo-600 font-medium">
+                        {rbacPermMap[r.key].length} permisos RBAC definidos
+                      </span>
+                    </div>
+                  ) : caps.length > 0 && (
                     <ul className="space-y-0.5">
                       {caps.map((cap) => (
                         <li key={cap} className="flex items-start gap-1.5 text-xs text-gray-500">
