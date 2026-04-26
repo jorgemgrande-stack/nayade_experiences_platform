@@ -3,7 +3,7 @@ import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { and, desc, eq, gte, lte, ne, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, ne, inArray, isNull, or, sql, sum } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
 import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expenses } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
@@ -464,6 +464,44 @@ export const bankMovementsRouter = router({
     }),
 
   // ── GASTOS ↔ MOVIMIENTOS BANCARIOS ────────────────────────────────────────────
+
+  /** Estadísticas de gastos y movimientos bancarios para dashboards. */
+  getExpenseStats: adminProc.query(async () => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+
+    const [negativeMovements, linkedExpenseLinks, pendingExp, conciliadoExp, staleExp] = await Promise.all([
+      db.select({ cnt: count() }).from(bankMovements)
+        .where(and(eq(bankMovements.status, "pendiente"), sql`CAST(${bankMovements.importe} AS DECIMAL(12,2)) < 0`)),
+
+      db.select({ bmId: bankMovementLinks.bankMovementId }).from(bankMovementLinks)
+        .where(and(eq(bankMovementLinks.entityType, "expense"), inArray(bankMovementLinks.status, ["confirmed", "rejected"]))),
+
+      db.select({ cnt: count(), total: sum(expenses.amount) }).from(expenses)
+        .where(eq(expenses.status, "pending")),
+
+      db.select({ cnt: count(), total: sum(expenses.amount) }).from(expenses)
+        .where(and(eq(expenses.status, "conciliado"), gte(expenses.date, monthStart), lte(expenses.date, monthEnd))),
+
+      db.select({ cnt: count() }).from(expenses)
+        .where(and(eq(expenses.status, "pending"), lte(expenses.date, thirtyDaysAgo))),
+    ]);
+
+    const linkedIds = new Set(linkedExpenseLinks.map(l => l.bmId));
+    const candidatesCount = Math.max(0, (negativeMovements[0]?.cnt ?? 0) - linkedIds.size);
+
+    return {
+      candidatesCount,
+      pendingExpensesCount: Number(pendingExp[0]?.cnt ?? 0),
+      pendingExpensesAmount: parseFloat(String(pendingExp[0]?.total ?? 0)),
+      conciliadoThisMonthCount: Number(conciliadoExp[0]?.cnt ?? 0),
+      conciliadoThisMonthAmount: parseFloat(String(conciliadoExp[0]?.total ?? 0)),
+      staleExpensesCount: Number(staleExp[0]?.cnt ?? 0),
+      periodLabel: now.toLocaleDateString("es-ES", { month: "long", year: "numeric" }),
+    };
+  }),
 
   /** Devuelve movimientos negativos sin vínculo de gasto confirmado o ignorado. */
   listExpenseCandidates: adminProc

@@ -327,6 +327,12 @@ export default function AdminDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Gastos bancarios: alertas
+  const { data: expenseStats } = trpc.bankMovements.getExpenseStats.useQuery(undefined, {
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // ── Auth guards ──────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -383,6 +389,8 @@ export default function AdminDashboard() {
   const tpvDifferenceBatches = conciliacionAlerts?.differenceBatches ?? 0;
   const tpvStaleMovements = conciliacionAlerts?.staleIncomingMovements ?? 0;
   const tpvUnlinkedOps = conciliacionAlerts?.unlinkedOperations ?? 0;
+  const expenseCandidates = expenseStats?.candidatesCount ?? 0;
+  const expenseStale = expenseStats?.staleExpensesCount ?? 0;
 
   const totalAlerts =
     (alerts?.transfersToValidate ?? 0) +
@@ -397,7 +405,9 @@ export default function AdminDashboard() {
     (tpvStaleBatches > 0 ? 1 : 0) +
     (tpvDifferenceBatches > 0 ? 1 : 0) +
     (tpvStaleMovements > 0 ? 1 : 0) +
-    (tpvUnlinkedOps > 0 ? 1 : 0);
+    (tpvUnlinkedOps > 0 ? 1 : 0) +
+    (expenseCandidates > 0 ? 1 : 0) +
+    (expenseStale > 0 ? 1 : 0);
 
   return (
     <AdminLayout title="Dashboard">
@@ -612,6 +622,30 @@ export default function AdminDashboard() {
                         <p className="text-[10px] text-blue-400/60">Contabilidad → Operaciones TPV</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {expenseCandidates > 0 && (
+                  <Link href="/admin/contabilidad/gastos">
+                    <div className="flex items-center gap-2 bg-violet-500/10 border border-violet-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-violet-500/15 transition-colors">
+                      <Banknote className="w-4 h-4 text-violet-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-violet-300">{expenseCandidates} cargo{expenseCandidates > 1 ? "s" : ""} bancario{expenseCandidates > 1 ? "s" : ""} sin registrar como gasto</p>
+                        <p className="text-[10px] text-violet-400/60">Contabilidad → Gastos</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {expenseStale > 0 && (
+                  <Link href="/admin/contabilidad/gastos">
+                    <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-yellow-500/15 transition-colors">
+                      <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-yellow-300">{expenseStale} gasto{expenseStale > 1 ? "s" : ""} pendiente{expenseStale > 1 ? "s" : ""} sin justificar +30 días</p>
+                        <p className="text-[10px] text-yellow-400/60">Contabilidad → Gastos</p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
                     </div>
                   </Link>
                 )}

@@ -4907,6 +4907,10 @@ export default function CRMDashboard() {
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
   });
+  const { data: expenseStats } = trpc.bankMovements.getExpenseStats.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+  });
   const deleteAnulMutation = trpc.cancellations.deleteRequest.useMutation({
     onSuccess: () => {
       toast.success("Solicitud eliminada");
@@ -5853,22 +5857,33 @@ export default function CRMDashboard() {
           </div>
         )}
 
-        {/* ── Banner alertas TPV / coherencia cobros ──────────────────────── */}
-        {tpvPaymentAlerts && (tpvPaymentAlerts.unlinkedTpvOps > 0 || tpvPaymentAlerts.staleFailedPayments > 0) && (
+        {/* ── Banner alertas TPV / coherencia cobros + gastos ─────────────── */}
+        {((tpvPaymentAlerts && (tpvPaymentAlerts.unlinkedTpvOps > 0 || tpvPaymentAlerts.staleFailedPayments > 0)) ||
+          (expenseStats && (expenseStats.candidatesCount > 0 || expenseStats.staleExpensesCount > 0))) && (
           <div className="mx-6 mb-2 rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-3 flex flex-col gap-1.5">
             <div className="flex items-center gap-2 text-blue-400 font-semibold text-sm">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              Coherencia de cobros — incidencias detectadas
+              Coherencia financiera — incidencias detectadas
             </div>
-            {tpvPaymentAlerts.unlinkedTpvOps > 0 && (
+            {(tpvPaymentAlerts?.unlinkedTpvOps ?? 0) > 0 && (
               <a href="/admin/contabilidad/operaciones-tpv" className="text-xs text-blue-300/80 hover:text-blue-200 transition-colors">
-                • {tpvPaymentAlerts.unlinkedTpvOps} operación{tpvPaymentAlerts.unlinkedTpvOps !== 1 ? "es" : ""} TPV sin vincular a reserva/factura → Operaciones TPV
+                • {tpvPaymentAlerts!.unlinkedTpvOps} operación{tpvPaymentAlerts!.unlinkedTpvOps !== 1 ? "es" : ""} TPV sin vincular a reserva/factura → Operaciones TPV
               </a>
             )}
-            {tpvPaymentAlerts.staleFailedPayments > 0 && (
+            {(tpvPaymentAlerts?.staleFailedPayments ?? 0) > 0 && (
               <span className="text-xs text-amber-300/80">
-                • {tpvPaymentAlerts.staleFailedPayments} presupuesto{tpvPaymentAlerts.staleFailedPayments !== 1 ? "s" : ""} con pago fallido sin resolver +48h
+                • {tpvPaymentAlerts!.staleFailedPayments} presupuesto{tpvPaymentAlerts!.staleFailedPayments !== 1 ? "s" : ""} con pago fallido sin resolver +48h
               </span>
+            )}
+            {(expenseStats?.candidatesCount ?? 0) > 0 && (
+              <a href="/admin/contabilidad/gastos" className="text-xs text-violet-300/80 hover:text-violet-200 transition-colors">
+                • {expenseStats!.candidatesCount} cargo{expenseStats!.candidatesCount !== 1 ? "s" : ""} bancario{expenseStats!.candidatesCount !== 1 ? "s" : ""} sin registrar como gasto → Gastos
+              </a>
+            )}
+            {(expenseStats?.staleExpensesCount ?? 0) > 0 && (
+              <a href="/admin/contabilidad/gastos" className="text-xs text-yellow-300/80 hover:text-yellow-200 transition-colors">
+                • {expenseStats!.staleExpensesCount} gasto{expenseStats!.staleExpensesCount !== 1 ? "s" : ""} pendiente{expenseStats!.staleExpensesCount !== 1 ? "s" : ""} sin justificar +30 días → Gastos
+              </a>
             )}
           </div>
         )}

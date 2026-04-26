@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { BarChart3, TrendingUp, TrendingDown, Euro, Download, Calendar, Filter, FileText, CreditCard, CheckCircle, Clock, XCircle, AlertTriangle, Banknote, Package, Zap } from "lucide-react";
+import { BarChart3, TrendingUp, TrendingDown, Euro, Download, Calendar, Filter, FileText, CreditCard, CheckCircle, Clock, XCircle, AlertTriangle, Banknote, Package, Zap, TrendingDown as ExpenseIcon, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -53,6 +53,9 @@ export default function AccountingDashboard() {
   const { data: metrics } = trpc.accounting.getDashboardMetrics.useQuery();
   const { data: transactions } = trpc.accounting.getTransactions.useQuery({ limit: 20, offset: 0 });
   const { data: reconStats } = trpc.cardTerminalBatches.getReconciliationStats.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: expenseStats } = trpc.bankMovements.getExpenseStats.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
   });
 
@@ -257,6 +260,90 @@ export default function AccountingDashboard() {
               </div>
               <div className="text-xs text-muted-foreground">Ops TPV sin vincular</div>
               <div className="text-[10px] text-muted-foreground/60 mt-0.5">Sin reserva/factura</div>
+            </div>
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Control de gastos ─────────────────────────────────────────────── */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-4 rounded-full bg-gradient-to-b from-violet-400 to-red-500" />
+          <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Control de gastos · {expenseStats?.periodLabel ?? "—"}</h3>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {/* 1. Cargos bancarios sin registrar */}
+          <Link href="/admin/contabilidad/gastos">
+            <div className={cn(
+              "bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all",
+              (expenseStats?.candidatesCount ?? 0) > 0 ? "border-violet-500/30" : "border-border/50"
+            )}>
+              <div className="flex items-center justify-between mb-3">
+                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.candidatesCount ?? 0) > 0 ? "bg-violet-50 dark:bg-violet-900/30" : "bg-muted/30")}>
+                  <Banknote className={cn("w-4 h-4", (expenseStats?.candidatesCount ?? 0) > 0 ? "text-violet-500" : "text-muted-foreground")} />
+                </div>
+              </div>
+              <div className={cn("text-2xl font-bold mb-1", (expenseStats?.candidatesCount ?? 0) > 0 ? "text-violet-600 dark:text-violet-400" : "text-foreground")}>
+                {expenseStats?.candidatesCount ?? "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Cargos sin registrar</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Movimientos negativos banco</div>
+            </div>
+          </Link>
+
+          {/* 2. Gastos pendientes de justificación */}
+          <Link href="/admin/contabilidad/gastos">
+            <div className={cn(
+              "bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all",
+              (expenseStats?.staleExpensesCount ?? 0) > 0 ? "border-amber-500/30" : "border-border/50"
+            )}>
+              <div className="flex items-center justify-between mb-3">
+                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "bg-amber-50 dark:bg-amber-900/30" : "bg-muted/30")}>
+                  <Clock className={cn("w-4 h-4", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "text-amber-500" : "text-muted-foreground")} />
+                </div>
+              </div>
+              <div className={cn("text-2xl font-bold mb-1", (expenseStats?.staleExpensesCount ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground")}>
+                {expenseStats?.staleExpensesCount ?? "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Gastos pendientes +30d</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">Sin justificar ni contabilizar</div>
+            </div>
+          </Link>
+
+          {/* 3. Gastos conciliados este mes */}
+          <Link href="/admin/contabilidad/gastos">
+            <div className="bg-card rounded-2xl border border-emerald-500/30 p-4 cursor-pointer hover:brightness-110 transition-all">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-50 dark:bg-emerald-900/30">
+                  <Link2 className="w-4 h-4 text-emerald-500" />
+                </div>
+              </div>
+              <div className="text-2xl font-bold mb-1 text-emerald-600 dark:text-emerald-400">
+                {expenseStats?.conciliadoThisMonthCount ?? "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Gastos conciliados</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">
+                {expenseStats ? fmtEur(expenseStats.conciliadoThisMonthAmount) : "—"}
+              </div>
+            </div>
+          </Link>
+
+          {/* 4. Importe gastos pendientes */}
+          <Link href="/admin/contabilidad/gastos">
+            <div className={cn(
+              "bg-card rounded-2xl border p-4 cursor-pointer hover:brightness-110 transition-all",
+              (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "border-red-500/30" : "border-border/50"
+            )}>
+              <div className="flex items-center justify-between mb-3">
+                <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "bg-red-50 dark:bg-red-900/30" : "bg-muted/30")}>
+                  <AlertTriangle className={cn("w-4 h-4", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "text-red-500" : "text-muted-foreground")} />
+                </div>
+              </div>
+              <div className={cn("text-lg font-bold mb-1 leading-tight", (expenseStats?.pendingExpensesAmount ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-foreground")}>
+                {expenseStats ? fmtEur(expenseStats.pendingExpensesAmount) : "—"}
+              </div>
+              <div className="text-xs text-muted-foreground">Importe pend. justificar</div>
+              <div className="text-[10px] text-muted-foreground/60 mt-0.5">{expenseStats?.pendingExpensesCount ?? 0} gastos</div>
             </div>
           </Link>
         </div>
