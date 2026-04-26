@@ -1088,6 +1088,7 @@ export const appRouter = router({
       email: z.string().email(),
       role: z.enum(["user", "admin", "monitor", "agente", "adminrest"]),
       origin: z.string(),
+      rbacRoleKeys: z.array(z.string().min(1).max(64)).optional(),
     })).mutation(async ({ input }) => {
       const { nanoid } = await import("nanoid");
       const token = nanoid(48);
@@ -1102,6 +1103,26 @@ export const appRouter = router({
       // Send invite email
       const setPasswordUrl = `${input.origin}/establecer-contrasena?token=${token}`;
       await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: input.role });
+      // Assign RBAC roles if provided — fail-safe: never breaks legacy user creation
+      if (input.rbacRoleKeys?.length && result.id) {
+        const db = await getDb();
+        if (db) {
+          const { sql } = await import("drizzle-orm");
+          for (const roleKey of input.rbacRoleKeys) {
+            try {
+              const roleResult = await db.execute(sql`SELECT id FROM rbac_roles WHERE \`key\` = ${roleKey} AND is_active = 1`);
+              const roleRow = (roleResult as any[][])[0]?.[0] as { id: number } | undefined;
+              if (roleRow) {
+                await db.execute(sql`INSERT IGNORE INTO rbac_user_roles (user_id, role_id) VALUES (${result.id}, ${roleRow.id})`);
+              } else {
+                console.warn(`[createUser] RBAC role not found or inactive: "${roleKey}"`);
+              }
+            } catch (rbacErr) {
+              console.warn(`[createUser] Failed to assign RBAC role "${roleKey}" to user ${result.id}:`, rbacErr);
+            }
+          }
+        }
+      }
       return { ...result, token };
     }),
     changeUserRole: adminProcedure.input(z.object({

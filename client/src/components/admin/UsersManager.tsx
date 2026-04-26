@@ -224,6 +224,15 @@ const ALL_RBAC_ROLES = [
   ...UPCOMING_ROLES.map(r => ({ key: r.key, label: r.label, color: r.color, icon: r.icon })),
 ];
 
+// ─── Sugerencia automática RBAC al elegir rol legacy en el formulario de creación ──
+const LEGACY_RBAC_SUGGESTION: Record<string, string[]> = {
+  admin:    ["admin"],
+  agente:   ["commercial_agent"],
+  monitor:  ["monitor"],
+  adminrest:["adminrest"],
+  user:     ["user"],
+};
+
 // ─── RBAC: permisos en vivo desde base de datos ───────────────────────────────
 function RbacPermissionsCard({ perms }: { perms: string[] }) {
   const grouped = useMemo(() => {
@@ -399,8 +408,10 @@ export default function UsersManager() {
   const createUser = trpc.admin.createUser.useMutation({
     onSuccess: () => {
       utils.admin.getUsers.invalidate();
+      utils.admin.getRbacUsersData.invalidate();
       setShowCreate(false);
       setForm({ name: "", email: "", role: "user" });
+      setCreateRbacRoles(LEGACY_RBAC_SUGGESTION["user"]);
       toast.success("Usuario creado", { description: "Se ha enviado el email de invitación." });
     },
     onError: (e) => toast.error("Error", { description: e.message }),
@@ -470,6 +481,7 @@ export default function UsersManager() {
   // ─── UI state ───────────────────────────────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "user" as Role });
+  const [createRbacRoles, setCreateRbacRoles] = useState<string[]>(LEGACY_RBAC_SUGGESTION["user"]);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<{ id: number; name: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
@@ -546,7 +558,12 @@ export default function UsersManager() {
       toast.error("Campos requeridos", { description: "Nombre y email son obligatorios." });
       return;
     }
-    createUser.mutate({ ...form, role: form.role as any, origin: window.location.origin });
+    createUser.mutate({
+      ...form,
+      role: form.role as any,
+      origin: window.location.origin,
+      rbacRoleKeys: createRbacRoles.length > 0 ? createRbacRoles : undefined,
+    });
   };
 
   if (isLoading) {
@@ -569,7 +586,7 @@ export default function UsersManager() {
               {users.length} usuario{users.length !== 1 ? "s" : ""} registrado{users.length !== 1 ? "s" : ""}
             </p>
           </div>
-          <Button onClick={() => setShowCreate(true)} className="bg-blue-700 hover:bg-blue-800 text-white gap-2">
+          <Button onClick={() => { setShowCreate(true); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[form.role] ?? []); }} className="bg-blue-700 hover:bg-blue-800 text-white gap-2">
             <UserPlus className="w-4 h-4" />
             Nuevo usuario
           </Button>
@@ -1025,7 +1042,7 @@ export default function UsersManager() {
         </Dialog>
 
         {/* ── Create User Dialog ── */}
-        <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) { setForm({ name: "", email: "", role: "user" }); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION["user"]); } }}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -1044,7 +1061,7 @@ export default function UsersManager() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="new-role">Rol</Label>
-                <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v as Role }))}>
+                <Select value={form.role} onValueChange={(v) => { setForm((f) => ({ ...f, role: v as Role })); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION[v] ?? []); }}>
                   <SelectTrigger id="new-role">
                     <SelectValue />
                   </SelectTrigger>
@@ -1083,6 +1100,84 @@ export default function UsersManager() {
                   Podrás asignar los restaurantes específicos después de crear el usuario.
                 </p>
               )}
+
+              {/* ── Roles avanzados RBAC ── */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-1.5 text-sm">
+                    <Shield className="w-3.5 h-3.5 text-indigo-500" />
+                    Roles RBAC
+                    <span className="text-gray-400 text-xs font-normal ml-0.5">(opcional)</span>
+                  </Label>
+                  {createRbacRoles.length === 0 ? (
+                    <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
+                      Fallback legacy
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5 font-medium">
+                      {createRbacRoles.length} asignado{createRbacRoles.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-0.5">
+                  {ALL_RBAC_ROLES.map((r) => {
+                    const checked = createRbacRoles.includes(r.key);
+                    const caps = roleCapabilities[r.key] ?? [];
+                    const Icon = r.icon;
+                    return (
+                      <label
+                        key={r.key}
+                        className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-all select-none ${
+                          checked
+                            ? "border-indigo-300 bg-indigo-50/60"
+                            : "border-gray-200 bg-white hover:border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setCreateRbacRoles(prev =>
+                              checked ? prev.filter(k => k !== r.key) : [...prev, r.key]
+                            )
+                          }
+                          className="mt-0.5 accent-indigo-600 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center flex-wrap gap-1.5">
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold border rounded-full px-1.5 py-0.5 ${r.color}`}>
+                              <Icon className="w-2.5 h-2.5" />
+                              {r.label}
+                            </span>
+                            {r.key === "sales_cashier" && (
+                              <span className="text-[10px] text-violet-600 bg-violet-50 border border-violet-200 rounded-full px-1.5 py-0.5">
+                                ⚠ Accede al TPV y caja
+                              </span>
+                            )}
+                            {r.key === "commercial_agent" && (
+                              <span className="text-[10px] text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-1.5 py-0.5">
+                                Sin TPV
+                              </span>
+                            )}
+                          </div>
+                          {caps.slice(0, 2).length > 0 && (
+                            <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">
+                              {caps.slice(0, 2).join(" · ")}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                {createRbacRoles.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground flex items-start gap-1">
+                    <Info className="w-3 h-3 mt-0.5 shrink-0" />
+                    Sin roles RBAC — el sistema usará el rol legacy como fallback automático.
+                  </p>
+                )}
+              </div>
+
               <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
                 Se enviará un email automático con un enlace para establecer contraseña. El enlace expira en 72 horas.
               </div>
