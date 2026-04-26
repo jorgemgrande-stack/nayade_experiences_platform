@@ -169,6 +169,7 @@ import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
 import { pdfTemplatesRouter } from "./routers/pdfTemplatesRouter";
 import { operationsRouter } from "./routers/operations";
 import { bankMovementsRouter } from "./routers/bankMovements";
+import { cashRegisterRouter } from "./routers/cashRegister";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
 import { cardTerminalBatchesRouter } from "./routers/cardTerminalBatches";
 import { emailIngestionRouter } from "./routers/emailIngestion";
@@ -194,6 +195,7 @@ export const appRouter = router({
   system: systemRouter,
   financial: expensesModuleRouter,
   bankMovements: bankMovementsRouter,
+  cashRegister: cashRegisterRouter,
   cardTerminalOperations: cardTerminalOperationsRouter,
   cardTerminalBatches: cardTerminalBatchesRouter,
   emailIngestion: emailIngestionRouter,

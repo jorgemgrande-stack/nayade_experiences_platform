@@ -91,6 +91,7 @@ const navItems = [
       { label: "Proveedores gastos", href: "/admin/contabilidad/gastos/proveedores" },
       { label: "Centros de coste", href: "/admin/contabilidad/gastos/centros-coste" },
       { label: "Cuenta Resultados", href: "/admin/contabilidad/cuenta-resultados" },
+      { label: "Caja", href: "/admin/contabilidad/caja" },
       { label: "Movimientos bancarios", href: "/admin/contabilidad/movimientos-bancarios" },
       { label: "Operaciones TPV", href: "/admin/contabilidad/operaciones-tpv" },
       { label: "Remesas TPV", href: "/admin/contabilidad/remesas-tpv" },

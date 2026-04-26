@@ -76,6 +76,7 @@ const ExpensesManager = lazy(() => import("./pages/admin/accounting/ExpensesMana
 const ExpenseCategoriesManager = lazy(() => import("./pages/admin/accounting/ExpenseCategoriesManager"));
 const ExpenseSuppliersManager = lazy(() => import("./pages/admin/accounting/ExpenseSuppliersManager"));
 const CostCentersManager = lazy(() => import("./pages/admin/accounting/CostCentersManager"));
+const CashRegisterManager = lazy(() => import("./pages/admin/accounting/CashRegisterManager"));
 const RecurringExpensesManager = lazy(() => import("./pages/admin/accounting/RecurringExpensesManager"));
 const ProfitLossReport = lazy(() => import("./pages/admin/accounting/ProfitLossReport"));
 const BankMovementsManager = lazy(() => import("./pages/admin/accounting/BankMovementsManager"));
@@ -230,6 +231,7 @@ function Router() {
       <Route path="/admin/contabilidad/gastos/centros-coste">{() => <Suspense fallback={<AdminLoadingFallback />}><CostCentersManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/gastos/recurrentes">{() => <Suspense fallback={<AdminLoadingFallback />}><RecurringExpensesManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/cuenta-resultados">{() => <Suspense fallback={<AdminLoadingFallback />}><ProfitLossReport /></Suspense>}</Route>
+      <Route path="/admin/contabilidad/caja">{() => <Suspense fallback={<AdminLoadingFallback />}><CashRegisterManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/movimientos-bancarios">{() => <Suspense fallback={<AdminLoadingFallback />}><BankMovementsManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/operaciones-tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><CardTerminalOperationsManager /></Suspense>}</Route>
       <Route path="/admin/contabilidad/remesas-tpv">{() => <Suspense fallback={<AdminLoadingFallback />}><CardTerminalBatchesManager /></Suspense>}</Route>

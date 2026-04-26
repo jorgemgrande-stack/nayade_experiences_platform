@@ -2431,3 +2431,58 @@ export const emailIngestionLogs = mysqlTable("email_ingestion_logs", {
 });
 
 export type EmailIngestionLog = typeof emailIngestionLogs.$inferSelect;
+
+// ─── MÓDULO CAJA CONTABLE (Financial Cash Register) ──────────────────────────
+
+export const finCashAccounts = mysqlTable("fin_cash_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description"),
+  type: mysqlEnum("type", ["principal", "secondary", "petty_cash", "other"]).notNull().default("principal"),
+  currentBalance: decimal("current_balance", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  initialBalance: decimal("initial_balance", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  currency: varchar("currency", { length: 8 }).notNull().default("EUR"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type FinCashAccount = typeof finCashAccounts.$inferSelect;
+export type InsertFinCashAccount = typeof finCashAccounts.$inferInsert;
+
+export const finCashMovements = mysqlTable("fin_cash_movements", {
+  id: int("id").autoincrement().primaryKey(),
+  accountId: int("account_id").notNull(),
+  date: varchar("date", { length: 10 }).notNull(),
+  type: mysqlEnum("type_fcm", ["income", "expense", "transfer_in", "transfer_out", "opening_balance", "adjustment"]).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  concept: varchar("concept", { length: 512 }).notNull(),
+  counterparty: varchar("counterparty", { length: 256 }),
+  category: varchar("category", { length: 128 }),
+  relatedEntityType: mysqlEnum("related_entity_type", ["reservation", "expense", "tpv_sale", "bank_deposit", "manual"]).default("manual"),
+  relatedEntityId: int("related_entity_id"),
+  transferToAccountId: int("transfer_to_account_id"),
+  notes: text("notes"),
+  createdBy: int("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type FinCashMovement = typeof finCashMovements.$inferSelect;
+export type InsertFinCashMovement = typeof finCashMovements.$inferInsert;
+
+export const finCashClosures = mysqlTable("fin_cash_closures", {
+  id: int("id").autoincrement().primaryKey(),
+  accountId: int("account_id").notNull(),
+  date: varchar("date", { length: 10 }).notNull(),
+  openingBalance: decimal("opening_balance", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  totalIncome: decimal("total_income", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  totalExpenses: decimal("total_expenses", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  closingBalance: decimal("closing_balance", { precision: 12, scale: 2 }).notNull().default("0.00"),
+  countedAmount: decimal("counted_amount", { precision: 12, scale: 2 }),
+  difference: decimal("difference", { precision: 12, scale: 2 }),
+  status: mysqlEnum("status_fcc", ["open", "closed", "reconciled"]).notNull().default("open"),
+  notes: text("notes"),
+  closedBy: int("closed_by"),
+  closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type FinCashClosure = typeof finCashClosures.$inferSelect;
+export type InsertFinCashClosure = typeof finCashClosures.$inferInsert;
