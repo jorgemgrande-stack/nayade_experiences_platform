@@ -96,6 +96,7 @@ const GlobalCalendar = lazy(() => import("./pages/admin/restaurants/GlobalCalend
 // Users & Settings
 const UsersManager = lazy(() => import("./pages/admin/users/UsersManager"));
 const Settings = lazy(() => import("./pages/admin/settings/Settings"));
+const AdvancedSettings = lazy(() => import("./pages/admin/settings/AdvancedSettings"));
 
 // CRM
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
@@ -281,6 +282,7 @@ function Router() {
       {/* Users & Settings */}
       <Route path="/admin/usuarios">{() => <Suspense fallback={<AdminLoadingFallback />}><UsersManager /></Suspense>}</Route>
       <Route path="/admin/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
+      <Route path="/admin/configuracion/avanzado">{() => <Suspense fallback={<AdminLoadingFallback />}><AdvancedSettings /></Suspense>}</Route>
       <Route path="/admin/numeracion">{() => <Suspense fallback={<AdminLoadingFallback />}><DocumentNumbersAdmin /></Suspense>}</Route>
 
       {/* 404 */}

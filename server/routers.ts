@@ -173,6 +173,7 @@ import { cashRegisterRouter } from "./routers/cashRegister";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
 import { cardTerminalBatchesRouter } from "./routers/cardTerminalBatches";
 import { emailIngestionRouter } from "./routers/emailIngestion";
+import { configRouter } from "./routers/configRouter";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 // Admin middlewaree
@@ -199,6 +200,7 @@ export const appRouter = router({
   cardTerminalOperations: cardTerminalOperationsRouter,
   cardTerminalBatches: cardTerminalBatchesRouter,
   emailIngestion: emailIngestionRouter,
+  config: configRouter,
   cancellations: cancellationsRouter,
   emailTemplates: emailTemplatesRouter,
   operations: operationsRouter,

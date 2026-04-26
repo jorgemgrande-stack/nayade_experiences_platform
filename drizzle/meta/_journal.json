@@ -421,6 +421,13 @@
       "when": 1778014320000,
       "tag": "0061_cash_resolution",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "5",
+      "when": 1778100720000,
+      "tag": "0062_feature_flags_system_settings",
+      "breakpoints": true
     }
   ]
 }

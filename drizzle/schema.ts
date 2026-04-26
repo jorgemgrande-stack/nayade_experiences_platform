@@ -2519,4 +2519,37 @@ export const finCashClosureActions = mysqlTable("fin_cash_closure_actions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type FinCashClosureAction = typeof finCashClosureActions.$inferSelect;
+
+// ─── FEATURE FLAGS ────────────────────────────────────────────────────────────
+
+export const featureFlags = mysqlTable("feature_flags", {
+  id: int("id").autoincrement().primaryKey(),
+  key: varchar("key", { length: 128 }).notNull().unique(),
+  name: varchar("name", { length: 256 }).notNull(),
+  description: text("description"),
+  module: varchar("module", { length: 64 }).notNull().default("general"),
+  enabled: boolean("enabled").notNull().default(true),
+  defaultEnabled: boolean("default_enabled").notNull().default(true),
+  riskLevel: mysqlEnum("risk_level", ["low", "medium", "high"]).notNull().default("low"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type FeatureFlag = typeof featureFlags.$inferSelect;
+
+// ─── SYSTEM SETTINGS ─────────────────────────────────────────────────────────
+
+export const systemSettings = mysqlTable("system_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  key: varchar("key", { length: 128 }).notNull().unique(),
+  value: text("value"),
+  valueType: mysqlEnum("value_type", ["string", "number", "boolean", "json"]).notNull().default("string"),
+  category: varchar("category", { length: 64 }).notNull().default("general"),
+  label: varchar("label", { length: 256 }).notNull(),
+  description: text("description"),
+  isSensitive: boolean("is_sensitive").notNull().default(false),
+  isPublic: boolean("is_public").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type SystemSetting = typeof systemSettings.$inferSelect;
 export type InsertFinCashClosureAction = typeof finCashClosureActions.$inferInsert;
