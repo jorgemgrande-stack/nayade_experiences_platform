@@ -1,13 +1,16 @@
 import { z } from "zod";
-import { router } from "../trpc";
-import { db } from "../db";
-import { finCashAccounts, finCashMovements, finCashClosures } from "../../drizzle/schema";
-import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure } from "../trpc";
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
+import { eq, and, gte, lte, desc, sql } from "drizzle-orm";
+import { finCashAccounts, finCashMovements, finCashClosures } from "../../drizzle/schema";
+
+const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const db = drizzle(_pool);
 
 const adminProc = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "admin") {
+  if ((ctx.user as { role: string }).role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
   }
   return next({ ctx });
