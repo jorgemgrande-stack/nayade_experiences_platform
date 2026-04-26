@@ -118,7 +118,7 @@ export async function checkRbacOrLegacy(
 ): Promise<boolean> {
   try {
     const perms = await getUserPermissions(userId, legacyRole);
-    return perms.includes(permissionKey);
+    return perms.includes(permissionKey) || fallbackAllowedRoles.includes(legacyRole);
   } catch {
     return fallbackAllowedRoles.includes(legacyRole);
   }

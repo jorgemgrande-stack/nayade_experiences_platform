@@ -103,7 +103,7 @@ export function anyPermissionProcedure(permissionKeys: string[], fallbackRoles: 
     let allowed: boolean;
     try {
       const perms = await getUserPermissions(ctx.user.id, ctx.user.role as string);
-      allowed = permissionKeys.some(k => perms.includes(k));
+      allowed = permissionKeys.some(k => perms.includes(k)) || fallbackRoles.includes(ctx.user.role as string);
     } catch {
       allowed = fallbackRoles.includes(ctx.user.role as string);
     }
