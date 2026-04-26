@@ -470,6 +470,13 @@
       "when": 1778619120000,
       "tag": "0068_additional_job_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "5",
+      "when": 1745708400000,
+      "tag": "0069_rbac_roles",
+      "breakpoints": true
     }
   ]
 }

@@ -2597,4 +2597,21 @@ export const onboardingStatus = mysqlTable("onboarding_status", {
 });
 export type OnboardingStatus = typeof onboardingStatus.$inferSelect;
 
+// ─── RBAC: ROLES ─────────────────────────────────────────────────────────────
+// Catálogo de roles. Los roles con is_legacy=true mapean 1:1 con users.role enum.
+// Los nuevos roles (is_legacy=false) están preparados para la siguiente fase
+// donde se asignarán permisos y se migrará users.role al sistema RBAC completo.
+
+export const rbacRoles = mysqlTable("rbac_roles", {
+  id: int("id").autoincrement().primaryKey(),
+  key: varchar("key", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 128 }).notNull(),
+  description: text("description"),
+  isLegacy: boolean("is_legacy").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  sortOrder: int("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type RbacRole = typeof rbacRoles.$inferSelect;
+
 export type InsertFinCashClosureAction = typeof finCashClosureActions.$inferInsert;

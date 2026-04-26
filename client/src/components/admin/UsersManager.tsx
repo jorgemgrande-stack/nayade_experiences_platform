@@ -46,7 +46,7 @@ import {
   UserPlus, MoreVertical, Shield, ShieldCheck, UserCheck, UserX,
   Trash2, Send, CheckCircle, Clock, XCircle, UtensilsCrossed,
   ChevronDown, ChevronUp, Plus, Minus, KeyRound, Eye, Star,
-  Briefcase, MonitorPlay, Info, AlertTriangle,
+  Briefcase, MonitorPlay, Info, AlertTriangle, Hourglass, ShoppingCart,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -86,6 +86,19 @@ const roleCapabilities: Record<string, string[]> = {
   user: [
     "Sin acceso al panel de administración",
     "Solo acceso al portal público",
+  ],
+  commercial_agent: [
+    "CRM: leads, presupuestos y reservas",
+    "Operaciones: calendario y actividades",
+    "Cupones y ticketing",
+    "Vista de códigos descuento",
+    "Sin acceso a TPV ni caja",
+  ],
+  sales_cashier: [
+    "Todo lo de Agente Comercial",
+    "TPV: crear ventas y cobrar",
+    "Abrir y cerrar caja",
+    "Acceso a liquidaciones del turno",
   ],
 };
 
@@ -134,6 +147,24 @@ const ROLES = [
 ] as const;
 
 type Role = (typeof ROLES)[number]["value"];
+
+// ─── Roles en preparación (RBAC futuro, no asignables aún) ───────────────────
+const UPCOMING_ROLES = [
+  {
+    key: "commercial_agent",
+    label: "Agente Comercial",
+    description: "Gestiona leads, presupuestos, reservas y actividad comercial. Sin acceso a TPV ni caja.",
+    color: "bg-indigo-100 text-indigo-800 border-indigo-200",
+    icon: Briefcase,
+  },
+  {
+    key: "sales_cashier",
+    label: "Agente + Caja",
+    description: "Gestiona actividad comercial y además puede operar el TPV, abrir caja, vender y cerrar caja.",
+    color: "bg-violet-100 text-violet-800 border-violet-200",
+    icon: ShoppingCart,
+  },
+] as const;
 
 // ─── FASE 1: RoleBadge con icono por rol ──────────────────────────────────────
 function RoleBadge({ role, isLastAdmin = false }: { role: string; isLastAdmin?: boolean }) {
@@ -677,6 +708,46 @@ export default function UsersManager() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* ── Roles en preparación ── */}
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Hourglass className="w-4 h-4 text-indigo-500 shrink-0" />
+            <p className="text-sm font-semibold text-indigo-800">Roles en preparación</p>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400 bg-indigo-100 border border-indigo-200 rounded-full px-2 py-0.5">
+              Próximamente
+            </span>
+          </div>
+          <p className="text-xs text-indigo-600/80">
+            Estos roles formarán parte del nuevo sistema de permisos granular (RBAC). Están definidos en base de datos pero aún no son asignables. Aparecerán en el selector cuando el módulo de permisos esté activado.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {UPCOMING_ROLES.map((r) => {
+              const Icon = r.icon;
+              const caps = roleCapabilities[r.key] ?? [];
+              return (
+                <div key={r.key} className={`rounded-lg border p-3 bg-white/70 ${r.color.replace("text-", "border-").replace("bg-", "").split(" ")[0]} border-indigo-200`}>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border ${r.color}`}>
+                      <Icon className="w-3 h-3" />
+                      {r.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 mb-2">{r.description}</p>
+                  {caps.length > 0 && (
+                    <ul className="space-y-0.5">
+                      {caps.map((cap) => (
+                        <li key={cap} className="flex items-start gap-1.5 text-xs text-gray-500">
+                          <span className="mt-0.5 text-indigo-400">◦</span>{cap}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* ── Create User Dialog ── */}
