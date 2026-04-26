@@ -26,7 +26,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Package, FileText, Calendar,
   BarChart3, Settings, Users, Image, BedDouble, Sparkles, UtensilsCrossed,
   Receipt, TrendingDown, RefreshCw, Tag, Building2, TrendingUp,
-  List, FileBarChart, Ticket, Percent, XCircle, Hash,
+  List, FileBarChart, Ticket, Percent, XCircle, Hash, ShoppingCart,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -39,36 +39,38 @@ type FlatMenuItem = {
   path: string;
   section?: string; // section header label (only on first item of each section)
   indent?: boolean; // visual indent for sub-items
+  roles?: string[]; // if set, only shown for these roles
 };
 
 const menuItems: FlatMenuItem[] = [
   { icon: LayoutDashboard, label: "Dashboard",       path: "/admin" },
-  { icon: Image,           label: "CMS",             path: "/admin/cms" },
-  { icon: Package,         label: "Productos",       path: "/admin/productos" },
-  { icon: FileText,        label: "CRM",             path: "/admin/crm" },
-  { icon: Users,            label: "Clientes",        path: "/admin/crm/clientes",    indent: true },
-  { icon: XCircle,          label: "Anulaciones",     path: "/admin/crm/anulaciones", indent: true },
-  { icon: Calendar,        label: "Operaciones",     path: "/admin/operaciones" },
+  { icon: Image,           label: "CMS",             path: "/admin/cms",       roles: ["admin"] },
+  { icon: Package,         label: "Productos",       path: "/admin/productos", roles: ["admin"] },
+  { icon: FileText,        label: "CRM",             path: "/admin/crm",       roles: ["admin", "agente"] },
+  { icon: Users,            label: "Clientes",        path: "/admin/crm/clientes",    indent: true, roles: ["admin", "agente"] },
+  { icon: XCircle,          label: "Anulaciones",     path: "/admin/crm/anulaciones", indent: true, roles: ["admin", "agente"] },
+  { icon: Calendar,        label: "Operaciones",     path: "/admin/operaciones", roles: ["admin", "agente", "monitor"] },
   // ── Contabilidad ──────────────────────────────────────────────────────────
-  { icon: BarChart3,    label: "Dashboard Contab.",  path: "/admin/contabilidad/dashboard",        section: "Contabilidad" },
-  { icon: List,         label: "Transacciones",      path: "/admin/contabilidad/transacciones",    indent: true },
-  { icon: FileBarChart, label: "Informes",           path: "/admin/contabilidad/informes",         indent: true },
-  { icon: TrendingDown, label: "Gastos",             path: "/admin/contabilidad/gastos",           indent: true },
-  { icon: RefreshCw,    label: "Recurrentes",        path: "/admin/contabilidad/gastos/recurrentes", indent: true },
-  { icon: Tag,          label: "Categ. gastos",      path: "/admin/contabilidad/gastos/categorias",  indent: true },
-  { icon: Building2,    label: "Proveedores gastos", path: "/admin/contabilidad/gastos/proveedores", indent: true },
-  { icon: TrendingUp,   label: "Cuenta Resultados",  path: "/admin/contabilidad/cuenta-resultados",  indent: true },
+  { icon: BarChart3,    label: "Dashboard Contab.",  path: "/admin/contabilidad/dashboard",          section: "Contabilidad", roles: ["admin"] },
+  { icon: List,         label: "Transacciones",      path: "/admin/contabilidad/transacciones",      indent: true, roles: ["admin"] },
+  { icon: FileBarChart, label: "Informes",           path: "/admin/contabilidad/informes",           indent: true, roles: ["admin"] },
+  { icon: TrendingDown, label: "Gastos",             path: "/admin/contabilidad/gastos",             indent: true, roles: ["admin"] },
+  { icon: RefreshCw,    label: "Recurrentes",        path: "/admin/contabilidad/gastos/recurrentes", indent: true, roles: ["admin"] },
+  { icon: Tag,          label: "Categ. gastos",      path: "/admin/contabilidad/gastos/categorias",  indent: true, roles: ["admin"] },
+  { icon: Building2,    label: "Proveedores gastos", path: "/admin/contabilidad/gastos/proveedores", indent: true, roles: ["admin"] },
+  { icon: TrendingUp,   label: "Cuenta Resultados",  path: "/admin/contabilidad/cuenta-resultados",  indent: true, roles: ["admin"] },
   // ── Marketing ─────────────────────────────────────────────────────────────────────────────────
-  { icon: Ticket,  label: "Cupones & Ticketing", path: "/admin/marketing/cupones",    section: "Marketing" },
-  { icon: Percent, label: "Códigos descuento",   path: "/admin/marketing/descuentos", indent: true },
+  { icon: ShoppingCart, label: "TPV",             path: "/admin/tpv",                  section: "Marketing", roles: ["admin", "agente"] },
+  { icon: Ticket,  label: "Cupones & Ticketing", path: "/admin/marketing/cupones",    indent: true,         roles: ["admin", "agente"] },
+  { icon: Percent, label: "Códigos descuento",   path: "/admin/marketing/descuentos", indent: true,         roles: ["admin", "agente"] },
   // ── Otros ───────────────────────────────────────────────────────────────────────────────────
-  { icon: Receipt,          label: "Fiscal REAV",   path: "/admin/fiscal/reav",       section: "Otros" },
-  { icon: BedDouble,        label: "Hotel",         path: "/admin/hotel" },
-  { icon: Sparkles,         label: "SPA",           path: "/admin/spa" },
-  { icon: UtensilsCrossed,  label: "Restaurantes",  path: "/admin/restaurantes" },
-  { icon: Users,            label: "Usuarios",      path: "/admin/usuarios" },
-  { icon: Settings,         label: "Configuración", path: "/admin/configuracion" },
-  { icon: Hash,             label: "Series Numer.",  path: "/admin/numeracion",   indent: true },
+  { icon: Receipt,          label: "Fiscal REAV",   path: "/admin/fiscal/reav",  section: "Otros", roles: ["admin"] },
+  { icon: BedDouble,        label: "Hotel",         path: "/admin/hotel",                          roles: ["admin"] },
+  { icon: Sparkles,         label: "SPA",           path: "/admin/spa",                            roles: ["admin"] },
+  { icon: UtensilsCrossed,  label: "Restaurantes",  path: "/admin/restaurantes",                   roles: ["admin", "adminrest"] },
+  { icon: Users,            label: "Usuarios",      path: "/admin/usuarios",                       roles: ["admin"] },
+  { icon: Settings,         label: "Configuración", path: "/admin/configuracion",                  roles: ["admin"] },
+  { icon: Hash,             label: "Series Numer.",  path: "/admin/numeracion",  indent: true,     roles: ["admin"] },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -127,7 +129,10 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
-  const activeMenuItem = menuItems.find((item) => {
+  const userRole = user?.role ?? "user";
+  const visibleMenuItems = menuItems.filter(item => !item.roles || item.roles.includes(userRole));
+
+  const activeMenuItem = visibleMenuItems.find((item) => {
     if (item.path === "/admin") return location === "/admin";
     return location.startsWith(item.path);
   });
@@ -181,7 +186,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
 
           <SidebarContent className="gap-0">
             <SidebarMenu className="px-2 py-1">
-              {menuItems.map((item) => {
+              {visibleMenuItems.map((item) => {
                 const isActive = item.path === "/admin"
                   ? location === "/admin"
                   : location.startsWith(item.path);

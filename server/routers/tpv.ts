@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { staffProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
@@ -104,12 +104,12 @@ function calcLineFiscal(
 
 export const tpvRouter = router({
   // ── REGISTERS ──────────────────────────────────────────────────────────────
-  getRegisters: protectedProcedure.query(async () => {
+  getRegisters: staffProcedure.query(async () => {
     return await db.select().from(cashRegisters).where(eq(cashRegisters.isActive, true));
   }),
 
   // ── SESSIONS ───────────────────────────────────────────────────────────────
-  getActiveSession: protectedProcedure
+  getActiveSession: staffProcedure
     .input(z.object({ registerId: z.number() }))
     .query(async ({ input }) => {
       const sessions = await db
@@ -125,7 +125,7 @@ export const tpvRouter = router({
       return sessions[0] ?? null;
     }),
 
-  openSession: protectedProcedure
+  openSession: staffProcedure
     .input(
       z.object({
         registerId: z.number(),
@@ -189,7 +189,7 @@ export const tpvRouter = router({
       return session;
     }),
 
-  closeSession: protectedProcedure
+  closeSession: staffProcedure
     .input(
       z.object({
         sessionId: z.number(),
@@ -411,7 +411,7 @@ export const tpvRouter = router({
       return updated;
     }),
 
-  getSessionSummary: protectedProcedure
+  getSessionSummary: staffProcedure
     .input(z.object({ sessionId: z.number() }))
     .query(async ({ input }) => {
       const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
@@ -428,7 +428,7 @@ export const tpvRouter = router({
     }),
 
   // ── CASH MOVEMENTS ─────────────────────────────────────────────────────────
-  addCashMovement: protectedProcedure
+  addCashMovement: staffProcedure
     .input(
       z.object({
         sessionId: z.number(),
@@ -452,7 +452,7 @@ export const tpvRouter = router({
     }),
 
   // ── CATALOG ────────────────────────────────────────────────────────────────
-  getCatalog: protectedProcedure.query(async () => {
+  getCatalog: staffProcedure.query(async () => {
     const [exps, pkgs, spas, rooms, legoPkgs] = await Promise.all([
       db.select({
         id: experiences.id,
@@ -510,7 +510,7 @@ export const tpvRouter = router({
   }),
 
   // ── SALES ──────────────────────────────────────────────────────────────────
-  createSale: protectedProcedure
+  createSale: staffProcedure
     .input(
       z.object({
         sessionId: z.number(),
@@ -918,7 +918,7 @@ export const tpvRouter = router({
       return { sale, items, payments, reservationId, reavExpedientId, reavExpedientNumber };
     }),
 
-  getSale: protectedProcedure
+  getSale: staffProcedure
     .input(z.object({ saleId: z.number() }))
     .query(async ({ input }) => {
       const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, input.saleId));
@@ -928,7 +928,7 @@ export const tpvRouter = router({
       return { sale, items, payments };
     }),
 
-  getSessionSales: protectedProcedure
+  getSessionSales: staffProcedure
     .input(z.object({ sessionId: z.number() }))
     .query(async ({ input }) => {
       return await db
@@ -939,7 +939,7 @@ export const tpvRouter = router({
     }),
 
   // ── BACKOFFICE ─────────────────────────────────────────────────────────────
-  getBackoffice: protectedProcedure
+  getBackoffice: staffProcedure
     .input(
       z.object({
         page: z.number().int().positive().default(1),
@@ -965,7 +965,7 @@ export const tpvRouter = router({
       }));
     }),
 
-  getBackofficeSalesByProduct: protectedProcedure
+  getBackofficeSalesByProduct: staffProcedure
     .input(z.object({ sessionId: z.number().optional() }))
     .query(async ({ input }) => {
       const items = await db.select().from(tpvSaleItems);
@@ -988,7 +988,7 @@ export const tpvRouter = router({
     }),
 
   // ── SEND TICKET EMAIL ─────────────────────────────────────────────────────
-  sendTicketEmail: protectedProcedure
+  sendTicketEmail: staffProcedure
     .input(
       z.object({
         ticketNumber: z.string(),

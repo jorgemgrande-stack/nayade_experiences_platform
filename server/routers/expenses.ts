@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import { adminProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -43,18 +43,18 @@ function addYears(dateStr: string, n: number) {
 
 // ─── Cost Centers ─────────────────────────────────────────────────────────────
 const costCentersRouter = router({
-  list: protectedProcedure.query(async () => {
+  list: adminProcedure.query(async () => {
     return db.select().from(costCenters).orderBy(costCenters.name);
   }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({ name: z.string().min(1), description: z.string().optional() }))
     .mutation(async ({ input }) => {
       const [res] = await db.insert(costCenters).values({ name: input.name, description: input.description });
       return { id: res.insertId };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(z.object({ id: z.number(), name: z.string().min(1), description: z.string().optional(), active: z.boolean().optional() }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -62,7 +62,7 @@ const costCentersRouter = router({
       return { ok: true };
     }),
 
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(costCenters).where(eq(costCenters.id, input.id));
@@ -72,18 +72,18 @@ const costCentersRouter = router({
 
 // ─── Expense Categories ───────────────────────────────────────────────────────
 const expenseCategoriesRouter = router({
-  list: protectedProcedure.query(async () => {
+  list: adminProcedure.query(async () => {
     return db.select().from(expenseCategories).orderBy(expenseCategories.name);
   }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({ name: z.string().min(1), description: z.string().optional() }))
     .mutation(async ({ input }) => {
       const [res] = await db.insert(expenseCategories).values({ name: input.name, description: input.description });
       return { id: res.insertId };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(z.object({ id: z.number(), name: z.string().min(1), description: z.string().optional(), active: z.boolean().optional() }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -91,7 +91,7 @@ const expenseCategoriesRouter = router({
       return { ok: true };
     }),
 
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(expenseCategories).where(eq(expenseCategories.id, input.id));
@@ -101,11 +101,11 @@ const expenseCategoriesRouter = router({
 
 // ─── Expense Suppliers ────────────────────────────────────────────────────────
 const expenseSuppliersRouter = router({
-  list: protectedProcedure.query(async () => {
+  list: adminProcedure.query(async () => {
     return db.select().from(expenseSuppliers).orderBy(expenseSuppliers.name);
   }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({
       name: z.string().min(1),
       fiscalName: z.string().optional(),
@@ -120,7 +120,7 @@ const expenseSuppliersRouter = router({
       return { id: res.insertId };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(z.object({
       id: z.number(),
       name: z.string().min(1),
@@ -138,7 +138,7 @@ const expenseSuppliersRouter = router({
       return { ok: true };
     }),
 
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(expenseSuppliers).where(eq(expenseSuppliers.id, input.id));
@@ -162,7 +162,7 @@ const expenseInputSchema = z.object({
 });
 
 const expensesRouter = router({
-  list: protectedProcedure
+  list: adminProcedure
     .input(z.object({
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
@@ -218,7 +218,7 @@ const expensesRouter = router({
       };
     }),
 
-  getById: protectedProcedure
+  getById: adminProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const [row] = await db.select().from(expenses).where(eq(expenses.id, input.id));
@@ -227,7 +227,7 @@ const expensesRouter = router({
       return { ...row, files };
     }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(expenseInputSchema)
     .mutation(async ({ input, ctx }) => {
       const [res] = await db.insert(expenses).values({
@@ -260,7 +260,7 @@ const expensesRouter = router({
       return { id: expenseId };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(expenseInputSchema.extend({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
@@ -292,7 +292,7 @@ const expensesRouter = router({
       return { ok: true };
     }),
 
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(expenseFiles).where(eq(expenseFiles.expenseId, input.id));
@@ -301,7 +301,7 @@ const expensesRouter = router({
     }),
 
   // Upload file attachment (base64 encoded)
-  uploadFile: protectedProcedure
+  uploadFile: adminProcedure
     .input(z.object({
       expenseId: z.number(),
       fileName: z.string(),
@@ -321,7 +321,7 @@ const expensesRouter = router({
       return { url };
     }),
 
-  deleteFile: protectedProcedure
+  deleteFile: adminProcedure
     .input(z.object({ fileId: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(expenseFiles).where(eq(expenseFiles.id, input.fileId));
@@ -329,7 +329,7 @@ const expensesRouter = router({
     }),
 
   /** Devuelve el vínculo bancario confirmado de un gasto (si existe). */
-  getExpenseBankLink: protectedProcedure
+  getExpenseBankLink: adminProcedure
     .input(z.object({ expenseId: z.number() }))
     .query(async ({ input }) => {
       const [link] = await db
@@ -350,7 +350,7 @@ const expensesRouter = router({
     }),
 
   /** Encuentra movimientos bancarios negativos candidatos para vincular a un gasto. */
-  suggestBankMovements: protectedProcedure
+  suggestBankMovements: adminProcedure
     .input(z.object({ expenseId: z.number() }))
     .query(async ({ input }) => {
       const [expense] = await db.select().from(expenses).where(eq(expenses.id, input.expenseId));
@@ -400,7 +400,7 @@ const expensesRouter = router({
     }),
 
   // Summary for a date range (used by Profit & Loss)
-  summary: protectedProcedure
+  summary: adminProcedure
     .input(z.object({
       dateFrom: z.string(),
       dateTo: z.string(),
@@ -450,11 +450,11 @@ const expensesRouter = router({
 
 // ─── Recurring Expenses ───────────────────────────────────────────────────────
 const recurringExpensesRouter = router({
-  list: protectedProcedure.query(async () => {
+  list: adminProcedure.query(async () => {
     return db.select().from(recurringExpenses).orderBy(recurringExpenses.nextExecutionDate);
   }),
 
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({
       concept: z.string().min(1),
       amount: z.string().min(1),
@@ -472,7 +472,7 @@ const recurringExpensesRouter = router({
       return { id: res.insertId };
     }),
 
-  update: protectedProcedure
+  update: adminProcedure
     .input(z.object({
       id: z.number(),
       concept: z.string().min(1),
@@ -490,7 +490,7 @@ const recurringExpensesRouter = router({
       return { ok: true };
     }),
 
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       await db.delete(recurringExpenses).where(eq(recurringExpenses.id, input.id));
@@ -498,7 +498,7 @@ const recurringExpensesRouter = router({
     }),
 
   // Manually trigger a recurring expense (creates an expense and advances next date)
-  trigger: protectedProcedure
+  trigger: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
       const [rec] = await db.select().from(recurringExpenses).where(eq(recurringExpenses.id, input.id));
@@ -598,7 +598,7 @@ async function _profitLossForPeriod(dateFrom: string, dateTo: string, conciliate
 
 // ─── Profit & Loss (Cuenta de Resultados) ────────────────────────────────────
 const profitLossRouter = router({
-  report: protectedProcedure
+  report: adminProcedure
     .input(z.object({
       dateFrom: z.string(),
       dateTo: z.string(),

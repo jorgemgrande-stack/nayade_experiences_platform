@@ -11,7 +11,7 @@ import {
 } from "./galleryDb";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { publicProcedure, protectedProcedure, staffProcedure, router } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -186,13 +186,6 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
-// Staff middleware (admin + agente)
-const staffProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (!["admin", "agente"].includes(ctx.user.role)) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al equipo" });
-  }
-  return next({ ctx });
-});
 
 export const appRouter = router({
   system: systemRouter,
@@ -935,7 +928,7 @@ export const appRouter = router({
   // ─── ADMIN: BOOKINGS & CALENDAR───────────────────────────────────────────
   bookings: router({
     // Migrado: ahora devuelve reservations + reservation_operational en lugar de la tabla bookings legacy
-    getAll: protectedProcedure
+    getAll: staffProcedure
       .input(z.object({
         status: z.string().optional(),
         from: z.string().optional(),

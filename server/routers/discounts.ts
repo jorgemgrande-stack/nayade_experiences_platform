@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, staffProcedure, publicProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { discountCodes, discountCodeUses, compensationVouchers } from "../../drizzle/schema";
@@ -177,7 +177,7 @@ export const discountsRouter = router({
     }),
 
   /** Listar todos los códigos (admin) */
-  list: protectedProcedure
+  list: staffProcedure
     .input(z.object({
       search: z.string().optional(),
       status: z.enum(["active", "inactive", "expired", "all"]).default("all"),
@@ -209,7 +209,7 @@ export const discountsRouter = router({
     }),
 
   /** Obtener un código por ID (admin) */
-  getById: protectedProcedure
+  getById: staffProcedure
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const [row] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
@@ -218,7 +218,7 @@ export const discountsRouter = router({
     }),
 
   /** Crear un código (admin) */
-  create: protectedProcedure
+  create: adminProcedure
     .input(z.object({
       code: z.string().min(2).max(50).transform(v => v.toUpperCase().trim()),
       name: z.string().min(1).max(200),
@@ -250,7 +250,7 @@ export const discountsRouter = router({
     }),
 
   /** Actualizar un código (admin) */
-  update: protectedProcedure
+  update: adminProcedure
     .input(z.object({
       id: z.number(),
       name: z.string().min(1).max(200).optional(),
@@ -277,7 +277,7 @@ export const discountsRouter = router({
     }),
 
   /** Activar/desactivar un código (admin) */
-  toggleStatus: protectedProcedure
+  toggleStatus: adminProcedure
     .input(z.object({ id: z.number(), active: z.boolean() }))
     .mutation(async ({ input }) => {
       await db.update(discountCodes)
@@ -287,7 +287,7 @@ export const discountsRouter = router({
     }),
 
   /** Duplicar un código (admin) */
-  duplicate: protectedProcedure
+  duplicate: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [original] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
@@ -309,7 +309,7 @@ export const discountsRouter = router({
     }),
 
   /** Eliminar un código (admin) — solo si no tiene usos */
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [row] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
@@ -324,7 +324,7 @@ export const discountsRouter = router({
     }),
 
   /** Historial de usos de un código (admin) */
-  getUses: protectedProcedure
+  getUses: staffProcedure
     .input(z.object({ discountCodeId: z.number() }))
     .query(async ({ input }) => {
       return db.select().from(discountCodeUses)

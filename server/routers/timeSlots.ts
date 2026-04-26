@@ -5,7 +5,7 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { productTimeSlots, experiences } from "../../drizzle/schema";
@@ -49,7 +49,7 @@ export const timeSlotsRouter = router({
     }),
 
   // ── Admin: get all time slots for a product (including inactive) ─────────
-  getByProductAdmin: protectedProcedure
+  getByProductAdmin: adminProcedure
     .input(z.object({ productId: z.number().int().positive() }))
     .query(async ({ input }) => {
       const slots = await db
@@ -61,7 +61,7 @@ export const timeSlotsRouter = router({
     }),
 
   // ── Admin: create a time slot ────────────────────────────────────────────
-  create: protectedProcedure
+  create: adminProcedure
     .input(timeSlotSchema)
     .mutation(async ({ input }) => {
       const [result] = await db.insert(productTimeSlots).values({
@@ -80,7 +80,7 @@ export const timeSlotsRouter = router({
     }),
 
   // ── Admin: update a time slot ────────────────────────────────────────────
-  update: protectedProcedure
+  update: adminProcedure
     .input(z.object({ id: z.number().int().positive() }).merge(timeSlotSchema.partial()))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -105,7 +105,7 @@ export const timeSlotsRouter = router({
     }),
 
   // ── Admin: delete a time slot ────────────────────────────────────────────
-  delete: protectedProcedure
+  delete: adminProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .mutation(async ({ input }) => {
       await db.delete(productTimeSlots).where(eq(productTimeSlots.id, input.id));
@@ -113,7 +113,7 @@ export const timeSlotsRouter = router({
     }),
 
   // ── Admin: reorder time slots ────────────────────────────────────────────
-  reorder: protectedProcedure
+  reorder: adminProcedure
     .input(z.object({
       items: z.array(z.object({ id: z.number().int(), sortOrder: z.number().int() }))
     }))
@@ -127,7 +127,7 @@ export const timeSlotsRouter = router({
     }),
 
   // ── Admin: toggle has_time_slots on experience ───────────────────────────
-  toggleProductTimeSlots: protectedProcedure
+  toggleProductTimeSlots: adminProcedure
     .input(z.object({
       productId: z.number().int().positive(),
       enabled: z.boolean(),

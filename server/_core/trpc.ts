@@ -45,6 +45,20 @@ export const adminProcedure = t.procedure.use(
 );
 
 /**
+ * staffProcedure: acepta 'admin' o 'agente'.
+ * Usado para TPV, CRM, bookings — operaciones de equipo comercial.
+ */
+export const staffProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+    if (!ctx.user || !['admin', 'agente'].includes(ctx.user.role as string)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al equipo" });
+    }
+    return next({ ctx: { ...ctx, user: ctx.user } });
+  }),
+);
+
+/**
  * adminrestProcedure: acepta usuarios con rol 'admin' o 'adminrest'.
  * Usado para todos los procedimientos del módulo de restaurantes.
  * El rol adminrest tiene acceso completo al gestor de reservas pero

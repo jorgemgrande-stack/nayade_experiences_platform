@@ -53,18 +53,18 @@ import {
 } from "../emailTemplates";
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
 import { syncLeadUrlsToGHL } from "../ghl";
+import { getSystemSettingSync } from "../config";
 
 // DB helper — usa la misma pool que el resto del servidor
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
 
 // Email helper — delega en el helper compartido mailer.ts
-const COPY_EMAIL = "reservas@nayadeexperiences.es";
 async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
   const sent = await sharedSendEmail({ to, subject, html });
   if (!sent) { console.warn("SMTP not configured, skipping email"); return; }
-  // Enviar copia BCC a reservas@nayadeexperiences.es
-  await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html });
+  const copyEmail = getSystemSettingSync("email_copy_recipient", "");
+  if (copyEmail) await sharedSendEmail({ to: copyEmail, subject: `[COPIA] ${subject}`, html });
 }
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
