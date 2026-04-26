@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq, and, gte, lte, desc, sql, inArray, or, isNull, notInArray } from "drizzle-orm";
-import { finCashAccounts, finCashMovements, finCashClosures, finCashAlerts, reservations, expenses } from "../../drizzle/schema";
+import { finCashAccounts, finCashMovements, finCashClosures, finCashAlerts, finCashClosureActions, reservations, expenses } from "../../drizzle/schema";
 import { cashSessions } from "../../drizzle/schema";
 import { createCashMovementIfNotExists } from "./cashRegisterHelper";
 
@@ -350,9 +350,9 @@ export const cashRegisterRouter = router({
 
   // ── Alertas ────────────────────────────────────────────────────────────────
   listAlerts: adminProc
-    .input(z.object({ includeRead: z.boolean().default(false) }))
+    .input(z.object({ includeResolved: z.boolean().default(false) }))
     .query(async ({ input }) => {
-      const conds = input.includeRead ? [] : [eq(finCashAlerts.isRead, false)];
+      const conds = input.includeResolved ? [] : [isNull(finCashAlerts.resolvedAt)];
       return db
         .select()
         .from(finCashAlerts)
@@ -369,9 +369,191 @@ export const cashRegisterRouter = router({
     }),
 
   markAllAlertsRead: adminProc.mutation(async () => {
-    await db.update(finCashAlerts).set({ isRead: true }).where(eq(finCashAlerts.isRead, false));
+    await db.update(finCashAlerts)
+      .set({ isRead: true })
+      .where(and(eq(finCashAlerts.isRead, false), isNull(finCashAlerts.resolvedAt)));
     return { ok: true };
   }),
+
+  // ── Resolución de descuadres ────────────────────────────────────────────────
+  listClosureActions: adminProc
+    .input(z.object({ closureId: z.number() }))
+    .query(async ({ input }) => {
+      return db
+        .select()
+        .from(finCashClosureActions)
+        .where(eq(finCashClosureActions.closureId, input.closureId))
+        .orderBy(desc(finCashClosureActions.createdAt));
+    }),
+
+  reviewClosure: adminProc
+    .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
+      if (!closure) throw new TRPCError({ code: "NOT_FOUND" });
+      if (closure.status !== "difference") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se pueden revisar cierres con diferencia pendiente" });
+      }
+
+      await db.update(finCashClosures).set({ status: "reviewed" }).where(eq(finCashClosures.id, input.closureId));
+
+      await db.insert(finCashClosureActions).values({
+        closureId: input.closureId,
+        actionType: "review",
+        notes: input.notes,
+        createdById: ctx.user.id,
+        createdByName: ctx.user.name ?? ctx.user.email ?? "admin",
+      });
+
+      if (closure.sourceEntityId) {
+        await db.update(finCashAlerts).set({
+          isRead: true,
+          resolvedAt: new Date(),
+          resolvedBy: ctx.user.name ?? ctx.user.email ?? "admin",
+          resolutionNotes: input.notes,
+          resolutionAction: "review",
+        }).where(and(
+          eq(finCashAlerts.sessionId, closure.sourceEntityId),
+          isNull(finCashAlerts.resolvedAt),
+        ));
+      }
+
+      return { ok: true };
+    }),
+
+  createClosureAdjustment: adminProc
+    .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
+      if (!closure) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!["difference", "reviewed"].includes(closure.status)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se pueden ajustar cierres con diferencia pendiente o revisados" });
+      }
+
+      // Idempotencia: no crear dos ajustes para el mismo cierre
+      const [existingAdj] = await db
+        .select({ id: finCashClosureActions.id })
+        .from(finCashClosureActions)
+        .where(and(
+          eq(finCashClosureActions.closureId, input.closureId),
+          eq(finCashClosureActions.actionType, "adjustment_created"),
+        ))
+        .limit(1);
+      if (existingAdj) throw new TRPCError({ code: "CONFLICT", message: "Ya existe un ajuste para este cierre" });
+
+      const difference = parseFloat(closure.difference ?? "0");
+      if (Math.abs(difference) < 0.01) throw new TRPCError({ code: "BAD_REQUEST", message: "No hay diferencia que ajustar" });
+
+      const [defaultAcc] = await db
+        .select({ id: finCashAccounts.id })
+        .from(finCashAccounts)
+        .where(and(eq(finCashAccounts.type, "principal"), eq(finCashAccounts.isActive, true)))
+        .limit(1);
+      if (!defaultAcc) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No hay cuenta de caja principal activa" });
+
+      const sessionRef = closure.sourceEntityId ? `TPV #${closure.sourceEntityId}` : `cierre #${closure.id}`;
+      const movType: "income" | "expense" = difference > 0 ? "income" : "expense";
+      const movAmount = Math.abs(difference);
+      const concept = difference > 0
+        ? `Ajuste por sobrante ${sessionRef}`
+        : `Ajuste por faltante ${sessionRef}`;
+
+      await db.insert(finCashMovements).values({
+        accountId: defaultAcc.id,
+        date: closure.date,
+        type: movType,
+        amount: String(movAmount.toFixed(2)),
+        concept,
+        category: "cash_adjustment",
+        notes: input.notes,
+        relatedEntityType: "manual",
+        createdBy: ctx.user.id,
+      });
+
+      const delta = movType === "income" ? movAmount : -movAmount;
+      await db.update(finCashAccounts)
+        .set({ currentBalance: sql`current_balance + ${delta}` })
+        .where(eq(finCashAccounts.id, defaultAcc.id));
+
+      await db.update(finCashClosures).set({ status: "adjusted" }).where(eq(finCashClosures.id, input.closureId));
+
+      await db.insert(finCashClosureActions).values({
+        closureId: input.closureId,
+        actionType: "adjustment_created",
+        amount: String(movAmount.toFixed(2)),
+        notes: input.notes,
+        createdById: ctx.user.id,
+        createdByName: ctx.user.name ?? ctx.user.email ?? "admin",
+      });
+
+      if (closure.sourceEntityId) {
+        await db.update(finCashAlerts).set({
+          isRead: true,
+          resolvedAt: new Date(),
+          resolvedBy: ctx.user.name ?? ctx.user.email ?? "admin",
+          resolutionNotes: input.notes,
+          resolutionAction: "adjustment_created",
+        }).where(and(
+          eq(finCashAlerts.sessionId, closure.sourceEntityId),
+          isNull(finCashAlerts.resolvedAt),
+        ));
+      }
+
+      return { ok: true, concept, amount: movAmount, movType };
+    }),
+
+  acceptDifference: adminProc
+    .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
+      if (!closure) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!["difference", "reviewed"].includes(closure.status)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se pueden aceptar cierres con diferencia pendiente o revisados" });
+      }
+
+      await db.update(finCashClosures).set({ status: "accepted_difference" }).where(eq(finCashClosures.id, input.closureId));
+
+      await db.insert(finCashClosureActions).values({
+        closureId: input.closureId,
+        actionType: "accepted_difference",
+        amount: closure.difference ?? null,
+        notes: input.notes,
+        createdById: ctx.user.id,
+        createdByName: ctx.user.name ?? ctx.user.email ?? "admin",
+      });
+
+      if (closure.sourceEntityId) {
+        await db.update(finCashAlerts).set({
+          isRead: true,
+          resolvedAt: new Date(),
+          resolvedBy: ctx.user.name ?? ctx.user.email ?? "admin",
+          resolutionNotes: input.notes,
+          resolutionAction: "accepted_difference",
+        }).where(and(
+          eq(finCashAlerts.sessionId, closure.sourceEntityId),
+          isNull(finCashAlerts.resolvedAt),
+        ));
+      }
+
+      return { ok: true };
+    }),
+
+  addClosureNote: adminProc
+    .input(z.object({ closureId: z.number(), notes: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const [closure] = await db.select().from(finCashClosures).where(eq(finCashClosures.id, input.closureId));
+      if (!closure) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await db.insert(finCashClosureActions).values({
+        closureId: input.closureId,
+        actionType: "note_added",
+        notes: input.notes,
+        createdById: ctx.user.id,
+        createdByName: ctx.user.name ?? ctx.user.email ?? "admin",
+      });
+
+      return { ok: true };
+    }),
 
   // ── Verificación de cierres ────────────────────────────────────────────────
   verifyCashClosures: adminProc.query(async () => {

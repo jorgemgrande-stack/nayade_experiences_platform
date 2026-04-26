@@ -2478,7 +2478,7 @@ export const finCashClosures = mysqlTable("fin_cash_closures", {
   closingBalance: decimal("closing_balance", { precision: 12, scale: 2 }).notNull().default("0.00"),
   countedAmount: decimal("counted_amount", { precision: 12, scale: 2 }),
   difference: decimal("difference", { precision: 12, scale: 2 }),
-  status: mysqlEnum("status_fcc", ["open", "closed", "reconciled", "balanced", "difference"]).notNull().default("open"),
+  status: mysqlEnum("status_fcc", ["open", "closed", "reconciled", "balanced", "difference", "reviewed", "adjusted", "accepted_difference"]).notNull().default("open"),
   sourceEntityType: varchar("source_entity_type", { length: 32 }),
   sourceEntityId: int("source_entity_id"),
   notes: text("notes"),
@@ -2498,8 +2498,25 @@ export const finCashAlerts = mysqlTable("fin_cash_alerts", {
   sessionId: int("session_id"),
   message: text("message"),
   isRead: boolean("is_read").notNull().default(false),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: varchar("resolved_by", { length: 128 }),
+  resolutionNotes: text("resolution_notes"),
+  resolutionAction: varchar("resolution_action", { length: 64 }),
   createdBy: int("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type FinCashAlert = typeof finCashAlerts.$inferSelect;
 export type InsertFinCashAlert = typeof finCashAlerts.$inferInsert;
+
+export const finCashClosureActions = mysqlTable("fin_cash_closure_actions", {
+  id: int("id").autoincrement().primaryKey(),
+  closureId: int("closure_id").notNull(),
+  actionType: mysqlEnum("action_type_fcca", ["review", "adjustment_created", "accepted_difference", "note_added", "alert_resolved"]).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }),
+  notes: text("notes"),
+  createdById: int("created_by_id"),
+  createdByName: varchar("created_by_name", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type FinCashClosureAction = typeof finCashClosureActions.$inferSelect;
+export type InsertFinCashClosureAction = typeof finCashClosureActions.$inferInsert;

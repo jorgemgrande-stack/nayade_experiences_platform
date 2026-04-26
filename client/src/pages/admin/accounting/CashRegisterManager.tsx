@@ -39,11 +39,22 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
 };
 
 const CLOSURE_STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
-  balanced:   { label: "Cuadrado",   color: "bg-emerald-100 text-emerald-700", icon: "🟢" },
-  difference: { label: "Descuadre",  color: "bg-red-100 text-red-700",         icon: "🔴" },
-  closed:     { label: "Cerrado",    color: "bg-blue-100 text-blue-700",        icon: "🔵" },
-  reconciled: { label: "Conciliado", color: "bg-emerald-100 text-emerald-700",  icon: "✅" },
-  open:       { label: "Abierto",    color: "bg-yellow-100 text-yellow-700",    icon: "🟡" },
+  balanced:            { label: "Cuadrado",         color: "bg-emerald-100 text-emerald-700",  icon: "🟢" },
+  difference:          { label: "Descuadre",        color: "bg-red-100 text-red-700",          icon: "🔴" },
+  reviewed:            { label: "Revisado",          color: "bg-blue-100 text-blue-700",        icon: "🔍" },
+  adjusted:            { label: "Ajustado",          color: "bg-purple-100 text-purple-700",    icon: "⚖️" },
+  accepted_difference: { label: "Diferencia asumida", color: "bg-gray-100 text-gray-600",      icon: "📋" },
+  closed:              { label: "Cerrado",           color: "bg-blue-100 text-blue-700",        icon: "🔵" },
+  reconciled:          { label: "Conciliado",        color: "bg-emerald-100 text-emerald-700",  icon: "✅" },
+  open:                { label: "Abierto",           color: "bg-yellow-100 text-yellow-700",    icon: "🟡" },
+};
+
+const ACTION_TYPE_LABEL: Record<string, string> = {
+  review:              "Marcado como revisado",
+  adjustment_created:  "Ajuste de caja creado",
+  accepted_difference: "Diferencia asumida sin ajuste",
+  note_added:          "Nota añadida",
+  alert_resolved:      "Alerta resuelta",
 };
 
 const TABS = ["movimientos", "cuentas", "cierres", "sincronizacion"] as const;
@@ -97,6 +108,11 @@ export default function CashRegisterManager() {
   const [accForm, setAccForm] = useState(emptyAccForm());
   const [closureForm, setClosureForm] = useState(emptyClosureForm());
 
+  // Closure resolution
+  const [selectedClosureId, setSelectedClosureId] = useState<number | null>(null);
+  const [actionModal, setActionModal] = useState<"review" | "adjust" | "accept" | "note" | null>(null);
+  const [actionNote, setActionNote] = useState("");
+
   const utils = trpc.useUtils();
 
   const summaryQ = trpc.cashRegister.getSummary.useQuery();
@@ -113,8 +129,12 @@ export default function CashRegisterManager() {
     enabled: tab === "sincronizacion",
   });
   const alertsQ = trpc.cashRegister.listAlerts.useQuery(
-    { includeRead: false },
+    { includeResolved: false },
     { refetchInterval: 60_000 },
+  );
+  const closureActionsQ = trpc.cashRegister.listClosureActions.useQuery(
+    { closureId: selectedClosureId! },
+    { enabled: selectedClosureId != null },
   );
 
   const invalidateAll = () => {
@@ -124,6 +144,7 @@ export default function CashRegisterManager() {
     utils.cashRegister.listClosures.invalidate();
     utils.cashRegister.syncCheck.invalidate();
     utils.cashRegister.listAlerts.invalidate();
+    utils.cashRegister.listClosureActions.invalidate();
   };
 
   const createMovMut = trpc.cashRegister.createMovement.useMutation({
@@ -159,6 +180,42 @@ export default function CashRegisterManager() {
   const markAllReadMut = trpc.cashRegister.markAllAlertsRead.useMutation({
     onSuccess: () => { utils.cashRegister.listAlerts.invalidate(); },
   });
+
+  const reviewClosureMut = trpc.cashRegister.reviewClosure.useMutation({
+    onSuccess: () => { invalidateAll(); toast.success("Cierre marcado como revisado"); closeActionModal(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const createAdjustmentMut = trpc.cashRegister.createClosureAdjustment.useMutation({
+    onSuccess: (res) => {
+      invalidateAll();
+      toast.success(`Ajuste creado: ${res.movType === "income" ? "+" : "–"}${fmtEur(res.amount)} — ${res.concept}`);
+      closeActionModal();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const acceptDifferenceMut = trpc.cashRegister.acceptDifference.useMutation({
+    onSuccess: () => { invalidateAll(); toast.success("Diferencia asumida y registrada"); closeActionModal(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const addNoteMut = trpc.cashRegister.addClosureNote.useMutation({
+    onSuccess: () => { invalidateAll(); toast.success("Nota añadida"); closeActionModal(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function closeActionModal() {
+    setActionModal(null);
+    setActionNote("");
+  }
+
+  function handleActionSubmit() {
+    if (!selectedClosureId || !actionNote.trim()) return;
+    if (actionModal === "review") reviewClosureMut.mutate({ closureId: selectedClosureId, notes: actionNote });
+    else if (actionModal === "adjust") createAdjustmentMut.mutate({ closureId: selectedClosureId, notes: actionNote });
+    else if (actionModal === "accept") acceptDifferenceMut.mutate({ closureId: selectedClosureId, notes: actionNote });
+    else if (actionModal === "note") addNoteMut.mutate({ closureId: selectedClosureId, notes: actionNote });
+  }
+
+  const actionPending = reviewClosureMut.isPending || createAdjustmentMut.isPending || acceptDifferenceMut.isPending || addNoteMut.isPending;
 
   const runSyncMut = trpc.cashRegister.runSync.useMutation({
     onSuccess: (res) => {
@@ -534,12 +591,13 @@ export default function CashRegisterManager() {
                     <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Cierre</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Diferencia</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Estado</th>
+                    <th className="py-3 px-4" />
                   </tr>
                 </thead>
                 <tbody>
                   {closures.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
+                      <td colSpan={8} className="text-center py-12 text-gray-400 text-sm">
                         No hay cierres registrados
                       </td>
                     </tr>
@@ -549,6 +607,7 @@ export default function CashRegisterManager() {
                     const diff = cl.difference ? parseFloat(cl.difference) : null;
                     const statusMeta = CLOSURE_STATUS_META[cl.status] ?? CLOSURE_STATUS_META.open;
                     const isFromTpv = cl.sourceEntityType === "tpv_session";
+                    const isActionable = ["difference", "reviewed"].includes(cl.status);
                     return (
                       <tr key={cl.id} className={`border-b last:border-0 hover:bg-gray-50 ${cl.status === "difference" ? "bg-red-50/40" : ""}`}>
                         <td className="py-3 px-4 text-gray-600 whitespace-nowrap">{cl.date}</td>
@@ -582,6 +641,16 @@ export default function CashRegisterManager() {
                           <Badge className={`text-xs ${statusMeta.color}`}>
                             {statusMeta.icon} {statusMeta.label}
                           </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <Button
+                            variant={isActionable ? "default" : "ghost"}
+                            size="sm"
+                            className={isActionable ? "h-7 text-xs bg-red-600 hover:bg-red-700 text-white" : "h-7 text-xs text-gray-400 hover:text-gray-700"}
+                            onClick={() => setSelectedClosureId(cl.id)}
+                          >
+                            {isActionable ? "Resolver" : "Ver"}
+                          </Button>
                         </td>
                       </tr>
                     );
@@ -694,6 +763,176 @@ export default function CashRegisterManager() {
           </div>
         )}
       </div>
+
+      {/* ── DIALOG: Detalle / Resolución de cierre ── */}
+      {(() => {
+        const cl = closures.find(c => c.id === selectedClosureId);
+        if (!cl) return null;
+        const acc = accounts.find(a => a.id === cl.accountId);
+        const diff = cl.difference ? parseFloat(cl.difference) : null;
+        const statusMeta = CLOSURE_STATUS_META[cl.status] ?? CLOSURE_STATUS_META.open;
+        const isActionable = ["difference", "reviewed"].includes(cl.status);
+        const hasAdjustment = closureActionsQ.data?.some(a => a.actionType === "adjustment_created");
+
+        const ACTION_META: Record<string, { title: string; description: string; confirmLabel: string; confirmClass: string }> = {
+          review: {
+            title: "Marcar como revisado",
+            description: "Indica que has revisado el descuadre. No modifica el saldo de caja. Podrás ajustar o aceptar la diferencia después.",
+            confirmLabel: "Confirmar revisión",
+            confirmClass: "bg-blue-600 hover:bg-blue-700",
+          },
+          adjust: {
+            title: "Crear ajuste de caja",
+            description: diff !== null && diff !== 0
+              ? `Se ${diff > 0 ? "añadirán" : "deducirán"} ${fmtEur(Math.abs(diff))} de la cuenta principal para cuadrar el saldo.`
+              : "Sin diferencia que ajustar.",
+            confirmLabel: "Crear ajuste",
+            confirmClass: "bg-purple-600 hover:bg-purple-700",
+          },
+          accept: {
+            title: "Aceptar diferencia sin ajuste",
+            description: `Se documenta la diferencia de ${fmtEur(Math.abs(diff ?? 0))} sin modificar el saldo. La diferencia queda registrada en el histórico.`,
+            confirmLabel: "Aceptar diferencia",
+            confirmClass: "bg-gray-600 hover:bg-gray-700",
+          },
+          note: {
+            title: "Añadir nota",
+            description: "Añade un comentario al histórico de este cierre.",
+            confirmLabel: "Guardar nota",
+            confirmClass: "bg-emerald-600 hover:bg-emerald-700",
+          },
+        };
+
+        return (
+          <>
+            <Dialog open={selectedClosureId != null && actionModal == null} onOpenChange={open => { if (!open) setSelectedClosureId(null); }}>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-base">
+                    <span>{statusMeta.icon}</span>
+                    Cierre {cl.date} — {acc?.name ?? "–"}
+                    <Badge className={`ml-2 text-xs ${statusMeta.color}`}>{statusMeta.label}</Badge>
+                  </DialogTitle>
+                </DialogHeader>
+
+                {/* Resumen numérico */}
+                <div className="grid grid-cols-3 gap-3 mt-1">
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-gray-500 mb-0.5">Apertura</p>
+                    <p className="font-semibold text-gray-800">{fmtEur(cl.openingBalance)}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-gray-500 mb-0.5">Cierre esperado</p>
+                    <p className="font-semibold text-gray-800">{fmtEur(cl.closingBalance)}</p>
+                  </div>
+                  <div className={`rounded-lg p-3 text-center ${Math.abs(diff ?? 0) < 0.01 ? "bg-emerald-50" : (diff ?? 0) < 0 ? "bg-red-50" : "bg-amber-50"}`}>
+                    <p className="text-xs text-gray-500 mb-0.5">Diferencia</p>
+                    <p className={`font-bold ${Math.abs(diff ?? 0) < 0.01 ? "text-emerald-700" : (diff ?? 0) < 0 ? "text-red-700" : "text-amber-700"}`}>
+                      {diff !== null ? `${diff >= 0 ? "+" : ""}${fmtEur(diff)}` : "–"}
+                    </p>
+                  </div>
+                </div>
+
+                {cl.sourceEntityId && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Sesión TPV vinculada:&nbsp;
+                    <a href="/admin/tpv" className="text-blue-600 underline">#{cl.sourceEntityId}</a>
+                  </p>
+                )}
+
+                {/* Acciones disponibles */}
+                {isActionable && (
+                  <div className="border rounded-xl p-4 space-y-2 bg-orange-50 border-orange-200">
+                    <p className="text-xs font-semibold text-orange-800 uppercase tracking-wide mb-3">Acciones de resolución</p>
+                    <div className="flex flex-wrap gap-2">
+                      {cl.status === "difference" && (
+                        <Button size="sm" variant="outline" className="text-blue-700 border-blue-300 hover:bg-blue-50" onClick={() => setActionModal("review")}>
+                          🔍 Marcar revisado
+                        </Button>
+                      )}
+                      {!hasAdjustment && (
+                        <Button size="sm" variant="outline" className="text-purple-700 border-purple-300 hover:bg-purple-50" onClick={() => setActionModal("adjust")}>
+                          ⚖️ Crear ajuste de caja
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="text-gray-700 border-gray-300 hover:bg-gray-50" onClick={() => setActionModal("accept")}>
+                        📋 Aceptar sin ajuste
+                      </Button>
+                      <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50" onClick={() => setActionModal("note")}>
+                        💬 Añadir nota
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {!isActionable && ["adjusted", "accepted_difference", "balanced"].includes(cl.status) && (
+                  <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 w-fit" onClick={() => setActionModal("note")}>
+                    💬 Añadir nota
+                  </Button>
+                )}
+
+                {/* Histórico de acciones */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Histórico de acciones</p>
+                  {closureActionsQ.isLoading && <p className="text-xs text-gray-400">Cargando...</p>}
+                  {(closureActionsQ.data?.length ?? 0) === 0 && !closureActionsQ.isLoading && (
+                    <p className="text-xs text-gray-400 italic">Sin acciones registradas todavía.</p>
+                  )}
+                  <div className="space-y-2">
+                    {closureActionsQ.data?.map(action => (
+                      <div key={action.id} className="flex items-start gap-3 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-semibold text-gray-800">{ACTION_TYPE_LABEL[action.actionType] ?? action.actionType}</span>
+                            {action.amount && (
+                              <Badge className="text-xs bg-purple-100 text-purple-700">{fmtEur(action.amount)}</Badge>
+                            )}
+                          </div>
+                          {action.notes && <p className="text-xs text-gray-600 mt-0.5">{action.notes}</p>}
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {action.createdByName ?? "Admin"} · {action.createdAt ? new Date(action.createdAt).toLocaleString("es-ES") : ""}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Sub-modal de confirmación de acción */}
+            {actionModal && ACTION_META[actionModal] && (
+              <Dialog open={true} onOpenChange={open => { if (!open) closeActionModal(); }}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>{ACTION_META[actionModal].title}</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-sm text-gray-600">{ACTION_META[actionModal].description}</p>
+                  <div className="space-y-2">
+                    <Label>Nota <span className="text-red-500">*</span></Label>
+                    <Textarea
+                      placeholder="Obligatorio: explica el motivo o deja constancia de la revisión..."
+                      value={actionNote}
+                      onChange={e => setActionNote(e.target.value)}
+                      rows={3}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" onClick={closeActionModal}>Cancelar</Button>
+                    <Button
+                      onClick={handleActionSubmit}
+                      disabled={!actionNote.trim() || actionPending}
+                      className={ACTION_META[actionModal].confirmClass + " text-white"}
+                    >
+                      {actionPending ? "Guardando..." : ACTION_META[actionModal].confirmLabel}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
+          </>
+        );
+      })()}
 
       {/* ── DIALOG: Nuevo movimiento ── */}
       <Dialog open={movDialog} onOpenChange={setMovDialog}>

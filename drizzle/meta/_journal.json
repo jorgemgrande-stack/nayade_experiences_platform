@@ -414,6 +414,13 @@
       "when": 1777927920000,
       "tag": "0060_cash_closure_alerts",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "5",
+      "when": 1778014320000,
+      "tag": "0061_cash_resolution",
+      "breakpoints": true
     }
   ]
 }
