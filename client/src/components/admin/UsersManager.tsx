@@ -46,7 +46,7 @@ import {
   UserPlus, MoreVertical, Shield, ShieldCheck, UserCheck, UserX,
   Trash2, Send, CheckCircle, Clock, XCircle, UtensilsCrossed,
   ChevronDown, ChevronUp, Plus, Minus, KeyRound, Eye, Star,
-  Briefcase, MonitorPlay, Info, AlertTriangle, Hourglass, ShoppingCart, X,
+  Briefcase, MonitorPlay, Info, AlertTriangle, ShoppingCart, X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -148,7 +148,7 @@ const ROLES = [
 
 type Role = (typeof ROLES)[number]["value"];
 
-// ─── Roles en preparación (RBAC futuro, no asignables aún) ───────────────────
+// ─── Roles RBAC avanzados (asignables vía RBAC, sin rol legacy equivalente) ──
 const UPCOMING_ROLES = [
   {
     key: "commercial_agent",
@@ -866,53 +866,6 @@ export default function UsersManager() {
               )}
             </tbody>
           </table>
-        </div>
-
-        {/* ── Roles en preparación ── */}
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Hourglass className="w-4 h-4 text-indigo-500 shrink-0" />
-            <p className="text-sm font-semibold text-indigo-800">Roles en preparación</p>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400 bg-indigo-100 border border-indigo-200 rounded-full px-2 py-0.5">
-              Próximamente
-            </span>
-          </div>
-          <p className="text-xs text-indigo-600/80">
-            Estos roles formarán parte del nuevo sistema de permisos granular (RBAC). Están definidos en base de datos pero aún no son asignables. Aparecerán en el selector cuando el módulo de permisos esté activado.
-          </p>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {UPCOMING_ROLES.map((r) => {
-              const Icon = r.icon;
-              const caps = roleCapabilities[r.key] ?? [];
-              return (
-                <div key={r.key} className={`rounded-lg border p-3 bg-white/70 ${r.color.replace("text-", "border-").replace("bg-", "").split(" ")[0]} border-indigo-200`}>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border ${r.color}`}>
-                      <Icon className="w-3 h-3" />
-                      {r.label}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 mb-2">{r.description}</p>
-                  {rbacPermMap[r.key]?.length > 0 ? (
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <Shield className="w-3 h-3 text-indigo-400 shrink-0" />
-                      <span className="text-[10px] text-indigo-600 font-medium">
-                        {rbacPermMap[r.key].length} permisos RBAC definidos
-                      </span>
-                    </div>
-                  ) : caps.length > 0 && (
-                    <ul className="space-y-0.5">
-                      {caps.map((cap) => (
-                        <li key={cap} className="flex items-start gap-1.5 text-xs text-gray-500">
-                          <span className="mt-0.5 text-indigo-400">◦</span>{cap}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </div>
 
         {/* ── RBAC Role Manager Dialog ── */}
