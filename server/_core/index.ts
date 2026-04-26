@@ -21,6 +21,7 @@ import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { serveStatic, setupVite } from "./vite";
+import { getFeatureFlag } from "../config";
 
 // ─── RATE LIMITERS ────────────────────────────────────────────────────────────
 
@@ -808,6 +809,19 @@ async function fixBrokenInvoicePdfUrls() {
   }
 }
 
+async function conditionallyStartJob(
+  flagKey: string,
+  start: () => void,
+  label: string,
+): Promise<void> {
+  const enabled = await getFeatureFlag(flagKey, false);
+  if (enabled) {
+    start();
+  } else {
+    console.log(`[Jobs] '${label}' desactivado — feature flag '${flagKey}' está inactivo`);
+  }
+}
+
 runMigrations()
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
@@ -816,10 +830,10 @@ runMigrations()
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
-  .then(() => startQuoteReminderJob())
-  .then(() => startAbandonedCheckoutCleanup())
-  .then(() => startInstallmentOverdueJob())
-  .then(() => startCancellationStaleJob())
-  .then(() => startEmailIngestionJob())
+  .then(() => conditionallyStartJob("quote_reminder_job_enabled",          startQuoteReminderJob,         "Quote Reminder"))
+  .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
+  .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
+  .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))
+  .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,        "Email Ingestion"))
   .then(() => startMatchingJob())
   .catch(console.error);

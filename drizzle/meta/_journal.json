@@ -456,6 +456,20 @@
       "when": 1778446320000,
       "tag": "0066_onboarding_status",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "5",
+      "when": 1778532720000,
+      "tag": "0067_nayade_defaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "5",
+      "when": 1778619120000,
+      "tag": "0068_additional_job_flags",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,7 @@ import mysql from "mysql2/promise";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { cancellationRequests, cancellationLogs } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
-import { getBusinessEmail } from "./config";
+import { getBusinessEmail, getSystemSettingSync } from "./config";
 const STALE_HOURS = 48;
 
 async function runCancellationStaleJob() {
@@ -89,7 +89,7 @@ async function runCancellationStaleJob() {
         </thead>
         <tbody>${rows}</tbody>
       </table>
-      <p style="margin-top:16px;">Gestiona estos expedientes en <a href="https://www.nayadeexperiences.es/admin/crm?tab=anulaciones">CRM → Anulaciones</a>.</p>
+      <p style="margin-top:16px;">Gestiona estos expedientes en <a href="${process.env.APP_URL ?? getSystemSettingSync('brand_website_url', '')}/admin/crm?tab=anulaciones">CRM → Anulaciones</a>.</p>
     `;
 
     const copyEmail = await getBusinessEmail('cancellations');

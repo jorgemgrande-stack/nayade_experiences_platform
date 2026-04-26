@@ -19,6 +19,9 @@
 
 import { getSystemSettingSync } from "./config";
 
+// ─── Dynamic brand helpers (read from config cache at call time) ──────────────
+const getContactEmail = () => getSystemSettingSync("email_reservations", "contacto@tuempresa.com");
+
 // ─── Constantes de marca ──────────────────────────────────────────────────────
 // Visual constants remain hardcoded; text data reads from config cache (sync).
 // Cache is populated by Phase 3.1 async callers before templates are rendered.
@@ -155,11 +158,11 @@ function emailFooter(): string {
           </tr></table>
           <!-- Datos de contacto -->
           <p style="color:#6b5c3e;font-size:13px;margin:0 0 6px;font-family:Arial,sans-serif;line-height:1.8;">
-            ${SVG.phone}&nbsp;<a href="tel:${getSystemSettingSync('brand_support_phone', '+34 930 34 77 91').replace(/\s/g,'')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('brand_support_phone', '+34 930 34 77 91')}</a>
-            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:${getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es')}</a>
+            ${SVG.phone}&nbsp;<a href="tel:${getSystemSettingSync('brand_support_phone', '').replace(/\s/g,'')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('brand_support_phone', '')}</a>
+            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:${getSystemSettingSync('email_reservations', 'contacto@tuempresa.com')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('email_reservations', 'contacto@tuempresa.com')}</a>
           </p>
           <p style="color:#8b7355;font-size:12px;margin:0 0 12px;font-family:Arial,sans-serif;">
-            ${SVG.map}&nbsp;${getSystemSettingSync('brand_location', 'Los Ángeles de San Rafael · El Espinar · Segovia')}
+            ${SVG.map}&nbsp;${getSystemSettingSync('brand_location', '')}
           </p>
           <!-- Línea divisoria -->
           <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;"><tr>
@@ -346,7 +349,7 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
       </p>
     </td></tr>
@@ -377,7 +380,7 @@ export function buildReservationFailedHtml(d: ReservationFailedData): string {
       <p style="color:#6b7280;font-size:14px;margin:16px 0 0;line-height:1.7;font-family:Arial,sans-serif;">
         Puedes intentarlo de nuevo o contactarnos y te ayudamos a completar la reserva:
       </p>
-      ${ctaButton("Contactar ahora", "mailto:reservas@nayadeexperiences.es")}
+      ${ctaButton("Contactar ahora", `mailto:${getContactEmail()}`)}
     </td></tr>
     ${emailFooter()}`;
   return emailWrapper("Pago No Completado — Náyade Experiences", body);
@@ -424,7 +427,7 @@ export function buildRestaurantConfirmHtml(d: RestaurantBookingData): string {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
       </p>
     </td></tr>
@@ -658,7 +661,7 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar alg&uacute;n dato? Escrb&iacute;benos a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
       </p>
     </td></tr>
@@ -839,7 +842,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
           <tr><td style="padding:18px;text-align:center;">
             <p style="color:#374151;font-size:14px;margin:0;font-family:Arial,sans-serif;">
               Para confirmar tu reserva, contacta con nosotros:<br/>
-              <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">reservas@nayadeexperiences.es</a>
+              <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">${getContactEmail()}</a>
               &nbsp;&middot;&nbsp;
               <a href="tel:+34930347791" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">+34 930 34 77 91</a>
             </p>
@@ -877,7 +880,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escrb&iacute;benos a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
       </p>
     </td></tr>
@@ -964,8 +967,8 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
   const quoteRefRow = d.quoteNumber
     ? `<br/><span style="color:#9ca3af;font-size:12px;">Presupuesto original: <strong>${d.quoteNumber}</strong></span>`
     : "";
-  const contactPhone = d.contactPhone ?? getSystemSettingSync('brand_support_phone', '+34 930 34 77 91');
-  const contactEmail = d.contactEmail ?? getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es');
+  const contactPhone = d.contactPhone ?? getSystemSettingSync('brand_support_phone', '');
+  const contactEmail = d.contactEmail ?? getSystemSettingSync('email_reservations', 'contacto@tuempresa.com');
 
   const installmentBlock = d.installmentPlan?.installments?.length
     ? (() => {
@@ -1178,8 +1181,8 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
 
     <!-- Footer -->
     <div style="padding:16px 40px;border-top:2px solid #1a3a6b;text-align:center;color:#9ca3af;font-size:11px;line-height:1.8;">
-      <p style="margin:0;">Gracias por confiar en Náyade Experiences &middot; www.nayadeexperiences.es</p>
-      <p style="margin:0;">+34 930 34 77 91 &nbsp;&middot;&nbsp; reservas@nayadeexperiences.es &nbsp;&middot;&nbsp; Los Ángeles de San Rafael, Segovia</p>
+      <p style="margin:0;">Gracias por confiar en ${getSystemSettingSync('brand_name', '')}${getSystemSettingSync('brand_domain', '') ? ` &middot; www.${getSystemSettingSync('brand_domain', '')}` : ''}</p>
+      <p style="margin:0;">${getSystemSettingSync('brand_support_phone', '') ? `${getSystemSettingSync('brand_support_phone', '')} &nbsp;&middot;&nbsp; ` : ''}${getContactEmail()}${getSystemSettingSync('brand_location', '') ? ` &nbsp;&middot;&nbsp; ${getSystemSettingSync('brand_location', '')}` : ''}</p>
     </div>
   </div>
 </body>
@@ -1290,7 +1293,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Tienes alguna pregunta sobre tu reserva? Escrb&iacute;benos a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
       </p>
     </td></tr>
@@ -1335,7 +1338,7 @@ export function buildCancellationReceivedHtml(d: {
         <tr><td style="padding:14px 18px;">
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.8;font-family:Arial,sans-serif;">
             Si tienes alguna duda, contacta en
-            <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+            <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>
             indicando tu número de solicitud <strong>#${d.requestId}</strong>.
           </p>
         </td></tr>
@@ -1374,7 +1377,7 @@ export function buildCancellationRejectedHtml(d: {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         Si tienes alguna pregunta, escríbenos a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>.
+        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>.
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1429,7 +1432,7 @@ export function buildCancellationAcceptedVoucherHtml(d: {
   isPartial: boolean;
 }): string {
   const tipo = d.isPartial ? "parcial" : "total";
-  const appUrl = process.env.APP_URL ?? "https://nayadeexperiences.es";
+  const appUrl = process.env.APP_URL ?? getSystemSettingSync('brand_website_url', '');
   const verifyUrl = `${appUrl}/verificar-bono`;
   const bookUrl = `${appUrl}/experiencias`;
   const body = `
@@ -1477,7 +1480,7 @@ export function buildCancellationAcceptedVoucherHtml(d: {
         También puedes consultar el estado de tu bono en cualquier momento en
         <a href="${verifyUrl}" style="color:#f97316;text-decoration:none;font-weight:600;">${verifyUrl}</a>.
         Si tienes dudas, contacta en
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         indicando el código <strong>${d.voucherCode}</strong>.
       </p>
     </td></tr>
@@ -1511,7 +1514,7 @@ export function buildCancellationDocumentationHtml(d: {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         Envía la documentación a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         indicando tu número de solicitud <strong>#${d.requestId}</strong>.
       </p>
     </td></tr>
@@ -1556,7 +1559,7 @@ export function buildCancellationRefundExecutedHtml(d: {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         El plazo de recepción depende de tu entidad bancaria (habitualmente 1-5 días hábiles).
         Si pasados 10 días hábiles no recibes el importe, contáctanos en
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>
+        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>
         indicando la referencia <strong>#${d.requestId}</strong>.
       </p>
     </td></tr>
@@ -1718,7 +1721,7 @@ export function buildCouponPostponedHtml(d: {
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         Nos pondremos en contacto para ofrecerte fechas alternativas. Escríbenos a
-        <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;text-decoration:none;font-weight:600;">reservas@nayadeexperiences.es</a>.
+        <a href="mailto:${getContactEmail()}" style="color:#f97316;text-decoration:none;font-weight:600;">${getContactEmail()}</a>.
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1828,7 +1831,7 @@ export function buildPendingPaymentHtml(d: PendingPaymentEmailData): string {
     </td></tr>` : ""}
     <tr><td style="padding:8px 32px 20px;">
       <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
-        Si tienes alguna duda, contacta con nosotros en <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a>
+        Si tienes alguna duda, contacta con nosotros en <a href="mailto:${getContactEmail()}" style="color:#f97316;">${getContactEmail()}</a>
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1880,7 +1883,7 @@ export function buildPendingPaymentReminderHtml(d: PendingPaymentEmailData): str
     </td></tr>` : ""}
     <tr><td style="padding:8px 32px 20px;">
       <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
-        Para cualquier consulta urgente: <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a>
+        Para cualquier consulta urgente: <a href="mailto:${getContactEmail()}" style="color:#f97316;">${getContactEmail()}</a>
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1955,7 +1958,7 @@ export function buildInstallmentReminderHtml(d: InstallmentReminderData): string
     </td></tr>` : ""}
     <tr><td style="padding:8px 32px 20px;">
       <p style="color:#64748b;font-size:12px;margin:0;font-family:Arial,sans-serif;">
-        Para cualquier consulta: <a href="mailto:reservas@nayadeexperiences.es" style="color:#f97316;">reservas@nayadeexperiences.es</a>
+        Para cualquier consulta: <a href="mailto:${getContactEmail()}" style="color:#f97316;">${getContactEmail()}</a>
       </p>
     </td></tr>
     ${emailFooter()}`;

@@ -52,7 +52,7 @@ export async function getSystemSetting(key: string, fallback = ""): Promise<stri
   }
 }
 
-export async function getFeatureFlag(key: string, fallback = true): Promise<boolean> {
+export async function getFeatureFlag(key: string, fallback = false): Promise<boolean> {
   try {
     const cached = getCached(flagsCache, key);
     if (cached !== undefined) return cached;
@@ -89,14 +89,14 @@ export function getSystemSettingSync(key: string, fallback = ""): string {
 }
 
 // ─── Business Email helper ───────────────────────────────────────────────────
-// Hardcoded fallbacks preserve current production behavior when DB is empty.
+// Generic fallbacks — deployment-specific values must be set in system_settings.
 
 const EMAIL_FALLBACKS: Record<string, string> = {
-  reservations:  "reservas@nayadeexperiences.es",
-  admin_alerts:  "administracion@nayadeexperiences.es",
-  accounting:    "administracion@nayadeexperiences.es",
-  cancellations: "reservas@nayadeexperiences.es",
-  tpv_ingestion: "administracion@nayadeexperiences.es",
+  reservations:  "contacto@tuempresa.com",
+  admin_alerts:  "admin@tuempresa.com",
+  accounting:    "admin@tuempresa.com",
+  cancellations: "contacto@tuempresa.com",
+  tpv_ingestion: "admin@tuempresa.com",
 };
 
 const EMAIL_SETTING_KEYS: Record<string, string> = {
