@@ -2552,4 +2552,19 @@ export const systemSettings = mysqlTable("system_settings", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 export type SystemSetting = typeof systemSettings.$inferSelect;
+
+// ─── CONFIG CHANGE LOGS ───────────────────────────────────────────────────────
+
+export const configChangeLogs = mysqlTable("config_change_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  entityType: mysqlEnum("entity_type", ["feature_flag", "system_setting"]).notNull(),
+  key: varchar("key", { length: 128 }).notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  changedById: int("changed_by_id"),
+  changedByName: varchar("changed_by_name", { length: 128 }),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+});
+export type ConfigChangeLog = typeof configChangeLogs.$inferSelect;
+
 export type InsertFinCashClosureAction = typeof finCashClosureActions.$inferInsert;

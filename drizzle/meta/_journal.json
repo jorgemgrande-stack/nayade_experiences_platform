@@ -435,6 +435,13 @@
       "when": 1778187120000,
       "tag": "0063_brand_extra_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "5",
+      "when": 1778273520000,
+      "tag": "0064_config_change_logs",
+      "breakpoints": true
     }
   ]
 }
