@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { adminProcedure, staffProcedure, publicProcedure, router } from "../_core/trpc";
+import { publicProcedure, router, permissionProcedure } from "../_core/trpc";
+
+// RBAC-aware procedures. Fallback legacy: view→admin+agente, manage→admin only.
+const discViewProc   = permissionProcedure("discounts.view",   ["admin", "agente"]);
+const discManageProc = permissionProcedure("discounts.manage", ["admin"]);
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { discountCodes, discountCodeUses, compensationVouchers } from "../../drizzle/schema";
@@ -177,7 +181,7 @@ export const discountsRouter = router({
     }),
 
   /** Listar todos los códigos (admin) */
-  list: staffProcedure
+  list: discViewProc
     .input(z.object({
       search: z.string().optional(),
       status: z.enum(["active", "inactive", "expired", "all"]).default("all"),
@@ -209,7 +213,7 @@ export const discountsRouter = router({
     }),
 
   /** Obtener un código por ID (admin) */
-  getById: staffProcedure
+  getById: discViewProc
     .input(z.object({ id: z.number() }))
     .query(async ({ input }) => {
       const [row] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
@@ -218,7 +222,7 @@ export const discountsRouter = router({
     }),
 
   /** Crear un código (admin) */
-  create: adminProcedure
+  create: discManageProc
     .input(z.object({
       code: z.string().min(2).max(50).transform(v => v.toUpperCase().trim()),
       name: z.string().min(1).max(200),
@@ -250,7 +254,7 @@ export const discountsRouter = router({
     }),
 
   /** Actualizar un código (admin) */
-  update: adminProcedure
+  update: discManageProc
     .input(z.object({
       id: z.number(),
       name: z.string().min(1).max(200).optional(),
@@ -277,7 +281,7 @@ export const discountsRouter = router({
     }),
 
   /** Activar/desactivar un código (admin) */
-  toggleStatus: adminProcedure
+  toggleStatus: discManageProc
     .input(z.object({ id: z.number(), active: z.boolean() }))
     .mutation(async ({ input }) => {
       await db.update(discountCodes)
@@ -287,7 +291,7 @@ export const discountsRouter = router({
     }),
 
   /** Duplicar un código (admin) */
-  duplicate: adminProcedure
+  duplicate: discManageProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [original] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
@@ -309,7 +313,7 @@ export const discountsRouter = router({
     }),
 
   /** Eliminar un código (admin) — solo si no tiene usos */
-  delete: adminProcedure
+  delete: discManageProc
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const [row] = await db.select().from(discountCodes).where(eq(discountCodes.id, input.id));
@@ -324,7 +328,7 @@ export const discountsRouter = router({
     }),
 
   /** Historial de usos de un código (admin) */
-  getUses: staffProcedure
+  getUses: discViewProc
     .input(z.object({ discountCodeId: z.number() }))
     .query(async ({ input }) => {
       return db.select().from(discountCodeUses)

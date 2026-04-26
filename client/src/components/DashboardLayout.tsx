@@ -1,5 +1,6 @@
-// v21.2 — Flat menu: all items always visible, no expandable submenus
+// v22.0 — RBAC-aware menu filtering with legacy fallback
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -37,9 +38,10 @@ type FlatMenuItem = {
   icon: React.ElementType;
   label: string;
   path: string;
-  section?: string; // section header label (only on first item of each section)
-  indent?: boolean; // visual indent for sub-items
-  roles?: string[]; // if set, only shown for these roles
+  section?: string;    // section header label (only on first item of each section)
+  indent?: boolean;    // visual indent for sub-items
+  roles?: string[];    // if set, only shown for these legacy roles
+  rbacPerm?: string;   // if set, also shown when user has this RBAC permission
 };
 
 const menuItems: FlatMenuItem[] = [
@@ -54,22 +56,22 @@ const menuItems: FlatMenuItem[] = [
   { icon: BarChart3,    label: "Dashboard Contab.",  path: "/admin/contabilidad/dashboard",          section: "Contabilidad", roles: ["admin"] },
   { icon: List,         label: "Transacciones",      path: "/admin/contabilidad/transacciones",      indent: true, roles: ["admin"] },
   { icon: FileBarChart, label: "Informes",           path: "/admin/contabilidad/informes",           indent: true, roles: ["admin"] },
-  { icon: TrendingDown, label: "Gastos",             path: "/admin/contabilidad/gastos",             indent: true, roles: ["admin"] },
+  { icon: TrendingDown, label: "Gastos",             path: "/admin/contabilidad/gastos",             indent: true, roles: ["admin"], rbacPerm: "accounting.expenses.view" },
   { icon: RefreshCw,    label: "Recurrentes",        path: "/admin/contabilidad/gastos/recurrentes", indent: true, roles: ["admin"] },
   { icon: Tag,          label: "Categ. gastos",      path: "/admin/contabilidad/gastos/categorias",  indent: true, roles: ["admin"] },
   { icon: Building2,    label: "Proveedores gastos", path: "/admin/contabilidad/gastos/proveedores", indent: true, roles: ["admin"] },
   { icon: TrendingUp,   label: "Cuenta Resultados",  path: "/admin/contabilidad/cuenta-resultados",  indent: true, roles: ["admin"] },
   // ── Marketing ─────────────────────────────────────────────────────────────────────────────────
   { icon: ShoppingCart, label: "TPV",             path: "/admin/tpv",                  section: "Marketing", roles: ["admin", "agente"] },
-  { icon: Ticket,  label: "Cupones & Ticketing", path: "/admin/marketing/cupones",    indent: true,         roles: ["admin", "agente"] },
+  { icon: Ticket,  label: "Cupones & Ticketing", path: "/admin/marketing/cupones",    indent: true,         roles: ["admin", "agente"], rbacPerm: "ticketing.view" },
   { icon: Percent, label: "Códigos descuento",   path: "/admin/marketing/descuentos", indent: true,         roles: ["admin", "agente"] },
   // ── Otros ───────────────────────────────────────────────────────────────────────────────────
   { icon: Receipt,          label: "Fiscal REAV",   path: "/admin/fiscal/reav",  section: "Otros", roles: ["admin"] },
   { icon: BedDouble,        label: "Hotel",         path: "/admin/hotel",                          roles: ["admin"] },
   { icon: Sparkles,         label: "SPA",           path: "/admin/spa",                            roles: ["admin"] },
   { icon: UtensilsCrossed,  label: "Restaurantes",  path: "/admin/restaurantes",                   roles: ["admin", "adminrest"] },
-  { icon: Users,            label: "Usuarios",      path: "/admin/usuarios",                       roles: ["admin"] },
-  { icon: Settings,         label: "Configuración", path: "/admin/configuracion",                  roles: ["admin"] },
+  { icon: Users,            label: "Usuarios",      path: "/admin/usuarios",      roles: ["admin"], rbacPerm: "users.view" },
+  { icon: Settings,         label: "Configuración", path: "/admin/configuracion", roles: ["admin"], rbacPerm: "settings.view" },
   { icon: Hash,             label: "Series Numer.",  path: "/admin/numeracion",  indent: true,     roles: ["admin"] },
 ];
 
@@ -130,7 +132,22 @@ function DashboardLayoutContent({ children, setSidebarWidth }: DashboardLayoutCo
   const isMobile = useIsMobile();
 
   const userRole = user?.role ?? "user";
-  const visibleMenuItems = menuItems.filter(item => !item.roles || item.roles.includes(userRole));
+  // RBAC permission check (staleTime=5min so it doesn't refetch on every navigation)
+  const { data: myPermissions = null } = trpc.auth.myPermissions.useQuery(undefined, {
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const visibleMenuItems = menuItems.filter(item => {
+    if (!item.roles) return true;
+    // Legacy role check (always applies as fallback)
+    const hasLegacyRole = item.roles.includes(userRole);
+    // RBAC check: if permissions loaded and item has a rbacPerm, also grant if user has it
+    if (myPermissions !== null && item.rbacPerm) {
+      return hasLegacyRole || myPermissions.includes(item.rbacPerm);
+    }
+    return hasLegacyRole;
+  });
 
   const activeMenuItem = visibleMenuItems.find((item) => {
     if (item.path === "/admin") return location === "/admin";

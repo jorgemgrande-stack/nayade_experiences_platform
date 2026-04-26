@@ -208,6 +208,14 @@ export const appRouter = router({
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
+    myPermissions: protectedProcedure.query(async ({ ctx }) => {
+      try {
+        const { getUserPermissions } = await import("./_core/rbac");
+        return await getUserPermissions(ctx.user.id, ctx.user.role as string);
+      } catch {
+        return [] as string[];
+      }
+    }),
   }),
 
   // ─── PUBLIC ROUTES ────────────────────────────────────────────────────────

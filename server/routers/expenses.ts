@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { adminProcedure, router } from "../_core/trpc";
+import { router, permissionProcedure } from "../_core/trpc";
+
+// RBAC-aware adminProcedure. Uses accounting.expenses.view as base permission;
+// anyPermissionProcedure covers both view and manage semantics since today only
+// admin has either, and admin has all permissions. Fallback: users.role === "admin".
+const adminProcedure = permissionProcedure("accounting.expenses.view", ["admin"]);
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 const _pool = mysql.createPool(process.env.DATABASE_URL!);

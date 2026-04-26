@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq, desc, and, like, gte, lte } from "drizzle-orm";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, permissionProcedure } from "../_core/trpc";
 import { featureFlags, systemSettings, configChangeLogs } from "../../drizzle/schema";
 import { invalidateConfigCache } from "../config";
 import type { User } from "../../drizzle/schema";
@@ -13,12 +13,10 @@ function getDb() {
   return drizzle(pool);
 }
 
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if ((ctx.user as { role: string }).role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
-  }
-  return next({ ctx });
-});
+// RBAC-aware procedures. Fallback: users.role === "admin".
+const settingsViewProc     = permissionProcedure("settings.view",     ["admin"]);
+const settingsManageProc   = permissionProcedure("settings.manage",   ["admin"]);
+const settingsAdvancedProc = permissionProcedure("settings.advanced", ["admin"]);
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -73,12 +71,12 @@ function validateSettingValue(key: string, value: string, valueType: string): vo
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const configRouter = router({
-  listFeatureFlags: adminProcedure.query(async () => {
+  listFeatureFlags: settingsAdvancedProc.query(async () => {
     const db = getDb();
     return db.select().from(featureFlags).orderBy(featureFlags.module, featureFlags.key);
   }),
 
-  listSystemSettings: adminProcedure.query(async () => {
+  listSystemSettings: settingsViewProc.query(async () => {
     const db = getDb();
     const rows = await db.select().from(systemSettings).orderBy(systemSettings.category, systemSettings.key);
     return rows.map(r => ({
@@ -87,7 +85,7 @@ export const configRouter = router({
     }));
   }),
 
-  updateFeatureFlag: adminProcedure
+  updateFeatureFlag: settingsAdvancedProc
     .input(z.object({
       key: z.string(),
       enabled: z.boolean(),
@@ -118,7 +116,7 @@ export const configRouter = router({
       return { ok: true };
     }),
 
-  updateSystemSetting: adminProcedure
+  updateSystemSetting: settingsManageProc
     .input(z.object({
       key: z.string(),
       value: z.string(),
@@ -153,7 +151,7 @@ export const configRouter = router({
       return { ok: true };
     }),
 
-  listChangeLogs: adminProcedure
+  listChangeLogs: settingsViewProc
     .input(z.object({
       limit:         z.number().min(1).max(200).default(50),
       key:           z.string().optional(),

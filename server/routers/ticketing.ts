@@ -4,6 +4,7 @@
  * Financiero: Pendiente canjear → Canjeado | Incidencia
  */
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
+import { checkRbacOrLegacy } from "../_core/rbac";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -57,12 +58,20 @@ async function sendEmail(opts: { to: string; subject: string; html: string }) {
   else await sharedSendEmail({ to: getCopyEmail(), subject: `[COPIA] ${opts.subject}`, html: opts.html });
 }
 
-// ─── ADMIN PROCEDURE ─────────────────────────────────────────────────────────
+// ─── ADMIN PROCEDURE (RBAC-aware) ────────────────────────────────────────────
+// Uses ticketing.manage permission; fallback: admin or agente (legacy behavior).
+// assertModuleEnabled preserved. Zero changes to individual procedure definitions.
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!["admin", "agente"].includes(ctx.user.role)) {
+  await assertModuleEnabled("ticketing_module_enabled");
+  const allowed = await checkRbacOrLegacy(
+    ctx.user.id,
+    ctx.user.role as string,
+    "ticketing.manage",
+    ["admin", "agente"],
+  );
+  if (!allowed) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores y agentes" });
   }
-  await assertModuleEnabled("ticketing_module_enabled");
   return next({ ctx });
 });
 

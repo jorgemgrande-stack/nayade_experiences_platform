@@ -99,3 +99,27 @@ export async function hasPermission(
   const perms = await getUserPermissions(userId, legacyRole);
   return perms.includes(permissionKey);
 }
+
+/**
+ * Comprobación RBAC con fallback al sistema legacy de roles.
+ *
+ * Algoritmo:
+ *  1. Llama a getUserPermissions (que ya hace RBAC-first / legacy-fallback).
+ *  2. Si el permiso está en la lista → acceso concedido.
+ *  3. Si getUserPermissions falla por cualquier razón → fallback a fallbackAllowedRoles.
+ *
+ * Nunca lanza: siempre devuelve boolean.
+ */
+export async function checkRbacOrLegacy(
+  userId: number,
+  legacyRole: string,
+  permissionKey: string,
+  fallbackAllowedRoles: string[],
+): Promise<boolean> {
+  try {
+    const perms = await getUserPermissions(userId, legacyRole);
+    return perms.includes(permissionKey);
+  } catch {
+    return fallbackAllowedRoles.includes(legacyRole);
+  }
+}
