@@ -407,6 +407,13 @@
       "when": 1777841520000,
       "tag": "0059_cash_register",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "5",
+      "when": 1777927920000,
+      "tag": "0060_cash_closure_alerts",
+      "breakpoints": true
     }
   ]
 }

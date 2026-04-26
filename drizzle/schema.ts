@@ -2478,7 +2478,9 @@ export const finCashClosures = mysqlTable("fin_cash_closures", {
   closingBalance: decimal("closing_balance", { precision: 12, scale: 2 }).notNull().default("0.00"),
   countedAmount: decimal("counted_amount", { precision: 12, scale: 2 }),
   difference: decimal("difference", { precision: 12, scale: 2 }),
-  status: mysqlEnum("status_fcc", ["open", "closed", "reconciled"]).notNull().default("open"),
+  status: mysqlEnum("status_fcc", ["open", "closed", "reconciled", "balanced", "difference"]).notNull().default("open"),
+  sourceEntityType: varchar("source_entity_type", { length: 32 }),
+  sourceEntityId: int("source_entity_id"),
   notes: text("notes"),
   closedBy: int("closed_by"),
   closedAt: timestamp("closed_at"),
@@ -2486,3 +2488,18 @@ export const finCashClosures = mysqlTable("fin_cash_closures", {
 });
 export type FinCashClosure = typeof finCashClosures.$inferSelect;
 export type InsertFinCashClosure = typeof finCashClosures.$inferInsert;
+
+export const finCashAlerts = mysqlTable("fin_cash_alerts", {
+  id: int("id").autoincrement().primaryKey(),
+  type: varchar("type", { length: 64 }).notNull().default("cash_difference"),
+  severity: mysqlEnum("severity_fca", ["info", "warning", "critical"]).notNull().default("warning"),
+  amount: decimal("amount", { precision: 12, scale: 2 }),
+  closureId: int("closure_id"),
+  sessionId: int("session_id"),
+  message: text("message"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdBy: int("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type FinCashAlert = typeof finCashAlerts.$inferSelect;
+export type InsertFinCashAlert = typeof finCashAlerts.$inferInsert;

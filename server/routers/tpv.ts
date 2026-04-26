@@ -20,6 +20,9 @@ import {
   reservations,
   transactions,
   legoPacks,
+  finCashAccounts,
+  finCashClosures,
+  finCashAlerts,
 } from "../../drizzle/schema";
 import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -254,6 +257,62 @@ export const tpvRouter = router({
       }).where(eq(cashSessions.id, input.sessionId));
 
       const [updated] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
+
+      // Crear cierre contable en fin_cash_closures (idempotente, no bloquea si falla)
+      try {
+        const [defaultAcc] = await db
+          .select({ id: finCashAccounts.id })
+          .from(finCashAccounts)
+          .where(and(eq(finCashAccounts.type, "principal"), eq(finCashAccounts.isActive, true)))
+          .limit(1);
+
+        if (defaultAcc) {
+          const [existingClosure] = await db
+            .select({ id: finCashClosures.id })
+            .from(finCashClosures)
+            .where(and(
+              eq(finCashClosures.sourceEntityType, "tpv_session"),
+              eq(finCashClosures.sourceEntityId, input.sessionId),
+            ))
+            .limit(1);
+
+          if (!existingClosure) {
+            const closureDate = new Date(Number(session.openedAt)).toISOString().slice(0, 10);
+            const closureStatus = Math.abs(cashDifference) < 0.01 ? "balanced" : "difference";
+            const [closureResult] = await db.insert(finCashClosures).values({
+              accountId: defaultAcc.id,
+              date: closureDate,
+              openingBalance: String(openingAmt.toFixed(2)),
+              totalIncome: String((totalCash + totalManualIn).toFixed(2)),
+              totalExpenses: String(totalManualOut.toFixed(2)),
+              closingBalance: String(closingAmount.toFixed(2)),
+              countedAmount: String(input.countedCash.toFixed(2)),
+              difference: String(cashDifference.toFixed(2)),
+              status: closureStatus as "balanced" | "difference",
+              sourceEntityType: "tpv_session",
+              sourceEntityId: input.sessionId,
+              notes: input.notes,
+              closedBy: typeof session.cashierUserId === "number" ? session.cashierUserId : undefined,
+              closedAt: new Date(),
+            });
+            const closureId = (closureResult as any).insertId as number;
+
+            if (Math.abs(cashDifference) >= 0.01) {
+              const severity: "warning" | "critical" = Math.abs(cashDifference) < 20 ? "warning" : "critical";
+              await db.insert(finCashAlerts).values({
+                type: "cash_difference",
+                severity,
+                amount: String(Math.abs(cashDifference).toFixed(2)),
+                closureId,
+                sessionId: input.sessionId,
+                message: `Diferencia de ${cashDifference >= 0 ? "+" : ""}${cashDifference.toFixed(2)} € en cierre de sesión TPV #${input.sessionId}${cashDifference < 0 ? " (faltante)" : " (sobrante)"}`,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[TPV] Error creando cierre contable:", e);
+      }
 
       // Email de cierre con desglose multicanal (no bloquea si falla)
       try {

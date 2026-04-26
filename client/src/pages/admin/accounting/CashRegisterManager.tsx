@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import {
   Wallet, Plus, Pencil, Trash2, TrendingUp, TrendingDown,
   ArrowLeftRight, Banknote, Calendar, ChevronDown, X, CheckCircle,
-  RefreshCw, AlertTriangle, ShoppingCart, Receipt,
+  RefreshCw, AlertTriangle, ShoppingCart, Receipt, Bell, ExternalLink,
 } from "lucide-react";
 
 const fmtEur = (v: number | string) =>
@@ -36,6 +36,14 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
   secondary: "Secundaria",
   petty_cash: "Fondo fijo",
   other: "Otra",
+};
+
+const CLOSURE_STATUS_META: Record<string, { label: string; color: string; icon: string }> = {
+  balanced:   { label: "Cuadrado",   color: "bg-emerald-100 text-emerald-700", icon: "🟢" },
+  difference: { label: "Descuadre",  color: "bg-red-100 text-red-700",         icon: "🔴" },
+  closed:     { label: "Cerrado",    color: "bg-blue-100 text-blue-700",        icon: "🔵" },
+  reconciled: { label: "Conciliado", color: "bg-emerald-100 text-emerald-700",  icon: "✅" },
+  open:       { label: "Abierto",    color: "bg-yellow-100 text-yellow-700",    icon: "🟡" },
 };
 
 const TABS = ["movimientos", "cuentas", "cierres", "sincronizacion"] as const;
@@ -104,6 +112,10 @@ export default function CashRegisterManager() {
   const syncCheckQ = trpc.cashRegister.syncCheck.useQuery(undefined, {
     enabled: tab === "sincronizacion",
   });
+  const alertsQ = trpc.cashRegister.listAlerts.useQuery(
+    { includeRead: false },
+    { refetchInterval: 60_000 },
+  );
 
   const invalidateAll = () => {
     utils.cashRegister.getSummary.invalidate();
@@ -111,6 +123,7 @@ export default function CashRegisterManager() {
     utils.cashRegister.listMovements.invalidate();
     utils.cashRegister.listClosures.invalidate();
     utils.cashRegister.syncCheck.invalidate();
+    utils.cashRegister.listAlerts.invalidate();
   };
 
   const createMovMut = trpc.cashRegister.createMovement.useMutation({
@@ -141,6 +154,10 @@ export default function CashRegisterManager() {
       setClosureForm(emptyClosureForm());
     },
     onError: (e) => toast.error(e.message),
+  });
+
+  const markAllReadMut = trpc.cashRegister.markAllAlertsRead.useMutation({
+    onSuccess: () => { utils.cashRegister.listAlerts.invalidate(); },
   });
 
   const runSyncMut = trpc.cashRegister.runSync.useMutation({
@@ -243,6 +260,57 @@ export default function CashRegisterManager() {
             <Plus className="w-4 h-4 mr-2" /> Nuevo movimiento
           </Button>
         </div>
+
+        {/* Panel de alertas de descuadre */}
+        {(alertsQ.data?.length ?? 0) > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-red-600" />
+                <span className="font-semibold text-red-800 text-sm">
+                  {alertsQ.data!.length} {alertsQ.data!.length === 1 ? "incidencia de caja sin revisar" : "incidencias de caja sin revisar"}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-600 hover:text-red-800 text-xs"
+                onClick={() => markAllReadMut.mutate()}
+                disabled={markAllReadMut.isPending}
+              >
+                <CheckCircle className="w-3 h-3 mr-1" /> Marcar todas como revisadas
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              {alertsQ.data!.map(alert => (
+                <div key={alert.id} className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm border ${
+                  alert.severity === "critical"
+                    ? "bg-red-100 border-red-300 text-red-800"
+                    : "bg-yellow-50 border-yellow-200 text-yellow-800"
+                }`}>
+                  <span className="flex items-center gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                    {alert.message ?? `Diferencia de ${fmtEur(alert.amount ?? 0)} en sesión TPV #${alert.sessionId}`}
+                  </span>
+                  <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                    {alert.sessionId && (
+                      <a
+                        href={`/admin/tpv`}
+                        className="text-xs underline opacity-70 hover:opacity-100 flex items-center gap-1"
+                        title="Ver sesión TPV"
+                      >
+                        Sesión #{alert.sessionId} <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    <Badge className={`text-xs ${alert.severity === "critical" ? "bg-red-200 text-red-800" : "bg-yellow-100 text-yellow-700"}`}>
+                      {alert.severity === "critical" ? "Crítica" : "Advertencia"}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* KPI summary */}
         {summary && (
@@ -461,9 +529,8 @@ export default function CashRegisterManager() {
                   <tr>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Fecha</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Cuenta</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Origen</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Apertura</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Ingresos</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Gastos</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Cierre</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">Diferencia</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500">Estado</th>
@@ -472,7 +539,7 @@ export default function CashRegisterManager() {
                 <tbody>
                   {closures.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="text-center py-12 text-gray-400 text-sm">
+                      <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
                         No hay cierres registrados
                       </td>
                     </tr>
@@ -480,27 +547,41 @@ export default function CashRegisterManager() {
                   {closures.map(cl => {
                     const acc = accounts.find(a => a.id === cl.accountId);
                     const diff = cl.difference ? parseFloat(cl.difference) : null;
+                    const statusMeta = CLOSURE_STATUS_META[cl.status] ?? CLOSURE_STATUS_META.open;
+                    const isFromTpv = cl.sourceEntityType === "tpv_session";
                     return (
-                      <tr key={cl.id} className="border-b last:border-0 hover:bg-gray-50">
+                      <tr key={cl.id} className={`border-b last:border-0 hover:bg-gray-50 ${cl.status === "difference" ? "bg-red-50/40" : ""}`}>
                         <td className="py-3 px-4 text-gray-600 whitespace-nowrap">{cl.date}</td>
                         <td className="py-3 px-4 text-gray-700">{acc?.name ?? "–"}</td>
+                        <td className="py-3 px-4">
+                          {isFromTpv ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                              TPV
+                              {cl.sourceEntityId && (
+                                <a href="/admin/tpv" className="underline opacity-60 hover:opacity-100 flex items-center gap-0.5" title="Ver sesión TPV">
+                                  #{cl.sourceEntityId}<ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">Manual</span>
+                          )}
+                        </td>
                         <td className="py-3 px-4 text-right text-gray-600">{fmtEur(cl.openingBalance)}</td>
-                        <td className="py-3 px-4 text-right text-emerald-600">+{fmtEur(cl.totalIncome)}</td>
-                        <td className="py-3 px-4 text-right text-red-600">–{fmtEur(cl.totalExpenses)}</td>
                         <td className="py-3 px-4 text-right font-semibold text-gray-900">{fmtEur(cl.closingBalance)}</td>
-                        <td className={`py-3 px-4 text-right text-xs font-medium ${
-                          diff === null ? "text-gray-400" : Math.abs(diff) < 0.01 ? "text-emerald-600" : "text-red-600"
+                        <td className={`py-3 px-4 text-right text-xs font-semibold ${
+                          diff === null ? "text-gray-400"
+                          : Math.abs(diff) < 0.01 ? "text-emerald-600"
+                          : diff < 0 ? "text-red-600" : "text-amber-600"
                         }`}>
-                          {diff === null ? "–" : diff === 0 ? "✓ Sin diferencia" : fmtEur(diff)}
+                          {diff === null ? "–"
+                            : Math.abs(diff) < 0.01 ? "✓ Cuadrado"
+                            : `${diff >= 0 ? "+" : ""}${fmtEur(diff)}`}
                         </td>
                         <td className="py-3 px-4">
-                          {cl.status === "reconciled" ? (
-                            <Badge className="text-xs bg-emerald-100 text-emerald-700">Conciliado</Badge>
-                          ) : cl.status === "closed" ? (
-                            <Badge className="text-xs bg-blue-100 text-blue-700">Cerrado</Badge>
-                          ) : (
-                            <Badge className="text-xs bg-yellow-100 text-yellow-700">Abierto</Badge>
-                          )}
+                          <Badge className={`text-xs ${statusMeta.color}`}>
+                            {statusMeta.icon} {statusMeta.label}
+                          </Badge>
                         </td>
                       </tr>
                     );

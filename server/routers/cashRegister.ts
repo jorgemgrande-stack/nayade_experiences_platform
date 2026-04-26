@@ -3,8 +3,9 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, gte, lte, desc, sql, inArray, or } from "drizzle-orm";
-import { finCashAccounts, finCashMovements, finCashClosures, reservations, expenses } from "../../drizzle/schema";
+import { eq, and, gte, lte, desc, sql, inArray, or, isNull, notInArray } from "drizzle-orm";
+import { finCashAccounts, finCashMovements, finCashClosures, finCashAlerts, reservations, expenses } from "../../drizzle/schema";
+import { cashSessions } from "../../drizzle/schema";
 import { createCashMovementIfNotExists } from "./cashRegisterHelper";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -345,6 +346,94 @@ export const cashRegisterRouter = router({
           date: e.date,
         })),
     };
+  }),
+
+  // ── Alertas ────────────────────────────────────────────────────────────────
+  listAlerts: adminProc
+    .input(z.object({ includeRead: z.boolean().default(false) }))
+    .query(async ({ input }) => {
+      const conds = input.includeRead ? [] : [eq(finCashAlerts.isRead, false)];
+      return db
+        .select()
+        .from(finCashAlerts)
+        .where(conds.length ? and(...conds) : undefined)
+        .orderBy(desc(finCashAlerts.createdAt))
+        .limit(100);
+    }),
+
+  markAlertRead: adminProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.update(finCashAlerts).set({ isRead: true }).where(eq(finCashAlerts.id, input.id));
+      return { ok: true };
+    }),
+
+  markAllAlertsRead: adminProc.mutation(async () => {
+    await db.update(finCashAlerts).set({ isRead: true }).where(eq(finCashAlerts.isRead, false));
+    return { ok: true };
+  }),
+
+  // ── Verificación de cierres ────────────────────────────────────────────────
+  verifyCashClosures: adminProc.query(async () => {
+    // Sesiones TPV cerradas sin cierre contable registrado
+    const closedSessions = await db
+      .select({
+        id: cashSessions.id,
+        cashierName: cashSessions.cashierName,
+        openedAt: cashSessions.openedAt,
+        closedAt: cashSessions.closedAt,
+        closingAmount: cashSessions.closingAmount,
+        countedCash: cashSessions.countedCash,
+        cashDifference: cashSessions.cashDifference,
+      })
+      .from(cashSessions)
+      .where(eq(cashSessions.status, "closed"));
+
+    const sessionIds = closedSessions.map(s => s.id);
+    const linkedIds = new Set<number>();
+    if (sessionIds.length > 0) {
+      const linked = await db
+        .select({ sourceEntityId: finCashClosures.sourceEntityId })
+        .from(finCashClosures)
+        .where(and(
+          eq(finCashClosures.sourceEntityType, "tpv_session"),
+          inArray(finCashClosures.sourceEntityId, sessionIds),
+        ));
+      for (const l of linked) if (l.sourceEntityId != null) linkedIds.add(l.sourceEntityId);
+    }
+
+    const missingSessions = closedSessions.filter(s => !linkedIds.has(s.id));
+
+    // Cierres con diferencia no revisada (is_read = false en la alerta)
+    const unreviewedAlerts = await db
+      .select()
+      .from(finCashAlerts)
+      .where(and(
+        eq(finCashAlerts.type, "cash_difference"),
+        eq(finCashAlerts.isRead, false),
+      ))
+      .orderBy(desc(finCashAlerts.createdAt));
+
+    // Posibles duplicados (más de un cierre por sesión)
+    const duplicates: Array<{ sessionId: number; count: number }> = [];
+    if (sessionIds.length > 0) {
+      const allClosures = await db
+        .select({ sourceEntityId: finCashClosures.sourceEntityId })
+        .from(finCashClosures)
+        .where(and(
+          eq(finCashClosures.sourceEntityType, "tpv_session"),
+          inArray(finCashClosures.sourceEntityId, sessionIds),
+        ));
+      const counts: Record<number, number> = {};
+      for (const c of allClosures) {
+        if (c.sourceEntityId != null) counts[c.sourceEntityId] = (counts[c.sourceEntityId] ?? 0) + 1;
+      }
+      for (const [id, count] of Object.entries(counts)) {
+        if (count > 1) duplicates.push({ sessionId: Number(id), count });
+      }
+    }
+
+    return { missingSessions, unreviewedAlerts, duplicates };
   }),
 
   runSync: adminProc.mutation(async ({ ctx }) => {
