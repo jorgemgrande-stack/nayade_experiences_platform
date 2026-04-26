@@ -687,6 +687,7 @@ export const bankMovementsRouter = router({
     .input(z.object({
       bankMovementId: z.number(),
       manualType: z.enum(["transferencia_interna", "comision_bancaria", "pago_impuesto", "ajuste_contable", "devolucion", "otro"]),
+      counterparty: z.string().optional(),
       notes: z.string().min(1, "La justificación es obligatoria"),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -714,7 +715,11 @@ export const bankMovementsRouter = router({
         confidenceScore: 100,
         matchedBy: ctx.user.name ?? undefined,
         matchedAt: now,
-        notes: `[${input.manualType}] ${input.notes}`,
+        notes: [
+          `[${input.manualType}]`,
+          input.counterparty ? `Contraparte: ${input.counterparty}` : null,
+          input.notes,
+        ].filter(Boolean).join(" · "),
       });
 
       await db.update(bankMovements)

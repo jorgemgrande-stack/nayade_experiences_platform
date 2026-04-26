@@ -161,6 +161,7 @@ export default function BankMovementsManager() {
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualType, setManualType] = useState<string>("transferencia_interna");
   const [manualNotes, setManualNotes] = useState("");
+  const [manualCounterparty, setManualCounterparty] = useState("");
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -316,6 +317,7 @@ export default function BankMovementsManager() {
     setShowManualForm(false);
     setManualNotes("");
     setManualType("transferencia_interna");
+    setManualCounterparty("");
   };
 
   const saveDetail = () => {
@@ -887,6 +889,15 @@ export default function BankMovementsManager() {
                         </Select>
                       </div>
                       <div className="space-y-1">
+                        <label className="text-xs text-gray-600 font-medium">Contraparte</label>
+                        <Input
+                          className="text-sm"
+                          value={manualCounterparty}
+                          onChange={(e) => setManualCounterparty(e.target.value)}
+                          placeholder="Ej: CaixaBank, NEXTAIR S.L., Agencia Tributaria…"
+                        />
+                      </div>
+                      <div className="space-y-1">
                         <label className="text-xs text-gray-600 font-medium">Justificación *</label>
                         <textarea
                           className="w-full text-sm border border-violet-200 rounded-md p-2 resize-none focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white"
@@ -905,6 +916,7 @@ export default function BankMovementsManager() {
                             manuallyConciliateMut.mutate({
                               bankMovementId: selectedMovement.id,
                               manualType: manualType as any,
+                              counterparty: manualCounterparty.trim() || undefined,
                               notes: manualNotes.trim(),
                             });
                           }
