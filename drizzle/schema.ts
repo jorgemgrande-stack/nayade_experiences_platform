@@ -1703,7 +1703,7 @@ export const expenses = mysqlTable("expenses", {
   paymentMethod: mysqlEnum("paymentMethod", [
     "cash", "card", "transfer", "direct_debit", "tpv_cash",
   ]).notNull().default("transfer"),
-  status: mysqlEnum("status", ["pending", "justified", "accounted"]).notNull().default("pending"),
+  status: mysqlEnum("status", ["pending", "justified", "accounted", "conciliado"]).notNull().default("pending"),
   reservationId: int("reservationId"),
   productId: int("productId"),
   notes: text("notes"),

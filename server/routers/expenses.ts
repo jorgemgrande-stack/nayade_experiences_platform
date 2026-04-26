@@ -12,8 +12,10 @@ import {
   expenses,
   recurringExpenses,
   reservations,
+  bankMovements,
+  bankMovementLinks,
 } from "../../drizzle/schema";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql, inArray } from "drizzle-orm";
 import { storagePut } from "../storage";
 import { TRPCError } from "@trpc/server";
 
@@ -152,7 +154,7 @@ const expenseInputSchema = z.object({
   costCenterId: z.number(),
   supplierId: z.number().nullable().optional(),
   paymentMethod: z.enum(["cash", "card", "transfer", "direct_debit", "tpv_cash"]).default("transfer"),
-  status: z.enum(["pending", "justified", "accounted"]).default("pending"),
+  status: z.enum(["pending", "justified", "accounted", "conciliado"]).default("pending"),
   reservationId: z.number().nullable().optional(),
   productId: z.number().nullable().optional(),
   notes: z.string().optional(),
@@ -166,7 +168,7 @@ const expensesRouter = router({
       categoryId: z.number().optional(),
       costCenterId: z.number().optional(),
       supplierId: z.number().optional(),
-      status: z.enum(["pending", "justified", "accounted"]).optional(),
+      status: z.enum(["pending", "justified", "accounted", "conciliado"]).optional(),
       paymentMethod: z.enum(["cash", "card", "transfer", "direct_debit", "tpv_cash"]).optional(),
       limit: z.number().default(100),
       offset: z.number().default(0),
@@ -284,6 +286,77 @@ const expensesRouter = router({
     .mutation(async ({ input }) => {
       await db.delete(expenseFiles).where(eq(expenseFiles.id, input.fileId));
       return { ok: true };
+    }),
+
+  /** Devuelve el vínculo bancario confirmado de un gasto (si existe). */
+  getExpenseBankLink: protectedProcedure
+    .input(z.object({ expenseId: z.number() }))
+    .query(async ({ input }) => {
+      const [link] = await db
+        .select()
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.entityType, "expense"),
+          eq(bankMovementLinks.entityId, input.expenseId),
+          eq(bankMovementLinks.status, "confirmed"),
+        ))
+        .limit(1);
+      if (!link) return null;
+      const [movement] = await db
+        .select({ id: bankMovements.id, fecha: bankMovements.fecha, importe: bankMovements.importe, movimiento: bankMovements.movimiento, masDatos: bankMovements.masDatos })
+        .from(bankMovements)
+        .where(eq(bankMovements.id, link.bankMovementId));
+      return { link, movement: movement ?? null };
+    }),
+
+  /** Encuentra movimientos bancarios negativos candidatos para vincular a un gasto. */
+  suggestBankMovements: protectedProcedure
+    .input(z.object({ expenseId: z.number() }))
+    .query(async ({ input }) => {
+      const [expense] = await db.select().from(expenses).where(eq(expenses.id, input.expenseId));
+      if (!expense) return { matches: [] };
+
+      const expAmt = parseFloat(expense.amount);
+      const tolerance = parseFloat(process.env.EXPENSE_BANK_MATCH_TOLERANCE ?? "0.01");
+      const dateFrom = new Date(new Date(expense.date).getTime() - 30 * 86400000).toISOString().slice(0, 10);
+      const dateTo = new Date(new Date(expense.date).getTime() + 30 * 86400000).toISOString().slice(0, 10);
+
+      const alreadyLinked = await db
+        .select({ bmId: bankMovementLinks.bankMovementId })
+        .from(bankMovementLinks)
+        .where(and(eq(bankMovementLinks.entityType, "expense"), inArray(bankMovementLinks.status, ["confirmed"])));
+      const linkedIds = new Set(alreadyLinked.map(l => l.bmId));
+
+      const candidates = await db
+        .select()
+        .from(bankMovements)
+        .where(and(
+          eq(bankMovements.status, "pendiente"),
+          sql`CAST(${bankMovements.importe} AS DECIMAL(12,2)) < 0`,
+          gte(bankMovements.fecha, dateFrom),
+          lte(bankMovements.fecha, dateTo),
+        ))
+        .limit(100);
+
+      const matches = candidates
+        .filter(m => !linkedIds.has(m.id))
+        .map(m => {
+          const movAmt = Math.abs(parseFloat(m.importe));
+          const diff = Math.abs(movAmt - expAmt);
+          let score = 0;
+          if (diff <= tolerance) score += 60;
+          else if (diff / Math.max(movAmt, 1) < 0.05) score += 20;
+          else return null;
+          const diffDays = Math.abs((new Date(m.fecha).getTime() - new Date(expense.date).getTime()) / 86400000);
+          if (diffDays <= 3) score += 20;
+          else if (diffDays <= 7) score += 10;
+          return { ...m, confidenceScore: score };
+        })
+        .filter((m): m is NonNullable<typeof m> => m !== null && m.confidenceScore > 0)
+        .sort((a, b) => b.confidenceScore - a.confidenceScore)
+        .slice(0, 5);
+
+      return { matches };
     }),
 
   // Summary for a date range (used by Profit & Loss)

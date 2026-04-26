@@ -386,6 +386,13 @@
       "when": 1777582320000,
       "tag": "0056_batch_matching",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "5",
+      "when": 1777668720000,
+      "tag": "0057_expense_bank_link",
+      "breakpoints": true
     }
   ]
 }

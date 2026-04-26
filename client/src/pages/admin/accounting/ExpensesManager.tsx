@@ -28,7 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import {
   Plus, Pencil, Trash2, Search, Filter, Upload, FileText, X, Euro,
-  TrendingDown, Calendar, ChevronDown,
+  TrendingDown, Calendar, ChevronDown, Banknote, LinkIcon,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -44,12 +44,14 @@ const STATUS_LABELS: Record<string, string> = {
   pending: "Pendiente",
   justified: "Justificado",
   accounted: "Contabilizado",
+  conciliado: "Conciliado",
 };
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
   justified: "bg-blue-100 text-blue-800",
   accounted: "bg-green-100 text-green-800",
+  conciliado: "bg-emerald-100 text-emerald-800",
 };
 
 type ExpenseForm = {
@@ -96,6 +98,18 @@ export default function ExpensesManager() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Bank detection state
+  const [showBankDetected, setShowBankDetected] = useState(true);
+  const [createFromMovId, setCreateFromMovId] = useState<number | null>(null);
+  const [movForm, setMovForm] = useState({
+    concept: "",
+    categoryId: "",
+    costCenterId: "",
+    supplierId: "",
+    paymentMethod: "transfer",
+    notes: "",
+  });
+
   // Queries
   const categoriesQ = trpc.financial.categories.list.useQuery();
   const costCentersQ = trpc.financial.costCenters.list.useQuery();
@@ -123,6 +137,29 @@ export default function ExpensesManager() {
   const uploadFileMut = trpc.financial.expenses.uploadFile.useMutation();
   const deleteFileMut = trpc.financial.expenses.deleteFile.useMutation({
     onSuccess: () => { utils.financial.expenses.list.invalidate(); },
+  });
+
+  const bankCandidatesQ = trpc.bankMovements.listExpenseCandidates.useQuery(
+    { page: 1, pageSize: 30 },
+    { refetchInterval: 120_000 }
+  );
+
+  const createFromMovMut = trpc.bankMovements.createExpenseFromMovement.useMutation({
+    onSuccess: () => {
+      utils.financial.expenses.list.invalidate();
+      bankCandidatesQ.refetch();
+      setCreateFromMovId(null);
+      toast.success("Gasto creado y vinculado al movimiento bancario");
+    },
+    onError: (e) => toast.error("Error: " + e.message),
+  });
+
+  const ignoreBankMut = trpc.bankMovements.ignoreForExpense.useMutation({
+    onSuccess: () => {
+      bankCandidatesQ.refetch();
+      toast.success("Movimiento ignorado");
+    },
+    onError: (e) => toast.error("Error: " + e.message),
   });
 
   const categories = categoriesQ.data ?? [];
@@ -239,6 +276,39 @@ export default function ExpensesManager() {
     return costCenters.find((c) => c.id === id)?.name ?? `CC ${id}`;
   }
 
+  function openCreateFromMovement(m: NonNullable<typeof bankCandidatesQ.data>["data"][number]) {
+    setCreateFromMovId(m.id);
+    const desc = `${m.movimiento ?? ""} ${m.masDatos ?? ""}`.trim().slice(0, 120);
+    // Try to auto-select category by name
+    const suggestedCat = m.suggestedCategoryName
+      ? categories.find(c => c.name.toLowerCase().includes(m.suggestedCategoryName!.toLowerCase()))
+      : undefined;
+    setMovForm({
+      concept: desc,
+      categoryId: suggestedCat ? String(suggestedCat.id) : "",
+      costCenterId: "",
+      supplierId: "",
+      paymentMethod: "transfer",
+      notes: "",
+    });
+  }
+
+  async function handleCreateFromMovement() {
+    if (!createFromMovId || !movForm.concept || !movForm.categoryId || !movForm.costCenterId) {
+      toast.error("Rellena concepto, categoría y centro de coste");
+      return;
+    }
+    await createFromMovMut.mutateAsync({
+      bankMovementId: createFromMovId,
+      concept: movForm.concept,
+      categoryId: Number(movForm.categoryId),
+      costCenterId: Number(movForm.costCenterId),
+      supplierId: movForm.supplierId ? Number(movForm.supplierId) : null,
+      paymentMethod: movForm.paymentMethod as "cash" | "card" | "transfer" | "direct_debit" | "tpv_cash",
+      notes: movForm.notes || undefined,
+    });
+  }
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
@@ -270,8 +340,8 @@ export default function ExpensesManager() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {["pending", "justified", "accounted"].map((s) => {
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {["pending", "justified", "accounted", "conciliado"].map((s) => {
             const count = filtered.filter((e) => e.status === s).length;
             const amt = filtered.filter((e) => e.status === s).reduce((sum, e) => sum + parseFloat(e.amount), 0);
             return (
@@ -292,6 +362,89 @@ export default function ExpensesManager() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Detectados por banco */}
+        {(bankCandidatesQ.data?.total ?? 0) > 0 && (
+          <Card className="border-blue-500/30 bg-blue-500/5">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2 text-blue-300">
+                  <Banknote className="w-4 h-4" />
+                  Detectados por banco
+                  <span className="inline-flex items-center justify-center w-5 h-5 text-xs rounded-full bg-blue-500/30 text-blue-200">
+                    {bankCandidatesQ.data!.total}
+                  </span>
+                </CardTitle>
+                <button
+                  onClick={() => setShowBankDetected(!showBankDetected)}
+                  className="text-xs text-blue-400 hover:text-blue-200 flex items-center gap-1"
+                >
+                  {showBankDetected ? "Ocultar" : "Ver movimientos"}
+                  <ChevronDown className={`w-3 h-3 transition-transform ${showBankDetected ? "rotate-180" : ""}`} />
+                </button>
+              </div>
+              {!showBankDetected && (
+                <p className="text-xs text-zinc-500 mt-1">
+                  Movimientos bancarios negativos sin gasto vinculado — haz clic para revisar
+                </p>
+              )}
+            </CardHeader>
+            {showBankDetected && (
+              <CardContent className="pt-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-700/50">
+                        <th className="text-left py-2 px-2 text-xs text-zinc-400 font-medium">Fecha</th>
+                        <th className="text-right py-2 px-2 text-xs text-zinc-400 font-medium">Importe</th>
+                        <th className="text-left py-2 px-2 text-xs text-zinc-400 font-medium">Descripción banco</th>
+                        <th className="text-left py-2 px-2 text-xs text-zinc-400 font-medium">Categ. sugerida</th>
+                        <th className="py-2 px-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bankCandidatesQ.data!.data.map((m) => (
+                        <tr key={m.id} className="border-b border-zinc-800/50 hover:bg-blue-500/5">
+                          <td className="py-2 px-2 whitespace-nowrap text-zinc-300 text-xs">{m.fecha}</td>
+                          <td className="py-2 px-2 text-right font-semibold text-red-400 text-xs whitespace-nowrap">
+                            {Math.abs(parseFloat(m.importe)).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €
+                          </td>
+                          <td className="py-2 px-2 text-zinc-400 text-xs max-w-[220px] truncate" title={`${m.movimiento ?? ""} ${m.masDatos ?? ""}`.trim()}>
+                            {(m.movimiento ?? m.masDatos ?? "—").slice(0, 60)}
+                          </td>
+                          <td className="py-2 px-2 text-xs text-zinc-500">
+                            {m.suggestedCategoryName ?? "—"}
+                          </td>
+                          <td className="py-2 px-2">
+                            <div className="flex gap-1 justify-end whitespace-nowrap">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-6 px-2 border-blue-500/40 text-blue-300 hover:text-blue-100 hover:border-blue-400"
+                                onClick={() => openCreateFromMovement(m)}
+                              >
+                                Crear gasto
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-xs h-6 px-2 text-zinc-500 hover:text-zinc-300"
+                                onClick={() => ignoreBankMut.mutate({ bankMovementId: m.id })}
+                                disabled={ignoreBankMut.isPending}
+                              >
+                                Ignorar
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        )}
 
         {/* Search & Filters */}
         <div className="space-y-3">
@@ -351,6 +504,7 @@ export default function ExpensesManager() {
                     <SelectItem value="pending">Pendiente</SelectItem>
                     <SelectItem value="justified">Justificado</SelectItem>
                     <SelectItem value="accounted">Contabilizado</SelectItem>
+                    <SelectItem value="conciliado">Conciliado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -390,8 +544,9 @@ export default function ExpensesManager() {
                       <td className="p-3 text-xs">{PAYMENT_METHOD_LABELS[e.paymentMethod]}</td>
                       <td className="p-3 text-right font-medium text-red-600">{parseFloat(e.amount).toFixed(2)} €</td>
                       <td className="p-3 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[e.status]}`}>
-                          {STATUS_LABELS[e.status]}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${STATUS_COLORS[e.status] ?? "bg-gray-100 text-gray-800"}`}>
+                          {e.status === "conciliado" && <LinkIcon className="w-2.5 h-2.5" />}
+                          {STATUS_LABELS[e.status] ?? e.status}
                         </span>
                       </td>
                       <td className="p-3 text-center">
@@ -557,6 +712,126 @@ export default function ExpensesManager() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog: Crear gasto desde movimiento bancario */}
+      {createFromMovId !== null && (() => {
+        const mov = bankCandidatesQ.data?.data.find(m => m.id === createFromMovId);
+        if (!mov) return null;
+        return (
+          <Dialog open onOpenChange={(open) => { if (!open) setCreateFromMovId(null); }}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Banknote className="w-4 h-4 text-blue-400" />
+                  Crear gasto desde banco
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                {/* Movement summary */}
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-400">Fecha:</span>
+                    <span className="text-zinc-200 font-medium">{mov.fecha}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-400">Importe:</span>
+                    <span className="text-red-400 font-bold">
+                      {Math.abs(parseFloat(mov.importe)).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-400">Banco:</span>
+                    <span className="text-zinc-300 text-right max-w-[240px] truncate text-xs">
+                      {`${mov.movimiento ?? ""} ${mov.masDatos ?? ""}`.trim() || "—"}
+                    </span>
+                  </div>
+                  {mov.suggestedCategoryName && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-400">Categ. sugerida:</span>
+                      <span className="text-blue-300 text-xs">{mov.suggestedCategoryName}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label>Concepto *</Label>
+                  <Input
+                    value={movForm.concept}
+                    onChange={(e) => setMovForm({ ...movForm, concept: e.target.value })}
+                    placeholder="Descripción del gasto"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Categoría *</Label>
+                    <Select value={movForm.categoryId} onValueChange={(v) => setMovForm({ ...movForm, categoryId: v })}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                      <SelectContent>
+                        {categories.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Centro de coste *</Label>
+                    <Select value={movForm.costCenterId} onValueChange={(v) => setMovForm({ ...movForm, costCenterId: v })}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                      <SelectContent>
+                        {costCenters.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Proveedor</Label>
+                    <Select value={movForm.supplierId || "none"} onValueChange={(v) => setMovForm({ ...movForm, supplierId: v === "none" ? "" : v })}>
+                      <SelectTrigger><SelectValue placeholder="Sin proveedor" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin proveedor</SelectItem>
+                        {suppliers.map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Método de pago</Label>
+                    <Select value={movForm.paymentMethod} onValueChange={(v) => setMovForm({ ...movForm, paymentMethod: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Notas</Label>
+                  <Input
+                    value={movForm.notes}
+                    onChange={(e) => setMovForm({ ...movForm, notes: e.target.value })}
+                    placeholder="Observaciones..."
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setCreateFromMovId(null)}>Cancelar</Button>
+                  <Button
+                    onClick={handleCreateFromMovement}
+                    disabled={createFromMovMut.isPending}
+                    className="bg-blue-600 hover:bg-blue-500 text-white"
+                  >
+                    <Banknote className="w-4 h-4 mr-2" />
+                    {createFromMovMut.isPending ? "Creando..." : "Crear gasto vinculado"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </AdminLayout>
   );
 }

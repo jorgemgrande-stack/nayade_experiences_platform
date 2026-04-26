@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { and, desc, eq, gte, lte, ne, inArray, isNull, or, sql } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
-import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads } from "../../drizzle/schema";
+import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expenses } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -125,6 +125,30 @@ function parseCaixaBankBuffer(buffer: Buffer, ext: string): ParsedRow[] {
     parsed.push({ fecha, fechaValor, movimiento, masDatos, importe, saldo, duplicateKey });
   }
   return parsed;
+}
+
+// ── Expense auto-category suggestion ─────────────────────────────────────────
+
+const _EXPENSE_KEYWORD_CATS: Array<{ keywords: string[]; name: string }> = [
+  { keywords: ["iberdrola", "endesa", "i-de redes", "electricidad"], name: "Electricidad" },
+  { keywords: ["canal isabel", "aguas de", "aguas municipal"], name: "Agua" },
+  { keywords: ["naturgy", "gas natural redes"], name: "Gas" },
+  { keywords: ["movistar", "vodafone", "orange", "jazztel", "masmovil", "simyo", "telefonica"], name: "Telecomunicaciones" },
+  { keywords: ["amazon", "amzn mktplace"], name: "Material de oficina" },
+  { keywords: ["mapfre", "axa", "zurich", "helvetia", "allianz", "seguros"], name: "Seguros" },
+  { keywords: ["alquiler", "arrendamiento"], name: "Alquiler" },
+  { keywords: ["agencia tributaria", "aeat"], name: "Impuestos" },
+  { keywords: ["seguridad social", "tgss", "tesoreria ss"], name: "Seguridad Social" },
+  { keywords: ["google", "microsoft", "apple.com/bill", "dropbox", "adobe", "slack"], name: "Software" },
+  { keywords: ["spotify", "netflix", "amazon prime"], name: "Suscripciones" },
+];
+
+function _suggestExpenseCategoryName(text: string): string | null {
+  const lower = text.toLowerCase();
+  for (const entry of _EXPENSE_KEYWORD_CATS) {
+    if (entry.keywords.some(k => lower.includes(k))) return entry.name;
+  }
+  return null;
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -436,6 +460,187 @@ export const bankMovementsRouter = router({
           notes: input.notes ?? null,
         });
       }
+      return { success: true };
+    }),
+
+  // ── GASTOS ↔ MOVIMIENTOS BANCARIOS ────────────────────────────────────────────
+
+  /** Devuelve movimientos negativos sin vínculo de gasto confirmado o ignorado. */
+  listExpenseCandidates: adminProc
+    .input(z.object({ page: z.number().default(1), pageSize: z.number().default(30) }))
+    .query(async ({ input }) => {
+      const all = await db
+        .select()
+        .from(bankMovements)
+        .where(and(
+          eq(bankMovements.status, "pendiente"),
+          sql`CAST(${bankMovements.importe} AS DECIMAL(12,2)) < 0`,
+        ))
+        .orderBy(desc(bankMovements.fecha), desc(bankMovements.id));
+
+      const linkedLinks = await db
+        .select({ bmId: bankMovementLinks.bankMovementId })
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.entityType, "expense"),
+          inArray(bankMovementLinks.status, ["confirmed", "rejected"]),
+        ));
+      const linkedIds = new Set(linkedLinks.map(l => l.bmId));
+
+      const candidates = all.filter(m => !linkedIds.has(m.id));
+      const total = candidates.length;
+      const offset = (input.page - 1) * input.pageSize;
+      const data = candidates.slice(offset, offset + input.pageSize).map(m => ({
+        ...m,
+        suggestedCategoryName: _suggestExpenseCategoryName(`${m.movimiento ?? ""} ${m.masDatos ?? ""}`),
+      }));
+      return { data, total };
+    }),
+
+  /** Crea un nuevo gasto y lo vincula a un movimiento negativo. */
+  createExpenseFromMovement: adminProc
+    .input(z.object({
+      bankMovementId: z.number(),
+      concept: z.string().min(1),
+      categoryId: z.number(),
+      costCenterId: z.number(),
+      supplierId: z.number().nullable().optional(),
+      paymentMethod: z.enum(["cash", "card", "transfer", "direct_debit", "tpv_cash"]).default("transfer"),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [movement] = await db.select().from(bankMovements).where(eq(bankMovements.id, input.bankMovementId));
+      if (!movement) throw new TRPCError({ code: "NOT_FOUND", message: "Movimiento no encontrado" });
+      const movAmt = parseFloat(movement.importe);
+      if (movAmt >= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Solo movimientos negativos se pueden vincular a gastos" });
+
+      const [existing] = await db
+        .select({ id: bankMovementLinks.id })
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.bankMovementId, input.bankMovementId),
+          eq(bankMovementLinks.entityType, "expense"),
+          eq(bankMovementLinks.status, "confirmed"),
+        ))
+        .limit(1);
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "El movimiento ya está vinculado a un gasto" });
+
+      const amount = Math.abs(movAmt).toFixed(2);
+      const now = new Date();
+
+      const [expRes] = await db.insert(expenses).values({
+        date: movement.fecha,
+        concept: input.concept,
+        amount,
+        categoryId: input.categoryId,
+        costCenterId: input.costCenterId,
+        supplierId: input.supplierId ?? null,
+        paymentMethod: input.paymentMethod,
+        status: "conciliado",
+        notes: input.notes ?? null,
+        createdBy: ctx.user.id,
+      });
+      const expenseId = (expRes as { insertId: number }).insertId;
+
+      await db.insert(bankMovementLinks).values({
+        bankMovementId: input.bankMovementId,
+        entityType: "expense",
+        entityId: expenseId,
+        linkType: "expense_payment",
+        amountLinked: amount,
+        status: "confirmed",
+        confidenceScore: 100,
+        matchedBy: ctx.user.name ?? undefined,
+        matchedAt: now,
+      });
+
+      await db.update(bankMovements)
+        .set({ conciliationStatus: "conciliado" })
+        .where(eq(bankMovements.id, input.bankMovementId));
+
+      return { expenseId };
+    }),
+
+  /** Vincula un gasto existente a un movimiento negativo. */
+  linkExpenseToMovement: adminProc
+    .input(z.object({
+      bankMovementId: z.number(),
+      expenseId: z.number(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [[movement], [expense]] = await Promise.all([
+        db.select({ id: bankMovements.id, importe: bankMovements.importe }).from(bankMovements).where(eq(bankMovements.id, input.bankMovementId)),
+        db.select({ id: expenses.id, amount: expenses.amount }).from(expenses).where(eq(expenses.id, input.expenseId)),
+      ]);
+      if (!movement) throw new TRPCError({ code: "NOT_FOUND", message: "Movimiento no encontrado" });
+      if (!expense) throw new TRPCError({ code: "NOT_FOUND", message: "Gasto no encontrado" });
+
+      const [[existingMovLink], [existingExpLink]] = await Promise.all([
+        db.select({ id: bankMovementLinks.id }).from(bankMovementLinks)
+          .where(and(eq(bankMovementLinks.bankMovementId, input.bankMovementId), eq(bankMovementLinks.entityType, "expense"), eq(bankMovementLinks.status, "confirmed"))).limit(1),
+        db.select({ id: bankMovementLinks.id }).from(bankMovementLinks)
+          .where(and(eq(bankMovementLinks.entityType, "expense"), eq(bankMovementLinks.entityId, input.expenseId), eq(bankMovementLinks.status, "confirmed"))).limit(1),
+      ]);
+      if (existingMovLink) throw new TRPCError({ code: "CONFLICT", message: "El movimiento ya tiene un gasto vinculado" });
+      if (existingExpLink) throw new TRPCError({ code: "CONFLICT", message: "El gasto ya está vinculado a un movimiento" });
+
+      const now = new Date();
+      await db.insert(bankMovementLinks).values({
+        bankMovementId: input.bankMovementId,
+        entityType: "expense",
+        entityId: input.expenseId,
+        linkType: "expense_payment",
+        amountLinked: expense.amount,
+        status: "confirmed",
+        matchedBy: ctx.user.name ?? undefined,
+        matchedAt: now,
+        notes: input.notes ?? null,
+      });
+
+      await Promise.all([
+        db.update(bankMovements).set({ conciliationStatus: "conciliado" }).where(eq(bankMovements.id, input.bankMovementId)),
+        db.update(expenses).set({ status: "conciliado" }).where(eq(expenses.id, input.expenseId)),
+      ]);
+
+      return { success: true };
+    }),
+
+  /** Ignora un movimiento negativo (no necesita gasto vinculado). */
+  ignoreForExpense: adminProc
+    .input(z.object({ bankMovementId: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.update(bankMovements)
+        .set({ status: "ignorado" })
+        .where(eq(bankMovements.id, input.bankMovementId));
+      return { success: true };
+    }),
+
+  /** Desvincula el gasto de un movimiento bancario. */
+  unlinkExpenseFromMovement: adminProc
+    .input(z.object({ bankMovementId: z.number(), notes: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const [link] = await db
+        .select()
+        .from(bankMovementLinks)
+        .where(and(
+          eq(bankMovementLinks.bankMovementId, input.bankMovementId),
+          eq(bankMovementLinks.entityType, "expense"),
+          eq(bankMovementLinks.status, "confirmed"),
+        ))
+        .limit(1);
+      if (!link) throw new TRPCError({ code: "NOT_FOUND", message: "No hay vínculo de gasto para deshacer" });
+
+      const now = new Date();
+      await db.update(bankMovementLinks)
+        .set({ status: "unlinked", unlinkedAt: now, matchedBy: ctx.user.name ?? undefined, notes: input.notes ?? null })
+        .where(eq(bankMovementLinks.id, link.id));
+
+      await Promise.all([
+        db.update(bankMovements).set({ conciliationStatus: "pendiente" }).where(eq(bankMovements.id, input.bankMovementId)),
+        db.update(expenses).set({ status: "pending" }).where(eq(expenses.id, link.entityId)),
+      ]);
+
       return { success: true };
     }),
 
