@@ -2,7 +2,7 @@ import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { buildReservationConfirmHtml, buildTpvTicketHtml } from "../emailTemplates";
+import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
 import { sendEmail } from "../mailer";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity } from "../db";
 import { calcularREAVSimple } from "../reav";
@@ -21,7 +21,7 @@ import {
   transactions,
   legoPacks,
 } from "../../drizzle/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
 
@@ -158,6 +158,26 @@ export const tpvRouter = router({
       });
       const id = (result as any).insertId as number;
       const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, id));
+
+      // Email de apertura (no bloquea si falla)
+      try {
+        const [register] = await db.select({ name: cashRegisters.name }).from(cashRegisters).where(eq(cashRegisters.id, input.registerId));
+        const html = buildCashOpenHtml({
+          sessionId: id,
+          cashierName: ctx.user.name ?? ctx.user.email ?? "Cajero",
+          registerName: register?.name ?? `Caja #${input.registerId}`,
+          openingAmount: input.openingAmount,
+          openedAt: new Date(),
+        });
+        await sendEmail({
+          to: "administracion@nayadeexperiences.es",
+          subject: `🟢 Apertura de caja — ${register?.name ?? "Caja"} — Náyade Experiences`,
+          html,
+        });
+      } catch (e) {
+        console.error("[TPV] Error enviando email apertura caja:", e);
+      }
+
       return session;
     }),
 
@@ -234,6 +254,91 @@ export const tpvRouter = router({
       }).where(eq(cashSessions.id, input.sessionId));
 
       const [updated] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
+
+      // Email de cierre con desglose multicanal (no bloquea si falla)
+      try {
+        const [register] = await db.select({ name: cashRegisters.name }).from(cashRegisters).where(eq(cashRegisters.id, session.registerId));
+
+        // Derivar fecha del día desde openedAt
+        const sessionDate = new Date(Number(session.openedAt)).toISOString().slice(0, 10);
+
+        // Reservas del día (excluyendo TPV físico) para desglose por canal
+        const dayReservations = await db
+          .select({
+            channel: reservations.channel,
+            paymentMethod: reservations.paymentMethod,
+            amountTotal: reservations.amountTotal,
+          })
+          .from(reservations)
+          .where(and(
+            gte(reservations.bookingDate, sessionDate),
+            lte(reservations.bookingDate, sessionDate),
+            eq(reservations.status, "paid"),
+          ));
+
+        // Agrupar por canal (excluir TPV_FISICO que ya está en tpvSalePayments)
+        const channelMap: Record<string, ChannelSummary> = {};
+        const CHANNEL_LABELS: Record<string, string> = {
+          WEB: "Online / Redsys",
+          CRM: "CRM / Manual",
+          EMAIL: "CRM / Manual",
+          TRANSFERENCIA: "Transferencia",
+          CUPON: "Cupón / Descuento",
+        };
+        for (const r of dayReservations) {
+          const ch = (r.channel ?? "OTRO").toUpperCase();
+          if (ch === "TPV_FISICO") continue;
+          const pm = (r.paymentMethod ?? "otro").toLowerCase();
+          const amt = (r.amountTotal ?? 0) / 100;
+          if (!channelMap[ch]) {
+            channelMap[ch] = {
+              channel: ch,
+              label: CHANNEL_LABELS[ch] ?? ch,
+              totalEfectivo: 0,
+              totalTarjeta: 0,
+              totalBizum: 0,
+              totalOtro: 0,
+              totalVentas: 0,
+              numVentas: 0,
+            };
+          }
+          channelMap[ch].numVentas++;
+          channelMap[ch].totalVentas += amt;
+          if (pm === "efectivo") channelMap[ch].totalEfectivo += amt;
+          else if (pm === "redsys" || pm === "tarjeta") channelMap[ch].totalTarjeta += amt;
+          else if (pm === "bizum") channelMap[ch].totalBizum += amt;
+          else channelMap[ch].totalOtro += amt;
+        }
+
+        const html = buildCashCloseHtml({
+          sessionId: input.sessionId,
+          cashierName: session.cashierName ?? "Cajero",
+          registerName: register?.name ?? `Caja #${session.registerId}`,
+          openedAt: new Date(Number(session.openedAt)),
+          closedAt: new Date(),
+          openingAmount: parseFloat(String(session.openingAmount)),
+          totalCash,
+          totalCard,
+          totalBizum,
+          totalMixed,
+          totalManualIn,
+          totalManualOut,
+          closingAmount,
+          countedCash: input.countedCash,
+          cashDifference,
+          channels: Object.values(channelMap),
+          notes: input.notes ?? session.notes,
+        });
+
+        await sendEmail({
+          to: "administracion@nayadeexperiences.es",
+          subject: `🔴 Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — Náyade Experiences`,
+          html,
+        });
+      } catch (e) {
+        console.error("[TPV] Error enviando email cierre caja:", e);
+      }
+
       return updated;
     }),
 

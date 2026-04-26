@@ -1957,3 +1957,246 @@ export function buildInstallmentReminderHtml(d: InstallmentReminderData): string
     ${emailFooter()}`;
   return emailWrapper(`Recordatorio cuota ${d.installmentNumber}/${d.totalInstallments} — ${d.amountFormatted} vence el ${d.dueDate}`, body);
 }
+
+// ─── APERTURA DE CAJA ─────────────────────────────────────────────────────────
+export interface CashOpenParams {
+  sessionId: number;
+  cashierName: string;
+  registerName: string;
+  openingAmount: number;
+  openedAt: Date;
+}
+
+export function buildCashOpenHtml(d: CashOpenParams): string {
+  const dateStr = d.openedAt.toLocaleDateString("es-ES", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  const timeStr = d.openedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const body = `
+    ${emailHeader("Apertura de Caja", `Sesión iniciada el ${dateStr}`)}
+    <tr><td style="padding:28px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border-radius:12px;border:1.5px solid #86efac;">
+        <tr><td style="padding:18px 24px;text-align:center;">
+          <div style="font-size:32px;margin-bottom:4px;">🟢</div>
+          <p style="color:#15803d;font-size:16px;font-weight:800;margin:0;font-family:Arial,sans-serif;letter-spacing:0.5px;">Caja abierta correctamente</p>
+          <p style="color:#166534;font-size:13px;margin:6px 0 0;font-family:Arial,sans-serif;">${timeStr} · Sesión #${d.sessionId}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:16px 32px 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <tr><td style="padding:20px 24px;">
+          <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 14px;font-family:Arial,sans-serif;">Detalles de apertura</p>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">${SVG.person}&nbsp; Cajero</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.cashierName}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">${SVG.tag}&nbsp; Caja</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.registerName}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">${SVG.clock}&nbsp; Hora apertura</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${timeStr}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">${SVG.ref}&nbsp; ID Sesión</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">#${d.sessionId}</td>
+            </tr>
+            <tr>
+              <td colspan="2" style="padding:8px 0 0;"><hr style="border:none;border-top:1px solid #e2e8f0;margin:4px 0;" /></td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:14px;padding:6px 0;font-family:Arial,sans-serif;font-weight:600;">Fondo inicial</td>
+              <td style="color:#15803d;font-size:18px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.openingAmount.toFixed(2)} €</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Apertura de caja — ${d.registerName} — ${dateStr}`, body);
+}
+
+// ─── CIERRE DE CAJA ───────────────────────────────────────────────────────────
+export interface ChannelSummary {
+  channel: string;
+  label: string;
+  totalEfectivo: number;
+  totalTarjeta: number;
+  totalBizum: number;
+  totalOtro: number;
+  totalVentas: number;
+  numVentas: number;
+}
+
+export interface CashCloseParams {
+  sessionId: number;
+  cashierName: string;
+  registerName: string;
+  openedAt: Date;
+  closedAt: Date;
+  openingAmount: number;
+  totalCash: number;
+  totalCard: number;
+  totalBizum: number;
+  totalMixed: number;
+  totalManualIn: number;
+  totalManualOut: number;
+  closingAmount: number;
+  countedCash: number;
+  cashDifference: number;
+  channels: ChannelSummary[];
+  notes?: string | null;
+}
+
+export function buildCashCloseHtml(d: CashCloseParams): string {
+  const dateStr = d.closedAt.toLocaleDateString("es-ES", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  const openTimeStr = d.openedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const closeTimeStr = d.closedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const diffAbs = Math.abs(d.cashDifference);
+  const hasDiff = diffAbs > 0.01;
+  const diffColor = d.cashDifference < -0.01 ? "#dc2626" : d.cashDifference > 0.01 ? "#d97706" : "#15803d";
+  const diffLabel = d.cashDifference < -0.01 ? `▼ Faltante` : d.cashDifference > 0.01 ? `▲ Sobrante` : "OK";
+  const totalTPV = d.totalCash + d.totalCard + d.totalBizum + d.totalMixed;
+  const totalAllChannels = d.channels.reduce((s, c) => s + c.totalVentas, 0) + totalTPV;
+
+  const channelRows = d.channels.length ? d.channels.map(c => `
+    <tr style="border-bottom:1px solid #f1f5f9;">
+      <td style="color:#374151;font-size:13px;padding:7px 0;font-family:Arial,sans-serif;font-weight:600;">${c.label}</td>
+      <td style="color:#64748b;font-size:12px;text-align:center;font-family:Arial,sans-serif;">${c.numVentas}</td>
+      <td style="color:#15803d;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${c.totalEfectivo > 0 ? c.totalEfectivo.toFixed(2) + " €" : "—"}</td>
+      <td style="color:#1d4ed8;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${c.totalTarjeta > 0 ? c.totalTarjeta.toFixed(2) + " €" : "—"}</td>
+      <td style="color:#7c3aed;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${c.totalBizum > 0 ? c.totalBizum.toFixed(2) + " €" : "—"}</td>
+      <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${c.totalVentas.toFixed(2)} €</td>
+    </tr>`).join("") : "";
+
+  const body = `
+    ${emailHeader("Cierre de Caja", `Sesión cerrada el ${dateStr}`)}
+    <tr><td style="padding:28px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:${hasDiff ? (d.cashDifference < -0.01 ? "#fef2f2" : "#fffbeb") : "#f0fdf4"};border-radius:12px;border:1.5px solid ${hasDiff ? (d.cashDifference < -0.01 ? "#fca5a5" : "#fcd34d") : "#86efac"};">
+        <tr><td style="padding:18px 24px;text-align:center;">
+          <div style="font-size:32px;margin-bottom:4px;">${hasDiff ? (d.cashDifference < -0.01 ? "🔴" : "🟡") : "✅"}</div>
+          <p style="color:${diffColor};font-size:16px;font-weight:800;margin:0;font-family:Arial,sans-serif;">Caja cerrada — ${hasDiff ? `Diferencia de ${diffAbs.toFixed(2)} € (${diffLabel})` : "Cuadre perfecto"}</p>
+          <p style="color:#475569;font-size:13px;margin:6px 0 0;font-family:Arial,sans-serif;">${openTimeStr} → ${closeTimeStr} · Sesión #${d.sessionId}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <tr><td style="padding:16px 32px 8px;">
+      <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Desglose por canal</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <tr><td style="padding:16px 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr style="border-bottom:2px solid #e2e8f0;">
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px;font-family:Arial,sans-serif;">Canal</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:center;padding-bottom:8px;font-family:Arial,sans-serif;">Ops</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;padding-bottom:8px;font-family:Arial,sans-serif;">Efect.</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;padding-bottom:8px;font-family:Arial,sans-serif;">Tarj.</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;padding-bottom:8px;font-family:Arial,sans-serif;">Bizum</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;padding-bottom:8px;font-family:Arial,sans-serif;">Total</td>
+            </tr>
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="color:#374151;font-size:13px;padding:7px 0;font-family:Arial,sans-serif;font-weight:600;">TPV Físico</td>
+              <td style="color:#64748b;font-size:12px;text-align:center;font-family:Arial,sans-serif;">—</td>
+              <td style="color:#15803d;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${d.totalCash > 0 ? d.totalCash.toFixed(2) + " €" : "—"}</td>
+              <td style="color:#1d4ed8;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${d.totalCard > 0 ? d.totalCard.toFixed(2) + " €" : "—"}</td>
+              <td style="color:#7c3aed;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${d.totalBizum > 0 ? d.totalBizum.toFixed(2) + " €" : "—"}</td>
+              <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${totalTPV.toFixed(2)} €</td>
+            </tr>
+            ${channelRows}
+            <tr>
+              <td colspan="5" style="color:#1e3a6e;font-size:13px;font-weight:800;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">TOTAL GENERAL</td>
+              <td style="color:#f97316;font-size:16px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totalAllChannels.toFixed(2)} €</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <tr><td style="padding:8px 32px 8px;">
+      <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Arqueo de caja (efectivo)</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <tr><td style="padding:20px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">Fondo inicial</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.openingAmount.toFixed(2)} €</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">+ Cobros en efectivo</td>
+              <td style="color:#15803d;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">+ ${d.totalCash.toFixed(2)} €</td>
+            </tr>
+            ${d.totalManualIn > 0 ? `<tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">+ Entradas manuales</td>
+              <td style="color:#15803d;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">+ ${d.totalManualIn.toFixed(2)} €</td>
+            </tr>` : ""}
+            ${d.totalManualOut > 0 ? `<tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">− Salidas manuales</td>
+              <td style="color:#dc2626;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">− ${d.totalManualOut.toFixed(2)} €</td>
+            </tr>` : ""}
+            <tr>
+              <td colspan="2" style="padding:4px 0;"><hr style="border:none;border-top:1px solid #e2e8f0;" /></td>
+            </tr>
+            <tr>
+              <td style="color:#1e3a6e;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;font-weight:700;">Efectivo esperado</td>
+              <td style="color:#1e3a6e;font-size:14px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.closingAmount.toFixed(2)} €</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:5px 0;font-family:Arial,sans-serif;">Efectivo contado</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.countedCash.toFixed(2)} €</td>
+            </tr>
+            <tr>
+              <td colspan="2" style="padding:4px 0;"><hr style="border:none;border-top:2px solid #e2e8f0;" /></td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:14px;padding:6px 0;font-family:Arial,sans-serif;font-weight:700;">Diferencia</td>
+              <td style="color:${diffColor};font-size:18px;font-weight:800;text-align:right;font-family:Arial,sans-serif;">${d.cashDifference >= 0 ? "+" : ""}${d.cashDifference.toFixed(2)} €</td>
+            </tr>
+          </table>
+          ${hasDiff ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;background:${d.cashDifference < -0.01 ? "#fef2f2" : "#fffbeb"};border-radius:8px;border:1px solid ${d.cashDifference < -0.01 ? "#fca5a5" : "#fcd34d"};">
+            <tr><td style="padding:10px 14px;">
+              <p style="color:${diffColor};font-size:12px;font-weight:700;margin:0;font-family:Arial,sans-serif;">
+                ${SVG.alert}&nbsp; ${d.cashDifference < -0.01 ? `Faltante de ${diffAbs.toFixed(2)} €. Revisar cobros en efectivo y movimientos manuales.` : `Sobrante de ${diffAbs.toFixed(2)} €. Comprobar cambios entregados.`}
+              </p>
+            </td></tr>
+          </table>` : ""}
+        </td></tr>
+      </table>
+    </td></tr>
+
+    ${d.notes ? `<tr><td style="padding:8px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <tr><td style="padding:16px 24px;">
+          <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;font-family:Arial,sans-serif;">Notas</p>
+          <p style="color:#374151;font-size:13px;margin:0;font-family:Arial,sans-serif;line-height:1.6;">${d.notes}</p>
+        </td></tr>
+      </table>
+    </td></tr>` : ""}
+
+    <tr><td style="padding:8px 32px 24px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <tr><td style="padding:14px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">${SVG.person}&nbsp; Cajero</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.cashierName}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">${SVG.tag}&nbsp; Caja</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${d.registerName}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">${SVG.clock}&nbsp; Apertura / Cierre</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${openTimeStr} → ${closeTimeStr}</td>
+            </tr>
+            <tr>
+              <td style="color:#64748b;font-size:13px;padding:4px 0;font-family:Arial,sans-serif;">${SVG.ref}&nbsp; ID Sesión</td>
+              <td style="color:#1e293b;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">#${d.sessionId}</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Cierre de caja — ${d.registerName} — ${dateStr}`, body);
+}
