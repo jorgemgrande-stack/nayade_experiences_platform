@@ -106,9 +106,6 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "gallery.getItems",
   "gallery.getCategories",
 
-  // ── Sistema ───────────────────────────────────────────────────────────────
-  "system.notifyOwner",
-
   // ── Lego Packs (páginas públicas /lego-packs/*) ─────────────────────────────
   "legoPacks.listPublic",
   "legoPacks.listPublicByCategory",

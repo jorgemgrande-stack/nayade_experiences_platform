@@ -532,7 +532,7 @@ async function ensureDiscountColumns() {
 
 // ─── WIPE TEST DATA (one-shot, gated by WIPE_TEST_DATA=true env var) ──────────
 async function wipeTestDataIfRequested() {
-  if (process.env.WIPE_TEST_DATA !== "true") return;
+  if (process.env.WIPE_TEST_DATA !== "true" || process.env.NODE_ENV === "production") return;
 
   console.log("[Wipe] ⚠️  WIPE_TEST_DATA=true detectado — limpiando datos de prueba...");
   const mysql = await import("mysql2/promise");
