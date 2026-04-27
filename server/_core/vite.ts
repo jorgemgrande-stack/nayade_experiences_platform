@@ -54,12 +54,16 @@ export async function setupVite(app: Express, server: Server) {
 // Unknown routes fall back to the home-page meta defined in index.html itself.
 
 const BASE_URL = "https://nayadeexperiences.es";
+const CDN = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads";
+// Default OG image (Blob Jump – visually striking, brand-defining activity)
+const DEFAULT_OG_IMAGE = `${CDN}/1773762402377-dymd02.png`;
 
 interface RouteMeta {
   title: string;
   description: string;
   h1: string;
   body: string;
+  image?: string;
 }
 
 const SEO_ROUTES: Record<string, RouteMeta> = {
@@ -68,12 +72,14 @@ const SEO_ROUTES: Record<string, RouteMeta> = {
     description: "Náyade Experiences ofrece actividades, experiencias acuáticas, spa, hotel y restauración en Los Ángeles de San Rafael, Segovia.",
     h1: "Náyade Experiences",
     body: "Actividades, experiencias, restauración y ocio en Los Ángeles de San Rafael, Segovia.",
+    image: `${CDN}/1773702396972-kd9hrk.png`,
   },
   "/experiencias": {
     title: "Experiencias y Actividades | Náyade Experiences",
     description: "Descubre todas las experiencias y actividades: deportes, aventura, bienestar y más en Los Ángeles de San Rafael, Segovia.",
     h1: "Experiencias y Actividades",
     body: "Explora nuestra selección de experiencias y actividades en Los Ángeles de San Rafael.",
+    image: `${CDN}/1773766863713-7gry6r.jpg`,
   },
   "/restaurantes": {
     title: "Restaurantes | Náyade Experiences",
@@ -92,6 +98,7 @@ const SEO_ROUTES: Record<string, RouteMeta> = {
     description: "Spa y tratamientos de bienestar en Los Ángeles de San Rafael, Segovia. Relax en plena naturaleza.",
     h1: "Spa y Bienestar",
     body: "Tratamientos, masajes y bienestar en Los Ángeles de San Rafael, Segovia.",
+    image: `${CDN}/1773867774581-gde9k3.png`,
   },
   "/contacto": {
     title: "Contacto | Náyade Experiences",
@@ -121,6 +128,7 @@ let _htmlCache: string | null = null;
 
 function injectSeoMeta(html: string, pathname: string): string {
   const { meta, canonical } = resolveRouteMeta(pathname);
+  const imageUrl = meta.image ?? DEFAULT_OG_IMAGE;
 
   return html
     .replace(/<title>[^<]*<\/title>/, `<title>${meta.title}</title>`)
@@ -145,12 +153,20 @@ function injectSeoMeta(html: string, pathname: string): string {
       `<meta property="og:description" content="${meta.description}"`
     )
     .replace(
+      /<meta property="og:image" content="[^"]*"/,
+      `<meta property="og:image" content="${imageUrl}"`
+    )
+    .replace(
       /<meta name="twitter:title" content="[^"]*"/,
       `<meta name="twitter:title" content="${meta.title}"`
     )
     .replace(
       /<meta name="twitter:description" content="[^"]*"/,
       `<meta name="twitter:description" content="${meta.description}"`
+    )
+    .replace(
+      /<meta name="twitter:image" content="[^"]*"/,
+      `<meta name="twitter:image" content="${imageUrl}"`
     )
     // Replace static fallback content in #root with route-specific text
     .replace(
