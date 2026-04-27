@@ -207,26 +207,30 @@ async function runMigrations() {
 // ─── SEED: garantizar flags y settings críticos independiente de migraciones ──
 async function ensureCriticalSeeds() {
   try {
-    const db = await getDb();
-    if (!db) return;
-    const { featureFlags, systemSettings } = await import("../../drizzle/schema");
-    const { sql } = await import("drizzle-orm");
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
 
-    // Feature flag que se saltó en migración 0072 (INSERT IGNORE sobre migración ya marcada como aplicada)
-    await db.execute(sql`
-      INSERT IGNORE INTO feature_flags (key, name, description, module, enabled, default_enabled, risk_level)
-      VALUES ('card_terminal_matching_enabled', 'Job conciliación datáfono',
-              'Ejecuta el job periódico que concilia batches de datáfono con movimientos bancarios',
-              'card_terminal', true, true, 'medium')
-    `);
+    // Feature flag omitido por migración ya marcada como aplicada en __drizzle_migrations
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (key, name, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 1, 1, 'medium')`,
+      [
+        "card_terminal_matching_enabled",
+        "Job conciliación datáfono",
+        "Ejecuta el job periódico que concilia batches de datáfono con movimientos bancarios",
+        "card_terminal",
+      ]
+    );
 
-    // Teléfono de contacto principal — actualizar si está vacío o tiene valor antiguo
-    await db.execute(sql`
-      UPDATE system_settings
-      SET value = '+34 911 67 51 89'
-      WHERE key = 'brand_phone' AND (value IS NULL OR value = '' OR value = '+34 930 34 77 91')
-    `);
+    // Teléfono de contacto — actualizar si tiene valor vacío o el número antiguo
+    await conn.execute(
+      `UPDATE system_settings
+       SET value = ?
+       WHERE \`key\` = 'brand_phone' AND (value IS NULL OR value = '' OR value = ?)`,
+      ["+34 911 67 51 89", "+34 930 34 77 91"]
+    );
 
+    await conn.end();
     console.log("[DB] Seeds críticos verificados");
   } catch (err) {
     console.error("[DB] Error en seeds críticos:", err);
