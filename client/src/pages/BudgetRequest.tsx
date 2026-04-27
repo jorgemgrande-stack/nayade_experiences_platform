@@ -410,13 +410,10 @@ function ActivityModal({
 export default function BudgetRequest() {
   const { phone, phoneTel } = usePublicPhone();
   const [submitted, setSubmitted] = useState(false);
-  const { phone, phoneTel } = usePublicPhone();
   const [selectedCategory, setSelectedCategory] = useState("");
-  const { phone, phoneTel } = usePublicPhone();
   const [selectedProduct, setSelectedProduct] = useState("");
   const [selectedActivities, setSelectedActivities] = useState<ActivityEntry[]>([]);
   const [modalState, setModalState] = useState<ModalState>({ open: false, experienceId: 0, experienceTitle: "", family: "", slug: "" });
-  const { phone, phoneTel } = usePublicPhone();
   const [formData, setFormData] = useState({
     name: "", email: "", phone: "", arrivalDate: "",
     adults: "1", children: "0", comments: "", honeypot: "",

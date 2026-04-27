@@ -84,12 +84,9 @@ export default function QuoteAcceptance() {
 
   const { phone, phoneTel } = usePublicPhone();
   const [showRejectForm, setShowRejectForm] = useState(false);
-  const { phone, phoneTel } = usePublicPhone();
   const [rejectReason, setRejectReason] = useState("");
-  const { phone, phoneTel } = usePublicPhone();
   const [rejected, setRejected] = useState(false);
   const [redsysForm, setRedsysForm] = useState<{ url: string; Ds_MerchantParameters: string; Ds_Signature: string; Ds_SignatureVersion: string } | null>(null);
-  const { phone, phoneTel } = usePublicPhone();
   const [showConditions, setShowConditions] = useState(false);
 
   // ── Redsys auto-submit effect ──

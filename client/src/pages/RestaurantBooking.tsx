@@ -40,11 +40,7 @@ export default function RestaurantBooking() {
   const [selectedTime, setSelectedTime] = useState<string>("");
   const { phone, phoneTel } = usePublicPhone();
   const [guests, setGuests] = useState(2);
-  const { phone, phoneTel } = usePublicPhone();
   const [calMonth, setCalMonth] = useState(() => { const n=new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
-
-  // Formulario de datos
-  const { phone, phoneTel } = usePublicPhone();
   const [form, setForm] = useState({
     guestName: "", guestLastName: "", guestEmail: "", guestPhone: "",
     highchair: false, allergies: "", birthday: false, specialRequests: "", accessibility: false,

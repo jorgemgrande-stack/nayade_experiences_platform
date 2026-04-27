@@ -44,7 +44,6 @@ export default function LegoPackDetail() {
   const { category, slug } = useParams<{ category: string; slug: string }>();
   const { phone, phoneTel } = usePublicPhone();
   const [people, setPeople] = useState(1);
-  const { phone, phoneTel } = usePublicPhone();
   const [selectedDate, setSelectedDate] = useState("");
   const { addItem, openCart } = useCart();
 

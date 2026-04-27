@@ -38,20 +38,14 @@ export default function ExperienceDetail() {
   const { slug } = useParams<{ slug: string }>();
   const { phone, phoneTel } = usePublicPhone();
   const [galleryIndex, setGalleryIndex] = useState(0);
-  const { phone, phoneTel } = usePublicPhone();
   const [showBookingModal, setShowBookingModal] = useState(false); // lead modal
-  const { phone, phoneTel } = usePublicPhone();
   const [persons, setPersons] = useState(2);
-  const { phone, phoneTel } = usePublicPhone();
   const [selectedDate, setSelectedDate] = useState("");
   const { addItem, openCart } = useCart();
-  const { phone, phoneTel } = usePublicPhone();
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", date: "", message: "" });
-  const { phone, phoneTel } = usePublicPhone();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<number | null>(null);
-  const { phone, phoneTel } = usePublicPhone();
   const [selectedTime, setSelectedTime] = useState("");
 
   const { data: dbExp, isLoading: isLoadingExp } = trpc.public.getExperienceBySlug.useQuery(
