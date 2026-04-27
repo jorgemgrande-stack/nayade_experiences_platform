@@ -813,8 +813,9 @@ async function conditionallyStartJob(
   flagKey: string,
   start: () => void,
   label: string,
+  defaultEnabled = false,
 ): Promise<void> {
-  const enabled = await getFeatureFlag(flagKey, false);
+  const enabled = await getFeatureFlag(flagKey, defaultEnabled);
   if (enabled) {
     start();
   } else {
@@ -835,5 +836,5 @@ runMigrations()
   .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
   .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))
   .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,        "Email Ingestion"))
-  .then(() => startMatchingJob())
+  .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
   .catch(console.error);
