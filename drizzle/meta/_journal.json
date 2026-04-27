@@ -498,6 +498,13 @@
       "when": 1777248000000,
       "tag": "0072_generic_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "5",
+      "when": 1777507200000,
+      "tag": "0073_fix_card_terminal_flag",
+      "breakpoints": true
     }
   ]
 }
