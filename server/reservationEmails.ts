@@ -8,7 +8,7 @@
 import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
-import { getBusinessEmail } from "./config";
+import { getBusinessEmail, getSystemSettingSync } from "./config";
 
 export interface ReservationEmailData {
   id: number;
@@ -96,7 +96,7 @@ export async function sendReservationPaidNotifications(
   try {
     await sendEmail({
       to: reservation.customerEmail,
-      subject: `✅ Reserva confirmada — ${reservation.productName} — Náyade Experiences`,
+      subject: `✅ Reserva confirmada — ${reservation.productName} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
       html: buildReservationConfirmHtml({
         merchantOrder: reservation.merchantOrder,
         productName: reservation.productName,
@@ -106,7 +106,7 @@ export async function sendReservationPaidNotifications(
         amount,
         extras,
       }),
-      text: `Reserva confirmada. Ref: ${reservation.merchantOrder}. Producto: ${reservation.productName}. Fecha: ${date}. Personas: ${reservation.people}. Total: ${amount}. Contacto: reservas@nayadeexperiences.es`,
+      text: `Reserva confirmada. Ref: ${reservation.merchantOrder}. Producto: ${reservation.productName}. Fecha: ${date}. Personas: ${reservation.people}. Total: ${amount}. Contacto: ${getSystemSettingSync("email_reservations", "")}`,
     });
     // BCC manual al equipo
     for (const bcc of bccList) {

@@ -23,10 +23,15 @@ import { getSystemSettingSync } from "./config";
 const getContactEmail = () => getSystemSettingSync("email_reservations", "contacto@tuempresa.com");
 
 // ─── Constantes de marca ──────────────────────────────────────────────────────
-// Visual constants remain hardcoded; text data reads from config cache (sync).
-// Cache is populated by Phase 3.1 async callers before templates are rendered.
-const LOGO_URL    = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
-const HERO_IMG    = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_lago_aereo_178815fc.jpg";
+// URLs kept as fallback literals; actual values read from system_settings cache
+// (populated by warmConfigCache() at startup). getSystemSettingSync() returns
+// the fallback on first call and the DB value on all subsequent calls.
+const LOGO_URL_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
+const HERO_IMG_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_lago_aereo_178815fc.jpg";
+const getBrandLogo  = () => getSystemSettingSync("brand_logo_url",     LOGO_URL_FALLBACK);
+const getBrandHero  = () => getSystemSettingSync("brand_hero_image_url", HERO_IMG_FALLBACK);
+const getBrandName  = () => getSystemSettingSync("brand_name",         "Nayade Experiences");
+const getBrandShort = () => getSystemSettingSync("brand_short_name",   "Náyade");
 const BRAND_BLUE     = "#0a1628";
 const BRAND_MID_BLUE = "#1e3a6e";
 const BRAND_ORANGE   = "#f97316";
@@ -69,14 +74,14 @@ function emailHeader(subtitle?: string, tagline?: string): string {
       <!--[if gte mso 9]>
       <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false"
               style="width:600px;height:${heroHeight}px;display:block;">
-        <v:fill type="frame" src="${HERO_IMG}" color="${BRAND_BLUE}" />
+        <v:fill type="frame" src="${getBrandHero()}" color="${BRAND_BLUE}" />
         <v:textbox inset="0,0,0,0">
         <table width="600" cellpadding="0" cellspacing="0" border="0">
           <tr>
             <td align="center" style="padding:36px 40px 28px;background-color:#0d1f3c;">
               <table cellpadding="0" cellspacing="0" border="0"><tr>
                 <td align="center" style="border:3px solid #ffffff;padding:4px;background-color:#1e3a6e;">
-                  <img src="${LOGO_URL}" alt="Nayade" width="72" height="72" style="display:block;border:0;" />
+                  <img src="${getBrandLogo()}" alt="Nayade" width="72" height="72" style="display:block;border:0;" />
                 </td>
               </tr></table>
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -101,12 +106,12 @@ function emailHeader(subtitle?: string, tagline?: string): string {
 
       <!--[if !mso]><!-->
       <table width="600" cellpadding="0" cellspacing="0" border="0"
-             style="background-color:${BRAND_BLUE};background-image:url('${HERO_IMG}');background-size:cover;background-position:center top;">
+             style="background-color:${BRAND_BLUE};background-image:url('${getBrandHero()}');background-size:cover;background-position:center top;">
         <tr>
           <td align="center" style="padding:36px 40px 28px;background:linear-gradient(180deg,rgba(10,22,40,0.72) 0%,rgba(10,22,40,0.88) 100%);">
             <table cellpadding="0" cellspacing="0" border="0"><tr>
               <td align="center" style="display:inline-block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);padding:4px;background:rgba(255,255,255,0.12);">
-                <img src="${LOGO_URL}" alt="Náyade" width="72" height="72"
+                <img src="${getBrandLogo()}" alt="Náyade" width="72" height="72"
                      style="display:block;border-radius:50%;border:0;" />
               </td>
             </tr></table>
@@ -354,7 +359,7 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Reserva Confirmada — Náyade Experiences", body);
+  return emailWrapper("Reserva Confirmada — " + getBrandName(), body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -383,7 +388,7 @@ export function buildReservationFailedHtml(d: ReservationFailedData): string {
       ${ctaButton("Contactar ahora", `mailto:${getContactEmail()}`)}
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Pago No Completado — Náyade Experiences", body);
+  return emailWrapper("Pago No Completado — " + getBrandName(), body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -432,7 +437,7 @@ export function buildRestaurantConfirmHtml(d: RestaurantBookingData): string {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Reserva en ${d.restaurantName} — Náyade Experiences`, body);
+  return emailWrapper(`Reserva en ${d.restaurantName} — ${getBrandName()}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -486,7 +491,7 @@ export function buildRestaurantPaymentLinkHtml(d: RestaurantPaymentLinkData): st
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Confirma tu reserva — ${d.restaurantName} — Náyade Experiences`, body);
+  return emailWrapper(`Confirma tu reserva — ${d.restaurantName} — ${getBrandName()}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -539,7 +544,7 @@ export function buildInviteHtml(d: InviteEmailData): string {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Bienvenido a Náyade Experiences — Activa tu cuenta", body);
+  return emailWrapper(`Bienvenido a ${getBrandName()} — Activa tu cuenta`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -574,7 +579,7 @@ export function buildPasswordResetHtml(d: PasswordResetData): string {
       </table>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Recuperar contraseña — Náyade Experiences", body);
+  return emailWrapper("Recuperar contraseña — " + getBrandName(), body);
 }
 
 export interface ActivityEmailEntry {
@@ -666,7 +671,7 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Solicitud de presupuesto recibida — Náyade Experiences", body);
+  return emailWrapper("Solicitud de presupuesto recibida — " + getBrandName(), body);
 }
 
 export function buildBudgetRequestAdminHtml(d: BudgetRequestEmailData): string {
@@ -694,7 +699,7 @@ export function buildBudgetRequestAdminHtml(d: BudgetRequestEmailData): string {
       ${ctaButton("Contactar al cliente", `mailto:${d.email}`)}
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Nueva solicitud de presupuesto — Náyade Experiences", body);
+  return emailWrapper("Nueva solicitud de presupuesto — " + getBrandName(), body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -885,7 +890,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Presupuesto ${d.quoteNumber} — Náyade Experiences`, body);
+  return emailWrapper(`Presupuesto ${d.quoteNumber} — ${getBrandName()}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1067,7 +1072,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Reserva Confirmada ${d.reservationRef} — Náyade Experiences`, body);
+  return emailWrapper(`Reserva Confirmada ${d.reservationRef} — ${getBrandName()}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1125,14 +1130,14 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
     <!-- Encabezado azul oscuro -->
     <div style="background:#1a3a6b;padding:20px 40px;display:flex;align-items:center;justify-content:space-between;gap:20px;">
       <div style="display:flex;align-items:center;gap:16px;flex-shrink:0;">
-        <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" width="90" height="90" style="display:block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);object-fit:cover;" />
+        <img src="${getBrandLogo()}" alt="${getBrandShort()}" width="90" height="90" style="display:block;border-radius:50%;border:3px solid rgba(255,255,255,0.85);object-fit:cover;" />
         <div>
-          <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:2px;text-transform:uppercase;line-height:1.1;">Náyade</div>
-          <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;">Experiences</div>
+          <div style="color:#fff;font-size:20px;font-weight:900;letter-spacing:2px;text-transform:uppercase;line-height:1.1;">${getBrandShort()}</div>
+          <div style="color:rgba(255,255,255,0.65);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-top:3px;">${getBrandName().replace(getBrandShort(), "").trim() || "Experiences"}</div>
         </div>
       </div>
       <div style="text-align:right;color:rgba(255,255,255,0.80);font-size:11.5px;line-height:1.7;">
-        <strong style="color:#fff;font-size:12.5px;display:block;">${d.issuerName ?? 'Náyade Experiences'}</strong>
+        <strong style="color:#fff;font-size:12.5px;display:block;">${d.issuerName ?? getBrandName()}</strong>
         ${d.issuerAddress ?? ''}<br/>
         ${d.issuerCif ? 'CIF: ' + d.issuerCif : ''}
       </div>
@@ -1299,7 +1304,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
     </td></tr>
     ${emailFooter()}`;
 
-  return emailWrapper(`Pago confirmado — ${d.invoiceNumber} · Náyade Experiences`, body);
+  return emailWrapper(`Pago confirmado — ${d.invoiceNumber} · ${getBrandName()}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1346,7 +1351,7 @@ export function buildCancellationReceivedHtml(d: {
     </td></tr>
     ${emotionalBlock("Entendemos que los imprevistos ocurren. Haremos todo lo posible para resolverlo de la mejor manera.")}
     ${emailFooter()}`;
-  return emailWrapper(`Solicitud de anulación #${d.requestId} recibida · Náyade Experiences`, body);
+  return emailWrapper(`Solicitud de anulación #${d.requestId} recibida · ${getBrandName()}`, body);
 }
 
 // PLANTILLA 13: Resolución de anulación — Rechazo
@@ -1363,7 +1368,7 @@ export function buildCancellationRejectedHtml(d: {
         Hemos revisado tu solicitud de anulación <strong>#${d.requestId}</strong>.
       </p>
       ${statusBlock("error", "Solicitud no aceptada",
-        "Tras revisar tu solicitud, la reclamación no se encuentra sujeta a los supuestos de devolución recogidos en los términos y condiciones de Náyade Experiences.")}
+        `Tras revisar tu solicitud, la reclamación no se encuentra sujeta a los supuestos de devolución recogidos en los términos y condiciones de ${getBrandName()}.`)}
     </td></tr>
     ${d.adminText ? `
     <tr><td style="padding:0 32px 12px;">
@@ -1381,7 +1386,7 @@ export function buildCancellationRejectedHtml(d: {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Resolución solicitud #${d.requestId} · Náyade Experiences`, body);
+  return emailWrapper(`Resolución solicitud #${d.requestId} · ${getBrandName()}`, body);
 }
 
 // PLANTILLA 14: Aceptación con devolución económica
@@ -1418,7 +1423,7 @@ export function buildCancellationAcceptedRefundHtml(d: {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Devolución ${tipo} aprobada — Solicitud #${d.requestId} · Náyade Experiences`, body);
+  return emailWrapper(`Devolución ${tipo} aprobada — Solicitud #${d.requestId} · ${getBrandName()}`, body);
 }
 
 // PLANTILLA 15: Aceptación con bono de compensación
@@ -1485,7 +1490,7 @@ export function buildCancellationAcceptedVoucherHtml(d: {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Bono de compensación ${d.voucherCode} · Náyade Experiences`, body);
+  return emailWrapper(`Bono de compensación ${d.voucherCode} · ${getBrandName()}`, body);
 }
 
 // PLANTILLA 16: Solicitud de documentación adicional
@@ -1519,7 +1524,7 @@ export function buildCancellationDocumentationHtml(d: {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Documentación requerida — Solicitud #${d.requestId} · Náyade Experiences`, body);
+  return emailWrapper(`Documentación requerida — Solicitud #${d.requestId} · ${getBrandName()}`, body);
 }
 
 // PLANTILLA 17: Confirmación de devolución ejecutada
@@ -1564,7 +1569,7 @@ export function buildCancellationRefundExecutedHtml(d: {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Devolución realizada — Solicitud #${d.requestId} · Náyade Experiences`, body);
+  return emailWrapper(`Devolución realizada — Solicitud #${d.requestId} · ${getBrandName()}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1645,7 +1650,7 @@ export function buildTpvTicketHtml(d: {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper(`Ticket ${d.ticketNumber} · Náyade Experiences`, body);
+  return emailWrapper(`Ticket ${d.ticketNumber} · ${getBrandName()}`, body);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1689,7 +1694,7 @@ export function buildCouponRedemptionReceivedHtml(d: {
     </td></tr>
     ${emotionalBlock("¡Nos vemos pronto en el lago! Tu aventura acuática está a punto de comenzar.")}
     ${emailFooter()}`;
-  return emailWrapper("Solicitud de canje recibida · Náyade Experiences", body);
+  return emailWrapper("Solicitud de canje recibida · " + getBrandName(), body);
 }
 
 export function buildCouponPostponedHtml(d: {
@@ -1725,7 +1730,7 @@ export function buildCouponPostponedHtml(d: {
       </p>
     </td></tr>
     ${emailFooter()}`;
-  return emailWrapper("Actualización solicitud de canje · Náyade Experiences", body);
+  return emailWrapper("Actualización solicitud de canje · " + getBrandName(), body);
 }
 
 export function buildCouponInternalAlertHtml(d: {

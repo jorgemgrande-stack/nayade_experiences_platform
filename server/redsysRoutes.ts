@@ -18,7 +18,7 @@ import { notifyOwner } from "./_core/notification";
 import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
-import { getBusinessEmail } from "./config";
+import { getBusinessEmail, getSystemSettingSync } from "./config";
 import { generateDocumentNumber } from "./documentNumbers";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL } from "./ghl";
@@ -290,7 +290,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   contactPhone: "+34 930 34 77 91",
                   quoteUrl,
                 });
-                await sendEmail({ to: clientEmail, subject: `✅ Reserva confirmada — ${quote.quoteNumber} — Náyade Experiences`, html });
+                await sendEmail({ to: clientEmail, subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`, html });
                 await sendEmail({ to: COPY_EMAIL, subject: `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`, html });
                 console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail}`);
               } catch (emailErr) {

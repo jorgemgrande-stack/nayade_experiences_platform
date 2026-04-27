@@ -7,6 +7,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { sql } from "drizzle-orm";
 import { siteSettings } from "../drizzle/schema";
+import { getSystemSettingSync } from "./config";
 
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
 const db = drizzle(_pool);
@@ -118,10 +119,10 @@ export async function buildInvoiceHtml(invoice: InvoiceHtmlParams): Promise<stri
 <body>
   <div class="doc-header">
     <div class="logo-block">
-      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" />
+      <img src="${getSystemSettingSync("brand_logo_url", "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg")}" alt="${getSystemSettingSync("brand_short_name", "Náyade")}" />
       <div class="brand-text">
-        <div class="brand-name">Náyade</div>
-        <div class="brand-sub">Experiences</div>
+        <div class="brand-name">${getSystemSettingSync("brand_short_name", "Náyade")}</div>
+        <div class="brand-sub">${getSystemSettingSync("brand_name", "Nayade Experiences").replace(getSystemSettingSync("brand_short_name", ""), "").trim() || "Experiences"}</div>
       </div>
     </div>
     <div class="company-info">
@@ -176,7 +177,7 @@ export async function buildInvoiceHtml(invoice: InvoiceHtmlParams): Promise<stri
   </table></div>
   </div>
   <div class="footer">
-    <p>Gracias por confiar en Náyade Experiences &middot; www.nayadeexperiences.es</p>
+    <p>Gracias por confiar en ${getSystemSettingSync("brand_name", "Nayade Experiences")}${getSystemSettingSync("brand_website_url", "") ? " &middot; " + getSystemSettingSync("brand_website_url", "") : ""}</p>
     <p>Documento emitido por <strong>${legal.name}</strong> &mdash; CIF: ${legal.cif} &mdash; ${legalAddressFull}</p>
   </div>
 </body>

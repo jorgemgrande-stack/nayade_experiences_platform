@@ -12,7 +12,7 @@ import { quotes, leads } from "../drizzle/schema";
 import { buildQuoteHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { notifyOwner } from "./_core/notification";
-import { getBusinessEmail } from "./config";
+import { getBusinessEmail, getSystemSettingSync } from "./config";
 
 const MAX_REMINDERS = 2; // máximo de reenvíos automáticos por presupuesto
 
@@ -90,7 +90,7 @@ async function runQuoteReminderJob() {
         await sendEmail({
           to: clientEmail,
           cc: await getBusinessEmail('reservations'),
-          subject: `⏰ Recordatorio: tu presupuesto ${quote.quoteNumber} sigue disponible — Náyade Experiences`,
+          subject: `⏰ Recordatorio: tu presupuesto ${quote.quoteNumber} sigue disponible — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
           html,
         });
 

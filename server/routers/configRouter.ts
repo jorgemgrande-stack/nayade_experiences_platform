@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, desc, and, like, gte, lte } from "drizzle-orm";
-import { router, permissionProcedure } from "../_core/trpc";
+import { router, permissionProcedure, publicProcedure } from "../_core/trpc";
 import { getDb } from "../db";
 import { featureFlags, systemSettings, configChangeLogs } from "../../drizzle/schema";
 import { invalidateConfigCache } from "../config";
@@ -71,6 +71,22 @@ function validateSettingValue(key: string, value: string, valueType: string): vo
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const configRouter = router({
+  // Public — no auth required. Returns only isPublic=true, isSensitive=false settings.
+  // Safe to call from unauthenticated pages (sidebar, public branding).
+  getPublicSettings: publicProcedure.query(async (): Promise<Record<string, string>> => {
+    try {
+      const db = await getDb();
+      if (!db) return {};
+      const rows = await db
+        .select({ key: systemSettings.key, value: systemSettings.value })
+        .from(systemSettings)
+        .where(and(eq(systemSettings.isPublic, true), eq(systemSettings.isSensitive, false)));
+      return Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+    } catch {
+      return {};
+    }
+  }),
+
   listFeatureFlags: settingsAdvancedProc.query(async () => {
     const db = await requireDb();
     return db.select().from(featureFlags).orderBy(featureFlags.module, featureFlags.key);

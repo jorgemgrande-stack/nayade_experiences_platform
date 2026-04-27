@@ -242,6 +242,15 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     return location === href || location.startsWith(href + "/") || location.startsWith(href + "?");
   };
 
+  // Public brand settings — logo, name, colors.
+  const { data: publicSettings } = trpc.config.getPublicSettings.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+  const LOGO_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
+  const brandLogo = publicSettings?.brand_logo_url || LOGO_FALLBACK;
+  const brandName = publicSettings?.brand_name || "Admin";
+
   // Feature flags — used to hide nav items for disabled modules.
   // Defaults to showing all items when flags are not yet loaded (safe fallback).
   const { data: flagsList } = trpc.config.listFeatureFlags.useQuery(undefined, {
@@ -352,8 +361,8 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         <div className="h-16 flex items-center px-4 border-b border-sidebar-border shrink-0">
           <Link href={userRole === "adminrest" ? "/admin/restaurantes" : "/admin"} className="flex items-center gap-2 min-w-0">
             <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png"
-              alt="Náyade Admin"
+              src={brandLogo}
+              alt={`${brandName} Admin`}
               className={cn("object-contain rounded-full shrink-0", sidebarOpen ? "h-10 w-10" : "h-8 w-8")}
             />
             {sidebarOpen && (
