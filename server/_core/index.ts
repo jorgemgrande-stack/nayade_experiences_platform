@@ -212,7 +212,7 @@ async function ensureCriticalSeeds() {
 
     // Feature flag omitido por migración ya marcada como aplicada en __drizzle_migrations
     await conn.execute(
-      `INSERT IGNORE INTO feature_flags (key, name, description, module, enabled, default_enabled, risk_level)
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
        VALUES (?, ?, ?, ?, 1, 1, 'medium')`,
       [
         "card_terminal_matching_enabled",
