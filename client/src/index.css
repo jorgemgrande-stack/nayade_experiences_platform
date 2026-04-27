@@ -236,6 +236,13 @@
   .animate-float {
     animation: float 4s ease-in-out infinite;
   }
+  @keyframes wa-pulse {
+    0%, 100% { box-shadow: 0 4px 14px rgba(37,211,102,0.40); }
+    50%       { box-shadow: 0 4px 22px rgba(37,211,102,0.65), 0 0 0 7px rgba(37,211,102,0.12); }
+  }
+  .animate-wa-pulse {
+    animation: wa-pulse 2.8s ease-in-out infinite;
+  }
   /* Efecto cristal */
   .glass-card {
     background: oklch(1 0 0 / 0.82);

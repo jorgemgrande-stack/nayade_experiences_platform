@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import PublicNav from "./PublicNav";
 import PublicFooter from "./PublicFooter";
+import WhatsAppFloatingButton from "./WhatsAppFloatingButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +52,7 @@ export default function PublicLayout({
           {children}
         </main>
         <PublicFooter />
+        <WhatsAppFloatingButton />
       </div>
     </div>
   );
