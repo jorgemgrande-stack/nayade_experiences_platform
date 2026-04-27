@@ -1,8 +1,9 @@
-import { Link } from "wouter";
+﻿import { Link } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Clock, MapPin, Phone, Utensils, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 
 const CDN_HERO = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/Cableski_4bb813a1.png";
 
@@ -15,6 +16,7 @@ const FALLBACK_IMAGES: Record<string, string> = {
 };
 
 export default function Restaurantes() {
+  const { phone, phoneTel } = usePublicPhone();
   const { data: restaurantes, isLoading } = trpc.restaurants.getAll.useQuery();
 
   return (
@@ -128,7 +130,7 @@ export default function Restaurantes() {
                 <Phone className="w-5 h-5 text-accent" />
               </div>
               <h3 className="font-heading font-bold text-foreground">Reservas telefónicas</h3>
-              <a href="tel:+34930347791" className="text-accent font-display font-semibold hover:underline">+34 930 34 77 91</a>
+              <a href={phoneTel} className="text-accent font-display font-semibold hover:underline">{phone}</a>
             </div>
             <div className="flex flex-col items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-accent/10 flex items-center justify-center">
@@ -143,3 +145,4 @@ export default function Restaurantes() {
     </PublicLayout>
   );
 }
+

@@ -1,4 +1,5 @@
-import { useRef } from "react";
+﻿import { useRef } from "react";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { Navigation, Car, Train, Clock, MapPin, Phone, Mail } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { MapView } from "@/components/Map";
@@ -7,6 +8,7 @@ import { MapView } from "@/components/Map";
 const NAYADE_LOCATION = { lat: 40.8189, lng: -4.0047 };
 
 export default function Locations() {
+  const { phone, phoneTel } = usePublicPhone();
   const mapRef = useRef<google.maps.Map | null>(null);
 
   function handleMapReady(map: google.maps.Map) {
@@ -179,8 +181,8 @@ export default function Locations() {
                 <Phone className="w-5 h-5 text-accent" />
               </div>
               <h3 className="font-heading font-bold text-foreground">Teléfono</h3>
-              <a href="tel:+34930347791" className="text-accent font-display font-semibold hover:underline">
-                +34 930 34 77 91
+              <a href={phoneTel} className="text-accent font-display font-semibold hover:underline">
+                {phone}
               </a>
             </div>
             <div className="flex flex-col items-center gap-3">
@@ -198,3 +200,5 @@ export default function Locations() {
     </PublicLayout>
   );
 }
+
+

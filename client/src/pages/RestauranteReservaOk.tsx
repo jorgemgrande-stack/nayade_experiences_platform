@@ -1,4 +1,4 @@
-/**
+﻿/**
  * /restaurantes/reserva-ok — Retorno tras pago Redsys de depósito de restaurante.
  * Lee el localizador de la URL (?locator=NR-XXXXX) y consulta el estado real en backend.
  * NUNCA confirma el pago solo por esta URL — el IPN /api/redsys/restaurant-notification
@@ -12,9 +12,11 @@ import {
 } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 
 export default function RestauranteReservaOk() {
   const [locator, setLocator] = useState<string | null>(null);
+  const { phone, phoneTel } = usePublicPhone();
   const [pollCount, setPollCount] = useState(0);
 
   useEffect(() => {
@@ -125,8 +127,8 @@ export default function RestauranteReservaOk() {
           <div className="mt-8 pt-8 border-t border-border text-sm text-muted-foreground">
             <p className="mb-3">¿Tienes dudas? Contacta con nosotros:</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <a href="tel:+34930347791" className="flex items-center gap-2 hover:text-accent transition-colors">
-                <Phone className="w-4 h-4" /> +34 930 34 77 91
+              <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
+                <Phone className="w-4 h-4" /> {phone}
               </a>
               <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
                 <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
@@ -274,8 +276,8 @@ export default function RestauranteReservaOk() {
         <div className="text-center text-sm text-muted-foreground mb-8">
           <p className="mb-3">¿Tienes alguna pregunta?</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="tel:+34930347791" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Phone className="w-4 h-4" /> +34 930 34 77 91
+            <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Phone className="w-4 h-4" /> {phone}
             </a>
             <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
               <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
@@ -303,3 +305,5 @@ export default function RestauranteReservaOk() {
     </PublicLayout>
   );
 }
+
+

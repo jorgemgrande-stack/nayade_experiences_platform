@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Anchor, Mail, Phone, MapPin, Instagram, Facebook, Youtube, Clock } from "lucide-react";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 
 const colExperiencias = [
   { label: "Blob Jump", href: "/experiencias/blob-jump" },
@@ -32,6 +33,8 @@ const colServicios = [
 ];
 
 export default function PublicFooter() {
+  const { phone, phoneTel } = usePublicPhone();
+
   return (
     <footer className="bg-lago-dark text-white">
       {/* Main footer */}
@@ -57,7 +60,7 @@ export default function PublicFooter() {
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Phone className="w-4 h-4 text-accent flex-shrink-0" />
-                <a href="tel:+34930347791" className="text-white/65 hover:text-accent transition-colors">+34 930 34 77 91</a>
+                <a href={phoneTel} className="text-white/65 hover:text-accent transition-colors">{phone}</a>
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Mail className="w-4 h-4 text-accent flex-shrink-0" />

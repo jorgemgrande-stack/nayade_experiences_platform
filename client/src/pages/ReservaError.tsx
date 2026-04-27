@@ -1,4 +1,4 @@
-/**
+﻿/**
  * /reserva/error — Página de retorno cuando Redsys indica error o cancelación.
  * Muestra mensaje claro, datos básicos de la reserva y opción de reintentar.
  * El estado de la reserva se actualiza ÚNICAMENTE por el endpoint IPN.
@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import { XCircle, ArrowRight, Phone, Mail, RefreshCw, AlertTriangle } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 
 const REDSYS_ERROR_MESSAGES: Record<string, string> = {
   "0180": "Tarjeta ajena al servicio.",
@@ -32,6 +33,7 @@ const REDSYS_ERROR_MESSAGES: Record<string, string> = {
 };
 
 export default function ReservaError() {
+  const { phone, phoneTel } = usePublicPhone();
   const [merchantOrder, setMerchantOrder] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
@@ -154,8 +156,8 @@ export default function ReservaError() {
         <div className="text-center text-sm text-muted-foreground pt-6 border-t border-border">
           <p className="mb-3">¿Necesitas ayuda? Estamos aquí para ti:</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="tel:+34930347791" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Phone className="w-4 h-4" /> +34 930 34 77 91
+            <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Phone className="w-4 h-4" /> {phone}
             </a>
             <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
               <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
@@ -166,3 +168,5 @@ export default function ReservaError() {
     </PublicLayout>
   );
 }
+
+

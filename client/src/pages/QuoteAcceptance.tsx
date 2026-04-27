@@ -1,4 +1,4 @@
-/**
+﻿/**
  * QuoteAcceptance — Página pública de aceptación de presupuesto
  * Ruta: /presupuesto/:token
  *
@@ -11,6 +11,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -81,10 +82,14 @@ export default function QuoteAcceptance() {
   const { token } = useParams<{ token: string }>();
   const [, navigate] = useLocation();
 
+  const { phone, phoneTel } = usePublicPhone();
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const { phone, phoneTel } = usePublicPhone();
   const [rejectReason, setRejectReason] = useState("");
+  const { phone, phoneTel } = usePublicPhone();
   const [rejected, setRejected] = useState(false);
   const [redsysForm, setRedsysForm] = useState<{ url: string; Ds_MerchantParameters: string; Ds_Signature: string; Ds_SignatureVersion: string } | null>(null);
+  const { phone, phoneTel } = usePublicPhone();
   const [showConditions, setShowConditions] = useState(false);
 
   // ── Redsys auto-submit effect ──
@@ -360,8 +365,8 @@ export default function QuoteAcceptance() {
           <div className="text-center text-white/40 text-xs pb-8 space-y-1">
             <p>¿Tienes dudas? Contacta con nosotros</p>
             <div className="flex justify-center gap-4">
-              <a href="tel:+34930347791" className="hover:text-orange-400 flex items-center gap-1">
-                <Phone className="w-3 h-3" /> +34 930 34 77 91
+              <a href={phoneTel} className="hover:text-orange-400 flex items-center gap-1">
+                <Phone className="w-3 h-3" /> {phone}
               </a>
               <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">
                 <Mail className="w-3 h-3" /> reservas@nayadeexperiences.es
@@ -692,3 +697,5 @@ export default function QuoteAcceptance() {
     </div>
   );
 }
+
+

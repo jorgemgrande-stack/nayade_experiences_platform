@@ -1,4 +1,4 @@
-/**
+﻿/**
  * /restaurantes/reserva-ko — Retorno tras pago fallido/cancelado en Redsys.
  * Lee el localizador de la URL (?locator=NR-XXXXX) y muestra opciones de reintento.
  */
@@ -9,8 +9,10 @@ import {
 } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 
 export default function RestauranteReservaKo() {
+  const { phone, phoneTel } = usePublicPhone();
   const [locator, setLocator] = useState<string | null>(null);
 
   useEffect(() => {
@@ -113,8 +115,8 @@ export default function RestauranteReservaKo() {
         <div className="pt-8 border-t border-border text-sm text-muted-foreground">
           <p className="mb-3">¿Necesitas ayuda? Contacta con nosotros:</p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="tel:+34930347791" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Phone className="w-4 h-4" /> +34 930 34 77 91
+            <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Phone className="w-4 h-4" /> {phone}
             </a>
             <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
               <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
@@ -132,3 +134,5 @@ export default function RestauranteReservaKo() {
     </PublicLayout>
   );
 }
+
+

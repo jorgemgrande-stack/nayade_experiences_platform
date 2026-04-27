@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { Button } from "@/components/ui/button";
 import {
   Waves, MapPin, Star, Clock, Users, ChevronRight, ChevronLeft,
@@ -307,6 +308,7 @@ function HeroActivityModal({
 }
 
 export default function Home() {
+  const { phone, phoneTel } = usePublicPhone();
   const [, navigate] = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [addToCartProduct, setAddToCartProduct] = useState<{ id: number; title: string; basePrice: string | number; image1?: string; discountPercent?: number | null; discountExpiresAt?: string | Date | null; pricingType?: "per_person" | "per_unit" | null; unitCapacity?: number | null; maxUnits?: number | null } | null>(null);
@@ -807,8 +809,8 @@ export default function Home() {
 
                 {/* Footer contacto */}
                 <div className="px-6 py-3 border-t border-white/[0.07] flex flex-col sm:flex-row items-center justify-center gap-3 text-white/30 text-xs">
-                  <a href="tel:+34930347791" className="flex items-center gap-1.5 hover:text-orange-400 transition-colors">
-                    <Phone className="w-3.5 h-3.5" /> +34 930 34 77 91
+                  <a href={phoneTel} className="flex items-center gap-1.5 hover:text-orange-400 transition-colors">
+                    <Phone className="w-3.5 h-3.5" /> {phone}
                   </a>
                   <span className="hidden sm:block text-white/15">·</span>
                   <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-1.5 hover:text-orange-400 transition-colors">
@@ -827,7 +829,7 @@ export default function Home() {
               {[
                 { icon: <MapPin className="w-4 h-4" />, label: "Los Ángeles de San Rafael, Segovia" },
                 { icon: <Clock className="w-4 h-4" />, label: "Abierto Lun–Dom · 10:00–20:00" },
-                { icon: <Phone className="w-4 h-4" />, label: "+34 930 34 77 91" },
+                { icon: <Phone className="w-4 h-4" />, label: phone },
               ].map((item, i) => (
                 <div key={i} className="flex items-center gap-2 px-4 py-3 bg-white/10 text-white/90 text-sm">
                   <span className="text-orange-400">{item.icon}</span>
@@ -1440,7 +1442,7 @@ export default function Home() {
                     {/* Enlace secundario */}
                     <p className="text-center mt-4 text-white/35 text-xs">
                       ¿Dudas? Llámanos al{" "}
-                      <a href="tel:+34930347791" className="text-sky-400 hover:text-sky-300 transition-colors">+34 930 34 77 91</a>
+                      <a href={phoneTel} className="text-sky-400 hover:text-sky-300 transition-colors">{phone}</a>
                     </p>
                   </div>
                 </div>
@@ -1488,7 +1490,7 @@ export default function Home() {
             </Link>
           </div>
           <div className="mt-10 flex flex-wrap justify-center gap-8 text-white/60 text-sm font-display">
-            <span className="flex items-center gap-2"><Phone className="w-4 h-4 text-orange-400" /> +34 930 34 77 91</span>
+            <span className="flex items-center gap-2"><Phone className="w-4 h-4 text-orange-400" /> {phone}</span>
             <span className="flex items-center gap-2"><Mail className="w-4 h-4 text-orange-400" /> reservas@nayadeexperiences.es</span>
             <span className="flex items-center gap-2"><MapPin className="w-4 h-4 text-orange-400" /> Los Ángeles de San Rafael, Segovia</span>
           </div>

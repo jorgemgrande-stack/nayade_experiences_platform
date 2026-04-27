@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 
 export default function Contact() {
@@ -21,6 +22,8 @@ export default function Contact() {
     onSuccess: () => setSubmitted(true),
     onError: () => toast.error("Error al enviar el mensaje. Inténtalo de nuevo."),
   });
+
+  const { phone, phoneTel } = usePublicPhone();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,8 +40,8 @@ export default function Contact() {
     {
       icon: Phone,
       title: "Teléfono",
-      lines: ["+34 930 34 77 91", "Lun-Vie: 9:00 - 19:00"],
-      href: "tel:+34930347791",
+      lines: [phone, "Lun-Vie: 9:00 - 19:00"],
+      href: phoneTel,
       color: "from-orange-500/20 to-orange-600/10",
       iconColor: "text-orange-400",
     },
@@ -431,7 +434,7 @@ export default function Contact() {
                   Llámanos y te ayudamos a diseñar tu experiencia perfecta.
                 </p>
                 <a
-                  href="tel:+34930347791"
+                  href={phoneTel}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",

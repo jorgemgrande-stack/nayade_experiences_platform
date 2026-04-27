@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useParams } from "wouter";
 import {
   ChevronRight, Star, Clock, Users, MapPin, Shield, CheckCircle,
@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
 
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -35,15 +36,22 @@ const difficultyLabels: Record<string, string> = {
 
 export default function ExperienceDetail() {
   const { slug } = useParams<{ slug: string }>();
+  const { phone, phoneTel } = usePublicPhone();
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const { phone, phoneTel } = usePublicPhone();
   const [showBookingModal, setShowBookingModal] = useState(false); // lead modal
+  const { phone, phoneTel } = usePublicPhone();
   const [persons, setPersons] = useState(2);
+  const { phone, phoneTel } = usePublicPhone();
   const [selectedDate, setSelectedDate] = useState("");
   const { addItem, openCart } = useCart();
+  const { phone, phoneTel } = usePublicPhone();
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", date: "", message: "" });
+  const { phone, phoneTel } = usePublicPhone();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
   const [selectedTimeSlotId, setSelectedTimeSlotId] = useState<number | null>(null);
+  const { phone, phoneTel } = usePublicPhone();
   const [selectedTime, setSelectedTime] = useState("");
 
   const { data: dbExp, isLoading: isLoadingExp } = trpc.public.getExperienceBySlug.useQuery(
@@ -601,7 +609,7 @@ export default function ExperienceDetail() {
                 <div className="mt-5 pt-5 border-t border-border space-y-3">
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Phone className="w-4 h-4 text-accent shrink-0" />
-                    <a href="tel:+34930347791" className="hover:text-accent transition-colors">+34 930 34 77 91</a>
+                    <a href={phoneTel} className="hover:text-accent transition-colors">{phone}</a>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Mail className="w-4 h-4 text-accent shrink-0" />
@@ -702,3 +710,4 @@ export default function ExperienceDetail() {
     </PublicLayout>
   );
 }
+

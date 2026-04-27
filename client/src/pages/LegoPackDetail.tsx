@@ -1,7 +1,8 @@
-import { useParams, Link } from "wouter";
+﻿import { useParams, Link } from "wouter";
 import { useState } from "react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,7 +42,9 @@ const CATEGORY_META: Record<string, {
 
 export default function LegoPackDetail() {
   const { category, slug } = useParams<{ category: string; slug: string }>();
+  const { phone, phoneTel } = usePublicPhone();
   const [people, setPeople] = useState(1);
+  const { phone, phoneTel } = usePublicPhone();
   const [selectedDate, setSelectedDate] = useState("");
   const { addItem, openCart } = useCart();
 
@@ -447,10 +450,10 @@ export default function LegoPackDetail() {
 
               <div className="border-t border-slate-100 pt-4 space-y-2">
                 <a
-                  href="tel:+34930347791"
+                  href={phoneTel}
                   className="flex items-center gap-2 text-sm text-slate-600 hover:text-orange-600 transition-colors"
                 >
-                  <Phone className="w-4 h-4" /> +34 930 34 77 91
+                  <Phone className="w-4 h-4" /> {phone}
                 </a>
                 <p className="text-xs text-slate-400">Cancelación gratuita hasta 48h antes</p>
               </div>
@@ -480,3 +483,5 @@ export default function LegoPackDetail() {
     </PublicLayout>
   );
 }
+
+

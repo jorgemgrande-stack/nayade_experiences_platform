@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import {
   Calendar, Clock, Users, ChevronLeft, ChevronRight,
   User, Mail, Phone, Baby, AlertCircle, Cake, Accessibility,
@@ -37,10 +38,13 @@ export default function RestaurantBooking() {
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedShift, setSelectedShift] = useState<number|null>(null);
   const [selectedTime, setSelectedTime] = useState<string>("");
+  const { phone, phoneTel } = usePublicPhone();
   const [guests, setGuests] = useState(2);
+  const { phone, phoneTel } = usePublicPhone();
   const [calMonth, setCalMonth] = useState(() => { const n=new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); });
 
   // Formulario de datos
+  const { phone, phoneTel } = usePublicPhone();
   const [form, setForm] = useState({
     guestName: "", guestLastName: "", guestEmail: "", guestPhone: "",
     highchair: false, allergies: "", birthday: false, specialRequests: "", accessibility: false,
@@ -146,7 +150,7 @@ export default function RestaurantBooking() {
         <h2 className="text-2xl font-heading font-bold">Reservas no disponibles online</h2>
         <p className="text-muted-foreground max-w-md">
           Este restaurante no acepta reservas online. Por favor, llámanos al{" "}
-          <a href="tel:+34930347791" className="text-accent font-semibold">+34 930 34 77 91</a>.
+          <a href={phoneTel} className="text-accent font-semibold">{phone}</a>.
         </p>
         <Button variant="outline" onClick={() => navigate(`/restaurantes/${slug}`)}>
           <ArrowLeft className="w-4 h-4 mr-2" /> Volver al restaurante
@@ -615,3 +619,4 @@ export default function RestaurantBooking() {
     </PublicLayout>
   );
 }
+

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+﻿import React, { useState, useMemo, useCallback } from "react";
 import { Link } from "wouter";
 import {
   CheckCircle, Phone, Mail, Users, ChevronRight,
@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
@@ -407,11 +408,15 @@ function ActivityModal({
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function BudgetRequest() {
+  const { phone, phoneTel } = usePublicPhone();
   const [submitted, setSubmitted] = useState(false);
+  const { phone, phoneTel } = usePublicPhone();
   const [selectedCategory, setSelectedCategory] = useState("");
+  const { phone, phoneTel } = usePublicPhone();
   const [selectedProduct, setSelectedProduct] = useState("");
   const [selectedActivities, setSelectedActivities] = useState<ActivityEntry[]>([]);
   const [modalState, setModalState] = useState<ModalState>({ open: false, experienceId: 0, experienceTitle: "", family: "", slug: "" });
+  const { phone, phoneTel } = usePublicPhone();
   const [formData, setFormData] = useState({
     name: "", email: "", phone: "", arrivalDate: "",
     adults: "1", children: "0", comments: "", honeypot: "",
@@ -894,8 +899,8 @@ export default function BudgetRequest() {
 
               {/* Footer del card: contacto directo */}
               <div className="px-7 py-4 border-t border-white/[0.07] flex flex-col sm:flex-row items-center justify-center gap-4 text-white/35 text-xs">
-                <a href="tel:+34930347791" className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
-                  <Phone className="w-3.5 h-3.5" /> +34 930 34 77 91
+                <a href={phoneTel} className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
+                  <Phone className="w-3.5 h-3.5" /> {phone}
                 </a>
                 <span className="hidden sm:block text-white/15">·</span>
                 <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-1.5 hover:text-amber-400 transition-colors">
@@ -933,3 +938,5 @@ export default function BudgetRequest() {
     </PublicLayout>
   );
 }
+
+

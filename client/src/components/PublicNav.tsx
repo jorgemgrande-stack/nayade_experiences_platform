@@ -5,6 +5,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { usePublicPhone } from "@/hooks/usePublicPhone";
 import CartIcon from "@/components/CartIcon";
 import CartDrawer from "@/components/CartDrawer";
 
@@ -127,6 +128,8 @@ export default function PublicNav() {
   const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
   const [location, setLocation] = useLocation();
 
+  const { phone, phoneTel } = usePublicPhone();
+
   // Cargar menú desde la BD
   const { data: menuData } = trpc.public.getMenuItems.useQuery(
     { zone: "header" },
@@ -174,10 +177,10 @@ export default function PublicNav() {
       <div className="hidden lg:block border-b border-border/40 bg-primary/5">
         <div className="container flex items-center justify-between py-1.5">
           <div className="flex items-center gap-6 text-xs font-display text-muted-foreground">
-            <span className="flex items-center gap-1.5">
+            <a href={phoneTel} className="flex items-center gap-1.5 hover:text-foreground transition-colors">
               <Phone className="w-3 h-3" />
-              +34 930 34 77 91
-            </span>
+              {phone}
+            </a>
             <span>reservas@nayadeexperiences.es</span>
             <span>Los Ángeles de San Rafael, Segovia · A 45 min de Madrid</span>
           </div>
