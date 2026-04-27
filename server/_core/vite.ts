@@ -182,7 +182,9 @@ export function serveStatic(app: Express) {
         return res.sendFile(indexPath);
       }
     }
-    const html = injectSeoMeta(_htmlCache, req.path || "/");
+    // req.path is "/" for all routes under app.use("*") — use originalUrl instead
+    const pathname = req.originalUrl.split("?")[0] || "/";
+    const html = injectSeoMeta(_htmlCache, pathname);
     res.set("Content-Type", "text/html").send(html);
   });
 }
