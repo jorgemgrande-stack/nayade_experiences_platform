@@ -491,6 +491,13 @@
       "when": 1745882400000,
       "tag": "0071_rbac_user_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "5",
+      "when": 1777248000000,
+      "tag": "0072_generic_defaults",
+      "breakpoints": true
     }
   ]
 }
