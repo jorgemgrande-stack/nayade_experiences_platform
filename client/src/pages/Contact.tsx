@@ -400,9 +400,9 @@ export default function Contact() {
                       <Icon className={`w-5 h-5 ${item.iconColor}`} />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-foreground mb-1 text-sm">{item.title}</h4>
+                      <h4 className="font-semibold text-white mb-1 text-sm">{item.title}</h4>
                       {item.lines.map((line, i) => (
-                        <p key={i} className={`text-sm ${i === 0 ? "text-foreground/80 font-medium" : "text-muted-foreground"}`}>
+                        <p key={i} className={`text-sm ${i === 0 ? "text-white/80 font-medium" : "text-white/55"}`}>
                           {line}
                         </p>
                       ))}
@@ -427,10 +427,10 @@ export default function Contact() {
                   border: "1px solid rgba(249,115,22,0.25)",
                 }}
               >
-                <p className="text-sm text-foreground/80 font-medium mb-1">
+                <p className="text-sm text-white/90 font-medium mb-1">
                   ¿Prefieres hablar directamente?
                 </p>
-                <p className="text-xs text-muted-foreground mb-3">
+                <p className="text-xs text-white/60 mb-3">
                   Llámanos y te ayudamos a diseñar tu experiencia perfecta.
                 </p>
                 <a
