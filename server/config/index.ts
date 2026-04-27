@@ -121,7 +121,7 @@ export async function getBusinessEmail(
 export async function warmConfigCache(): Promise<void> {
   const keys = [
     "email_reservations", "email_admin_alerts", "email_accounting",
-    "email_cancellations", "email_tpv_ingestion",
+    "email_cancellations", "email_tpv_ingestion", "email_noreply_sender",
     "brand_name", "brand_phone", "brand_address", "brand_domain",
     "brand_logo_url", "brand_hero_image_url", "brand_primary_color",
     "brand_accent_color", "brand_website_url", "brand_support_phone", "brand_location",

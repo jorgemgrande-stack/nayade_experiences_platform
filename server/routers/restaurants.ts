@@ -1,5 +1,6 @@
 import z from "zod";
 import { router, publicProcedure, protectedProcedure, adminrestProcedure } from "../_core/trpc";
+import { getBusinessEmail } from "../config";
 import { sendEmail } from "../mailer";
 import { TRPCError } from "@trpc/server";
 import {
@@ -35,7 +36,7 @@ async function sendRestaurantPaymentEmail(params: {
 }) {
   await sendEmail({
     to: params.guestEmail,
-    cc: "reservas@nayadeexperiences.es",
+    cc: await getBusinessEmail('reservations'),
     subject: `💳 Completa tu reserva en ${params.restaurantName} — Depósito pendiente (${params.locator})`,
     html: buildRestaurantPaymentLinkHtml({
       guestName: params.guestName,
@@ -69,7 +70,7 @@ async function sendRestaurantConfirmEmail(params: {
 }) {
   await sendEmail({
     to: params.guestEmail,
-    cc: "reservas@nayadeexperiences.es",
+    cc: await getBusinessEmail('reservations'),
     subject: `🏔️ Reserva recibida en ${params.restaurantName} — ${params.locator}`,
     html: buildRestaurantConfirmHtml({
       guestName: params.guestName,

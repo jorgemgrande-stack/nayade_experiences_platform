@@ -15,6 +15,7 @@
  */
 
 import nodemailer from "nodemailer";
+import { getSystemSettingSync } from "./config";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 export interface MailParams {
@@ -31,7 +32,7 @@ function parseSender(raw: string): { name: string; email: string } {
   // Formatos: "Nombre <email>" o solo "email"
   const match = raw.match(/^(.+?)\s*<(.+?)>$/);
   if (match) return { name: match[1].trim(), email: match[2].trim() };
-  return { name: "Nayade Experiences", email: raw.trim() };
+  return { name: getSystemSettingSync("brand_name", "Nayade Experiences"), email: raw.trim() };
 }
 
 // ─── Modo 1: Brevo HTTP API ───────────────────────────────────────────────────
@@ -39,9 +40,11 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) return false;
 
+  const noreplyEmail = getSystemSettingSync("email_noreply_sender", "");
+  const brandName = getSystemSettingSync("brand_name", "Nayade Experiences");
   const fromRaw = params.from
     ?? process.env.SMTP_FROM
-    ?? "Nayade Experiences <reservas@nayadeexperiences.es>";
+    ?? (noreplyEmail ? `${brandName} <${noreplyEmail}>` : `${brandName} <noreply@example.com>`);
   const sender = parseSender(fromRaw);
 
   const toList = Array.isArray(params.to)
@@ -121,7 +124,7 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
   const fromAddress = params.from
     ?? process.env.SMTP_FROM
     ?? process.env.SMTP_USER
-    ?? "noreply@nayadeexperiences.es";
+    ?? getSystemSettingSync("email_noreply_sender", "");
 
   try {
     await transporter.sendMail({

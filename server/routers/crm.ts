@@ -1,7 +1,7 @@
 /**
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
- */import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
+ */import { router, protectedProcedure, publicProcedure, staffProcedure } from "../_core/trpc";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "../db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "../reav";
 import { TRPCError } from "@trpc/server";
@@ -53,7 +53,7 @@ import {
 } from "../emailTemplates";
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
 import { syncLeadUrlsToGHL } from "../ghl";
-import { getSystemSettingSync } from "../config";
+import { getSystemSettingSync, getBusinessEmail } from "../config";
 
 // DB helper — usa la misma pool que el resto del servidor
 const _pool = mysql.createPool(process.env.DATABASE_URL!);
@@ -67,16 +67,6 @@ async function sendEmail({ to, subject, html }: { to: string; subject: string; h
   if (copyEmail) await sharedSendEmail({ to: copyEmail, subject: `[COPIA] ${subject}`, html });
 }
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
-
-function staffProcedure() {
-  return protectedProcedure.use(({ ctx, next }) => {
-    const allowed = ["admin", "agente"];
-    if (!allowed.includes(ctx.user.role)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al equipo comercial" });
-    }
-    return next({ ctx });
-  });
-}
 
 // logActivity ahora viene de db.ts (centralizado)
 import { logActivity } from "../db";
@@ -248,7 +238,7 @@ async function sendInternalNotification(data: {
 </html>`;
 
   await sendEmail({
-    to: "reservas@nayadeexperiences.es",
+    to: await getBusinessEmail('reservations'),
     subject: `💰 Compra efectuada "${data.clientName}" — ${data.reservationRef}`,
     html,
   });
@@ -294,7 +284,7 @@ async function sendTransferConfirmationEmail(data: {
 
 // ─── CRM ROUTER ──────────────────────────────────────────────────────────────
 
-const staff = staffProcedure();
+const staff = staffProcedure;
 
 export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: number, userName: string) {
   const installments = await db.select().from(paymentInstallments)
@@ -998,7 +988,7 @@ export const crmRouter = router({
       }),
 
     // ─── Previsualizar líneas desde activitiesJson (sin guardar en BD) ───────────────────────────
-    previewFromLead: staffProcedure()
+    previewFromLead: staffProcedure
       .input(z.object({ leadId: z.number() }))
       .query(async ({ input }) => {
         const [lead] = await db.select().from(leads).where(eq(leads.id, input.leadId));
@@ -4028,7 +4018,7 @@ export const crmRouter = router({
             }],
             total: `${(res.amountTotal / 100).toFixed(2)} €`,
             bookingDate: res.bookingDate,
-            contactEmail: "reservas@nayadeexperiences.es",
+            contactEmail: await getBusinessEmail('reservations'),
             contactPhone: "+34 930 34 77 91",
           });
           subject = `✅ Confirmación de reserva — ${res.productName} · Náyade Experiences`;
@@ -4356,7 +4346,7 @@ export const crmRouter = router({
               items: [{ description: input.productName, quantity: input.people, unitPrice, total: input.amountTotal }],
               total: `${input.amountTotal.toFixed(2)} €`,
               bookingDate: input.bookingDate,
-              contactEmail: "reservas@nayadeexperiences.es",
+              contactEmail: await getBusinessEmail('reservations'),
               contactPhone: "+34 930 34 77 91",
             });
             await sendEmail({
@@ -4934,7 +4924,7 @@ export const crmRouter = router({
         const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
         if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
 
-        const COPY_EMAIL = "reservas@nayadeexperiences.es";
+        const COPY_EMAIL = await getBusinessEmail('reservations');
         const recipient = input.toEmail ?? invoice.clientEmail;
         const now = new Date();
 
@@ -4955,7 +4945,7 @@ export const crmRouter = router({
               </table>
               <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)} € | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)} € | <strong>TOTAL: ${Number(invoice.total).toFixed(2)} €</strong></p>
               ${invoice.pdfUrl ? `<p><a href="${invoice.pdfUrl}" style="color:#f97316;">Descargar PDF de la factura</a></p>` : ""}
-              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · reservas@nayadeexperiences.es · +34 930 34 77 91</p>
+              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · ${COPY_EMAIL} · +34 930 34 77 91</p>
             </div>`;
 
           await sharedSendEmail({ to: recipient, subject, html: htmlBody });

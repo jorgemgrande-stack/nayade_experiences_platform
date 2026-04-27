@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { router, protectedProcedure, adminProcedure } from "../_core/trpc";
+import { router, protectedProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
+
+const operationsViewProc = permissionProcedure("operations.view", ["admin", "agente", "monitor"]);
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { eq, and, desc, asc } from "drizzle-orm";
@@ -216,7 +218,7 @@ const monitorsRouter = router({
 
 // ─── CALENDAR (Unified) ───────────────────────────────────────────────────────
 const calendarRouter = router({
-  getEvents: protectedProcedure
+  getEvents: operationsViewProc
     .input(z.object({
       from: z.string(), // ISO date string YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
       to: z.string(),   // ISO date string YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
@@ -382,7 +384,7 @@ const dailyOrdersRouter = router({
       };
     }),
 
-  updateOperational: protectedProcedure
+  updateOperational: operationsViewProc
     .input(z.object({
       reservationId: z.number(),
       reservationType: z.enum(["activity","restaurant","hotel","spa","pack"]),
@@ -438,7 +440,7 @@ const dailyOrdersRouter = router({
       return { ok: true };
     }),
 
-  getDashboardStats: protectedProcedure
+  getDashboardStats: operationsViewProc
     .input(z.object({ date: z.string() }))
     .query(async ({ input }) => {
       // Use input string directly to avoid UTC offset issues
