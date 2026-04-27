@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { router, permissionProcedure } from "../_core/trpc";
 
 // RBAC-aware adminProcedure. Uses accounting.expenses.view as base permission;
@@ -7,7 +7,7 @@ import { router, permissionProcedure } from "../_core/trpc";
 const adminProcedure = permissionProcedure("accounting.expenses.view", ["admin"]);
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 import {
   costCenters,
@@ -639,3 +639,4 @@ export const expensesModuleRouter = router({
   recurring: recurringExpensesRouter,
   profitLoss: profitLossRouter,
 });
+

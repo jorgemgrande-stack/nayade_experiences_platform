@@ -1,4 +1,4 @@
-/**
+﻿/**
  * quoteReminderJob.ts
  * Job programado que se ejecuta cada hora y reenvía el email de presupuesto
  * a los clientes que no lo han abierto en 48 horas.
@@ -17,7 +17,7 @@ import { getBusinessEmail, getSystemSettingSync } from "./config";
 const MAX_REMINDERS = 2; // máximo de reenvíos automáticos por presupuesto
 
 async function runQuoteReminderJob() {
-  const pool = mysql.createPool(process.env.DATABASE_URL!);
+  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
   const db = drizzle(pool);
 
   try {
@@ -138,3 +138,4 @@ export function startQuoteReminderJob() {
     runQuoteReminderJob().catch(console.error);
   });
 }
+

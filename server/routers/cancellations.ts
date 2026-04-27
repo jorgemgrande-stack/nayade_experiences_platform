@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Router: Solicitudes de Anulación
  * Módulo CRM para gestión completa del pipeline de anulaciones.
  */
@@ -36,7 +36,7 @@ import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
 import { logActivity } from "../db";
 import { getBusinessEmail } from "../config";
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 const getCopyEmail = () => getBusinessEmail('cancellations');
@@ -2004,3 +2004,4 @@ export const cancellationsRouter = router({
       };
     }),
 });
+

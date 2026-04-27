@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Ticketing Router — Pipeline de Cupones & Plataformas
  * Flujo: Recibido → Pendiente → Reserva generada
  * Financiero: Pendiente canjear → Canjeado | Incidencia
@@ -29,7 +29,7 @@ import { postConfirmOperation, logActivity, generateReservationNumber } from "..
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { getSystemSettingSync } from "../config";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 const getCopyEmail = () => getSystemSettingSync("email_reservations", "contacto@tuempresa.com");
@@ -1675,3 +1675,4 @@ export const ticketingRouter = router({
       return { success: true, redemptionId, softDuplicate: dupCheck.softDuplicate, message: "Solicitud registrada correctamente. Recibirás un email de confirmación." };
     }),
 });
+

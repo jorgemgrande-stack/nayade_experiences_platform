@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Router: Suppliers & Settlements (Liquidaciones Proveedores)
  * Módulo v7.0 — Gestión completa de proveedores y liquidaciones
  */
@@ -33,7 +33,7 @@ import { generateDocumentNumber } from "../documentNumbers";
 import { htmlToPdf } from "../pdfGenerator";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
@@ -1697,3 +1697,4 @@ export const settlementsRouter = router({
       return { ok: true };
     }),
 });
+

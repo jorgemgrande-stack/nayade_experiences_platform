@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { router, protectedProcedure, adminProcedure, permissionProcedure } from "../_core/trpc";
 
 const operationsViewProc = permissionProcedure("operations.view", ["admin", "agente", "monitor"]);
@@ -12,7 +12,7 @@ import {
   reservationOperational,
 } from "../../drizzle/schema";
 
-const pool = mysql.createPool(process.env.DATABASE_URL!);
+const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(pool);
 
 // ─── MONITORS CRUD ────────────────────────────────────────────────────────────
@@ -675,3 +675,4 @@ export const operationsRouter = router({
   dailyOrders: dailyOrdersRouter,
   activities: activitiesRouter,
 });
+

@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -9,7 +9,7 @@ import { bankFileImports, bankMovements, bankMovementLinks, quotes, leads, expen
 import * as XLSX from "xlsx";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
@@ -821,3 +821,4 @@ export const bankMovementsRouter = router({
       return { success: true };
     }),
 });
+

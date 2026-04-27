@@ -1,4 +1,4 @@
-/**
+﻿/**
  * seedOrganizationDefaults
  *
  * Creates the DB records needed for a new organization (tenant).
@@ -18,7 +18,7 @@ export async function seedOrganizationDefaults(
   slug: string,
   ownerUserId?: number,
 ): Promise<{ orgId: number }> {
-  const pool = mysql.createPool(process.env.DATABASE_URL!);
+  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
   const db = drizzle(pool);
 
   try {
@@ -48,3 +48,4 @@ export async function seedOrganizationDefaults(
     await pool.end();
   }
 }
+

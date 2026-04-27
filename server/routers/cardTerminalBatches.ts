@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -16,7 +16,7 @@ import {
 import { runMatchingJob } from "../services/cardTerminalMatchingService";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const pool = mysql.createPool(process.env.DATABASE_URL!);
+const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(pool);
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
@@ -726,3 +726,4 @@ export const cardTerminalBatchesRouter = router({
       return { success: true };
     }),
 });
+

@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { publicProcedure, router, permissionProcedure } from "../_core/trpc";
 
 // RBAC-aware procedures. Fallback legacy: view→admin+agente, manage→admin only.
@@ -10,7 +10,7 @@ import { discountCodes, discountCodeUses, compensationVouchers } from "../../dri
 import { eq, desc, like, and, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -337,3 +337,4 @@ export const discountsRouter = router({
         .limit(100);
     }),
 });
+

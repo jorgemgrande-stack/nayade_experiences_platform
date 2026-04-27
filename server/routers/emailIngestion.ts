@@ -1,4 +1,4 @@
-import mysql from "mysql2/promise";
+﻿import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { desc } from "drizzle-orm";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { emailIngestionLogs } from "../../drizzle/schema";
 import { runEmailIngestion } from "../services/emailTpvIngestionService";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const pool = mysql.createPool(process.env.DATABASE_URL!);
+const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(pool);
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
@@ -36,3 +36,4 @@ export const emailIngestionRouter = router({
         .limit(input.limit);
     }),
 });
+

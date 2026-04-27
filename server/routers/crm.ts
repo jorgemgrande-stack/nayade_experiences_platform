@@ -1,4 +1,4 @@
-/**
+﻿/**
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */import { router, protectedProcedure, publicProcedure, staffProcedure } from "../_core/trpc";
@@ -56,7 +56,7 @@ import { syncLeadUrlsToGHL } from "../ghl";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
 
 // DB helper — usa la misma pool que el resto del servidor
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 // Email helper — delega en el helper compartido mailer.ts

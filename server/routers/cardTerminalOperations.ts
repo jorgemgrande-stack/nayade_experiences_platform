@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -8,7 +8,7 @@ import { protectedProcedure } from "../_core/trpc";
 import { cardTerminalOperations, tpvFileImports, reservations, quotes } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 const adminProc = protectedProcedure.use(({ ctx, next }) => {
@@ -414,3 +414,4 @@ export const cardTerminalOperationsRouter = router({
       return { success: true };
     }),
 });
+

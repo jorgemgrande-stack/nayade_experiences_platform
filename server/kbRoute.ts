@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GET /kb  — Knowledge Base pública de Nayade Experiences
  * Devuelve toda la información del negocio en texto plano estructurado,
  * optimizado para ser usado como contexto en agentes de IA (GHL, etc.).
@@ -25,7 +25,7 @@ import {
   restaurantShifts,
 } from "../drizzle/schema";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 function strip(html: string | null | undefined): string {
@@ -407,3 +407,4 @@ kbRouter.get("/kb.json", async (_req, res) => {
     res.status(500).json({ error: "Error al generar la base de conocimiento." });
   }
 });
+

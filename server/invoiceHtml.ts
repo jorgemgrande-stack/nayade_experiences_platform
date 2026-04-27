@@ -1,4 +1,4 @@
-/**
+﻿/**
  * invoiceHtml.ts — Construcción del HTML de factura on-demand.
  * Usado por generateInvoicePdf (crm.ts) y por el endpoint de vista previa.
  */
@@ -9,7 +9,7 @@ import { sql } from "drizzle-orm";
 import { siteSettings } from "../drizzle/schema";
 import { getSystemSettingSync } from "./config";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 export interface InvoiceHtmlParams {
@@ -183,3 +183,4 @@ export async function buildInvoiceHtml(invoice: InvoiceHtmlParams): Promise<stri
 </body>
 </html>`;
 }
+

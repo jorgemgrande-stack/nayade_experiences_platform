@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Sistema de numeración correlativa centralizado
  *
  * Genera números únicos, auditables y correlativos para todos los tipos
@@ -28,7 +28,7 @@ function getDb() {
     if (!process.env.DATABASE_URL) {
       throw new Error("[documentNumbers] DATABASE_URL is not defined");
     }
-    _pool = mysql.createPool(process.env.DATABASE_URL);
+    _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
     _db = drizzle(_pool);
   }
   return _db;
@@ -245,3 +245,4 @@ export async function getDocumentNumberLogs(documentType?: DocumentType, limit =
 
   return query;
 }
+

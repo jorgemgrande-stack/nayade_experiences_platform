@@ -1,4 +1,4 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -191,7 +191,7 @@ async function runMigrations() {
     const { drizzle } = await import("drizzle-orm/mysql2");
     const { migrate } = await import("drizzle-orm/mysql2/migrator");
     const { resolve } = await import("path");
-    const pool = mysql.createPool(process.env.DATABASE_URL!);
+    const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
     const db = drizzle(pool);
     // En producción el binario está en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
     const migrationsFolder = resolve(process.cwd(), "drizzle");
@@ -590,6 +590,9 @@ function startAbandonedCheckoutCleanup() {
   const STALE_DIRECT_MS          = 10 * 60 * 1000;  // Flujo 2: compra directa → Venta Perdida tras 10 min
   const STALE_QUOTE_MS           = 60 * 60 * 1000;  // Flujo 1: presupuesto → pago_fallido tras 60 min
 
+  let _abandonedPool: any = null;
+  let _abandonedDb: any = null;
+
   async function run() {
     try {
       const mysql = await import("mysql2/promise");
@@ -598,8 +601,11 @@ function startAbandonedCheckoutCleanup() {
       const { eq, and, lte, isNotNull } = await import("drizzle-orm");
       const { createVentaPerdidaLead, logActivity } = await import("../db");
 
-      const pool = mysql.default.createPool(process.env.DATABASE_URL!);
-      const db = drizzle(pool);
+      if (!_abandonedPool) {
+        _abandonedPool = mysql.default.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+        _abandonedDb = drizzle(_abandonedPool);
+      }
+      const db = _abandonedDb;
 
       const staleDirectThreshold = Date.now() - STALE_DIRECT_MS;
       const staleQuoteThreshold  = Date.now() - STALE_QUOTE_MS;
@@ -675,7 +681,6 @@ function startAbandonedCheckoutCleanup() {
         }
       }
 
-      await pool.end();
     } catch (err: any) {
       console.error("[AbandonedCheckout] Error en limpieza:", err.message, err.cause ?? "");
     }
@@ -693,6 +698,9 @@ function startAbandonedCheckoutCleanup() {
 function startInstallmentOverdueJob() {
   const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hora
 
+  let _installmentPool: any = null;
+  let _installmentDb: any = null;
+
   async function run() {
     try {
       const mysql = await import("mysql2/promise");
@@ -702,8 +710,11 @@ function startInstallmentOverdueJob() {
       const { sendEmail } = await import("../mailer");
       const { buildInstallmentReminderHtml } = await import("../emailTemplates");
 
-      const pool = mysql.default.createPool(process.env.DATABASE_URL!);
-      const db = drizzle(pool);
+      if (!_installmentPool) {
+        _installmentPool = mysql.default.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+        _installmentDb = drizzle(_installmentPool);
+      }
+      const db = _installmentDb;
       const todayStr = new Date().toISOString().split("T")[0];
 
       // 1. Marcar como vencidas cuotas pending cuya fecha de vencimiento ha pasado
@@ -838,3 +849,4 @@ runMigrations()
   .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,        "Email Ingestion"))
   .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
   .catch(console.error);
+

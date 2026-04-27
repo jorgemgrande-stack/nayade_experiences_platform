@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Endpoint REST de notificación IPN de Redsys.
  * Redsys llama a este endpoint vía POST con los datos de la transacción.
  * NUNCA se marca una reserva como pagada solo por la URL de retorno OK.
@@ -24,7 +24,7 @@ import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL } from "./ghl";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
-const _sharedPool = mysql.createPool(process.env.DATABASE_URL!);
+const _sharedPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const _db = drizzle(_sharedPool);
 
 const redsysRouter = express.Router();
@@ -602,4 +602,5 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
 });
 
 export default redsysRouter;
+
 

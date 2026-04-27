@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Router: Gestión de Plantillas de Email
  * CRUD completo: listar, obtener, previsualizar, editar, crear, eliminar y restaurar plantillas.
  * Las plantillas del sistema se pre-cargan en BD al primer acceso (seed automático).
@@ -13,7 +13,7 @@ import { eq } from "drizzle-orm";
 
 import { sendEmail } from "../mailer";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 import {
   buildReservationConfirmHtml,
@@ -474,3 +474,4 @@ export const emailTemplatesRouter = router({
       };
     }),
 });
+

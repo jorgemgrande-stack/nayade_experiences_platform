@@ -1,4 +1,4 @@
-/**
+﻿/**
  * settlementExportRoutes.ts
  * Endpoint REST para exportar liquidaciones de proveedor en formato XLSX.
  * GET /api/settlements/:id/export-excel
@@ -22,7 +22,7 @@ import {
 } from "../drizzle/schema";
 import { verifySessionToken } from "./localAuth";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 const settlementExportRouter = Router();
@@ -267,3 +267,4 @@ settlementExportRouter.get(
 );
 
 export default settlementExportRouter;
+

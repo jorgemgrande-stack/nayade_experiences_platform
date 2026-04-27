@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Helpers compartidos para el módulo Caja.
  * Importar desde crm.ts, expenses.ts y cashRegister.ts.
  * Siempre opera con try/catch para no bloquear flujos principales.
@@ -9,7 +9,7 @@ import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { finCashAccounts, finCashMovements } from "../../drizzle/schema";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 /** Devuelve el id de la cuenta de caja principal activa, o null si no existe. */
@@ -76,3 +76,4 @@ export async function createCashMovementIfNotExists(
 
   return { created: true };
 }
+

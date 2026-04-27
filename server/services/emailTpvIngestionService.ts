@@ -1,4 +1,4 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { eq, like, and, inArray, sql } from "drizzle-orm";
@@ -32,9 +32,11 @@ let isRunning = false;
 
 // DB
 
+const _emailTpvPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _emailTpvDb = drizzle(_emailTpvPool);
+
 function makeDb() {
-  const pool = mysql.createPool(process.env.DATABASE_URL!);
-  return drizzle(pool);
+  return _emailTpvDb;
 }
 
 // TEXT NORMALIZATION
@@ -811,3 +813,4 @@ export function startEmailIngestionJob(): void {
 
   console.log("[EmailTPV] Job scheduled (boot + every 5 min)");
 }
+

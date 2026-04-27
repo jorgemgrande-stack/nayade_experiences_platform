@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Router: Product Time Slots
  * Sistema modular de horarios por producto — completamente retrocompatible.
  * Si has_time_slots = false en el producto, este módulo no afecta ningún flujo existente.
@@ -11,7 +11,7 @@ import mysql from "mysql2/promise";
 import { productTimeSlots, experiences } from "../../drizzle/schema";
 import { eq, and, asc } from "drizzle-orm";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
@@ -139,3 +139,4 @@ export const timeSlotsRouter = router({
       return { success: true };
     }),
 });
+

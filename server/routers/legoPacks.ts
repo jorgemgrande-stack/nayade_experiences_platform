@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Lego Packs Router
  * Gestión de packs compuestos preconfigurados por el administrador.
  * El cliente solo puede activar/desactivar líneas opcionales.
@@ -19,7 +19,7 @@ import {
   type LegoPackLine,
 } from "../../drizzle/schema";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 // ─── Input schemas ─────────────────────────────────────────────────────────────
@@ -680,3 +680,4 @@ export const legoPacksRouter = router({
       return Object.values(packMap);
     }),
 });
+

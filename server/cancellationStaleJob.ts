@@ -1,4 +1,4 @@
-/**
+﻿/**
  * cancellationStaleJob.ts
  * Job programado que se ejecuta cada 6 horas y envía una alerta interna
  * para expedientes de anulación que llevan más de 48h en estado "recibida"
@@ -14,7 +14,7 @@ import { getBusinessEmail, getSystemSettingSync } from "./config";
 const STALE_HOURS = 48;
 
 async function runCancellationStaleJob() {
-  const pool = mysql.createPool(process.env.DATABASE_URL!);
+  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
   const db = drizzle(pool);
 
   try {
@@ -117,3 +117,4 @@ export function startCancellationStaleJob() {
     runCancellationStaleJob().catch(console.error);
   });
 }
+

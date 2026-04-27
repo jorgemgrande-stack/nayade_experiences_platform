@@ -1,4 +1,4 @@
-import "dotenv/config";
+﻿import "dotenv/config";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
 import { and, eq, gte, lte, inArray, ne, sql, not } from "drizzle-orm";
@@ -20,9 +20,11 @@ const AUTO_RECONCILE = (process.env.AUTO_RECONCILE_CARD_BATCHES ?? "false") === 
 
 // ── DB ───────────────────────────────────────────────────────────────────────
 
+const _matchingPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _matchingDb = drizzle(_matchingPool);
+
 function makeDb() {
-  const pool = mysql.createPool(process.env.DATABASE_URL!);
-  return drizzle(pool);
+  return _matchingDb;
 }
 
 // ── Concurrency ──────────────────────────────────────────────────────────────
@@ -384,3 +386,4 @@ export function startMatchingJob(): void {
 
   console.log(`[BatchMatching] Job scheduled (boot + every 10 min) AUTO_RECONCILE=${AUTO_RECONCILE}`);
 }
+

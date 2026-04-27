@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { router, adminProcedure } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
@@ -6,7 +6,7 @@ import { pdfTemplates } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { buildQuotePdfHtml } from "../emailTemplates";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 // ─── System PDF Templates (seed data) ────────────────────────────────────────
@@ -464,3 +464,4 @@ export const pdfTemplatesRouter = router({
       return { success: true };
     }),
 });
+

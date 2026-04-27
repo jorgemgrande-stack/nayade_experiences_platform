@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 import { router, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -10,7 +10,7 @@ import { createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { getSystemSetting } from "../config";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const _pool = mysql.createPool(process.env.DATABASE_URL!);
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
 // RBAC-aware procedures. Fallback: admin only (cash module is admin-only by default).
@@ -712,3 +712,4 @@ export const cashRegisterRouter = router({
     return { reservationsCreated, expensesCreated };
   }),
 });
+
