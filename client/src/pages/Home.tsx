@@ -874,7 +874,7 @@ export default function Home() {
                 </Link>
                 <div className="p-5">
                   <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-display font-bold text-lg text-gray-900">{act.title}</h3>
+                    <h3 className="font-display font-bold text-lg text-foreground">{act.title}</h3>
                     <span className="text-orange-500 font-display font-bold text-sm whitespace-nowrap ml-2">
                       {act.currency ? `${act.basePrice}€` : act.basePrice}
                     </span>

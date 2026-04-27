@@ -478,6 +478,26 @@ html.dark .force-light [class*="dark:bg-red"]   { background-color: oklch(0.98 0
 html.dark .force-light [class*="dark:border-amber"] { border-color: oklch(0.88 0.06 85) !important; }
 html.dark .force-light [class*="dark:text-amber"] { color: oklch(0.50 0.16 55) !important; }
 
+/* ─── TEXTO GRIS en force-light — restaurar escala oscura ─────────────────────
+   Las reglas .dark .text-gray-* de arriba convierten el texto en casi-blanco.
+   Cuando html.dark está activo pero la sección pública usa force-light,
+   esas reglas siguen ganando (por !important). Las contrarrestamos aquí
+   con selectores más específicos. */
+html.dark .force-light .text-gray-900,
+html.dark .force-light .text-slate-900 { color: oklch(0.18 0.04 230) !important; }
+html.dark .force-light .text-gray-800,
+html.dark .force-light .text-slate-800 { color: oklch(0.26 0.04 230) !important; }
+html.dark .force-light .text-gray-700,
+html.dark .force-light .text-slate-700 { color: oklch(0.38 0.04 230) !important; }
+html.dark .force-light .text-gray-600,
+html.dark .force-light .text-slate-600 { color: oklch(0.48 0.04 230) !important; }
+html.dark .force-light .text-gray-500,
+html.dark .force-light .text-slate-500 { color: oklch(0.52 0.04 230) !important; }
+html.dark .force-light .text-gray-400,
+html.dark .force-light .text-slate-400 { color: oklch(0.65 0.04 230) !important; }
+html.dark .force-light .text-gray-300,
+html.dark .force-light .text-slate-300 { color: oklch(0.45 0.06 230) !important; }
+
 /* ─── PLACEHOLDER LEGIBILITY ─────────────────────────────────────────────────
    Browsers apply opacity: 0.54 to ::placeholder by default, making them too
    faint. We restore full opacity and use a slightly darker shade than
