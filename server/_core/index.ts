@@ -204,6 +204,35 @@ async function runMigrations() {
   }
 }
 
+// ─── SEED: garantizar flags y settings críticos independiente de migraciones ──
+async function ensureCriticalSeeds() {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    const { featureFlags, systemSettings } = await import("../../drizzle/schema");
+    const { sql } = await import("drizzle-orm");
+
+    // Feature flag que se saltó en migración 0072 (INSERT IGNORE sobre migración ya marcada como aplicada)
+    await db.execute(sql`
+      INSERT IGNORE INTO feature_flags (key, name, description, module, enabled, default_enabled, risk_level)
+      VALUES ('card_terminal_matching_enabled', 'Job conciliación datáfono',
+              'Ejecuta el job periódico que concilia batches de datáfono con movimientos bancarios',
+              'card_terminal', true, true, 'medium')
+    `);
+
+    // Teléfono de contacto principal — actualizar si está vacío o tiene valor antiguo
+    await db.execute(sql`
+      UPDATE system_settings
+      SET value = '+34 911 67 51 89'
+      WHERE key = 'brand_phone' AND (value IS NULL OR value = '' OR value = '+34 930 34 77 91')
+    `);
+
+    console.log("[DB] Seeds críticos verificados");
+  } catch (err) {
+    console.error("[DB] Error en seeds críticos:", err);
+  }
+}
+
 // ─── SEED: restaurar experiencias si la tabla está vacía ──────────────────────
 async function seedExperiencesIfEmpty() {
   try {
@@ -835,6 +864,7 @@ async function conditionallyStartJob(
 }
 
 runMigrations()
+  .then(() => ensureCriticalSeeds())
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
   .then(() => ensureDiscountColumns())

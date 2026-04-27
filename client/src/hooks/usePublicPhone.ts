@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 
-const FALLBACK_PHONE = "+34 930 34 77 91";
+const FALLBACK_PHONE = "+34 911 67 51 89";
 
 export function usePublicPhone() {
   const { data } = trpc.config.getPublicSettings.useQuery();
