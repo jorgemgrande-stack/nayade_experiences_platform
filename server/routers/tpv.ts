@@ -82,11 +82,6 @@ async function getProductFiscalData(
   } catch { /* fallback */ }
   return fallback;
 }
-/** @deprecated Usar getProductFiscalData para obtener también los porcentajes REAV */
-async function getProductFiscalRegime(productType: string, productId: number): Promise<"reav" | "general_21" | "mixed"> {
-  return (await getProductFiscalData(productType, productId)).fiscalRegime;
-}
-
 /**
  * Calcula la fiscalidad de una línea de venta.
  * Para IVA general_21: base = precio / 1.21, iva = precio - base

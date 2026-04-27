@@ -1,16 +1,16 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, desc, and, like, gte, lte } from "drizzle-orm";
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { router, permissionProcedure } from "../_core/trpc";
+import { getDb } from "../db";
 import { featureFlags, systemSettings, configChangeLogs } from "../../drizzle/schema";
 import { invalidateConfigCache } from "../config";
 import type { User } from "../../drizzle/schema";
 
-function getDb() {
-  const pool = mysql.createPool(process.env.DATABASE_URL!);
-  return drizzle(pool);
+async function requireDb() {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
+  return db;
 }
 
 // RBAC-aware procedures. Fallback: users.role === "admin".
@@ -72,12 +72,12 @@ function validateSettingValue(key: string, value: string, valueType: string): vo
 
 export const configRouter = router({
   listFeatureFlags: settingsAdvancedProc.query(async () => {
-    const db = getDb();
+    const db = await requireDb();
     return db.select().from(featureFlags).orderBy(featureFlags.module, featureFlags.key);
   }),
 
   listSystemSettings: settingsViewProc.query(async () => {
-    const db = getDb();
+    const db = await requireDb();
     const rows = await db.select().from(systemSettings).orderBy(systemSettings.category, systemSettings.key);
     return rows.map(r => ({
       ...r,
@@ -91,7 +91,7 @@ export const configRouter = router({
       enabled: z.boolean(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const db = getDb();
+      const db = await requireDb();
       const [old] = await db.select({ enabled: featureFlags.enabled })
         .from(featureFlags)
         .where(eq(featureFlags.key, input.key))
@@ -122,7 +122,7 @@ export const configRouter = router({
       value: z.string(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const db = getDb();
+      const db = await requireDb();
       const [row] = await db
         .select({ isSensitive: systemSettings.isSensitive, value: systemSettings.value, valueType: systemSettings.valueType })
         .from(systemSettings)
@@ -161,7 +161,7 @@ export const configRouter = router({
       dateTo:        z.string().optional(),
     }).optional())
     .query(async ({ input }) => {
-      const db = getDb();
+      const db = await requireDb();
 
       const conditions = [];
       if (input?.key)           conditions.push(like(configChangeLogs.key, `%${input.key}%`));

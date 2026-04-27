@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { eq, inArray } from "drizzle-orm";
-import mysql from "mysql2/promise";
-import { drizzle } from "drizzle-orm/mysql2";
 import { TRPCError } from "@trpc/server";
+import { getDb } from "../db";
 import { router, protectedProcedure } from "../_core/trpc";
 import { organizations, onboardingStatus, systemSettings } from "../../drizzle/schema";
 
@@ -10,9 +9,10 @@ import { organizations, onboardingStatus, systemSettings } from "../../drizzle/s
 // Phase 5D will parameterize this per-request when multi-tenant is enabled.
 const DEFAULT_ORG_ID = 1;
 
-function getDb() {
-  const pool = mysql.createPool(process.env.DATABASE_URL!);
-  return drizzle(pool);
+async function requireDb() {
+  const db = await getDb();
+  if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
+  return db;
 }
 
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -61,7 +61,7 @@ const ENV_CHECKS = [
 export const onboardingRouter = router({
   // Returns onboarding progress for the default org, computed from real DB data.
   getStatus: adminProcedure.query(async () => {
-    const db = getDb();
+    const db = await requireDb();
 
     // Get or create onboarding_status record
     let [status] = await db.select()
@@ -110,7 +110,7 @@ export const onboardingRouter = router({
       step: z.enum(["business_info", "fiscal", "branding", "emails", "modules", "integrations"]),
     }))
     .mutation(async ({ input }) => {
-      const db = getDb();
+      const db = await requireDb();
       await db.update(onboardingStatus)
         .set(STEP_FIELDS[input.step])
         .where(eq(onboardingStatus.organizationId, DEFAULT_ORG_ID));
@@ -141,7 +141,7 @@ export const onboardingRouter = router({
 
   // Returns the default organization record.
   getOrg: adminProcedure.query(async () => {
-    const db = getDb();
+    const db = await requireDb();
     const [org] = await db.select()
       .from(organizations)
       .where(eq(organizations.id, DEFAULT_ORG_ID))
