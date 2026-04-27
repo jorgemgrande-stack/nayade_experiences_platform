@@ -505,6 +505,13 @@
       "when": 1777507200000,
       "tag": "0073_fix_card_terminal_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "5",
+      "when": 1777593600000,
+      "tag": "0074_seed_brand_phone",
+      "breakpoints": true
     }
   ]
 }
