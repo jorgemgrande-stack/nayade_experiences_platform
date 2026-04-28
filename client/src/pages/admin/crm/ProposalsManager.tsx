@@ -602,6 +602,10 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
 
       {listQuery.isLoading ? (
         <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-foreground/40" /></div>
+      ) : listQuery.error ? (
+        <div className="text-center py-8 text-red-400 text-sm">
+          Error cargando propuestas: {(listQuery.error as { message?: string })?.message ?? "Error desconocido"}
+        </div>
       ) : proposals.length === 0 ? (
         <div className="text-center py-8 text-foreground/30 text-sm">
           <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
