@@ -1394,7 +1394,7 @@ export async function clonePack(id: number) {
 export async function createInvitedUser(data: {
   name: string;
   email: string;
-  role: "user" | "admin" | "monitor" | "agente" | "adminrest";
+  role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler";
   inviteToken: string;
   inviteTokenExpiry: Date;
 }) {
@@ -1417,7 +1417,7 @@ export async function createInvitedUser(data: {
   return { success: true, id: Number(result[0].insertId) };
 }
 
-export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente" | "adminrest") {
+export async function changeUserRole(userId: number, role: "user" | "admin" | "monitor" | "agente" | "adminrest" | "controler") {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));

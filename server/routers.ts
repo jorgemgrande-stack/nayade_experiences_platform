@@ -1082,7 +1082,7 @@ export const appRouter = router({
     createUser: adminProcedure.input(z.object({
       name: z.string().min(2),
       email: z.string().email(),
-      role: z.enum(["user", "admin", "monitor", "agente", "adminrest"]),
+      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler"]),
       origin: z.string(),
       rbacRoleKeys: z.array(z.string().min(1).max(64)).optional(),
     })).mutation(async ({ input }) => {
@@ -1127,7 +1127,7 @@ export const appRouter = router({
     }),
     changeUserRole: adminProcedure.input(z.object({
       userId: z.number(),
-      role: z.enum(["user", "admin", "monitor", "agente", "adminrest"]),
+      role: z.enum(["user", "admin", "monitor", "agente", "adminrest", "controler"]),
     })).mutation(async ({ input }) => {
       return changeUserRole(input.userId, input.role);
     }),
