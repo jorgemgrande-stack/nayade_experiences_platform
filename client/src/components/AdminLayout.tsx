@@ -79,6 +79,12 @@ const navItems = [
     ],
   },
   {
+    label: "Control Diario",
+    href: "/admin/contabilidad/control-diario",
+    icon: BarChart3,
+    roles: ["controler"],
+  },
+  {
     label: "Contabilidad",
     href: "/admin/contabilidad",
     icon: BarChart3,
@@ -196,6 +202,7 @@ const ROLE_META: Record<string, { label: string; color: string }> = {
   agente:    { label: "Agente Comercial",       color: "text-blue-400" },
   monitor:   { label: "Monitor",               color: "text-green-400" },
   adminrest: { label: "Gestor Restaurantes",   color: "text-orange-400" },
+  controler: { label: "Controler",             color: "text-purple-400" },
   user:      { label: "Usuario",               color: "text-gray-400" },
 };
 
@@ -228,6 +235,15 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       const isRestaurantRoute = location.startsWith("/admin/restaurantes");
       if (!isRestaurantRoute) {
         navigate("/admin/restaurantes");
+      }
+    }
+  }, [loading, isAuthenticated, userRole, location, navigate]);
+
+  // ── Guard: controler solo puede acceder a Control Diario ──
+  useEffect(() => {
+    if (!loading && isAuthenticated && userRole === "controler") {
+      if (!location.startsWith("/admin/contabilidad/control-diario")) {
+        navigate("/admin/contabilidad/control-diario");
       }
     }
   }, [loading, isAuthenticated, userRole, location, navigate]);
@@ -333,7 +349,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   }
 
   // ── Role not allowed for any admin section ──
-  if (!["admin", "agente", "monitor", "adminrest"].includes(userRole)) {
+  if (!["admin", "agente", "monitor", "adminrest", "controler"].includes(userRole)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center max-w-sm px-4">
@@ -368,7 +384,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             />
             {sidebarOpen && (
               <span className="text-xs text-amber-400 tracking-widest uppercase font-display font-bold shrink-0">
-                {userRole === "adminrest" ? "Restaurantes" : "Admin"}
+                {userRole === "adminrest" ? "Restaurantes" : userRole === "controler" ? "Control" : "Admin"}
               </span>
             )}
           </Link>

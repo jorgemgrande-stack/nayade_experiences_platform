@@ -46,7 +46,7 @@ import {
   UserPlus, MoreVertical, Shield, ShieldCheck, UserCheck, UserX,
   Trash2, Send, CheckCircle, Clock, XCircle, UtensilsCrossed,
   ChevronDown, ChevronUp, Plus, Minus, KeyRound, Eye, Star,
-  Briefcase, MonitorPlay, Info, AlertTriangle, ShoppingCart, X,
+  Briefcase, MonitorPlay, Info, AlertTriangle, ShoppingCart, X, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -82,6 +82,12 @@ const roleCapabilities: Record<string, string[]> = {
     "Actividades diarias (lectura)",
     "Sin acceso a datos financieros",
     "Sin acceso a CRM",
+  ],
+  controler: [
+    "Centro de Control Diario (contabilidad)",
+    "Vista de KPIs, operaciones y caja del día",
+    "Sin acceso a CRM, TPV ni configuración",
+    "Solo lectura, sin modificaciones",
   ],
   user: [
     "Sin acceso al panel de administración",
@@ -135,6 +141,14 @@ const ROLES = [
     color: "bg-orange-100 text-orange-800 border-orange-200",
     dotColor: "bg-orange-500",
     icon: UtensilsCrossed,
+  },
+  {
+    value: "controler",
+    label: "Controler",
+    description: "Solo Control Diario de contabilidad",
+    color: "bg-purple-100 text-purple-800 border-purple-200",
+    dotColor: "bg-purple-500",
+    icon: BarChart3,
   },
   {
     value: "user",
@@ -226,11 +240,12 @@ const ALL_RBAC_ROLES = [
 
 // ─── Sugerencia automática RBAC al elegir rol legacy en el formulario de creación ──
 const LEGACY_RBAC_SUGGESTION: Record<string, string[]> = {
-  admin:    ["admin"],
-  agente:   ["commercial_agent"],
-  monitor:  ["monitor"],
-  adminrest:["adminrest"],
-  user:     ["user"],
+  admin:     ["admin"],
+  agente:    ["commercial_agent"],
+  monitor:   ["monitor"],
+  adminrest: ["adminrest"],
+  controler: ["controler"],
+  user:      ["user"],
 };
 
 // ─── RBAC: permisos en vivo desde base de datos ───────────────────────────────

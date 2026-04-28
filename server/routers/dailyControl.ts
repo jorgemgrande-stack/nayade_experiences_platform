@@ -8,12 +8,11 @@
  */
 
 import { z } from "zod";
-import { router } from "../_core/trpc";
+import { router, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { protectedProcedure } from "../_core/trpc";
 import {
   reservations,
   tpvSales,
@@ -24,12 +23,7 @@ import {
 const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(pool);
 
-const adminProc = protectedProcedure.use(async ({ ctx, next }) => {
-  if ((ctx.user as { role: string }).role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al administrador" });
-  }
-  return next({ ctx });
-});
+const dailyControlProc = permissionProcedure("accounting.daily_control", ["admin", "controler"]);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -553,7 +547,7 @@ export async function getDailyControlCenter(date: string) {
 // ─── tRPC router ─────────────────────────────────────────────────────────────
 
 export const dailyControlRouter = router({
-  get: adminProc
+  get: dailyControlProc
     .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida") }))
     .query(async ({ input }) => {
       return getDailyControlCenter(input.date);
