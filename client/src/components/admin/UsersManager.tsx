@@ -748,22 +748,24 @@ export default function UsersManager() {
                       </div>
 
                       {/* Roles RBAC asignados al usuario */}
-                      {(rbacUserData[user.id]?.roles ?? []).length > 0 ? (
-                        <div className="flex flex-wrap gap-1 mt-0.5">
-                          {rbacUserData[user.id].roles.map((r) => {
-                            const meta = ALL_RBAC_ROLES.find(x => x.key === r.key);
-                            const Icon = meta?.icon ?? Shield;
-                            return (
-                              <span key={r.key} className={`inline-flex items-center gap-1 text-[10px] font-medium border rounded-full px-1.5 py-0.5 ${meta?.color ?? "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
-                                <Icon className="w-2.5 h-2.5" />
-                                {r.name}
-                              </span>
-                            );
-                          })}
+                      {Object.keys(rbacUserData).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5 min-h-[1.25rem] items-center">
+                          {(rbacUserData[user.id]?.roles ?? []).length > 0 ? (
+                            rbacUserData[user.id].roles.map((r) => {
+                              const meta = ALL_RBAC_ROLES.find(x => x.key === r.key);
+                              const Icon = meta?.icon ?? Shield;
+                              return (
+                                <span key={r.key} className={`inline-flex items-center gap-1 text-[10px] font-medium border rounded-full px-1.5 py-0.5 ${meta?.color ?? "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
+                                  <Icon className="w-2.5 h-2.5" />
+                                  {r.name}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            <p className="text-[10px] text-gray-400 italic">↳ fallback legacy</p>
+                          )}
                         </div>
-                      ) : Object.keys(rbacUserData).length > 0 ? (
-                        <p className="text-[10px] text-gray-400 mt-0.5 italic">↳ fallback legacy</p>
-                      ) : null}
+                      )}
 
                       {/* FASE 2: advertencia de último admin */}
                       {isLastAdmin && (
