@@ -41,49 +41,48 @@ export async function getUserRoles(userId: number): Promise<RbacRoleInfo[]> {
 /**
  * Permisos efectivos del usuario.
  * Prioriza roles RBAC; si no tiene, usa legacyRole como fallback.
+ * Lanza si la BD no está disponible para que checkRbacOrLegacy pueda
+ * hacer el fallback correcto al rol legacy.
  */
 export async function getUserPermissions(
   userId: number,
   legacyRole?: string,
 ): Promise<string[]> {
   const db = await getDb();
-  if (!db) return [];
-  try {
-    const { sql } = await import("drizzle-orm");
+  if (!db) throw new Error("RBAC: DB connection unavailable");
 
-    const cntResult = await db.execute(sql`
-      SELECT COUNT(*) AS cnt FROM rbac_user_roles WHERE user_id = ${userId}
+  const { sql } = await import("drizzle-orm");
+
+  const cntResult = await db.execute(sql`
+    SELECT COUNT(*) AS cnt FROM rbac_user_roles WHERE user_id = ${userId}
+  `);
+  const hasRbacRoles = Number((cntResult as any[][])[0]?.[0]?.cnt ?? 0) > 0;
+
+  if (hasRbacRoles) {
+    const permsResult = await db.execute(sql`
+      SELECT DISTINCT p.\`key\`
+      FROM rbac_user_roles ur
+      JOIN rbac_role_permissions rrp ON rrp.role_id = ur.role_id
+      JOIN rbac_permissions p ON p.id = rrp.permission_id
+      WHERE ur.user_id = ${userId}
+      ORDER BY p.\`key\`
     `);
-    const hasRbacRoles = Number((cntResult as any[][])[0]?.[0]?.cnt ?? 0) > 0;
-
-    if (hasRbacRoles) {
-      const permsResult = await db.execute(sql`
-        SELECT DISTINCT p.\`key\`
-        FROM rbac_user_roles ur
-        JOIN rbac_role_permissions rrp ON rrp.role_id = ur.role_id
-        JOIN rbac_permissions p ON p.id = rrp.permission_id
-        WHERE ur.user_id = ${userId}
-        ORDER BY p.\`key\`
-      `);
-      return ((permsResult as any[][])[0] as Array<{ key: string }>).map(r => r.key);
-    }
-
-    if (legacyRole) {
-      const permsResult = await db.execute(sql`
-        SELECT DISTINCT p.\`key\`
-        FROM rbac_roles rr
-        JOIN rbac_role_permissions rrp ON rrp.role_id = rr.id
-        JOIN rbac_permissions p ON p.id = rrp.permission_id
-        WHERE rr.\`key\` = ${legacyRole} AND rr.is_active = 1
-        ORDER BY p.\`key\`
-      `);
-      return ((permsResult as any[][])[0] as Array<{ key: string }>).map(r => r.key);
-    }
-
-    return [];
-  } catch {
-    return [];
+    return ((permsResult as any[][])[0] as Array<{ key: string }>).map(r => r.key);
   }
+
+  if (legacyRole) {
+    const permsResult = await db.execute(sql`
+      SELECT DISTINCT p.\`key\`
+      FROM rbac_roles rr
+      JOIN rbac_role_permissions rrp ON rrp.role_id = rr.id
+      JOIN rbac_permissions p ON p.id = rrp.permission_id
+      WHERE rr.\`key\` = ${legacyRole} AND rr.is_active = 1
+      ORDER BY p.\`key\`
+    `);
+    return ((permsResult as any[][])[0] as Array<{ key: string }>).map(r => r.key);
+  }
+
+  return [];
 }
 
 /**
@@ -116,6 +115,9 @@ export async function checkRbacOrLegacy(
   permissionKey: string,
   fallbackAllowedRoles: string[],
 ): Promise<boolean> {
+  // Si la BD no está disponible, el fallback legacy es la única fuente de verdad.
+  const db = await getDb();
+  if (!db) return fallbackAllowedRoles.includes(legacyRole);
   try {
     const perms = await getUserPermissions(userId, legacyRole);
     return perms.includes(permissionKey);
