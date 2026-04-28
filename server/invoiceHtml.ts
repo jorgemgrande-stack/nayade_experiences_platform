@@ -8,6 +8,7 @@ import mysql from "mysql2/promise";
 import { sql } from "drizzle-orm";
 import { siteSettings } from "../drizzle/schema";
 import { getSystemSettingSync } from "./config";
+import { groupTaxBreakdown, totalTaxAmount, type TaxBreakdownLine } from "./taxUtils";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
@@ -19,12 +20,15 @@ export interface InvoiceHtmlParams {
   clientPhone?: string | null;
   clientNif?: string | null;
   clientAddress?: string | null;
-  itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[];
+  itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[];
   subtotal: string;
+  /** @deprecated Usar taxBreakdown para multi-tipo. Se conserva como fallback. */
   taxRate: string;
   taxAmount: string;
   total: string;
   issuedAt: Date;
+  /** Desglose por tipo de IVA (generado automáticamente si no se pasa). */
+  taxBreakdown?: TaxBreakdownLine[];
 }
 
 export async function getLegalCompanySettings(): Promise<{
@@ -51,10 +55,16 @@ export async function buildInvoiceHtml(invoice: InvoiceHtmlParams): Promise<stri
   const legal = await getLegalCompanySettings();
   const legalAddressFull = `${legal.address}, ${legal.zip} ${legal.city} (${legal.province})`;
 
-  const reavItems = invoice.itemsJson.filter(i => i.fiscalRegime === "reav");
+  const reavItems    = invoice.itemsJson.filter(i => i.fiscalRegime === "reav");
   const generalItems = invoice.itemsJson.filter(i => i.fiscalRegime !== "reav");
-  const hasReav = reavItems.length > 0;
+  const hasReav    = reavItems.length > 0;
   const hasGeneral = generalItems.length > 0;
+
+  // Desglose fiscal: usar el que venga en el param, o calcularlo desde las líneas
+  const breakdown: TaxBreakdownLine[] = invoice.taxBreakdown?.length
+    ? invoice.taxBreakdown
+    : groupTaxBreakdown(invoice.itemsJson);
+  const isMultiRate = breakdown.length > 1;
 
   const buildItemRows = (items: typeof invoice.itemsJson, isReav: boolean) =>
     items.map((item) =>
@@ -171,7 +181,14 @@ export async function buildInvoiceHtml(invoice: InvoiceHtmlParams): Promise<stri
     <tr><td style="color:#6b7280;font-size:13px;">Subtotal rég. general</td><td>${generalItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
     <tr><td style="color:#6b7280;font-size:13px;">Subtotal REAV (sin IVA)</td><td>${reavItems.reduce((s,i) => s+i.total,0).toFixed(2)} €</td></tr>
     ` : `<tr><td>Subtotal</td><td>${Number(invoice.subtotal).toFixed(2)} €</td></tr>`}
-    ${hasGeneral ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>` : ''}
+    ${hasGeneral && isMultiRate ? breakdown.map(b =>
+      `<tr><td style="color:#6b7280;font-size:12px;">Base imponible IVA ${b.rate}%</td><td>${b.base.toFixed(2)} €</td></tr>` +
+      `<tr><td>IVA ${b.rate}%</td><td>${b.amount.toFixed(2)} €</td></tr>`
+    ).join("") : ""}
+    ${hasGeneral && !isMultiRate && breakdown.length === 1 ? `
+    <tr><td style="color:#6b7280;font-size:12px;">Base imponible IVA ${breakdown[0].rate}%</td><td>${breakdown[0].base.toFixed(2)} €</td></tr>
+    <tr><td>IVA (${breakdown[0].rate}%)</td><td>${breakdown[0].amount.toFixed(2)} €</td></tr>` : ""}
+    ${hasGeneral && breakdown.length === 0 ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>` : ""}
     ${hasReav && !hasGeneral ? `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">Operación sujeta al Régimen Especial de Agencias de Viaje (REAV). No procede repercusión de IVA al cliente.</td></tr>` : ''}
     <tr class="total-row"><td>TOTAL</td><td>${Number(invoice.total).toFixed(2)} €</td></tr>
   </table></div>

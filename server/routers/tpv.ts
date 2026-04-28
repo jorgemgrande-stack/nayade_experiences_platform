@@ -56,51 +56,64 @@ function generateTransactionNumber(): string {
   return `TXN-${date}-${rand}`;
 }
 
-type FiscalData = { fiscalRegime: "reav" | "general_21" | "mixed"; providerPercent: number; agencyMarginPercent: number };
+import { normalizeRegime, calcGeneralTax } from "../taxUtils";
+
+type FiscalData = { fiscalRegime: "reav" | "general" | "mixed"; taxRate: number; providerPercent: number; agencyMarginPercent: number };
+
 /**
  * Obtiene el régimen fiscal y porcentajes REAV de un producto consultando la BD.
+ * Coerciona valores legacy "general_21" automáticamente.
  */
 async function getProductFiscalData(
   productType: string,
   productId: number
 ): Promise<FiscalData> {
-  const fallback: FiscalData = { fiscalRegime: "general_21", providerPercent: 60, agencyMarginPercent: 40 };
+  const fallback: FiscalData = { fiscalRegime: "general", taxRate: 21, providerPercent: 60, agencyMarginPercent: 40 };
   try {
+    const toFiscalData = (row: { fiscalRegime: string | null; taxRate?: unknown; providerPercent: unknown; agencyMarginPercent: unknown }): FiscalData => {
+      const { regime, taxRate: legacyRate } = normalizeRegime(row.fiscalRegime);
+      return {
+        fiscalRegime: regime,
+        taxRate: row.taxRate != null ? parseFloat(String(row.taxRate)) : legacyRate,
+        providerPercent: parseFloat(String(row.providerPercent ?? 60)),
+        agencyMarginPercent: parseFloat(String(row.agencyMarginPercent ?? 40)),
+      };
+    };
     if (productType === "experience") {
-      const [row] = await db.select({ fiscalRegime: experiences.fiscalRegime, providerPercent: experiences.providerPercent, agencyMarginPercent: experiences.agencyMarginPercent }).from(experiences).where(eq(experiences.id, productId));
-      if (row) return { fiscalRegime: (row.fiscalRegime as FiscalData["fiscalRegime"]) ?? "general_21", providerPercent: parseFloat(String(row.providerPercent ?? 60)), agencyMarginPercent: parseFloat(String(row.agencyMarginPercent ?? 40)) };
+      const [row] = await db.select({ fiscalRegime: experiences.fiscalRegime, taxRate: experiences.taxRate, providerPercent: experiences.providerPercent, agencyMarginPercent: experiences.agencyMarginPercent }).from(experiences).where(eq(experiences.id, productId));
+      if (row) return toFiscalData(row);
     } else if (productType === "pack") {
-      const [row] = await db.select({ fiscalRegime: packs.fiscalRegime, providerPercent: packs.providerPercent, agencyMarginPercent: packs.agencyMarginPercent }).from(packs).where(eq(packs.id, productId));
-      if (row) return { fiscalRegime: (row.fiscalRegime as FiscalData["fiscalRegime"]) ?? "general_21", providerPercent: parseFloat(String(row.providerPercent ?? 60)), agencyMarginPercent: parseFloat(String(row.agencyMarginPercent ?? 40)) };
+      const [row] = await db.select({ fiscalRegime: packs.fiscalRegime, taxRate: packs.taxRate, providerPercent: packs.providerPercent, agencyMarginPercent: packs.agencyMarginPercent }).from(packs).where(eq(packs.id, productId));
+      if (row) return toFiscalData(row);
     } else if (productType === "spa") {
-      const [row] = await db.select({ fiscalRegime: spaTreatments.fiscalRegime, providerPercent: spaTreatments.providerPercent, agencyMarginPercent: spaTreatments.agencyMarginPercent }).from(spaTreatments).where(eq(spaTreatments.id, productId));
-      if (row) return { fiscalRegime: (row.fiscalRegime as FiscalData["fiscalRegime"]) ?? "general_21", providerPercent: parseFloat(String(row.providerPercent ?? 60)), agencyMarginPercent: parseFloat(String(row.agencyMarginPercent ?? 40)) };
+      const [row] = await db.select({ fiscalRegime: spaTreatments.fiscalRegime, taxRate: spaTreatments.taxRate, providerPercent: spaTreatments.providerPercent, agencyMarginPercent: spaTreatments.agencyMarginPercent }).from(spaTreatments).where(eq(spaTreatments.id, productId));
+      if (row) return toFiscalData(row);
     } else if (productType === "hotel") {
-      const [row] = await db.select({ fiscalRegime: roomTypes.fiscalRegime, providerPercent: roomTypes.providerPercent, agencyMarginPercent: roomTypes.agencyMarginPercent }).from(roomTypes).where(eq(roomTypes.id, productId));
-      if (row) return { fiscalRegime: (row.fiscalRegime as FiscalData["fiscalRegime"]) ?? "general_21", providerPercent: parseFloat(String(row.providerPercent ?? 60)), agencyMarginPercent: parseFloat(String(row.agencyMarginPercent ?? 40)) };
+      const [row] = await db.select({ fiscalRegime: roomTypes.fiscalRegime, taxRate: roomTypes.taxRate, providerPercent: roomTypes.providerPercent, agencyMarginPercent: roomTypes.agencyMarginPercent }).from(roomTypes).where(eq(roomTypes.id, productId));
+      if (row) return toFiscalData(row);
     }
   } catch { /* fallback */ }
   return fallback;
 }
+
 /**
  * Calcula la fiscalidad de una línea de venta.
- * Para IVA general_21: base = precio / 1.21, iva = precio - base
- * Para REAV: usa calcularREAVSimple() con los porcentajes del producto (origen único de verdad)
+ * Para régimen "general": base = precio / (1 + taxRate/100) — soporta 21%, 10%, etc.
+ * Para REAV: usa calcularREAVSimple() — lógica separada, sin IVA repercutido.
  */
 function calcLineFiscal(
   lineTotal: number,
-  fiscalRegime: "reav" | "general_21" | "mixed",
+  fiscalRegime: "reav" | "general" | "mixed",
+  taxRate = 21,
   providerPercent = 60,
   agencyMarginPercent = 40
 ): { taxBase: number; taxAmount: number; taxRate: number; reavCost: number; reavMargin: number; reavTax: number } {
   if (fiscalRegime === "reav") {
     const { costeProveedor, margenAgencia, iva } = calcularREAVSimple(lineTotal, providerPercent, agencyMarginPercent);
     return { taxBase: 0, taxAmount: 0, taxRate: 0, reavCost: costeProveedor, reavMargin: margenAgencia, reavTax: iva };
-  } else {
-    const taxBase = lineTotal / 1.21;
-    const taxAmount = lineTotal - taxBase;
-    return { taxBase, taxAmount, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 };
   }
+  const { taxBase, taxAmount } = calcGeneralTax(lineTotal, taxRate);
+  return { taxBase, taxAmount, taxRate, reavCost: 0, reavMargin: 0, reavTax: 0 };
 }
 
 // ─── ROUTER ──────────────────────────────────────────────────────────────────
@@ -568,7 +581,7 @@ export const tpvRouter = router({
 
       // ── 2. Calcular fiscalidad por línea ────────────────────────────────────
       const linesFiscal: Array<{
-        fiscalRegime: "reav" | "general_21" | "mixed";
+        fiscalRegime: "reav" | "general" | "mixed";
         taxBase: number; taxAmount: number; taxRate: number;
         reavCost: number; reavMargin: number; reavTax: number;
         lineSubtotal: number;
@@ -576,9 +589,8 @@ export const tpvRouter = router({
 
       for (const item of input.items) {
         const lineSubtotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
-        // ── Usar getProductFiscalData para obtener régimen + porcentajes REAV del producto ──
         const fiscalData = await getProductFiscalData(item.productType, item.productId);
-        const fiscal = calcLineFiscal(lineSubtotal, fiscalData.fiscalRegime, fiscalData.providerPercent, fiscalData.agencyMarginPercent);
+        const fiscal = calcLineFiscal(lineSubtotal, fiscalData.fiscalRegime, fiscalData.taxRate, fiscalData.providerPercent, fiscalData.agencyMarginPercent);
         linesFiscal.push({ fiscalRegime: fiscalData.fiscalRegime, ...fiscal, lineSubtotal });
       }
 
@@ -589,8 +601,9 @@ export const tpvRouter = router({
       const totalReavCost  = linesFiscal.reduce((s, l) => s + l.reavCost,  0);
       const totalReavTax   = linesFiscal.reduce((s, l) => s + l.reavTax,   0);
       const hasReav = linesFiscal.some(l => l.fiscalRegime === "reav");
-      const hasIva  = linesFiscal.some(l => l.fiscalRegime === "general_21");
+      const hasIva  = linesFiscal.some(l => l.fiscalRegime === "general");
       const fiscalSummary = hasReav && hasIva ? "mixed" : hasReav ? "reav_only" : "iva_only";
+      const effectiveTaxRatePct = totalTaxBase > 0 ? (totalTaxAmount / totalTaxBase * 100) : 21;
 
       const ticketNumber = await generateTicketNumber(String((ctx as any).user?.id ?? "system"));
       const sellerName = (ctx as any).user?.name ?? null;
@@ -616,7 +629,7 @@ export const tpvRouter = router({
         paidAt: Date.now(),
         taxBase:        String(totalTaxBase.toFixed(2)),
         taxAmount:      String(totalTaxAmount.toFixed(2)),
-        taxRate:        "21",
+        taxRate:        String(effectiveTaxRatePct.toFixed(2)),
         reavMargin:     String(totalReavMargin.toFixed(2)),
         reavCost:       String(totalReavCost.toFixed(2)),
         reavTax:        String(totalReavTax.toFixed(2)),
@@ -768,7 +781,7 @@ export const tpvRouter = router({
           taxBase:    String(totalTaxBase.toFixed(2)),
           taxAmount:  String(totalTaxAmount.toFixed(2)),
           reavMargin: String(totalReavMargin.toFixed(2)),
-          fiscalRegime: (fiscalSummary === "iva_only" ? "general_21" : fiscalSummary === "reav_only" ? "reav" : "mixed") as any,
+          fiscalRegime: (fiscalSummary === "iva_only" ? "general" : fiscalSummary === "reav_only" ? "reav" : "mixed") as any,
           tpvSaleId: saleId,
           reservationId: reservationId ?? undefined,
           reservationRef: reservationId ? `TPV-RES-${saleId}` : undefined,
@@ -842,7 +855,7 @@ export const tpvRouter = router({
       try {
         const serviceDate = mainItem?.eventDate ?? new Date().toISOString().split("T")[0];
         const people = input.items.reduce((sum, it) => sum + (it.participants ?? 1), 0);
-        const fiscalRegimeForOp = fiscalSummary === "iva_only" ? "general_21"
+        const fiscalRegimeForOp = fiscalSummary === "iva_only" ? "general"
           : fiscalSummary === "reav_only" ? "reav" : "mixed";
         const paymentMethodForOp = primaryPaymentMethod === "cash" ? "efectivo"
           : primaryPaymentMethod === "card" ? "tarjeta" : "otro";

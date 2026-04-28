@@ -18,6 +18,7 @@ import { notifyOwner } from "./_core/notification";
 import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
+import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 import { generateDocumentNumber } from "./documentNumbers";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
@@ -218,10 +219,12 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
             const now = new Date();
             const invoiceNumber = await generateDocumentNumber("factura", "redsys:ipn", "system");
-            const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
+            const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[]) ?? [];
             const total = Number(quote.total);
             const subtotal = Number(quote.subtotal);
-            const taxAmount = subtotal * 0.21;
+            const bdRedsys = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
+            const taxAmount = totalTaxAmount(bdRedsys);
+            const taxRateRedsys = bdRedsys.length === 1 ? bdRedsys[0].rate : 21;
 
             const mainProductIdRedsys = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? updatedReservation.productId ?? 0;
 
@@ -234,7 +237,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               clientPhone: lead?.phone ?? updatedReservation.customerPhone,
               itemsJson: items,
               subtotal: String(subtotal),
-              taxRate: "21",
+              taxRate: String(taxRateRedsys),
               taxAmount: String(taxAmount),
               total: String(total),
               status: "cobrada",
@@ -555,7 +558,7 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
             clientPhone: booking.guestPhone ?? null,
             productName: `Depósito restaurante — ${booking.guests} pax`,
             saleChannel: "online",
-            fiscalRegime: "general_21",
+            fiscalRegime: "general",
             operationStatus: "confirmada",
             reservationRef: result.merchantOrder,
           } as any);

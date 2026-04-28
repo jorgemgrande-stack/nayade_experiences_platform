@@ -54,6 +54,7 @@ import {
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
 import { syncLeadUrlsToGHL } from "../ghl";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
+import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 
 // DB helper — usa la misma pool que el resto del servidor
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
@@ -91,11 +92,12 @@ async function generateInvoicePdf(invoice: {
   clientPhone?: string | null;
   clientNif?: string | null;
   clientAddress?: string | null;
-  itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[];
+  itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[];
   subtotal: string;
   taxRate: string;
   taxAmount: string;
   total: string;
+  taxBreakdown?: { rate: number; base: number; amount: number }[];
   issuedAt: Date;
 }): Promise<{ url: string; key: string }> {
   // Sin almacenamiento externo (S3/Forge) → URL on-demand desde BD, sin archivos temporales
@@ -302,9 +304,10 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   const [lead] = await db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
   const now = new Date();
   const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string }[]) ?? [];
-  const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
   const subtotal = Number(quote.subtotal);
-  const taxAmount = parseFloat((generalSubtotal * 0.21).toFixed(2));
+  const breakdown = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
+  const taxAmount = totalTaxAmount(breakdown);
+  const taxRateInst = breakdown.length === 1 ? breakdown[0].rate : 21;
   const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
   // ── FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ──────
@@ -457,8 +460,9 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         clientAddress: null,
         itemsJson: items as any,
         subtotal: String(subtotal),
-        taxRate: "21",
+        taxRate: String(taxRateInst),
         taxAmount: String(taxAmount),
+        taxBreakdown: breakdown.length > 0 ? breakdown : undefined,
         total: String(total),
         issuedAt: now,
       });
@@ -477,8 +481,9 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
       clientPhone: lead?.phone ?? null,
       itemsJson: items as any,
       subtotal: String(subtotal),
-      taxRate: "21",
+      taxRate: String(taxRateInst),
       taxAmount: String(taxAmount),
+      taxBreakdown: breakdown.length > 0 ? breakdown : undefined,
       total: String(total),
       status: "cobrada",
       paymentMethod: "otro",
@@ -749,7 +754,8 @@ export const crmRouter = router({
               quantity: z.number(),
               unitPrice: z.number(),
               total: z.number(),
-              fiscalRegime: z.enum(["reav", "general_21"]).optional(),
+              fiscalRegime: z.enum(["reav", "general"]).optional(),
+              taxRate: z.number().optional(),
               productId: z.number().optional(),
             })
           ),
@@ -822,7 +828,7 @@ export const crmRouter = router({
         }[] | null) ?? [];
 
         // 2. Resolver precios para cada actividad
-        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[] = [];
+        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; productId?: number }[] = [];
 
         // ── Fallback: si no hay activitiesJson, buscar por selectedProduct en packs/experiences/legoPacks ──
         if (activities.length === 0) {
@@ -848,7 +854,7 @@ export const crmRouter = router({
               quantity: qty,
               unitPrice,
               total: parseFloat((unitPrice * qty).toFixed(2)),
-              fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+              fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general",
               productId: foundPack.id,
             });
           } else {
@@ -864,7 +870,7 @@ export const crmRouter = router({
                 quantity: qty,
                 unitPrice,
                 total: parseFloat((unitPrice * qty).toFixed(2)),
-                fiscalRegime: "general_21",
+                fiscalRegime: "general",
                 productId: foundLego.id,
               });
             } else {
@@ -880,7 +886,7 @@ export const crmRouter = router({
                   quantity: qty,
                   unitPrice,
                   total: parseFloat((unitPrice * qty).toFixed(2)),
-                  fiscalRegime: foundExp.fiscalRegime === "reav" ? "reav" : "general_21",
+                  fiscalRegime: foundExp.fiscalRegime === "reav" ? "reav" : "general",
                   productId: foundExp.id,
                 });
               } else {
@@ -890,7 +896,7 @@ export const crmRouter = router({
                   quantity: qty,
                   unitPrice: 0,
                   total: 0,
-                  fiscalRegime: "general_21",
+                  fiscalRegime: "general",
                 });
               }
             }
@@ -943,10 +949,10 @@ export const crmRouter = router({
 
            const quantity = act.participants;
           const total = parseFloat((unitPrice * quantity).toFixed(2));
-          const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general_21";
+          const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general";
           quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, productId: act.experienceId });
         }
-        // 3. Calcular totales — solo líneas general_21 llevan IVA
+        // 3. Calcular totales — solo líneas general llevan IVA
         const subtotal = parseFloat(quoteItems.reduce((s, i) => s + i.total, 0).toFixed(2));
         const generalSubtotal = parseFloat(quoteItems.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0).toFixed(2));
         const taxAmount = parseFloat((generalSubtotal * (input.taxRate / 100)).toFixed(2));
@@ -1010,23 +1016,23 @@ export const crmRouter = router({
             .where(and(eq(packs.title, productName), eq(packs.isActive, true))).limit(1);
           if (foundPack) {
             const unitPrice = parseFloat(String(foundPack.basePrice));
-            return { items: [{ description: `${foundPack.title}${foundPack.subtitle ? ` — ${foundPack.subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21", productId: foundPack.id }], hasActivities: true, fromSelectedProduct: true };
+            return { items: [{ description: `${foundPack.title}${foundPack.subtitle ? ` — ${foundPack.subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general", productId: foundPack.id }], hasActivities: true, fromSelectedProduct: true };
           }
           const [foundLego] = await db.select().from(legoPacks)
             .where(and(eq(legoPacks.title, productName), eq(legoPacks.isActive, true))).limit(1);
           if (foundLego) {
             const unitPrice = parseFloat(String((foundLego as any).basePrice ?? (foundLego as any).price ?? 0));
-            return { items: [{ description: `${foundLego.title}${(foundLego as any).subtitle ? ` — ${(foundLego as any).subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general_21" as const, productId: foundLego.id }], hasActivities: true, fromSelectedProduct: true };
+            return { items: [{ description: `${foundLego.title}${(foundLego as any).subtitle ? ` — ${(foundLego as any).subtitle}` : ""}`, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: "general" as const, productId: foundLego.id }], hasActivities: true, fromSelectedProduct: true };
           }
           const [foundExp] = await db.select().from(experiences)
             .where(and(eq(experiences.title, productName), eq(experiences.isActive, true))).limit(1);
           if (foundExp) {
             const unitPrice = parseFloat(String(foundExp.basePrice));
-            return { items: [{ description: foundExp.title, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundExp.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21", productId: foundExp.id }], hasActivities: true, fromSelectedProduct: true };
+            return { items: [{ description: foundExp.title, quantity: qty, unitPrice, total: parseFloat((unitPrice * qty).toFixed(2)), fiscalRegime: (foundExp.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general", productId: foundExp.id }], hasActivities: true, fromSelectedProduct: true };
           }
-          return { items: [{ description: productName, quantity: qty, unitPrice: 0, total: 0, fiscalRegime: "general_21" as const }], hasActivities: true, fromSelectedProduct: true };
+          return { items: [{ description: productName, quantity: qty, unitPrice: 0, total: 0, fiscalRegime: "general" as const }], hasActivities: true, fromSelectedProduct: true };
         }
-        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[] = [];
+        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; productId?: number }[] = [];
         for (const act of activities) {
           const [exp] = await db.select().from(experiences).where(eq(experiences.id, act.experienceId));
           const basePrice = exp ? parseFloat(String(exp.basePrice)) : 0;
@@ -1059,7 +1065,7 @@ export const crmRouter = router({
           if (detailParts.length > 0) description += ` • ${detailParts.join(" · ")}`;
           const quantity = act.participants;
           const total = parseFloat((unitPrice * quantity).toFixed(2));
-          const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general_21";
+          const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general";
           quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, productId: act.experienceId });
         }
         return { items: quoteItems, hasActivities: true };
@@ -1260,7 +1266,8 @@ export const crmRouter = router({
                 quantity: z.number(),
                 unitPrice: z.number(),
                 total: z.number(),
-                fiscalRegime: z.enum(["reav", "general_21"]).optional(),
+                fiscalRegime: z.enum(["reav", "general"]).optional(),
+                taxRate: z.number().optional(),
                 productId: z.number().optional(),
               })
             )
@@ -1538,12 +1545,12 @@ export const crmRouter = router({
 
         // Generate invoice
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
-        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
-        const taxRate = 21;
+        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
         const subtotal = Number(quote.subtotal);
-        // Solo líneas general_21 llevan IVA
-        const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-        const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
+        // Solo líneas general llevan IVA
+        const bdInv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
+        const taxAmount = totalTaxAmount(bdInv);
+        const taxRate = bdInv.length === 1 ? bdInv[0].rate : 21;
         const total = parseFloat((subtotal + taxAmount).toFixed(2));
         // Generate PDF
         let pdfUrl: string | null = null;
@@ -1559,6 +1566,7 @@ export const crmRouter = router({
             taxRate: String(taxRate),
             taxAmount: String(taxAmount),
             total: String(total),
+            taxBreakdown: bdInv,
             issuedAt: now,
           });
           pdfUrl = pdf.url;
@@ -1580,6 +1588,7 @@ export const crmRouter = router({
           subtotal: String(subtotal),
           taxRate: String(taxRate),
           taxAmount: String(taxAmount),
+          taxBreakdown: bdInv.length > 0 ? bdInv : undefined,
           total: String(total),
           pdfUrl,
           pdfKey,
@@ -1831,11 +1840,12 @@ export const crmRouter = router({
 
         // ── BUG #2 + #3 FIX: Crear booking operativo + transacción contable ─────────
         try {
+          const bdForTx = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
+          const taxAmountForTx = totalTaxAmount(bdForTx);
           const generalSubtotalForTx = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
           const reavSubtotalForTx = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
-          const taxAmountForTx = parseFloat((generalSubtotalForTx * 0.21).toFixed(2));
           const fiscalRegimeForTx = reavSubtotalForTx > 0 && generalSubtotalForTx > 0 ? "mixed"
-            : reavSubtotalForTx > 0 ? "reav" : "general_21";
+            : reavSubtotalForTx > 0 ? "reav" : "general";
           await postConfirmOperation({
             reservationId,
             productId: mainProductId, // FIX: usar el productId principal del presupuesto
@@ -2096,12 +2106,12 @@ export const crmRouter = router({
 
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
-        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
-        const taxRate = 21;
+        const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
         const subtotal = Number(quote.subtotal);
-        // Solo líneas general_21 llevan IVA
-        const generalSubtotalTransfer = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-        const taxAmount = parseFloat((generalSubtotalTransfer * (taxRate / 100)).toFixed(2));
+        // Solo líneas general llevan IVA
+        const bdT = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
+        const taxAmount = totalTaxAmount(bdT);
+        const taxRate = bdT.length === 1 ? bdT[0].rate : 21;
         const total = parseFloat((subtotal + taxAmount).toFixed(2));
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
@@ -2116,6 +2126,7 @@ export const crmRouter = router({
             taxRate: String(taxRate),
             taxAmount: String(taxAmount),
             total: String(total),
+            taxBreakdown: bdT,
             issuedAt: now,
           });
           pdfUrl = pdf.url;
@@ -2136,6 +2147,7 @@ export const crmRouter = router({
           subtotal: String(subtotal),
           taxRate: String(taxRate),
           taxAmount: String(taxAmount),
+          taxBreakdown: bdT.length > 0 ? bdT : undefined,
           total: String(total),
           pdfUrl,
           pdfKey,
@@ -2212,9 +2224,9 @@ export const crmRouter = router({
         try {
           const generalSubtotalT = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
           const reavSubtotalT = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
-          const taxAmountT = parseFloat((generalSubtotalT * 0.21).toFixed(2));
+          const taxAmountT = totalTaxAmount(groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav")));
           const fiscalRegimeT = reavSubtotalT > 0 && generalSubtotalT > 0 ? "mixed"
-            : reavSubtotalT > 0 ? "reav" : "general_21";
+            : reavSubtotalT > 0 ? "reav" : "general";
           await postConfirmOperation({
             reservationId,
             productId: mainProductIdT, // FIX: usar el productId principal del presupuesto
@@ -2517,7 +2529,8 @@ export const crmRouter = router({
               quantity: z.number(),
               unitPrice: z.number(),
               total: z.number(),
-              fiscalRegime: z.enum(["reav", "general_21"]).optional(),
+              fiscalRegime: z.enum(["reav", "general"]).optional(),
+              taxRate: z.number().optional(),
               productId: z.number().optional(),
             })
           ),
@@ -4059,7 +4072,7 @@ export const crmRouter = router({
         // 2. Load TPV sale and items if available
         const tpvSaleRows = await db.select().from(tpvSales).where(eq(tpvSales.reservationId, input.reservationId));
         const tpvSale = tpvSaleRows[0] ?? null;
-        let items: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[] = [];
+        let items: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[] = [];
 
         if (tpvSale) {
           const saleItems = await db.select().from(tpvSaleItems).where(eq(tpvSaleItems.saleId, tpvSale.id));
@@ -4068,7 +4081,7 @@ export const crmRouter = router({
             quantity: i.quantity,
             unitPrice: parseFloat(String(i.unitPrice)),
             total: parseFloat(String(i.subtotal)),
-            fiscalRegime: (i.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+            fiscalRegime: (i.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general",
           }));
         } else {
           // Fallback: single line from reservation data
@@ -4079,9 +4092,9 @@ export const crmRouter = router({
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
         const subtotal = items.reduce((s, i) => s + i.total, 0);
-        const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-        const taxRate = 21;
-        const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
+        const bdTpv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
+        const taxAmount = totalTaxAmount(bdTpv);
+        const taxRate = bdTpv.length === 1 ? bdTpv[0].rate : 21;
         const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
         // 3. Generate PDF
@@ -4100,6 +4113,7 @@ export const crmRouter = router({
             taxRate: String(taxRate),
             taxAmount: String(taxAmount),
             total: String(total.toFixed(2)),
+            taxBreakdown: bdTpv,
             issuedAt: now,
           });
           pdfUrl = pdf.url;
@@ -4119,6 +4133,7 @@ export const crmRouter = router({
           subtotal: String(subtotal.toFixed(2)),
           taxRate: String(taxRate),
           taxAmount: String(taxAmount),
+          taxBreakdown: bdTpv.length > 0 ? bdTpv : undefined,
           total: String(total.toFixed(2)),
           pdfUrl,
           pdfKey,
@@ -4236,11 +4251,12 @@ export const crmRouter = router({
           quantity: input.people,
           unitPrice,
           total: input.amountTotal,
-          fiscalRegime: "general_21" as const,
+          fiscalRegime: "general" as const,
         }];
         const subtotal = input.amountTotal;
-        const taxRate = 21;
-        const taxAmount = parseFloat((subtotal * (taxRate / 100)).toFixed(2));
+        const bdManual = groupTaxBreakdown(items);
+        const taxAmount = totalTaxAmount(bdManual);
+        const taxRate = bdManual.length === 1 ? bdManual[0].rate : 21;
         const total = parseFloat((subtotal + taxAmount).toFixed(2));
 
         // 4. Generar PDF de factura
@@ -4257,6 +4273,7 @@ export const crmRouter = router({
             taxRate: String(taxRate),
             taxAmount: String(taxAmount),
             total: String(total),
+            taxBreakdown: bdManual,
             issuedAt: now,
           });
           pdfUrl = pdf.url;
@@ -4275,6 +4292,7 @@ export const crmRouter = router({
           subtotal: String(subtotal),
           taxRate: String(taxRate),
           taxAmount: String(taxAmount),
+          taxBreakdown: bdManual.length > 0 ? bdManual : undefined,
           total: String(total),
           pdfUrl,
           pdfKey,
@@ -4680,7 +4698,7 @@ export const crmRouter = router({
           notes: input.notes,
         });
         // ── PARIDAD: Generar PDF de factura si no existe ya ──────────────────────
-        const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[]) ?? [];
+        const items = (invoice.itemsJson as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; productId?: number }[]) ?? [];
         let finalPdfUrl = invoice.pdfUrl ?? null;
         let finalPdfKey = invoice.pdfKey ?? null;
         // Regenerar si no hay URL o si apunta a /local-storage (archivo temporal ya perdido)
@@ -4812,9 +4830,9 @@ export const crmRouter = router({
             if (res) {
               const generalSubtotalForTx = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
               const reavSubtotalForTx = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
-              const taxAmountForTx = parseFloat((generalSubtotalForTx * 0.21).toFixed(2));
+              const taxAmountForTx = totalTaxAmount(groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav")));
               const fiscalRegimeForTx = reavSubtotalForTx > 0 && generalSubtotalForTx > 0 ? "mixed"
-                : reavSubtotalForTx > 0 ? "reav" : "general_21";
+                : reavSubtotalForTx > 0 ? "reav" : "general";
               await postConfirmOperation({
                 reservationId: res.id,
                 productId: res.productId,
@@ -4867,7 +4885,9 @@ export const crmRouter = router({
         const creditNoteNumber = `ABO-${year}-${month}-${seqNum}`;
 
         const creditTotal = input.partialAmount ?? Number(original.total);
-        const creditSubtotal = creditTotal / 1.21;
+        const origTaxRate = parseFloat(String(original.taxRate ?? "21"));
+        const creditDivisor = 1 + origTaxRate / 100;
+        const creditSubtotal = creditTotal / creditDivisor;
         const creditTax = creditTotal - creditSubtotal;
 
         // Negate items for credit note
@@ -5500,18 +5520,20 @@ export const crmRouter = router({
               const amountEur = pp.amountCents / 100;
               const items = [{ description: pp.productName ?? resForInv.productName, quantity: resForInv.people, unitPrice: amountEur / resForInv.people, total: amountEur }];
               const subtotal = amountEur;
-              const taxAmount = parseFloat((subtotal * 0.21).toFixed(2));
+              const bdPp = groupTaxBreakdown(items);
+              const taxAmount = totalTaxAmount(bdPp);
+              const taxRatePp = bdPp.length === 1 ? bdPp[0].rate : 21;
               const total = parseFloat((subtotal + taxAmount).toFixed(2));
               let pdfUrl: string | null = null;
               let pdfKey: string | null = null;
               try {
-                const pdf = await generateInvoicePdf({ invoiceNumber, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: "21", taxAmount: String(taxAmount), total: String(total.toFixed(2)), issuedAt: now });
+                const pdf = await generateInvoicePdf({ invoiceNumber, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp, total: String(total.toFixed(2)), issuedAt: now });
                 pdfUrl = pdf.url;
                 pdfKey = pdf.key;
               } catch (pdfErr) {
                 console.error("[pendingPayments.confirm] PDF generation failed:", pdfErr);
               }
-              const [invRes] = await db.insert(invoices).values({ invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: "21", taxAmount: String(taxAmount), total: String(total.toFixed(2)), pdfUrl, pdfKey, isAutomatic: true, status: "cobrada", paymentMethod: input.paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
+              const [invRes] = await db.insert(invoices).values({ invoiceNumber, reservationId: pp.reservationId, quoteId: pp.quoteId ?? null, clientName: pp.clientName, clientEmail: pp.clientEmail ?? "", clientPhone: pp.clientPhone, itemsJson: items, subtotal: String(subtotal.toFixed(2)), taxRate: String(taxRatePp), taxAmount: String(taxAmount), taxBreakdown: bdPp.length > 0 ? bdPp : undefined, total: String(total.toFixed(2)), pdfUrl, pdfKey, isAutomatic: true, status: "cobrada", paymentMethod: input.paymentMethod as any, issuedAt: now, createdAt: now, updatedAt: now });
               const invoiceId = (invRes as { insertId: number }).insertId;
               await db.update(reservations).set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any).where(eq(reservations.id, pp.reservationId));
               console.log(`[pendingPayments.confirm] Factura ${invoiceNumber} generada para reserva ${pp.reservationId}`);
@@ -5685,21 +5707,21 @@ export const crmRouter = router({
             id: r.id,
             title: r.title,
             unitPrice: parseFloat(String(r.basePrice ?? "0")),
-            fiscalRegime: (r.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+            fiscalRegime: (r.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general",
             type: "experience" as const,
           })),
           ...packRows.map(r => ({
             id: r.id,
             title: r.title,
             unitPrice: parseFloat(String(r.basePrice ?? "0")),
-            fiscalRegime: (r.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+            fiscalRegime: (r.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general",
             type: "pack" as const,
           })),
           ...legoRows.map(r => ({
             id: r.id,
             title: r.title,
             unitPrice: 0,
-            fiscalRegime: "general_21" as "reav" | "general_21",
+            fiscalRegime: "general" as "reav" | "general",
             type: "legopack" as const,
           })),
         ];

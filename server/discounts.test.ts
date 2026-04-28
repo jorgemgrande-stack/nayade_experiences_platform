@@ -159,16 +159,16 @@ describe("Discount Codes — TPV integration math", () => {
 describe("REAV Expedient — TPV trigger logic", () => {
   it("should detect hasReav when any line has reav regime", () => {
     const linesFiscal = [
-      { fiscalRegime: "general_21" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
+      { fiscalRegime: "general" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
       { fiscalRegime: "reav" as const, lineSubtotal: 50, taxBase: 0, taxAmount: 0, taxRate: 0, reavCost: 30, reavMargin: 20, reavTax: 4.2 },
     ];
     const hasReav = linesFiscal.some(l => l.fiscalRegime === "reav");
     expect(hasReav).toBe(true);
   });
 
-  it("should NOT detect hasReav when all lines are general_21", () => {
+  it("should NOT detect hasReav when all lines are general", () => {
     const linesFiscal = [
-      { fiscalRegime: "general_21" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
+      { fiscalRegime: "general" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
     ];
     const hasReav = linesFiscal.some(l => l.fiscalRegime === "reav");
     expect(hasReav).toBe(false);
@@ -176,7 +176,7 @@ describe("REAV Expedient — TPV trigger logic", () => {
 
   it("should calculate correct reavSaleAmount from REAV lines only", () => {
     const linesFiscal = [
-      { fiscalRegime: "general_21" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
+      { fiscalRegime: "general" as const, lineSubtotal: 100, taxBase: 82.64, taxAmount: 17.36, taxRate: 21, reavCost: 0, reavMargin: 0, reavTax: 0 },
       { fiscalRegime: "reav" as const, lineSubtotal: 50, taxBase: 0, taxAmount: 0, taxRate: 0, reavCost: 30, reavMargin: 20, reavTax: 4.2 },
       { fiscalRegime: "reav" as const, lineSubtotal: 75, taxBase: 0, taxAmount: 0, taxRate: 0, reavCost: 45, reavMargin: 30, reavTax: 6.3 },
     ];

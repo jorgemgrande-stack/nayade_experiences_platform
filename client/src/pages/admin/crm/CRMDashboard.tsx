@@ -1432,7 +1432,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   });
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
-  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }]);
+  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]>([{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
   // Plan de pago fraccionado (draft local)
   const [showPlanSectionD, setShowPlanSectionD] = useState(false);
@@ -1451,7 +1451,22 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   const promoDiscount = promoData ? parseFloat((subtotal * promoData.discountPercent / 100).toFixed(2)) : 0;
   const discountedSubtotal = Math.max(0, subtotal - promoDiscount);
   const discountedGeneral = Math.max(0, generalSubtotal - (promoData ? parseFloat((generalSubtotal * promoData.discountPercent / 100).toFixed(2)) : 0));
-  const taxAmount = parseFloat((discountedGeneral * (taxRate / 100)).toFixed(2));
+  // Multi-rate breakdown
+  const taxRowsD = (() => {
+    const promoRatio = generalSubtotal > 0 ? discountedGeneral / generalSubtotal : 1;
+    const groups: Record<number, number> = {};
+    items.filter(i => i.fiscalRegime !== "reav").forEach(item => {
+      const rate = (item as any).taxRate ?? 21;
+      groups[rate] = (groups[rate] ?? 0) + item.total * promoRatio;
+    });
+    return Object.entries(groups).map(([rateStr, gross]) => {
+      const rate = Number(rateStr);
+      const div = 1 + rate / 100;
+      return { rate, amount: parseFloat((gross - gross / div).toFixed(2)) };
+    }).sort((a, b) => b.rate - a.rate);
+  })();
+  const taxAmount = parseFloat(taxRowsD.reduce((s, r) => s + r.amount, 0).toFixed(2));
+  const effectiveTaxRateD = taxRowsD.length === 1 ? taxRowsD[0].rate : taxRate;
   const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
 
   // Búsqueda de clientes existentes
@@ -1521,10 +1536,10 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       clientPhone: clientPhone || undefined,
       clientCompany: clientCompany || undefined,
       title,
-      items,
+      items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })),
       subtotal,
       discount: promoDiscount,
-      taxRate,
+      taxRate: effectiveTaxRateD,
       total,
       validUntil,
       notes: promoData ? `Código ${promoData.code} (-${promoData.discountPercent}%)${notes ? "\n" + notes : ""}` : notes || undefined,
@@ -1674,18 +1689,20 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                       setItems((prev) => prev.map((it, i) => {
                         if (i !== idx) return it;
                         const unitPrice = Number(p.basePrice);
-                        const fr = (p as any).fiscalRegime === "reav" ? "reav" : "general_21";
-                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr };
+                        const fr = (p as any).fiscalRegime === "reav" ? "reav" : "general";
+                        const tr = (p as any).taxRate ?? 21;
+                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr, taxRate: tr };
                       }));
                     }}
                   />
                 </div>
                 <select
                   className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
-                  value={item.fiscalRegime ?? "general_21"}
-                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
+                  value={item.fiscalRegime === "reav" ? "reav" : (item as any).taxRate === 10 ? "general_10" : "general"}
+                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: (e.target.value === "reav" ? "reav" : "general"), taxRate: (e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21) } : it))}
                 >
-                  <option value="general_21" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="general" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="general_10" className="bg-[#0d1526]">IVA 10%</option>
                   <option value="reav" className="bg-[#0d1526]">REAV</option>
                 </select>
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
@@ -1713,9 +1730,9 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
           {!items.some(i => i.fiscalRegime === "reav") && (
             <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
           )}
-          {generalSubtotal > 0 && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
-          )}
+          {taxRowsD.map(row => (
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%)</span><span>{row.amount.toFixed(2)} €</span></div>
+          ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
@@ -1884,8 +1901,8 @@ function QuoteBuilderModal({
   });
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
-  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([
-    { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" },
+  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]>([
+    { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" },
   ]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
@@ -1907,7 +1924,7 @@ function QuoteBuilderModal({
   const handleAutoFill = async () => {
     const result = await previewQuery.refetch();
     if (result.data?.hasActivities && result.data.items.length > 0) {
-      setItems(result.data.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]);
+      setItems(result.data.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]);
       setAutoFilled(true);
       toast.success(`Lineas generadas automaticamente (${result.data.items.length})`);
     } else {
@@ -1920,7 +1937,21 @@ function QuoteBuilderModal({
   const promoDiscount = promoData ? parseFloat((subtotal * promoData.discountPercent / 100).toFixed(2)) : 0;
   const discountedSubtotal = Math.max(0, subtotal - promoDiscount);
   const discountedGeneral = Math.max(0, generalSubtotalBuilder - (promoData ? parseFloat((generalSubtotalBuilder * promoData.discountPercent / 100).toFixed(2)) : 0));
-  const taxAmount = parseFloat((discountedGeneral * (taxRate / 100)).toFixed(2));
+  const taxRowsB = (() => {
+    const promoRatio = generalSubtotalBuilder > 0 ? discountedGeneral / generalSubtotalBuilder : 1;
+    const groups: Record<number, number> = {};
+    items.filter(i => i.fiscalRegime !== "reav").forEach(item => {
+      const rate = (item as any).taxRate ?? 21;
+      groups[rate] = (groups[rate] ?? 0) + item.total * promoRatio;
+    });
+    return Object.entries(groups).map(([rateStr, gross]) => {
+      const rate = Number(rateStr);
+      const div = 1 + rate / 100;
+      return { rate, amount: parseFloat((gross - gross / div).toFixed(2)) };
+    }).sort((a, b) => b.rate - a.rate);
+  })();
+  const taxAmount = parseFloat(taxRowsB.reduce((s, r) => s + r.amount, 0).toFixed(2));
+  const effectiveTaxRateB = taxRowsB.length === 1 ? taxRowsB[0].rate : taxRate;
   const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
@@ -2064,7 +2095,7 @@ function QuoteBuilderModal({
               size="sm"
               variant="ghost"
               className="text-orange-400 hover:text-orange-300 text-xs h-6"
-              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }])}
+              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }])}
             >
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
@@ -2087,18 +2118,20 @@ function QuoteBuilderModal({
                       setItems((prev) => prev.map((it, i) => {
                         if (i !== idx) return it;
                         const unitPrice = Number(p.basePrice);
-                        const fr = (p as any).fiscalRegime === "reav" ? "reav" : "general_21";
-                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr };
+                        const fr = (p as any).fiscalRegime === "reav" ? "reav" : "general";
+                        const tr = (p as any).taxRate ?? 21;
+                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr, taxRate: tr };
                       }));
                     }}
                   />
                 </div>
                 <select
                   className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
-                  value={item.fiscalRegime ?? "general_21"}
-                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
+                  value={item.fiscalRegime === "reav" ? "reav" : (item as any).taxRate === 10 ? "general_10" : "general"}
+                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: (e.target.value === "reav" ? "reav" : "general"), taxRate: (e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21) } : it))}
                 >
-                  <option value="general_21" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="general" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="general_10" className="bg-[#0d1526]">IVA 10%</option>
                   <option value="reav" className="bg-[#0d1526]">REAV</option>
                 </select>
                 <Input
@@ -2171,9 +2204,9 @@ function QuoteBuilderModal({
           {promoDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-400"><span>Descuento {promoData?.code}</span><span>-{promoDiscount.toFixed(2)} €</span></div>
           )}
-          {generalSubtotalBuilder > 0 && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
-          )}
+          {taxRowsB.map(row => (
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%)</span><span>{row.amount.toFixed(2)} €</span></div>
+          ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
@@ -2346,7 +2379,7 @@ function ProductAutocompleteInput({
 }: {
   value: string;
   onChange: (v: string) => void;
-  onSelect: (product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general_21" }) => void;
+  onSelect: (product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general" }) => void;
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -2455,7 +2488,7 @@ function QuoteEditModal({
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
   const [validUntil, setValidUntil] = useState("");
-  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]>([]);
+  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]>([]);
   const [discount, setDiscount] = useState(0);
   const [initialized, setInitialized] = useState(false);
 
@@ -2489,8 +2522,8 @@ function QuoteEditModal({
     setNotes(q.notes ?? "");
     setTaxRate(q.tax ? parseFloat(String(q.tax)) : 21);
     setValidUntil(q.validUntil ? new Date(q.validUntil).toISOString().split("T")[0] : "");
-    const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
-    setItems(rawItems.length > 0 ? rawItems : [{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }]);
+    const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
+    setItems(rawItems.length > 0 ? rawItems : [{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }]);
     setDiscount(Number(q.discount ?? 0));
     setInitialized(true);
   }
@@ -2498,7 +2531,21 @@ function QuoteEditModal({
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const generalSubtotalEdit = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
   const discountedBase = Math.max(0, generalSubtotalEdit - discount);
-  const taxAmount = parseFloat((discountedBase * (taxRate / 100)).toFixed(2));
+  const taxRowsE = (() => {
+    const discountRatio = generalSubtotalEdit > 0 ? discountedBase / generalSubtotalEdit : 1;
+    const groups: Record<number, number> = {};
+    items.filter(i => i.fiscalRegime !== "reav").forEach(item => {
+      const rate = (item as any).taxRate ?? 21;
+      groups[rate] = (groups[rate] ?? 0) + item.total * discountRatio;
+    });
+    return Object.entries(groups).map(([rateStr, gross]) => {
+      const rate = Number(rateStr);
+      const div = 1 + rate / 100;
+      return { rate, amount: parseFloat((gross - gross / div).toFixed(2)) };
+    }).sort((a, b) => b.rate - a.rate);
+  })();
+  const taxAmount = parseFloat(taxRowsE.reduce((s, r) => s + r.amount, 0).toFixed(2));
+  const effectiveTaxRateE = taxRowsE.length === 1 ? taxRowsE[0].rate : taxRate;
   const total = parseFloat((subtotal - discount + taxAmount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
@@ -2511,7 +2558,7 @@ function QuoteEditModal({
   };
 
   // Seleccionar producto del catálogo: rellena descripción, precio y régimen
-  const selectCatalogProduct = (idx: number, product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general_21" }) => {
+  const selectCatalogProduct = (idx: number, product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general" }) => {
     setItems((prev) => prev.map((item, i) => {
       if (i !== idx) return item;
       const qty = item.quantity || 1;
@@ -2578,7 +2625,7 @@ function QuoteEditModal({
           <div className="flex items-center justify-between mb-2">
             <Label className="text-foreground/65 text-xs">Conceptos *</Label>
             <Button size="sm" variant="ghost" className="text-orange-400 hover:text-orange-300 text-xs h-6"
-              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general_21" }])}>
+              onClick={() => setItems((p) => [...p, { description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }])}>
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
@@ -2599,10 +2646,11 @@ function QuoteEditModal({
                 />
                 <select
                   className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
-                  value={item.fiscalRegime ?? "general_21"}
-                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: e.target.value as "reav" | "general_21" } : it))}
+                  value={item.fiscalRegime === "reav" ? "reav" : (item as any).taxRate === 10 ? "general_10" : "general"}
+                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: (e.target.value === "reav" ? "reav" : "general"), taxRate: (e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21) } : it))}
                 >
-                  <option value="general_21" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="general" className="bg-[#0d1526]">IVA 21%</option>
+                  <option value="general_10" className="bg-[#0d1526]">IVA 10%</option>
                   <option value="reav" className="bg-[#0d1526]">REAV</option>
                 </select>
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
@@ -2634,9 +2682,9 @@ function QuoteEditModal({
               <span>−{discount.toFixed(2)} €</span>
             </div>
           )}
-          {generalSubtotalEdit > 0 && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>IVA ({taxRate}%)</span><span>{taxAmount.toFixed(2)} €</span></div>
-          )}
+          {taxRowsE.map(row => (
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%)</span><span>{row.amount.toFixed(2)} €</span></div>
+          ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
           )}
@@ -2726,7 +2774,7 @@ function QuoteEditModal({
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button
           size="sm"
-          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items, subtotal, discount, taxRate, total, validUntil })}
+          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal, discount, taxRate: effectiveTaxRateB, total, validUntil })}
           disabled={updateQuote.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
@@ -3123,7 +3171,7 @@ function QuoteDetailModal({
 
   if (!data) return null;
   const { quote, lead, invoices: relatedInvoices } = data;
-  const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21" }[]) ?? [];
+  const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
   const reavItems = items.filter(i => i.fiscalRegime === "reav");
   const generalItems = items.filter(i => i.fiscalRegime !== "reav");
   const hasReav = reavItems.length > 0;
@@ -4559,7 +4607,7 @@ function ReservationDetailModal({
               allItems.push(...items);
             }
             if (allItems.length === 0) return null;
-            const generalItems = allItems.filter(i => !i.fiscalRegime || i.fiscalRegime === "general_21");
+            const generalItems = allItems.filter(i => !i.fiscalRegime || i.fiscalRegime !== "reav");
             const reavItems = allItems.filter(i => i.fiscalRegime === "reav");
             return (
               <div className="bg-white/[0.04] border border-foreground/[0.10] rounded-xl p-4">

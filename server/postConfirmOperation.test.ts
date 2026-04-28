@@ -43,26 +43,26 @@ describe("postConfirmOperation — business logic", () => {
 
   it("should calculate fiscal regime correctly for mixed items", () => {
     const items = [
-      { fiscalRegime: "general_21", total: 45 },
+      { fiscalRegime: "general", total: 45 },
       { fiscalRegime: "reav", total: 30 },
     ];
     const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
     const reavSubtotal = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
     const fiscalRegime = reavSubtotal > 0 && generalSubtotal > 0 ? "mixed"
-      : reavSubtotal > 0 ? "reav" : "general_21";
+      : reavSubtotal > 0 ? "reav" : "general";
     expect(fiscalRegime).toBe("mixed");
   });
 
-  it("should calculate fiscal regime as general_21 for all-IVA items", () => {
+  it("should calculate fiscal regime as general for all-IVA items", () => {
     const items = [
-      { fiscalRegime: "general_21", total: 45 },
-      { fiscalRegime: "general_21", total: 20 },
+      { fiscalRegime: "general", total: 45 },
+      { fiscalRegime: "general", total: 20 },
     ];
     const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
     const reavSubtotal = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
     const fiscalRegime = reavSubtotal > 0 && generalSubtotal > 0 ? "mixed"
-      : reavSubtotal > 0 ? "reav" : "general_21";
-    expect(fiscalRegime).toBe("general_21");
+      : reavSubtotal > 0 ? "reav" : "general";
+    expect(fiscalRegime).toBe("general");
   });
 
   it("should calculate fiscal regime as reav for all-REAV items", () => {
@@ -72,7 +72,7 @@ describe("postConfirmOperation — business logic", () => {
     const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
     const reavSubtotal = items.filter(i => i.fiscalRegime === "reav").reduce((s, i) => s + i.total, 0);
     const fiscalRegime = reavSubtotal > 0 && generalSubtotal > 0 ? "mixed"
-      : reavSubtotal > 0 ? "reav" : "general_21";
+      : reavSubtotal > 0 ? "reav" : "general";
     expect(fiscalRegime).toBe("reav");
   });
 
@@ -91,7 +91,7 @@ describe("postConfirmOperation — business logic", () => {
     expect(bk1).toMatch(/^BK-\d+-[A-Z]+$/);
   });
 
-  it("should calculate tax amount correctly for general_21 regime", () => {
+  it("should calculate tax amount correctly for general regime", () => {
     const generalSubtotal = 45.00;
     const taxRate = 0.21;
     const taxAmount = parseFloat((generalSubtotal * taxRate).toFixed(2));

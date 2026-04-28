@@ -18,7 +18,7 @@ type QuoteItem = {
   quantity: number;
   unitPrice: number;
   total: number;
-  fiscalRegime?: "reav" | "general_21";
+  fiscalRegime?: "reav" | "general";
   productId?: number;
 };
 
@@ -27,7 +27,7 @@ function resolveMainProductId(items: QuoteItem[], fallbackExperienceId?: number)
   return items.find(i => i.productId)?.productId ?? fallbackExperienceId ?? 0;
 }
 
-/** Calcula el subtotal de líneas general_21 */
+/** Calcula el subtotal de líneas general */
 function calcGeneralSubtotal(items: QuoteItem[]): number {
   return items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
 }
@@ -38,12 +38,12 @@ function calcReavSubtotal(items: QuoteItem[]): number {
 }
 
 /** Determina el régimen fiscal de la operación */
-function resolveFiscalRegime(items: QuoteItem[]): "general_21" | "reav" | "mixed" {
+function resolveFiscalRegime(items: QuoteItem[]): "general" | "reav" | "mixed" {
   const general = calcGeneralSubtotal(items);
   const reav = calcReavSubtotal(items);
   if (reav > 0 && general > 0) return "mixed";
   if (reav > 0) return "reav";
-  return "general_21";
+  return "general";
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -51,15 +51,15 @@ function resolveFiscalRegime(items: QuoteItem[]): "general_21" | "reav" | "mixed
 describe("Trazabilidad — resolveMainProductId", () => {
   it("devuelve el productId de la primera línea que lo tenga", () => {
     const items: QuoteItem[] = [
-      { description: "Cableski Día Completo", quantity: 1, unitPrice: 45, total: 45, fiscalRegime: "general_21", productId: 30003 },
-      { description: "Canoas & Kayaks", quantity: 2, unitPrice: 30, total: 60, fiscalRegime: "general_21", productId: 30004 },
+      { description: "Cableski Día Completo", quantity: 1, unitPrice: 45, total: 45, fiscalRegime: "general", productId: 30003 },
+      { description: "Canoas & Kayaks", quantity: 2, unitPrice: 30, total: 60, fiscalRegime: "general", productId: 30004 },
     ];
     expect(resolveMainProductId(items)).toBe(30003);
   });
 
   it("usa el fallback experienceId si ninguna línea tiene productId", () => {
     const items: QuoteItem[] = [
-      { description: "Pack Empresa", quantity: 10, unitPrice: 50, total: 500, fiscalRegime: "general_21" },
+      { description: "Pack Empresa", quantity: 10, unitPrice: 50, total: 500, fiscalRegime: "general" },
     ];
     expect(resolveMainProductId(items, 99)).toBe(99);
   });
@@ -73,8 +73,8 @@ describe("Trazabilidad — resolveMainProductId", () => {
 
   it("ignora líneas sin productId y toma la primera con productId", () => {
     const items: QuoteItem[] = [
-      { description: "Entrada Piscina", quantity: 5, unitPrice: 10, total: 50, fiscalRegime: "general_21" }, // sin productId
-      { description: "Cableski", quantity: 1, unitPrice: 45, total: 45, fiscalRegime: "general_21", productId: 30003 },
+      { description: "Entrada Piscina", quantity: 5, unitPrice: 10, total: 50, fiscalRegime: "general" }, // sin productId
+      { description: "Cableski", quantity: 1, unitPrice: 45, total: 45, fiscalRegime: "general", productId: 30003 },
     ];
     expect(resolveMainProductId(items)).toBe(30003);
   });
@@ -87,7 +87,7 @@ describe("Trazabilidad — productId en líneas de presupuesto", () => {
       quantity: 1,
       unitPrice: 45,
       total: 45,
-      fiscalRegime: "general_21",
+      fiscalRegime: "general",
       productId: 30003,
     };
     expect(item.productId).toBeDefined();
@@ -96,7 +96,7 @@ describe("Trazabilidad — productId en líneas de presupuesto", () => {
 
   it("una línea de pack debe tener productId (tras el fix)", () => {
     // Simula lo que hace el código corregido al encontrar un pack
-    const foundPack = { id: 200, title: "Pack Empresa", basePrice: "50", fiscalRegime: "general_21" };
+    const foundPack = { id: 200, title: "Pack Empresa", basePrice: "50", fiscalRegime: "general" };
     const qty = 10;
     const unitPrice = parseFloat(String(foundPack.basePrice));
     const item: QuoteItem = {
@@ -104,7 +104,7 @@ describe("Trazabilidad — productId en líneas de presupuesto", () => {
       quantity: qty,
       unitPrice,
       total: parseFloat((unitPrice * qty).toFixed(2)),
-      fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general_21") as "reav" | "general_21",
+      fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general",
       productId: foundPack.id,
     };
     expect(item.productId).toBe(200);
@@ -120,7 +120,7 @@ describe("Trazabilidad — productId en líneas de presupuesto", () => {
       quantity: qty,
       unitPrice,
       total: parseFloat((unitPrice * qty).toFixed(2)),
-      fiscalRegime: "general_21",
+      fiscalRegime: "general",
       productId: foundLego.id,
     };
     expect(item.productId).toBe(300);
@@ -145,8 +145,8 @@ describe("Trazabilidad — vinculación factura ↔ reserva", () => {
 
   it("el productId de la reserva debe coincidir con el productId principal del presupuesto", () => {
     const items: QuoteItem[] = [
-      { description: "Cableski", quantity: 1, unitPrice: 45, total: 45, fiscalRegime: "general_21", productId: 30003 },
-      { description: "Canoas", quantity: 2, unitPrice: 30, total: 60, fiscalRegime: "general_21", productId: 30004 },
+      { description: "Cableski", quantity: 1, unitPrice: 45, total: 45, fiscalRegime: "general", productId: 30003 },
+      { description: "Canoas", quantity: 2, unitPrice: 30, total: 60, fiscalRegime: "general", productId: 30004 },
     ];
     const mainProductId = resolveMainProductId(items);
     // La reserva debe crearse con este productId, no con 0
@@ -156,12 +156,12 @@ describe("Trazabilidad — vinculación factura ↔ reserva", () => {
 });
 
 describe("Trazabilidad — régimen fiscal de la operación", () => {
-  it("detecta régimen general_21 cuando todas las líneas son IVA", () => {
+  it("detecta régimen general cuando todas las líneas son IVA", () => {
     const items: QuoteItem[] = [
-      { description: "Kayak", quantity: 2, unitPrice: 30, total: 60, fiscalRegime: "general_21" },
-      { description: "Guía", quantity: 1, unitPrice: 80, total: 80, fiscalRegime: "general_21" },
+      { description: "Kayak", quantity: 2, unitPrice: 30, total: 60, fiscalRegime: "general" },
+      { description: "Guía", quantity: 1, unitPrice: 80, total: 80, fiscalRegime: "general" },
     ];
-    expect(resolveFiscalRegime(items)).toBe("general_21");
+    expect(resolveFiscalRegime(items)).toBe("general");
   });
 
   it("detecta régimen reav cuando todas las líneas son REAV", () => {
@@ -174,7 +174,7 @@ describe("Trazabilidad — régimen fiscal de la operación", () => {
   it("detecta régimen mixed cuando hay líneas IVA y REAV", () => {
     const items: QuoteItem[] = [
       { description: "Cableski", quantity: 1, unitPrice: 45, total: 45, fiscalRegime: "reav" },
-      { description: "Guía", quantity: 1, unitPrice: 80, total: 80, fiscalRegime: "general_21" },
+      { description: "Guía", quantity: 1, unitPrice: 80, total: 80, fiscalRegime: "general" },
     ];
     expect(resolveFiscalRegime(items)).toBe("mixed");
   });

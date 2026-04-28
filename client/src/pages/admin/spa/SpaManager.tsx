@@ -41,7 +41,7 @@ const EMPTY_TREATMENT: TreatmentFormData = {
   price: "", durationMinutes: 60, maxPersons: 2,
   categoryId: "", coverImageUrl: "", isFeatured: false, isActive: true, isPresentialSale: false,
   discountPercent: "", discountLabel: "", discountExpiresAt: "",
-  fiscalRegime: "general_21", productType: "own", providerPercent: "", agencyMarginPercent: "",
+  fiscalRegime: "general", productType: "own", providerPercent: "", agencyMarginPercent: "",
   supplierId: null, supplierCommissionPercent: "", supplierCostType: "comision_sobre_venta",
   settlementFrequency: "manual", isSettlable: false,
 };
@@ -63,7 +63,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
       discountPercent: editTreatment.discountPercent != null ? String(editTreatment.discountPercent) : "",
       discountLabel: editTreatment.discountLabel ?? "",
       discountExpiresAt: editTreatment.discountExpiresAt ? new Date(editTreatment.discountExpiresAt).toISOString().slice(0, 10) : "",
-      fiscalRegime: editTreatment.fiscalRegime ?? "general_21",
+      fiscalRegime: editTreatment.fiscalRegime ?? "general",
       productType: editTreatment.productType ?? "own",
       providerPercent: editTreatment.providerPercent != null ? String(editTreatment.providerPercent) : "",
       agencyMarginPercent: editTreatment.agencyMarginPercent != null ? String(editTreatment.agencyMarginPercent) : "",
@@ -96,7 +96,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
       discountPercent: form.discountPercent || undefined,
       discountLabel: form.discountLabel || undefined,
       discountExpiresAt: form.discountExpiresAt || undefined,
-      fiscalRegime: form.fiscalRegime as "reav" | "general_21" | "mixed",
+      fiscalRegime: form.fiscalRegime as "reav" | "general" | "mixed",
       productType: form.productType as "own" | "semi_own" | "third_party",
       providerPercent: form.providerPercent || undefined,
       agencyMarginPercent: form.agencyMarginPercent || undefined,
@@ -196,7 +196,7 @@ function TreatmentFormDialog({ open, onClose, editTreatment, categories }: {
                 <Select value={form.fiscalRegime} onValueChange={v => setForm(f => ({ ...f, fiscalRegime: v }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="general_21">General 21%</SelectItem>
+                    <SelectItem value="general">General 21%</SelectItem>
                     <SelectItem value="reav">REAV (agencia viajes)</SelectItem>
                     <SelectItem value="mixed">Mixto</SelectItem>
                   </SelectContent>

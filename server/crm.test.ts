@@ -158,12 +158,12 @@ describe("CRM — Quote items calculation", () => {
 // ─── generateInvoice — lógica de cálculo fiscal ──────────────────────────────
 
 describe("generateInvoice — cálculo de totales desde items TPV", () => {
-  const buildItems = (items: { total: number; fiscalRegime?: "reav" | "general_21" }[]) => items;
+  const buildItems = (items: { total: number; fiscalRegime?: "reav" | "general" }[]) => items;
 
   it("calcula subtotal, IVA y total correctamente para items régimen general", () => {
     const items = buildItems([
-      { total: 100, fiscalRegime: "general_21" },
-      { total: 50, fiscalRegime: "general_21" },
+      { total: 100, fiscalRegime: "general" },
+      { total: 50, fiscalRegime: "general" },
     ]);
     const subtotal = items.reduce((s, i) => s + i.total, 0);
     const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
@@ -193,7 +193,7 @@ describe("generateInvoice — cálculo de totales desde items TPV", () => {
 
   it("calcula correctamente con mezcla de items REAV y general", () => {
     const items = buildItems([
-      { total: 100, fiscalRegime: "general_21" },
+      { total: 100, fiscalRegime: "general" },
       { total: 80, fiscalRegime: "reav" },
     ]);
     const subtotal = items.reduce((s, i) => s + i.total, 0);

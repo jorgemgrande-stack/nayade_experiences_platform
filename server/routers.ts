@@ -624,7 +624,7 @@ export const appRouter = router({
         settlementFrequency: z.string().optional(),
         isSettlable: z.boolean().optional(),
         hasTimeSlots: z.boolean().optional(),
-        fiscalRegime: z.enum(["general", "reav", "general_21", "mixed"]).default("general_21"),
+        fiscalRegime: z.enum(["general", "reav", "general_21", "mixed"]).default("general"),
         productType: z.string().optional(),
         providerPercent: z.string().optional(),
         agencyMarginPercent: z.string().optional(),
@@ -637,8 +637,8 @@ export const appRouter = router({
         maxUnits: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        // Map legacy "general" -> "general_21" for DB enum compatibility
-        const fiscalRegime = (input.fiscalRegime === "general" ? "general_21" : input.fiscalRegime) as "reav" | "general_21" | "mixed";
+        // Coerce legacy "general_21" → "general" (DB enum migration)
+        const fiscalRegime = (input.fiscalRegime === "general_21" ? "general" : input.fiscalRegime) as "reav" | "general" | "mixed";
         const processedData: Record<string, unknown> = {
           ...input,
           fiscalRegime,
@@ -701,9 +701,9 @@ export const appRouter = router({
         const { id, ...data } = input;
         // Sync coverImageUrl with image1
         if (data.image1 !== undefined) (data as Record<string, unknown>).coverImageUrl = data.image1;
-        // Map legacy "general" -> "general_21" for DB enum compatibility
-        if ((data as Record<string, unknown>).fiscalRegime === "general") {
-          (data as Record<string, unknown>).fiscalRegime = "general_21";
+        // Coerce legacy "general_21" → "general" (DB enum migration)
+        if ((data as Record<string, unknown>).fiscalRegime === "general_21") {
+          (data as Record<string, unknown>).fiscalRegime = "general";
         }
         // Convert discountExpiresAt string to Date for Drizzle timestamp column
         const processedData: Record<string, unknown> = { ...data };

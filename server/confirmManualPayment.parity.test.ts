@@ -13,7 +13,7 @@ type InvoiceItem = {
   quantity: number;
   unitPrice: number;
   total: number;
-  fiscalRegime?: "reav" | "general_21";
+  fiscalRegime?: "reav" | "general";
   productId?: number;
 };
 
@@ -53,7 +53,7 @@ async function simulateConfirmManualPayment(
     reavExpedientNumber: undefined as string | undefined,
     reavDocumentsAttached: 0,
     postConfirmCalled: false,
-    fiscalRegime: "general_21" as string,
+    fiscalRegime: "general" as string,
     taxBase: 0,
     reavMargin: 0,
     duplicateReavPrevented: false,
@@ -88,7 +88,7 @@ async function simulateConfirmManualPayment(
     result.taxBase = generalSubtotal;
     result.reavMargin = reavSubtotal;
     result.fiscalRegime = reavSubtotal > 0 && generalSubtotal > 0 ? "mixed"
-      : reavSubtotal > 0 ? "reav" : "general_21";
+      : reavSubtotal > 0 ? "reav" : "general";
     result.postConfirmCalled = true;
   }
 
@@ -104,7 +104,7 @@ describe("confirmManualPayment — paridad con confirmPayment y confirmTransfer"
       const invoice: MockInvoice = {
         id: 1, invoiceNumber: "FAC-2026-0010", status: "generada",
         pdfUrl: null, clientName: "Test Cliente", total: "121.00",
-        itemsJson: [{ description: "Wakeboard", quantity: 1, unitPrice: 100, total: 100, fiscalRegime: "general_21" }],
+        itemsJson: [{ description: "Wakeboard", quantity: 1, unitPrice: 100, total: 100, fiscalRegime: "general" }],
         reservationId: 1001,
       };
       const result = await simulateConfirmManualPayment(invoice, { generatePdf: true, createReav: false });
@@ -151,11 +151,11 @@ describe("confirmManualPayment — paridad con confirmPayment y confirmTransfer"
       expect(result.reavExpedientNumber).toMatch(/^EXP-REAV-/);
     });
 
-    it("NO crea expediente REAV cuando solo hay líneas general_21", async () => {
+    it("NO crea expediente REAV cuando solo hay líneas general", async () => {
       const invoice: MockInvoice = {
         id: 5, invoiceNumber: "FAC-2026-0014", status: "generada",
         pdfUrl: "https://cdn.example.com/fac14.pdf",
-        itemsJson: [{ description: "Wakeboard general", quantity: 1, unitPrice: 100, total: 100, fiscalRegime: "general_21" }],
+        itemsJson: [{ description: "Wakeboard general", quantity: 1, unitPrice: 100, total: 100, fiscalRegime: "general" }],
         reservationId: 4001,
       };
       const result = await simulateConfirmManualPayment(invoice, { generatePdf: false, createReav: true });
@@ -198,16 +198,16 @@ describe("confirmManualPayment — paridad con confirmPayment y confirmTransfer"
   });
 
   describe("postConfirmOperation — régimen fiscal correcto", () => {
-    it("detecta régimen 'general_21' cuando solo hay líneas generales", async () => {
+    it("detecta régimen 'general' cuando solo hay líneas generales", async () => {
       const invoice: MockInvoice = {
         id: 9, invoiceNumber: "FAC-2026-0018", status: "generada",
         itemsJson: [
-          { description: "Wakeboard", quantity: 1, unitPrice: 100, total: 100, fiscalRegime: "general_21" },
+          { description: "Wakeboard", quantity: 1, unitPrice: 100, total: 100, fiscalRegime: "general" },
         ],
         reservationId: 7001,
       };
       const result = await simulateConfirmManualPayment(invoice, { generatePdf: false, createReav: false });
-      expect(result.fiscalRegime).toBe("general_21");
+      expect(result.fiscalRegime).toBe("general");
       expect(result.taxBase).toBe(100);
       expect(result.reavMargin).toBe(0);
       expect(result.postConfirmCalled).toBe(true);
@@ -231,7 +231,7 @@ describe("confirmManualPayment — paridad con confirmPayment y confirmTransfer"
       const invoice: MockInvoice = {
         id: 11, invoiceNumber: "FAC-2026-0020", status: "generada",
         itemsJson: [
-          { description: "Wakeboard", quantity: 1, unitPrice: 100, total: 100, fiscalRegime: "general_21" },
+          { description: "Wakeboard", quantity: 1, unitPrice: 100, total: 100, fiscalRegime: "general" },
           { description: "Canoa REAV", quantity: 1, unitPrice: 80, total: 80, fiscalRegime: "reav" },
         ],
         reservationId: 9001,

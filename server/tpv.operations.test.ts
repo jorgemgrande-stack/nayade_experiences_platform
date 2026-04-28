@@ -73,7 +73,7 @@ function simulatePostConfirmArgs(
   const people = items.reduce((sum, it) => sum + (it.participants ?? 1), 0);
 
   const fiscalSummary = options.fiscalSummary ?? "iva_only";
-  const fiscalRegimeForOp = fiscalSummary === "iva_only" ? "general_21"
+  const fiscalRegimeForOp = fiscalSummary === "iva_only" ? "general"
     : fiscalSummary === "reav_only" ? "reav" : "mixed";
 
   const opPaymentMethod = primaryPaymentMethod === "cash" ? "efectivo" : "otro";
@@ -191,12 +191,12 @@ describe("TPV createSale → postConfirmOperation (calendario de operaciones)", 
   });
 
   describe("Régimen fiscal", () => {
-    it("mapea 'iva_only' a 'general_21'", () => {
+    it("mapea 'iva_only' a 'general'", () => {
       const items: TpvItem[] = [
         { productType: "experience", productId: 30001, productName: "Wakeboard", quantity: 1, unitPrice: 45, discountPercent: 0, participants: 1 },
       ];
       const args = simulatePostConfirmArgs(items, [{ method: "card", amount: 45 }], { fiscalSummary: "iva_only", totalTaxBase: 37.19, totalTaxAmount: 7.81 });
-      expect(args.fiscalRegime).toBe("general_21");
+      expect(args.fiscalRegime).toBe("general");
       expect(args.taxBase).toBe(37.19);
       expect(args.reavMargin).toBe(0);
     });

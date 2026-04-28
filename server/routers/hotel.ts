@@ -92,7 +92,7 @@ export const hotelRouter = router({
       discountLabel: z.string().optional(),
       discountExpiresAt: z.string().optional(),
       // Régimen fiscal
-      fiscalRegime: z.enum(["reav", "general_21", "mixed"]).default("general_21"),
+      fiscalRegime: z.enum(["reav", "general", "mixed"]).default("general"),
       productType: z.enum(["own", "semi_own", "third_party"]).default("own"),
       providerPercent: z.string().optional(),
       agencyMarginPercent: z.string().optional(),
@@ -144,7 +144,7 @@ export const hotelRouter = router({
       discountLabel: z.string().nullable().optional(),
       discountExpiresAt: z.string().nullable().optional(),
       // Régimen fiscal
-      fiscalRegime: z.enum(["reav", "general_21", "mixed"]).optional(),
+      fiscalRegime: z.enum(["reav", "general", "mixed"]).optional(),
       productType: z.enum(["own", "semi_own", "third_party"]).optional(),
       providerPercent: z.string().nullable().optional(),
       agencyMarginPercent: z.string().nullable().optional(),

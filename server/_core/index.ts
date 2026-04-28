@@ -233,6 +233,60 @@ async function ensureCriticalSeeds() {
       ["+34 911 67 51 89", "+34 930 34 77 91"]
     );
 
+    // Refactor fiscal: migrar general_21 → general en todas las tablas afectadas
+    for (const tbl of ["experiences", "packs", "room_types", "spa_treatments"]) {
+      const col = "fiscalRegime";
+      const [colRows] = await conn.execute(
+        `SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+        [tbl, col]
+      ) as any[];
+      const colType: string = (colRows as any[])[0]?.COLUMN_TYPE ?? "";
+      if (colType.includes("general_21")) {
+        await conn.execute(`ALTER TABLE \`${tbl}\` MODIFY COLUMN \`${col}\` ENUM('reav','general','mixed') NOT NULL DEFAULT 'general'`);
+        await conn.execute(`UPDATE \`${tbl}\` SET \`${col}\` = 'general' WHERE \`${col}\` = 'general_21'`);
+        const hasRate = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='taxRate'`, [tbl]) as any[];
+        if (!((hasRate as any[][])[0] as any[]).length) {
+          await conn.execute(`ALTER TABLE \`${tbl}\` ADD COLUMN \`taxRate\` DECIMAL(5,2) NOT NULL DEFAULT 21.00`);
+        }
+        console.log(`[DB] Fiscal refactor aplicado en ${tbl}`);
+      }
+    }
+    // tpv_sale_items → columna fiscalRegime_tsi
+    {
+      const [cr] = await conn.execute(
+        `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tpv_sale_items' AND COLUMN_NAME='fiscalRegime_tsi'`
+      ) as any[];
+      if ((String((cr as any[])[0]?.COLUMN_TYPE ?? "")).includes("general_21")) {
+        await conn.execute(`ALTER TABLE \`tpv_sale_items\` MODIFY COLUMN \`fiscalRegime_tsi\` ENUM('reav','general','mixed') DEFAULT 'general'`);
+        await conn.execute(`UPDATE \`tpv_sale_items\` SET \`fiscalRegime_tsi\` = 'general' WHERE \`fiscalRegime_tsi\` = 'general_21'`);
+        console.log("[DB] Fiscal refactor aplicado en tpv_sale_items");
+      }
+    }
+    // transactions → fiscalRegime_tx
+    {
+      const [cr] = await conn.execute(
+        `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='transactions' AND COLUMN_NAME='fiscalRegime_tx'`
+      ) as any[];
+      if ((String((cr as any[])[0]?.COLUMN_TYPE ?? "")).includes("general_21")) {
+        await conn.execute(`ALTER TABLE \`transactions\` MODIFY COLUMN \`fiscalRegime_tx\` ENUM('reav','general','mixed') DEFAULT 'general'`);
+        await conn.execute(`UPDATE \`transactions\` SET \`fiscalRegime_tx\` = 'general' WHERE \`fiscalRegime_tx\` = 'general_21'`);
+        const hasTxRate = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='transactions' AND COLUMN_NAME='taxRate_tx'`) as any[];
+        if (!((hasTxRate as any[][])[0] as any[]).length) {
+          await conn.execute(`ALTER TABLE \`transactions\` ADD COLUMN \`taxRate_tx\` DECIMAL(5,2) DEFAULT 21.00`);
+        }
+        console.log("[DB] Fiscal refactor aplicado en transactions");
+      }
+    }
+    // invoices → taxBreakdown JSON
+    {
+      const hasBreakdown = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='invoices' AND COLUMN_NAME='taxBreakdown'`) as any[];
+      if (!((hasBreakdown as any[][])[0] as any[]).length) {
+        await conn.execute(`ALTER TABLE \`invoices\` ADD COLUMN \`taxBreakdown\` JSON NULL`);
+        console.log("[DB] Columna taxBreakdown añadida a invoices");
+      }
+    }
+
     // Garantizar que 'controler' existe en el ENUM role de users
     const [enumRows] = await conn.execute(
       `SELECT COLUMN_TYPE FROM information_schema.COLUMNS
@@ -309,7 +363,7 @@ async function seedExperiencesIfEmpty() {
 
     for (const exp of experiences) {
       const cols = ["slug","title","shortDescription","description","coverImageUrl","image1","image2","image3","image4","basePrice","duration","minPersons","maxPersons","difficulty","isFeatured","isActive","isPublished","isPresentialSale","categoryId","locationId","includes","excludes","fiscalRegime","productType","pricing_type","sortOrder"];
-      const vals = [exp.slug,exp.title,exp.shortDescription,exp.description,exp.coverImageUrl,exp.image1,exp.image2??null,exp.image3??null,exp.image4??null,exp.basePrice,exp.duration??null,exp.minPersons,exp.maxPersons,exp.difficulty,exp.isFeatured,exp.isActive,exp.isPublished,exp.isPresentialSale,exp.categoryId,exp.locationId,exp.includes,exp.excludes,"general_21","actividad","per_person",exp.sortOrder];
+      const vals = [exp.slug,exp.title,exp.shortDescription,exp.description,exp.coverImageUrl,exp.image1,exp.image2??null,exp.image3??null,exp.image4??null,exp.basePrice,exp.duration??null,exp.minPersons,exp.maxPersons,exp.difficulty,exp.isFeatured,exp.isActive,exp.isPublished,exp.isPresentialSale,exp.categoryId,exp.locationId,exp.includes,exp.excludes,"general","actividad","per_person",exp.sortOrder];
       const placeholders = cols.map(() => "?").join(",");
       await conn.execute(`INSERT IGNORE INTO experiences (${cols.join(",")}) VALUES (${placeholders})`, vals);
       console.log(`[Seed]  ✓ ${exp.title}`);

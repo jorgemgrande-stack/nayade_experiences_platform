@@ -74,7 +74,7 @@ interface PostConfirmParams {
   saleChannel: "crm" | "tpv" | "online" | "admin" | "delegado";
   invoiceNumber?: string | null;
   reservationRef?: string | null;
-  fiscalRegime?: "reav" | "general_21" | "mixed";
+  fiscalRegime?: "reav" | "general" | "mixed";
   quoteId?: number | null;
   tpvSaleId?: number | null;
 }
@@ -152,7 +152,7 @@ describe("Regresión postConfirmOperation — Canal A: CRM confirmPayment", () =
     saleChannel: "crm",
     invoiceNumber: "FAC-2026-0010",
     reservationRef: "RES-2026-0010",
-    fiscalRegime: "general_21",
+    fiscalRegime: "general",
     quoteId: 1001,
   };
 
@@ -275,7 +275,7 @@ describe("Regresión postConfirmOperation — Canal C: Redsys IPN", () => {
     saleChannel: "online",
     invoiceNumber: "FAC-2026-0012",
     reservationRef: "RES-2026-0012",
-    fiscalRegime: "general_21",
+    fiscalRegime: "general",
   };
 
   it("mapea paymentMethod 'redsys' a 'tarjeta' en la transacción", () => {
@@ -331,7 +331,7 @@ describe("Regresión postConfirmOperation — Canal D: Ticketing (canje de cupó
     saleChannel: "online",
     invoiceNumber: null,
     reservationRef: "GROUPON-ABC123",
-    fiscalRegime: "general_21",
+    fiscalRegime: "general",
   };
 
   it("crea booking operativo para canje de cupón (importe 0 es válido)", () => {
@@ -453,12 +453,12 @@ describe("Regresión postConfirmOperation — Mapeo de paymentMethod", () => {
 // ─── Tests de régimen fiscal ──────────────────────────────────────────────────
 
 describe("Regresión postConfirmOperation — Régimen fiscal", () => {
-  it("régimen 'general_21' se propaga a la transacción", () => {
+  it("régimen 'general' se propaga a la transacción", () => {
     const params: PostConfirmParams = {
       reservationId: 1, productId: 1, productName: "Test", people: 1,
       amountCents: 1000, customerName: "Test", customerEmail: "t@t.com",
       totalAmount: 10, paymentMethod: "tarjeta", saleChannel: "crm",
-      fiscalRegime: "general_21",
+      fiscalRegime: "general",
     };
     const { transaction } = simulatePostConfirmOperation(params);
     expect(transaction.type).toBe("ingreso");

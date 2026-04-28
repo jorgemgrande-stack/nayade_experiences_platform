@@ -95,8 +95,8 @@ describe("validarConfiguracionREAV — validación de producto", () => {
     expect(errores.some(e => e.includes("100"))).toBe(true);
   });
 
-  it("acepta producto general_21 sin porcentajes REAV (devuelve array vacío)", () => {
-    const errores = validarConfiguracionREAV(makeProducto("general_21", null, null));
+  it("acepta producto general sin porcentajes REAV (devuelve array vacío)", () => {
+    const errores = validarConfiguracionREAV(makeProducto("general", null, null));
     expect(errores).toHaveLength(0);
   });
 

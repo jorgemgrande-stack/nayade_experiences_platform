@@ -206,7 +206,7 @@ export default function TransactionsList() {
             <SelectTrigger className="w-44"><SelectValue placeholder="Régimen fiscal" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los regímenes</SelectItem>
-              <SelectItem value="general_21">IVA General 21%</SelectItem>
+              <SelectItem value="general">IVA General 21%</SelectItem>
               <SelectItem value="reav">REAV</SelectItem>
               <SelectItem value="mixed">Mixto</SelectItem>
             </SelectContent>

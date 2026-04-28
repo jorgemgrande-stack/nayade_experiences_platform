@@ -27,7 +27,7 @@ const METHOD_COLORS: Record<string, string> = {
   redsys: "#0ea5e9", otro: "#6b7280",
 };
 const FISCAL_COLORS: Record<string, string> = {
-  general_21: "#3b82f6", reav: "#a855f7", mixed: "#f59e0b",
+  general: "#3b82f6", general_21: "#3b82f6", reav: "#a855f7", mixed: "#f59e0b",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -38,7 +38,7 @@ const METHOD_LABELS: Record<string, string> = {
   redsys: "Redsys", otro: "Otro",
 };
 const FISCAL_LABELS: Record<string, string> = {
-  general_21: "IVA 21%", reav: "REAV", mixed: "Mixto",
+  general: "IVA 21%", general_21: "IVA 21%", reav: "REAV", mixed: "Mixto",
 };
 
 // ─── Formateador de moneda ────────────────────────────────────────────────────

@@ -563,7 +563,7 @@ export async function getAccountingReports(params: { from?: string; to?: string 
     byChannel: byChannel.map(r => ({ channel: r.channel ?? "admin", total: parseFloat(String(r.total)), count: Number(r.count) })),
     byMethod:  byMethod.map(r => ({ method: r.method ?? "otro", total: parseFloat(String(r.total)), count: Number(r.count) })),
     byFiscal:  byFiscal.map(r => ({
-      regime: r.regime ?? "general_21",
+      regime: r.regime ?? "general",
       total:  parseFloat(String(r.total)),
       taxBase:parseFloat(String(r.taxBase)),
       iva:    parseFloat(String(r.iva)),
@@ -2147,7 +2147,7 @@ export async function postConfirmOperation(params: {
   taxBase?: number;
   taxAmount?: number;
   reavMargin?: number;
-  fiscalRegime?: "reav" | "general_21" | "mixed";
+  fiscalRegime?: "reav" | "general" | "mixed";
   description?: string;
   // Vínculo con presupuesto (CRM)
   quoteId?: number | null;
@@ -2215,7 +2215,7 @@ export async function postConfirmOperation(params: {
         taxBase: String((params.taxBase ?? 0).toFixed(2)),
         taxAmount: String((params.taxAmount ?? 0).toFixed(2)),
         reavMargin: String((params.reavMargin ?? 0).toFixed(2)),
-        fiscalRegime: (params.fiscalRegime ?? "general_21") as any,
+        fiscalRegime: (params.fiscalRegime ?? "general") as any,
         tpvSaleId: params.tpvSaleId ?? null,
         reservationId: params.reservationId,
         invoiceNumber: params.invoiceNumber ?? null,

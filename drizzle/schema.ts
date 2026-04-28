@@ -161,8 +161,9 @@ export const experiences = mysqlTable("experiences", {
   requirements: text("requirements"),
   discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
   discountExpiresAt: timestamp("discountExpiresAt"),
-  // Fiscal regime (REAV module)
-  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
+  // Fiscal regime (REAV module) — "general" + taxRate sustituye a "general_21"
+  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general", "mixed"]).default("general").notNull(),
+  taxRate: decimal("taxRate", { precision: 5, scale: 2 }).default("21"),
   productType: mysqlEnum("productType", ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"]).default("actividad").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
@@ -260,7 +261,8 @@ export const quotes = mysqlTable("quotes", {
     quantity: number;
     unitPrice: number;
     total: number;
-    fiscalRegime?: "reav" | "general_21";
+    fiscalRegime?: "reav" | "general";
+    taxRate?: number;
     productId?: number;
   }[]>().default([]),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
@@ -337,10 +339,11 @@ export const invoices = mysqlTable("invoices", {
   clientPhone: varchar("clientPhone", { length: 32 }),
   clientNif: varchar("clientNif", { length: 32 }),
   clientAddress: text("clientAddress"),
-  itemsJson: json("itemsJson").$type<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general_21"; productId?: number }[]>().default([]),
+  itemsJson: json("itemsJson").$type<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; taxRate?: number; productId?: number }[]>().default([]),
   subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
   taxRate: decimal("taxRate", { precision: 5, scale: 2 }).default("21"),
   taxAmount: decimal("taxAmount", { precision: 10, scale: 2 }).default("0"),
+  taxBreakdown: json("taxBreakdown").$type<{ rate: number; base: number; amount: number }[]>(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
   pdfUrl: text("pdfUrl"),
@@ -445,8 +448,9 @@ export const transactions = mysqlTable("transactions", {
   saleChannel:     mysqlEnum("saleChannel", ["tpv", "online", "crm", "admin", "delegado"]).default("admin"),
   taxBase:         decimal("taxBase",         { precision: 10, scale: 2 }).default("0"),
   taxAmount:       decimal("taxAmount",       { precision: 10, scale: 2 }).default("0"),
+  taxRate:         decimal("taxRate_tx",      { precision: 5,  scale: 2 }).default("21"),
   reavMargin:      decimal("reavMargin",      { precision: 10, scale: 2 }).default("0"),
-  fiscalRegime:    mysqlEnum("fiscalRegime_tx", ["reav", "general_21", "mixed"]).default("general_21"),
+  fiscalRegime:    mysqlEnum("fiscalRegime_tx", ["reav", "general", "mixed"]).default("general"),
   tpvSaleId:       int("tpvSaleId"),
   reservationId:   int("reservationId_tx"),
   invoiceNumber:   varchar("invoiceNumber",   { length: 32 }),
@@ -601,7 +605,8 @@ export const packs = mysqlTable("packs", {
    discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }),
   discountExpiresAt: timestamp("discountExpiresAt"),
   // Fiscal regime (REAV module)
-  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
+  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general", "mixed"]).default("general").notNull(),
+  taxRate: decimal("taxRate", { precision: 5, scale: 2 }).default("21"),
   productType: mysqlEnum("productType", ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"]).default("pack").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
@@ -691,7 +696,8 @@ export const roomTypes = mysqlTable("room_types", {
   discountLabel: varchar("discountLabel", { length: 128 }),
   discountExpiresAt: timestamp("discountExpiresAt"),
   // Régimen fiscal
-  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
+  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general", "mixed"]).default("general").notNull(),
+  taxRate: decimal("taxRate", { precision: 5, scale: 2 }).default("21"),
   productType: mysqlEnum("productType", ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"]).default("alojamiento").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
@@ -793,7 +799,8 @@ export const spaTreatments = mysqlTable("spa_treatments", {
   discountLabel: varchar("discountLabel", { length: 128 }),
   discountExpiresAt: timestamp("discountExpiresAt"),
   // Régimen fiscal
-  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general_21", "mixed"]).default("general_21").notNull(),
+  fiscalRegime: mysqlEnum("fiscalRegime", ["reav", "general", "mixed"]).default("general").notNull(),
+  taxRate: decimal("taxRate", { precision: 5, scale: 2 }).default("21"),
   productType: mysqlEnum("productType", ["own", "semi_own", "third_party", "actividad", "alojamiento", "restauracion", "transporte", "pack"]).default("actividad").notNull(),
   providerPercent: decimal("providerPercent", { precision: 5, scale: 2 }).default("0"),
   agencyMarginPercent: decimal("agencyMarginPercent", { precision: 5, scale: 2 }).default("0"),
@@ -1454,7 +1461,7 @@ export const tpvSaleItems = mysqlTable("tpv_sale_items", {
   participants: int("participants").default(1),
   notes: varchar("notes_tsi", { length: 500 }),
   // Fiscalidad por línea
-  fiscalRegime: mysqlEnum("fiscalRegime_tsi", ["reav", "general_21", "mixed"]).default("general_21"),
+  fiscalRegime: mysqlEnum("fiscalRegime_tsi", ["reav", "general", "mixed"]).default("general"),
   taxBase:      decimal("taxBase_tsi",   { precision: 10, scale: 2 }).default("0"),
   taxAmount:    decimal("taxAmount_tsi", { precision: 10, scale: 2 }).default("0"),
   taxRate:      decimal("taxRate_tsi",   { precision: 5,  scale: 2 }).default("21"),

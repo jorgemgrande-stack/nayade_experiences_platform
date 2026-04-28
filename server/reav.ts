@@ -19,7 +19,7 @@
  */
 
 export interface ProductoFiscal {
-  fiscalRegime: "reav" | "general_21" | "mixed";
+  fiscalRegime: "reav" | "general" | "mixed";
   providerPercent: string | number | null;   // % coste proveedor (e.g. 60)
   agencyMarginPercent: string | number | null; // % margen agencia (e.g. 40)
 }

@@ -130,7 +130,7 @@ export async function calculateLegoPackPrice(
 
     let basePrice = 0;
     let sourceName = "";
-    let fiscalRegime = "general_21";
+    let fiscalRegime = "general";
     let supplierId: number | null = null;
     let supplierName: string | null = null;
     let supplierCommissionPercent = 0;
@@ -149,7 +149,7 @@ export async function calculateLegoPackPrice(
       if (exp) {
         sourceName = exp.title;
         basePrice = parseFloat(exp.basePrice ?? "0");
-        fiscalRegime = exp.fiscalRegime ?? "general_21";
+        fiscalRegime = exp.fiscalRegime ?? "general";
         supplierId = exp.supplierId ?? null;
         supplierCommissionPercent = parseFloat(exp.supplierCommissionPercent ?? "0");
       }
@@ -167,7 +167,7 @@ export async function calculateLegoPackPrice(
       if (pk) {
         sourceName = pk.title;
         basePrice = parseFloat(pk.basePrice ?? "0");
-        fiscalRegime = pk.fiscalRegime ?? "general_21";
+        fiscalRegime = pk.fiscalRegime ?? "general";
         supplierId = pk.supplierId ?? null;
         supplierCommissionPercent = parseFloat(pk.supplierCommissionPercent ?? "0");
       }
