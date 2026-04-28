@@ -519,6 +519,13 @@
       "when": 1777680000000,
       "tag": "0075_update_brand_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "5",
+      "when": 1777766400000,
+      "tag": "0076_rbac_reseed_users",
+      "breakpoints": true
     }
   ]
 }
