@@ -978,10 +978,10 @@ export default function UsersManager() {
                     </div>
                   )}
 
-                  {/* Nota de compatibilidad */}
+                  {/* Estado RBAC */}
                   <p className="text-[10px] text-gray-400 flex items-start gap-1">
                     <Info className="w-3 h-3 mt-0.5 shrink-0" />
-                    Los roles RBAC coexisten con el rol legacy. Los accesos al sistema siguen controlados por el rol legacy hasta que se active la siguiente fase.
+                    Los accesos están controlados por los roles RBAC. Si el usuario no tiene roles asignados, se usa el perfil base como fallback temporal.
                   </p>
                 </div>
               );
@@ -1121,7 +1121,7 @@ export default function UsersManager() {
                 {createRbacRoles.length === 0 && (
                   <p className="text-[11px] text-muted-foreground flex items-start gap-1">
                     <Info className="w-3 h-3 mt-0.5 shrink-0" />
-                    Sin roles RBAC — el sistema usará el rol legacy como fallback automático.
+                    Se asignará automáticamente el rol RBAC correspondiente al perfil seleccionado.
                   </p>
                 )}
               </div>

@@ -1097,12 +1097,16 @@ export const appRouter = router({
       // Send invite email
       const setPasswordUrl = `${input.origin}/establecer-contrasena?token=${token}`;
       await sendInviteEmail({ name: input.name, email: input.email, setPasswordUrl, role: input.role });
-      // Assign RBAC roles if provided — fail-safe: never breaks legacy user creation
-      if (input.rbacRoleKeys?.length && result.id) {
+      // Assign RBAC roles — fail-safe: never breaks legacy user creation.
+      // If rbacRoleKeys not provided, fall back to the legacy role key (keys match 1:1).
+      const rbacKeysToAssign = input.rbacRoleKeys?.length
+        ? input.rbacRoleKeys
+        : [input.role];
+      if (result.id) {
         const db = await getDb();
         if (db) {
           const { sql } = await import("drizzle-orm");
-          for (const roleKey of input.rbacRoleKeys) {
+          for (const roleKey of rbacKeysToAssign) {
             try {
               const roleResult = await db.execute(sql`SELECT id FROM rbac_roles WHERE \`key\` = ${roleKey} AND is_active = 1`);
               const roleRow = (roleResult as any[][])[0]?.[0] as { id: number } | undefined;
