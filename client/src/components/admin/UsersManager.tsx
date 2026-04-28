@@ -654,13 +654,13 @@ export default function UsersManager() {
                 <th className="text-right px-4 py-3 font-semibold text-gray-600">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody>
               {filteredUsers.map((user) => {
                 const isLastAdmin = user.role === "admin" && activeAdminCount <= 1;
                 const isSelf = currentUser?.id === user.id;
 
                 return (
-                  <tr key={user.id} className={`hover:bg-gray-50 transition-colors ${!user.isActive ? "opacity-60" : ""}`}>
+                  <tr key={user.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${!user.isActive ? "opacity-60" : ""}`}>
                     {/* Usuario */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
