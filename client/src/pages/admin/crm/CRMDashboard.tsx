@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
@@ -4799,18 +4800,25 @@ function ReservationDetailModal({
 // ─── MAIN CRM DASHBOARD ───────────────────────────────────────────────────────
 
 export default function CRMDashboard() {
-  // Leer el tab inicial desde la URL (?tab=leads|quotes|reservations|invoices)
-  const initialTab = (): Tab => {
+  // Sincronizar tab con ?tab= de la URL (reactivo al navegar desde el sidebar)
+  const searchStr = useSearch();
+  const tabFromSearch = (s: string): Tab => {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const t = params.get("tab");
+      const t = new URLSearchParams(s).get("tab");
       if (t === "leads" || t === "quotes" || t === "reservations" || t === "invoices" || t === "anulaciones" || t === "pagos_pendientes" || t === "bonos") return t;
     } catch { /* ignore */ }
     return "leads";
   };
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [tab, setTab] = useState<Tab>(() => tabFromSearch(searchStr));
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  // Cuando el usuario navega via sidebar (?tab= cambia), sincronizar el estado interno
+  useEffect(() => {
+    setTab(tabFromSearch(searchStr));
+    setSearch("");
+    setFilterStatus("all");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchStr]);
   const [kpisExpanded, setKpisExpanded] = useState<boolean>(() => {
     try { return localStorage.getItem("crm_kpis_expanded") !== "false"; } catch { return true; }
   });

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import {
   LayoutDashboard, Package, FileText, Calendar, BarChart3,
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
@@ -218,6 +218,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [location, navigate] = useWouterLocation();
+  const currentSearch = useSearch();
   const { user, logout, loading, isAuthenticated } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
@@ -262,6 +263,19 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const isActive = (href: string) => {
     if (href === "/admin") return location === "/admin";
     return location === href || location.startsWith(href + "/") || location.startsWith(href + "?");
+  };
+  // Para sub-items con ?tab= en el href: compara pathname + search
+  const isChildActive = (childHref: string) => {
+    if (!childHref.includes("?")) return location === childHref;
+    const [childPath, childQuery] = childHref.split("?");
+    if (location !== childPath) return false;
+    // Comparar todos los params del child con la URL actual
+    const childParams = new URLSearchParams(childQuery);
+    const currentParams = new URLSearchParams(currentSearch);
+    for (const [key, val] of Array.from(childParams.entries())) {
+      if (currentParams.get(key) !== val) return false;
+    }
+    return true;
   };
 
   // Public brand settings — logo, name, colors.
@@ -471,9 +485,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                           <Link key={(child as any).key ?? child.href} href={child.href}>
                             <div className={cn(
                               "block px-3 py-2 rounded-lg text-xs font-medium transition-all",
-                              (child.href.includes("?")
-                              ? (location + window.location.search) === child.href || window.location.href.includes(child.href.split("?")[1])
-                              : location === child.href)
+                              isChildActive(child.href)
                                 ? "bg-sidebar-accent text-amber-400"
                                 : "text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                             )}>
