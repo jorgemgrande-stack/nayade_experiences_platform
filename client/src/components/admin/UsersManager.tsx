@@ -755,14 +755,14 @@ export default function UsersManager() {
                               const meta = ALL_RBAC_ROLES.find(x => x.key === r.key);
                               const Icon = meta?.icon ?? Shield;
                               return (
-                                <span key={r.key} className={`inline-flex items-center gap-1 text-[10px] font-medium border rounded-full px-1.5 py-0.5 ${meta?.color ?? "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
+                                <span key={r.key} className={`inline-flex items-center gap-1 text-[10px] leading-none font-medium border rounded-full px-1.5 py-0.5 ${meta?.color ?? "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
                                   <Icon className="w-2.5 h-2.5" />
                                   {r.name}
                                 </span>
                               );
                             })
                           ) : (
-                            <p className="text-[10px] text-gray-400 italic">↳ fallback legacy</p>
+                            <p className="text-[10px] leading-none text-gray-400 italic">↳ fallback legacy</p>
                           )}
                         </div>
                       )}
