@@ -243,8 +243,8 @@ async function ensureCriticalSeeds() {
       ) as any[];
       const colType: string = (colRows as any[])[0]?.COLUMN_TYPE ?? "";
       if (colType.includes("general_21")) {
-        await conn.execute(`ALTER TABLE \`${tbl}\` MODIFY COLUMN \`${col}\` ENUM('reav','general','mixed') NOT NULL DEFAULT 'general'`);
         await conn.execute(`UPDATE \`${tbl}\` SET \`${col}\` = 'general' WHERE \`${col}\` = 'general_21'`);
+        await conn.execute(`ALTER TABLE \`${tbl}\` MODIFY COLUMN \`${col}\` ENUM('reav','general','mixed') NOT NULL DEFAULT 'general'`);
         const hasRate = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='taxRate'`, [tbl]) as any[];
         if (!((hasRate as any[][])[0] as any[]).length) {
           await conn.execute(`ALTER TABLE \`${tbl}\` ADD COLUMN \`taxRate\` DECIMAL(5,2) NOT NULL DEFAULT 21.00`);
@@ -258,8 +258,8 @@ async function ensureCriticalSeeds() {
         `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tpv_sale_items' AND COLUMN_NAME='fiscalRegime_tsi'`
       ) as any[];
       if ((String((cr as any[])[0]?.COLUMN_TYPE ?? "")).includes("general_21")) {
-        await conn.execute(`ALTER TABLE \`tpv_sale_items\` MODIFY COLUMN \`fiscalRegime_tsi\` ENUM('reav','general','mixed') DEFAULT 'general'`);
         await conn.execute(`UPDATE \`tpv_sale_items\` SET \`fiscalRegime_tsi\` = 'general' WHERE \`fiscalRegime_tsi\` = 'general_21'`);
+        await conn.execute(`ALTER TABLE \`tpv_sale_items\` MODIFY COLUMN \`fiscalRegime_tsi\` ENUM('reav','general','mixed') DEFAULT 'general'`);
         console.log("[DB] Fiscal refactor aplicado en tpv_sale_items");
       }
     }
@@ -269,8 +269,8 @@ async function ensureCriticalSeeds() {
         `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='transactions' AND COLUMN_NAME='fiscalRegime_tx'`
       ) as any[];
       if ((String((cr as any[])[0]?.COLUMN_TYPE ?? "")).includes("general_21")) {
-        await conn.execute(`ALTER TABLE \`transactions\` MODIFY COLUMN \`fiscalRegime_tx\` ENUM('reav','general','mixed') DEFAULT 'general'`);
         await conn.execute(`UPDATE \`transactions\` SET \`fiscalRegime_tx\` = 'general' WHERE \`fiscalRegime_tx\` = 'general_21'`);
+        await conn.execute(`ALTER TABLE \`transactions\` MODIFY COLUMN \`fiscalRegime_tx\` ENUM('reav','general','mixed') DEFAULT 'general'`);
         const hasTxRate = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='transactions' AND COLUMN_NAME='taxRate_tx'`) as any[];
         if (!((hasTxRate as any[][])[0] as any[]).length) {
           await conn.execute(`ALTER TABLE \`transactions\` ADD COLUMN \`taxRate_tx\` DECIMAL(5,2) DEFAULT 21.00`);
