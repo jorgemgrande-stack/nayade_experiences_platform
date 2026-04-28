@@ -3,7 +3,7 @@
  * Módulo CRM para gestión completa del pipeline de anulaciones.
  */
 import { z } from "zod";
-import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
+import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -375,10 +375,7 @@ function emailSolicitudDocumentacion(fullName: string, requestId: number, adminT
 }
 // ─── Admin procedure helper ───────────────────────────────────────────────────
 
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (ctx.user.role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Solo administradores" });
-  }
+const adminProcedure = permissionProcedure("crm.reservations.manage", ["admin"]).use(async ({ ctx, next }) => {
   await assertModuleEnabled("cancellations_module_enabled");
   return next({ ctx });
 });

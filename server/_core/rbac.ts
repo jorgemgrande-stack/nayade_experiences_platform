@@ -1,14 +1,13 @@
 /**
- * RBAC helpers — Phase 3.
+ * RBAC helpers — Phase 4.
  *
  * Regla de prioridad:
- *   1. Si el usuario tiene entradas en rbac_user_roles → usar esos roles y sus permisos.
+ *   1. Si el usuario tiene entradas en rbac_user_roles → usar SOLO esos permisos.
  *   2. Si no tiene entradas → fallback a users.role (legacy) para derivar permisos.
- *   3. Cualquier error → retornar vacío sin romper el flujo.
+ *   3. Cualquier error → fallback a roles legacy sin romper el flujo.
  *
- * IMPORTANTE: estos helpers son de lectura / auditoría. No se usan en middleware
- * de routers en esta fase. Los accesos siguen controlados por users.role vía
- * adminProcedure / staffProcedure / adminrestProcedure.
+ * Estos helpers son usados activamente en adminProcedure / staffProcedure /
+ * adminrestProcedure y en permissionProcedure / anyPermissionProcedure.
  */
 
 import { getDb } from "../db";
@@ -104,9 +103,10 @@ export async function hasPermission(
  * Comprobación RBAC con fallback al sistema legacy de roles.
  *
  * Algoritmo:
- *  1. Llama a getUserPermissions (que ya hace RBAC-first / legacy-fallback).
+ *  1. Llama a getUserPermissions (RBAC-first: si tiene roles RBAC los usa exclusivamente;
+ *     si no tiene roles RBAC usa el rol legacy para derivar permisos).
  *  2. Si el permiso está en la lista → acceso concedido.
- *  3. Si getUserPermissions falla por cualquier razón → fallback a fallbackAllowedRoles.
+ *  3. Si getUserPermissions falla → fallback a fallbackAllowedRoles (rol legacy).
  *
  * Nunca lanza: siempre devuelve boolean.
  */
@@ -118,7 +118,7 @@ export async function checkRbacOrLegacy(
 ): Promise<boolean> {
   try {
     const perms = await getUserPermissions(userId, legacyRole);
-    return perms.includes(permissionKey) || fallbackAllowedRoles.includes(legacyRole);
+    return perms.includes(permissionKey);
   } catch {
     return fallbackAllowedRoles.includes(legacyRole);
   }

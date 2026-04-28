@@ -2,7 +2,7 @@ import { z } from "zod";
 import { eq, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { organizations, onboardingStatus, systemSettings } from "../../drizzle/schema";
 
 // Default tenant — Nayade Experiences (id=1).
@@ -15,12 +15,7 @@ async function requireDb() {
   return db;
 }
 
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if ((ctx.user as { role: string }).role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido a administradores" });
-  }
-  return next({ ctx });
-});
+const adminProcedure = permissionProcedure("settings.advanced", ["admin"]);
 
 // Maps wizard step id → DB field to set to true
 const STEP_FIELDS: Record<string, Partial<typeof onboardingStatus.$inferInsert>> = {

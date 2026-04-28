@@ -32,7 +32,16 @@ export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
-    if (!ctx.user || ctx.user.role !== 'admin') {
+    if (!ctx.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    }
+    const allowed = await checkRbacOrLegacy(
+      ctx.user.id,
+      ctx.user.role as string,
+      "settings.manage",
+      ["admin"],
+    );
+    if (!allowed) {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 
@@ -46,13 +55,22 @@ export const adminProcedure = t.procedure.use(
 );
 
 /**
- * staffProcedure: acepta 'admin' o 'agente'.
- * Usado para TPV, CRM, bookings — operaciones de equipo comercial.
+ * staffProcedure: acceso equipo comercial.
+ * RBAC: permiso crm.view. Legacy fallback: admin | agente.
  */
 export const staffProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
-    if (!ctx.user || !['admin', 'agente'].includes(ctx.user.role as string)) {
+    if (!ctx.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    }
+    const allowed = await checkRbacOrLegacy(
+      ctx.user.id,
+      ctx.user.role as string,
+      "crm.view",
+      ["admin", "agente"],
+    );
+    if (!allowed) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al equipo" });
     }
     return next({ ctx: { ...ctx, user: ctx.user } });
@@ -103,7 +121,7 @@ export function anyPermissionProcedure(permissionKeys: string[], fallbackRoles: 
     let allowed: boolean;
     try {
       const perms = await getUserPermissions(ctx.user.id, ctx.user.role as string);
-      allowed = permissionKeys.some(k => perms.includes(k)) || fallbackRoles.includes(ctx.user.role as string);
+      allowed = permissionKeys.some(k => perms.includes(k));
     } catch {
       allowed = fallbackRoles.includes(ctx.user.role as string);
     }
@@ -115,16 +133,23 @@ export function anyPermissionProcedure(permissionKeys: string[], fallbackRoles: 
 }
 
 /**
- * adminrestProcedure: acepta usuarios con rol 'admin' o 'adminrest'.
- * Usado para todos los procedimientos del módulo de restaurantes.
- * El rol adminrest tiene acceso completo al gestor de reservas pero
- * solo a los restaurantes que tiene asignados.
+ * adminrestProcedure: acceso módulo restaurantes.
+ * RBAC: permiso restaurants.view. Legacy fallback: admin | adminrest.
  */
 export const adminrestProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
-    if (!ctx.user || !['admin', 'adminrest'].includes(ctx.user.role as string)) {
+    if (!ctx.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    }
+    const allowed = await checkRbacOrLegacy(
+      ctx.user.id,
+      ctx.user.role as string,
+      "restaurants.view",
+      ["admin", "adminrest"],
+    );
+    if (!allowed) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: "Acceso restringido al módulo de restaurantes",

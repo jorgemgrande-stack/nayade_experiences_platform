@@ -3,7 +3,7 @@
  * CRUD completo: listar, obtener, previsualizar, editar, crear, eliminar y restaurar plantillas.
  * Las plantillas del sistema se pre-cargan en BD al primer acceso (seed automático).
  */
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -39,12 +39,7 @@ import {
 } from "../emailTemplates";
 
 // ─── Admin guard ──────────────────────────────────────────────────────────────
-const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Solo administradores" });
-  }
-  return next({ ctx });
-});
+const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
 
 // ─── Seed data: plantillas del sistema ───────────────────────────────────────
 interface SeedTemplate {
