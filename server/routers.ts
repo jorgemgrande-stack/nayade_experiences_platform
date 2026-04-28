@@ -177,6 +177,7 @@ import { emailIngestionRouter } from "./routers/emailIngestion";
 import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
 import { dailyControlRouter } from "./routers/dailyControl";
+import { proposalsRouter } from "./routers/proposals";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -194,6 +195,7 @@ export const appRouter = router({
   config: configRouter,
   onboarding: onboardingRouter,
   cancellations: cancellationsRouter,
+  proposals: proposalsRouter,
   emailTemplates: emailTemplatesRouter,
   operations: operationsRouter,
   pdfTemplates: pdfTemplatesRouter,

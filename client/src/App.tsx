@@ -35,6 +35,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import DynamicPage from "./pages/DynamicPage";
 import QuoteAcceptance from "./pages/QuoteAcceptance";
+import ProposalView from "./pages/ProposalView";
 import HotelRoom from "./pages/HotelRoom";
 import SpaDetail from "./pages/SpaDetail";
 import RestaurantBooking from "./pages/RestaurantBooking";
@@ -105,6 +106,7 @@ const OnboardingWizard = lazy(() => import("./pages/admin/onboarding/OnboardingW
 // CRM
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
 const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
+const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
 
 // Fiscal REAV
@@ -152,6 +154,7 @@ function Router() {
       <Route path="/verificar-bono" component={VerificarBono} />
       <Route path="/solicitar-anulacion">{() => <Suspense fallback={<AdminLoadingFallback />}><SolicitarAnulacion /></Suspense>}</Route>
       <Route path="/presupuesto/:token" component={QuoteAcceptance} />
+      <Route path="/propuesta/:token" component={ProposalView} />
       <Route path="/contacto" component={Contact} />
       <Route path="/ubicaciones" component={Locations} />
       <Route path="/ubicaciones/:slug" component={Locations} />
@@ -283,6 +286,7 @@ function Router() {
       <Route path="/admin/crm/presupuestos">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/clientes">{() => <Suspense fallback={<AdminLoadingFallback />}><ClientsManager /></Suspense>}</Route>
+      <Route path="/admin/crm/propuestas">{() => <Suspense fallback={<AdminLoadingFallback />}><ProposalsPage /></Suspense>}</Route>
       <Route path="/admin/crm/anulaciones">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
 
       {/* Users & Settings */}

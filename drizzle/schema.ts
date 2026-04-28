@@ -249,6 +249,85 @@ export const leads = mysqlTable("leads", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// ─── PROPOSALS (Propuestas Comerciales) ───────────────────────────────────────
+export const proposals = mysqlTable("proposals", {
+  id: int("id").autoincrement().primaryKey(),
+  proposalNumber: varchar("proposalNumber", { length: 32 }).notNull().unique(),
+  leadId: int("leadId").notNull(),
+  agentId: int("agentId").notNull(),
+  title: varchar("title", { length: 256 }).notNull(),
+  description: text("description"),
+  mode: mysqlEnum("mode", ["configurable", "multi_option"]).default("configurable").notNull(),
+  // For "configurable" mode — same shape as quotes.items
+  items: json("items").$type<{
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+    fiscalRegime?: "reav" | "general";
+    taxRate?: number;
+    isOptional?: boolean;
+    productId?: number;
+  }[]>().default([]),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull().default("0"),
+  discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
+  tax: decimal("tax", { precision: 10, scale: 2 }).default("0"),
+  total: decimal("total", { precision: 10, scale: 2 }).notNull().default("0"),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  status: mysqlEnum("status", [
+    "borrador",
+    "enviado",
+    "visualizado",
+    "aceptado",
+    "rechazado",
+    "expirado",
+  ]).default("borrador").notNull(),
+  token: varchar("token", { length: 128 }).unique(),
+  publicUrl: text("publicUrl"),
+  validUntil: timestamp("validUntil"),
+  conditions: text("conditions"),
+  notes: text("notes"),
+  sentAt: timestamp("sentAt"),
+  viewedAt: timestamp("viewedAt"),
+  acceptedAt: timestamp("acceptedAt"),
+  // Which multi_option was selected by the client
+  selectedOptionId: int("selectedOptionId"),
+  // If proposal was converted to a quote
+  convertedToQuoteId: int("convertedToQuoteId"),
+  ghlOpportunityId: varchar("ghlOpportunityId", { length: 128 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Proposal = typeof proposals.$inferSelect;
+export type InsertProposal = typeof proposals.$inferInsert;
+
+// Options for multi_option proposals — each option is a full alternative
+export const proposalOptions = mysqlTable("proposal_options", {
+  id: int("id").autoincrement().primaryKey(),
+  proposalId: int("proposalId").notNull(),
+  title: varchar("title", { length: 256 }).notNull(),
+  description: text("description"),
+  items: json("items").$type<{
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+    fiscalRegime?: "reav" | "general";
+    taxRate?: number;
+    productId?: number;
+  }[]>().default([]),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull().default("0"),
+  discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
+  tax: decimal("tax", { precision: 10, scale: 2 }).default("0"),
+  total: decimal("total", { precision: 10, scale: 2 }).notNull().default("0"),
+  isRecommended: boolean("isRecommended").default(false).notNull(),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ProposalOption = typeof proposalOptions.$inferSelect;
+export type InsertProposalOption = typeof proposalOptions.$inferInsert;
+
 export const quotes = mysqlTable("quotes", {
   id: int("id").autoincrement().primaryKey(),
   quoteNumber: varchar("quoteNumber", { length: 32 }).notNull().unique(),

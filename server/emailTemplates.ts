@@ -2212,3 +2212,147 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
     ${emailFooter()}`;
   return emailWrapper(`Cierre de caja — ${d.registerName} — ${dateStr}`, body);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PLANTILLA: Propuesta Comercial enviada al cliente (pre-presupuesto)
+// ═══════════════════════════════════════════════════════════════════════════════
+export interface ProposalEmailData {
+  proposalNumber: string;
+  title: string;
+  clientName: string;
+  mode: "configurable" | "multi_option";
+  // For configurable mode
+  items?: { description: string; quantity: number; unitPrice: number; total: number; isOptional?: boolean }[];
+  subtotal?: string;
+  discount?: string;
+  tax?: string;
+  total?: string;
+  // For multi_option mode
+  options?: {
+    title: string;
+    description?: string;
+    items: { description: string; quantity: number; unitPrice: number; total: number }[];
+    subtotal: string;
+    tax: string;
+    total: string;
+    isRecommended?: boolean;
+  }[];
+  validUntil?: Date;
+  notes?: string;
+  conditions?: string;
+  publicUrl: string;
+}
+
+export function buildProposalHtml(d: ProposalEmailData): string {
+  function itemRowsHtml(items: { description: string; quantity: number; unitPrice: number; total: number; isOptional?: boolean }[]): string {
+    return items.map(item => `<tr>
+      <td style="padding:10px 0;border-bottom:1px solid #eef2f7;color:#374151;font-size:13px;font-family:Arial,sans-serif;">
+        ${item.description}${item.isOptional ? ' <span style="font-size:11px;color:#9ca3af;font-style:italic;">(opcional)</span>' : ""}
+      </td>
+      <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:center;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${item.quantity}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${Number(item.unitPrice).toFixed(2)} &euro;</td>
+      <td style="padding:10px 0;border-bottom:1px solid #eef2f7;text-align:right;color:${BRAND_ORANGE};font-size:13px;font-weight:700;font-family:Arial,sans-serif;">${Number(item.total).toFixed(2)} &euro;</td>
+    </tr>`).join("");
+  }
+
+  function itemsTableBlock(title: string, items: { description: string; quantity: number; unitPrice: number; total: number; isOptional?: boolean }[], subtotal: string, tax: string, total: string, discount?: string, isRecommended?: boolean): string {
+    return `<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:${isRecommended ? `2px solid ${BRAND_ORANGE}` : "1px solid #e8eef7"};margin-bottom:12px;">
+      <tr><td style="padding:18px 22px;">
+        <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;font-family:Arial,sans-serif;">
+          ${title}${isRecommended ? ' <span style="color:' + BRAND_ORANGE + ';">★ Recomendada</span>' : ""}
+        </p>
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <thead>
+            <tr style="background:${BRAND_BLUE};">
+              <th style="padding:9px 8px;text-align:left;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Descripci&oacute;n</th>
+              <th style="padding:9px 8px;text-align:center;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Cant.</th>
+              <th style="padding:9px 8px;text-align:right;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Precio</th>
+              <th style="padding:9px 8px;text-align:right;color:#fff;font-size:11px;font-family:Arial,sans-serif;font-weight:600;">Total</th>
+            </tr>
+          </thead>
+          <tbody>${itemRowsHtml(items)}</tbody>
+        </table>
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
+          ${Number(discount ?? 0) > 0 ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Descuento</td><td style="padding:4px 0;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">-${Number(discount).toFixed(2)} &euro;</td></tr>` : ""}
+          ${Number(tax) > 0 ? `<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">IVA</td><td style="padding:4px 0;text-align:right;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">${Number(tax).toFixed(2)} &euro;</td></tr>` : ""}
+          <tr style="background:${BRAND_BLUE};"><td style="padding:10px 12px;color:#fff;font-size:14px;font-weight:700;font-family:Arial,sans-serif;">TOTAL</td><td style="padding:10px 12px;text-align:right;color:${BRAND_ORANGE};font-size:22px;font-weight:900;font-family:Georgia,serif;">${Number(total).toFixed(2)} &euro;</td></tr>
+        </table>
+      </td></tr>
+    </table>`;
+  }
+
+  const contentBlock = d.mode === "multi_option" && d.options?.length
+    ? `<tr><td style="padding:0 32px 12px;">
+        <p style="color:${BRAND_MID_BLUE};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 12px;font-family:Arial,sans-serif;">Elige la opci&oacute;n que mejor se adapte a ti</p>
+        ${d.options.map(opt => itemsTableBlock(opt.title, opt.items, opt.subtotal, opt.tax, opt.total, "0", opt.isRecommended)).join("")}
+      </td></tr>`
+    : `<tr><td style="padding:0 32px 12px;">
+        ${itemsTableBlock(d.title, d.items ?? [], d.subtotal ?? "0", d.tax ?? "0", d.total ?? "0", d.discount)}
+      </td></tr>`;
+
+  const validUntilBlock = d.validUntil
+    ? `<tr><td style="padding:0 32px 12px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border-left:4px solid #f59e0b;border-radius:0 8px 8px 0;">
+          <tr><td style="padding:12px 18px;">
+            <p style="color:#92400e;font-size:13px;margin:0;font-family:Arial,sans-serif;">
+              &#9203; Esta propuesta es v&aacute;lida hasta el <strong>${new Date(d.validUntil).toLocaleDateString("es-ES")}</strong>
+            </p>
+          </td></tr>
+        </table>
+      </td></tr>` : "";
+
+  const notesBlock = d.notes
+    ? `<tr><td style="padding:0 32px 12px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+          <tr><td style="padding:14px 18px;">
+            <p style="color:#374151;font-size:14px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">${d.notes}</p>
+          </td></tr>
+        </table>
+      </td></tr>` : "";
+
+  const conditionsBlock = d.conditions
+    ? `<tr><td style="padding:0 32px 12px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;">
+          <tr><td style="padding:18px 22px;">
+            <p style="color:${BRAND_MID_BLUE};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Condiciones</p>
+            <p style="color:#6b7280;font-size:13px;line-height:1.6;margin:0;font-family:Arial,sans-serif;">${d.conditions}</p>
+          </td></tr>
+        </table>
+      </td></tr>` : "";
+
+  const ctaBlock = `<tr><td style="padding:0 32px 12px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border:2px solid #fed7aa;border-radius:10px;">
+      <tr><td style="padding:24px;text-align:center;">
+        <p style="color:#9a3412;font-size:14px;font-weight:700;margin:0 0 6px;font-family:Arial,sans-serif;">&#128203; Ver tu propuesta completa</p>
+        <p style="color:#c2410c;font-size:13px;margin:0 0 16px;font-family:Arial,sans-serif;">Accede a todos los detalles y conf&iacute;rmanos tu elecci&oacute;n</p>
+        ${ctaButton("Ver Propuesta Completa", d.publicUrl)}
+        <p style="color:#9ca3af;font-size:12px;margin:8px 0 0;font-family:Arial,sans-serif;">O contacta con nosotros en <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">${getContactEmail()}</a></p>
+      </td></tr>
+    </table>
+  </td></tr>`;
+
+  const body = `
+    ${emailHeader("Tu Propuesta Comercial", `Propuesta <strong>${d.proposalNumber}</strong> preparada especialmente para ti`)}
+    <tr><td style="padding:28px 32px 16px;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.clientName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Hemos preparado una propuesta personalizada para ti con todos los detalles.
+        Rev&iacute;sala con calma y no dudes en contactarnos si tienes alguna pregunta o quieres ajustar algo.
+      </p>
+    </td></tr>
+    ${contentBlock}
+    ${validUntilBlock}
+    ${notesBlock}
+    ${ctaBlock}
+    ${conditionsBlock}
+    ${emotionalBlock("Una experiencia &uacute;nica te espera en el lago. &#161;Conf&iacute;a en nosotros para hacerla inolvidable!")}
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        &iquest;Necesitas modificar algo? Escrb&iacute;benos a
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper(`Propuesta ${d.proposalNumber} — ${getBrandName()}`, body);
+}

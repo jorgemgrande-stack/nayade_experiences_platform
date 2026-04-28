@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
+import { ProposalLeadButton } from "./ProposalsManager";
 import {
   Users,
   User,
@@ -6150,6 +6151,7 @@ export default function CRMDashboard() {
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
+                          <ProposalLeadButton leadId={lead.id} leadName={lead.name} />
                           <Button
                             size="sm"
                             variant="ghost"

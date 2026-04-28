@@ -59,6 +59,7 @@ const navItems = [
     roles: ["admin", "agente"],
     children: [
       { label: "Leads", href: "/admin/crm?tab=leads", key: "crm-leads" },
+      { label: "Propuestas", href: "/admin/crm/propuestas", key: "crm-propuestas" },
       { label: "Presupuestos", href: "/admin/crm?tab=quotes", key: "crm-presupuestos" },
       { label: "Reservas", href: "/admin/crm?tab=reservations", key: "crm-reservas" },
       { label: "Facturas", href: "/admin/crm?tab=invoices", key: "crm-facturas" },
