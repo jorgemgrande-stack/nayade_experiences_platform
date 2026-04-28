@@ -16,6 +16,7 @@ import redsysRouter from "../redsysRoutes";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
+import ghlWebhookRouter from "../ghlWebhookRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
@@ -158,6 +159,8 @@ async function startServer() {
   // Invoice HTML on-demand preview (no storage required)
   app.use(invoicePreviewRouter);
   app.use(kbRouter);
+  // GHL webhook receiver
+  app.use(ghlWebhookRouter);
   // tRPC API
   app.use(
     "/api/trpc",
