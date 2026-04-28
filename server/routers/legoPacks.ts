@@ -81,7 +81,7 @@ const legoPackLineInput = z.object({
  * Calculates the price of a Lego Pack given its lines and the active line IDs
  * chosen by the client. Returns per-line breakdown and totals.
  */
-async function calculateLegoPackPrice(
+export async function calculateLegoPackPrice(
   legoPackId: number,
   activeLineIds?: number[] // undefined = all active lines
 ) {

@@ -129,7 +129,7 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
-import { siteSettings, packs, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes } from "../drizzle/schema";
+import { siteSettings, packs, legoPacks as legoPacksTable, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes } from "../drizzle/schema";
 
 // ─── Pricing helper (per_person | per_unit) ───────────────────────────────────
 /**
@@ -161,7 +161,7 @@ import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
 import { timeSlotsRouter } from "./routers/timeSlots";
 import { tpvRouter } from "./routers/tpv";
 import { discountsRouter } from "./routers/discounts";
-import { legoPacksRouter } from "./routers/legoPacks";
+import { legoPacksRouter, calculateLegoPackPrice } from "./routers/legoPacks";
 import { expensesModuleRouter } from "./routers/expenses";
 import { ticketingRouter } from "./routers/ticketing";
 import { cancellationsRouter } from "./routers/cancellations";
@@ -1558,7 +1558,31 @@ export const appRouter = router({
         const productNames: string[] = [];
         for (const item of input.items) {
           const product = await getExpById(item.productId);
-          if (!product) throw new TRPCError({ code: "NOT_FOUND", message: `Producto ${item.productId} no encontrado` });
+          if (!product) {
+            // Fallback: try lego pack
+            const dbInst = await getDb();
+            if (!dbInst) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
+            const [packRow] = await dbInst.select().from(legoPacksTable).where(eq(legoPacksTable.id, item.productId)).limit(1);
+            if (!packRow) throw new TRPCError({ code: "NOT_FOUND", message: `Producto ${item.productId} no encontrado` });
+            if (!packRow.isOnlineSale) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no está disponible para venta online` });
+            const pricing = await calculateLegoPackPrice(item.productId);
+            const packPricePerPerson = pricing.totalFinal;
+            if (!(packPricePerPerson > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El pack "${packRow.title}" no tiene precio configurado` });
+            const extrasTotal = item.extras.reduce((s, e) => s + e.price * e.quantity, 0);
+            const itemAmountCents = Math.round((packPricePerPerson * item.people + extrasTotal) * 100);
+            totalAmountCents += itemAmountCents;
+            itemsWithPrices.push({
+              productId: item.productId,
+              productName: packRow.title,
+              bookingDate: item.bookingDate,
+              people: item.people,
+              extrasJson: JSON.stringify(item.extras),
+              amountTotal: itemAmountCents,
+              pricingType: "per_person",
+            });
+            productNames.push(packRow.title);
+            continue;
+          }
           if (!product.basePrice) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene precio fijo` });
           const basePrice = parseFloat(String(product.basePrice));
           if (!(basePrice > 0)) throw new TRPCError({ code: "BAD_REQUEST", message: `El producto ${product.title} no tiene un precio válido (debe ser > 0)` });
