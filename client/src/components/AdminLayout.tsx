@@ -84,6 +84,7 @@ const navItems = [
     icon: BarChart3,
     roles: ["admin"],
     children: [
+      { label: "Control Diario", href: "/admin/contabilidad/control-diario" },
       { label: "Dashboard", href: "/admin/contabilidad/dashboard" },
       { label: "Transacciones", href: "/admin/contabilidad/transacciones" },
       { label: "Informes", href: "/admin/contabilidad/informes" },

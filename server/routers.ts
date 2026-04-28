@@ -176,6 +176,7 @@ import { cardTerminalBatchesRouter } from "./routers/cardTerminalBatches";
 import { emailIngestionRouter } from "./routers/emailIngestion";
 import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
+import { dailyControlRouter } from "./routers/dailyControl";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -188,6 +189,7 @@ export const appRouter = router({
   cashRegister: cashRegisterRouter,
   cardTerminalOperations: cardTerminalOperationsRouter,
   cardTerminalBatches: cardTerminalBatchesRouter,
+  dailyControl: dailyControlRouter,
   emailIngestion: emailIngestionRouter,
   config: configRouter,
   onboarding: onboardingRouter,
