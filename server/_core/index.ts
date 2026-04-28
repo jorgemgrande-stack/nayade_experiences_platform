@@ -233,7 +233,10 @@ async function ensureCriticalSeeds() {
       ["+34 911 67 51 89", "+34 930 34 77 91"]
     );
 
-    // Refactor fiscal: migrar general_21 → general en todas las tablas afectadas
+    // Refactor fiscal: migrar general_21 → general en todas las tablas afectadas.
+    // Desactivamos strict mode para esta sesión: MySQL lanza WARN_DATA_TRUNCATED
+    // (errno 1265) en modo estricto al comparar ENUM con un valor que ya no existe.
+    await conn.execute(`SET SESSION sql_mode = REPLACE(REPLACE(@@SESSION.sql_mode, 'STRICT_TRANS_TABLES', ''), 'STRICT_ALL_TABLES', '')`);
     for (const tbl of ["experiences", "packs", "room_types", "spa_treatments"]) {
       const col = "fiscalRegime";
       const [colRows] = await conn.execute(
@@ -242,14 +245,16 @@ async function ensureCriticalSeeds() {
         [tbl, col]
       ) as any[];
       const colType: string = (colRows as any[])[0]?.COLUMN_TYPE ?? "";
+      // Corregir datos: CAST evita comparación ENUM estricta; OR col+0=0 cubre filas
+      // que quedaron como '' por un ALTER previo parcialmente aplicado.
+      await conn.execute(`UPDATE \`${tbl}\` SET \`${col}\` = 'general' WHERE CAST(\`${col}\` AS CHAR) = 'general_21' OR \`${col}\` + 0 = 0`);
       if (colType.includes("general_21")) {
-        await conn.execute(`UPDATE \`${tbl}\` SET \`${col}\` = 'general' WHERE \`${col}\` = 'general_21'`);
         await conn.execute(`ALTER TABLE \`${tbl}\` MODIFY COLUMN \`${col}\` ENUM('reav','general','mixed') NOT NULL DEFAULT 'general'`);
-        const hasRate = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='taxRate'`, [tbl]) as any[];
-        if (!((hasRate as any[][])[0] as any[]).length) {
-          await conn.execute(`ALTER TABLE \`${tbl}\` ADD COLUMN \`taxRate\` DECIMAL(5,2) NOT NULL DEFAULT 21.00`);
-        }
         console.log(`[DB] Fiscal refactor aplicado en ${tbl}`);
+      }
+      const hasRate = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='taxRate'`, [tbl]) as any[];
+      if (!((hasRate as any[][])[0] as any[]).length) {
+        await conn.execute(`ALTER TABLE \`${tbl}\` ADD COLUMN \`taxRate\` DECIMAL(5,2) NOT NULL DEFAULT 21.00`);
       }
     }
     // tpv_sale_items → columna fiscalRegime_tsi
@@ -257,8 +262,8 @@ async function ensureCriticalSeeds() {
       const [cr] = await conn.execute(
         `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tpv_sale_items' AND COLUMN_NAME='fiscalRegime_tsi'`
       ) as any[];
+      await conn.execute(`UPDATE \`tpv_sale_items\` SET \`fiscalRegime_tsi\` = 'general' WHERE CAST(\`fiscalRegime_tsi\` AS CHAR) = 'general_21' OR \`fiscalRegime_tsi\` + 0 = 0`);
       if ((String((cr as any[])[0]?.COLUMN_TYPE ?? "")).includes("general_21")) {
-        await conn.execute(`UPDATE \`tpv_sale_items\` SET \`fiscalRegime_tsi\` = 'general' WHERE \`fiscalRegime_tsi\` = 'general_21'`);
         await conn.execute(`ALTER TABLE \`tpv_sale_items\` MODIFY COLUMN \`fiscalRegime_tsi\` ENUM('reav','general','mixed') DEFAULT 'general'`);
         console.log("[DB] Fiscal refactor aplicado en tpv_sale_items");
       }
@@ -268,14 +273,14 @@ async function ensureCriticalSeeds() {
       const [cr] = await conn.execute(
         `SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='transactions' AND COLUMN_NAME='fiscalRegime_tx'`
       ) as any[];
+      await conn.execute(`UPDATE \`transactions\` SET \`fiscalRegime_tx\` = 'general' WHERE CAST(\`fiscalRegime_tx\` AS CHAR) = 'general_21' OR \`fiscalRegime_tx\` + 0 = 0`);
       if ((String((cr as any[])[0]?.COLUMN_TYPE ?? "")).includes("general_21")) {
-        await conn.execute(`UPDATE \`transactions\` SET \`fiscalRegime_tx\` = 'general' WHERE \`fiscalRegime_tx\` = 'general_21'`);
         await conn.execute(`ALTER TABLE \`transactions\` MODIFY COLUMN \`fiscalRegime_tx\` ENUM('reav','general','mixed') DEFAULT 'general'`);
-        const hasTxRate = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='transactions' AND COLUMN_NAME='taxRate_tx'`) as any[];
-        if (!((hasTxRate as any[][])[0] as any[]).length) {
-          await conn.execute(`ALTER TABLE \`transactions\` ADD COLUMN \`taxRate_tx\` DECIMAL(5,2) DEFAULT 21.00`);
-        }
         console.log("[DB] Fiscal refactor aplicado en transactions");
+      }
+      const hasTxRate = await conn.execute(`SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='transactions' AND COLUMN_NAME='taxRate_tx'`) as any[];
+      if (!((hasTxRate as any[][])[0] as any[]).length) {
+        await conn.execute(`ALTER TABLE \`transactions\` ADD COLUMN \`taxRate_tx\` DECIMAL(5,2) DEFAULT 21.00`);
       }
     }
     // invoices → taxBreakdown JSON
