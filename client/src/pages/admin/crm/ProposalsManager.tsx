@@ -535,10 +535,56 @@ function ConvertModal({
   );
 }
 
+// ─── Lead picker modal (for global proposals page) ────────────────────────────
+
+function LeadPickerModal({ onPicked, onClose }: { onPicked: (id: number, name: string) => void; onClose: () => void }) {
+  const [search, setSearch] = useState("");
+  const { data, isLoading } = trpc.crm.leads.list.useQuery({ search: search || undefined, limit: 30 });
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="w-[95vw] max-w-md">
+        <DialogHeader><DialogTitle>Seleccionar lead</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <Input
+            placeholder="Buscar por nombre o email..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            autoFocus
+          />
+          <div className="max-h-64 overflow-y-auto space-y-1">
+            {isLoading ? (
+              <div className="flex justify-center py-4"><RefreshCw className="w-4 h-4 animate-spin text-foreground/40" /></div>
+            ) : !data?.length ? (
+              <p className="text-sm text-foreground/40 text-center py-4">No se encontraron leads</p>
+            ) : (
+              data.map((lead: { id: number; name: string; email: string }) => (
+                <button
+                  key={lead.id}
+                  type="button"
+                  onClick={() => { onPicked(lead.id, lead.name); onClose(); }}
+                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-foreground/[0.07] transition-colors"
+                >
+                  <div className="text-sm font-medium">{lead.name}</div>
+                  <div className="text-xs text-foreground/40">{lead.email}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main ProposalsManager ─────────────────────────────────────────────────────
 
 export default function ProposalsManager({ leadId, leadName }: { leadId?: number; leadName?: string }) {
   const [createModal, setCreateModal] = useState<{ open: boolean; leadId: number; leadName: string } | null>(null);
+  const [leadPickerOpen, setLeadPickerOpen] = useState(false);
   const [editModal, setEditModal] = useState<number | null>(null);
   const [convertModal, setConvertModal] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
@@ -588,16 +634,20 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
         <h3 className="text-sm font-medium text-foreground/70">
           Propuestas Comerciales {leadName ? `— ${leadName}` : ""}
         </h3>
-        {leadId && leadName && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-xs"
-            onClick={() => setCreateModal({ open: true, leadId, leadName })}
-          >
-            <Plus className="w-3.5 h-3.5 mr-1" /> Nueva propuesta
-          </Button>
-        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs"
+          onClick={() => {
+            if (leadId && leadName) {
+              setCreateModal({ open: true, leadId, leadName });
+            } else {
+              setLeadPickerOpen(true);
+            }
+          }}
+        >
+          <Plus className="w-3.5 h-3.5 mr-1" /> Nueva propuesta
+        </Button>
       </div>
 
       {listQuery.isLoading ? (
@@ -732,6 +782,17 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
             </table>
           </div>
         </div>
+      )}
+
+      {/* Lead picker (global page: no leadId preselected) */}
+      {leadPickerOpen && (
+        <LeadPickerModal
+          onClose={() => setLeadPickerOpen(false)}
+          onPicked={(id, name) => {
+            setLeadPickerOpen(false);
+            setCreateModal({ open: true, leadId: id, leadName: name });
+          }}
+        />
       )}
 
       {/* Delete confirm */}
