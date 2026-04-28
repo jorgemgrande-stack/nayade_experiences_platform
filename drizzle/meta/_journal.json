@@ -526,6 +526,13 @@
       "when": 1777766400000,
       "tag": "0076_rbac_reseed_users",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "5",
+      "when": 1777852800000,
+      "tag": "0077_admin_jorge_grande",
+      "breakpoints": true
     }
   ]
 }
