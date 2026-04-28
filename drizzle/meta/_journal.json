@@ -533,6 +533,13 @@
       "when": 1777852800000,
       "tag": "0077_admin_jorge_grande",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "5",
+      "when": 1777413658937,
+      "tag": "0078_controler_role",
+      "breakpoints": true
     }
   ]
 }
