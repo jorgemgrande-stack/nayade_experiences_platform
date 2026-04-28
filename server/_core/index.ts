@@ -233,6 +233,21 @@ async function ensureCriticalSeeds() {
       ["+34 911 67 51 89", "+34 930 34 77 91"]
     );
 
+    // Garantizar que 'controler' existe en el ENUM role de users
+    const [enumRows] = await conn.execute(
+      `SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'`
+    ) as any[];
+    const columnType: string = (enumRows as any[])[0]?.COLUMN_TYPE ?? "";
+    if (!columnType.includes("controler")) {
+      await conn.execute(
+        `ALTER TABLE \`users\` MODIFY COLUMN \`role\`
+         enum('user','admin','monitor','agente','adminrest','controler')
+         NOT NULL DEFAULT 'user'`
+      );
+      console.log("[DB] ENUM role actualizado con 'controler'");
+    }
+
     await conn.end();
     console.log("[DB] Seeds críticos verificados");
   } catch (err) {
