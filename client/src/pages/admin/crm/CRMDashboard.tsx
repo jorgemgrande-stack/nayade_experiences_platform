@@ -402,7 +402,7 @@ function LeadDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -415,7 +415,7 @@ function LeadDetailModal({
 
   return (
     <>
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="flex items-center gap-3 text-white">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center font-bold text-sm">
@@ -850,7 +850,7 @@ function LeadEditModal({
         </div>
 
         {/* Fecha y participantes */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
             <Label className="text-foreground/65 text-xs">Fecha de la actividad</Label>
             <Input type="date" value={form.preferredDate} onChange={e => setForm({ ...form, preferredDate: e.target.value })} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
@@ -1151,7 +1151,7 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Fecha y participantes globales */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="col-span-3 sm:col-span-1">
             <Label className="text-xs text-foreground/60 mb-1 block">Fecha de la actividad</Label>
             <Input type="date" value={preferredDate} onChange={e => setPreferredDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white" />
@@ -1561,7 +1561,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <Plus className="w-5 h-5 text-orange-400" /> Nuevo Presupuesto
@@ -1671,6 +1671,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
+          <div className="overflow-x-auto -mx-1 px-1">
+          <div className="min-w-[460px]">
           <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
             <span className="col-span-4">Descripción</span>
             <span className="col-span-2 text-center">Régimen</span>
@@ -1716,6 +1718,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                 </Button>
               </div>
             ))}
+          </div>
+          </div>
           </div>
         </div>
 
@@ -2023,7 +2027,7 @@ function QuoteBuilderModal({
   };
 
   return (
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <FileText className="w-5 h-5 text-orange-400" /> Nuevo Presupuesto
@@ -2100,6 +2104,8 @@ function QuoteBuilderModal({
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
+          <div className="overflow-x-auto -mx-1 px-1">
+          <div className="min-w-[460px]">
           <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
             <span className="col-span-4">Descripción</span>
             <span className="col-span-2 text-center">Régimen</span>
@@ -2163,6 +2169,8 @@ function QuoteBuilderModal({
                 </Button>
               </div>
             ))}
+          </div>
+          </div>
           </div>
         </div>
 
@@ -2584,7 +2592,7 @@ function QuoteEditModal({
 
   if (isLoading || !initialized) {
     return (
-      <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -2593,7 +2601,7 @@ function QuoteEditModal({
   }
 
   return (
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
+    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-2">
           <Pencil className="w-4 h-4 text-orange-400" /> Editar Presupuesto
@@ -2629,6 +2637,8 @@ function QuoteEditModal({
               <Plus className="w-3 h-3 mr-1" /> Añadir línea
             </Button>
           </div>
+          <div className="overflow-x-auto -mx-1 px-1">
+          <div className="min-w-[460px]">
           <div className="text-xs text-foreground/40 grid grid-cols-12 gap-2 mb-1">
             <span className="col-span-4">Descripción</span>
             <span className="col-span-2 text-center">Régimen</span>
@@ -2664,6 +2674,8 @@ function QuoteEditModal({
                 </Button>
               </div>
             ))}
+          </div>
+          </div>
           </div>
         </div>
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
@@ -3161,7 +3173,7 @@ function QuoteDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -3179,7 +3191,7 @@ function QuoteDetailModal({
 
   return (
     <>
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
+    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
       <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
       <DialogHeader>
         <DialogTitle className="text-white flex items-center gap-3">
@@ -3892,7 +3904,7 @@ function QuoteDetailModal({
             )}
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button
                   key={m}
@@ -3999,7 +4011,7 @@ function QuoteDetailModal({
           <div className="space-y-4 py-2">
             <p className="text-foreground/65 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
             {/* Selector de método */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button key={m}
                   onClick={() => { setPaymentMethodSelected(m); setViewTpvOp(""); setViewPayNote(""); setViewProofUrl(null); setViewProofKey(null); setSelectedBankMovementIdForConfirm(null); setShowBankMovementSearchForConfirm(false); setBankMovementSearchForConfirm(""); setSelectedTpvOpIdForConfirm(null); setShowTpvOpSearchForConfirm(false); setTpvOpSearchForConfirm(""); }}
@@ -4362,7 +4374,7 @@ function ReservationDetailModal({
 
   if (isLoading) {
     return (
-      <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
+      <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
         <div className="flex items-center justify-center py-12">
           <RefreshCw className="w-6 h-6 animate-spin text-orange-400" />
         </div>
@@ -4375,7 +4387,7 @@ function ReservationDetailModal({
   const totalEur = (res.amountTotal / 100).toFixed(2);
 
   return (
-    <DialogContent className="max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
+    <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white max-h-[90vh] flex flex-col overflow-hidden p-0">
       <div className="overflow-y-auto flex-1 px-6 pt-6 pb-2">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-3">
@@ -5321,11 +5333,11 @@ export default function CRMDashboard() {
     <AdminLayout title="CRM Comercial">
       <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b border-foreground/[0.08]">
+        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
           <div className="flex items-center justify-between mb-1">
             <div>
-              <h1 className="text-2xl font-bold text-foreground">CRM Comercial</h1>
-              <p className="text-sm text-foreground/50 mt-0.5">Pipeline completo Lead → Presupuesto → Reserva → Factura</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">CRM Comercial</h1>
+              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">Pipeline completo Lead → Presupuesto → Reserva → Factura</p>
             </div>
           </div>
         </div>
@@ -5341,7 +5353,7 @@ export default function CRMDashboard() {
           );
           if (overdue.length === 0 && dueToday.length === 0) return null;
           return (
-            <div className="mx-6 mt-4 rounded-xl border border-red-500/30 bg-red-500/8 p-3 space-y-1.5">
+            <div className="mx-4 sm:mx-6 mt-4 rounded-xl border border-red-500/30 bg-red-500/8 p-3 space-y-1.5">
               <p className="text-xs font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
                 <AlertCircle className="w-3.5 h-3.5" /> Incidencias de pagos fraccionados
               </p>
@@ -5362,7 +5374,7 @@ export default function CRMDashboard() {
         })()}
 
         {/* ── KPI PANEL COLAPSABLE ─────────────────────────────────────────── */}
-        <div className="px-6 pb-1">
+        <div className="px-4 sm:px-6 pb-1">
           {/* Cabecera toggle — siempre visible */}
           <button
             onClick={toggleKpis}
@@ -5413,7 +5425,7 @@ export default function CRMDashboard() {
 
         {/* Top KPI strip — dos grupos diferenciados */}
         <div className={`overflow-hidden transition-all duration-300 ease-in-out ${kpisExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"}`}>
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-4">
 
           {/* Grupo 1: Pipeline de Oportunidades */}
           <div>
@@ -5908,7 +5920,7 @@ export default function CRMDashboard() {
         {/* ── Banner alertas TPV / coherencia cobros + gastos ─────────────── */}
         {((tpvPaymentAlerts && (tpvPaymentAlerts.unlinkedTpvOps > 0 || tpvPaymentAlerts.staleFailedPayments > 0)) ||
           (expenseStats && (expenseStats.candidatesCount > 0 || expenseStats.staleExpensesCount > 0))) && (
-          <div className="mx-6 mb-2 rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-3 flex flex-col gap-1.5">
+          <div className="mx-4 sm:mx-6 mb-2 rounded-xl border border-blue-500/30 bg-blue-500/8 px-4 py-3 flex flex-col gap-1.5">
             <div className="flex items-center gap-2 text-blue-400 font-semibold text-sm">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               Coherencia financiera — incidencias detectadas
@@ -5937,8 +5949,9 @@ export default function CRMDashboard() {
         )}
 
         {/* Tabs */}
-        <div className="px-6">
-          <div className="flex gap-1 bg-foreground/[0.05] rounded-xl p-1 w-fit">
+        <div className="px-4 sm:px-6">
+          <div className="overflow-x-auto -mx-1 px-1 pb-1">
+          <div className="flex gap-1 bg-foreground/[0.05] rounded-xl p-1 min-w-max">
             {([
               { key: "leads", label: "Leads", icon: Users, count: leadCounters?.total },
               { key: "quotes", label: "Presupuestos", icon: FileText, count: quoteCounters?.enviado },
@@ -5964,12 +5977,13 @@ export default function CRMDashboard() {
               </button>
             ))}
           </div>
+          </div>
         </div>
 
         {/* Search & filter */}
         {tab !== "anulaciones" && tab !== "bonos" && (
-        <div className="px-6 py-4 flex gap-3 items-center">
-          <div className="relative flex-1 max-w-sm">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap gap-2 items-center">
+          <div className="relative flex-1 min-w-[180px] max-w-full sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" />
             <Input
               value={search}
@@ -5986,7 +6000,7 @@ export default function CRMDashboard() {
           {/* Filtro por canal — visible solo en el tab de reservas */}
           {tab === "reservations" && (
             <Select value={resChannelFilter} onValueChange={setResChannelFilter}>
-              <SelectTrigger className="w-40 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
+              <SelectTrigger className="w-full sm:w-40 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
                 <SelectValue placeholder="Canal" />
               </SelectTrigger>
               <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
@@ -6005,7 +6019,7 @@ export default function CRMDashboard() {
             <Button
               size="sm"
               onClick={() => setShowNewLeadModal(true)}
-              className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white ml-auto"
+              className="bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white sm:ml-auto"
             >
               <Plus className="w-4 h-4 mr-1.5" /> Nuevo Lead
             </Button>
@@ -6014,7 +6028,7 @@ export default function CRMDashboard() {
             <Button
               size="sm"
               onClick={() => setShowNewReservationModal(true)}
-              className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white ml-auto"
+              className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white sm:ml-auto"
             >
               <Plus className="w-4 h-4 mr-1.5" /> Nueva Reserva
             </Button>
@@ -6023,7 +6037,7 @@ export default function CRMDashboard() {
             <Button
               size="sm"
               onClick={() => setShowDirectQuoteModal(true)}
-              className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white ml-auto"
+              className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white sm:ml-auto"
             >
               <Plus className="w-4 h-4 mr-1.5" /> Nuevo Presupuesto
             </Button>
@@ -6032,10 +6046,11 @@ export default function CRMDashboard() {
         )}
 
         {/* Table */}
-        <div className="px-6 pb-8">
+        <div className="px-4 sm:px-6 pb-8">
           {tab === "leads" && (
             <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
-              <table className="w-full">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px]">
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Recibido</th>
@@ -6160,11 +6175,13 @@ export default function CRMDashboard() {
                 </tbody>
               </table>
             </div>
+            </div>
           )}
 
           {tab === "quotes" && (
             <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
-              <table className="w-full">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px]">
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Referencia</th>
@@ -6333,11 +6350,13 @@ export default function CRMDashboard() {
                 </tbody>
               </table>
             </div>
+            </div>
           )}
 
           {tab === "reservations" && (
             <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
-              <table className="w-full">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px]">
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Nº Reserva</th>
@@ -6581,6 +6600,7 @@ export default function CRMDashboard() {
                   ))}
                 </tbody>
               </table>
+            </div>
             </div>
           )}
 
@@ -7360,7 +7380,7 @@ export default function CRMDashboard() {
           <div className="space-y-4 py-2">
             <p className="text-foreground/65 text-sm">Selecciona el método de pago y completa los datos antes de confirmar.</p>
             {/* Selector de método */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
                 <button
                   key={m}

@@ -5,7 +5,7 @@ import {
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
-  Sun, Moon,
+  Sun, Moon, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -213,6 +213,7 @@ interface AdminLayoutProps {
 
 export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [location, navigate] = useWouterLocation();
@@ -247,6 +248,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       }
     }
   }, [loading, isAuthenticated, userRole, location, navigate]);
+
+  // Cerrar menú móvil al cambiar de ruta
+  useEffect(() => { setMobileMenuOpen(false); }, [location]);
 
   const toggleExpanded = (href: string) => {
     setExpandedItems((prev) =>
@@ -366,12 +370,24 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
   return (
     <div className="min-h-screen bg-background flex">
+      {/* Mobile backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-0 h-full z-40 flex flex-col transition-all duration-300",
+          "fixed left-0 top-0 h-full z-50 flex flex-col transition-all duration-300",
           "bg-sidebar text-sidebar-foreground border-r border-sidebar-border",
-          sidebarOpen ? "w-64" : "w-16"
+          // Desktop: respeta sidebarOpen toggle
+          sidebarOpen ? "lg:w-64" : "lg:w-16",
+          // Móvil: siempre ancho completo pero se oculta con translate
+          "w-64",
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         {/* Logo */}
@@ -509,13 +525,21 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <div className={cn("flex-1 flex flex-col transition-all duration-300", sidebarOpen ? "ml-64" : "ml-16")}>
+      <div className={cn("flex-1 flex flex-col transition-all duration-300 min-w-0", sidebarOpen ? "lg:ml-64" : "lg:ml-16")}>
         {/* Top Bar */}
-        <header className="h-16 bg-card border-b border-border flex items-center px-6 gap-4 sticky top-0 z-30">
+        <header className="h-16 bg-card border-b border-border flex items-center px-4 sm:px-6 gap-3 sticky top-0 z-30">
+          {/* Hamburguesa — solo en móvil */}
+          <button
+            className="lg:hidden w-9 h-9 rounded-lg hover:bg-accent flex items-center justify-center text-foreground/60 hover:text-foreground transition-colors shrink-0"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Abrir menú"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
           {title && (
-            <h1 className="font-display font-semibold text-lg text-foreground">{title}</h1>
+            <h1 className="font-display font-semibold text-base sm:text-lg text-foreground truncate min-w-0">{title}</h1>
           )}
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
             <Button variant="ghost" size="icon" className="w-9 h-9">
               <Search className="w-4 h-4" />
             </Button>
@@ -651,8 +675,11 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             </Popover>
             {userRole !== "adminrest" && (
               <Link href="/" target="_blank">
-                <Button variant="outline" size="sm" className="text-xs">
+                <Button variant="outline" size="sm" className="text-xs hidden sm:inline-flex">
                   Ver sitio web
+                </Button>
+                <Button variant="ghost" size="icon" className="sm:hidden w-9 h-9" title="Ver sitio web">
+                  <ExternalLink className="w-4 h-4" />
                 </Button>
               </Link>
             )}
@@ -660,7 +687,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 p-4 sm:p-6 overflow-auto">
           {children}
         </main>
       </div>
