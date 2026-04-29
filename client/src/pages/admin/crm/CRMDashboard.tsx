@@ -4803,6 +4803,14 @@ export default function CRMDashboard() {
     try { localStorage.setItem("crm_kpis_expanded", String(next)); } catch {}
     return next;
   });
+  // Selección masiva
+  const [selectedLeads, setSelectedLeads] = useState<Set<number>>(new Set());
+  const [selectedQuotes, setSelectedQuotes] = useState<Set<number>>(new Set());
+  const [selectedRes, setSelectedRes] = useState<Set<number>>(new Set());
+  const [bulkLeadsStatus, setBulkLeadsStatus] = useState("");
+  const [bulkQuotesStatus, setBulkQuotesStatus] = useState("");
+  const [bulkResStatus, setBulkResStatus] = useState("");
+
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [editLeadId, setEditLeadId] = useState<number | null>(null);
   const [deleteLeadId, setDeleteLeadId] = useState<number | null>(null);
@@ -4978,6 +4986,37 @@ export default function CRMDashboard() {
   const anulKpis = anulData?.kpis;
 
   const utils = trpc.useUtils();
+
+  // ─── Acciones masivas ─────────────────────────────────────────────────────────
+  const bulkDeleteLeads = trpc.crm.leads.bulkDelete.useMutation({
+    onSuccess: (r) => { toast.success(`${r.deleted} lead(s) eliminados`); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const bulkMarkSeenLeads = trpc.crm.leads.bulkMarkSeen.useMutation({
+    onSuccess: (r) => { toast.success(`${r.updated} lead(s) marcados como leídos`); setSelectedLeads(new Set()); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const bulkUpdateLeadsStatus = trpc.crm.leads.bulkUpdateStatus.useMutation({
+    onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} lead(s)`); setSelectedLeads(new Set()); setBulkLeadsStatus(""); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const bulkDeleteQuotes = trpc.crm.quotes.bulkDelete.useMutation({
+    onSuccess: (r) => { toast.success(`${r.deleted} presupuesto(s) eliminados`); setSelectedQuotes(new Set()); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const bulkUpdateQuotesStatus = trpc.crm.quotes.bulkUpdateStatus.useMutation({
+    onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} presupuesto(s)`); setSelectedQuotes(new Set()); setBulkQuotesStatus(""); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const bulkDeleteRes = trpc.crm.reservations.bulkDelete.useMutation({
+    onSuccess: (r) => { toast.success(`${r.deleted} reserva(s) eliminadas${r.skipped > 0 ? ` (${r.skipped} omitidas por estar pagadas)` : ""}`); setSelectedRes(new Set()); utils.crm.reservations.list.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const bulkUpdateResStatus = trpc.crm.reservations.bulkUpdateStatus.useMutation({
+    onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} reserva(s)`); setSelectedRes(new Set()); setBulkResStatus(""); utils.crm.reservations.list.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
   const deleteLead = trpc.crm.leads.delete.useMutation({
     onSuccess: () => {
       toast.success("Lead eliminado");
@@ -6044,10 +6083,33 @@ export default function CRMDashboard() {
         <div className="px-4 sm:px-6 pb-8">
           {tab === "leads" && (
             <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+            {/* Barra acción masiva leads */}
+            {selectedLeads.size > 0 && (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
+                <span className="text-xs text-blue-300 font-medium shrink-0">{selectedLeads.size} seleccionado(s)</span>
+                <button onClick={() => bulkMarkSeenLeads.mutate({ ids: Array.from(selectedLeads) })} disabled={bulkMarkSeenLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-foreground/20 hover:bg-foreground/10 transition-colors disabled:opacity-40">
+                  <Eye className="w-3.5 h-3.5" /> Marcar leídos
+                </button>
+                <select value={bulkLeadsStatus} onChange={e => { if (e.target.value) bulkUpdateLeadsStatus.mutate({ ids: Array.from(selectedLeads), status: e.target.value as any }); }} disabled={bulkUpdateLeadsStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
+                  <option value="">Cambiar estado…</option>
+                  <option value="nueva">Nueva</option>
+                  <option value="enviada">Enviada</option>
+                  <option value="ganada">Ganada</option>
+                  <option value="perdida">Perdida</option>
+                </select>
+                <button onClick={() => { if (confirm(`¿Eliminar ${selectedLeads.size} lead(s) definitivamente?`)) bulkDeleteLeads.mutate({ ids: Array.from(selectedLeads) }); }} disabled={bulkDeleteLeads.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                </button>
+                <button onClick={() => setSelectedLeads(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[600px]">
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                    <th className="w-10 px-3 py-3">
+                      <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!leadsData?.rows?.length && selectedLeads.size === leadsData.rows.length} onChange={e => setSelectedLeads(e.target.checked ? new Set(leadsData?.rows?.map((l: any) => l.id)) : new Set())} />
+                    </th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Recibido</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
@@ -6058,11 +6120,14 @@ export default function CRMDashboard() {
                 </thead>
                 <tbody>
                   {leadsLoading ? (
-                    <tr><td colSpan={6} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !leadsData?.rows?.length ? (
-                    <tr><td colSpan={6} className="text-center py-12 text-foreground/40 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
+                    <tr><td colSpan={7} className="text-center py-12 text-foreground/40 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
                   ) : leadsData.rows.map((lead: any) => (
-                    <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${!lead.seenAt ? "bg-blue-950/20" : ""}`}>
+                    <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedLeads.has(lead.id) ? "bg-blue-500/5" : !lead.seenAt ? "bg-blue-950/20" : ""}`}>
+                      <td className="w-10 px-3 py-3">
+                        <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedLeads.has(lead.id)} onChange={e => setSelectedLeads(prev => { const s = new Set(prev); e.target.checked ? s.add(lead.id) : s.delete(lead.id); return s; })} />
+                      </td>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <div className="text-xs text-foreground/70 font-medium">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</div>
                         <div className="text-[11px] text-foreground/40">{new Date(lead.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</div>
@@ -6195,10 +6260,32 @@ export default function CRMDashboard() {
 
           {tab === "quotes" && (
             <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+            {/* Barra acción masiva quotes */}
+            {selectedQuotes.size > 0 && (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
+                <span className="text-xs text-blue-300 font-medium shrink-0">{selectedQuotes.size} seleccionado(s)</span>
+                <select value={bulkQuotesStatus} onChange={e => { if (e.target.value) bulkUpdateQuotesStatus.mutate({ ids: Array.from(selectedQuotes), status: e.target.value as any }); }} disabled={bulkUpdateQuotesStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
+                  <option value="">Cambiar estado…</option>
+                  <option value="borrador">Borrador</option>
+                  <option value="enviado">Enviado</option>
+                  <option value="aceptado">Aceptado</option>
+                  <option value="rechazado">Rechazado</option>
+                  <option value="perdido">Perdido</option>
+                  <option value="expirado">Expirado</option>
+                </select>
+                <button onClick={() => { if (confirm(`¿Eliminar ${selectedQuotes.size} presupuesto(s) definitivamente?`)) bulkDeleteQuotes.mutate({ ids: Array.from(selectedQuotes) }); }} disabled={bulkDeleteQuotes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                </button>
+                <button onClick={() => setSelectedQuotes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[600px]">
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                    <th className="w-10 px-3 py-3">
+                      <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!quotesData?.rows?.length && selectedQuotes.size === quotesData.rows.length} onChange={e => setSelectedQuotes(e.target.checked ? new Set(quotesData?.rows?.map((q: any) => q.id)) : new Set())} />
+                    </th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Referencia</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Título</th>
@@ -6210,11 +6297,14 @@ export default function CRMDashboard() {
                 </thead>
                 <tbody>
                   {quotesLoading ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={8} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !quotesData?.rows?.length ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-foreground/40 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
+                    <tr><td colSpan={8} className="text-center py-12 text-foreground/40 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
                   ) : quotesData.rows.map((quote: any) => (
-                    <tr key={quote.id} className="border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors group">
+                    <tr key={quote.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors group ${selectedQuotes.has(quote.id) ? "bg-blue-500/5" : ""}`}>
+                      <td className="w-10 px-3 py-3">
+                        <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedQuotes.has(quote.id)} onChange={e => setSelectedQuotes(prev => { const s = new Set(prev); e.target.checked ? s.add(quote.id) : s.delete(quote.id); return s; })} />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="text-sm font-mono font-medium text-orange-400">{quote.quoteNumber}</div>
                         <div className="text-[10px] text-foreground/40 mt-0.5">{new Date(quote.createdAt).toLocaleDateString("es-ES")}</div>
@@ -6389,10 +6479,29 @@ export default function CRMDashboard() {
 
           {tab === "reservations" && (
             <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+            {/* Barra acción masiva reservas */}
+            {selectedRes.size > 0 && (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
+                <span className="text-xs text-blue-300 font-medium shrink-0">{selectedRes.size} seleccionado(s)</span>
+                <select value={bulkResStatus} onChange={e => { if (e.target.value) bulkUpdateResStatus.mutate({ ids: Array.from(selectedRes), status: e.target.value as any }); }} disabled={bulkUpdateResStatus.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
+                  <option value="">Cambiar estado…</option>
+                  <option value="paid">Pagada</option>
+                  <option value="pending_payment">Pendiente pago</option>
+                  <option value="cancelled">Cancelada</option>
+                </select>
+                <button onClick={() => { if (confirm(`¿Eliminar ${selectedRes.size} reserva(s)? Las reservas pagadas serán omitidas.`)) bulkDeleteRes.mutate({ ids: Array.from(selectedRes) }); }} disabled={bulkDeleteRes.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                  <Trash2 className="w-3.5 h-3.5" /> Eliminar
+                </button>
+                <button onClick={() => setSelectedRes(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[600px]">
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
+                    <th className="w-10 px-3 py-3">
+                      <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!resData?.rows?.length && selectedRes.size === resData.rows.length} onChange={e => setSelectedRes(e.target.checked ? new Set(resData?.rows?.map((r: any) => r.id)) : new Set())} />
+                    </th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Nº Reserva</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
@@ -6407,11 +6516,15 @@ export default function CRMDashboard() {
                 </thead>
                 <tbody>
                   {resLoading ? (
-                    <tr><td colSpan={10} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={11} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !resData?.rows?.length ? (
-                    <tr><td colSpan={10} className="text-center py-12 text-foreground/40 text-sm">No hay reservas</td></tr>
+                    <tr><td colSpan={11} className="text-center py-12 text-foreground/40 text-sm">No hay reservas</td></tr>
                   ) : resData.rows.map((res: any) => (
-                    <tr key={res.id} className="border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors">
+                    <tr key={res.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedRes.has(res.id) ? "bg-blue-500/5" : ""}`}>
+                      {/* Checkbox */}
+                      <td className="w-10 px-3 py-3">
+                        <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selectedRes.has(res.id)} onChange={e => setSelectedRes(prev => { const s = new Set(prev); e.target.checked ? s.add(res.id) : s.delete(res.id); return s; })} />
+                      </td>
                       {/* Nº Reserva */}
                       <td className="px-4 py-3 shrink-0">
                         {res.reservationNumber ? (

@@ -1121,6 +1121,33 @@ export const crmRouter = router({
         await logActivity("lead", input.id, "lead_deleted", ctx.user.id, ctx.user.name, { name: lead.name });
         return { success: true };
       }),
+
+    bulkDelete: staff
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        for (const id of input.ids) {
+          await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "lead"), eq(crmActivityLog.entityId, id)));
+        }
+        await db.delete(leads).where(inArray(leads.id, input.ids));
+        return { deleted: input.ids.length };
+      }),
+
+    bulkMarkSeen: staff
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        await db.update(leads).set({ seenAt: new Date() }).where(and(inArray(leads.id, input.ids), isNull(leads.seenAt)));
+        return { updated: input.ids.length };
+      }),
+
+    bulkUpdateStatus: staff
+      .input(z.object({
+        ids: z.array(z.number()).min(1),
+        status: z.enum(["nueva", "enviada", "ganada", "perdida"]),
+      }))
+      .mutation(async ({ input }) => {
+        await db.update(leads).set({ opportunityStatus: input.status, updatedAt: new Date() }).where(inArray(leads.id, input.ids));
+        return { updated: input.ids.length };
+      }),
   }),
   // ─── QUOTESES ────────────────────────────────────────────────────────────────
 
@@ -2436,6 +2463,27 @@ export const crmRouter = router({
           }
         }
         return { success: true };
+      }),
+
+    bulkDelete: staff
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        for (const id of input.ids) {
+          await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "quote"), eq(crmActivityLog.entityId, id)));
+          await db.delete(invoices).where(eq(invoices.quoteId, id));
+        }
+        await db.delete(quotes).where(inArray(quotes.id, input.ids));
+        return { deleted: input.ids.length };
+      }),
+
+    bulkUpdateStatus: staff
+      .input(z.object({
+        ids: z.array(z.number()).min(1),
+        status: z.enum(["borrador", "enviado", "visualizado", "aceptado", "rechazado", "expirado", "perdido"]),
+      }))
+      .mutation(async ({ input }) => {
+        await db.update(quotes).set({ status: input.status, updatedAt: new Date() }).where(inArray(quotes.id, input.ids));
+        return { updated: input.ids.length };
       }),
 
     generatePdf: staff
@@ -4218,6 +4266,32 @@ export const crmRouter = router({
         await db.delete(reservations).where(eq(reservations.id, input.id));
         return { ok: true };
       }),
+
+    bulkDelete: staff
+      .input(z.object({ ids: z.array(z.number()).min(1) }))
+      .mutation(async ({ input }) => {
+        const rows = await db.select({ id: reservations.id, status: reservations.status }).from(reservations).where(inArray(reservations.id, input.ids));
+        const deletable = rows.filter(r => r.status !== "paid").map(r => r.id);
+        const skipped = input.ids.length - deletable.length;
+        if (deletable.length > 0) {
+          for (const id of deletable) {
+            await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "reservation"), eq(crmActivityLog.entityId, id)));
+          }
+          await db.delete(reservations).where(inArray(reservations.id, deletable));
+        }
+        return { deleted: deletable.length, skipped };
+      }),
+
+    bulkUpdateStatus: staff
+      .input(z.object({
+        ids: z.array(z.number()).min(1),
+        status: z.enum(["draft", "pending_payment", "paid", "failed", "cancelled"]),
+      }))
+      .mutation(async ({ input }) => {
+        await db.update(reservations).set({ status: input.status }).where(inArray(reservations.id, input.ids));
+        return { updated: input.ids.length };
+      }),
+
     // ─── Crear reserva manual (admin) ─────────────────────────────────────────────────────────────────────────────
     // Crea una reserva directa sin pasar por presupuesto, ejecutando el mismo
     // postConfirmOperation que los flujos automáticos (CRM, Redsys, Ticketing, TPV).
