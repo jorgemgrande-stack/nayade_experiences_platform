@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -630,18 +630,33 @@ function LeadPickerModal({ onPicked, onClose }: { onPicked: (id: number, name: s
 
 // ─── Main ProposalsManager ─────────────────────────────────────────────────────
 
+const PAGE_SIZE = 50;
+
 export default function ProposalsManager({ leadId, leadName }: { leadId?: number; leadName?: string }) {
   const [createModal, setCreateModal] = useState<{ open: boolean; leadId: number; leadName: string } | null>(null);
   const [leadPickerOpen, setLeadPickerOpen] = useState(false);
   const [editModal, setEditModal] = useState<number | null>(null);
   const [convertModal, setConvertModal] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("");
+
+  // Resetear página al cambiar filtros
+  useEffect(() => { setPage(0); }, [search, filterStatus]);
 
   const utils = trpc.useUtils();
 
   const listQuery = leadId
     ? trpc.proposals.getByLeadId.useQuery({ leadId })
-    : trpc.proposals.list.useQuery({ limit: 100 });
+    : trpc.proposals.list.useQuery({
+        search: search || undefined,
+        status: filterStatus !== "all" ? filterStatus as ProposalStatus : undefined,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
 
   const getByIdQuery = trpc.proposals.getById.useQuery(
     { id: editModal! },
@@ -650,13 +665,25 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
 
   const sendMutation = trpc.proposals.send.useMutation();
   const deleteMutation = trpc.proposals.delete.useMutation();
+  const bulkDeleteMutation = trpc.proposals.bulkDelete.useMutation({
+    onSuccess: (r) => { toast.success(`${r.deleted} propuesta(s) eliminadas${r.skipped > 0 ? ` (${r.skipped} omitidas por no ser borrador)` : ""}`); setSelected(new Set()); utils.proposals.list.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const bulkUpdateStatusMutation = trpc.proposals.bulkUpdateStatus.useMutation({
+    onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} propuesta(s)`); setSelected(new Set()); setBulkStatus(""); utils.proposals.list.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  function invalidate() {
+    utils.proposals.list.invalidate();
+    if (leadId) utils.proposals.getByLeadId.invalidate({ leadId });
+  }
 
   async function handleSend(id: number) {
     try {
-      const result = await sendMutation.mutateAsync({ id });
+      await sendMutation.mutateAsync({ id });
       toast.success("Propuesta enviada por email");
-      utils.proposals.list.invalidate();
-      if (leadId) utils.proposals.getByLeadId.invalidate({ leadId });
+      invalidate();
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Error al enviar");
     }
@@ -666,162 +693,179 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
     try {
       await deleteMutation.mutateAsync({ id });
       toast.success("Propuesta eliminada");
-      utils.proposals.list.invalidate();
-      if (leadId) utils.proposals.getByLeadId.invalidate({ leadId });
+      invalidate();
       setDeleteConfirm(null);
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Error al eliminar");
     }
   }
 
-  const proposals = (listQuery.data as { id: number; proposalNumber: string; leadId: number; title: string; mode: "configurable" | "multi_option"; status: ProposalStatus; total: string | null; sentAt: Date | string | null; createdAt: Date | string; convertedToQuoteId: number | null; publicUrl: string | null }[] | undefined) ?? [];
+  // Normalizar los datos según el modo (leadId o global)
+  type ProposalRow = { id: number; proposalNumber: string; leadId: number; title: string; mode: "configurable" | "multi_option"; status: ProposalStatus; total: string | null; sentAt: Date | string | null; createdAt: Date | string; convertedToQuoteId: number | null; publicUrl: string | null; leadName?: string | null; leadEmail?: string | null };
+  const rows: ProposalRow[] = leadId
+    ? ((listQuery.data as ProposalRow[] | undefined) ?? [])
+    : (((listQuery.data as { rows: ProposalRow[]; total: number } | undefined)?.rows) ?? []);
+  const total: number = leadId ? rows.length : (((listQuery.data as { rows: ProposalRow[]; total: number } | undefined)?.total) ?? 0);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-foreground/70">
-          Propuestas Comerciales {leadName ? `— ${leadName}` : ""}
-        </h3>
+    <div className={leadId ? "space-y-4" : "px-4 sm:px-6 pb-8 space-y-5"}>
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        {!leadId && (
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Propuestas Comerciales</h1>
+            <p className="text-sm text-foreground/50 mt-0.5">Propuestas pre-presupuesto enviadas a clientes. Configurables o multi-opción.</p>
+          </div>
+        )}
+        {leadId && (
+          <h3 className="text-sm font-medium text-foreground/70">Propuestas Comerciales {leadName ? `— ${leadName}` : ""}</h3>
+        )}
         <Button
-          size="sm"
-          variant="outline"
-          className="text-xs"
+          size={leadId ? "sm" : "default"}
+          className={leadId ? "text-xs" : "bg-violet-600 hover:bg-violet-500 text-white shrink-0"}
           onClick={() => {
-            if (leadId && leadName) {
-              setCreateModal({ open: true, leadId, leadName });
-            } else {
-              setLeadPickerOpen(true);
-            }
+            if (leadId && leadName) setCreateModal({ open: true, leadId, leadName });
+            else setLeadPickerOpen(true);
           }}
         >
-          <Plus className="w-3.5 h-3.5 mr-1" /> Nueva propuesta
+          <Plus className={leadId ? "w-3.5 h-3.5 mr-1" : "w-4 h-4 mr-2"} /> Nueva propuesta
         </Button>
       </div>
 
-      {listQuery.isLoading ? (
-        <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-foreground/40" /></div>
-      ) : listQuery.error ? (
-        <div className="text-center py-8 text-red-400 text-sm">
-          Error cargando propuestas: {(listQuery.error as { message?: string })?.message ?? "Error desconocido"}
+      {/* Filtros — solo en modo global */}
+      {!leadId && (
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar propuestas…"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-foreground/[0.12] bg-foreground/[0.04] placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+            />
+            <svg className="absolute left-3 top-2.5 w-4 h-4 text-foreground/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </div>
+          <div className="flex gap-1 flex-wrap">
+            {(["all", "borrador", "enviado", "visualizado", "aceptado", "rechazado", "expirado"] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? "bg-violet-600 text-white" : "bg-foreground/[0.05] text-foreground/60 hover:bg-foreground/[0.10]"}`}
+              >
+                {s === "all" ? "Todas" : STATUS_MAP[s as ProposalStatus]?.label ?? s}
+              </button>
+            ))}
+          </div>
         </div>
-      ) : proposals.length === 0 ? (
-        <div className="text-center py-8 text-foreground/30 text-sm">
-          <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-          No hay propuestas
+      )}
+
+      {/* Tabla */}
+      {listQuery.isLoading ? (
+        <div className="flex justify-center py-12"><RefreshCw className="w-5 h-5 animate-spin text-foreground/40" /></div>
+      ) : listQuery.error ? (
+        <div className="text-center py-8 text-red-400 text-sm">Error: {(listQuery.error as { message?: string })?.message ?? "Error desconocido"}</div>
+      ) : rows.length === 0 && !listQuery.isLoading ? (
+        <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl flex flex-col items-center py-14 text-foreground/30">
+          <FileText className="w-10 h-10 mb-3 opacity-30" />
+          <p className="text-sm">No hay propuestas{filterStatus !== "all" ? ` con estado "${STATUS_MAP[filterStatus as ProposalStatus]?.label}"` : ""}</p>
         </div>
       ) : (
         <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-2xl overflow-hidden">
+          {/* Barra acciones masivas */}
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
+              <span className="text-xs text-blue-300 font-medium shrink-0">{selected.size} seleccionada(s)</span>
+              <select value={bulkStatus} onChange={e => { if (e.target.value) bulkUpdateStatusMutation.mutate({ ids: Array.from(selected), status: e.target.value as ProposalStatus }); }} disabled={bulkUpdateStatusMutation.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
+                <option value="">Cambiar estado…</option>
+                <option value="borrador">Borrador</option>
+                <option value="enviado">Enviado</option>
+                <option value="aceptado">Aceptado</option>
+                <option value="rechazado">Rechazado</option>
+                <option value="expirado">Expirado</option>
+              </select>
+              <button onClick={() => { if (confirm(`¿Eliminar ${selected.size} propuesta(s)? Solo se eliminarán las que estén en borrador.`)) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }} disabled={bulkDeleteMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                <Trash2 className="w-3.5 h-3.5" /> Eliminar
+              </button>
+              <button onClick={() => setSelected(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px]">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
-                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Ref.</th>
-                  {!leadId && <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Lead</th>}
-                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Título</th>
+                  <th className="w-10 px-3 py-3">
+                    <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={rows.length > 0 && selected.size === rows.length} onChange={e => setSelected(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} />
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Referencia</th>
+                  {!leadId && <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>}
+                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Título</th>
                   <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
                   <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Total</th>
+                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Fecha</th>
                   <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {proposals.map(p => (
-                  <tr key={p.id} className="border-b border-foreground/[0.06] hover:bg-foreground/[0.03] transition-colors">
+                {rows.map(p => (
+                  <tr key={p.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selected.has(p.id) ? "bg-blue-500/5" : ""}`}>
+                    <td className="w-10 px-3 py-3">
+                      <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selected.has(p.id)} onChange={e => setSelected(prev => { const s = new Set(prev); e.target.checked ? s.add(p.id) : s.delete(p.id); return s; })} />
+                    </td>
                     <td className="px-4 py-3">
-                      <span className="text-xs font-mono text-foreground/70">{p.proposalNumber}</span>
-                      <div className="text-[10px] text-foreground/30 mt-0.5">
-                        {p.mode === "multi_option" ? "multi-opción" : "configurable"}
-                      </div>
+                      <span className="text-sm font-mono font-medium text-violet-400">{p.proposalNumber}</span>
+                      <div className="text-[10px] text-foreground/30 mt-0.5">{p.mode === "multi_option" ? "multi-opción" : "configurable"}</div>
                     </td>
                     {!leadId && (
-                      <td className="px-4 py-3 text-xs text-foreground/60">Lead #{p.leadId}</td>
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-foreground/90">{p.leadName ?? `Lead #${p.leadId}`}</div>
+                        {p.leadEmail && <div className="text-xs text-foreground/40 truncate max-w-[160px]">{p.leadEmail}</div>}
+                      </td>
                     )}
-                    <td className="px-4 py-3 hidden sm:table-cell">
+                    <td className="px-4 py-3 hidden md:table-cell">
                       <span className="text-sm text-foreground/80 line-clamp-1">{p.title}</span>
                       {p.convertedToQuoteId && (
-                        <div className="text-[10px] text-emerald-400 mt-0.5">→ Presupuesto #{p.convertedToQuoteId}</div>
+                        <div className="text-[10px] text-emerald-400 mt-0.5 flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" /> Convertida en presupuesto</div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={p.status} />
+                    <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm font-bold text-foreground">{parseFloat(p.total ?? "0").toFixed(2)} €</span>
                     </td>
-                    <td className="px-4 py-3 text-right text-sm font-medium">
-                      {parseFloat(p.total ?? "0").toFixed(2)} €
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      <div className="text-xs text-foreground/50">
+                        {p.sentAt ? (
+                          <span className="text-blue-400/70">Env. {new Date(p.sentAt).toLocaleDateString("es-ES")}</span>
+                        ) : (
+                          new Date(p.createdAt).toLocaleDateString("es-ES")
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {/* Edit (borrador only) */}
-                        {p.status === "borrador" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-blue-400 hover:text-blue-300 h-7 px-2"
-                            title="Editar"
-                            onClick={() => setEditModal(p.id)}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        {/* Send */}
-                        {["borrador", "visualizado"].includes(p.status) && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-green-400 hover:text-green-300 h-7 px-2"
-                            title="Enviar por email"
-                            disabled={sendMutation.isPending}
-                            onClick={() => handleSend(p.id)}
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        {/* Public link */}
-                        {p.publicUrl && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-amber-400 hover:text-amber-300 h-7 px-2"
-                            title="Ver propuesta pública"
-                            onClick={() => window.open(p.publicUrl!, "_blank")}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        {/* Convert to quote */}
-                        {["enviado", "visualizado", "aceptado"].includes(p.status) && !p.convertedToQuoteId && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-orange-400 hover:text-orange-300 h-7 px-2"
-                            title="Convertir a presupuesto"
-                            onClick={() => setConvertModal(p.id)}
-                          >
-                            <ArrowUpRight className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        {/* Copy link */}
-                        {p.publicUrl && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-foreground/40 hover:text-foreground/70 h-7 px-2"
-                            title="Copiar enlace"
-                            onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success("Enlace copiado"); }}
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        {/* Delete (borrador only) */}
-                        {p.status === "borrador" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-400 hover:text-red-300 h-7 px-2"
-                            title="Eliminar"
-                            onClick={() => setDeleteConfirm(p.id)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-0.5">
+                        {/* Ver pública */}
+                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.publicUrl ? "text-foreground/50 hover:text-amber-300" : "text-foreground/20 cursor-not-allowed"}`} title={p.publicUrl ? "Ver propuesta pública" : "Sin enlace público"} disabled={!p.publicUrl} onClick={() => p.publicUrl && window.open(p.publicUrl, "_blank")}>
+                          <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                        {/* Editar */}
+                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.status === "borrador" ? "text-foreground/50 hover:text-blue-300" : "text-foreground/20 cursor-not-allowed"}`} title={p.status === "borrador" ? "Editar" : "Solo se puede editar en borrador"} disabled={p.status !== "borrador"} onClick={() => setEditModal(p.id)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        {/* Enviar */}
+                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${["borrador", "enviado", "visualizado"].includes(p.status) ? "text-foreground/50 hover:text-green-300" : "text-foreground/20 cursor-not-allowed"}`} title="Enviar por email" disabled={!["borrador", "enviado", "visualizado"].includes(p.status) || sendMutation.isPending} onClick={() => handleSend(p.id)}>
+                          <Send className="w-3.5 h-3.5" />
+                        </Button>
+                        {/* Convertir a presupuesto */}
+                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${["enviado", "visualizado", "aceptado"].includes(p.status) && !p.convertedToQuoteId ? "text-foreground/50 hover:text-orange-300" : "text-foreground/20 cursor-not-allowed"}`} title={p.convertedToQuoteId ? "Ya convertida" : "Convertir a presupuesto"} disabled={!["enviado", "visualizado", "aceptado"].includes(p.status) || !!p.convertedToQuoteId} onClick={() => setConvertModal(p.id)}>
+                          <ArrowUpRight className="w-3.5 h-3.5" />
+                        </Button>
+                        {/* Copiar enlace */}
+                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.publicUrl ? "text-foreground/50 hover:text-foreground/70" : "text-foreground/20 cursor-not-allowed"}`} title={p.publicUrl ? "Copiar enlace" : "Sin enlace"} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success("Enlace copiado"); }}>
+                          <Copy className="w-3.5 h-3.5" />
+                        </Button>
+                        {/* Eliminar */}
+                        <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" title="Eliminar" onClick={() => setDeleteConfirm(p.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -829,6 +873,17 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
               </tbody>
             </table>
           </div>
+
+          {/* Paginación — solo en modo global */}
+          {!leadId && total > PAGE_SIZE && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
+              <span className="text-sm text-foreground/50">Página {page + 1} de {Math.ceil(total / PAGE_SIZE)} · {total} propuestas</span>
+              <div className="flex gap-2">
+                <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors">← Anterior</button>
+                <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total} className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors">Siguiente →</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -899,7 +954,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
 
       {/* Convert modal */}
       {convertModal !== null && (() => {
-        const p = proposals.find(x => x.id === convertModal);
+        const p = rows.find((x: any) => x.id === convertModal);
         if (!p) return null;
         return (
           <ConvertModal

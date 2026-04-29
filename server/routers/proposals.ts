@@ -9,7 +9,7 @@ import { z } from "zod";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { proposals, proposalOptions, leads, quotes } from "../../drizzle/schema";
-import { eq, desc, and, gte, lte, inArray } from "drizzle-orm";
+import { eq, desc, and, gte, lte, inArray, like, or, count } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { generateDocumentNumber } from "../documentNumbers";
 import { buildProposalHtml } from "../emailTemplates";
@@ -65,6 +65,7 @@ export const proposalsRouter = router({
     .input(z.object({
       leadId: z.number().int().optional(),
       status: z.enum(["borrador", "enviado", "visualizado", "aceptado", "rechazado", "expirado"]).optional(),
+      search: z.string().optional(),
       from: z.string().optional(),
       to: z.string().optional(),
       limit: z.number().int().min(1).max(200).default(50),
@@ -76,13 +77,37 @@ export const proposalsRouter = router({
       if (input.status) conditions.push(eq(proposals.status, input.status));
       if (input.from) conditions.push(gte(proposals.createdAt, new Date(input.from)));
       if (input.to) conditions.push(lte(proposals.createdAt, new Date(input.to)));
-
-      const rows = await db.select().from(proposals)
-        .where(conditions.length ? and(...conditions) : undefined)
-        .orderBy(desc(proposals.createdAt))
-        .limit(input.limit)
-        .offset(input.offset);
-      return rows;
+      if (input.search) {
+        const s = `%${input.search}%`;
+        conditions.push(or(like(proposals.proposalNumber, s), like(proposals.title, s), like(leads.name, s), like(leads.email, s)));
+      }
+      const where = conditions.length ? and(...conditions) : undefined;
+      const [rows, [{ total }]] = await Promise.all([
+        db.select({
+          id: proposals.id,
+          proposalNumber: proposals.proposalNumber,
+          leadId: proposals.leadId,
+          title: proposals.title,
+          mode: proposals.mode,
+          status: proposals.status,
+          total: proposals.total,
+          sentAt: proposals.sentAt,
+          createdAt: proposals.createdAt,
+          convertedToQuoteId: proposals.convertedToQuoteId,
+          publicUrl: proposals.publicUrl,
+          leadName: leads.name,
+          leadEmail: leads.email,
+        }).from(proposals)
+          .leftJoin(leads, eq(leads.id, proposals.leadId))
+          .where(where)
+          .orderBy(desc(proposals.createdAt))
+          .limit(input.limit)
+          .offset(input.offset),
+        db.select({ total: count() }).from(proposals)
+          .leftJoin(leads, eq(leads.id, proposals.leadId))
+          .where(where),
+      ]);
+      return { rows, total };
     }),
 
   // ── getById ───────────────────────────────────────────────────────────────
@@ -311,6 +336,31 @@ export const proposalsRouter = router({
       await db.delete(proposals).where(eq(proposals.id, input.id));
       await logActivity("lead", proposal.leadId, "proposal_deleted", agentId, String(agentId), { proposalNumber: proposal.proposalNumber });
       return { success: true };
+    }),
+
+  // ── bulkDelete ────────────────────────────────────────────────────────────
+  bulkDelete: staffProcedure
+    .input(z.object({ ids: z.array(z.number().int()).min(1) }))
+    .mutation(async ({ input }) => {
+      const rows = await db.select({ id: proposals.id, status: proposals.status }).from(proposals).where(inArray(proposals.id, input.ids));
+      const deletable = rows.filter(r => r.status === "borrador").map(r => r.id);
+      const skipped = input.ids.length - deletable.length;
+      if (deletable.length > 0) {
+        await db.delete(proposalOptions).where(inArray(proposalOptions.proposalId, deletable));
+        await db.delete(proposals).where(inArray(proposals.id, deletable));
+      }
+      return { deleted: deletable.length, skipped };
+    }),
+
+  // ── bulkUpdateStatus ──────────────────────────────────────────────────────
+  bulkUpdateStatus: staffProcedure
+    .input(z.object({
+      ids: z.array(z.number().int()).min(1),
+      status: z.enum(["borrador", "enviado", "visualizado", "aceptado", "rechazado", "expirado"]),
+    }))
+    .mutation(async ({ input }) => {
+      await db.update(proposals).set({ status: input.status }).where(inArray(proposals.id, input.ids));
+      return { updated: input.ids.length };
     }),
 
   // ── convertToQuote ────────────────────────────────────────────────────────
