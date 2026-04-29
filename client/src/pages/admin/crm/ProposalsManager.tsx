@@ -710,7 +710,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
   // â”€â”€â”€ Modo global (pÃ¡gina /admin/crm/propuestas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (!leadId) {
     return (
-      <div className="min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
+      <div className="-mx-4 sm:-mx-6 -mt-4 sm:-mt-6 min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
         {/* Header â€” igual que CRMDashboard */}
         <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
           <div className="flex items-center justify-between">
