@@ -584,10 +584,10 @@ function LeadPickerModal({ onPicked, onClose }: { onPicked: (id: number, name: s
           <div className="max-h-64 overflow-y-auto space-y-1">
             {isLoading ? (
               <div className="flex justify-center py-4"><RefreshCw className="w-4 h-4 animate-spin text-foreground/40" /></div>
-            ) : !data?.length ? (
+            ) : !data?.rows?.length ? (
               <p className="text-sm text-foreground/40 text-center py-4">No se encontraron leads</p>
             ) : (
-              data.map((lead: { id: number; name: string; email: string }) => (
+              data.rows.map((lead: { id: number; name: string; email: string }) => (
                 <button
                   key={lead.id}
                   type="button"

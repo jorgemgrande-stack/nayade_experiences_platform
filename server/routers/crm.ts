@@ -587,16 +587,20 @@ export const crmRouter = router({
         if (input.from) conditions.push(gte(leads.createdAt, new Date(input.from)));
         if (input.to) conditions.push(lte(leads.createdAt, new Date(input.to)));
 
-        const rows = await db
-          .select({ ...getTableColumns(leads), clientId: clients.id })
-          .from(leads)
-          .leftJoin(clients, eq(clients.leadId, leads.id))
-          .where(conditions.length ? and(...conditions) : undefined)
-          .orderBy(desc(leads.createdAt))
-          .limit(input.limit)
-          .offset(input.offset);
+        const where = conditions.length ? and(...conditions) : undefined;
+        const [rows, [{ total }]] = await Promise.all([
+          db
+            .select({ ...getTableColumns(leads), clientId: clients.id })
+            .from(leads)
+            .leftJoin(clients, eq(clients.leadId, leads.id))
+            .where(where)
+            .orderBy(desc(leads.createdAt))
+            .limit(input.limit)
+            .offset(input.offset),
+          db.select({ total: count() }).from(leads).where(where),
+        ]);
 
-        return rows;
+        return { rows, total };
       }),
 
     counters: staff.query(async () => {
@@ -1192,12 +1196,19 @@ export const crmRouter = router({
             )
           );
         }
-        const rows = await baseQuery
-          .where(conditions.length ? and(...conditions) : undefined)
-          .orderBy(desc(quotes.createdAt))
-          .limit(input.limit)
-          .offset(input.offset);
-        return rows;
+        const where = conditions.length ? and(...conditions) : undefined;
+        const [rows, [{ total }]] = await Promise.all([
+          baseQuery
+            .where(where)
+            .orderBy(desc(quotes.createdAt))
+            .limit(input.limit)
+            .offset(input.offset),
+          db.select({ total: count() }).from(quotes)
+            .leftJoin(leads, eq(quotes.leadId, leads.id))
+            .leftJoin(clients, eq(clients.leadId, quotes.leadId))
+            .where(where),
+        ]);
+        return { rows, total };
       }),
 
     counters: staff.query(async () => {
@@ -3650,21 +3661,25 @@ export const crmRouter = router({
         if (input.from) conditions.push(gte(reservations.createdAt, new Date(input.from).getTime()));
         if (input.to) conditions.push(lte(reservations.createdAt, new Date(input.to).getTime()));
 
-        const rows = await db
-          .select({
-            ...getTableColumns(reservations),
-            invoicePdfUrl: invoices.pdfUrl,
-            clientId: clients.id,
-          })
-          .from(reservations)
-          .leftJoin(invoices, eq(invoices.id, reservations.invoiceId as any))
-          .leftJoin(quotes, eq(quotes.id, reservations.quoteId as any))
-          .leftJoin(clients, eq(clients.leadId, quotes.leadId))
-          .where(conditions.length ? and(...conditions) : undefined)
-          .orderBy(desc(reservations.createdAt))
-          .limit(input.limit)
-          .offset(input.offset);
-        return rows;
+        const where = conditions.length ? and(...conditions) : undefined;
+        const [rows, [{ total }]] = await Promise.all([
+          db
+            .select({
+              ...getTableColumns(reservations),
+              invoicePdfUrl: invoices.pdfUrl,
+              clientId: clients.id,
+            })
+            .from(reservations)
+            .leftJoin(invoices, eq(invoices.id, reservations.invoiceId as any))
+            .leftJoin(quotes, eq(quotes.id, reservations.quoteId as any))
+            .leftJoin(clients, eq(clients.leadId, quotes.leadId))
+            .where(where)
+            .orderBy(desc(reservations.createdAt))
+            .limit(input.limit)
+            .offset(input.offset),
+          db.select({ total: count() }).from(reservations).where(where),
+        ]);
+        return { rows, total };
       }),
 
     counters: staff.query(async () => {

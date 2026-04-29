@@ -4862,27 +4862,37 @@ export default function CRMDashboard() {
   const { data: resCounters } = trpc.crm.reservations.counters.useQuery();
   const { data: upcomingInstallments } = trpc.crm.paymentPlans.upcoming.useQuery({ daysAhead: 7 });
 
+  const PAGE_SIZE = 50;
+  const [leadsPage, setLeadsPage] = useState(0);
+  const [quotesPage, setQuotesPage] = useState(0);
+  const [resPage, setResPage] = useState(0);
+
+  // Resetear página al cambiar filtros o búsqueda
+  useEffect(() => { setLeadsPage(0); }, [filterStatus, search]);
+  useEffect(() => { setQuotesPage(0); }, [filterStatus, search]);
+  useEffect(() => { setResPage(0); }, [filterStatus, resChannelFilter, search]);
+
   const leadsFilter = useMemo(() => ({
     opportunityStatus: filterStatus !== "all" && tab === "leads" ? (filterStatus as OpportunityStatus) : undefined,
     search: search || undefined,
-    limit: 50,
-    offset: 0,
-  }), [filterStatus, search, tab]);
+    limit: PAGE_SIZE,
+    offset: leadsPage * PAGE_SIZE,
+  }), [filterStatus, search, tab, leadsPage]);
 
   const quotesFilter = useMemo(() => ({
     status: filterStatus !== "all" && tab === "quotes" ? (filterStatus as QuoteStatus) : undefined,
     search: search || undefined,
-    limit: 50,
-    offset: 0,
-  }), [filterStatus, search, tab]);
+    limit: PAGE_SIZE,
+    offset: quotesPage * PAGE_SIZE,
+  }), [filterStatus, search, tab, quotesPage]);
 
   const resFilter = useMemo(() => ({
     status: filterStatus !== "all" && tab === "reservations" ? filterStatus : undefined,
     channel: resChannelFilter !== "all" ? resChannelFilter : undefined,
     search: search || undefined,
-    limit: 50,
-    offset: 0,
-  }), [filterStatus, resChannelFilter, search, tab]);
+    limit: PAGE_SIZE,
+    offset: resPage * PAGE_SIZE,
+  }), [filterStatus, resChannelFilter, search, tab, resPage]);
 
   const { data: leadsData, isLoading: leadsLoading } = trpc.crm.leads.list.useQuery(leadsFilter, { enabled: tab === "leads" });
   const { data: quotesData, isLoading: quotesLoading } = trpc.crm.quotes.list.useQuery(quotesFilter, { enabled: tab === "quotes" });
@@ -6049,9 +6059,9 @@ export default function CRMDashboard() {
                 <tbody>
                   {leadsLoading ? (
                     <tr><td colSpan={6} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                  ) : !leadsData?.length ? (
+                  ) : !leadsData?.rows?.length ? (
                     <tr><td colSpan={6} className="text-center py-12 text-foreground/40 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
-                  ) : leadsData.map((lead: any) => (
+                  ) : leadsData.rows.map((lead: any) => (
                     <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${!lead.seenAt ? "bg-blue-950/20" : ""}`}>
                       <td className="px-4 py-3 hidden sm:table-cell">
                         <div className="text-xs text-foreground/70 font-medium">{new Date(lead.createdAt).toLocaleDateString("es-ES")}</div>
@@ -6161,6 +6171,25 @@ export default function CRMDashboard() {
                 </tbody>
               </table>
             </div>
+            {leadsData && leadsData.total > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
+                <span className="text-sm text-foreground/50">
+                  Página {leadsPage + 1} de {Math.ceil(leadsData.total / PAGE_SIZE)} · {leadsData.total} leads
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setLeadsPage(p => p - 1)}
+                    disabled={leadsPage === 0}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                  >← Anterior</button>
+                  <button
+                    onClick={() => setLeadsPage(p => p + 1)}
+                    disabled={(leadsPage + 1) * PAGE_SIZE >= leadsData.total}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                  >Siguiente →</button>
+                </div>
+              </div>
+            )}
             </div>
           )}
 
@@ -6182,9 +6211,9 @@ export default function CRMDashboard() {
                 <tbody>
                   {quotesLoading ? (
                     <tr><td colSpan={7} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                  ) : !quotesData?.length ? (
+                  ) : !quotesData?.rows?.length ? (
                     <tr><td colSpan={7} className="text-center py-12 text-foreground/40 text-sm">No hay presupuestos {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
-                  ) : quotesData.map((quote: any) => (
+                  ) : quotesData.rows.map((quote: any) => (
                     <tr key={quote.id} className="border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors group">
                       <td className="px-4 py-3">
                         <div className="text-sm font-mono font-medium text-orange-400">{quote.quoteNumber}</div>
@@ -6336,6 +6365,25 @@ export default function CRMDashboard() {
                 </tbody>
               </table>
             </div>
+            {quotesData && quotesData.total > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
+                <span className="text-sm text-foreground/50">
+                  Página {quotesPage + 1} de {Math.ceil(quotesData.total / PAGE_SIZE)} · {quotesData.total} presupuestos
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setQuotesPage(p => p - 1)}
+                    disabled={quotesPage === 0}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                  >← Anterior</button>
+                  <button
+                    onClick={() => setQuotesPage(p => p + 1)}
+                    disabled={(quotesPage + 1) * PAGE_SIZE >= quotesData.total}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                  >Siguiente →</button>
+                </div>
+              </div>
+            )}
             </div>
           )}
 
@@ -6360,9 +6408,9 @@ export default function CRMDashboard() {
                 <tbody>
                   {resLoading ? (
                     <tr><td colSpan={10} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
-                  ) : !resData?.length ? (
+                  ) : !resData?.rows?.length ? (
                     <tr><td colSpan={10} className="text-center py-12 text-foreground/40 text-sm">No hay reservas</td></tr>
-                  ) : resData.map((res: any) => (
+                  ) : resData.rows.map((res: any) => (
                     <tr key={res.id} className="border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors">
                       {/* Nº Reserva */}
                       <td className="px-4 py-3 shrink-0">
@@ -6587,6 +6635,25 @@ export default function CRMDashboard() {
                 </tbody>
               </table>
             </div>
+            {resData && resData.total > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
+                <span className="text-sm text-foreground/50">
+                  Página {resPage + 1} de {Math.ceil(resData.total / PAGE_SIZE)} · {resData.total} reservas
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setResPage(p => p - 1)}
+                    disabled={resPage === 0}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                  >← Anterior</button>
+                  <button
+                    onClick={() => setResPage(p => p + 1)}
+                    disabled={(resPage + 1) * PAGE_SIZE >= resData.total}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                  >Siguiente →</button>
+                </div>
+              </div>
+            )}
             </div>
           )}
 
@@ -7622,7 +7689,7 @@ export default function CRMDashboard() {
               onClick={() => {
                 if (!rowPendingPayQuoteId || !rowPendingPayDueDate) return;
                 // Buscamos el quote en la lista para obtener los datos del cliente
-                const q = quotesData?.find((x: any) => x.id === rowPendingPayQuoteId);
+                const q = quotesData?.rows?.find((x: any) => x.id === rowPendingPayQuoteId);
                 rowPendingPayMutation.mutate({
                   quoteId: rowPendingPayQuoteId,
                   clientName: (q as any)?.clientName ?? (q as any)?.title ?? "Cliente",
@@ -7683,7 +7750,7 @@ export default function CRMDashboard() {
               setGenInvoiceResId(id);
             }}
             onEdit={(id, status) => {
-              const resRow = resData?.find((r: any) => r.id === id);
+              const resRow = resData?.rows?.find((r: any) => r.id === id);
               setViewResId(null);
               setEditResData(resRow ?? null);
               setEditResStatus(status);

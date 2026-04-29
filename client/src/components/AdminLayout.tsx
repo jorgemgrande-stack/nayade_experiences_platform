@@ -610,7 +610,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                       </span>
                     </div>
                     <div className="space-y-1">
-                      {(recentLeads ?? []).slice(0, 5).map((lead) => (
+                      {(recentLeads?.rows ?? []).slice(0, 5).map((lead) => (
                         <button
                           key={lead.id}
                           className="w-full text-left px-2 py-1.5 rounded-md hover:bg-accent/10 transition-colors group"
@@ -641,7 +641,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                       </span>
                     </div>
                     <div className="space-y-1">
-                      {(recentQuotes ?? []).slice(0, 5).map((quote) => (
+                      {(recentQuotes?.rows ?? []).slice(0, 5).map((quote) => (
                         <button
                           key={quote.id}
                           className="w-full text-left px-2 py-1.5 rounded-md hover:bg-accent/10 transition-colors group"
