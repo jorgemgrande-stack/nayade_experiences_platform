@@ -104,19 +104,22 @@ function ItemsEditor({
 
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto -mx-1 px-1">
-        <div className="min-w-[520px]">
-          <div className="grid grid-cols-12 gap-1 text-xs text-foreground/40 px-1 mb-1">
-            <div className="col-span-4">Descripción</div>
-            <div className="col-span-2 text-center">Régimen</div>
-            <div className="col-span-2 text-center">Cant.</div>
-            <div className="col-span-2 text-right">Precio</div>
-            <div className="col-span-1 text-right">Total</div>
-            <div className="col-span-1" />
-          </div>
-          {items.map((item, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-1 mb-3 items-center">
-              <div className="col-span-4 pb-4">
+      {items.length > 0 && (
+        <div className="hidden sm:grid grid-cols-[1fr_100px_72px_88px_72px_28px] gap-x-2 text-xs text-foreground/40 px-1 mb-0.5">
+          <div>Descripción</div>
+          <div className="text-center">Régimen</div>
+          <div className="text-center">Cant.</div>
+          <div className="text-right">Precio u.</div>
+          <div className="text-right">Total</div>
+          <div />
+        </div>
+      )}
+      <div className="space-y-2">
+        {items.map((item, idx) => (
+          <div key={idx} className="rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2 space-y-2 sm:space-y-0 sm:p-0 sm:border-0 sm:bg-transparent">
+            {/* Fila 1: descripción + delete (mobile) / grid completo (desktop) */}
+            <div className="flex items-start gap-2 sm:hidden">
+              <div className="flex-1">
                 <CatalogConceptSelector
                   value={item.description}
                   onChange={(v) => updateItem(idx, { description: v, sourceType: "manual", sourceId: undefined })}
@@ -127,55 +130,63 @@ function ItemsEditor({
                   showBadge
                 />
               </div>
-              <div className="col-span-2">
-                <select
-                  className="w-full bg-background border border-input text-xs rounded-md px-1 py-1.5 h-8"
-                  value={item.fiscalRegime === "reav" ? "reav" : item.taxRate === 10 ? "general_10" : "general"}
-                  onChange={(e) => updateItem(idx, {
-                    fiscalRegime: e.target.value === "reav" ? "reav" : "general",
-                    taxRate: e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21,
-                    sourceType: "manual",
-                  })}
-                >
-                  <option value="general">IVA 21%</option>
-                  <option value="general_10">IVA 10%</option>
-                  <option value="reav">REAV</option>
-                </select>
-              </div>
-              <div className="col-span-2">
-                <Input
-                  type="number"
-                  min={1}
-                  value={item.quantity}
-                  onChange={e => updateItem(idx, { quantity: Number(e.target.value) })}
-                  className="h-8 text-xs text-center"
-                />
-              </div>
-              <div className="col-span-2">
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={item.unitPrice}
-                  onChange={e => updateItem(idx, { unitPrice: Number(e.target.value) })}
-                  className="h-8 text-xs text-right"
-                />
-              </div>
-              <div className="col-span-1 text-right text-xs text-foreground/70 pr-1">
-                {item.total.toFixed(2)} €
-              </div>
-              <div className="col-span-1 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => removeItem(idx)}
-                  className="text-red-400 hover:text-red-300"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-300 mt-1 shrink-0">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          ))}
-        </div>
+            {/* Fila 2 mobile: régimen + cant + precio + total */}
+            <div className="grid grid-cols-4 gap-1 sm:hidden">
+              <select
+                className="col-span-2 w-full bg-background border border-input text-xs rounded-md px-1 py-1.5 h-8"
+                value={item.fiscalRegime === "reav" ? "reav" : item.taxRate === 10 ? "general_10" : "general"}
+                onChange={(e) => updateItem(idx, {
+                  fiscalRegime: e.target.value === "reav" ? "reav" : "general",
+                  taxRate: e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21,
+                  sourceType: "manual",
+                })}
+              >
+                <option value="general">IVA 21%</option>
+                <option value="general_10">IVA 10%</option>
+                <option value="reav">REAV</option>
+              </select>
+              <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(idx, { quantity: Number(e.target.value) })} className="h-8 text-xs text-center" />
+              <Input type="number" min={0} step={0.01} value={item.unitPrice} onChange={e => updateItem(idx, { unitPrice: Number(e.target.value) })} className="h-8 text-xs text-right" />
+            </div>
+            {/* Layout desktop: grid en una sola fila */}
+            <div className="hidden sm:grid grid-cols-[1fr_100px_72px_88px_72px_28px] gap-x-2 items-center mb-1.5">
+              <div>
+                <CatalogConceptSelector
+                  value={item.description}
+                  onChange={(v) => updateItem(idx, { description: v, sourceType: "manual", sourceId: undefined })}
+                  onSelectProduct={(p) => handleSelectProduct(idx, p)}
+                  sourceType={item.sourceType}
+                  sourceId={item.sourceId}
+                  inputClassName="h-8 text-xs"
+                  showBadge
+                />
+              </div>
+              <select
+                className="w-full bg-background border border-input text-xs rounded-md px-1 py-1.5 h-8"
+                value={item.fiscalRegime === "reav" ? "reav" : item.taxRate === 10 ? "general_10" : "general"}
+                onChange={(e) => updateItem(idx, {
+                  fiscalRegime: e.target.value === "reav" ? "reav" : "general",
+                  taxRate: e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21,
+                  sourceType: "manual",
+                })}
+              >
+                <option value="general">IVA 21%</option>
+                <option value="general_10">IVA 10%</option>
+                <option value="reav">REAV</option>
+              </select>
+              <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(idx, { quantity: Number(e.target.value) })} className="h-8 text-xs text-center" />
+              <Input type="number" min={0} step={0.01} value={item.unitPrice} onChange={e => updateItem(idx, { unitPrice: Number(e.target.value) })} className="h-8 text-xs text-right" />
+              <div className="text-right text-xs text-foreground/70 font-medium pr-0.5">{item.total.toFixed(2)} €</div>
+              <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-300 flex justify-end">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
       <Button type="button" variant="ghost" size="sm" onClick={addItem} className="text-xs">
         <Plus className="w-3.5 h-3.5 mr-1" /> Añadir línea
@@ -372,129 +383,137 @@ function ProposalFormModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="w-[95vw] max-w-3xl flex flex-col max-h-[90vh] p-0 gap-0">
+        {/* Header fijo */}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.08] shrink-0">
           <DialogTitle>{isEdit ? "Editar propuesta" : "Nueva propuesta"} — {leadName}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Mode selector */}
-          <div className="flex gap-3">
-            {(["configurable", "multi_option"] as const).map(m => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setForm(f => ({ ...f, mode: m }))}
-                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${form.mode === m ? "bg-blue-600 border-blue-500 text-white" : "border-foreground/20 text-foreground/60 hover:border-foreground/40"}`}
-              >
-                {m === "configurable" ? "Configurable (líneas fijas)" : "Multi-opción (el cliente elige)"}
-              </button>
-            ))}
-          </div>
 
-          <div>
-            <Label>Título *</Label>
-            <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Ej: Propuesta team building verano 2026" className="mt-1" />
-          </div>
-
-          <div>
-            <Label>Descripción interna</Label>
-            <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="mt-1 text-sm" />
-          </div>
-
-          {/* Items — configurable mode */}
-          {form.mode === "configurable" && (
-            <div>
-              <Label className="mb-2 block">Líneas del presupuesto</Label>
-              <ItemsEditor items={form.items} onChange={items => setForm(f => ({ ...f, items }))} />
-              <div className="mt-3 flex flex-col items-end gap-1 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-foreground/50 text-xs">Descuento (€)</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={form.discount}
-                    onChange={e => setForm(f => ({ ...f, discount: Number(e.target.value) }))}
-                    className="h-7 w-24 text-xs text-right"
-                  />
-                </div>
-                {form.discount > 0 && <div className="text-xs text-foreground/50">Base: {configTotals.subtotal.toFixed(2)} € · Descuento: -{form.discount.toFixed(2)} €</div>}
-                <div className="text-xs text-foreground/50">IVA: {configTotals.tax.toFixed(2)} €</div>
-                <div className="text-base font-bold">Total: {configTotals.total.toFixed(2)} €</div>
-              </div>
+        {/* Cuerpo con scroll */}
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          <form id="proposal-form" onSubmit={handleSubmit} className="space-y-5">
+            {/* Mode selector */}
+            <div className="flex gap-2">
+              {(["configurable", "multi_option"] as const).map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, mode: m }))}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${form.mode === m ? "bg-blue-600 border-blue-500 text-white" : "border-foreground/20 text-foreground/60 hover:border-foreground/40"}`}
+                >
+                  {m === "configurable" ? "Configurable (líneas fijas)" : "Multi-opción (el cliente elige)"}
+                </button>
+              ))}
             </div>
-          )}
 
-          {/* Options — multi_option mode */}
-          {form.mode === "multi_option" && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>Opciones</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addOption} className="text-xs">
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Añadir opción
-                </Button>
-              </div>
-              {form.options.map((opt, idx) => {
-                const optTotals = calcTotals(opt.items, opt.discount);
-                return (
-                  <div key={idx} className="border border-foreground/20 rounded-lg p-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={opt.title}
-                        onChange={e => setForm(f => ({ ...f, options: f.options.map((o, i) => i === idx ? { ...o, title: e.target.value } : o) }))}
-                        placeholder="Título de la opción"
-                        className="h-8 text-sm flex-1"
-                      />
-                      <label className="flex items-center gap-1.5 text-xs text-foreground/60 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={opt.isRecommended}
-                          onChange={e => setForm(f => ({ ...f, options: f.options.map((o, i) => i === idx ? { ...o, isRecommended: e.target.checked } : o) }))}
-                          className="rounded"
-                        />
-                        Recomendada
-                      </label>
-                      <button type="button" onClick={() => removeOption(idx)} className="text-red-400 hover:text-red-300">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <ItemsEditor
-                      items={opt.items}
-                      onChange={items => setForm(f => ({ ...f, options: f.options.map((o, i) => i === idx ? { ...o, items } : o) }))}
+            {/* Título */}
+            <div>
+              <Label>Título *</Label>
+              <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Ej: Propuesta team building verano 2026" className="mt-1" />
+            </div>
+
+            {/* Descripción */}
+            <div>
+              <Label>Descripción interna</Label>
+              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="mt-1 text-sm" />
+            </div>
+
+            {/* Items — configurable mode */}
+            {form.mode === "configurable" && (
+              <div>
+                <Label className="mb-2 block">Líneas del presupuesto</Label>
+                <ItemsEditor items={form.items} onChange={items => setForm(f => ({ ...f, items }))} />
+                <div className="mt-3 pt-3 border-t border-foreground/[0.08] flex flex-col items-end gap-1 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-foreground/50 text-xs">Descuento (€)</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={form.discount}
+                      onChange={e => setForm(f => ({ ...f, discount: Number(e.target.value) }))}
+                      className="h-7 w-24 text-xs text-right"
                     />
-                    <div className="flex justify-end text-xs text-foreground/50 gap-3">
-                      <span>IVA: {optTotals.tax.toFixed(2)} €</span>
-                      <span className="font-bold text-foreground">Total: {optTotals.total.toFixed(2)} €</span>
-                    </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  {form.discount > 0 && <div className="text-xs text-foreground/50">Base: {configTotals.subtotal.toFixed(2)} € · Descuento: -{form.discount.toFixed(2)} €</div>}
+                  <div className="text-xs text-foreground/50">IVA: {configTotals.tax.toFixed(2)} €</div>
+                  <div className="text-base font-bold">Total: {configTotals.total.toFixed(2)} €</div>
+                </div>
+              </div>
+            )}
 
-          {/* Meta fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <Label>Válida hasta</Label>
-              <Input type="date" value={form.validUntil} onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))} className="mt-1" />
-            </div>
-            <div>
-              <Label>Notas (visibles en email)</Label>
-              <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="mt-1 text-sm" />
-            </div>
-          </div>
-          <div>
-            <Label>Condiciones</Label>
-            <Textarea value={form.conditions} onChange={e => setForm(f => ({ ...f, conditions: e.target.value }))} rows={2} className="mt-1 text-sm" placeholder="Condiciones de cancelación, validez, etc." />
-          </div>
+            {/* Options — multi_option mode */}
+            {form.mode === "multi_option" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Opciones</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addOption} className="text-xs">
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir opción
+                  </Button>
+                </div>
+                {form.options.map((opt, idx) => {
+                  const optTotals = calcTotals(opt.items, opt.discount);
+                  return (
+                    <div key={idx} className="border border-foreground/20 rounded-lg p-3 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={opt.title}
+                          onChange={e => setForm(f => ({ ...f, options: f.options.map((o, i) => i === idx ? { ...o, title: e.target.value } : o) }))}
+                          placeholder="Título de la opción"
+                          className="h-8 text-sm flex-1"
+                        />
+                        <label className="flex items-center gap-1.5 text-xs text-foreground/60 cursor-pointer select-none shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={opt.isRecommended}
+                            onChange={e => setForm(f => ({ ...f, options: f.options.map((o, i) => i === idx ? { ...o, isRecommended: e.target.checked } : o) }))}
+                            className="rounded"
+                          />
+                          Recomendada
+                        </label>
+                        <button type="button" onClick={() => removeOption(idx)} className="text-red-400 hover:text-red-300 shrink-0">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <ItemsEditor
+                        items={opt.items}
+                        onChange={items => setForm(f => ({ ...f, options: f.options.map((o, i) => i === idx ? { ...o, items } : o) }))}
+                      />
+                      <div className="pt-2 border-t border-foreground/[0.08] flex justify-end text-xs text-foreground/50 gap-3">
+                        <span>IVA: {optTotals.tax.toFixed(2)} €</span>
+                        <span className="font-bold text-foreground">Total: {optTotals.total.toFixed(2)} €</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={isBusy}>Cancelar</Button>
-            <Button type="submit" disabled={isBusy}>
-              {isBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : (isEdit ? "Guardar cambios" : "Crear propuesta")}
-            </Button>
-          </DialogFooter>
-        </form>
+            {/* Meta fields */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label>Válida hasta</Label>
+                <Input type="date" value={form.validUntil} onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))} className="mt-1" />
+              </div>
+              <div>
+                <Label>Notas (visibles en email)</Label>
+                <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="mt-1 text-sm" />
+              </div>
+            </div>
+            <div>
+              <Label>Condiciones</Label>
+              <Textarea value={form.conditions} onChange={e => setForm(f => ({ ...f, conditions: e.target.value }))} rows={2} className="mt-1 text-sm" placeholder="Condiciones de cancelación, validez, etc." />
+            </div>
+          </form>
+        </div>
+
+        {/* Footer fijo siempre visible */}
+        <div className="px-6 py-4 border-t border-foreground/[0.08] shrink-0 flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={isBusy}>Cancelar</Button>
+          <Button type="submit" form="proposal-form" disabled={isBusy}>
+            {isBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : (isEdit ? "Guardar cambios" : "Crear propuesta")}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
