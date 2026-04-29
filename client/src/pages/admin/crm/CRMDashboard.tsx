@@ -2544,16 +2544,19 @@ function QuoteEditModal({
   };
 
   // Seleccionar producto del catálogo: rellena descripción, precio y régimen
-  const selectCatalogProduct = (idx: number, product: { title: string; unitPrice: number; fiscalRegime: "reav" | "general" }) => {
+  const selectCatalogProduct = (idx: number, product: CatalogProduct) => {
     setItems((prev) => prev.map((item, i) => {
       if (i !== idx) return item;
       const qty = item.quantity || 1;
+      const unitPrice = Number(product.basePrice);
+      const fiscalRegime = product.fiscalRegime === "reav" ? "reav" : "general";
       return {
         ...item,
         description: product.title,
-        unitPrice: product.unitPrice,
-        fiscalRegime: product.fiscalRegime,
-        total: qty * product.unitPrice,
+        unitPrice,
+        fiscalRegime,
+        taxRate: product.taxRate ? Number(product.taxRate) : 21,
+        total: qty * unitPrice,
       };
     }));
   };
@@ -2627,10 +2630,13 @@ function QuoteEditModal({
           <div className="space-y-2">
             {items.map((item, idx) => (
               <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                <ProductAutocompleteInput
+                <CatalogConceptSelector
                   value={item.description}
                   onChange={(v) => updateItem(idx, "description", v)}
-                  onSelect={(product) => selectCatalogProduct(idx, product)}
+                  onSelectProduct={(product) => selectCatalogProduct(idx, product)}
+                  className="col-span-4"
+                  inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm pr-8"
+                  showBadge={false}
                 />
                 <select
                   className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
