@@ -34,6 +34,7 @@ import {
   X,
   ChevronDown,
 } from "lucide-react";
+import { CatalogConceptSelector, type CatalogProduct, type SourceType } from "@/components/CatalogConceptSelector";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,8 @@ type ItemLine = {
   isOptional?: boolean;
   fiscalRegime?: "reav" | "general";
   taxRate?: number;
+  sourceType?: SourceType;
+  sourceId?: number;
 };
 
 function ItemsEditor({
@@ -91,27 +94,53 @@ function ItemsEditor({
   function removeItem(idx: number) {
     onChange(items.filter((_, i) => i !== idx));
   }
+  function handleSelectProduct(idx: number, p: CatalogProduct) {
+    const unitPrice = Number(p.basePrice) || 0;
+    const fiscalRegime = p.fiscalRegime === "reav" ? "reav" : "general";
+    const taxRate = Number(p.taxRate ?? 21);
+    const sourceType: SourceType = p.productType === "experience" ? "experience" : "legoPack";
+    updateItem(idx, { description: p.title, unitPrice, total: unitPrice * items[idx].quantity, fiscalRegime, taxRate, sourceType, sourceId: p.id });
+  }
 
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto -mx-1 px-1">
-        <div className="min-w-[460px]">
+        <div className="min-w-[520px]">
           <div className="grid grid-cols-12 gap-1 text-xs text-foreground/40 px-1 mb-1">
-            <div className="col-span-5">Descripción</div>
+            <div className="col-span-4">Descripción</div>
+            <div className="col-span-2 text-center">Régimen</div>
             <div className="col-span-2 text-center">Cant.</div>
             <div className="col-span-2 text-right">Precio</div>
-            <div className="col-span-2 text-right">Total</div>
+            <div className="col-span-1 text-right">Total</div>
             <div className="col-span-1" />
           </div>
           {items.map((item, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-1 mb-1 items-center">
-              <div className="col-span-5">
-                <Input
+            <div key={idx} className="grid grid-cols-12 gap-1 mb-3 items-center">
+              <div className="col-span-4 pb-4">
+                <CatalogConceptSelector
                   value={item.description}
-                  onChange={e => updateItem(idx, { description: e.target.value })}
-                  placeholder="Descripción"
-                  className="h-8 text-xs"
+                  onChange={(v) => updateItem(idx, { description: v, sourceType: "manual", sourceId: undefined })}
+                  onSelectProduct={(p) => handleSelectProduct(idx, p)}
+                  sourceType={item.sourceType}
+                  sourceId={item.sourceId}
+                  inputClassName="h-8 text-xs"
+                  showBadge
                 />
+              </div>
+              <div className="col-span-2">
+                <select
+                  className="w-full bg-background border border-input text-xs rounded-md px-1 py-1.5 h-8"
+                  value={item.fiscalRegime === "reav" ? "reav" : item.taxRate === 10 ? "general_10" : "general"}
+                  onChange={(e) => updateItem(idx, {
+                    fiscalRegime: e.target.value === "reav" ? "reav" : "general",
+                    taxRate: e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21,
+                    sourceType: "manual",
+                  })}
+                >
+                  <option value="general">IVA 21%</option>
+                  <option value="general_10">IVA 10%</option>
+                  <option value="reav">REAV</option>
+                </select>
               </div>
               <div className="col-span-2">
                 <Input
@@ -132,7 +161,7 @@ function ItemsEditor({
                   className="h-8 text-xs text-right"
                 />
               </div>
-              <div className="col-span-2 text-right text-xs text-foreground/70 pr-1">
+              <div className="col-span-1 text-right text-xs text-foreground/70 pr-1">
                 {item.total.toFixed(2)} €
               </div>
               <div className="col-span-1 flex justify-end">

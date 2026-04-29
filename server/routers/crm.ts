@@ -5281,6 +5281,7 @@ export const crmRouter = router({
     search: staff.input(z.object({
       q: z.string().optional(),
       limit: z.number().default(20),
+      sourceType: z.enum(["all", "experience", "legoPack"]).default("all"),
     })).query(async ({ input }) => {
       const expConditions = input.q
         ? [or(like(experiences.title, `%${input.q}%`), like(experiences.shortDescription, `%${input.q}%`))]
@@ -5288,29 +5289,41 @@ export const crmRouter = router({
       const legoConditions = input.q
         ? [like(legoPacks.title, `%${input.q}%`)]
         : [];
+      const fetchExp = input.sourceType === "all" || input.sourceType === "experience";
+      const fetchLego = input.sourceType === "all" || input.sourceType === "legoPack";
       const [expRows, legoRows] = await Promise.all([
-        db.select({
-          id: experiences.id,
-          title: experiences.title,
-          basePrice: experiences.basePrice,
-          image: experiences.image1,
-          coverImage: experiences.coverImageUrl,
-          productType: sql<string>`'experience'`,
-        }).from(experiences)
-          .where(and(eq(experiences.isActive, true), ...(expConditions as any[])))
-          .orderBy(experiences.title)
-          .limit(input.limit),
-        db.select({
-          id: legoPacks.id,
-          title: legoPacks.title,
-          basePrice: sql<string>`'0'`,
-          image: legoPacks.coverImageUrl,
-          coverImage: legoPacks.coverImageUrl,
-          productType: sql<string>`'legoPack'`,
-        }).from(legoPacks)
-          .where(and(eq(legoPacks.isActive, true), ...(legoConditions as any[])))
-          .orderBy(legoPacks.title)
-          .limit(input.limit),
+        fetchExp
+          ? db.select({
+              id: experiences.id,
+              title: experiences.title,
+              basePrice: experiences.basePrice,
+              image: experiences.image1,
+              coverImage: experiences.coverImageUrl,
+              fiscalRegime: experiences.fiscalRegime,
+              taxRate: experiences.taxRate,
+              category: sql<string>`'experience'`,
+              productType: sql<string>`'experience'`,
+            }).from(experiences)
+              .where(and(eq(experiences.isActive, true), ...(expConditions as any[])))
+              .orderBy(experiences.title)
+              .limit(input.limit)
+          : Promise.resolve([]),
+        fetchLego
+          ? db.select({
+              id: legoPacks.id,
+              title: legoPacks.title,
+              basePrice: sql<string>`'0'`,
+              image: legoPacks.coverImageUrl,
+              coverImage: legoPacks.coverImageUrl,
+              fiscalRegime: sql<string>`'general'`,
+              taxRate: sql<string>`'21'`,
+              category: legoPacks.category,
+              productType: sql<string>`'legoPack'`,
+            }).from(legoPacks)
+              .where(and(eq(legoPacks.isActive, true), ...(legoConditions as any[])))
+              .orderBy(legoPacks.title)
+              .limit(input.limit)
+          : Promise.resolve([]),
       ]);
       return [...expRows, ...legoRows];
     }),

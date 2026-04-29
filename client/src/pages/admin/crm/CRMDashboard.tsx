@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
 import { ProposalLeadButton } from "./ProposalsManager";
+import { CatalogConceptSelector, type CatalogProduct } from "@/components/CatalogConceptSelector";
 import {
   Users,
   User,
@@ -925,41 +926,16 @@ function ProductSearchInput({
 }: {
   value: string;
   onChange: (v: string) => void;
-  onSelect: (product: { title: string; basePrice: string }) => void;
+  onSelect: (product: CatalogProduct) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const { data: products } = trpc.crm.products.search.useQuery(
-    { q, limit: 10 },
-    { enabled: open }
-  );
-
   return (
-    <div className="relative">
-      <Input
-        className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
-        placeholder="Descripción o busca un producto..."
-        value={value}
-        onChange={(e) => { onChange(e.target.value); setQ(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 200)}
-      />
-      {open && products && products.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.12] rounded-lg shadow-xl max-h-48 overflow-y-auto">
-          {products.map((p: any) => (
-            <button
-              key={p.id}
-              type="button"
-              className="w-full text-left px-3 py-2 hover:bg-foreground/[0.08] text-sm text-white flex justify-between items-center gap-2"
-              onMouseDown={() => { onSelect(p as any); setOpen(false); }}
-            >
-              <span className="truncate">{p.title}</span>
-              <span className="text-orange-400 text-xs shrink-0">{Number(p.basePrice).toFixed(2)} €</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <CatalogConceptSelector
+      value={value}
+      onChange={onChange}
+      onSelectProduct={onSelect}
+      inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm"
+      showBadge={false}
+    />
   );
 }
 
@@ -1693,8 +1669,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                       setItems((prev) => prev.map((it, i) => {
                         if (i !== idx) return it;
                         const unitPrice = Number(p.basePrice);
-                        const fr = (p as any).fiscalRegime === "reav" ? "reav" : "general";
-                        const tr = (p as any).taxRate ?? 21;
+                        const fr = p.fiscalRegime === "reav" ? "reav" : "general";
+                        const tr = Number(p.taxRate ?? 21);
                         return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr, taxRate: tr };
                       }));
                     }}
@@ -2126,8 +2102,8 @@ function QuoteBuilderModal({
                       setItems((prev) => prev.map((it, i) => {
                         if (i !== idx) return it;
                         const unitPrice = Number(p.basePrice);
-                        const fr = (p as any).fiscalRegime === "reav" ? "reav" : "general";
-                        const tr = (p as any).taxRate ?? 21;
+                        const fr = p.fiscalRegime === "reav" ? "reav" : "general";
+                        const tr = Number(p.taxRate ?? 21);
                         return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr, taxRate: tr };
                       }));
                     }}
