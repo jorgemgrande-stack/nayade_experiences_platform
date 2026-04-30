@@ -200,10 +200,11 @@ function ItemsEditor({
 function calcTotals(items: ItemLine[], discountEuros = 0) {
   const subtotal = items.reduce((s, i) => s + i.total, 0);
   const taxableItems = items.filter(i => (i.fiscalRegime ?? "general") !== "reav");
-  const tax21 = taxableItems.filter(i => (i.taxRate ?? 21) === 21).reduce((s, i) => s + i.total, 0) * 0.21;
-  const tax10 = taxableItems.filter(i => (i.taxRate ?? 21) === 10).reduce((s, i) => s + i.total, 0) * 0.10;
-  const tax = tax21 + tax10;
-  const total = subtotal - discountEuros + tax;
+  // Precios ya incluyen IVA: extraer la cuota por división
+  const gross21 = taxableItems.filter(i => (i.taxRate ?? 21) === 21).reduce((s, i) => s + i.total, 0);
+  const gross10 = taxableItems.filter(i => (i.taxRate ?? 21) === 10).reduce((s, i) => s + i.total, 0);
+  const tax = (gross21 - gross21 / 1.21) + (gross10 - gross10 / 1.10);
+  const total = subtotal - discountEuros;
   return { subtotal, tax: parseFloat(tax.toFixed(2)), total: parseFloat(total.toFixed(2)) };
 }
 

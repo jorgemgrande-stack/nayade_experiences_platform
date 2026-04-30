@@ -777,7 +777,9 @@ export const crmRouter = router({
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
 
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
-        const taxAmount = (input.subtotal - input.discount) * (input.taxRate / 100);
+        // Precios ya incluyen IVA: extraer cuota con groupTaxBreakdown
+        const breakdown = groupTaxBreakdown(input.items.filter(i => i.fiscalRegime !== "reav"));
+        const taxAmount = totalTaxAmount(breakdown);
 
         const [result] = await db.insert(quotes).values({
           quoteNumber,
@@ -832,7 +834,7 @@ export const crmRouter = router({
         }[] | null) ?? [];
 
         // 2. Resolver precios para cada actividad
-        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; productId?: number }[] = [];
+        const quoteItems: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; taxRate?: number; productId?: number }[] = [];
 
         // ── Fallback: si no hay activitiesJson, buscar por selectedProduct en packs/experiences/legoPacks ──
         if (activities.length === 0) {
@@ -859,6 +861,7 @@ export const crmRouter = router({
               unitPrice,
               total: parseFloat((unitPrice * qty).toFixed(2)),
               fiscalRegime: (foundPack.fiscalRegime === "reav" ? "reav" : "general") as "reav" | "general",
+              taxRate: foundPack.taxRate != null ? parseFloat(String(foundPack.taxRate)) : 21,
               productId: foundPack.id,
             });
           } else {
@@ -875,6 +878,7 @@ export const crmRouter = router({
                 unitPrice,
                 total: parseFloat((unitPrice * qty).toFixed(2)),
                 fiscalRegime: "general",
+                taxRate: (foundLego as any).taxRate != null ? parseFloat(String((foundLego as any).taxRate)) : 21,
                 productId: foundLego.id,
               });
             } else {
@@ -891,6 +895,7 @@ export const crmRouter = router({
                   unitPrice,
                   total: parseFloat((unitPrice * qty).toFixed(2)),
                   fiscalRegime: foundExp.fiscalRegime === "reav" ? "reav" : "general",
+                  taxRate: foundExp.taxRate != null ? parseFloat(String(foundExp.taxRate)) : 21,
                   productId: foundExp.id,
                 });
               } else {
@@ -901,6 +906,7 @@ export const crmRouter = router({
                   unitPrice: 0,
                   total: 0,
                   fiscalRegime: "general",
+                  taxRate: 21,
                 });
               }
             }
@@ -954,13 +960,14 @@ export const crmRouter = router({
            const quantity = act.participants;
           const total = parseFloat((unitPrice * quantity).toFixed(2));
           const itemFiscalRegime = exp?.fiscalRegime === "reav" ? "reav" : "general";
-          quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, productId: act.experienceId });
+          const itemTaxRate = exp?.taxRate != null ? parseFloat(String(exp.taxRate)) : 21;
+          quoteItems.push({ description, quantity, unitPrice: parseFloat(unitPrice.toFixed(2)), total, fiscalRegime: itemFiscalRegime, taxRate: itemTaxRate, productId: act.experienceId });
         }
-        // 3. Calcular totales — solo líneas general llevan IVA
+        // 3. Calcular totales — IVA ya incluido en precios, se extrae con groupTaxBreakdown
         const subtotal = parseFloat(quoteItems.reduce((s, i) => s + i.total, 0).toFixed(2));
-        const generalSubtotal = parseFloat(quoteItems.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0).toFixed(2));
-        const taxAmount = parseFloat((generalSubtotal * (input.taxRate / 100)).toFixed(2));
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));;
+        const taxBreakdown = groupTaxBreakdown(quoteItems);
+        const taxAmount = parseFloat(totalTaxAmount(taxBreakdown).toFixed(2));
+        const total = subtotal;
 
         // 4. Crear el presupuesto en borrador
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
