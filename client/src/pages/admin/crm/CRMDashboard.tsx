@@ -8358,6 +8358,8 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
   const [search, setSearch] = useState("");
   const [extendModal, setExtendModal] = useState<{ id: number; code: string; current: string | null } | null>(null);
   const [cancelModal, setCancelModal] = useState<{ id: number; code: string } | null>(null);
+  const [viewModal, setViewModal] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; code: string } | null>(null);
   const [newExpiry, setNewExpiry] = useState("");
   const [cancelReason, setCancelReason] = useState("");
 
@@ -8386,6 +8388,16 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
     onSuccess: () => { toast.success("Bono anulado"); setCancelModal(null); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
+
+  const deleteMut = trpc.cancellations.deleteVoucher.useMutation({
+    onSuccess: () => { toast.success("Bono eliminado"); setDeleteConfirm(null); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const { data: voucherDetail } = trpc.cancellations.getVoucherById.useQuery(
+    { id: viewModal! },
+    { enabled: !!viewModal }
+  );
 
   const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
     generado:  { label: "Generado",  cls: "bg-blue-500/10 text-blue-300 border-blue-500/20" },
@@ -8551,6 +8563,14 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                     {/* Acciones */}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        {/* Ver detalle */}
+                        <button
+                          onClick={() => setViewModal(v.id)}
+                          className="p-1.5 rounded-lg text-foreground/40 hover:text-purple-300 hover:bg-purple-500/10 transition-colors"
+                          title="Ver detalle del bono"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                         {isActive && (
                           <button
                             onClick={() => resendMut.mutate({ voucherId: v.id })}
@@ -8580,6 +8600,16 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
                             title="Anular bono"
                           >
                             <Ban className="w-4 h-4" />
+                          </button>
+                        )}
+                        {/* Borrar */}
+                        {v.status !== "canjeado" && (
+                          <button
+                            onClick={() => setDeleteConfirm({ id: v.id, code: v.code })}
+                            className="p-1.5 rounded-lg text-foreground/25 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                            title="Eliminar bono permanentemente"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         )}
                       </div>
@@ -8663,6 +8693,144 @@ function BonosManager({ onOpenCancellation, onOpenReservation }: { onOpenCancell
               onClick={() => cancelModal && cancelMut.mutate({ voucherId: cancelModal.id, reason: cancelReason || undefined })}
             >
               {cancelMut.isPending ? "Anulando..." : "Confirmar anulación"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Ver detalle del bono */}
+      <Dialog open={!!viewModal} onOpenChange={(o) => !o && setViewModal(null)}>
+        <DialogContent className="max-w-lg bg-[#0d1526] border-foreground/[0.12] text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Eye className="w-4 h-4 text-purple-400" /> Detalle del bono
+            </DialogTitle>
+          </DialogHeader>
+          {voucherDetail ? (
+            <div className="space-y-4 py-1">
+              {/* Código y estado */}
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xl font-bold text-purple-300">{voucherDetail.code}</span>
+                <span className={`inline-flex items-center border rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  voucherDetail.status === "enviado" ? "bg-green-500/10 text-green-300 border-green-500/20" :
+                  voucherDetail.status === "canjeado" ? "bg-purple-500/10 text-purple-300 border-purple-500/20" :
+                  voucherDetail.status === "caducado" ? "bg-amber-500/10 text-amber-300 border-amber-500/20" :
+                  voucherDetail.status === "anulado" ? "bg-gray-500/10 text-gray-400 border-gray-500/20" :
+                  "bg-blue-500/10 text-blue-300 border-blue-500/20"
+                }`}>
+                  {voucherDetail.status === "enviado" ? "Activo" : voucherDetail.status.charAt(0).toUpperCase() + voucherDetail.status.slice(1)}
+                </span>
+              </div>
+
+              {/* Valor + actividad */}
+              <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-foreground/50">Valor</span>
+                  <span className="text-orange-400 font-bold font-mono">{Number(voucherDetail.value).toFixed(2)} €</span>
+                </div>
+                {voucherDetail.activityName && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-foreground/50">Actividad</span>
+                    <span className="text-foreground/80 text-right max-w-[260px] truncate">{voucherDetail.activityName}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Cliente */}
+              <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
+                <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">Cliente</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-foreground/50">Nombre</span>
+                  <span className="text-white">{voucherDetail.clientName ?? "—"}</span>
+                </div>
+                {voucherDetail.clientEmail && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-foreground/50">Email</span>
+                    <span className="text-foreground/80">{voucherDetail.clientEmail}</span>
+                  </div>
+                )}
+                {voucherDetail.clientPhone && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-foreground/50">Teléfono</span>
+                    <span className="text-foreground/80">{voucherDetail.clientPhone}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Fechas */}
+              <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
+                <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">Fechas</p>
+                {[
+                  { label: "Generado", val: voucherDetail.issuedAt },
+                  { label: "Enviado", val: voucherDetail.sentAt },
+                  { label: "Caduca", val: voucherDetail.expiresAt },
+                  { label: "Canjeado", val: voucherDetail.redeemedAt },
+                ].map(({ label, val }) => val && (
+                  <div key={label} className="flex justify-between text-sm">
+                    <span className="text-foreground/50">{label}</span>
+                    <span className="text-foreground/80">{new Date(val).toLocaleDateString("es-ES")}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Vínculos */}
+              {(voucherDetail.cancellationNumber || voucherDetail.reservationNumber) && (
+                <div className="bg-foreground/[0.05] rounded-xl p-3 space-y-1">
+                  <p className="text-xs text-foreground/40 uppercase tracking-wide mb-2">Vínculos</p>
+                  {voucherDetail.cancellationNumber && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-foreground/50">Anulación</span>
+                      <button onClick={() => { setViewModal(null); onOpenCancellation(voucherDetail.requestId!); }} className="font-mono text-amber-400 hover:underline">{voucherDetail.cancellationNumber}</button>
+                    </div>
+                  )}
+                  {voucherDetail.reservationNumber && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-foreground/50">Reserva</span>
+                      <button onClick={() => { setViewModal(null); onOpenReservation(voucherDetail.linkedReservationId!); }} className="font-mono text-orange-400 hover:underline">{voucherDetail.reservationNumber}</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {voucherDetail.notes && (
+                <div className="bg-foreground/[0.05] rounded-xl p-3">
+                  <p className="text-xs text-foreground/40 uppercase tracking-wide mb-1">Notas</p>
+                  <p className="text-sm text-foreground/70">{voucherDetail.notes}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-8 flex justify-center"><RefreshCw className="w-5 h-5 animate-spin text-foreground/40" /></div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setViewModal(null)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Eliminar bono */}
+      <Dialog open={!!deleteConfirm} onOpenChange={(o) => !o && setDeleteConfirm(null)}>
+        <DialogContent className="max-w-sm bg-[#0d1526] border-foreground/[0.12] text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <Trash2 className="w-4 h-4 text-red-500" /> Eliminar bono
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <p className="text-sm text-foreground/70">
+              ¿Eliminar permanentemente el bono <span className="font-mono text-purple-300">{deleteConfirm?.code}</span>?
+            </p>
+            <p className="text-xs text-red-400/70 mt-2">Esta acción no se puede deshacer.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" className="border-foreground/[0.15] text-foreground/65" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={deleteMut.isPending}
+              onClick={() => deleteConfirm && deleteMut.mutate({ id: deleteConfirm.id })}
+            >
+              {deleteMut.isPending ? "Eliminando..." : "Eliminar"}
             </Button>
           </DialogFooter>
         </DialogContent>

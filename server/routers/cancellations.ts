@@ -1791,6 +1791,59 @@ export const cancellationsRouter = router({
       return rows;
     }),
 
+  // ── Ver detalle completo de un bono ──────────────────────────────────────────
+  getVoucherById: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const [v] = await db
+        .select({
+          id: compensationVouchers.id,
+          code: compensationVouchers.code,
+          activityName: compensationVouchers.activityName,
+          value: compensationVouchers.value,
+          status: compensationVouchers.status,
+          expiresAt: compensationVouchers.expiresAt,
+          issuedAt: compensationVouchers.issuedAt,
+          sentAt: compensationVouchers.sentAt,
+          redeemedAt: compensationVouchers.redeemedAt,
+          notes: compensationVouchers.notes,
+          requestId: compensationVouchers.requestId,
+          clientName: cancellationRequests.fullName,
+          clientEmail: cancellationRequests.email,
+          clientPhone: cancellationRequests.phone,
+          cancellationNumber: cancellationRequests.cancellationNumber,
+          linkedReservationId: cancellationRequests.linkedReservationId,
+          reservationNumber: reservations.reservationNumber,
+          discountCodeStatus: discountCodes.status,
+          discountCodeCurrentUses: discountCodes.currentUses,
+        })
+        .from(compensationVouchers)
+        .leftJoin(cancellationRequests, eq(cancellationRequests.id, compensationVouchers.requestId))
+        .leftJoin(reservations, eq(reservations.id, cancellationRequests.linkedReservationId))
+        .leftJoin(discountCodes, eq(discountCodes.compensationVoucherId, compensationVouchers.id))
+        .where(eq(compensationVouchers.id, input.id))
+        .limit(1);
+      if (!v) throw new TRPCError({ code: "NOT_FOUND" });
+      return v;
+    }),
+
+  // ── Eliminar bono permanentemente ─────────────────────────────────────────────
+  deleteVoucher: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const [voucher] = await db.select().from(compensationVouchers).where(eq(compensationVouchers.id, input.id));
+      if (!voucher) throw new TRPCError({ code: "NOT_FOUND" });
+      if (voucher.status === "canjeado") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede eliminar un bono ya canjeado" });
+      }
+      await db.update(discountCodes).set({ status: "inactive", compensationVoucherId: null as any }).where(eq(discountCodes.compensationVoucherId, input.id));
+      await db.delete(compensationVouchers).where(eq(compensationVouchers.id, input.id));
+      if (voucher.requestId) {
+        await addLog(voucher.requestId, "voucher_deleted", { voucherId: input.id, code: voucher.code }, ctx.user.id, ctx.user.name ?? "Admin");
+      }
+      return { success: true };
+    }),
+
   // ── Reenviar todos los emails de un expediente a una dirección concreta ──────
   resendRequestEmails: adminProcedure
     .input(z.object({
