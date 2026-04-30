@@ -308,7 +308,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
   const breakdown = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
   const taxAmount = totalTaxAmount(breakdown);
   const taxRateInst = breakdown.length === 1 ? breakdown[0].rate : 21;
-  const total = parseFloat((subtotal + taxAmount).toFixed(2));
+  const total = subtotal;
 
   // ── FASE 1: Confirmar reserva cuando se pagan las cuotas obligatorias ──────
   // Idempotente: sólo si el quote aún no está aceptado
@@ -1337,7 +1337,8 @@ export const crmRouter = router({
         if (rest.discount !== undefined) updateData.discount = String(rest.discount);
         if (rest.total !== undefined) updateData.total = String(rest.total);
         if (taxRate !== undefined && rest.subtotal !== undefined) {
-          const taxAmount = (rest.subtotal - (rest.discount ?? 0)) * (taxRate / 100);
+          const grossAfterDiscount = rest.subtotal - (rest.discount ?? 0);
+          const taxAmount = parseFloat((grossAfterDiscount - grossAfterDiscount / (1 + taxRate / 100)).toFixed(2));
           updateData.tax = String(taxAmount);
         }
         if (rest.validUntil) updateData.validUntil = new Date(rest.validUntil);
@@ -1596,7 +1597,7 @@ export const crmRouter = router({
         const bdInv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
         const taxAmount = totalTaxAmount(bdInv);
         const taxRate = bdInv.length === 1 ? bdInv[0].rate : 21;
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        const total = subtotal;
         // Generate PDF
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
@@ -2157,7 +2158,7 @@ export const crmRouter = router({
         const bdT = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
         const taxAmount = totalTaxAmount(bdT);
         const taxRate = bdT.length === 1 ? bdT[0].rate : 21;
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        const total = subtotal;
         let pdfUrl: string | null = null;
         let pdfKey: string | null = null;
         try {
@@ -2668,7 +2669,8 @@ export const crmRouter = router({
 
         // 3. Crear el presupuesto
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
-        const taxAmount = (input.subtotal - input.discount) * (input.taxRate / 100);
+        const breakdownDirect = groupTaxBreakdown(input.items.filter(i => i.fiscalRegime !== "reav"));
+        const taxAmount = totalTaxAmount(breakdownDirect);
 
         const [quoteResult] = await db.insert(quotes).values({
           quoteNumber,
@@ -4165,7 +4167,7 @@ export const crmRouter = router({
         const bdTpv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
         const taxAmount = totalTaxAmount(bdTpv);
         const taxRate = bdTpv.length === 1 ? bdTpv[0].rate : 21;
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        const total = subtotal;
 
         // 3. Generate PDF
         let pdfUrl: string | null = null;
@@ -4353,7 +4355,7 @@ export const crmRouter = router({
         const bdManual = groupTaxBreakdown(items);
         const taxAmount = totalTaxAmount(bdManual);
         const taxRate = bdManual.length === 1 ? bdManual[0].rate : 21;
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        const total = subtotal;
 
         // 4. Generar PDF de factura
         let pdfUrl: string | null = null;
@@ -5632,7 +5634,7 @@ export const crmRouter = router({
               const bdPp = groupTaxBreakdown(items);
               const taxAmount = totalTaxAmount(bdPp);
               const taxRatePp = bdPp.length === 1 ? bdPp[0].rate : 21;
-              const total = parseFloat((subtotal + taxAmount).toFixed(2));
+              const total = subtotal;
               let pdfUrl: string | null = null;
               let pdfKey: string | null = null;
               try {
