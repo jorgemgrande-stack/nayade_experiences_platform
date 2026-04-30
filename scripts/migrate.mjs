@@ -92,7 +92,15 @@ for (const entry of journal.entries) {
   const statements = raw
     .split("--> statement-breakpoint")
     .map(s => s.trim())
-    .filter(s => s.length > 0 && !s.startsWith("--"));
+    .filter(s => {
+      if (s.length === 0) return false;
+      // Un bloque puede empezar con lineas de comentario (--) seguidas de SQL real.
+      // Filtramos solo si el bloque NO tiene ninguna linea de SQL efectiva.
+      return s.split("\n").some(l => {
+        const t = l.trim();
+        return t.length > 0 && !t.startsWith("--");
+      });
+    });
 
   console.log(`[migrate] Aplicando: ${entry.tag} (${statements.length} sentencias)`);
 

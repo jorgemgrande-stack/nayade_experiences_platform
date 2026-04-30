@@ -1,8 +1,3 @@
--- 0081: Landing Partners
--- Nuevo modulo para que partners externos puedan generar presupuestos
--- desde una landing privada.
-
--- 1. partners
 CREATE TABLE IF NOT EXISTS `partners` (
   `id`                   INT           AUTO_INCREMENT PRIMARY KEY,
   `name`                 VARCHAR(256)  NOT NULL,
@@ -21,8 +16,6 @@ CREATE TABLE IF NOT EXISTS `partners` (
   INDEX `idx_partners_is_active`  (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 --> statement-breakpoint
-
--- 2. partner_allowed_products
 CREATE TABLE IF NOT EXISTS `partner_allowed_products` (
   `id`           INT          AUTO_INCREMENT PRIMARY KEY,
   `partner_id`   INT          NOT NULL,
@@ -37,16 +30,10 @@ CREATE TABLE IF NOT EXISTS `partner_allowed_products` (
     FOREIGN KEY (`partner_id`) REFERENCES `partners` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 --> statement-breakpoint
-
--- 3. quotes: columna partner_id (nullable)
-ALTER TABLE `quotes`
-  ADD COLUMN `partnerId` INT NULL DEFAULT NULL;
+ALTER TABLE `quotes` ADD COLUMN `partnerId` INT NULL DEFAULT NULL;
 --> statement-breakpoint
 CREATE INDEX `idx_quotes_partner_id` ON `quotes` (`partnerId`);
 --> statement-breakpoint
-
--- 4. reservations: columna partner_id (nullable)
-ALTER TABLE `reservations`
-  ADD COLUMN `partner_id` INT NULL DEFAULT NULL;
+ALTER TABLE `reservations` ADD COLUMN `partner_id` INT NULL DEFAULT NULL;
 --> statement-breakpoint
 CREATE INDEX `idx_reservations_partner_id` ON `reservations` (`partner_id`);
