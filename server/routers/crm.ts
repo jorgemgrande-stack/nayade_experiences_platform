@@ -28,6 +28,7 @@ import {
   paymentPlans,
   paymentInstallments,
   cancellationRequests,
+  cancellationLogs,
   discountCodeUses,
   bankMovements,
   bankMovementLinks,
@@ -4253,6 +4254,48 @@ export const crmRouter = router({
         });
 
         return { ok: true, invoiceId, invoiceNumber, pdfUrl };
+      }),
+
+    // ─── [TEMPORAL] Limpieza de reservas de prueba con cascada completa ─────
+    cleanupTestReservations: staff
+      .input(z.object({ numbers: z.array(z.string().min(1)), dryRun: z.boolean().default(true) }))
+      .mutation(async ({ input }) => {
+        const rows = await db.select({ id: reservations.id, reservationNumber: reservations.reservationNumber, status: reservations.status })
+          .from(reservations).where(inArray(reservations.reservationNumber, input.numbers));
+        const ids = rows.map(r => r.id);
+        if (!ids.length) return { dryRun: input.dryRun, reservations: [], invoices: [], cancellationRequests: [], cancellationLogs: 0, pendingPayments: 0, reavExpedients: 0, activityLogs: 0 };
+
+        const relInvoices = await db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber }).from(invoices).where(inArray(invoices.reservationId, ids));
+        const relCancReqs = await db.select({ id: cancellationRequests.id, cancellationNumber: cancellationRequests.cancellationNumber }).from(cancellationRequests).where(inArray(cancellationRequests.linkedReservationId, ids));
+        const cancReqIds = relCancReqs.map(c => c.id);
+        const relCancLogs = cancReqIds.length ? await db.select({ id: cancellationLogs.id }).from(cancellationLogs).where(inArray(cancellationLogs.requestId, cancReqIds)) : [];
+        const relPending = await db.select({ id: pendingPayments.id }).from(pendingPayments).where(inArray(pendingPayments.reservationId, ids));
+        const relReav = await db.select({ id: reavExpedients.id }).from(reavExpedients).where(inArray(reavExpedients.reservationId, ids));
+        const relActivity = await db.select({ id: crmActivityLog.id }).from(crmActivityLog).where(and(eq(crmActivityLog.entityType, "reservation"), inArray(crmActivityLog.entityId, ids)));
+
+        const summary = {
+          dryRun: input.dryRun,
+          reservations: rows.map(r => ({ id: r.id, number: r.reservationNumber, status: r.status })),
+          invoices: relInvoices,
+          cancellationRequests: relCancReqs,
+          cancellationLogs: relCancLogs.length,
+          pendingPayments: relPending.length,
+          reavExpedients: relReav.length,
+          activityLogs: relActivity.length,
+        };
+
+        if (input.dryRun) return summary;
+
+        // Ejecutar borrado en cascada
+        if (relCancLogs.length) await db.delete(cancellationLogs).where(inArray(cancellationLogs.requestId, cancReqIds));
+        if (relCancReqs.length) await db.delete(cancellationRequests).where(inArray(cancellationRequests.linkedReservationId, ids));
+        if (relInvoices.length) await db.delete(invoices).where(inArray(invoices.reservationId, ids));
+        if (relPending.length) await db.delete(pendingPayments).where(inArray(pendingPayments.reservationId, ids));
+        if (relReav.length) await db.delete(reavExpedients).where(inArray(reavExpedients.reservationId, ids));
+        if (relActivity.length) await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "reservation"), inArray(crmActivityLog.entityId, ids)));
+        await db.delete(reservations).where(inArray(reservations.id, ids));
+
+        return summary;
       }),
 
     // ─── Eliminar reserva ───────────────────────────────────────────────────
