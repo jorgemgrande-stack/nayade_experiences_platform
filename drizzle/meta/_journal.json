@@ -554,6 +554,13 @@
       "when": 1745913600000,
       "tag": "0080_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "5",
+      "when": 1777507200000,
+      "tag": "0081_landing_partners",
+      "breakpoints": true
     }
   ]
 }
