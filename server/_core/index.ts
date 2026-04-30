@@ -17,6 +17,7 @@ import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
+import vapiWebhookRouter from "../vapiWebhookRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
@@ -161,6 +162,8 @@ async function startServer() {
   app.use(kbRouter);
   // GHL webhook receiver
   app.use(ghlWebhookRouter);
+  // VAPI webhook receiver (lead + presupuesto síncrono)
+  app.use(vapiWebhookRouter);
   // tRPC API
   app.use(
     "/api/trpc",
