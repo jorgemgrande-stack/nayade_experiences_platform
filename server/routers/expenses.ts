@@ -12,6 +12,7 @@ const db = drizzle(_pool);
 import {
   costCenters,
   expenseCategories,
+  expenseEmailIngestionLogs,
   expenseFiles,
   expenseSuppliers,
   expenses,
@@ -20,7 +21,7 @@ import {
   bankMovements,
   bankMovementLinks,
 } from "../../drizzle/schema";
-import { and, desc, eq, gte, lte, sql, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql, inArray, isNull } from "drizzle-orm";
 import { storagePut } from "../storage";
 import { TRPCError } from "@trpc/server";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
@@ -630,6 +631,26 @@ const profitLossRouter = router({
     }),
 });
 
+// ─── Email Ingestion sub-router ──────────────────────────────────────────────
+const emailIngestionRouter = router({
+  triggerSync: adminProcedure
+    .mutation(async () => {
+      const { runExpenseEmailIngestion } = await import("../services/expenseEmailIngestionService");
+      const result = await runExpenseEmailIngestion();
+      return result;
+    }),
+
+  listLogs: adminProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
+    .query(async ({ input }) => {
+      return db
+        .select()
+        .from(expenseEmailIngestionLogs)
+        .orderBy(desc(expenseEmailIngestionLogs.processedAt))
+        .limit(input.limit);
+    }),
+});
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 export const expensesModuleRouter = router({
   costCenters: costCentersRouter,
@@ -638,5 +659,6 @@ export const expensesModuleRouter = router({
   expenses: expensesRouter,
   recurring: recurringExpensesRouter,
   profitLoss: profitLossRouter,
+  emailIngestion: emailIngestionRouter,
 });
 

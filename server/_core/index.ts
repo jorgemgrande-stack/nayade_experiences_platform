@@ -21,6 +21,7 @@ import vapiWebhookRouter from "../vapiWebhookRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
+import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
 import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { serveStatic, setupVite } from "./vite";
 import { getFeatureFlag } from "../config";
@@ -621,6 +622,75 @@ async function ensurePricingColumns() {
   }
 }
 
+async function ensureExpenseEmailIngestionSchema() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+
+    // Columnas nuevas en expenses (ingesta email)
+    const [expCols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'expenses'
+       AND COLUMN_NAME IN ('source','emailMessageId','emailFrom','missingAttachment')`
+    ) as any[];
+    const foundExpCols = new Set((expCols as any[]).map((c: any) => c.COLUMN_NAME));
+
+    if (!foundExpCols.has("source")) {
+      await conn.execute("ALTER TABLE `expenses` ADD COLUMN `source` VARCHAR(32) NOT NULL DEFAULT 'manual'");
+      console.log("[DB] ✅ expenses.source añadida");
+    }
+    if (!foundExpCols.has("emailMessageId")) {
+      await conn.execute("ALTER TABLE `expenses` ADD COLUMN `emailMessageId` VARCHAR(512) NULL");
+      console.log("[DB] ✅ expenses.emailMessageId añadida");
+    }
+    if (!foundExpCols.has("emailFrom")) {
+      await conn.execute("ALTER TABLE `expenses` ADD COLUMN `emailFrom` VARCHAR(256) NULL");
+      console.log("[DB] ✅ expenses.emailFrom añadida");
+    }
+    if (!foundExpCols.has("missingAttachment")) {
+      await conn.execute("ALTER TABLE `expenses` ADD COLUMN `missingAttachment` BOOLEAN NOT NULL DEFAULT FALSE");
+      console.log("[DB] ✅ expenses.missingAttachment añadida");
+    }
+
+    // Tabla de logs de ingesta
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`expense_email_ingestion_logs\` (
+        \`id\`               INT AUTO_INCREMENT PRIMARY KEY,
+        \`message_id\`       VARCHAR(512) NOT NULL,
+        \`subject\`          VARCHAR(512) NULL,
+        \`sender\`           VARCHAR(256) NULL,
+        \`received_at\`      TIMESTAMP NULL,
+        \`status\`           ENUM('processed','duplicated','invalid_subject','missing_amount','error') NOT NULL,
+        \`expense_id\`       INT NULL,
+        \`amount_detected\`  DECIMAL(12,2) NULL,
+        \`attachments_count\` INT NOT NULL DEFAULT 0,
+        \`error_message\`    TEXT NULL,
+        \`processed_at\`     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_eeil_message_id (\`message_id\`),
+        INDEX idx_eeil_status     (\`status\`),
+        INDEX idx_eeil_processed  (\`processed_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    // Feature flag para el job
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 0, 0, 'low')`,
+      [
+        "expense_email_ingestion_enabled",
+        "Ingesta gastos por email",
+        "Activa el job periódico que lee emails con asunto #gasto y crea gastos automáticamente",
+        "expenses",
+      ]
+    );
+
+    await conn.end();
+    console.log("[DB] Schema expense email ingestion verificado");
+  } catch (err: any) {
+    console.error("[DB] Error en ensureExpenseEmailIngestionSchema:", err.message);
+  }
+}
+
 async function ensureRefundColumns() {
   try {
     const mysql = await import("mysql2/promise");
@@ -1009,6 +1079,7 @@ runMigrations()
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
   .then(() => ensureDiscountColumns())
+  .then(() => ensureExpenseEmailIngestionSchema())
   .then(() => fixBrokenInvoicePdfUrls())
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
@@ -1017,7 +1088,8 @@ runMigrations()
   .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
   .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
   .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))
-  .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,        "Email Ingestion"))
+  .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,              "Email Ingestion"))
+  .then(() => conditionallyStartJob("expense_email_ingestion_enabled",     startExpenseEmailIngestionJob,       "Expense Email Ingestion"))
   .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
   .catch(console.error);
 

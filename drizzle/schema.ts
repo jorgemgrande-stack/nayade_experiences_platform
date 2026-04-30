@@ -1793,6 +1793,10 @@ export const expenses = mysqlTable("expenses", {
   reservationId: int("reservationId"),
   productId: int("productId"),
   notes: text("notes"),
+  source: varchar("source", { length: 32 }).default("manual"),
+  emailMessageId: varchar("emailMessageId", { length: 512 }),
+  emailFrom: varchar("emailFrom", { length: 256 }),
+  missingAttachment: boolean("missingAttachment").default(false),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -2517,6 +2521,22 @@ export const emailIngestionLogs = mysqlTable("email_ingestion_logs", {
 });
 
 export type EmailIngestionLog = typeof emailIngestionLogs.$inferSelect;
+
+// ─── Logs de ingesta de gastos por email ─────────────────────────────────────
+export const expenseEmailIngestionLogs = mysqlTable("expense_email_ingestion_logs", {
+  id: int("id").primaryKey().autoincrement(),
+  messageId: varchar("message_id", { length: 512 }).notNull(),
+  subject: varchar("subject", { length: 512 }),
+  sender: varchar("sender", { length: 256 }),
+  receivedAt: timestamp("received_at"),
+  status: mysqlEnum("status", ["processed", "duplicated", "invalid_subject", "missing_amount", "error"]).notNull(),
+  expenseId: int("expense_id"),
+  amountDetected: decimal("amount_detected", { precision: 12, scale: 2 }),
+  attachmentsCount: int("attachments_count").default(0),
+  errorMessage: text("error_message"),
+  processedAt: timestamp("processed_at").defaultNow().notNull(),
+});
+export type ExpenseEmailIngestionLog = typeof expenseEmailIngestionLogs.$inferSelect;
 
 // ─── MÓDULO CAJA CONTABLE (Financial Cash Register) ──────────────────────────
 

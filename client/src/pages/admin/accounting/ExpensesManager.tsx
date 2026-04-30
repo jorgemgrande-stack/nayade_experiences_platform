@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Pencil, Trash2, Search, Filter, Upload, FileText, X, Euro,
   TrendingDown, Calendar, ChevronDown, Banknote, LinkIcon,
+  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -98,6 +99,10 @@ export default function ExpensesManager() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Email ingestion state
+  const [emailLogsOpen, setEmailLogsOpen] = useState(false);
+  const [filterSource, setFilterSource] = useState<"all" | "email">("all");
+
   // Bank detection state
   const [showBankDetected, setShowBankDetected] = useState(true);
   const [createFromMovId, setCreateFromMovId] = useState<number | null>(null);
@@ -124,6 +129,19 @@ export default function ExpensesManager() {
   });
 
   const utils = trpc.useUtils();
+
+  const syncEmailMut = trpc.financial.emailIngestion.triggerSync.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Sincronización completada: ${res.processed} nuevo(s), ${res.duplicated} duplicado(s)`);
+      utils.financial.expenses.list.invalidate();
+    },
+    onError: (e) => toast.error("Error en sincronización: " + e.message),
+  });
+
+  const emailLogsQ = trpc.financial.emailIngestion.listLogs.useQuery(
+    { limit: 100 },
+    { enabled: emailLogsOpen }
+  );
 
   const createMut = trpc.financial.expenses.create.useMutation({
     onSuccess: () => { utils.financial.expenses.list.invalidate(); },
@@ -168,10 +186,12 @@ export default function ExpensesManager() {
   const expenses = expensesQ.data?.items ?? [];
   const total = expensesQ.data?.total ?? 0;
 
-  // Filtered by search
-  const filtered = expenses.filter((e) =>
-    !search || e.concept.toLowerCase().includes(search.toLowerCase())
-  );
+  // Filtered by search + source
+  const filtered = expenses.filter((e) => {
+    if (search && !e.concept.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filterSource === "email" && (e as any).source !== "email") return false;
+    return true;
+  });
 
   const totalAmount = filtered.reduce((sum, e) => sum + parseFloat(e.amount), 0);
 
@@ -323,7 +343,7 @@ export default function ExpensesManager() {
               {total} gastos · Total filtrado: <strong>{totalAmount.toFixed(2)} €</strong>
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/categorias")}>
               Categorías
             </Button>
@@ -332,6 +352,28 @@ export default function ExpensesManager() {
             </Button>
             <Button variant="outline" size="sm" onClick={() => setLocation("/admin/contabilidad/gastos/recurrentes")}>
               Recurrentes
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => syncEmailMut.mutate()}
+              disabled={syncEmailMut.isPending}
+              className="gap-2 border-blue-500/40 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+            >
+              {syncEmailMut.isPending
+                ? <RefreshCw className="w-4 h-4 animate-spin" />
+                : <Mail className="w-4 h-4" />}
+              {syncEmailMut.isPending ? "Sincronizando..." : "Sincronizar por email"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEmailLogsOpen(true)}
+              className="text-zinc-400 hover:text-zinc-200 text-xs px-2"
+              title="Ver historial de emails procesados"
+            >
+              <Clock className="w-3.5 h-3.5 mr-1" />
+              Historial
             </Button>
             <Button onClick={openCreate} className="gap-2">
               <Plus className="w-4 h-4" /> Nuevo gasto
@@ -508,6 +550,16 @@ export default function ExpensesManager() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label className="text-xs">Origen</Label>
+                <Select value={filterSource} onValueChange={(v) => setFilterSource(v as "all" | "email")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="email">Desde email</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
         </div>
@@ -538,7 +590,21 @@ export default function ExpensesManager() {
                   filtered.map((e) => (
                     <tr key={e.id} className="border-t hover:bg-muted/20">
                       <td className="p-3 whitespace-nowrap">{e.date}</td>
-                      <td className="p-3 max-w-[200px] truncate" title={e.concept}>{e.concept}</td>
+                      <td className="p-3 max-w-[220px]" title={e.concept}>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {(e as any).source === "email" && (
+                            <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/25">
+                              <Mail className="w-2.5 h-2.5" /> Email
+                            </span>
+                          )}
+                          <span className="truncate">{e.concept}</span>
+                        </div>
+                        {(e as any).missingAttachment && (
+                          <div className="flex items-center gap-1 mt-0.5 text-[10px] text-amber-400">
+                            <AlertTriangle className="w-2.5 h-2.5" /> Sin adjunto
+                          </div>
+                        )}
+                      </td>
                       <td className="p-3 text-xs text-muted-foreground">{getCategoryName(e.categoryId)}</td>
                       <td className="p-3 text-xs text-muted-foreground">{getCostCenterName(e.costCenterId)}</td>
                       <td className="p-3 text-xs">{PAYMENT_METHOD_LABELS[e.paymentMethod]}</td>
@@ -832,6 +898,77 @@ export default function ExpensesManager() {
           </Dialog>
         );
       })()}
+
+      {/* Email ingestion logs modal */}
+      <Dialog open={emailLogsOpen} onOpenChange={setEmailLogsOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto bg-zinc-900 border-zinc-800 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="w-4 h-4 text-blue-400" />
+              Historial de ingesta por email
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {emailLogsQ.isLoading ? (
+              <p className="text-sm text-zinc-400 text-center py-6">Cargando...</p>
+            ) : !emailLogsQ.data?.length ? (
+              <p className="text-sm text-zinc-400 text-center py-6">No hay registros de ingesta todavía.</p>
+            ) : (
+              <div className="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
+                {emailLogsQ.data.map((log) => (
+                  <div key={log.id} className="px-4 py-3 flex items-start gap-3">
+                    <div className="shrink-0 mt-0.5">
+                      {log.status === "processed" && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      {log.status === "duplicated" && <RefreshCw className="w-4 h-4 text-zinc-400" />}
+                      {(log.status === "missing_amount" || log.status === "invalid_subject") && (
+                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      )}
+                      {log.status === "error" && <AlertTriangle className="w-4 h-4 text-red-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-white truncate max-w-xs">
+                          {log.subject ?? "(sin asunto)"}
+                        </span>
+                        {log.amountDetected && (
+                          <span className="text-xs font-semibold text-emerald-400">
+                            {parseFloat(String(log.amountDetected)).toFixed(2)} €
+                          </span>
+                        )}
+                        {log.attachmentsCount !== null && log.attachmentsCount > 0 && (
+                          <span className="text-xs text-zinc-400">
+                            <FileText className="w-3 h-3 inline mr-0.5" />{log.attachmentsCount} adj.
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-0.5">
+                        {log.sender && <span>{log.sender} · </span>}
+                        {log.processedAt && <span>{new Date(log.processedAt).toLocaleString("es-ES")}</span>}
+                      </div>
+                      {log.errorMessage && (
+                        <div className="text-xs text-amber-300 mt-1">{log.errorMessage}</div>
+                      )}
+                    </div>
+                    <div className="shrink-0">
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                        log.status === "processed" ? "bg-emerald-500/15 text-emerald-400" :
+                        log.status === "duplicated" ? "bg-zinc-500/15 text-zinc-400" :
+                        log.status === "error" ? "bg-red-500/15 text-red-400" :
+                        "bg-amber-500/15 text-amber-400"
+                      }`}>
+                        {log.status === "processed" ? "procesado" :
+                         log.status === "duplicated" ? "duplicado" :
+                         log.status === "missing_amount" ? "sin importe" :
+                         log.status === "invalid_subject" ? "asunto inválido" : "error"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
