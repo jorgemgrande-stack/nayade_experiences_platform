@@ -46,9 +46,7 @@ async function localPut(
   const filePath = path.join(LOCAL_STORAGE_DIR, key);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, data as Buffer);
-  const base = (process.env.APP_URL || process.env.RAILWAY_PUBLIC_DOMAIN
-    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-    : "").replace(/\/+$/, "");
+  const base = (process.env.APP_URL ?? (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "")).replace(/\/+$/, "");
   const url = base ? `${base}/local-storage/${key}` : `/local-storage/${key}`;
   console.warn(`[Storage] Sin S3/Forge — archivo guardado en ${filePath} (temporal, se perderá en el próximo deploy)`);
   return { key, url };
