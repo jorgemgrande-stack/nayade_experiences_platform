@@ -1,10 +1,12 @@
 /**
- * migrate.mjs — Aplica migraciones SQL pendientes contra la base de datos.
- * Ejecuta las sentencias de cada archivo SQL registrado en drizzle/meta/_journal.json
- * que aún no están en la tabla __drizzle_migrations de la BD.
+ * migrate.mjs — Aplica únicamente migraciones pendientes.
+ *
+ * Estrategia para BD ya existente:
+ *   Si __drizzle_migrations está vacía pero la BD ya tiene tablas (users),
+ *   marca todas las migraciones previas como aplicadas SIN re-ejecutar su SQL
+ *   (el schema ya existe), y solo ejecuta las genuinamente nuevas.
  *
  * Uso: node scripts/migrate.mjs
- * Compatible con Node 18+ sin TypeScript ni drizzle-kit.
  */
 
 import mysql from "mysql2/promise";
@@ -23,7 +25,7 @@ if (!dbUrl) {
 
 const conn = await mysql.createConnection(dbUrl);
 
-// Crear tabla de control de migraciones si no existe (igual que drizzle-kit)
+// Crear tabla de tracking si no existe
 await conn.execute(`
   CREATE TABLE IF NOT EXISTS \`__drizzle_migrations\` (
     \`id\`         INT AUTO_INCREMENT PRIMARY KEY,
@@ -36,10 +38,31 @@ await conn.execute(`
 const journalPath = join(root, "drizzle", "meta", "_journal.json");
 const journal = JSON.parse(readFileSync(journalPath, "utf8"));
 
-// Migraciones ya aplicadas
-const [applied] = await conn.execute("SELECT `hash` FROM `__drizzle_migrations`");
-const appliedSet = new Set(applied.map(r => r.hash));
+// Migraciones ya registradas en la tabla de tracking
+const [appliedRows] = await conn.execute("SELECT `hash` FROM `__drizzle_migrations`");
+const appliedSet = new Set(appliedRows.map(r => r.hash));
 
+// ── Detección de BD ya existente ──────────────────────────────────────────────
+// Si el tracking está vacío pero la BD ya tiene tablas, significa que las
+// migraciones anteriores se aplicaron manualmente o con drizzle-kit sin tracking.
+// En ese caso: marcamos todo lo previo como aplicado y solo ejecutamos lo nuevo.
+if (appliedSet.size === 0) {
+  const [existingTables] = await conn.execute("SHOW TABLES LIKE 'users'");
+  if (existingTables.length > 0) {
+    // BD ya bootstrapeada — registrar migraciones previas sin re-ejecutarlas
+    const previous = journal.entries.slice(0, -1); // todas excepto la última
+    for (const entry of previous) {
+      await conn.execute(
+        "INSERT IGNORE INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES (?, ?)",
+        [entry.tag, entry.when]
+      );
+      appliedSet.add(entry.tag);
+    }
+    console.log(`[migrate] BD existente — ${previous.length} migraciones previas registradas sin re-ejecutar.`);
+  }
+}
+
+// ── Aplicar migraciones pendientes ────────────────────────────────────────────
 let ran = 0;
 for (const entry of journal.entries) {
   if (appliedSet.has(entry.tag)) continue;
@@ -47,11 +70,15 @@ for (const entry of journal.entries) {
   const sqlPath = join(root, "drizzle", `${entry.tag}.sql`);
   if (!existsSync(sqlPath)) {
     console.warn(`[migrate] Archivo no encontrado, saltando: ${entry.tag}.sql`);
+    // Registrar igualmente para no bloquear futuras migraciones
+    await conn.execute(
+      "INSERT IGNORE INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES (?, ?)",
+      [entry.tag, entry.when]
+    );
     continue;
   }
 
   const raw = readFileSync(sqlPath, "utf8");
-  // drizzle-kit usa --> statement-breakpoint para separar sentencias
   const statements = raw
     .split("--> statement-breakpoint")
     .map(s => s.trim())
@@ -59,30 +86,35 @@ for (const entry of journal.entries) {
 
   console.log(`[migrate] Aplicando: ${entry.tag} (${statements.length} sentencias)`);
 
+  let failed = false;
   for (const stmt of statements) {
     try {
       await conn.execute(stmt);
     } catch (err) {
-      // Errores no fatales: columna/tabla ya existe, índice duplicado
       const ignorable = [
         1060, // Duplicate column name
         1061, // Duplicate key name
         1050, // Table already exists
-        1091, // Can't DROP, doesn't exist (ignorar en rollbacks parciales)
+        1091, // Can't DROP, doesn't exist
       ];
       if (ignorable.includes(err.errno)) {
         console.warn(`[migrate]   ⚠ Ignorado (${err.errno}): ${err.sqlMessage}`);
       } else {
-        console.error(`[migrate]   ✗ Error en sentencia: ${err.message}`);
-        console.error(`[migrate]   SQL: ${stmt.slice(0, 200)}`);
-        await conn.end();
-        process.exit(1);
+        console.error(`[migrate]   ✗ Error fatal (${err.errno}): ${err.sqlMessage}`);
+        console.error(`[migrate]   SQL: ${stmt.slice(0, 300)}`);
+        failed = true;
+        break;
       }
     }
   }
 
+  if (failed) {
+    await conn.end();
+    process.exit(1);
+  }
+
   await conn.execute(
-    "INSERT INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES (?, ?)",
+    "INSERT IGNORE INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES (?, ?)",
     [entry.tag, entry.when]
   );
   console.log(`[migrate]   ✓ ${entry.tag}`);
