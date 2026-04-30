@@ -1,9 +1,8 @@
--- ─── 0081: Landing Partners ───────────────────────────────────────────────────
--- Nuevo módulo para que partners externos (hoteles, colaboradores) puedan
--- generar presupuestos o canjes desde una landing privada.
--- Cambios: 2 tablas nuevas + 1 columna nullable en quotes + 1 en reservations.
+-- 0081: Landing Partners
+-- Nuevo modulo para que partners externos puedan generar presupuestos
+-- desde una landing privada.
 
--- ─── 1. partners ──────────────────────────────────────────────────────────────
+-- 1. partners
 CREATE TABLE IF NOT EXISTS `partners` (
   `id`                   INT           AUTO_INCREMENT PRIMARY KEY,
   `name`                 VARCHAR(256)  NOT NULL,
@@ -23,7 +22,7 @@ CREATE TABLE IF NOT EXISTS `partners` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 --> statement-breakpoint
 
--- ─── 2. partner_allowed_products ─────────────────────────────────────────────
+-- 2. partner_allowed_products
 CREATE TABLE IF NOT EXISTS `partner_allowed_products` (
   `id`           INT          AUTO_INCREMENT PRIMARY KEY,
   `partner_id`   INT          NOT NULL,
@@ -39,15 +38,15 @@ CREATE TABLE IF NOT EXISTS `partner_allowed_products` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 --> statement-breakpoint
 
--- ─── 3. quotes: columna partner_id (nullable, sin FK para evitar ciclos) ─────
+-- 3. quotes: columna partner_id (nullable)
 ALTER TABLE `quotes`
-  ADD COLUMN IF NOT EXISTS `partnerId` INT NULL DEFAULT NULL;
+  ADD COLUMN `partnerId` INT NULL DEFAULT NULL;
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `idx_quotes_partner_id` ON `quotes` (`partnerId`);
+CREATE INDEX `idx_quotes_partner_id` ON `quotes` (`partnerId`);
 --> statement-breakpoint
 
--- ─── 4. reservations: columna partner_id (nullable) ─────────────────────────
+-- 4. reservations: columna partner_id (nullable)
 ALTER TABLE `reservations`
-  ADD COLUMN IF NOT EXISTS `partner_id` INT NULL DEFAULT NULL;
+  ADD COLUMN `partner_id` INT NULL DEFAULT NULL;
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS `idx_reservations_partner_id` ON `reservations` (`partner_id`);
+CREATE INDEX `idx_reservations_partner_id` ON `reservations` (`partner_id`);
