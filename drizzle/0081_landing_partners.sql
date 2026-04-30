@@ -41,11 +41,13 @@ CREATE TABLE IF NOT EXISTS `partner_allowed_products` (
 
 -- ─── 3. quotes: columna partner_id (nullable, sin FK para evitar ciclos) ─────
 ALTER TABLE `quotes`
-  ADD COLUMN IF NOT EXISTS `partnerId` INT NULL DEFAULT NULL,
-  ADD INDEX IF NOT EXISTS `idx_quotes_partner_id` (`partnerId`);
+  ADD COLUMN IF NOT EXISTS `partnerId` INT NULL DEFAULT NULL;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_quotes_partner_id` ON `quotes` (`partnerId`);
 --> statement-breakpoint
 
 -- ─── 4. reservations: columna partner_id (nullable) ─────────────────────────
 ALTER TABLE `reservations`
-  ADD COLUMN IF NOT EXISTS `partner_id` INT NULL DEFAULT NULL,
-  ADD INDEX IF NOT EXISTS `idx_reservations_partner_id` (`partner_id`);
+  ADD COLUMN IF NOT EXISTS `partner_id` INT NULL DEFAULT NULL;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS `idx_reservations_partner_id` ON `reservations` (`partner_id`);
