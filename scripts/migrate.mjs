@@ -1,8 +1,10 @@
 /**
- * migrate.mjs — Aplica únicamente migraciones pendientes.
+ * migrate.mjs — Aplica unicamente migraciones pendientes.
  *
  * Estrategia para BD ya existente:
- *   Si __drizzle_migrations está vacía pero la BD ya tiene tablas (users),
+ *   Si __drizzle_migrations NO tiene todos los tags previos marcados
+ *   (ya sea porque esta vacia, porque solo tiene algunos, o porque tiene
+ *   hashes SHA-256 del migrador de drizzle-orm), y la BD ya tiene tablas (users),
  *   marca todas las migraciones previas como aplicadas SIN re-ejecutar su SQL
  *   (el schema ya existe), y solo ejecuta las genuinamente nuevas.
  *
@@ -19,7 +21,7 @@ const root = join(__dirname, "..");
 
 const dbUrl = process.env.DATABASE_URL;
 if (!dbUrl) {
-  console.error("[migrate] DATABASE_URL no configurada — abortando");
+  console.error("[migrate] DATABASE_URL no configurada -- abortando");
   process.exit(1);
 }
 
@@ -42,27 +44,35 @@ const journal = JSON.parse(readFileSync(journalPath, "utf8"));
 const [appliedRows] = await conn.execute("SELECT `hash` FROM `__drizzle_migrations`");
 const appliedSet = new Set(appliedRows.map(r => r.hash));
 
-// ── Detección de BD ya existente ──────────────────────────────────────────────
-// Si el tracking está vacío pero la BD ya tiene tablas, significa que las
-// migraciones anteriores se aplicaron manualmente o con drizzle-kit sin tracking.
-// En ese caso: marcamos todo lo previo como aplicado y solo ejecutamos lo nuevo.
-if (appliedSet.size === 0) {
+// Todas las entradas excepto la ultima (la nueva que queremos aplicar)
+const previousEntries = journal.entries.slice(0, -1);
+
+// Comprueba si TODAS las entradas previas ya estan marcadas con su tag name.
+// Si NO estan todas (tabla vacia, run parcial anterior, o entradas SHA-256 del
+// migrador de drizzle-orm), disparamos la deteccion de BD existente.
+const allPreviousApplied = previousEntries.every(e => appliedSet.has(e.tag));
+
+if (!allPreviousApplied) {
   const [existingTables] = await conn.execute("SHOW TABLES LIKE 'users'");
   if (existingTables.length > 0) {
-    // BD ya bootstrapeada — registrar migraciones previas sin re-ejecutarlas
-    const previous = journal.entries.slice(0, -1); // todas excepto la última
-    for (const entry of previous) {
+    // BD ya bootstrapeada: registrar migraciones previas sin re-ejecutarlas
+    let marked = 0;
+    for (const entry of previousEntries) {
+      if (appliedSet.has(entry.tag)) continue;
       await conn.execute(
         "INSERT IGNORE INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES (?, ?)",
         [entry.tag, entry.when]
       );
       appliedSet.add(entry.tag);
+      marked++;
     }
-    console.log(`[migrate] BD existente — ${previous.length} migraciones previas registradas sin re-ejecutar.`);
+    if (marked > 0) {
+      console.log(`[migrate] BD existente -- ${marked} migraciones previas registradas sin re-ejecutar.`);
+    }
   }
 }
 
-// ── Aplicar migraciones pendientes ────────────────────────────────────────────
+// Aplicar migraciones pendientes
 let ran = 0;
 for (const entry of journal.entries) {
   if (appliedSet.has(entry.tag)) continue;
@@ -96,11 +106,12 @@ for (const entry of journal.entries) {
         1061, // Duplicate key name
         1050, // Table already exists
         1091, // Can't DROP, doesn't exist
+        1265, // Data truncated (enum value conflict on existing data)
       ];
       if (ignorable.includes(err.errno)) {
-        console.warn(`[migrate]   ⚠ Ignorado (${err.errno}): ${err.sqlMessage}`);
+        console.warn(`[migrate]   Ignorado (${err.errno}): ${err.sqlMessage}`);
       } else {
-        console.error(`[migrate]   ✗ Error fatal (${err.errno}): ${err.sqlMessage}`);
+        console.error(`[migrate]   Error fatal (${err.errno}): ${err.sqlMessage}`);
         console.error(`[migrate]   SQL: ${stmt.slice(0, 300)}`);
         failed = true;
         break;
@@ -117,14 +128,14 @@ for (const entry of journal.entries) {
     "INSERT IGNORE INTO `__drizzle_migrations` (`hash`, `created_at`) VALUES (?, ?)",
     [entry.tag, entry.when]
   );
-  console.log(`[migrate]   ✓ ${entry.tag}`);
+  console.log(`[migrate]   OK ${entry.tag}`);
   ran++;
 }
 
 if (ran === 0) {
   console.log("[migrate] No hay migraciones pendientes.");
 } else {
-  console.log(`[migrate] ${ran} migración(es) aplicada(s) correctamente.`);
+  console.log(`[migrate] ${ran} migracion(es) aplicada(s) correctamente.`);
 }
 
 await conn.end();

@@ -1074,7 +1074,10 @@ async function conditionallyStartJob(
   }
 }
 
-runMigrations()
+// Las migraciones las gestiona scripts/migrate.mjs (startCommand) antes de arrancar.
+// runMigrations() usaba drizzle-orm/mysql2/migrator con hashes SHA-256 incompatibles
+// con el sistema de tag names de migrate.mjs, causando conflictos en __drizzle_migrations.
+Promise.resolve()
   .then(() => ensureCriticalSeeds())
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
