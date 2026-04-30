@@ -283,6 +283,8 @@ export async function createLead(data: {
 
   // 4. Sincronizar con GoHighLevel CRM (fire-and-forget, no bloquea el flujo)
   const ghlSource = data.source ?? "web";
+  // Si el lead ya viene de GHL, no reenviar para evitar bucle
+  if (ghlSource === "ghl_webhook" || ghlSource === "vapi_llamada") return leadId;
   (async () => {
     const db = await getDb();
     let ghlApiKey = process.env.GHL_API_KEY;
