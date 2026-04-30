@@ -725,5 +725,125 @@ export const cardTerminalBatchesRouter = router({
 
       return { success: true };
     }),
+
+  removeOperation: adminProc
+    .input(z.object({ batchId: z.number(), batchOpId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const [batch] = await db.select()
+        .from(cardTerminalBatches)
+        .where(eq(cardTerminalBatches.id, input.batchId))
+        .limit(1);
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND", message: "Remesa no encontrada" });
+
+      const [batchOp] = await db.select()
+        .from(cardTerminalBatchOperations)
+        .where(and(
+          eq(cardTerminalBatchOperations.id, input.batchOpId),
+          eq(cardTerminalBatchOperations.batchId, input.batchId)
+        ))
+        .limit(1);
+      if (!batchOp) throw new TRPCError({ code: "NOT_FOUND", message: "Operación no encontrada en esta remesa" });
+
+      await db.delete(cardTerminalBatchOperations)
+        .where(eq(cardTerminalBatchOperations.id, input.batchOpId));
+
+      await db.update(cardTerminalOperations)
+        .set({ status: "pendiente" })
+        .where(eq(cardTerminalOperations.id, batchOp.cardTerminalOperationId));
+
+      const remainingOps = await db.select()
+        .from(cardTerminalBatchOperations)
+        .innerJoin(
+          cardTerminalOperations,
+          eq(cardTerminalBatchOperations.cardTerminalOperationId, cardTerminalOperations.id)
+        )
+        .where(eq(cardTerminalBatchOperations.batchId, input.batchId));
+
+      let totalSales = 0;
+      let totalRefunds = 0;
+      for (const r of remainingOps) {
+        const amount = parseFloat(String(r.card_terminal_batch_operations.amount));
+        if (r.card_terminal_batch_operations.operationType === "VENTA") totalSales += amount;
+        else if (r.card_terminal_batch_operations.operationType === "DEVOLUCION") totalRefunds += amount;
+      }
+      const totalNet = totalSales - totalRefunds;
+
+      let newDiff: string | null = null;
+      let newStatus = batch.status;
+      if (batch.bankMovementId && (batch.status === "reconciled" || batch.status === "difference")) {
+        const [bm] = await db.select()
+          .from(bankMovements)
+          .where(eq(bankMovements.id, batch.bankMovementId))
+          .limit(1);
+        if (bm) {
+          const bmAmount = parseFloat(String(bm.importe));
+          const diff = bmAmount - totalNet;
+          const hasSignificantDiff = Math.abs(diff) > 0.01;
+          newDiff = hasSignificantDiff ? diff.toFixed(2) : null;
+          newStatus = hasSignificantDiff ? "difference" : "reconciled";
+        }
+      }
+
+      await db.update(cardTerminalBatches)
+        .set({
+          totalSales: totalSales.toFixed(2),
+          totalRefunds: totalRefunds.toFixed(2),
+          totalNet: totalNet.toFixed(2),
+          operationCount: remainingOps.length,
+          linkedOperationsCount: remainingOps.length,
+          differenceAmount: newDiff,
+          status: newStatus,
+          updatedAt: new Date(),
+        })
+        .where(eq(cardTerminalBatches.id, input.batchId));
+
+      await db.insert(cardTerminalBatchAuditLogs).values({
+        batchId: input.batchId,
+        action: "manual_reconciled",
+        bankMovementId: batch.bankMovementId ?? null,
+        score: null,
+        autoReconciled: false,
+        performedBy: String(ctx.user.id),
+        notes: `Operación ${batchOp.cardTerminalOperationId} eliminada de la remesa. Nuevo neto: ${totalNet.toFixed(2)} €`,
+      }).catch(() => {});
+
+      return { success: true, newTotalNet: totalNet, remainingOps: remainingOps.length };
+    }),
+
+  justifyDifference: adminProc
+    .input(z.object({
+      batchId: z.number(),
+      justification: z.string().min(5, "La justificación debe tener al menos 5 caracteres"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [batch] = await db.select()
+        .from(cardTerminalBatches)
+        .where(eq(cardTerminalBatches.id, input.batchId))
+        .limit(1);
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND", message: "Remesa no encontrada" });
+      if (batch.status !== "difference") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "La remesa no tiene diferencias pendientes de justificar" });
+      }
+
+      await db.update(cardTerminalBatches)
+        .set({
+          status: "reconciled",
+          notes: input.justification,
+          updatedAt: new Date(),
+        })
+        .where(eq(cardTerminalBatches.id, input.batchId));
+
+      await db.insert(cardTerminalBatchAuditLogs).values({
+        batchId: input.batchId,
+        action: "manual_reconciled",
+        bankMovementId: batch.bankMovementId ?? null,
+        score: null,
+        autoReconciled: false,
+        performedBy: String(ctx.user.id),
+        notes: `Diferencia de ${batch.differenceAmount} € justificada: ${input.justification}`,
+      }).catch(() => {});
+
+      return { success: true };
+    }),
 });
 

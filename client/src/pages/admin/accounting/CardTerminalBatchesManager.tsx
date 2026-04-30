@@ -26,6 +26,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   Zap,
+  X,
+  FileCheck,
 } from "lucide-react";
 
 type BatchStatus = "pending" | "suggested" | "auto_ready" | "reconciled" | "difference" | "ignored" | "review_required";
@@ -98,6 +100,12 @@ export default function CardTerminalBatchesManager() {
 
   const [ignOpen, setIgnOpen] = useState(false);
   const [ignNotes, setIgnNotes] = useState("");
+
+  const [delOpOpen, setDelOpOpen] = useState(false);
+  const [delOpTarget, setDelOpTarget] = useState<{ batchOpId: number; operationNumber: string | null; amount: string } | null>(null);
+
+  const [justifyOpen, setJustifyOpen] = useState(false);
+  const [justifyText, setJustifyText] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -203,6 +211,26 @@ export default function CardTerminalBatchesManager() {
       toast.success("Remesa eliminada");
       setSelectedId(null);
       utils.cardTerminalBatches.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const removeOpMut = trpc.cardTerminalBatches.removeOperation.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Operación eliminada. Nuevo neto: ${res.newTotalNet.toFixed(2)} € · ${res.remainingOps} operaciones restantes`);
+      setDelOpOpen(false);
+      setDelOpTarget(null);
+      invalidateAll();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const justifyMut = trpc.cardTerminalBatches.justifyDifference.useMutation({
+    onSuccess: () => {
+      toast.success("Diferencia justificada — remesa marcada como conciliada");
+      setJustifyOpen(false);
+      setJustifyText("");
+      invalidateAll();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -422,11 +450,18 @@ export default function CardTerminalBatchesManager() {
                   </div>
 
                   {detail.differenceAmount && (
-                    <div className="bg-orange-500/10 border border-orange-500/30 rounded p-2 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
-                      <span className="text-xs text-orange-300">
-                        Diferencia con banco: {fmt(detail.differenceAmount)}
-                      </span>
+                    <div className="bg-orange-500/10 border border-orange-500/30 rounded p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
+                        <span className="text-xs text-orange-300">
+                          Diferencia con banco: {fmt(detail.differenceAmount)}
+                        </span>
+                      </div>
+                      {detail.notes && (
+                        <div className="text-xs text-zinc-400 italic border-t border-orange-500/20 pt-2">
+                          Justificación: {detail.notes}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -500,6 +535,16 @@ export default function CardTerminalBatchesManager() {
                         Conciliar
                       </Button>
                     )}
+                    {detail.status === "difference" && (
+                      <Button
+                        size="sm"
+                        onClick={() => { setJustifyText(""); setJustifyOpen(true); }}
+                        className="bg-amber-700 hover:bg-amber-600 text-white text-xs h-7"
+                      >
+                        <FileCheck className="w-3 h-3 mr-1" />
+                        Justificar diferencia
+                      </Button>
+                    )}
                     {isReconciled(detail.status) && (
                       <Button
                         size="sm"
@@ -553,7 +598,7 @@ export default function CardTerminalBatchesManager() {
                 <CardContent className="p-0">
                   <div className="max-h-48 overflow-y-auto divide-y divide-zinc-800">
                     {(detail.operations ?? []).map(op => (
-                      <div key={op.batchOpId} className="px-4 py-2 flex items-center gap-2">
+                      <div key={op.batchOpId} className="px-3 py-2 flex items-center gap-2">
                         {op.batchOpType === "VENTA" ? (
                           <ArrowUpRight className="w-3 h-3 text-emerald-400 shrink-0" />
                         ) : (
@@ -576,6 +621,13 @@ export default function CardTerminalBatchesManager() {
                             {op.linkedEntityType}
                           </Badge>
                         )}
+                        <button
+                          onClick={() => { setDelOpTarget({ batchOpId: op.batchOpId, operationNumber: op.operationNumber ?? null, amount: String(op.amount) }); setDelOpOpen(true); }}
+                          className="shrink-0 p-1 rounded hover:bg-red-500/10 text-zinc-600 hover:text-red-400 transition-colors"
+                          title="Eliminar operación de la remesa"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -782,6 +834,114 @@ export default function CardTerminalBatchesManager() {
               className="bg-zinc-700 hover:bg-zinc-600 text-white"
             >
               {ignoreMut.isPending ? "Guardando..." : "Ignorar remesa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete operation dialog */}
+      <Dialog open={delOpOpen} onOpenChange={(v) => { setDelOpOpen(v); if (!v) setDelOpTarget(null); }}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Eliminar operación</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {delOpTarget && (
+              <div className="bg-zinc-800/60 rounded p-3 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Operación:</span>
+                  <span className="text-white">Op. {delOpTarget.operationNumber ?? "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Importe:</span>
+                  <span className="text-white font-medium">{fmt(delOpTarget.amount)}</span>
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-zinc-400">
+              La operación se desvinculará de esta remesa y volverá a estado <span className="text-white">Pendiente</span>. Los totales de la remesa se recalcularán automáticamente.
+            </p>
+            {detail?.status === "reconciled" || detail?.status === "difference" ? (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded p-2 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <span className="text-xs text-amber-300">
+                  La remesa está conciliada. Al eliminar la operación se recalculará la diferencia con el banco.
+                </span>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDelOpOpen(false); setDelOpTarget(null); }} className="border-zinc-700 text-zinc-300">
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedId || !delOpTarget) return;
+                removeOpMut.mutate({ batchId: selectedId, batchOpId: delOpTarget.batchOpId });
+              }}
+              disabled={removeOpMut.isPending}
+              className="bg-red-700 hover:bg-red-600 text-white"
+            >
+              {removeOpMut.isPending ? "Eliminando..." : "Eliminar operación"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Justify difference dialog */}
+      <Dialog open={justifyOpen} onOpenChange={setJustifyOpen}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-amber-400" />
+              Justificar diferencia
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {detail?.differenceAmount && (
+              <div className="bg-orange-500/10 border border-orange-500/30 rounded p-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Neto remesa:</span>
+                  <span className="text-white font-medium">{fmt(detail.totalNet)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Importe banco:</span>
+                  <span className="text-white">{fmt(detail.bankMovement?.importe)}</span>
+                </div>
+                <div className="flex justify-between border-t border-orange-500/20 pt-1">
+                  <span className="text-orange-300">Diferencia:</span>
+                  <span className="text-orange-300 font-semibold">{fmt(detail.differenceAmount)}</span>
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-zinc-400">
+              Explica el motivo de la diferencia. La remesa pasará a estado <span className="text-emerald-400">Conciliada</span> y dejará de aparecer en las alertas del dashboard.
+            </p>
+            <div className="space-y-1">
+              <Label className="text-xs text-zinc-400">Justificación <span className="text-red-400">*</span></Label>
+              <Textarea
+                value={justifyText}
+                onChange={e => setJustifyText(e.target.value)}
+                placeholder="Ej: Comisión bancaria de 35,30 € descontada por el banco en la liquidación del terminal..."
+                className="bg-zinc-800 border-zinc-700 text-white text-sm resize-none"
+                rows={3}
+              />
+              <p className="text-xs text-zinc-500">Mínimo 5 caracteres</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJustifyOpen(false)} className="border-zinc-700 text-zinc-300">
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectedId || justifyText.trim().length < 5) return;
+                justifyMut.mutate({ batchId: selectedId, justification: justifyText.trim() });
+              }}
+              disabled={justifyMut.isPending || justifyText.trim().length < 5}
+              className="bg-amber-700 hover:bg-amber-600 text-white"
+            >
+              {justifyMut.isPending ? "Guardando..." : "Confirmar justificación"}
             </Button>
           </DialogFooter>
         </DialogContent>
