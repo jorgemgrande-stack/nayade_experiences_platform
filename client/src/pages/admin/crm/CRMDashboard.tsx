@@ -2770,7 +2770,7 @@ function QuoteEditModal({
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button
           size="sm"
-          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal, discount, taxRate: effectiveTaxRateB, total, validUntil })}
+          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal, discount, taxRate: effectiveTaxRateE, total, validUntil })}
           disabled={updateQuote.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
