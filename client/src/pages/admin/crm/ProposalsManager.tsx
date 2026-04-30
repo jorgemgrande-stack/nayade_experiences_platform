@@ -664,6 +664,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
   );
 
   const sendMutation = trpc.proposals.send.useMutation();
+  const generateLinkMutation = trpc.proposals.generateLink.useMutation();
   const deleteMutation = trpc.proposals.delete.useMutation();
   const bulkDeleteMutation = trpc.proposals.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} propuesta(s) eliminadas${r.skipped > 0 ? ` (${r.skipped} omitidas por no ser borrador)` : ""}`); setSelected(new Set()); utils.proposals.list.invalidate(); },
@@ -674,6 +675,17 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
     onError: (e) => toast.error(e.message),
   });
 
+  async function handlePreview(p: { id: number; publicUrl?: string | null }) {
+    if (p.publicUrl) { window.open(p.publicUrl, "_blank"); return; }
+    try {
+      const result = await generateLinkMutation.mutateAsync({ id: p.id });
+      invalidate();
+      window.open(result.publicUrl, "_blank");
+    } catch (err: unknown) {
+      toast.error((err as { message?: string })?.message ?? "Error al generar enlace");
+    }
+  }
+
   function invalidate() {
     utils.proposals.list.invalidate();
     if (leadId) utils.proposals.getByLeadId.invalidate({ leadId });
@@ -681,8 +693,14 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
 
   async function handleSend(id: number) {
     try {
-      await sendMutation.mutateAsync({ id });
-      toast.success("Propuesta enviada por email");
+      const result = await sendMutation.mutateAsync({ id });
+      if (result.emailSent) {
+        toast.success(`Propuesta enviada por email a ${result.clientEmail}`);
+      } else if (!result.clientEmail) {
+        toast.warning("Propuesta marcada como enviada, pero el lead no tiene email configurado");
+      } else {
+        toast.warning("Propuesta marcada como enviada, pero el email no pudo enviarse (revisa configuración SMTP/Brevo)");
+      }
       invalidate();
     } catch (err: unknown) {
       toast.error((err as { message?: string })?.message ?? "Error al enviar");
@@ -821,11 +839,11 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-0.5">
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0" title={p.publicUrl ? "Ver propuesta pública" : "Sin enlace público"} disabled={!p.publicUrl} onClick={() => p.publicUrl && window.open(p.publicUrl, "_blank")}><Eye className="w-3.5 h-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0" title={p.publicUrl ? "Ver propuesta pública" : "Vista previa (genera enlace)"} disabled={generateLinkMutation.isPending} onClick={() => handlePreview(p)}><Eye className="w-3.5 h-3.5" /></Button>
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0" title={p.status === "borrador" ? "Editar" : "Solo editable en borrador"} disabled={p.status !== "borrador"} onClick={() => setEditModal(p.id)}><Pencil className="w-3.5 h-3.5" /></Button>
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-green-300 h-7 w-7 p-0" title="Enviar por email" disabled={!["borrador", "enviado", "visualizado"].includes(p.status) || sendMutation.isPending} onClick={() => handleSend(p.id)}><Send className="w-3.5 h-3.5" /></Button>
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0" title={p.convertedToQuoteId ? "Ya convertida en presupuesto" : "Convertir a presupuesto"} disabled={!["enviado", "visualizado", "aceptado"].includes(p.status) || !!p.convertedToQuoteId} onClick={() => setConvertModal(p.id)}><ArrowUpRight className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground/70 h-7 w-7 p-0" title={p.publicUrl ? "Copiar enlace público" : "Sin enlace público"} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success("Enlace copiado"); }}><Copy className="w-3.5 h-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground/70 h-7 w-7 p-0" title={p.publicUrl ? "Copiar enlace público" : "Sin enlace aún"} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success("Enlace copiado"); }}><Copy className="w-3.5 h-3.5" /></Button>
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" title="Eliminar" onClick={() => setDeleteConfirm(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                           </div>
                         </td>
@@ -913,7 +931,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                     <td className="px-4 py-3 text-right text-sm font-medium">{parseFloat(p.total ?? "0").toFixed(2)} €</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-0.5">
-                        <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.publicUrl ? "text-foreground/50 hover:text-amber-300" : "text-foreground/20 cursor-not-allowed"}`} disabled={!p.publicUrl} onClick={() => p.publicUrl && window.open(p.publicUrl, "_blank")}><Eye className="w-3.5 h-3.5" /></Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-foreground/50 hover:text-amber-300" title={p.publicUrl ? "Ver propuesta pública" : "Vista previa (genera enlace)"} disabled={generateLinkMutation.isPending} onClick={() => handlePreview(p)}><Eye className="w-3.5 h-3.5" /></Button>
                         <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.status === "borrador" ? "text-foreground/50 hover:text-blue-300" : "text-foreground/20 cursor-not-allowed"}`} disabled={p.status !== "borrador"} onClick={() => setEditModal(p.id)}><Pencil className="w-3.5 h-3.5" /></Button>
                         <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${["borrador", "enviado", "visualizado"].includes(p.status) ? "text-foreground/50 hover:text-green-300" : "text-foreground/20 cursor-not-allowed"}`} disabled={!["borrador", "enviado", "visualizado"].includes(p.status)} onClick={() => handleSend(p.id)}><Send className="w-3.5 h-3.5" /></Button>
                         <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${["enviado", "visualizado", "aceptado"].includes(p.status) && !p.convertedToQuoteId ? "text-foreground/50 hover:text-orange-300" : "text-foreground/20 cursor-not-allowed"}`} disabled={!["enviado", "visualizado", "aceptado"].includes(p.status) || !!p.convertedToQuoteId} onClick={() => setConvertModal(p.id)}><ArrowUpRight className="w-3.5 h-3.5" /></Button>

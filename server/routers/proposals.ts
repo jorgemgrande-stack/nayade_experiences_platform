@@ -20,11 +20,13 @@ import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
 
-async function sendEmail(args: { to: string; subject: string; html: string }) {
+async function sendEmail(args: { to: string; subject: string; html: string }): Promise<boolean> {
+  if (!args.to) { console.warn("[proposals] Lead sin email, no se puede enviar"); return false; }
   const sent = await sharedSendEmail(args);
-  if (!sent) { console.warn("[proposals] SMTP not configured, skipping email"); return; }
+  if (!sent) { console.warn("[proposals] SMTP/Brevo no configurado, email omitido"); return false; }
   const copyEmail = getSystemSettingSync("email_copy_recipient", "");
   if (copyEmail) await sharedSendEmail({ to: copyEmail, subject: `[COPIA] ${args.subject}`, html: args.html });
+  return true;
 }
 
 async function generateProposalNumber(userId?: string): Promise<string> {
@@ -305,7 +307,7 @@ export const proposalsRouter = router({
         publicUrl,
       });
 
-      await sendEmail({
+      const emailSent = await sendEmail({
         to: lead.email,
         subject: `Tu Propuesta Comercial — ${proposal.proposalNumber} · Náyade Experiences`,
         html,
@@ -318,9 +320,24 @@ export const proposalsRouter = router({
         sentAt: new Date(),
       }).where(eq(proposals.id, input.id));
 
-      await logActivity("lead", proposal.leadId, "proposal_sent", agentId, String(agentId), { proposalNumber: proposal.proposalNumber, to: lead.email });
+      await logActivity("lead", proposal.leadId, "proposal_sent", agentId, String(agentId), { proposalNumber: proposal.proposalNumber, to: lead.email, emailSent });
 
-      return { success: true, publicUrl, token };
+      return { success: true, publicUrl, token, emailSent, clientEmail: lead.email };
+    }),
+
+  // ── generateLink (genera token/URL sin enviar email) ─────────────────────
+  generateLink: staffProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const [proposal] = await db.select().from(proposals).where(eq(proposals.id, input.id)).limit(1);
+      if (!proposal) throw new TRPCError({ code: "NOT_FOUND", message: "Propuesta no encontrada" });
+      if (proposal.publicUrl) return { publicUrl: proposal.publicUrl, token: proposal.token! };
+      const { randomBytes } = await import("crypto");
+      const token = randomBytes(32).toString("hex");
+      const origin = process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.nayadeexperiences.es";
+      const publicUrl = `${origin}/propuesta/${token}`;
+      await db.update(proposals).set({ token, publicUrl }).where(eq(proposals.id, input.id));
+      return { publicUrl, token };
     }),
 
   // ── delete ────────────────────────────────────────────────────────────────
