@@ -397,7 +397,7 @@ export const appRouter = router({
 
     createSlideshowItem: adminProcedure
       .input(z.object({
-        imageUrl: z.string().url(),
+        imageUrl: z.string().min(1),
         badge: z.string().optional(),
         title: z.string().optional(),
         subtitle: z.string().optional(),
@@ -414,7 +414,7 @@ export const appRouter = router({
     updateSlideshowItem: adminProcedure
       .input(z.object({
         id: z.number(),
-        imageUrl: z.string().url().optional(),
+        imageUrl: z.string().min(1).optional(),
         badge: z.string().optional(),
         title: z.string().optional(),
         subtitle: z.string().optional(),
