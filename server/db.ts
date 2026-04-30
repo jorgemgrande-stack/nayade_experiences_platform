@@ -283,8 +283,9 @@ export async function createLead(data: {
 
   // 4. Sincronizar con GoHighLevel CRM (fire-and-forget, no bloquea el flujo)
   const ghlSource = data.source ?? "web";
-  // Si el lead ya viene de GHL, no reenviar para evitar bucle
-  if (ghlSource === "ghl_webhook" || ghlSource === "vapi_llamada") return leadId;
+  // Si el lead ya viene de GHL no reenviar (bucle directo); VAPI sí se envía con origen="vapi"
+  if (ghlSource === "ghl_webhook") return leadId;
+  const ghlOrigen = ghlSource === "vapi_llamada" ? "vapi" : "nayade_web";
   (async () => {
     const db = await getDb();
     let ghlApiKey = process.env.GHL_API_KEY;
@@ -308,6 +309,7 @@ export async function createLead(data: {
           companyName: data.company,
           source: ghlSource,
           tags: getGHLTagsFromSource(ghlSource),
+          origen: ghlOrigen,
           notes: data.message
             ? `[Lead #${leadId}] ${data.message}`
             : `[Lead #${leadId}] Origen: ${ghlSource}`,

@@ -51,6 +51,8 @@ export interface GHLContactPayload {
   companyName?: string;
   source?: string;
   tags?: string[];
+  /** Identifica el sistema de origen para evitar bucles en automatizaciones GHL */
+  origen?: string;
   /** Mensaje / notas del lead — se guarda como nota en el contacto */
   notes?: string;
 }
@@ -113,6 +115,9 @@ export async function createGHLContact(
     if (payload.phone) body.phone = payload.phone;
     if (payload.companyName) body.companyName = payload.companyName;
     if (payload.tags && payload.tags.length > 0) body.tags = payload.tags;
+    if (payload.origen) {
+      body.customFields = [{ key: "origen", field_value: payload.origen }];
+    }
 
     const response = await fetch(`${GHL_API_URL}/contacts/`, {
       method: "POST",
