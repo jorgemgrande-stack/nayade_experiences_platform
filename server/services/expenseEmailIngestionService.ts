@@ -155,7 +155,11 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
     const lock = await client.getMailboxLock(IMAP_MAILBOX);
 
     try {
-      const uids = await client.search({ seen: false });
+      // Buscar correos de los últimos 30 días sin filtrar por leído/no leído.
+      // La deduplicación se gestiona por messageId en expenseEmailIngestionLogs.
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
+      const uids = await client.search({ since });
       if (!uids.length) return result;
 
       for (const uid of uids) {
@@ -183,16 +187,8 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
             .limit(1);
 
           if (dupRows) {
-            await db.insert(expenseEmailIngestionLogs).values({
-              messageId,
-              subject,
-              sender,
-              receivedAt,
-              status: "duplicated",
-            });
-            await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
+            // Ya procesado — saltar silenciosamente (sin insertar nueva fila de log)
             result.duplicated++;
-            console.log(`[ExpenseMailIngestion] Duplicado: ${messageId}`);
             continue;
           }
 
