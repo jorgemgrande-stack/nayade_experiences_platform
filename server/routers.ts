@@ -40,6 +40,8 @@ import {
   updateBookingStatus,
   getAllTransactions,
   getTransactionsCount,
+  getTransactionById,
+  deleteTransaction,
   getAccountingReports,
   getTpvReservationsToday,
   getDashboardMetrics,
@@ -1074,6 +1076,19 @@ export const appRouter = router({
     getOverview: adminProcedure.query(async () => {
       return getDashboardOverview();
     }),
+
+    getTransactionById: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .query(async ({ input }) => {
+        return getTransactionById(input.id);
+      }),
+
+    deleteTransaction: adminProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ input }) => {
+        await deleteTransaction(input.id);
+        return { ok: true };
+      }),
   }),
 
   //   // ─── ADMIN: USERS ─────────────────────────────────────────────────────

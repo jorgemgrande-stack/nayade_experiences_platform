@@ -500,6 +500,19 @@ export async function getTransactionsCount(params: TxFilters) {
   return { total: Number(row?.total ?? 0) };
 }
 
+export async function getTransactionById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(transactions).where(eq(transactions.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function deleteTransaction(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB no disponible");
+  await db.delete(transactions).where(eq(transactions.id, id));
+}
+
 export async function getAccountingReports(params: { from?: string; to?: string }) {
   const db = await getDb();
   if (!db) return null;

@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import {
   Search, Download, TrendingUp, TrendingDown, RefreshCw, Receipt,
   ChevronLeft, ChevronRight, User, ShoppingBag, Calendar,
   CreditCard, Banknote, Smartphone, Store, Globe, Monitor,
+  Eye, Trash2,
 } from "lucide-react";
 
 // ─── Configuraciones visuales ────────────────────────────────────────────────
@@ -54,6 +56,8 @@ export default function TransactionsList() {
   const [fromDate, setFromDate]         = useState("");
   const [toDate, setToDate]             = useState("");
   const [page, setPage]                 = useState(0);
+  const [viewTxId, setViewTxId]         = useState<number | null>(null);
+  const [deleteTx, setDeleteTx]         = useState<{ id: number; number: string } | null>(null);
 
   // Debounce search para no disparar queries en cada tecla
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -90,6 +94,22 @@ export default function TransactionsList() {
   const total       = countData?.total ?? 0;
   const totalPages  = Math.ceil(total / PAGE_SIZE);
   const txList      = transactions ?? [];
+
+  const { data: txDetail } = trpc.accounting.getTransactionById.useQuery(
+    { id: viewTxId! },
+    { enabled: viewTxId !== null }
+  );
+
+  const utils = trpc.useUtils();
+  const deleteMut = trpc.accounting.deleteTransaction.useMutation({
+    onSuccess: () => {
+      toast.success("Transacción eliminada");
+      setDeleteTx(null);
+      utils.accounting.getTransactions.invalidate();
+      utils.accounting.getTransactionsCount.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const totalIngresos = txList.filter(t => t.type === "ingreso"   && t.status === "completado").reduce((s, t) => s + parseFloat(String(t.amount)), 0);
   const totalGastos   = txList.filter(t => (t.type === "gasto" || t.type === "reembolso") && t.status === "completado").reduce((s, t) => s + parseFloat(String(t.amount)), 0);
@@ -253,6 +273,7 @@ export default function TransactionsList() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fiscal</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cliente / Producto</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Estado</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -338,6 +359,19 @@ export default function TransactionsList() {
                           {st.label}
                         </span>
                       </td>
+                      {/* Acciones */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="w-7 h-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                            onClick={() => setViewTxId(t.id)} title="Ver transacción">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
+                            onClick={() => setDeleteTx({ id: t.id, number: t.transactionNumber })} title="Borrar transacción">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -364,6 +398,71 @@ export default function TransactionsList() {
           )}
         </div>
       )}
+      {/* Modal Ver transacción */}
+      <Dialog open={viewTxId !== null} onOpenChange={open => { if (!open) setViewTxId(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalle de transacción</DialogTitle>
+          </DialogHeader>
+          {txDetail ? (
+            <div className="space-y-3 text-sm">
+              {[
+                ["Nº Transacción", txDetail.transactionNumber],
+                ["Tipo", typeConfig[txDetail.type]?.label ?? txDetail.type],
+                ["Estado", statusConfig[txDetail.status]?.label ?? txDetail.status],
+                ["Importe", `€${parseFloat(String(txDetail.amount)).toFixed(2)}`],
+                ["Método de pago", txDetail.paymentMethod ?? "—"],
+                ["Canal de venta", (txDetail as any).saleChannel ?? "—"],
+                ["Régimen fiscal", (txDetail as any).fiscalRegime ?? "—"],
+                ["Base imponible", (txDetail as any).taxBase ? `€${parseFloat(String((txDetail as any).taxBase)).toFixed(2)}` : "—"],
+                ["IVA", (txDetail as any).taxAmount ? `€${parseFloat(String((txDetail as any).taxAmount)).toFixed(2)}` : "—"],
+                ["Margen REAV", (txDetail as any).reavMargin ? `€${parseFloat(String((txDetail as any).reavMargin)).toFixed(2)}` : "—"],
+                ["Cliente", (txDetail as any).clientName ?? "—"],
+                ["Producto", (txDetail as any).productName ?? "—"],
+                ["Vendedor", (txDetail as any).sellerName ?? "—"],
+                ["Centro operativo", (txDetail as any).operativeCenter ?? "—"],
+                ["Descripción", txDetail.description ?? "—"],
+                ["Ref. reserva", (txDetail as any).reservationRef ?? "—"],
+                ["Ref. externa", (txDetail as any).externalRef ?? "—"],
+                ["Nº factura", (txDetail as any).invoiceNumber ?? "—"],
+                ["Fecha", new Date(txDetail.createdAt).toLocaleString("es-ES")],
+              ].map(([label, value]) => (
+                <div key={label as string} className="flex justify-between gap-4 border-b border-border pb-2 last:border-0">
+                  <span className="text-muted-foreground shrink-0">{label}</span>
+                  <span className="font-medium text-right truncate">{value as string}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="h-32 flex items-center justify-center">
+              <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewTxId(null)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Borrar transacción */}
+      <Dialog open={deleteTx !== null} onOpenChange={open => { if (!open) setDeleteTx(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Borrar transacción</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            ¿Seguro que quieres eliminar la transacción <span className="font-mono font-bold text-foreground">{deleteTx?.number}</span>?
+            Esta acción es <strong>irreversible</strong> y no se puede deshacer.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteTx(null)}>Cancelar</Button>
+            <Button variant="destructive" disabled={deleteMut.isPending}
+              onClick={() => deleteTx && deleteMut.mutate({ id: deleteTx.id })}>
+              {deleteMut.isPending ? "Borrando..." : "Borrar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
