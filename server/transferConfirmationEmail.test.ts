@@ -91,7 +91,7 @@ describe("buildTransferConfirmationHtml", () => {
   it("incluye los datos de contacto de Náyade Experiences", () => {
     const html = buildTransferConfirmationHtml(mockData);
     expect(html).toContain("reservas@nayadeexperiences.es");
-    expect(html).toContain("+34 930 34 77 91");
+    expect(html).toContain("+34 911 67 51 89");
   });
 
   it("funciona sin campos opcionales (invoiceUrl, confirmedBy, confirmedAt, quoteNumber)", () => {

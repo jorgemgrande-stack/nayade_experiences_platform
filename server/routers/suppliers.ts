@@ -131,7 +131,7 @@ async function generateSettlementPdfAndUpload(data: {
     <div class="company-info">
       <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
       ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
-      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 930 34 77 91"}
+      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 911 67 51 89"}
     </div>
   </div>
   <div class="doc-type-band">
@@ -1614,7 +1614,7 @@ export const settlementsRouter = router({
         cif: s.legalCompanyCif || "",
         address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
         email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
-        phone: s.legalCompanyPhone || "+34 930 34 77 91",
+        phone: s.legalCompanyPhone || "+34 911 67 51 89",
       };
 
       const { url, key } = await generateSettlementPdfAndUpload({

@@ -168,7 +168,7 @@ export async function sendReservationFailedNotifications(
         customerName: reservation.customerName,
         responseCode: redsysResponseCode,
       }),
-      text: `Tu pago para ${reservation.productName} no pudo procesarse. Ref: ${reservation.merchantOrder}. Contacta: reservas@nayadeexperiences.es o +34 930 34 77 91.`,
+      text: `Tu pago para ${reservation.productName} no pudo procesarse. Ref: ${reservation.merchantOrder}. Contacta: reservas@nayadeexperiences.es o +34 911 67 51 89 (también WhatsApp).`,
     });
     console.log(`[ReservationEmails] Email de fallo enviado a ${reservation.customerEmail}`);
   } catch (error) {

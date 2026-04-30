@@ -355,7 +355,7 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+        o ll&aacute;manos al <a href="tel:+34911675189" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 911 67 51 89</a>&nbsp;(tambi&eacute;n WhatsApp).
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -433,7 +433,7 @@ export function buildRestaurantConfirmHtml(d: RestaurantBookingData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar tu reserva? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+        o ll&aacute;manos al <a href="tel:+34911675189" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 911 67 51 89</a>&nbsp;(tambi&eacute;n WhatsApp).
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -667,7 +667,7 @@ export function buildBudgetRequestUserHtml(d: BudgetRequestEmailData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar alg&uacute;n dato? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+        o ll&aacute;manos al <a href="tel:+34911675189" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 911 67 51 89</a>&nbsp;(tambi&eacute;n WhatsApp).
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -849,7 +849,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
               Para confirmar tu reserva, contacta con nosotros:<br/>
               <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">${getContactEmail()}</a>
               &nbsp;&middot;&nbsp;
-              <a href="tel:+34930347791" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">+34 930 34 77 91</a>
+              <a href="tel:+34911675189" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:none;">+34 911 67 51 89</a>&nbsp;(WhatsApp)
             </p>
           </td></tr>
         </table>
@@ -886,7 +886,7 @@ export function buildQuoteHtml(d: QuoteEmailData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+        o ll&aacute;manos al <a href="tel:+34911675189" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 911 67 51 89</a>&nbsp;(tambi&eacute;n WhatsApp).
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -1299,7 +1299,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Tienes alguna pregunta sobre tu reserva? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+        o ll&aacute;manos al <a href="tel:+34911675189" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 911 67 51 89</a>&nbsp;(tambi&eacute;n WhatsApp).
       </p>
     </td></tr>
     ${emailFooter()}`;
@@ -2350,7 +2350,7 @@ export function buildProposalHtml(d: ProposalEmailData): string {
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
         &iquest;Necesitas modificar algo? Escrb&iacute;benos a
         <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-        o ll&aacute;manos al <a href="tel:+34930347791" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 930 34 77 91</a>.
+        o ll&aacute;manos al <a href="tel:+34911675189" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 911 67 51 89</a>&nbsp;(tambi&eacute;n WhatsApp).
       </p>
     </td></tr>
     ${emailFooter()}`;

@@ -290,7 +290,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   bookingDate: updatedReservation.bookingDate ?? undefined,
                   selectedTime: (updatedReservation as any).selectedTime ?? undefined,
                   contactEmail: COPY_EMAIL,
-                  contactPhone: "+34 930 34 77 91",
+                  contactPhone: "+34 911 67 51 89",
                   quoteUrl,
                 });
                 await sendEmail({ to: clientEmail, subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`, html });

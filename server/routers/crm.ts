@@ -4095,7 +4095,7 @@ export const crmRouter = router({
             total: `${(res.amountTotal / 100).toFixed(2)} €`,
             bookingDate: res.bookingDate,
             contactEmail: await getBusinessEmail('reservations'),
-            contactPhone: "+34 930 34 77 91",
+            contactPhone: "+34 911 67 51 89",
           });
           subject = `✅ Confirmación de reserva — ${res.productName} · Náyade Experiences`;
         }
@@ -4454,7 +4454,7 @@ export const crmRouter = router({
               total: `${input.amountTotal.toFixed(2)} €`,
               bookingDate: input.bookingDate,
               contactEmail: await getBusinessEmail('reservations'),
-              contactPhone: "+34 930 34 77 91",
+              contactPhone: "+34 911 67 51 89",
             });
             await sendEmail({
               to: input.customerEmail,
@@ -5054,7 +5054,7 @@ export const crmRouter = router({
               </table>
               <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)} € | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)} € | <strong>TOTAL: ${Number(invoice.total).toFixed(2)} €</strong></p>
               ${invoice.pdfUrl ? `<p><a href="${invoice.pdfUrl}" style="color:#f97316;">Descargar PDF de la factura</a></p>` : ""}
-              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · ${COPY_EMAIL} · +34 930 34 77 91</p>
+              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · ${COPY_EMAIL} · +34 911 67 51 89 (también WhatsApp)</p>
             </div>`;
 
           await sharedSendEmail({ to: recipient, subject, html: htmlBody });
