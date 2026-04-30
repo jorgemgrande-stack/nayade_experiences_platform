@@ -146,7 +146,7 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
 // ─── CC global ───────────────────────────────────────────────────────────────
 // Dirección que recibe copia de TODOS los emails salientes.
 // Se puede sobreescribir con la variable de entorno GLOBAL_CC_EMAIL.
-const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@skicenter.es";
+const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@nayadeexperiences.es";
 
 function mergeGlobalCc(params: MailParams): MailParams {
   const existing = params.cc
