@@ -1074,25 +1074,54 @@ async function conditionallyStartJob(
   }
 }
 
+// ─── TIMEOUT WRAPPER ──────────────────────────────────────────────────────────
+// Wraps a promise with a timeout so that slow/hanging DB operations never block
+// the HTTP server from starting. On timeout the promise resolves (not rejects)
+// so the startup chain continues uninterrupted.
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T | void> {
+  const timeout = new Promise<void>((resolve) =>
+    setTimeout(() => {
+      console.warn(`[Startup] ⚠️  '${label}' superó el límite de ${ms / 1000}s — continuando sin esperar`);
+      resolve();
+    }, ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
 // Las migraciones las gestiona scripts/migrate.mjs (startCommand) antes de arrancar.
 // runMigrations() usaba drizzle-orm/mysql2/migrator con hashes SHA-256 incompatibles
 // con el sistema de tag names de migrate.mjs, causando conflictos en __drizzle_migrations.
-Promise.resolve()
-  .then(() => ensureCriticalSeeds())
-  .then(() => ensurePricingColumns())
-  .then(() => ensureRefundColumns())
-  .then(() => ensureDiscountColumns())
-  .then(() => ensureExpenseEmailIngestionSchema())
-  .then(() => fixBrokenInvoicePdfUrls())
-  .then(() => wipeTestDataIfRequested())
-  .then(() => seedExperiencesIfEmpty())
-  .then(() => startServer())
-  .then(() => conditionallyStartJob("quote_reminder_job_enabled",          startQuoteReminderJob,         "Quote Reminder"))
-  .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
-  .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
-  .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))
-  .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,              "Email Ingestion"))
-  .then(() => conditionallyStartJob("expense_email_ingestion_enabled",     startExpenseEmailIngestionJob,       "Expense Email Ingestion"))
-  .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
-  .catch(console.error);
+//
+// IMPORTANT: startServer() is called first so the HTTP server is always responsive.
+// All seed/schema operations run in the background with timeouts so that a slow or
+// locked database never causes a 502 "Application failed to respond" error.
+startServer()
+  .then(() => {
+    // Start background jobs immediately after the server is listening
+    conditionallyStartJob("quote_reminder_job_enabled",          startQuoteReminderJob,         "Quote Reminder");
+    conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout");
+    conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue");
+    conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale");
+    conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,              "Email Ingestion");
+    conditionallyStartJob("expense_email_ingestion_enabled",     startExpenseEmailIngestionJob,       "Expense Email Ingestion");
+    conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true);
+
+    // Run all DB seed/schema operations in the background — non-blocking.
+    // Each is wrapped with a timeout so a hanging operation cannot prevent
+    // subsequent ones from running or keep the process stuck.
+    (async () => {
+      await withTimeout(ensureCriticalSeeds(),               30_000, "ensureCriticalSeeds");
+      await withTimeout(ensurePricingColumns(),              30_000, "ensurePricingColumns");
+      await withTimeout(ensureRefundColumns(),               30_000, "ensureRefundColumns");
+      await withTimeout(ensureDiscountColumns(),             30_000, "ensureDiscountColumns");
+      await withTimeout(ensureExpenseEmailIngestionSchema(), 30_000, "ensureExpenseEmailIngestionSchema");
+      await withTimeout(fixBrokenInvoicePdfUrls(),          30_000, "fixBrokenInvoicePdfUrls");
+      await withTimeout(wipeTestDataIfRequested(),           30_000, "wipeTestDataIfRequested");
+      await withTimeout(seedExperiencesIfEmpty(),            60_000, "seedExperiencesIfEmpty");
+    })().catch((err) => console.error("[Startup] Error en operaciones de fondo:", err));
+  })
+  .catch((err) => {
+    console.error("[Startup] Error crítico al iniciar el servidor HTTP:", err);
+    process.exit(1);
+  });
 
