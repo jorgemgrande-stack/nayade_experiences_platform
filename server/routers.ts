@@ -180,6 +180,7 @@ import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
 import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
+import { partnersRouter } from "./routers/partners";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -198,6 +199,7 @@ export const appRouter = router({
   onboarding: onboardingRouter,
   cancellations: cancellationsRouter,
   proposals: proposalsRouter,
+  partners: partnersRouter,
   emailTemplates: emailTemplatesRouter,
   operations: operationsRouter,
   pdfTemplates: pdfTemplatesRouter,
