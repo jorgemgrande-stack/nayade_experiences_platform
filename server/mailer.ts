@@ -143,6 +143,19 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
   }
 }
 
+// ─── CC global ───────────────────────────────────────────────────────────────
+// Dirección que recibe copia de TODOS los emails salientes.
+// Se puede sobreescribir con la variable de entorno GLOBAL_CC_EMAIL.
+const GLOBAL_CC_EMAIL = process.env.GLOBAL_CC_EMAIL ?? "reservas@skicenter.es";
+
+function mergeGlobalCc(params: MailParams): MailParams {
+  const existing = params.cc
+    ? (Array.isArray(params.cc) ? params.cc : [params.cc])
+    : [];
+  const merged = [...new Set([...existing, GLOBAL_CC_EMAIL])];
+  return { ...params, cc: merged };
+}
+
 // ─── API pública ──────────────────────────────────────────────────────────────
 
 /**
@@ -150,13 +163,15 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
  * Devuelve true si el envío fue exitoso.
  */
 export async function sendEmail(params: MailParams): Promise<boolean> {
+  const enriched = mergeGlobalCc(params);
+
   // Intentar primero con Brevo API
   if (process.env.BREVO_API_KEY) {
-    const ok = await sendViaBrevoApi(params);
+    const ok = await sendViaBrevoApi(enriched);
     if (ok) return true;
     console.warn("[Mailer] Brevo API falló, intentando SMTP...");
   }
 
   // Fallback SMTP
-  return sendViaSMTP(params);
+  return sendViaSMTP(enriched);
 }
