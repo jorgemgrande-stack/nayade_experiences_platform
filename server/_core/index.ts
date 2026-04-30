@@ -17,7 +17,6 @@ import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
-import cleanupRouter from "../cleanupRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
@@ -162,8 +161,6 @@ async function startServer() {
   app.use(kbRouter);
   // GHL webhook receiver
   app.use(ghlWebhookRouter);
-  // TEMPORAL: limpieza datos de prueba
-  app.use(cleanupRouter);
   // tRPC API
   app.use(
     "/api/trpc",
