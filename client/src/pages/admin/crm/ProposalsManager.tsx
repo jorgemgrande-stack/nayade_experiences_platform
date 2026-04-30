@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import { CatalogConceptSelector, type CatalogProduct, type SourceType } from "@/components/CatalogConceptSelector";
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
 type ProposalStatus = "borrador" | "enviado" | "visualizado" | "aceptado" | "rechazado" | "expirado";
 
@@ -58,7 +58,7 @@ function StatusBadge({ status }: { status: ProposalStatus }) {
   );
 }
 
-// â”€â”€â”€ Item row component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Item row component ────────────────────────────────────────────────────────
 
 type ItemLine = {
   description: string;
@@ -106,8 +106,8 @@ function ItemsEditor({
     <div className="space-y-2">
       {items.length > 0 && (
         <div className="hidden sm:grid grid-cols-[1fr_100px_72px_88px_72px_28px] gap-x-2 text-xs text-foreground/40 px-1 mb-0.5">
-          <div>DescripciÃ³n</div>
-          <div className="text-center">RÃ©gimen</div>
+          <div>Descripción</div>
+          <div className="text-center">Régimen</div>
           <div className="text-center">Cant.</div>
           <div className="text-right">Precio u.</div>
           <div className="text-right">Total</div>
@@ -117,7 +117,7 @@ function ItemsEditor({
       <div className="space-y-2">
         {items.map((item, idx) => (
           <div key={idx} className="rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2 space-y-2 sm:space-y-0 sm:p-0 sm:border-0 sm:bg-transparent">
-            {/* Fila 1: descripciÃ³n + delete (mobile) / grid completo (desktop) */}
+            {/* Fila 1: descripción + delete (mobile) / grid completo (desktop) */}
             <div className="flex items-start gap-2 sm:hidden">
               <div className="flex-1">
                 <CatalogConceptSelector
@@ -134,7 +134,7 @@ function ItemsEditor({
                 <X className="w-4 h-4" />
               </button>
             </div>
-            {/* Fila 2 mobile: rÃ©gimen + cant + precio + total */}
+            {/* Fila 2 mobile: régimen + cant + precio + total */}
             <div className="grid grid-cols-4 gap-1 sm:hidden">
               <select
                 className="col-span-2 w-full bg-background border border-input text-xs rounded-md px-1 py-1.5 h-8"
@@ -180,7 +180,7 @@ function ItemsEditor({
               </select>
               <Input type="number" min={1} value={item.quantity} onChange={e => updateItem(idx, { quantity: Number(e.target.value) })} className="h-8 text-xs text-center" />
               <Input type="number" min={0} step={0.01} value={item.unitPrice} onChange={e => updateItem(idx, { unitPrice: Number(e.target.value) })} className="h-8 text-xs text-right" />
-              <div className="text-right text-xs text-foreground/70 font-medium pr-0.5">{item.total.toFixed(2)} â‚¬</div>
+              <div className="text-right text-xs text-foreground/70 font-medium pr-0.5">{item.total.toFixed(2)} €</div>
               <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-300 flex justify-end">
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -189,13 +189,13 @@ function ItemsEditor({
         ))}
       </div>
       <Button type="button" variant="ghost" size="sm" onClick={addItem} className="text-xs">
-        <Plus className="w-3.5 h-3.5 mr-1" /> AÃ±adir lÃ­nea
+        <Plus className="w-3.5 h-3.5 mr-1" /> Añadir línea
       </Button>
     </div>
   );
 }
 
-// â”€â”€â”€ Totals helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Totals helper ─────────────────────────────────────────────────────────────
 
 function calcTotals(items: ItemLine[], discountEuros = 0) {
   const subtotal = items.reduce((s, i) => s + i.total, 0);
@@ -207,7 +207,7 @@ function calcTotals(items: ItemLine[], discountEuros = 0) {
   return { subtotal, tax: parseFloat(tax.toFixed(2)), total: parseFloat(total.toFixed(2)) };
 }
 
-// â”€â”€â”€ Create/Edit Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Create/Edit Modal ─────────────────────────────────────────────────────────
 
 type ProposalFormData = {
   leadId: number;
@@ -330,7 +330,7 @@ function ProposalFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.title.trim()) { toast.error("El tÃ­tulo es obligatorio"); return; }
+    if (!form.title.trim()) { toast.error("El título es obligatorio"); return; }
 
     try {
       if (isEdit && proposal) {
@@ -374,7 +374,7 @@ function ProposalFormModal({
   function addOption() {
     setForm(f => ({
       ...f,
-      options: [...f.options, { title: `OpciÃ³n ${f.options.length + 1}`, description: "", items: [], discount: 0, isRecommended: false, sortOrder: f.options.length }],
+      options: [...f.options, { title: `Opción ${f.options.length + 1}`, description: "", items: [], discount: 0, isRecommended: false, sortOrder: f.options.length }],
     }));
   }
   function removeOption(idx: number) {
@@ -386,7 +386,7 @@ function ProposalFormModal({
       <DialogContent className="w-[95vw] max-w-3xl flex flex-col max-h-[90vh] p-0 gap-0">
         {/* Header fijo */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.08] shrink-0">
-          <DialogTitle>{isEdit ? "Editar propuesta" : "Nueva propuesta"} â€” {leadName}</DialogTitle>
+          <DialogTitle>{isEdit ? "Editar propuesta" : "Nueva propuesta"} — {leadName}</DialogTitle>
         </DialogHeader>
 
         {/* Cuerpo con scroll */}
@@ -401,31 +401,31 @@ function ProposalFormModal({
                   onClick={() => setForm(f => ({ ...f, mode: m }))}
                   className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${form.mode === m ? "bg-blue-600 border-blue-500 text-white" : "border-foreground/20 text-foreground/60 hover:border-foreground/40"}`}
                 >
-                  {m === "configurable" ? "Configurable (lÃ­neas fijas)" : "Multi-opciÃ³n (el cliente elige)"}
+                  {m === "configurable" ? "Configurable (líneas fijas)" : "Multi-opción (el cliente elige)"}
                 </button>
               ))}
             </div>
 
-            {/* TÃ­tulo */}
+            {/* Título */}
             <div>
-              <Label>TÃ­tulo *</Label>
+              <Label>Título *</Label>
               <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Ej: Propuesta team building verano 2026" className="mt-1" />
             </div>
 
-            {/* DescripciÃ³n */}
+            {/* Descripción */}
             <div>
-              <Label>DescripciÃ³n interna</Label>
+              <Label>Descripción interna</Label>
               <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="mt-1 text-sm" />
             </div>
 
-            {/* Items â€” configurable mode */}
+            {/* Items — configurable mode */}
             {form.mode === "configurable" && (
               <div>
-                <Label className="mb-2 block">LÃ­neas del presupuesto</Label>
+                <Label className="mb-2 block">Líneas del presupuesto</Label>
                 <ItemsEditor items={form.items} onChange={items => setForm(f => ({ ...f, items }))} />
                 <div className="mt-3 pt-3 border-t border-foreground/[0.08] flex flex-col items-end gap-1 text-sm">
                   <div className="flex items-center gap-2">
-                    <span className="text-foreground/50 text-xs">Descuento (â‚¬)</span>
+                    <span className="text-foreground/50 text-xs">Descuento (€)</span>
                     <Input
                       type="number"
                       min={0}
@@ -435,20 +435,20 @@ function ProposalFormModal({
                       className="h-7 w-24 text-xs text-right"
                     />
                   </div>
-                  {form.discount > 0 && <div className="text-xs text-foreground/50">Base: {configTotals.subtotal.toFixed(2)} â‚¬ Â· Descuento: -{form.discount.toFixed(2)} â‚¬</div>}
-                  <div className="text-xs text-foreground/50">IVA: {configTotals.tax.toFixed(2)} â‚¬</div>
-                  <div className="text-base font-bold">Total: {configTotals.total.toFixed(2)} â‚¬</div>
+                  {form.discount > 0 && <div className="text-xs text-foreground/50">Base: {configTotals.subtotal.toFixed(2)} € · Descuento: -{form.discount.toFixed(2)} €</div>}
+                  <div className="text-xs text-foreground/50">IVA: {configTotals.tax.toFixed(2)} €</div>
+                  <div className="text-base font-bold">Total: {configTotals.total.toFixed(2)} €</div>
                 </div>
               </div>
             )}
 
-            {/* Options â€” multi_option mode */}
+            {/* Options — multi_option mode */}
             {form.mode === "multi_option" && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label>Opciones</Label>
                   <Button type="button" variant="outline" size="sm" onClick={addOption} className="text-xs">
-                    <Plus className="w-3.5 h-3.5 mr-1" /> AÃ±adir opciÃ³n
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Añadir opción
                   </Button>
                 </div>
                 {form.options.map((opt, idx) => {
@@ -459,7 +459,7 @@ function ProposalFormModal({
                         <Input
                           value={opt.title}
                           onChange={e => setForm(f => ({ ...f, options: f.options.map((o, i) => i === idx ? { ...o, title: e.target.value } : o) }))}
-                          placeholder="TÃ­tulo de la opciÃ³n"
+                          placeholder="Título de la opción"
                           className="h-8 text-sm flex-1"
                         />
                         <label className="flex items-center gap-1.5 text-xs text-foreground/60 cursor-pointer select-none shrink-0">
@@ -480,8 +480,8 @@ function ProposalFormModal({
                         onChange={items => setForm(f => ({ ...f, options: f.options.map((o, i) => i === idx ? { ...o, items } : o) }))}
                       />
                       <div className="pt-2 border-t border-foreground/[0.08] flex justify-end text-xs text-foreground/50 gap-3">
-                        <span>IVA: {optTotals.tax.toFixed(2)} â‚¬</span>
-                        <span className="font-bold text-foreground">Total: {optTotals.total.toFixed(2)} â‚¬</span>
+                        <span>IVA: {optTotals.tax.toFixed(2)} €</span>
+                        <span className="font-bold text-foreground">Total: {optTotals.total.toFixed(2)} €</span>
                       </div>
                     </div>
                   );
@@ -492,7 +492,7 @@ function ProposalFormModal({
             {/* Meta fields */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label>VÃ¡lida hasta</Label>
+                <Label>Válida hasta</Label>
                 <Input type="date" value={form.validUntil} onChange={e => setForm(f => ({ ...f, validUntil: e.target.value }))} className="mt-1" />
               </div>
               <div>
@@ -502,7 +502,7 @@ function ProposalFormModal({
             </div>
             <div>
               <Label>Condiciones</Label>
-              <Textarea value={form.conditions} onChange={e => setForm(f => ({ ...f, conditions: e.target.value }))} rows={2} className="mt-1 text-sm" placeholder="Condiciones de cancelaciÃ³n, validez, etc." />
+              <Textarea value={form.conditions} onChange={e => setForm(f => ({ ...f, conditions: e.target.value }))} rows={2} className="mt-1 text-sm" placeholder="Condiciones de cancelación, validez, etc." />
             </div>
           </form>
         </div>
@@ -519,7 +519,7 @@ function ProposalFormModal({
   );
 }
 
-// â”€â”€â”€ Convert to quote modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Convert to quote modal ────────────────────────────────────────────────────
 
 function ConvertModal({
   proposal,
@@ -552,19 +552,19 @@ function ConvertModal({
         </DialogHeader>
         <div className="space-y-4 py-2">
           <p className="text-sm text-foreground/60">
-            Se crearÃ¡ un presupuesto en borrador a partir de la propuesta <strong>{proposal.proposalNumber}</strong>.
+            Se creará un presupuesto en borrador a partir de la propuesta <strong>{proposal.proposalNumber}</strong>.
           </p>
           {proposal.mode === "multi_option" && (proposal.options ?? []).length > 0 && (
             <div>
-              <Label>Selecciona la opciÃ³n elegida por el cliente</Label>
+              <Label>Selecciona la opción elegida por el cliente</Label>
               <Select value={selectedOptionId?.toString() ?? ""} onValueChange={v => setSelectedOptionId(Number(v))}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Seleccionar opciÃ³nâ€¦" />
+                  <SelectValue placeholder="Seleccionar opción…" />
                 </SelectTrigger>
                 <SelectContent>
                   {(proposal.options ?? []).map(o => (
                     <SelectItem key={o.id} value={String(o.id)}>
-                      {o.title} â€” {parseFloat(o.total ?? "0").toFixed(2)} â‚¬
+                      {o.title} — {parseFloat(o.total ?? "0").toFixed(2)} €
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -583,7 +583,7 @@ function ConvertModal({
   );
 }
 
-// â”€â”€â”€ Lead picker modal (for global proposals page) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Lead picker modal (for global proposals page) ────────────────────────────
 
 function LeadPickerModal({ onPicked, onClose }: { onPicked: (id: number, name: string) => void; onClose: () => void }) {
   const [search, setSearch] = useState("");
@@ -628,7 +628,7 @@ function LeadPickerModal({ onPicked, onClose }: { onPicked: (id: number, name: s
   );
 }
 
-// â”€â”€â”€ Main ProposalsManager â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Main ProposalsManager ─────────────────────────────────────────────────────
 
 const PAGE_SIZE = 50;
 
@@ -644,7 +644,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkStatus, setBulkStatus] = useState("");
 
-  // Resetear pÃ¡gina al cambiar filtros
+  // Resetear página al cambiar filtros
   useEffect(() => { setPage(0); }, [search, filterStatus]);
 
   const utils = trpc.useUtils();
@@ -700,35 +700,35 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
     }
   }
 
-  // Normalizar los datos segÃºn el modo (leadId o global)
+  // Normalizar los datos según el modo (leadId o global)
   type ProposalRow = { id: number; proposalNumber: string; leadId: number; title: string; mode: "configurable" | "multi_option"; status: ProposalStatus; total: string | null; sentAt: Date | string | null; createdAt: Date | string; convertedToQuoteId: number | null; publicUrl: string | null; leadName?: string | null; leadEmail?: string | null };
   const rows: ProposalRow[] = leadId
     ? ((listQuery.data as ProposalRow[] | undefined) ?? [])
     : (((listQuery.data as { rows: ProposalRow[]; total: number } | undefined)?.rows) ?? []);
   const total: number = leadId ? rows.length : (((listQuery.data as { rows: ProposalRow[]; total: number } | undefined)?.total) ?? 0);
 
-  // â”€â”€â”€ Modo global (pÃ¡gina /admin/crm/propuestas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Modo global (página /admin/crm/propuestas) ───────────────────────────
   if (!leadId) {
     return (
       <div className="-mx-4 sm:-mx-6 -mt-4 sm:-mt-6 min-h-screen bg-background text-foreground dark:bg-[#080e1c]">
-        {/* Header â€” igual que CRMDashboard */}
+        {/* Header — igual que CRMDashboard */}
         <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-4 border-b border-foreground/[0.08]">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground">Propuestas Comerciales</h1>
-              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">Propuestas pre-presupuesto enviadas a clientes. Configurable o multi-opciÃ³n.</p>
+              <p className="text-xs sm:text-sm text-foreground/50 mt-0.5 hidden sm:block">Propuestas pre-presupuesto enviadas a clientes. Configurable o multi-opción.</p>
             </div>
           </div>
         </div>
 
-        {/* Barra bÃºsqueda + filtros + botÃ³n â€” igual que CRMDashboard */}
+        {/* Barra búsqueda + filtros + botón — igual que CRMDashboard */}
         <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-[180px] max-w-full sm:max-w-sm">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar propuestasâ€¦"
+              placeholder="Buscar propuestas…"
               className="w-full pl-9 pr-3 h-9 text-sm rounded-lg border border-foreground/[0.12] bg-foreground/[0.04] placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
             />
           </div>
@@ -769,14 +769,14 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                 <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-blue-500/10 border-b border-blue-500/20">
                   <span className="text-xs text-blue-300 font-medium shrink-0">{selected.size} seleccionada(s)</span>
                   <select value={bulkStatus} onChange={e => { if (e.target.value) bulkUpdateStatusMutation.mutate({ ids: Array.from(selected), status: e.target.value as ProposalStatus }); }} disabled={bulkUpdateStatusMutation.isPending} className="px-2 py-1 text-xs rounded-md border border-foreground/20 bg-background disabled:opacity-40">
-                    <option value="">Cambiar estadoâ€¦</option>
+                    <option value="">Cambiar estado…</option>
                     <option value="borrador">Borrador</option>
                     <option value="enviado">Enviado</option>
                     <option value="aceptado">Aceptado</option>
                     <option value="rechazado">Rechazado</option>
                     <option value="expirado">Expirado</option>
                   </select>
-                  <button onClick={() => { if (confirm(`Â¿Eliminar ${selected.size} propuesta(s)? Solo se eliminarÃ¡n las que estÃ©n en borrador.`)) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }} disabled={bulkDeleteMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
+                  <button onClick={() => { if (confirm(`¿Eliminar ${selected.size} propuesta(s)? Solo se eliminarán las que estén en borrador.`)) bulkDeleteMutation.mutate({ ids: Array.from(selected) }); }} disabled={bulkDeleteMutation.isPending} className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40">
                     <Trash2 className="w-3.5 h-3.5" /> Eliminar
                   </button>
                   <button onClick={() => setSelected(new Set())} className="ml-auto text-foreground/40 hover:text-foreground/70 p-1"><X className="w-4 h-4" /></button>
@@ -789,7 +789,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                       <th className="w-10 px-3 py-3"><input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={rows.length > 0 && selected.size === rows.length} onChange={e => setSelected(e.target.checked ? new Set(rows.map(r => r.id)) : new Set())} /></th>
                       <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Referencia</th>
                       <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
-                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">TÃ­tulo</th>
+                      <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Título</th>
                       <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
                       <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Total</th>
                       <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Fecha</th>
@@ -802,7 +802,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                         <td className="w-10 px-3 py-3"><input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={selected.has(p.id)} onChange={e => setSelected(prev => { const s = new Set(prev); e.target.checked ? s.add(p.id) : s.delete(p.id); return s; })} /></td>
                         <td className="px-4 py-3">
                           <span className="text-sm font-mono font-medium text-violet-400">{p.proposalNumber}</span>
-                          <div className="text-[10px] text-foreground/30 mt-0.5">{p.mode === "multi_option" ? "multi-opciÃ³n" : "configurable"}</div>
+                          <div className="text-[10px] text-foreground/30 mt-0.5">{p.mode === "multi_option" ? "multi-opción" : "configurable"}</div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="text-sm font-medium text-foreground/90">{p.leadName ?? `Lead #${p.leadId}`}</div>
@@ -813,7 +813,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                           {p.convertedToQuoteId && <div className="text-[10px] text-emerald-400 mt-0.5 flex items-center gap-0.5"><CheckCircle className="w-2.5 h-2.5" /> Convertida en presupuesto</div>}
                         </td>
                         <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
-                        <td className="px-4 py-3 text-right"><span className="text-sm font-bold text-foreground">{parseFloat(p.total ?? "0").toFixed(2)} â‚¬</span></td>
+                        <td className="px-4 py-3 text-right"><span className="text-sm font-bold text-foreground">{parseFloat(p.total ?? "0").toFixed(2)} €</span></td>
                         <td className="px-4 py-3 hidden sm:table-cell">
                           <div className="text-xs text-foreground/50">
                             {p.sentAt ? <span className="text-blue-400/70">Env. {new Date(p.sentAt).toLocaleDateString("es-ES")}</span> : new Date(p.createdAt).toLocaleDateString("es-ES")}
@@ -821,11 +821,11 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-0.5">
-                            <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.publicUrl ? "text-foreground/50 hover:text-amber-300" : "text-foreground/20 cursor-not-allowed"}`} title={p.publicUrl ? "Ver propuesta pÃºblica" : "Sin enlace pÃºblico"} disabled={!p.publicUrl} onClick={() => p.publicUrl && window.open(p.publicUrl, "_blank")}><Eye className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.status === "borrador" ? "text-foreground/50 hover:text-blue-300" : "text-foreground/20 cursor-not-allowed"}`} title={p.status === "borrador" ? "Editar" : "Solo editable en borrador"} disabled={p.status !== "borrador"} onClick={() => setEditModal(p.id)}><Pencil className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${["borrador", "enviado", "visualizado"].includes(p.status) ? "text-foreground/50 hover:text-green-300" : "text-foreground/20 cursor-not-allowed"}`} title="Enviar por email" disabled={!["borrador", "enviado", "visualizado"].includes(p.status) || sendMutation.isPending} onClick={() => handleSend(p.id)}><Send className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${["enviado", "visualizado", "aceptado"].includes(p.status) && !p.convertedToQuoteId ? "text-foreground/50 hover:text-orange-300" : "text-foreground/20 cursor-not-allowed"}`} title={p.convertedToQuoteId ? "Ya convertida" : "Convertir a presupuesto"} disabled={!["enviado", "visualizado", "aceptado"].includes(p.status) || !!p.convertedToQuoteId} onClick={() => setConvertModal(p.id)}><ArrowUpRight className="w-3.5 h-3.5" /></Button>
-                            <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.publicUrl ? "text-foreground/50 hover:text-foreground/70" : "text-foreground/20 cursor-not-allowed"}`} title={p.publicUrl ? "Copiar enlace" : "Sin enlace"} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success("Enlace copiado"); }}><Copy className="w-3.5 h-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-amber-300 h-7 w-7 p-0" title={p.publicUrl ? "Ver propuesta pública" : "Sin enlace público"} disabled={!p.publicUrl} onClick={() => p.publicUrl && window.open(p.publicUrl, "_blank")}><Eye className="w-3.5 h-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-blue-300 h-7 w-7 p-0" title={p.status === "borrador" ? "Editar" : "Solo editable en borrador"} disabled={p.status !== "borrador"} onClick={() => setEditModal(p.id)}><Pencil className="w-3.5 h-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-green-300 h-7 w-7 p-0" title="Enviar por email" disabled={!["borrador", "enviado", "visualizado"].includes(p.status) || sendMutation.isPending} onClick={() => handleSend(p.id)}><Send className="w-3.5 h-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0" title={p.convertedToQuoteId ? "Ya convertida en presupuesto" : "Convertir a presupuesto"} disabled={!["enviado", "visualizado", "aceptado"].includes(p.status) || !!p.convertedToQuoteId} onClick={() => setConvertModal(p.id)}><ArrowUpRight className="w-3.5 h-3.5" /></Button>
+                            <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-foreground/70 h-7 w-7 p-0" title={p.publicUrl ? "Copiar enlace público" : "Sin enlace público"} disabled={!p.publicUrl} onClick={() => { navigator.clipboard.writeText(p.publicUrl!); toast.success("Enlace copiado"); }}><Copy className="w-3.5 h-3.5" /></Button>
                             <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-red-400 h-7 w-7 p-0" title="Eliminar" onClick={() => setDeleteConfirm(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                           </div>
                         </td>
@@ -836,10 +836,10 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
               </div>
               {total > PAGE_SIZE && (
                 <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
-                  <span className="text-sm text-foreground/50">PÃ¡gina {page + 1} de {Math.ceil(total / PAGE_SIZE)} Â· {total} propuestas</span>
+                  <span className="text-sm text-foreground/50">Página {page + 1} de {Math.ceil(total / PAGE_SIZE)} · {total} propuestas</span>
                   <div className="flex gap-2">
-                    <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors">â† Anterior</button>
-                    <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total} className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors">Siguiente â†’</button>
+                    <button onClick={() => setPage(p => p - 1)} disabled={page === 0} className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors">← Anterior</button>
+                    <button onClick={() => setPage(p => p + 1)} disabled={(page + 1) * PAGE_SIZE >= total} className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors">Siguiente →</button>
                   </div>
                 </div>
               )}
@@ -852,8 +852,8 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
         {deleteConfirm !== null && (
           <Dialog open onOpenChange={() => setDeleteConfirm(null)}>
             <DialogContent className="w-[95vw] max-w-sm">
-              <DialogHeader><DialogTitle>Â¿Eliminar propuesta?</DialogTitle></DialogHeader>
-              <p className="text-sm text-foreground/60">Esta acciÃ³n no se puede deshacer.</p>
+              <DialogHeader><DialogTitle>¿Eliminar propuesta?</DialogTitle></DialogHeader>
+              <p className="text-sm text-foreground/60">Esta acción no se puede deshacer.</p>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
                 <Button variant="destructive" onClick={() => handleDelete(deleteConfirm)} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Eliminar"}</Button>
@@ -870,11 +870,11 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
     );
   }
 
-  // â”€â”€â”€ Modo incrustado (dentro de un lead) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─── Modo incrustado (dentro de un lead) ──────────────────────────────────
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-foreground/70">Propuestas Comerciales {leadName ? `â€” ${leadName}` : ""}</h3>
+        <h3 className="text-sm font-medium text-foreground/70">Propuestas Comerciales {leadName ? `— ${leadName}` : ""}</h3>
         <Button size="sm" variant="outline" className="text-xs" onClick={() => { if (leadId && leadName) setCreateModal({ open: true, leadId, leadName }); else setLeadPickerOpen(true); }}>
           <Plus className="w-3.5 h-3.5 mr-1" /> Nueva propuesta
         </Button>
@@ -892,7 +892,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
               <thead>
                 <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                   <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Ref.</th>
-                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">TÃ­tulo</th>
+                  <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden sm:table-cell">Título</th>
                   <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
                   <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Total</th>
                   <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
@@ -903,14 +903,14 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
                   <tr key={p.id} className="border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors">
                     <td className="px-4 py-3">
                       <span className="text-xs font-mono text-violet-400">{p.proposalNumber}</span>
-                      <div className="text-[10px] text-foreground/30 mt-0.5">{p.mode === "multi_option" ? "multi-opciÃ³n" : "configurable"}</div>
+                      <div className="text-[10px] text-foreground/30 mt-0.5">{p.mode === "multi_option" ? "multi-opción" : "configurable"}</div>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell">
                       <span className="text-sm text-foreground/80 line-clamp-1">{p.title}</span>
-                      {p.convertedToQuoteId && <div className="text-[10px] text-emerald-400 mt-0.5">â†’ Presupuesto #{p.convertedToQuoteId}</div>}
+                      {p.convertedToQuoteId && <div className="text-[10px] text-emerald-400 mt-0.5">→ Presupuesto #{p.convertedToQuoteId}</div>}
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
-                    <td className="px-4 py-3 text-right text-sm font-medium">{parseFloat(p.total ?? "0").toFixed(2)} â‚¬</td>
+                    <td className="px-4 py-3 text-right text-sm font-medium">{parseFloat(p.total ?? "0").toFixed(2)} €</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-0.5">
                         <Button size="sm" variant="ghost" className={`h-7 w-7 p-0 ${p.publicUrl ? "text-foreground/50 hover:text-amber-300" : "text-foreground/20 cursor-not-allowed"}`} disabled={!p.publicUrl} onClick={() => p.publicUrl && window.open(p.publicUrl, "_blank")}><Eye className="w-3.5 h-3.5" /></Button>
@@ -931,8 +931,8 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
       {deleteConfirm !== null && (
         <Dialog open onOpenChange={() => setDeleteConfirm(null)}>
           <DialogContent className="w-[95vw] max-w-sm">
-            <DialogHeader><DialogTitle>Â¿Eliminar propuesta?</DialogTitle></DialogHeader>
-            <p className="text-sm text-foreground/60">Esta acciÃ³n no se puede deshacer.</p>
+            <DialogHeader><DialogTitle>¿Eliminar propuesta?</DialogTitle></DialogHeader>
+            <p className="text-sm text-foreground/60">Esta acción no se puede deshacer.</p>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Cancelar</Button>
               <Button variant="destructive" onClick={() => handleDelete(deleteConfirm)} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Eliminar"}</Button>
@@ -949,7 +949,7 @@ export default function ProposalsManager({ leadId, leadName }: { leadId?: number
   );
 }
 
-// â”€â”€â”€ Inline button for lead rows in CRMDashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Inline button for lead rows in CRMDashboard ──────────────────────────────
 
 export function ProposalLeadButton({ leadId, leadName }: { leadId: number; leadName: string }) {
   const [open, setOpen] = useState(false);
