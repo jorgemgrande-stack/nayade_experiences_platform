@@ -109,6 +109,9 @@ const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
 
+// Partners
+const PartnersManager = lazy(() => import("./pages/admin/partners/PartnersManager"));
+
 // Fiscal REAV
 const ReavManager = lazy(() => import("./pages/admin/fiscal/ReavManager"));
 
@@ -288,6 +291,9 @@ function Router() {
       <Route path="/admin/crm/clientes">{() => <Suspense fallback={<AdminLoadingFallback />}><ClientsManager /></Suspense>}</Route>
       <Route path="/admin/crm/propuestas">{() => <Suspense fallback={<AdminLoadingFallback />}><ProposalsPage /></Suspense>}</Route>
       <Route path="/admin/crm/anulaciones">{() => { window.location.replace("/admin/crm"); return null; }}</Route>
+
+      {/* Partners */}
+      <Route path="/admin/partners">{() => <Suspense fallback={<AdminLoadingFallback />}><PartnersManager /></Suspense>}</Route>
 
       {/* Users & Settings */}
       <Route path="/admin/usuarios">{() => <Suspense fallback={<AdminLoadingFallback />}><UsersManager /></Suspense>}</Route>

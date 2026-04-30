@@ -5,7 +5,7 @@ import {
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
-  Sun, Moon, ExternalLink,
+  Sun, Moon, ExternalLink, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -66,6 +66,12 @@ const navItems = [
       { label: "Clientes", href: "/admin/crm/clientes", key: "crm-clientes" },
       { label: "Anulaciones", href: "/admin/crm?tab=anulaciones", key: "crm-anulaciones" },
     ],
+  },
+  {
+    label: "Partners",
+    href: "/admin/partners",
+    icon: Building2,
+    roles: ["admin"],
   },
   {
     label: "Operaciones",
