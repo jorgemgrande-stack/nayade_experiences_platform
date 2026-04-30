@@ -264,6 +264,7 @@ async function addGHLNote(contactId: string, body: string, apiKey: string): Prom
 
 /**
  * Actualiza el contacto GHL de un lead con la URL del presupuesto y/o factura.
+ * Si hay quoteUrl también dispara el webhook de presupuesto_generado.
  * Fire-and-forget — no lanza excepciones.
  */
 export function syncLeadUrlsToGHL(params: {
@@ -288,7 +289,6 @@ export function syncLeadUrlsToGHL(params: {
 
   const notes = noteParts.length ? noteParts.join("\n") : undefined;
 
-  // Fire-and-forget: ejecutar en segundo plano
   (async () => {
     try {
       await updateGHLContact(
@@ -301,7 +301,45 @@ export function syncLeadUrlsToGHL(params: {
         contactId: params.ghlContactId!, stack: err?.stack,
       });
     }
+
+    if (params.quoteUrl) {
+      await fireGHLQuoteWebhook(params.ghlContactId!, params.quoteUrl);
+    }
   })();
+}
+
+/**
+ * Dispara el webhook de GHL para notificar que se ha generado un presupuesto.
+ * La URL del endpoint se configura con GHL_QUOTE_WEBHOOK_URL.
+ */
+async function fireGHLQuoteWebhook(ghlContactId: string, presupuestoUrl: string): Promise<void> {
+  const webhookUrl = process.env.GHL_QUOTE_WEBHOOK_URL;
+  if (!webhookUrl) return;
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: "presupuesto_generado",
+        ghlContactId,
+        presupuesto_url: presupuestoUrl,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      ghlLog("warn", "quote_webhook", "Error HTTP al disparar webhook de presupuesto", {
+        contactId: ghlContactId, httpStatus: response.status, errorBody: errorText,
+      });
+    } else {
+      ghlLog("info", "quote_webhook", "Webhook presupuesto_generado enviado", { contactId: ghlContactId });
+    }
+  } catch (err: any) {
+    ghlLog("error", "quote_webhook", "Excepción al disparar webhook de presupuesto", {
+      contactId: ghlContactId, stack: err?.stack,
+    });
+  }
 }
 
 /**
