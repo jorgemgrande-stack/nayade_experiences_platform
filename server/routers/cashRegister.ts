@@ -375,8 +375,8 @@ export const cashRegisterRouter = router({
 
   markAllAlertsRead: cashViewProc.mutation(async () => {
     await db.update(finCashAlerts)
-      .set({ isRead: true })
-      .where(and(eq(finCashAlerts.isRead, false), isNull(finCashAlerts.resolvedAt)));
+      .set({ isRead: true, resolvedAt: new Date() })
+      .where(isNull(finCashAlerts.resolvedAt));
     return { ok: true };
   }),
 
