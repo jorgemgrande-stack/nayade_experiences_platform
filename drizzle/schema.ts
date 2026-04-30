@@ -389,6 +389,8 @@ export const quotes = mysqlTable("quotes", {
   reminderCount: int("reminderCount").default(0),
   lastReminderAt: timestamp("lastReminderAt"),
   ghlOpportunityId: varchar("ghlOpportunityId", { length: 128 }),
+  // Partner origin (null = no partner)
+  partnerId: int("partnerId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -631,6 +633,8 @@ export const reservations = mysqlTable("reservations", {
   reservationNumber: varchar("reservation_number", { length: 32 }).unique(),
   // Anulación vinculada (FK → cancellation_requests.id)
   cancellationRequestId: int("cancellation_request_id"),
+  // Partner origin (null = no partner)
+  partnerId: int("partner_id"),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────
@@ -2718,6 +2722,38 @@ export const rbacUserRoles = mysqlTable("rbac_user_roles", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type RbacUserRole = typeof rbacUserRoles.$inferSelect;
+
+// ─── LANDING PARTNERS ─────────────────────────────────────────────────────────
+
+export const partners = mysqlTable("partners", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 256 }).notNull(),
+  slug: varchar("slug", { length: 128 }).notNull().unique(),
+  contactName: varchar("contact_name", { length: 256 }),
+  contactEmail: varchar("contact_email", { length: 320 }),
+  contactPhone: varchar("contact_phone", { length: 32 }),
+  // 64-char hex (32 bytes) — nunca se expone en endpoints públicos salvo validación
+  accessKey: varchar("access_key", { length: 64 }).notNull().unique(),
+  isActive: boolean("is_active").default(true).notNull(),
+  canSendQuotes: boolean("can_send_quotes").default(true).notNull(),
+  canRedeemDirectly: boolean("can_redeem_directly").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type Partner = typeof partners.$inferSelect;
+export type InsertPartner = typeof partners.$inferInsert;
+
+export const partnerAllowedProducts = mysqlTable("partner_allowed_products", {
+  id: int("id").autoincrement().primaryKey(),
+  partnerId: int("partner_id").notNull().references(() => partners.id, { onDelete: "cascade" }),
+  productId: int("product_id").notNull(),
+  productType: varchar("product_type", { length: 32 }).notNull(), // "experience" | "pack"
+  canQuote: boolean("can_quote").default(true).notNull(),
+  canRedeem: boolean("can_redeem").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type PartnerAllowedProduct = typeof partnerAllowedProducts.$inferSelect;
+export type InsertPartnerAllowedProduct = typeof partnerAllowedProducts.$inferInsert;
 
 // ─── RBAC: PERMISSIONS ───────────────────────────────────────────────────────
 
