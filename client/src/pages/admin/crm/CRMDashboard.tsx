@@ -962,19 +962,10 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
     experienceTitle: string;
     family: string;
     participants: number;
-    search: string;
-    showSuggestions: boolean;
   };
   const [activityLines, setActivityLines] = useState<ActivityLine[]>([
-    { id: "1", experienceId: null, experienceTitle: "", family: "", participants: 2, search: "", showSuggestions: false },
+    { id: "1", experienceId: null, experienceTitle: "", family: "", participants: 2 },
   ]);
-  const [activeLineIdx, setActiveLineIdx] = useState<number>(0);
-
-  const activeSearch = activityLines[activeLineIdx]?.search ?? "";
-  const { data: productSuggestions } = trpc.crm.products.search.useQuery(
-    { q: activeSearch, limit: 8 },
-    { enabled: activeSearch.length >= 2 }
-  );
 
   const updateLine = (idx: number, patch: Partial<ActivityLine>) => {
     setActivityLines(prev => prev.map((l, i) => i === idx ? { ...l, ...patch } : l));
@@ -986,15 +977,11 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
       experienceTitle: "",
       family: "",
       participants: 2,
-      search: "",
-      showSuggestions: false,
     }]);
-    setActiveLineIdx(activityLines.length);
   };
   const removeLine = (idx: number) => {
     if (activityLines.length === 1) return;
     setActivityLines(prev => prev.filter((_, i) => i !== idx));
-    setActiveLineIdx(Math.max(0, activeLineIdx - 1));
   };
 
   const createLead = trpc.crm.leads.create.useMutation({
@@ -1074,38 +1061,23 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="space-y-2">
             {activityLines.map((line, idx) => (
-              <div key={line.id} className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg p-3 space-y-2">
+              <div key={line.id} className="bg-foreground/[0.05] border border-foreground/[0.12] rounded-lg p-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-foreground/40 w-4">{idx + 1}.</span>
-                  <div className="relative flex-1">
-                    <Input
-                      value={line.experienceTitle || line.search}
-                      onChange={e => { updateLine(idx, { search: e.target.value, experienceTitle: "", experienceId: null }); setActiveLineIdx(idx); }}
-                      onFocus={() => { updateLine(idx, { showSuggestions: true }); setActiveLineIdx(idx); }}
-                      onBlur={() => setTimeout(() => updateLine(idx, { showSuggestions: false }), 200)}
-                      placeholder="Buscar experiencia o pack..."
-                      className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 text-sm h-8"
-                    />
-                    {line.showSuggestions && productSuggestions && productSuggestions.length > 0 && activeLineIdx === idx && (
-                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
-                        {(productSuggestions as any[]).map((p: any) => (
-                          <button key={`${p.productType}-${p.id}`} type="button"
-                            className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-xs text-white flex items-center gap-2"
-                            onMouseDown={() => updateLine(idx, {
-                              experienceId: p.id,
-                              experienceTitle: p.title,
-                              family: p.productType === "experience" ? "experience" : "pack",
-                              search: "",
-                              showSuggestions: false,
-                            })}>
-                            <span className="text-foreground/50">{p.productType === "experience" ? "🏊" : "📦"}</span>
-                            <span>{p.title}</span>
-                            {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50">{Number(p.basePrice).toFixed(2)}€</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <span className="text-xs text-foreground/40 w-4 shrink-0">{idx + 1}.</span>
+                  <CatalogConceptSelector
+                    className="flex-1 min-w-0"
+                    value={line.experienceTitle}
+                    onChange={(v) => updateLine(idx, { experienceTitle: v, experienceId: null, family: "" })}
+                    onSelectProduct={(p) => updateLine(idx, {
+                      experienceId: p.id,
+                      experienceTitle: p.title,
+                      family: p.productType === "experience" ? "experience" : "pack",
+                    })}
+                    inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 text-sm h-8"
+                    placeholder="Buscar experiencia o pack..."
+                    showBadge={false}
+                    sourceType={line.family === "experience" ? "experience" : line.family === "pack" ? "legoPack" : undefined}
+                  />
                   <div className="flex items-center gap-1 shrink-0">
                     <span className="text-xs text-foreground/50">Pax</span>
                     <Input
@@ -1120,8 +1092,11 @@ function NewLeadModal({ onClose }: { onClose: () => void }) {
                     )}
                   </div>
                 </div>
-                {line.experienceTitle && (
-                  <p className="text-xs text-emerald-400 pl-6">✓ {line.experienceTitle}</p>
+                {line.experienceId && (
+                  <p className="text-xs text-emerald-400 pl-6 mt-1.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                    {line.family === "experience" ? "Experiencia" : "Pack"} vinculado del catálogo
+                  </p>
                 )}
               </div>
             ))}
