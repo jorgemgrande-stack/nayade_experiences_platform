@@ -56,12 +56,20 @@ function randomSuffix() {
 }
 
 /**
+ * Elimina prefijos de spam comunes antes de procesar el asunto.
+ * Ej: "(Spam) #gasto ..." → "#gasto ..."
+ */
+function normalizeSubject(subject: string): string {
+  return subject.trim().replace(/^\[?spam\]?\s*/i, "").trim();
+}
+
+/**
  * Parsea el asunto del email para extraer importe y concepto.
  * Formato: "#gasto #123,45€ Concepto" o "#gasto #123.45€ Concepto"
  * Devuelve null si el asunto no es válido o no tiene importe.
  */
 function parseSubject(subject: string): { amount: number; concept: string } | null {
-  const trimmed = subject.trim();
+  const trimmed = normalizeSubject(subject);
   if (!trimmed.toLowerCase().startsWith("#gasto")) return null;
 
   // Captura: #gasto #IMPORTE€ [concepto]
@@ -161,8 +169,8 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
           const sender     = parsed.from?.text ?? "";
           const receivedAt = parsed.date ?? new Date();
 
-          // Solo procesar emails con asunto #gasto
-          if (!subject.trim().toLowerCase().startsWith("#gasto")) {
+          // Solo procesar emails con asunto #gasto (normalizar prefijos spam primero)
+          if (!normalizeSubject(subject).toLowerCase().startsWith("#gasto")) {
             // No es un gasto — no marcar como leído (otros jobs pueden necesitarlo)
             continue;
           }
