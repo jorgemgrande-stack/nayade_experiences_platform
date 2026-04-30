@@ -1378,7 +1378,7 @@ export const crmRouter = router({
         // Update lead opportunity status
         await db
           .update(leads)
-          .set({ opportunityStatus: "enviada", status: "contactado", lastContactAt: new Date(), updatedAt: new Date() })
+          .set({ opportunityStatus: "enviada", status: "contactado", lastContactAt: new Date(), seenAt: new Date(), updatedAt: new Date() })
           .where(eq(leads.id, quote.leadId));
 
         // Send email con el enlace de aceptación
@@ -2700,7 +2700,7 @@ export const crmRouter = router({
             paymentLinkUrl: acceptUrl,
             updatedAt: new Date(),
           }).where(eq(quotes.id, quoteId));
-          await db.update(leads).set({ opportunityStatus: "enviada", status: "contactado", lastContactAt: new Date(), updatedAt: new Date() }).where(eq(leads.id, leadId));
+          await db.update(leads).set({ opportunityStatus: "enviada", status: "contactado", lastContactAt: new Date(), seenAt: new Date(), updatedAt: new Date() }).where(eq(leads.id, leadId));
           await sendQuoteEmail({
             quoteNumber,
             title: input.title,
