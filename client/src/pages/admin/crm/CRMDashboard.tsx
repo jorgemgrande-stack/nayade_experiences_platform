@@ -1420,7 +1420,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   })();
   const taxAmount = parseFloat(taxRowsD.reduce((s, r) => s + r.amount, 0).toFixed(2));
   const effectiveTaxRateD = taxRowsD.length === 1 ? taxRowsD[0].rate : taxRate;
-  const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
+  const total = parseFloat(discountedSubtotal.toFixed(2));
 
   // Búsqueda de clientes existentes
   const { data: clientSuggestionsRaw } = trpc.crm.clients.list.useQuery(
@@ -1909,7 +1909,7 @@ function QuoteBuilderModal({
   })();
   const taxAmount = parseFloat(taxRowsB.reduce((s, r) => s + r.amount, 0).toFixed(2));
   const effectiveTaxRateB = taxRowsB.length === 1 ? taxRowsB[0].rate : taxRate;
-  const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
+  const total = parseFloat(discountedSubtotal.toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) =>
@@ -2507,7 +2507,7 @@ function QuoteEditModal({
   })();
   const taxAmount = parseFloat(taxRowsE.reduce((s, r) => s + r.amount, 0).toFixed(2));
   const effectiveTaxRateE = taxRowsE.length === 1 ? taxRowsE[0].rate : taxRate;
-  const total = parseFloat((subtotal - discount + taxAmount).toFixed(2));
+  const total = parseFloat((subtotal - discount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) => prev.map((item, i) => {
