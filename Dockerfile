@@ -55,4 +55,4 @@ EXPOSE 3000
 
 ENV NODE_ENV=production
 
-CMD ["sh", "-c", "node scripts/migrate.mjs && node dist/index.js"]
+CMD ["node", "dist/index.js"]

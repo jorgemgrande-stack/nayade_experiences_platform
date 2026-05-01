@@ -1066,11 +1066,15 @@ async function conditionallyStartJob(
   label: string,
   defaultEnabled = false,
 ): Promise<void> {
-  const enabled = await getFeatureFlag(flagKey, defaultEnabled);
-  if (enabled) {
-    start();
-  } else {
-    console.log(`[Jobs] '${label}' desactivado — feature flag '${flagKey}' está inactivo`);
+  try {
+    const enabled = await getFeatureFlag(flagKey, defaultEnabled);
+    if (enabled) {
+      start();
+    } else {
+      console.log(`[Jobs] '${label}' desactivado — feature flag '${flagKey}' está inactivo`);
+    }
+  } catch (e) {
+    console.error(`[Jobs] Error al verificar flag '${flagKey}' para '${label}' — job no arrancado:`, e);
   }
 }
 
