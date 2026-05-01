@@ -3,6 +3,6 @@ builder = "NIXPACKS"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "node scripts/migrate.mjs && node --trace-exit --trace-warnings dist/index.js 2>&1"
+startCommand = "node scripts/migrate.mjs ; echo '=== MIGRATE TERMINADO, exit=' $? ; ls -la dist/ ; echo '=== ARRANCANDO NODE ===' ; node dist/index.js 2>&1"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
