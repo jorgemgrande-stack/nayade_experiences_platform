@@ -152,7 +152,7 @@ function mergeGlobalCc(params: MailParams): MailParams {
   const existing = params.cc
     ? (Array.isArray(params.cc) ? params.cc : [params.cc])
     : [];
-  const merged = [...new Set([...existing, GLOBAL_CC_EMAIL])];
+  const merged = Array.from(new Set([...existing, GLOBAL_CC_EMAIL]));
   return { ...params, cc: merged };
 }
 

@@ -454,7 +454,7 @@ async function ensurePricingColumns() {
        AND COLUMN_NAME IN ('pricing_type','unit_capacity','max_units','has_time_slots')`
     ) as any[];
     const found = new Set(cols.map((c: any) => c.COLUMN_NAME));
-    console.log("[DB] Columnas pricing encontradas:", [...found].join(", ") || "ninguna");
+    console.log("[DB] Columnas pricing encontradas:", Array.from(found).join(", ") || "ninguna");
 
     if (!found.has("pricing_type")) {
       await conn.execute("ALTER TABLE `experiences` ADD COLUMN `pricing_type` ENUM('per_person','per_unit') NOT NULL DEFAULT 'per_person'");
@@ -868,7 +868,7 @@ function startAbandonedCheckoutCleanup() {
         byOrder.get(key)!.push(r);
       }
 
-      for (const [order, group] of byOrder) {
+      for (const [order, group] of Array.from(byOrder.entries())) {
         await createVentaPerdidaLead(group as any);
         await db
           .update(reservations)

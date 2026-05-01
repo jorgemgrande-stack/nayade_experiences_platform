@@ -38,7 +38,7 @@ export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
-      _db = drizzle(pool);
+      _db = drizzle(pool) as unknown as ReturnType<typeof drizzle>;
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -284,7 +284,7 @@ export async function createLead(data: {
   // 4. Sincronizar con GoHighLevel CRM (fire-and-forget, no bloquea el flujo)
   const ghlSource = data.source ?? "web";
   // Excluir orígenes que ya sincronizan con GHL por su cuenta para evitar duplicados
-  if (ghlSource === "ghl_webhook" || ghlSource === "vapi_llamada") return leadId;
+  if (ghlSource === "ghl_webhook" || ghlSource === "vapi_llamada") return { id: leadId, success: true as const };
   const ghlOrigen = "nayade_web";
   (async () => {
     const db = await getDb();

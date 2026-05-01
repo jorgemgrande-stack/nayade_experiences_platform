@@ -643,7 +643,7 @@ const activitiesRouter = router({
         (row?.activitiesOpJson as any) || [];
 
       const idx = current.findIndex(a => a.index === input.activityIndex);
-      const updated = { index: input.activityIndex, ...current[idx] };
+      const updated = { ...current[idx], index: input.activityIndex };
       if (input.monitorId !== undefined) updated.monitorId = input.monitorId;
       if (input.arrivalTime !== undefined) updated.arrivalTime = input.arrivalTime;
       if (input.opNotes !== undefined) updated.opNotes = input.opNotes;

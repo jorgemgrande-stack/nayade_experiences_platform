@@ -73,7 +73,7 @@ export const cardTerminalBatchesRouter = router({
       let batchesCreated = 0;
       let operationsIncluded = 0;
 
-      for (const [key, groupOps] of groups) {
+      for (const [key, groupOps] of Array.from(groups.entries())) {
         const [batchDate, terminalCode, commerceCode] = key.split("|");
 
         const existing = await db.select({ id: cardTerminalBatches.id })
@@ -687,7 +687,7 @@ export const cardTerminalBatchesRouter = router({
 
       return {
         unlinkedTpvOps: Number(unlinkedOps[0]?.cnt ?? 0),
-        staleFailedPayments: Number((staleFailedResult[0] as any[])?.[0]?.cnt ?? 0),
+        staleFailedPayments: Number((staleFailedResult[0] as unknown as any[])?.[0]?.cnt ?? 0),
       };
     }),
 

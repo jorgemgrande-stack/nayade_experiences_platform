@@ -160,12 +160,12 @@ export async function runExpenseEmailIngestion(): Promise<{ processed: number; d
       const since = new Date();
       since.setDate(since.getDate() - 30);
       const uids = await client.search({ since });
-      if (!uids.length) return result;
+      if (!Array.isArray(uids) || uids.length === 0) return result;
 
       for (const uid of uids) {
         try {
           const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
-          if (!msg?.source) continue;
+          if (!msg || typeof msg === "boolean" || !msg.source) continue;
 
           const parsed = await simpleParser(msg.source);
           const subject    = parsed.subject ?? "";

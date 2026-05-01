@@ -829,8 +829,6 @@ export const tpvRouter = router({
           });
           reavExpedientId = reavResult.id;
           reavExpedientNumber = reavResult.expedientNumber;
-          // Vincular el expediente a la venta TPV
-          await db.update(tpvSales).set({ reavExpedientId } as any).where(eq(tpvSales.id, saleId));
           // Adjuntar el ticket como documento del cliente en el expediente
           // El ticket PDF se genera en el frontend; guardamos la URL de acceso al ticket
           const ticketViewUrl = `/admin/tpv/ticket/${saleId}`;

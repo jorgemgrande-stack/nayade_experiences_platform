@@ -219,7 +219,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
             const now = new Date();
             const invoiceNumber = await generateDocumentNumber("factura", "redsys:ipn", "system");
-            const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[]) ?? [];
+            const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; taxRate?: number; productId?: number }[]) ?? [];
             const total = Number(quote.total);
             const subtotal = Number(quote.subtotal);
             const bdRedsys = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));

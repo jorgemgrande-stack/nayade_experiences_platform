@@ -367,7 +367,7 @@ export const restaurantsRouter = router({
           merchantParams: redsysForm.Ds_MerchantParameters,
           signature: redsysForm.Ds_Signature,
           signatureVersion: redsysForm.Ds_SignatureVersion,
-          origin: input.origin,
+          origin: input.origin ?? process.env.APP_URL ?? "https://www.nayadeexperiences.es",
         }).catch(err => console.error("[RestaurantPaymentEmail] Error:", err));
       } else {
         // Sin depósito requerido → enviar email de confirmación directa al cliente

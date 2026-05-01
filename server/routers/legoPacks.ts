@@ -496,8 +496,8 @@ export const legoPacksRouter = router({
       const allLines = await db.select().from(legoPackLines);
 
       // Cargar todos los productos origen de una vez (evitar N+1)
-      const expIds = [...new Set(allLines.filter(l => l.sourceType === "experience").map(l => l.sourceId))];
-      const packIds = [...new Set(allLines.filter(l => l.sourceType === "pack").map(l => l.sourceId))];
+      const expIds = Array.from(new Set(allLines.filter(l => l.sourceType === "experience").map(l => l.sourceId)));
+      const packIds = Array.from(new Set(allLines.filter(l => l.sourceType === "pack").map(l => l.sourceId)));
 
       const expMap: Record<number, { title: string; basePrice: string; isActive: boolean; fiscalRegime: string }> = {};
       const packMap: Record<number, { title: string; basePrice: string; isActive: boolean; fiscalRegime: string }> = {};

@@ -23,13 +23,13 @@ import { documentCounters, documentNumberLogs } from "../drizzle/schema";
 let _pool: ReturnType<typeof mysql.createPool> | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
 
-function getDb() {
+function getDb(): ReturnType<typeof drizzle> {
   if (!_db) {
     if (!process.env.DATABASE_URL) {
       throw new Error("[documentNumbers] DATABASE_URL is not defined");
     }
     _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
-    _db = drizzle(_pool);
+    _db = drizzle(_pool) as unknown as ReturnType<typeof drizzle>;
   }
   return _db;
 }

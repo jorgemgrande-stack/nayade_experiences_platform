@@ -1048,14 +1048,16 @@ export const ticketingRouter = router({
 
         try {
           const pvpTotal = parseFloat(resolvedPvpPrice) * input.participants;
-          const netTotal = parseFloat(resolvedNetPrice) * input.participants;
           await postConfirmOperation({
             reservationId,
-            experienceId: resolvedExperienceId ?? 0,
-            date: input.reservationDate,
+            productId: resolvedExperienceId ?? 0,
+            productName: resolvedProductName,
+            serviceDate: input.reservationDate,
             people: input.participants,
-            pvpTotal,
-            netTotal,
+            amountCents: Math.round(pvpTotal * 100),
+            totalAmount: pvpTotal,
+            paymentMethod: "otro",
+            saleChannel: "admin",
             customerName: item.customerName,
             customerEmail: item.email,
             sourceChannel: "otro",

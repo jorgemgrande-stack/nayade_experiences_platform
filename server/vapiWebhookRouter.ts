@@ -79,7 +79,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
 
   try {
     // 4. Crear lead (source=vapi_llamada → no se reenvía a GHL)
-    const leadId = await createLead({
+    const { id: leadId } = await createLead({
       name,
       email: email || `vapi-${Date.now()}@noreply.nayade`,
       phone,
