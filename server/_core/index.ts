@@ -1074,10 +1074,11 @@ async function conditionallyStartJob(
   }
 }
 
-// Las migraciones las gestiona scripts/migrate.mjs (startCommand) antes de arrancar.
-// runMigrations() usaba drizzle-orm/mysql2/migrator con hashes SHA-256 incompatibles
-// con el sistema de tag names de migrate.mjs, causando conflictos en __drizzle_migrations.
-Promise.resolve()
+// El servidor HTTP arranca PRIMERO para que Railway registre el puerto activo.
+// Las operaciones de BD (seeds, columnas, etc.) corren en background tras el bind.
+// Si se ejecutan antes, cualquier timeout de conexión MySQL bloquea el arranque
+// y Railway mata el contenedor por health-check fallido.
+startServer()
   .then(() => ensureCriticalSeeds())
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
@@ -1086,7 +1087,6 @@ Promise.resolve()
   .then(() => fixBrokenInvoicePdfUrls())
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
-  .then(() => startServer())
   .then(() => conditionallyStartJob("quote_reminder_job_enabled",          startQuoteReminderJob,         "Quote Reminder"))
   .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
   .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
