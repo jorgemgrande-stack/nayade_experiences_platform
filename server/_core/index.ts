@@ -1,4 +1,5 @@
-﻿import "dotenv/config";
+﻿console.log("[Boot] dist/index.js iniciado, antes de imports");
+import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
@@ -181,7 +182,7 @@ async function startServer() {
   }
 
   const port = parseInt(process.env.PORT || "3000", 10);
-
+console.log("[Boot] Antes de server.listen, port =", port);
   server.listen(port, "0.0.0.0", () => {
     console.log(`[Startup] ✅ Server listening on 0.0.0.0:${port}`);
   });
@@ -1086,7 +1087,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   );
   return Promise.race([promise, timeout]);
 }
-
+console.log("[Boot] Antes de invocar startServer()");
 // Las migraciones las gestiona scripts/migrate.mjs (startCommand) antes de arrancar.
 // IMPORTANTE: startServer() se llama primero para que Railway registre el puerto
 // activo de inmediato. Todas las operaciones de BD corren en background con timeouts
@@ -1103,7 +1104,7 @@ startServer()
     conditionallyStartJob("card_terminal_matching_enabled",      startMatchingJob,              "Card Terminal Matching", true);
 
     // Seeds y columnas opcionales: background total con timeouts individuales
-    (async () => {
+    (async () => {console.log("[Boot] Dentro de startServer(), antes de cualquier await");
       await withTimeout(ensureCriticalSeeds(),               30_000, "ensureCriticalSeeds");
       await withTimeout(ensurePricingColumns(),              30_000, "ensurePricingColumns");
       await withTimeout(ensureRefundColumns(),               30_000, "ensureRefundColumns");
@@ -1115,7 +1116,8 @@ startServer()
     })().catch((err) => console.error("[Startup] Error en operaciones de fondo:", err));
   })
   .catch((err) => {
+    console.error("[Boot] startServer() rechazó:", err);
     console.error("[Startup] Error crítico al iniciar el servidor HTTP:", err);
     process.exit(1);
   });
-
+  
