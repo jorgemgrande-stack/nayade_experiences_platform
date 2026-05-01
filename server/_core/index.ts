@@ -1074,25 +1074,48 @@ async function conditionallyStartJob(
   }
 }
 
-// El servidor HTTP arranca PRIMERO para que Railway registre el puerto activo.
-// Las operaciones de BD (seeds, columnas, etc.) corren en background tras el bind.
-// Si se ejecutan antes, cualquier timeout de conexión MySQL bloquea el arranque
-// y Railway mata el contenedor por health-check fallido.
+// ─── TIMEOUT WRAPPER ──────────────────────────────────────────────────────────
+// Envuelve una promesa con un timeout. Si la operación tarda más de `ms`,
+// se resuelve (no rechaza) para que el arranque continúe sin bloquearse.
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T | void> {
+  const timeout = new Promise<void>((resolve) =>
+    setTimeout(() => {
+      console.warn(`[Startup] ⚠️  '${label}' superó el límite de ${ms / 1000}s — continuando sin esperar`);
+      resolve();
+    }, ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
+// Las migraciones las gestiona scripts/migrate.mjs (startCommand) antes de arrancar.
+// IMPORTANTE: startServer() se llama primero para que Railway registre el puerto
+// activo de inmediato. Todas las operaciones de BD corren en background con timeouts
+// para que una BD lenta nunca cause un 502 "Application failed to respond".
 startServer()
-  .then(() => ensureCriticalSeeds())
-  .then(() => ensurePricingColumns())
-  .then(() => ensureRefundColumns())
-  .then(() => ensureDiscountColumns())
-  .then(() => ensureExpenseEmailIngestionSchema())
-  .then(() => fixBrokenInvoicePdfUrls())
-  .then(() => wipeTestDataIfRequested())
-  .then(() => seedExperiencesIfEmpty())
-  .then(() => conditionallyStartJob("quote_reminder_job_enabled",          startQuoteReminderJob,         "Quote Reminder"))
-  .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
-  .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
-  .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))
-  .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,              "Email Ingestion"))
-  .then(() => conditionallyStartJob("expense_email_ingestion_enabled",     startExpenseEmailIngestionJob,       "Expense Email Ingestion"))
-  .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
-  .catch(console.error);
+  .then(() => {
+    // Jobs: arrancan inmediatamente tras el bind (fire-and-forget)
+    conditionallyStartJob("quote_reminder_job_enabled",          startQuoteReminderJob,         "Quote Reminder");
+    conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout");
+    conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue");
+    conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale");
+    conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,        "Email Ingestion");
+    conditionallyStartJob("expense_email_ingestion_enabled",     startExpenseEmailIngestionJob, "Expense Email Ingestion");
+    conditionallyStartJob("card_terminal_matching_enabled",      startMatchingJob,              "Card Terminal Matching", true);
+
+    // Seeds y columnas opcionales: background total con timeouts individuales
+    (async () => {
+      await withTimeout(ensureCriticalSeeds(),               30_000, "ensureCriticalSeeds");
+      await withTimeout(ensurePricingColumns(),              30_000, "ensurePricingColumns");
+      await withTimeout(ensureRefundColumns(),               30_000, "ensureRefundColumns");
+      await withTimeout(ensureDiscountColumns(),             30_000, "ensureDiscountColumns");
+      await withTimeout(ensureExpenseEmailIngestionSchema(), 30_000, "ensureExpenseEmailIngestionSchema");
+      await withTimeout(fixBrokenInvoicePdfUrls(),          30_000, "fixBrokenInvoicePdfUrls");
+      await withTimeout(wipeTestDataIfRequested(),           30_000, "wipeTestDataIfRequested");
+      await withTimeout(seedExperiencesIfEmpty(),            60_000, "seedExperiencesIfEmpty");
+    })().catch((err) => console.error("[Startup] Error en operaciones de fondo:", err));
+  })
+  .catch((err) => {
+    console.error("[Startup] Error crítico al iniciar el servidor HTTP:", err);
+    process.exit(1);
+  });
 
