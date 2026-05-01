@@ -454,7 +454,7 @@ export default function TpvScreen() {
           </div>
 
           {/* Product grid */}
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="grid grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 p-4">
               {filteredProducts.map((product) => {
                 const price = parseFloat(String(product.basePrice ?? "0"));
