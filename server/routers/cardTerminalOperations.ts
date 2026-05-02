@@ -5,7 +5,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
-import { cardTerminalOperations, tpvFileImports, reservations, quotes } from "../../drizzle/schema";
+import { cardTerminalOperations, tpvFileImports, reservations, quotes, tpvSales } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
@@ -158,17 +158,24 @@ function parseTpvBuffer(buffer: Buffer): ParsedTpvRow[] {
 
 // ── Auto-link helper ─────────────────────────────────────────────────────────
 
+// Exported for unit-testing the time window boundary logic.
+export function isWithinTpvWindow(saleCreatedAtMs: number, opDatetime: Date): boolean {
+  const opMs = opDatetime.getTime();
+  return saleCreatedAtMs >= opMs - 2 * 60 * 60 * 1000 && saleCreatedAtMs <= opMs + 30 * 60 * 1000;
+}
+
 async function tryAutoLink(
   opId: number,
   operationNumber: string,
   amount: number,
+  operationDatetime: Date,
   linkedBy: string
 ): Promise<{ linkedEntityType: "reservation" | "quote" | "none"; linkedEntityId: number | null }> {
   if (!operationNumber) return { linkedEntityType: "none", linkedEntityId: null };
 
   const searchPattern = `%Nº operación TPV: ${operationNumber}%`;
 
-  // Buscar en reservations.notes
+  // 1. Buscar en reservations.notes
   const [res] = await db
     .select({ id: reservations.id })
     .from(reservations)
@@ -187,7 +194,7 @@ async function tryAutoLink(
     return { linkedEntityType: "reservation", linkedEntityId: res.id };
   }
 
-  // Buscar en quotes.notes
+  // 2. Buscar en quotes.notes
   const [qt] = await db
     .select({ id: quotes.id })
     .from(quotes)
@@ -204,6 +211,31 @@ async function tryAutoLink(
       status: "conciliado",
     }).where(eq(cardTerminalOperations.id, opId));
     return { linkedEntityType: "quote", linkedEntityId: qt.id };
+  }
+
+  // 3. Fallback: buscar en tpv_sales por importe + ventana temporal [-2h, +30min]
+  const opMs = operationDatetime.getTime();
+  const [sale] = await db
+    .select({ id: tpvSales.id, reservationId: tpvSales.reservationId })
+    .from(tpvSales)
+    .where(and(
+      eq(tpvSales.total, String(amount.toFixed(2))),
+      gte(tpvSales.createdAt, opMs - 2 * 60 * 60 * 1000),
+      lte(tpvSales.createdAt, opMs + 30 * 60 * 1000),
+      eq(tpvSales.status, "paid"),
+    ))
+    .limit(1);
+
+  if (sale && sale.reservationId != null) {
+    const now = new Date();
+    await db.update(cardTerminalOperations).set({
+      linkedEntityType: "reservation",
+      linkedEntityId: sale.reservationId,
+      linkedAt: now,
+      linkedBy,
+      status: "conciliado",
+    }).where(eq(cardTerminalOperations.id, opId));
+    return { linkedEntityType: "reservation", linkedEntityId: sale.reservationId };
   }
 
   return { linkedEntityType: "none", linkedEntityId: null };
@@ -275,7 +307,7 @@ export const cardTerminalOperationsRouter = router({
           }).onDuplicateKeyUpdate({ set: { duplicateKey: sql`${cardTerminalOperations.duplicateKey}` } });
           const opId = (inserted as { insertId: number }).insertId;
           if (opId === 0) continue; // duplicate silently ignored
-          const result = await tryAutoLink(opId, r.operationNumber, r.amount, ctx.user.name ?? "sistema");
+          const result = await tryAutoLink(opId, r.operationNumber, r.amount, r.operationDatetime, ctx.user.name ?? "sistema");
           if (result.linkedEntityType !== "none") autoLinked++;
         }
       }
