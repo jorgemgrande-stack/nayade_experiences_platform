@@ -619,11 +619,11 @@ export async function getDashboardMetrics() {
     [bookingsThisMonthResult],
     [leadsConvertedResult],
   ] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` }).from(bookings),
+    db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'paid'`),
     db.select({ count: sql<number>`count(*)` }).from(leads),
     db.select({ count: sql<number>`count(*)` }).from(quotes).where(eq(quotes.status, "enviado")),
-    db.select({ total: sql<string>`COALESCE(SUM(amount), 0)` }).from(transactions).where(eq(transactions.status, "completado")),
-    db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status = 'cobrada' AND issuedAt >= ${startOfMonth}`),
+    db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid'`),
+    db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`),
     db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status IN ('paid','pending_payment') AND created_at >= ${startOfMonthMs}`),
     db.select({ count: sql<number>`count(*)` }).from(leads).where(eq(leads.status, "convertido")),
   ]);
@@ -1751,11 +1751,10 @@ export async function getDashboardOverview() {
       [restaurantToday],
       [leadsAgingRow],
     ] = await Promise.all([
-      // KPIs: Ingresos — incluye todas las facturas emitidas válidas (generada/enviada/cobrada)
-      // 'anulada' y 'abonada' se excluyen (canceladas o ya rectificadas)
-      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status NOT IN ('anulada','abonada') AND issuedAt >= ${startOfMonth}`),
-      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status NOT IN ('anulada','abonada') AND issuedAt >= ${startOfLastMonth} AND issuedAt <= ${endOfLastMonth}`),
-      db.select({ total: sql<string>`COALESCE(SUM(total), 0)` }).from(invoices).where(sql`status NOT IN ('anulada','abonada')`),
+      // KPIs: Ingresos — reservas pagadas (amountTotal en céntimos → euros)
+      db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`),
+      db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfLastMonth.getTime()} AND created_at <= ${endOfLastMonth.getTime()}`),
+      db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid'`),
       // KPIs: Reservas (migrado desde bookings → reservations)
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status IN ('paid','pending_payment') AND created_at >= ${startOfMonthMs}`),
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'pending_payment'`),
