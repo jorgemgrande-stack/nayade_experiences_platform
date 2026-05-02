@@ -51,11 +51,11 @@ function parseAmount(v: unknown): number {
   return isNaN(n) ? 0 : n;
 }
 
-function normalizeStr(v: unknown): string {
+export function normalizeStr(v: unknown): string {
   return String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function makeDuplicateKey(
+export function makeDuplicateKey(
   commerceCode: string,
   terminalCode: string,
   operationNumber: string,
