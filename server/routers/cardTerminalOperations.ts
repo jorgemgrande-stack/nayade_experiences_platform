@@ -7,6 +7,7 @@ import { and, desc, eq, gte, lte, like, or, sql } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
 import { cardTerminalOperations, tpvFileImports, reservations, quotes, tpvSales } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
+import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
@@ -331,12 +332,8 @@ export const cardTerminalOperationsRouter = router({
       if (input.status !== "todos") conditions.push(eq(cardTerminalOperations.status, input.status as "pendiente" | "conciliado" | "incidencia" | "ignorado"));
       if (input.operationType !== "todos") conditions.push(eq(cardTerminalOperations.operationType, input.operationType as "VENTA" | "DEVOLUCION" | "ANULACION" | "OTRO"));
       if (input.importId) conditions.push(eq(cardTerminalOperations.importId, input.importId));
-      if (input.dateFrom) conditions.push(gte(cardTerminalOperations.operationDatetime, new Date(input.dateFrom)));
-      if (input.dateTo) {
-        const to = new Date(input.dateTo);
-        to.setHours(23, 59, 59, 999);
-        conditions.push(lte(cardTerminalOperations.operationDatetime, to));
-      }
+      if (input.dateFrom) conditions.push(gte(cardTerminalOperations.operationDatetime, madridStartOfDayUtc(input.dateFrom)));
+      if (input.dateTo)   conditions.push(lte(cardTerminalOperations.operationDatetime, madridEndOfDayUtc(input.dateTo)));
 
       const baseQuery = db.select().from(cardTerminalOperations);
       const withWhere = conditions.length > 0 ? baseQuery.where(and(...conditions)) : baseQuery;

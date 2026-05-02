@@ -18,7 +18,7 @@ import {
 const fmtEur = (v: number | string) =>
   new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" }).format(Number(v));
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
 
 const MOVE_TYPES = [
   { value: "income",          label: "Ingreso",               color: "bg-emerald-100 text-emerald-700" },

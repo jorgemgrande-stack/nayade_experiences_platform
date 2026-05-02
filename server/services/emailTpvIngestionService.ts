@@ -14,7 +14,10 @@ import {
   reservations,
   quotes,
   tpvSales,
+  bankMovements,
+  bankFileImports,
 } from "../../drizzle/schema";
+import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 
 // CONFIG
 
@@ -222,11 +225,17 @@ function extractOperationType(text: string): ParsedOperation["operationType"] {
 
 // BATCH HELPERS
 
-/** Extracts YYYY-MM-DD from normalized subject like "TICKET ELECTRONICO DIA 24/4/2026" */
+/** Extracts YYYY-MM-DD from normalized subject.
+ *  Handles: "TICKET ELECTRONICO DIA 24/4/2026" and "LISTADO DE OPERACIONES 1/5/2026 19:23" */
 function parseBatchDateFromSubject(subject: string): string | null {
-  const m = subject.match(/DIA\s+(\d{1,2})[/](\d{1,2})[/](\d{4})/);
-  if (m) {
-    const [, d, mo, y] = m;
+  const m1 = subject.match(/DIA\s+(\d{1,2})[/](\d{1,2})[/](\d{4})/);
+  if (m1) {
+    const [, d, mo, y] = m1;
+    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  const m2 = subject.match(/OPERACIONES\s+(\d{1,2})[/](\d{1,2})[/](\d{4})/);
+  if (m2) {
+    const [, d, mo, y] = m2;
     return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
   return null;
@@ -251,6 +260,50 @@ function parseSummaryTotals(text: string): { ventas: number; devoluciones: numbe
     devoluciones = parseFloat(raw) || 0;
   }
   return { ventas, devoluciones };
+}
+
+async function createProvisionalBankMovement(
+  db: ReturnType<typeof makeDb>,
+  batchDate: string,
+  totalNet: number,
+  terminalCode: string | null,
+): Promise<void> {
+  if (totalNet <= 0) return;
+  const dupKey = `tpv-prov-${batchDate}-${terminalCode ?? "ALL"}`;
+
+  const [existing] = await db
+    .select({ id: bankMovements.id })
+    .from(bankMovements)
+    .where(eq(bankMovements.duplicateKey, dupKey))
+    .limit(1);
+  if (existing) return;
+
+  // T+1: estimated bank settlement date
+  const d = new Date(batchDate + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 1);
+  const settlementDate = d.toISOString().slice(0, 10);
+
+  const [importRes] = await db.insert(bankFileImports).values({
+    fileName: `tpv-comercia-provisional-${batchDate}`,
+    fileType: "tpv_email",
+    importedRows: 1,
+    duplicatesSkipped: 0,
+    status: "ok",
+  });
+  const importId = (importRes as any).insertId as number;
+
+  await db.insert(bankMovements).values({
+    importId,
+    fecha: settlementDate,
+    fechaValor: settlementDate,
+    movimiento: `Remesa TPV Comercia ${batchDate}`,
+    masDatos: `Liquidacion automatica desde email Comercia. Fecha operaciones: ${batchDate}. Confirmar contra extracto bancario.`,
+    importe: totalNet.toFixed(2),
+    duplicateKey: dupKey,
+    status: "pendiente",
+    conciliationStatus: "pendiente",
+    notes: `Provisional — generado automaticamente desde email Comercia del ${batchDate}.`,
+  });
 }
 
 async function createBatchFromEmail(
@@ -284,6 +337,17 @@ async function createBatchFromEmail(
     )
     .limit(1);
 
+  // Merge opIds from this email with ALL ops already in DB for this calendar day.
+  // Prevents batches with partial counts when individual ticket emails arrived before the summary.
+  const dayOps = await db
+    .select({ id: cardTerminalOperations.id })
+    .from(cardTerminalOperations)
+    .where(and(
+      gte(cardTerminalOperations.operationDatetime, madridStartOfDayUtc(batchDate)),
+      lte(cardTerminalOperations.operationDatetime, madridEndOfDayUtc(batchDate)),
+    ));
+  const mergedOpIds = [...new Set([...opIds, ...dayOps.map(o => o.id)])];
+
   let batchId: number;
   if (existing.length > 0) {
     batchId = existing[0].id;
@@ -292,8 +356,8 @@ async function createBatchFromEmail(
       totalSales: ventas.toFixed(2),
       totalRefunds: devoluciones.toFixed(2),
       totalNet: totalNet.toFixed(2),
-      operationCount: opIds.length,
-      linkedOperationsCount: opIds.length,
+      operationCount: mergedOpIds.length,
+      linkedOperationsCount: mergedOpIds.length,
     }).where(eq(cardTerminalBatches.id, batchId));
   } else {
     const [res] = await db.insert(cardTerminalBatches).values({
@@ -304,8 +368,8 @@ async function createBatchFromEmail(
       totalSales: ventas.toFixed(2),
       totalRefunds: devoluciones.toFixed(2),
       totalNet: totalNet.toFixed(2),
-      operationCount: opIds.length,
-      linkedOperationsCount: opIds.length,
+      operationCount: mergedOpIds.length,
+      linkedOperationsCount: mergedOpIds.length,
       status: "pending",
     });
     batchId = (res as any).insertId as number;
@@ -315,10 +379,10 @@ async function createBatchFromEmail(
   const alreadyLinked = await db
     .select({ cardTerminalOperationId: cardTerminalBatchOperations.cardTerminalOperationId })
     .from(cardTerminalBatchOperations)
-    .where(inArray(cardTerminalBatchOperations.cardTerminalOperationId, opIds));
+    .where(inArray(cardTerminalBatchOperations.cardTerminalOperationId, mergedOpIds));
   const linkedSet = new Set(alreadyLinked.map(r => r.cardTerminalOperationId));
 
-  for (const opId of opIds) {
+  for (const opId of mergedOpIds) {
     if (linkedSet.has(opId)) continue;
     const [op] = await db
       .select({ amount: cardTerminalOperations.amount, operationType: cardTerminalOperations.operationType, status: cardTerminalOperations.status })
@@ -457,8 +521,7 @@ async function extractOpsFromEmail(parsed: {
 }): Promise<{ ops: ParsedOperation[]; strategy: ParsingStrategy }> {
   const attachments = parsed.attachments ?? [];
   const subject = normalizeText(parsed.subject ?? "");
-  // After accent stripping: "Ticket electronico Dia 24/4/2026" -> contains "DIA"
-  const isDailySummary = subject.includes("DIA") || subject.includes("RESUMEN");
+  const isDailySummary = subject.includes("DIA") || subject.includes("RESUMEN") || subject.includes("LISTADO DE OPERACIONES");
 
   // 1. PDF attachment (priority)
   for (const att of attachments) {
@@ -622,8 +685,11 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
     const lock = await client.getMailboxLock(IMAP_MAILBOX);
 
     try {
+      // Search by date window instead of seen flag — DB messageId handles dedup.
+      // This also catches emails already marked read externally (e.g. opened in Outlook).
+      const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
       const uids: number[] = [];
-      for await (const msg of client.fetch({ seen: false }, { uid: true, envelope: true })) {
+      for await (const msg of client.fetch({ since }, { uid: true, envelope: true })) {
         const from = msg.envelope?.from?.[0]?.address ?? "";
         if (from.toLowerCase() !== IMAP_ALLOWED_SENDER.toLowerCase()) continue;
         uids.push(msg.uid);
@@ -742,24 +808,32 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
 
           // Auto-create remesa for daily summary emails
           const normalizedSubject = normalizeText(subject);
-          const isDailySummaryEmail = normalizedSubject.includes("DIA") || normalizedSubject.includes("RESUMEN");
+          const isDailySummaryEmail = normalizedSubject.includes("DIA") || normalizedSubject.includes("RESUMEN") || normalizedSubject.includes("LISTADO DE OPERACIONES");
           if (isDailySummaryEmail && allOpIds.length > 0) {
             const batchDate = parseBatchDateFromSubject(normalizedSubject);
             if (batchDate) {
               const bodyText = normalizeText(getEmailText({ text: parsed.text, html: parsed.html }));
               const { ventas, devoluciones } = parseSummaryTotals(bodyText);
+              const effectiveVentas      = ventas      > 0 ? ventas      : ops.filter(o => o.operationType === "VENTA").reduce((s, o) => s + o.amount, 0);
+              const effectiveDevoluciones = devoluciones > 0 ? devoluciones : ops.filter(o => o.operationType === "DEVOLUCION").reduce((s, o) => s + o.amount, 0);
               const firstOp = ops[0];
               try {
                 await createBatchFromEmail(db, {
                   batchDate,
                   terminalCode: firstOp?.terminalCode ?? null,
                   commerceCode: firstOp?.commerceCode ?? null,
-                  ventas: ventas > 0 ? ventas : ops.filter(o => o.operationType === "VENTA").reduce((s, o) => s + o.amount, 0),
-                  devoluciones: devoluciones > 0 ? devoluciones : ops.filter(o => o.operationType === "DEVOLUCION").reduce((s, o) => s + o.amount, 0),
+                  ventas:       effectiveVentas,
+                  devoluciones: effectiveDevoluciones,
                   opIds: allOpIds,
                 });
+                await createProvisionalBankMovement(
+                  db,
+                  batchDate,
+                  effectiveVentas - effectiveDevoluciones,
+                  firstOp?.terminalCode ?? null,
+                );
               } catch (batchErr: any) {
-                console.warn("[EmailTPV] Batch auto-creation failed:", batchErr?.message);
+                console.warn("[EmailTPV] Batch/provisional creation failed:", batchErr?.message);
               }
             }
           }
@@ -790,6 +864,9 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
               ...logValues,
             });
           }
+
+          // Mark as seen so future runs don't re-fetch it (dedup via messageId is the real guard)
+          await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
 
           result.messagesProcessed++;
         } catch (e: any) {

@@ -273,6 +273,8 @@ export function syncLeadUrlsToGHL(params: {
   invoiceUrl?: string | null;
   quoteNumber?: string | null;
   invoiceNumber?: string | null;
+  email?: string | null;
+  phone?: string | null;
   credentials?: { apiKey: string; locationId: string };
 }): void {
   if (!params.ghlContactId) return;
@@ -288,12 +290,13 @@ export function syncLeadUrlsToGHL(params: {
   if (params.invoiceUrl && params.invoiceNumber) noteParts.push(`Factura ${params.invoiceNumber}: ${params.invoiceUrl}`);
 
   const notes = noteParts.length ? noteParts.join("\n") : undefined;
+  const tags = params.quoteUrl ? ["presupuesto_listo"] : undefined;
 
   (async () => {
     try {
       await updateGHLContact(
         params.ghlContactId!,
-        { customFields, notes },
+        { customFields, notes, tags },
         params.credentials,
       );
     } catch (err: any) {
@@ -303,7 +306,7 @@ export function syncLeadUrlsToGHL(params: {
     }
 
     if (params.quoteUrl) {
-      await fireGHLQuoteWebhook(params.ghlContactId!, params.quoteUrl);
+      await fireGHLQuoteWebhook(params.ghlContactId!, params.quoteUrl, params.email, params.phone);
     }
   })();
 }
@@ -312,19 +315,28 @@ export function syncLeadUrlsToGHL(params: {
  * Dispara el webhook de GHL para notificar que se ha generado un presupuesto.
  * La URL del endpoint se configura con GHL_QUOTE_WEBHOOK_URL.
  */
-async function fireGHLQuoteWebhook(ghlContactId: string, presupuestoUrl: string): Promise<void> {
+async function fireGHLQuoteWebhook(
+  ghlContactId: string,
+  presupuestoUrl: string,
+  email?: string | null,
+  phone?: string | null,
+): Promise<void> {
   const webhookUrl = process.env.GHL_QUOTE_WEBHOOK_URL;
   if (!webhookUrl) return;
 
   try {
+    const body: Record<string, string> = {
+      event: "presupuesto_generado",
+      ghlContactId,
+      presupuesto_url: presupuestoUrl,
+    };
+    if (email) body.email = email;
+    if (phone) body.phone = phone;
+
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        event: "presupuesto_generado",
-        ghlContactId,
-        presupuesto_url: presupuestoUrl,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {

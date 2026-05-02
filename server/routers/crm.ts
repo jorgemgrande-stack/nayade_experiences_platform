@@ -1427,6 +1427,8 @@ export const crmRouter = router({
           ghlContactId: (lead as any).ghlContactId,
           quoteUrl: acceptUrl,
           quoteNumber: quote.quoteNumber,
+          email: lead.email,
+          phone: lead.phone,
         });
 
         return { success: true, acceptUrl, token };
@@ -1493,6 +1495,8 @@ export const crmRouter = router({
           ghlContactId: (lead as any).ghlContactId,
           quoteUrl: paymentLinkUrl ?? undefined,
           quoteNumber: quote.quoteNumber,
+          email: lead.email,
+          phone: lead.phone,
         });
 
         return { success: true };

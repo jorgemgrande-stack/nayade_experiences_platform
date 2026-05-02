@@ -21,7 +21,7 @@ import type { DailyControlData } from "../../../../server/routers/dailyControl";
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" }).format(new Date());
 }
 
 function fmtEur(v: number): string {

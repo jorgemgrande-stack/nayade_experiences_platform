@@ -9,6 +9,7 @@ import { cashSessions } from "../../drizzle/schema";
 import { createCashMovementIfNotExists } from "./cashRegisterHelper";
 import { getSystemSetting } from "../config";
 import { assertModuleEnabled } from "../_core/flagGuard";
+import { madridDateKey } from "../utils/timezone";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
@@ -250,7 +251,7 @@ export const cashRegisterRouter = router({
       .where(eq(finCashAccounts.isActive, true));
 
     const totalBalance = accounts.reduce((s, a) => s + parseFloat(a.currentBalance), 0);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = madridDateKey();
 
     const todayMovements = await db
       .select()
@@ -662,7 +663,7 @@ export const cashRegisterRouter = router({
       try {
         const result = await createCashMovementIfNotExists({
           accountId: defaultAcc.id,
-          date: (r.bookingDate ?? new Date().toISOString().slice(0, 10)).slice(0, 10),
+          date: (r.bookingDate ?? madridDateKey()).slice(0, 10),
           type: "income",
           amount: (r.amountTotal ?? 0) / 100,
           concept: `Cobro en efectivo ${r.reservationNumber ?? `#${r.id}`} — ${r.customerName}`,

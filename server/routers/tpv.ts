@@ -5,6 +5,7 @@ import mysql from "mysql2/promise";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
 import { sendEmail } from "../mailer";
 import { getBusinessEmail, getFeatureFlag, getSystemSetting } from "../config";
+import { madridDateKey } from "../utils/timezone";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity } from "../db";
 import { calcularREAVSimple } from "../reav";
 import {
@@ -298,7 +299,7 @@ export const tpvRouter = router({
             .limit(1);
 
           if (!existingClosure) {
-            const closureDate = new Date(Number(session.openedAt)).toISOString().slice(0, 10);
+            const closureDate = madridDateKey(new Date(Number(session.openedAt)));
             const cashTolerance = parseFloat(await getSystemSetting('cash_register_tolerance', '0.01')) || 0.01;
             const alertThreshold = parseFloat(await getSystemSetting('cash_alert_threshold', '20')) || 20;
             const closureStatus = Math.abs(cashDifference) < cashTolerance ? "balanced" : "difference";
