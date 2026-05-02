@@ -730,7 +730,7 @@ export const tpvRouter = router({
               input.items.length > 1 ? `Productos: ${input.items.map(i => i.productName).join(', ')}` : null,
               input.notes ? `Notas: ${input.notes}` : null,
             ].filter(Boolean).join(' · '),
-            paymentMethod: primaryPaymentMethod === "card" ? "redsys" :
+            paymentMethod: primaryPaymentMethod === "card" ? "tarjeta_fisica" :
                            primaryPaymentMethod === "cash" ? "efectivo" : "otro",
             channel: "TPV_FISICO",
             statusReservation: "CONFIRMADA",
@@ -759,7 +759,7 @@ export const tpvRouter = router({
       // ── 7. Registrar transacción unificada en el libro maestro ───────────────
       try {
         const methodMap: Record<string, string> = {
-          cash: "efectivo", card: "tarjeta", bizum: "otro", other: "otro"
+          cash: "efectivo", card: "tarjeta_fisica", bizum: "otro", other: "otro"
         };
         const txMethod = methodMap[primaryPaymentMethod] ?? "otro";
         const txNumber = generateTransactionNumber();
@@ -859,10 +859,11 @@ export const tpvRouter = router({
         const fiscalRegimeForOp = fiscalSummary === "iva_only" ? "general"
           : fiscalSummary === "reav_only" ? "reav" : "mixed";
         const paymentMethodForOp = primaryPaymentMethod === "cash" ? "efectivo"
-          : primaryPaymentMethod === "card" ? "tarjeta" : "otro";
+          : primaryPaymentMethod === "card" ? "tarjeta_fisica" : "otro";
         // Mapear método de pago TPV al enum de postConfirmOperation
-        const opPaymentMethod: "efectivo" | "otro" =
-          primaryPaymentMethod === "cash" ? "efectivo" : "otro";
+        const opPaymentMethod: "efectivo" | "tarjeta_fisica" | "otro" =
+          primaryPaymentMethod === "cash" ? "efectivo" :
+          primaryPaymentMethod === "card" ? "tarjeta_fisica" : "otro";
         await postConfirmOperation({
           reservationId: reservationId ?? 0,
           productId: mainItem?.productId ?? 0,

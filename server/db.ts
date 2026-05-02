@@ -2154,7 +2154,7 @@ export async function postConfirmOperation(params: {
   customerPhone?: string | null;
   // Datos de la transacción contable
   totalAmount: number;         // en euros (no centavos)
-  paymentMethod: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta" | "link_pago";
+  paymentMethod: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta" | "link_pago" | "tarjeta_fisica" | "tarjeta_redsys";
   saleChannel: "crm" | "tpv" | "online" | "admin" | "delegado";
   invoiceNumber?: string | null;
   reservationRef?: string | null;
@@ -2209,8 +2209,14 @@ export async function postConfirmOperation(params: {
     if (existingTx.length === 0) {
       const txNumber = `TX-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
       const methodMap: Record<string, string> = {
-        redsys: "tarjeta", transferencia: "transferencia", efectivo: "efectivo",
-        tarjeta: "tarjeta", link_pago: "link_pago", otro: "otro",
+        redsys:          "tarjeta_redsys",
+        tarjeta_redsys:  "tarjeta_redsys",
+        tarjeta_fisica:  "tarjeta_fisica",
+        tarjeta:         "tarjeta_redsys",
+        transferencia:   "transferencia",
+        efectivo:        "efectivo",
+        link_pago:       "link_pago",
+        otro:            "otro",
       };
       const [txResult] = await db.insert(transactions).values({
         transactionNumber: txNumber,
