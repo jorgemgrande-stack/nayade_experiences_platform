@@ -56,14 +56,16 @@ export function normalizeStr(v: unknown): string {
 }
 
 export function makeDuplicateKey(
-  commerceCode: string,
+  _commerceCode: string,
   terminalCode: string,
   operationNumber: string,
   amount: number,
   dt: Date | null
 ): string {
-  const dtStr = dt ? dt.toISOString().slice(0, 16) : "";
-  return [normalizeStr(commerceCode), normalizeStr(terminalCode), normalizeStr(operationNumber), amount.toFixed(2), dtStr].join("|");
+  // commerceCode excluded: absent in some Excel exports, causing false-positive non-duplicates.
+  // datetime truncated to date: minute-level precision causes false-positive non-duplicates.
+  const dateStr = dt ? dt.toISOString().slice(0, 10) : "";
+  return [normalizeStr(terminalCode), normalizeStr(operationNumber), amount.toFixed(2), dateStr].join("|");
 }
 
 interface ParsedTpvRow {
@@ -256,6 +258,8 @@ export const cardTerminalOperationsRouter = router({
       let autoLinked = 0;
       if (toInsert.length > 0) {
         for (const r of toInsert) {
+          // onDuplicateKeyUpdate with no-op acts as INSERT IGNORE: if the UNIQUE constraint
+          // on duplicate_key fires (race condition or in-memory Set miss), the row is silently skipped.
           const [inserted] = await db.insert(cardTerminalOperations).values({
             importId,
             operationDatetime: r.operationDatetime,
@@ -268,8 +272,9 @@ export const cardTerminalOperationsRouter = router({
             authorizationCode: r.authorizationCode || null,
             duplicateKey: r.duplicateKey,
             status: "pendiente",
-          });
+          }).onDuplicateKeyUpdate({ set: { duplicateKey: sql`${cardTerminalOperations.duplicateKey}` } });
           const opId = (inserted as { insertId: number }).insertId;
+          if (opId === 0) continue; // duplicate silently ignored
           const result = await tryAutoLink(opId, r.operationNumber, r.amount, ctx.user.name ?? "sistema");
           if (result.linkedEntityType !== "none") autoLinked++;
         }

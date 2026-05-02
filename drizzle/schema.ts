@@ -2418,7 +2418,7 @@ export const cardTerminalOperations = mysqlTable("card_terminal_operations", {
   notes: text("notes"),
   // Importación
   importId: int("import_id"),
-  duplicateKey: varchar("duplicate_key", { length: 255 }).notNull(),
+  duplicateKey: varchar("duplicate_key", { length: 255 }).notNull().unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
