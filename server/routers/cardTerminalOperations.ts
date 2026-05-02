@@ -481,5 +481,19 @@ export const cardTerminalOperationsRouter = router({
       await db.delete(tpvFileImports).where(eq(tpvFileImports.id, input.id));
       return { success: true };
     }),
+
+  // Repairs ops that ended up with linkedEntityType set but status still "pendiente"
+  // or "included_in_batch" due to a race between relinkService and emailService on boot.
+  repairLinkedStatus: adminProc.mutation(async () => {
+    const result = await db
+      .update(cardTerminalOperations)
+      .set({ status: "conciliado" })
+      .where(and(
+        sql`${cardTerminalOperations.linkedEntityType} != 'none'`,
+        sql`${cardTerminalOperations.status} IN ('pendiente', 'included_in_batch')`,
+      ));
+    const fixed = (result[0] as any)?.affectedRows ?? 0;
+    return { fixed };
+  }),
 });
 

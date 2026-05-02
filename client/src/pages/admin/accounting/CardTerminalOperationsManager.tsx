@@ -42,10 +42,12 @@ type OpStatus = "pendiente" | "conciliado" | "incidencia" | "ignorado" | "todos"
 type OpType = "VENTA" | "DEVOLUCION" | "ANULACION" | "OTRO" | "todos";
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  pendiente: { label: "Pendiente", color: "bg-yellow-100 text-yellow-800" },
-  conciliado: { label: "Conciliado", color: "bg-green-100 text-green-800" },
-  incidencia: { label: "Incidencia", color: "bg-red-100 text-red-800" },
-  ignorado: { label: "Ignorado", color: "bg-gray-100 text-gray-600" },
+  pendiente:         { label: "Pendiente",       color: "bg-yellow-100 text-yellow-800" },
+  conciliado:        { label: "Conciliado",       color: "bg-green-100 text-green-800" },
+  incidencia:        { label: "Incidencia",       color: "bg-red-100 text-red-800" },
+  ignorado:          { label: "Ignorado",         color: "bg-gray-100 text-gray-600" },
+  included_in_batch: { label: "En remesa",        color: "bg-blue-100 text-blue-800" },
+  settled:           { label: "Liquidado",        color: "bg-emerald-100 text-emerald-800" },
 };
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -227,6 +229,13 @@ export default function CardTerminalOperationsManager() {
     },
   });
 
+  const repairStatusMut = trpc.cardTerminalOperations.repairLinkedStatus.useMutation({
+    onSuccess: (data) => {
+      utils.cardTerminalOperations.list.invalidate();
+      alert(`${data.fixed} operación(es) reparada(s) → estado "Conciliado".`);
+    },
+  });
+
   // Handlers
   async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -300,6 +309,17 @@ export default function CardTerminalOperationsManager() {
             }}
           >
             <RefreshCw className="w-4 h-4 mr-1" /> Reprocesar fecha
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              if (confirm("¿Reparar operaciones enlazadas con estado incorrecto? Se pondrán en 'Conciliado'.")) {
+                repairStatusMut.mutate();
+              }
+            }}
+          >
+            <RefreshCw className="w-4 h-4 mr-1" /> Reparar estados
           </Button>
           <Button size="sm" onClick={() => { setShowImportModal(true); setImportResult(null); }}>
             <Upload className="w-4 h-4 mr-1" /> Importar Excel/PDF
