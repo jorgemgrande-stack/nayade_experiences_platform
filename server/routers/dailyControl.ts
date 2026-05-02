@@ -75,6 +75,13 @@ export async function getDailyControlCenter(date: string) {
 
   const yesterday = offsetDate(date, -1);
 
+  // Reservations auto-created by createSale are already counted via tpv_sales.
+  // Exclude them from all reservations aggregations to avoid double-counting.
+  const notLinkedToTpv = sql`${reservations.id} NOT IN (
+  SELECT ${tpvSales.reservationId} FROM ${tpvSales}
+  WHERE ${tpvSales.reservationId} IS NOT NULL
+)`;
+
   const [
     resExecSum,         // 0  reservations executed today — aggregate
     tpvExecSum,         // 1  tpv_sales executed today — aggregate
@@ -101,7 +108,8 @@ export async function getDailyControlCenter(date: string) {
     }).from(reservations).where(
       and(
         eq(reservations.bookingDate, date),
-        sql`${reservations.status} NOT IN ('cancelled','failed')`
+        sql`${reservations.status} NOT IN ('cancelled','failed')`,
+        notLinkedToTpv,
       )
     ),
 
@@ -129,7 +137,8 @@ export async function getDailyControlCenter(date: string) {
     }).from(reservations).where(
       and(
         eq(reservations.bookingDate, date),
-        sql`${reservations.status} NOT IN ('cancelled','failed')`
+        sql`${reservations.status} NOT IN ('cancelled','failed')`,
+        notLinkedToTpv,
       )
     ).groupBy(reservations.channel),
 
@@ -143,7 +152,8 @@ export async function getDailyControlCenter(date: string) {
     }).from(reservations).where(
       and(
         eq(reservations.bookingDate, date),
-        sql`${reservations.status} NOT IN ('cancelled','failed')`
+        sql`${reservations.status} NOT IN ('cancelled','failed')`,
+        notLinkedToTpv,
       )
     ).groupBy(reservations.productName)
       .orderBy(sql`SUM(${reservations.amountTotal}) DESC`),
@@ -187,7 +197,7 @@ export async function getDailyControlCenter(date: string) {
       paymentMethod:     reservations.paymentMethod,
       notes:             reservations.notes,
     }).from(reservations)
-      .where(eq(reservations.bookingDate, date))
+      .where(and(eq(reservations.bookingDate, date), notLinkedToTpv))
       .orderBy(desc(reservations.createdAt))
       .limit(200),
 
@@ -247,7 +257,8 @@ export async function getDailyControlCenter(date: string) {
     }).from(reservations).where(
       and(
         eq(reservations.bookingDate, date),
-        sql`${reservations.status} IN ('cancelled','failed')`
+        sql`${reservations.status} IN ('cancelled','failed')`,
+        notLinkedToTpv,
       )
     ),
 
@@ -259,7 +270,8 @@ export async function getDailyControlCenter(date: string) {
     }).from(reservations).where(
       and(
         eq(reservations.bookingDate, yesterday),
-        sql`${reservations.status} NOT IN ('cancelled','failed')`
+        sql`${reservations.status} NOT IN ('cancelled','failed')`,
+        notLinkedToTpv,
       )
     ),
 
@@ -282,7 +294,8 @@ export async function getDailyControlCenter(date: string) {
       and(
         eq(reservations.bookingDate, date),
         sql`${reservations.status} NOT IN ('cancelled','failed')`,
-        sql`${reservations.statusPayment} IN ('PENDIENTE','PAGO_PARCIAL')`
+        sql`${reservations.statusPayment} IN ('PENDIENTE','PAGO_PARCIAL')`,
+        notLinkedToTpv,
       )
     ),
 
@@ -293,7 +306,8 @@ export async function getDailyControlCenter(date: string) {
         and(
           eq(reservations.bookingDate, date),
           sql`${reservations.status} NOT IN ('cancelled','failed')`,
-          sql`(${reservations.customerPhone} IS NULL OR ${reservations.customerPhone} = '')`
+          sql`(${reservations.customerPhone} IS NULL OR ${reservations.customerPhone} = '')`,
+          notLinkedToTpv,
         )
       ),
   ]);
