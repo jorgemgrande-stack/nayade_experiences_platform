@@ -10,6 +10,73 @@ Este archivo proporciona a Claude (en VS Code o cualquier entorno de desarrollo)
 
 ---
 
+## ⚠️ Reglas Operativas (LEER ANTES DE CUALQUIER ACCIÓN)
+
+Estas reglas se establecieron tras un incidente el 2026-05-02 en el que un bucle de fixes encadenados sin verificar deploy generó 22 commits rotos apilados sobre `main` y bloqueó producción durante horas. El tag `wip-broken-fixes-2026-05-02` conserva ese estado como referencia.
+
+### Trabajo en ramas — nunca commits directos a main
+
+Toda modificación se hace en una rama propia con prefijo descriptivo: `fix/...`, `feat/...`, `chore/...`, `refactor/...`. Si detectas que estás en `main`, ejecuta `git checkout -b <rama>` antes de tocar nada. El push a `main` solo ocurre vía merge desde una rama verificada.
+
+### Un cambio = un commit = un deploy verificado
+
+Después de cada push a `main`, espera a que Railway complete el build y verifica en logs que el contenedor arranca limpio (mensaje `Server running on http://localhost:3000/` y jobs registrándose sin errores) **antes** de hacer cualquier otro commit. No encadenes commits "para arreglar" sin haber visto el resultado del anterior en producción.
+
+### Prohibición absoluta de fixes en cascada
+
+Si un commit hace que el deploy falle o que arranque con errores, **NO encadenes otro commit para parchear**. La acción correcta es:
+
+1. Revertir el commit roto (`git revert <SHA>`) o resetear si aún no se ha hecho push
+2. Identificar la causa real del fallo en local antes de tocar producción
+3. Probar el fix en una rama separada con verificación local
+
+Encadenar `fix(railway): X` → `fix(railway): Y` → `fix(railway): Z` cuando cada uno falla es exactamente el patrón a evitar.
+
+### Cambios de infraestructura van aislados
+
+Cualquier modificación a `Dockerfile`, `package.json`, `pnpm-lock.yaml`, `railway.toml`, `drizzle.config.ts`, `scripts/migrate.mjs`, configuración de Vite, configuración de TypeScript (`tsconfig.json`), variables de entorno o startup del servidor (`server/_core/index.ts` partes de bootstrap) se hace en commit aislado, en rama propia, **sin mezclar features**. Verifica el deploy de ese commit antes de continuar con cualquier otra cosa. Estos cambios afectan a cómo arranca el contenedor — un fallo aquí es un downtime, no un bug visual.
+
+### Migraciones y schema — nunca en startup
+
+NO añadir `drizzle-kit migrate` ni equivalentes al script de arranque del servidor. Las migraciones se generan con `pnpm drizzle-kit generate`, se revisan manualmente, y se aplican como paso explícito antes del deploy o vía un script separado. Un servidor que migra al arrancar puede colgarse silenciosamente y dejar la BD en estado intermedio.
+
+Antes de añadir tablas o columnas nuevas, verifica que el schema en producción está sincronizado con `drizzle/schema.ts`. Si hay drift, arréglalo en un commit dedicado a la migración antes de seguir con la feature.
+
+### Comandos git destructivos los lanza el humano
+
+El agente NO ejecuta sin confirmación explícita en lenguaje natural del usuario:
+
+- `git push --force` ni `git push -f` ni `git push --force-with-lease`
+- `git reset --hard` sobre commits ya pusheados
+- `git rebase` interactivo sobre `main`
+- `git branch -D` ni `git tag -d` sobre tags o ramas remotas
+- Borrar el tag `wip-broken-fixes-2026-05-02` (conserva 22 commits de respaldo)
+
+Si el agente cree que uno de estos comandos es necesario, debe parar y pedirlo explícitamente.
+
+### Perímetro estricto en cada tarea
+
+Cuando recibas una tarea acotada (ej. "fix de scroll en /admin/tpv"), modifica únicamente los archivos directamente implicados. NO refactorices código adyacente, NO "limpies imports", NO añadas comentarios explicativos, NO cambies el formato de líneas que no estás tocando funcionalmente. Si crees que un cambio fuera del perímetro mejora la solución, pregunta antes.
+
+### Verificación local antes de push
+
+Antes de cualquier push a `main`, verifica que:
+
+1. El cambio funciona en local (`pnpm dev` arranca sin errores nuevos en consola)
+2. `git status` muestra solo los archivos esperados como modificados
+3. `git diff` solo contiene el cambio descrito en el commit, sin ediciones colaterales
+4. `pnpm test` pasa si hay tests relacionados con el cambio
+
+### Deploy de Railway es la fuente de verdad
+
+El SHA del último deploy `Active` en Railway es el código que sirve tráfico real. Si `main` en GitHub diverge del SHA activo (porque hay commits pusheados que no han desplegado o que han fallado), prioriza investigar esa divergencia antes de añadir nuevo código. Para identificar el SHA activo: Railway → servicio → Deployments → click en el deploy Active → "Deployed via GitHub" → click en el mensaje del commit te lleva a GitHub con el SHA completo.
+
+### Tag de respaldo intocable
+
+`wip-broken-fixes-2026-05-02` contiene 22 commits del incidente del 02/05/2026, incluyendo el trabajo en `feat(partners): Landing Partners Fase 1 y 2` (`225e47d`, `b688c0c`, `f5362ad`) que se quiere recuperar más adelante con cherry-pick. **No borrar nunca este tag.**
+
+---
+
 ## Stack Tecnológico
 
 El proyecto usa un stack moderno y tipado de extremo a extremo. En el servidor corre **Express 4** con **tRPC 11** como capa de API, **Drizzle ORM** sobre **MySQL 8**, y **TypeScript** en todo el código. En el cliente corre **React 19** con **Vite 7**, **Tailwind CSS 4**, **shadcn/ui** (componentes Radix UI), **TanStack Query** (a través de tRPC) y **Wouter** para el enrutado. Los formularios usan **React Hook Form** con validación **Zod**.
