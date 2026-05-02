@@ -380,7 +380,7 @@ export const quotes = mysqlTable("quotes", {
   transferProofKey: text("transfer_proof_key"),
   transferConfirmedAt: timestamp("transfer_confirmed_at"),
   transferConfirmedBy: varchar("transfer_confirmed_by", { length: 255 }),
-  paymentMethod: mysqlEnum("payment_method", ["redsys", "transferencia", "efectivo", "otro"]),
+  paymentMethod: mysqlEnum("payment_method", ["redsys", "transferencia", "efectivo", "otro", "tarjeta_fisica", "tarjeta_redsys"]),
   paymentLinkToken: varchar("paymentLinkToken", { length: 128 }).unique(),
   paymentLinkUrl: text("paymentLinkUrl"),
   paidAt: timestamp("paidAt"),
@@ -430,7 +430,7 @@ export const invoices = mysqlTable("invoices", {
   status: mysqlEnum("status", ["generada", "enviada", "cobrada", "anulada", "abonada"]).default("generada").notNull(),
   invoiceType: mysqlEnum("invoiceType", ["factura", "abono"]).default("factura").notNull(),
   // Payment traceability
-  paymentMethod: mysqlEnum("paymentMethod", ["redsys", "transferencia", "efectivo", "otro"]).default("redsys"),
+  paymentMethod: mysqlEnum("paymentMethod", ["redsys", "transferencia", "efectivo", "otro", "tarjeta_fisica", "tarjeta_redsys"]).default("redsys"),
   paymentValidatedBy: int("paymentValidatedBy"),   // userId who validated manual payment
   paymentValidatedAt: timestamp("paymentValidatedAt"),
   transferProofUrl: text("transferProofUrl"),       // S3 URL of bank transfer proof
@@ -509,7 +509,7 @@ export const transactions = mysqlTable("transactions", {
   type: mysqlEnum("type", ["ingreso", "reembolso", "comision", "gasto"]).default("ingreso").notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
-  paymentMethod: mysqlEnum("paymentMethod", ["tarjeta", "transferencia", "efectivo", "link_pago", "otro"]).default("tarjeta"),
+  paymentMethod: mysqlEnum("paymentMethod", ["tarjeta", "transferencia", "efectivo", "link_pago", "otro", "tarjeta_fisica", "tarjeta_redsys"]).default("tarjeta"),
   status: mysqlEnum("status", ["pendiente", "completado", "fallido", "reembolsado"]).default("pendiente").notNull(),
   description: text("description"),
   externalRef: varchar("externalRef", { length: 256 }),
@@ -581,7 +581,7 @@ export const reservations = mysqlTable("reservations", {
   invoiceId: int("invoiceId"),
   invoiceNumber: varchar("invoiceNumber", { length: 32 }),
   // Payment details
-  paymentMethod: mysqlEnum("paymentMethod", ["redsys", "transferencia", "efectivo", "otro"]),
+  paymentMethod: mysqlEnum("paymentMethod", ["redsys", "transferencia", "efectivo", "otro", "tarjeta_fisica", "tarjeta_redsys"]),
   paymentValidatedBy: int("paymentValidatedBy"),
   paymentValidatedAt: bigint("paymentValidatedAt", { mode: "number" }),
   transferProofUrl: text("transferProofUrl"),

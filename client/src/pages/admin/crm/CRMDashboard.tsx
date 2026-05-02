@@ -1326,7 +1326,9 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                   <SelectItem value="efectivo" className="text-white text-xs">💵 Efectivo</SelectItem>
                   <SelectItem value="transferencia" className="text-white text-xs">🏦 Transferencia</SelectItem>
-                  <SelectItem value="redsys" className="text-white text-xs">💳 Tarjeta (Redsys)</SelectItem>
+                  <SelectItem value="tarjeta_fisica" className="text-white text-xs">💳 Tarjeta Física</SelectItem>
+                  <SelectItem value="tarjeta_redsys" className="text-white text-xs">💳 Tarjeta Redsys</SelectItem>
+                  <SelectItem value="redsys" className="text-white text-xs">💳 Tarjeta Redsys (legacy)</SelectItem>
                   <SelectItem value="otro" className="text-white text-xs">❓ Otro</SelectItem>
                 </SelectContent>
               </Select>
@@ -2878,7 +2880,7 @@ function QuoteDetailModal({
   const [pendingReason, setPendingReason] = useState("");
   // Per-installment manual confirmation mini-modal
   const [confirmingInstallment, setConfirmingInstallment] = useState<{ id: number; installmentNumber: number; amountCents: number } | null>(null);
-  const [instPayMethod, setInstPayMethod] = useState<"tarjeta" | "transferencia" | "efectivo">("transferencia");
+  const [instPayMethod, setInstPayMethod] = useState<"tarjeta_fisica" | "transferencia" | "efectivo">("transferencia");
   const [instTpvOp, setInstTpvOp] = useState("");
   const [instPayNote, setInstPayNote] = useState("");
   const [instProofUrl, setInstProofUrl] = useState<string | null>(null);
@@ -3864,17 +3866,17 @@ function QuoteDetailModal({
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(["tarjeta", "transferencia", "efectivo"] as const).map((m) => (
+              {(["tarjeta_fisica", "transferencia", "efectivo"] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setInstPayMethod(m)}
                   className={`py-2 px-3 rounded-lg border text-xs font-medium transition-colors capitalize ${instPayMethod === m ? "bg-violet-600 border-violet-500 text-white" : "bg-foreground/[0.05] border-foreground/[0.12] text-foreground/60 hover:border-foreground/30"}`}
                 >
-                  {m === "tarjeta" ? "Tarjeta" : m === "transferencia" ? "Transferencia" : "Efectivo"}
+                  {m === "tarjeta_fisica" ? "Tarjeta Física" : m === "transferencia" ? "Transferencia" : "Efectivo"}
                 </button>
               ))}
             </div>
-            {instPayMethod === "tarjeta" && (
+            {instPayMethod === "tarjeta_fisica" && (
               <div className="space-y-1.5">
                 <Label className="text-foreground/70 text-xs">Nº operación TPV *</Label>
                 <Input value={instTpvOp} onChange={(e) => setInstTpvOp(e.target.value)} placeholder="Ej: 12345" className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm" />
@@ -3935,7 +3937,7 @@ function QuoteDetailModal({
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               disabled={
                 confirmInstallmentMut.isPending ||
-                (instPayMethod === "tarjeta" && !instTpvOp.trim()) ||
+                (instPayMethod === "tarjeta_fisica" && !instTpvOp.trim()) ||
                 (instPayMethod === "efectivo" && !instPayNote.trim())
               }
               onClick={() => {
@@ -3943,7 +3945,7 @@ function QuoteDetailModal({
                 confirmInstallmentMut.mutate({
                   installmentId: confirmingInstallment.id,
                   paymentMethod: instPayMethod,
-                  tpvOperationNumber: instPayMethod === "tarjeta" ? instTpvOp : undefined,
+                  tpvOperationNumber: instPayMethod === "tarjeta_fisica" ? instTpvOp : undefined,
                   transferProofUrl: instPayMethod === "transferencia" ? instProofUrl ?? undefined : undefined,
                   transferProofKey: instPayMethod === "transferencia" ? instProofKey ?? undefined : undefined,
                   paymentNote: instPayMethod === "efectivo" ? instPayNote : undefined,
@@ -4167,7 +4169,7 @@ function QuoteDetailModal({
                 (paymentMethodSelected === "efectivo" && !viewPayNote.trim())
               }
               onClick={() => {
-                const payMethod = paymentMethodSelected === "transferencia" ? "transferencia" : paymentMethodSelected === "efectivo" ? "efectivo" : "redsys";
+                const payMethod = paymentMethodSelected === "transferencia" ? "transferencia" : paymentMethodSelected === "efectivo" ? "efectivo" : "tarjeta_fisica";
                 confirmPaymentWithMethod.mutate({
                   quoteId,
                   paymentMethod: payMethod,
@@ -4318,10 +4320,13 @@ function ReservationDetailModal({
   const getPaymentBadge = (method: string | null) => {
     if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
-      redsys:        { label: "Tarjeta (Redsys)",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      transferencia: { label: "Transferencia",      cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
-      efectivo:      { label: "Efectivo",           cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
-      otro:          { label: "Otro",               cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]",             icon: "❓" },
+      tarjeta_fisica: { label: "Tarjeta Física",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta_redsys: { label: "Tarjeta Redsys",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      redsys:         { label: "Tarjeta Redsys",  cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta:        { label: "Tarjeta",          cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      transferencia:  { label: "Transferencia",    cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
+      efectivo:       { label: "Efectivo",         cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
+      otro:           { label: "Otro",             cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
     };
     const s = map[method] ?? { label: method, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" };
     return (
@@ -5313,10 +5318,13 @@ export default function CRMDashboard() {
   const getPaymentMethodLabel = (method: string | null) => {
     if (!method) return null;
     const map: Record<string, string> = {
-      redsys: "💳 Tarjeta (Redsys)",
-      transferencia: "🏦 Transferencia",
-      efectivo: "💵 Efectivo",
-      otro: "❓ Otro",
+      tarjeta_fisica: "💳 Tarjeta Física",
+      tarjeta_redsys: "💳 Tarjeta Redsys",
+      redsys:         "💳 Tarjeta Redsys",
+      tarjeta:        "💳 Tarjeta",
+      transferencia:  "🏦 Transferencia",
+      efectivo:       "💵 Efectivo",
+      otro:           "❓ Otro",
     };
     return map[method] ?? method;
   };
@@ -5324,10 +5332,13 @@ export default function CRMDashboard() {
   const getPaymentMethodBadge = (method: string | null) => {
     if (!method) return <span className="text-foreground/30 text-xs">—</span>;
     const map: Record<string, { label: string; cls: string; icon: string }> = {
-      redsys:        { label: "Tarjeta",       cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
-      transferencia: { label: "Transferencia", cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
-      efectivo:      { label: "Efectivo",      cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
-      otro:          { label: "Otro",          cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]",             icon: "❓" },
+      tarjeta_fisica: { label: "Tarjeta Física", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta_redsys: { label: "Tarjeta Redsys", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      redsys:         { label: "Tarjeta Redsys", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      tarjeta:        { label: "Tarjeta",        cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", icon: "💳" },
+      transferencia:  { label: "Transferencia",  cls: "bg-sky-500/15 text-sky-300 border-sky-500/30",         icon: "🏦" },
+      efectivo:       { label: "Efectivo",       cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: "💵" },
+      otro:           { label: "Otro",           cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "❓" },
     };
     const s = map[method] ?? { label: method, cls: "bg-foreground/[0.08] text-foreground/60 border-foreground/[0.15]", icon: "" };
     return (
@@ -8820,7 +8831,7 @@ function PagosPendientesTab() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [confirmId, setConfirmId] = useState<number | null>(null);
-  const [confirmMethod, setConfirmMethod] = useState<"transferencia" | "efectivo" | "tarjeta">("transferencia");
+  const [confirmMethod, setConfirmMethod] = useState<"transferencia" | "efectivo" | "tarjeta_fisica">("transferencia");
   const [cancelId, setCancelId] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
@@ -9043,7 +9054,7 @@ function PagosPendientesTab() {
                 </SelectTrigger>
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
                   <SelectItem value="transferencia" className="text-white">🏦 Transferencia bancaria</SelectItem>
-                  <SelectItem value="tarjeta" className="text-white">💳 Tarjeta</SelectItem>
+                  <SelectItem value="tarjeta_fisica" className="text-white">💳 Tarjeta Física</SelectItem>
                   <SelectItem value="efectivo" className="text-white">💵 Efectivo</SelectItem>
                 </SelectContent>
               </Select>

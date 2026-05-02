@@ -1556,7 +1556,7 @@ export const crmRouter = router({
           quoteId: z.number(),
           redsysOrderId: z.string().optional(),
           paidAmount: z.number().optional(),
-          paymentMethod: z.enum(["redsys", "transferencia", "efectivo", "otro"]).optional(),
+          paymentMethod: z.enum(["redsys", "transferencia", "efectivo", "otro", "tarjeta_fisica", "tarjeta_redsys"]).optional(),
           tpvOperationNumber: z.string().optional(), // Nº operación TPV (tarjeta)
           paymentNote: z.string().optional(),        // Justificación (efectivo) o nota interna
           transferProofUrl: z.string().optional(),   // URL S3 del justificante de transferencia
@@ -3196,7 +3196,7 @@ export const crmRouter = router({
     confirmInstallment: staff
       .input(z.object({
         installmentId: z.number(),
-        paymentMethod: z.enum(["efectivo", "transferencia", "tarjeta"]),
+        paymentMethod: z.enum(["efectivo", "transferencia", "tarjeta_fisica"]),
         paymentNote: z.string().optional(),
         tpvOperationNumber: z.string().optional(),
         transferProofUrl: z.string().optional(),
@@ -4445,7 +4445,7 @@ export const crmRouter = router({
             customerEmail: input.customerEmail,
             customerPhone: input.customerPhone ?? null,
             totalAmount: input.amountPaid,
-            paymentMethod: input.paymentMethod === "redsys" ? "redsys" : input.paymentMethod === "transferencia" ? "transferencia" : input.paymentMethod === "efectivo" ? "efectivo" : "otro",
+            paymentMethod: input.paymentMethod === "tarjeta_fisica" ? "tarjeta_fisica" : input.paymentMethod === "tarjeta_redsys" ? "tarjeta_redsys" : input.paymentMethod === "redsys" ? "redsys" : input.paymentMethod === "transferencia" ? "transferencia" : input.paymentMethod === "efectivo" ? "efectivo" : "otro",
             saleChannel: "admin",
             invoiceNumber,
             reservationRef: merchantOrder,
@@ -4567,7 +4567,7 @@ export const crmRouter = router({
                 <span class="value">${res.statusPayment ?? "PENDIENTE"}</span>
               </div>
               <div class="row"><span class="label">Canal</span><span class="value">${channelLabels[res.channel ?? ""] ?? res.channel ?? ""}${res.channelDetail ? " — " + res.channelDetail : ""}</span></div>
-              <div class="row"><span class="label">Método de pago</span><span class="value">${res.paymentMethod ?? "—"}</span></div>
+              <div class="row"><span class="label">Método de pago</span><span class="value">${({ tarjeta_fisica: "Tarjeta Física", tarjeta_redsys: "Tarjeta Redsys", redsys: "Tarjeta Redsys", tarjeta: "Tarjeta", transferencia: "Transferencia", efectivo: "Efectivo", otro: "Otro" } as Record<string, string>)[res.paymentMethod ?? ""] ?? res.paymentMethod ?? "—"}</span></div>
               <div class="row"><span class="label">Fecha de compra</span><span class="value">${new Date(res.createdAt).toLocaleDateString("es-ES")}</span></div>
             </div>
             <div class="total-box">
@@ -5565,7 +5565,7 @@ export const crmRouter = router({
     confirm: staff
       .input(z.object({
         id: z.number(),
-        paymentMethod: z.enum(["efectivo", "transferencia", "tarjeta"]),
+        paymentMethod: z.enum(["efectivo", "transferencia", "tarjeta_fisica"]),
         paymentNote: z.string().optional(),
         transferProofUrl: z.string().optional(),
       }))

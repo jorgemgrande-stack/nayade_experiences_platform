@@ -70,7 +70,7 @@ interface PostConfirmParams {
   customerEmail: string;
   customerPhone?: string | null;
   totalAmount: number;
-  paymentMethod: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta" | "link_pago";
+  paymentMethod: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta" | "link_pago" | "tarjeta_fisica" | "tarjeta_redsys";
   saleChannel: "crm" | "tpv" | "online" | "admin" | "delegado";
   invoiceNumber?: string | null;
   reservationRef?: string | null;
@@ -91,12 +91,14 @@ function simulatePostConfirmOperation(params: PostConfirmParams): PostConfirmRes
   const bookingDate = params.serviceDate ?? today;
 
   const methodMap: Record<string, string> = {
-    redsys: "tarjeta",
-    transferencia: "transferencia",
-    efectivo: "efectivo",
-    tarjeta: "tarjeta",
-    link_pago: "link_pago",
-    otro: "otro",
+    redsys:         "tarjeta_redsys",
+    tarjeta_redsys: "tarjeta_redsys",
+    tarjeta_fisica: "tarjeta_fisica",
+    tarjeta:        "tarjeta_redsys",
+    transferencia:  "transferencia",
+    efectivo:       "efectivo",
+    link_pago:      "link_pago",
+    otro:           "otro",
   };
 
   const booking: BookingOperativo = {
@@ -148,7 +150,7 @@ describe("Regresión postConfirmOperation — Canal A: CRM confirmPayment", () =
     customerEmail: "carlos@example.com",
     customerPhone: "+34 600 111 222",
     totalAmount: 180.00,
-    paymentMethod: "tarjeta",
+    paymentMethod: "tarjeta_fisica",
     saleChannel: "crm",
     invoiceNumber: "FAC-2026-0010",
     reservationRef: "RES-2026-0010",
@@ -165,11 +167,11 @@ describe("Regresión postConfirmOperation — Canal A: CRM confirmPayment", () =
     expect(booking.customerEmail).toBe("carlos@example.com");
   });
 
-  it("crea transacción contable con saleChannel='crm' y paymentMethod='tarjeta'", () => {
+  it("crea transacción contable con saleChannel='crm' y paymentMethod='tarjeta_fisica'", () => {
     const { transaction } = simulatePostConfirmOperation(params);
     expect(transaction.type).toBe("ingreso");
     expect(transaction.saleChannel).toBe("crm");
-    expect(transaction.paymentMethod).toBe("tarjeta");
+    expect(transaction.paymentMethod).toBe("tarjeta_fisica");
     expect(transaction.status).toBe("completado");
     expect(transaction.amount).toBe("180.00");
     expect(transaction.reservationId).toBe(480001);
@@ -278,9 +280,9 @@ describe("Regresión postConfirmOperation — Canal C: Redsys IPN", () => {
     fiscalRegime: "general",
   };
 
-  it("mapea paymentMethod 'redsys' a 'tarjeta' en la transacción", () => {
+  it("mapea paymentMethod 'redsys' a 'tarjeta_redsys' en la transacción", () => {
     const { transaction } = simulatePostConfirmOperation(params);
-    expect(transaction.paymentMethod).toBe("tarjeta");
+    expect(transaction.paymentMethod).toBe("tarjeta_redsys");
   });
 
   it("crea transacción con saleChannel='online'", () => {
@@ -414,16 +416,18 @@ describe("Regresión postConfirmOperation — Idempotencia", () => {
 
 describe("Regresión postConfirmOperation — Mapeo de paymentMethod", () => {
   const methodMap: Record<string, string> = {
-    redsys: "tarjeta",
-    transferencia: "transferencia",
-    efectivo: "efectivo",
-    tarjeta: "tarjeta",
-    link_pago: "link_pago",
-    otro: "otro",
+    redsys:         "tarjeta_redsys",
+    tarjeta_redsys: "tarjeta_redsys",
+    tarjeta_fisica: "tarjeta_fisica",
+    tarjeta:        "tarjeta_redsys",
+    transferencia:  "transferencia",
+    efectivo:       "efectivo",
+    link_pago:      "link_pago",
+    otro:           "otro",
   };
 
-  it("'redsys' se mapea a 'tarjeta' en la transacción contable", () => {
-    expect(methodMap["redsys"]).toBe("tarjeta");
+  it("'redsys' se mapea a 'tarjeta_redsys' en la transacción contable", () => {
+    expect(methodMap["redsys"]).toBe("tarjeta_redsys");
   });
 
   it("'transferencia' se mantiene como 'transferencia'", () => {
@@ -443,7 +447,7 @@ describe("Regresión postConfirmOperation — Mapeo de paymentMethod", () => {
   });
 
   it("todos los métodos válidos tienen un mapeo definido", () => {
-    const validMethods = ["redsys", "transferencia", "efectivo", "tarjeta", "link_pago", "otro"];
+    const validMethods = ["redsys", "transferencia", "efectivo", "tarjeta", "link_pago", "otro", "tarjeta_fisica", "tarjeta_redsys"];
     validMethods.forEach((m) => {
       expect(methodMap[m]).toBeDefined();
     });
@@ -457,7 +461,7 @@ describe("Regresión postConfirmOperation — Régimen fiscal", () => {
     const params: PostConfirmParams = {
       reservationId: 1, productId: 1, productName: "Test", people: 1,
       amountCents: 1000, customerName: "Test", customerEmail: "t@t.com",
-      totalAmount: 10, paymentMethod: "tarjeta", saleChannel: "crm",
+      totalAmount: 10, paymentMethod: "tarjeta_fisica", saleChannel: "crm",
       fiscalRegime: "general",
     };
     const { transaction } = simulatePostConfirmOperation(params);
@@ -482,7 +486,7 @@ describe("Regresión postConfirmOperation — Régimen fiscal", () => {
     const params: PostConfirmParams = {
       reservationId: 3, productId: 3, productName: "Test Mixed", people: 3,
       amountCents: 10000, customerName: "Mixed User", customerEmail: "mixed@t.com",
-      totalAmount: 100, paymentMethod: "tarjeta", saleChannel: "crm",
+      totalAmount: 100, paymentMethod: "tarjeta_fisica", saleChannel: "crm",
       fiscalRegime: "mixed",
     };
     const { booking, transaction, cliente, operacional } = simulatePostConfirmOperation(params);

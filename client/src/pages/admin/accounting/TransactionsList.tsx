@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { formatPaymentMethod } from "@/lib/labels";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -314,9 +315,9 @@ export default function TransactionsList() {
                       </td>
                       {/* Método */}
                       <td className="px-4 py-3">
-                        <Badge variant="outline" className="text-xs gap-1 capitalize">
+                        <Badge variant="outline" className="text-xs gap-1">
                           {methodIcons[t.paymentMethod ?? "otro"]}
-                          {t.paymentMethod ?? "—"}
+                          {formatPaymentMethod(t.paymentMethod)}
                         </Badge>
                       </td>
                       {/* Canal */}

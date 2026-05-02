@@ -17,7 +17,9 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
 };
 
 const sourceConfig: Record<string, { label: string; color: string; icon: React.ReactNode; crmTab: string }> = {
-  redsys:         { label: "Tarjeta (Redsys)",  color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  tarjeta_fisica: { label: "Tarjeta Física",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  tarjeta_redsys: { label: "Tarjeta Redsys",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
+  redsys:         { label: "Tarjeta Redsys",   color: "bg-violet-100 text-violet-700", icon: <CreditCard className="w-3 h-3" />,  crmTab: "reservations" },
   transferencia:  { label: "Transferencia",     color: "bg-sky-100 text-sky-700",       icon: <ArrowUpDown className="w-3 h-3" />, crmTab: "reservations" },
   efectivo:       { label: "Efectivo",          color: "bg-emerald-100 text-emerald-700", icon: <Banknote className="w-3 h-3" />,  crmTab: "reservations" },
   otro:           { label: "Otro",              color: "bg-gray-100 text-gray-600",     icon: <HelpCircle className="w-3 h-3" />, crmTab: "reservations" },
