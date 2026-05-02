@@ -25,7 +25,7 @@ import {
   finCashClosures,
   finCashAlerts,
 } from "../../drizzle/schema";
-import { eq, and, desc, sql, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
 
@@ -975,9 +975,28 @@ export const tpvRouter = router({
       const registers = await db.select().from(cashRegisters);
       const registerMap = Object.fromEntries(registers.map(r => [r.id, r.name]));
 
+      // Aggregate sales per session in one batch query
+      const sessionIds = sessions.map(s => s.id);
+      const salesRows = sessionIds.length > 0
+        ? await db
+            .select({ sessionId: tpvSales.sessionId, total: tpvSales.total })
+            .from(tpvSales)
+            .where(inArray(tpvSales.sessionId, sessionIds))
+        : [];
+
+      const salesBySession = new Map<number, { count: number; total: number }>();
+      for (const row of salesRows) {
+        const acc = salesBySession.get(row.sessionId) ?? { count: 0, total: 0 };
+        acc.count += 1;
+        acc.total += parseFloat(String(row.total));
+        salesBySession.set(row.sessionId, acc);
+      }
+
       return sessions.map(s => ({
         ...s,
         registerName: registerMap[s.registerId] ?? "Caja",
+        salesCount: salesBySession.get(s.id)?.count ?? 0,
+        totalSales: salesBySession.get(s.id)?.total ?? 0,
       }));
     }),
 
