@@ -1,7 +1,7 @@
 ﻿import "dotenv/config";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
-import { eq, like, and, inArray, sql } from "drizzle-orm";
+import { eq, like, and, gte, lte, inArray, sql } from "drizzle-orm";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import cron from "node-cron";
@@ -13,6 +13,7 @@ import {
   emailIngestionLogs,
   reservations,
   quotes,
+  tpvSales,
 } from "../../drizzle/schema";
 
 // CONFIG
@@ -497,10 +498,13 @@ async function tryAutoLink(
   db: ReturnType<typeof makeDb>,
   operationId: number,
   operationNumber: string,
+  amount: number,
+  operationDatetime: Date,
   now: Date
 ): Promise<boolean> {
   const pattern = `%Nº operación TPV: ${operationNumber}%`;
 
+  // 1. Buscar en reservations.notes (aplica a pagos Redsys online)
   const [res] = await db
     .select({ id: reservations.id })
     .from(reservations)
@@ -517,6 +521,7 @@ async function tryAutoLink(
     return true;
   }
 
+  // 2. Buscar en quotes.notes
   const [qt] = await db
     .select({ id: quotes.id })
     .from(quotes)
@@ -526,6 +531,30 @@ async function tryAutoLink(
     await db.update(cardTerminalOperations).set({
       linkedEntityType: "quote",
       linkedEntityId: qt.id,
+      linkedAt: now,
+      linkedBy: "auto-email",
+      status: "conciliado",
+    }).where(eq(cardTerminalOperations.id, operationId));
+    return true;
+  }
+
+  // 3. Fallback: buscar en tpv_sales por importe + ventana [-2h, +30min]
+  // Aplica a cobros del TPV físico donde tpv_sales ya sabe qué reserva es.
+  const opMs = operationDatetime.getTime();
+  const [sale] = await db
+    .select({ id: tpvSales.id, reservationId: tpvSales.reservationId })
+    .from(tpvSales)
+    .where(and(
+      eq(tpvSales.total, String(amount.toFixed(2))),
+      gte(tpvSales.createdAt, opMs - 2 * 60 * 60 * 1000),
+      lte(tpvSales.createdAt, opMs + 30 * 60 * 1000),
+      eq(tpvSales.status, "paid"),
+    ))
+    .limit(1);
+  if (sale && sale.reservationId != null) {
+    await db.update(cardTerminalOperations).set({
+      linkedEntityType: "reservation",
+      linkedEntityId: sale.reservationId,
       linkedAt: now,
       linkedBy: "auto-email",
       status: "conciliado",
@@ -678,7 +707,7 @@ export async function runEmailIngestion(retryErrors = false): Promise<IngestionR
               let wasLinked = false;
               if (newOp) {
                 allOpIds.push(newOp.id);
-                wasLinked = await tryAutoLink(db, newOp.id, op.operationNumber, now);
+                wasLinked = await tryAutoLink(db, newOp.id, op.operationNumber, op.amount, op.operationDatetime, now);
               }
 
               inserted++;
