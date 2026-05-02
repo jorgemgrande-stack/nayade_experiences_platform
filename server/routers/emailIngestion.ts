@@ -1,6 +1,6 @@
 ﻿import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
-import { desc } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -34,6 +34,25 @@ export const emailIngestionRouter = router({
         .from(emailIngestionLogs)
         .orderBy(desc(emailIngestionLogs.createdAt))
         .limit(input.limit);
+    }),
+
+  // Resets logs for a given date to "skipped" so the next cron reprocesses them.
+  // Safe: cardTerminalOperations.duplicateKey prevents re-inserting existing ops.
+  resetLogsForDate: adminProc
+    .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .mutation(async ({ input }) => {
+      const from = new Date(`${input.date}T00:00:00Z`);
+      const to   = new Date(`${input.date}T23:59:59Z`);
+      const result = await db
+        .update(emailIngestionLogs)
+        .set({ status: "skipped" })
+        .where(and(
+          eq(emailIngestionLogs.status, "ok"),
+          gte(emailIngestionLogs.receivedAt, from),
+          lte(emailIngestionLogs.receivedAt, to),
+        ));
+      const affected = (result[0] as any)?.affectedRows ?? 0;
+      return { reset: affected };
     }),
 });
 

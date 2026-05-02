@@ -220,6 +220,13 @@ export default function CardTerminalOperationsManager() {
     onSettled: () => setSyncing(false),
   });
 
+  const resetLogsMut = trpc.emailIngestion.resetLogsForDate.useMutation({
+    onSuccess: (data) => {
+      utils.emailIngestion.listLogs.invalidate();
+      alert(`${data.reset} log(s) reseteado(s). Pulsa "Sincronizar correo TPV" para reprocesar.`);
+    },
+  });
+
   // Handlers
   async function handleFileImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -281,6 +288,18 @@ export default function CardTerminalOperationsManager() {
           >
             <Mail className="w-4 h-4 mr-1" />
             {syncing ? "Sincronizando..." : "Sincronizar correo TPV"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const date = prompt("Fecha a reprocesar (YYYY-MM-DD):", new Date().toISOString().slice(0, 10));
+              if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+                resetLogsMut.mutate({ date });
+              }
+            }}
+          >
+            <RefreshCw className="w-4 h-4 mr-1" /> Reprocesar fecha
           </Button>
           <Button size="sm" onClick={() => { setShowImportModal(true); setImportResult(null); }}>
             <Upload className="w-4 h-4 mr-1" /> Importar Excel/PDF
