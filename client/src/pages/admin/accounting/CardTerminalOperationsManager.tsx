@@ -92,9 +92,19 @@ export default function CardTerminalOperationsManager() {
 
   // Link manual modal
   const [linkModalId, setLinkModalId] = useState<number | null>(null);
+  const [linkModalAmount, setLinkModalAmount] = useState<number | null>(null);
   const [linkEntityType, setLinkEntityType] = useState<"reservation" | "quote">("reservation");
-  const [linkEntityId, setLinkEntityId] = useState("");
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkSelectedId, setLinkSelectedId] = useState<number | null>(null);
   const [linkNotes, setLinkNotes] = useState("");
+
+  const resetLinkModal = () => {
+    setLinkModalId(null);
+    setLinkModalAmount(null);
+    setLinkSearch("");
+    setLinkSelectedId(null);
+    setLinkNotes("");
+  };
 
   // Incident modal
   const [incidentId, setIncidentId] = useState<number | null>(null);
@@ -147,6 +157,11 @@ export default function CardTerminalOperationsManager() {
     { enabled: detailId !== null }
   );
 
+  const unlinkedResQ = trpc.cardTerminalOperations.searchUnlinkedReservations.useQuery(
+    { search: linkSearch, amountEur: linkModalAmount ?? undefined },
+    { enabled: linkModalId !== null && linkEntityType === "reservation" }
+  );
+
   // Mutations
   const importMut = trpc.cardTerminalOperations.importExcel.useMutation({
     onSuccess: (data) => {
@@ -160,9 +175,7 @@ export default function CardTerminalOperationsManager() {
     onSuccess: () => {
       utils.cardTerminalOperations.list.invalidate();
       if (detailId) utils.cardTerminalOperations.getById.invalidate({ id: detailId });
-      setLinkModalId(null);
-      setLinkEntityId("");
-      setLinkNotes("");
+      resetLinkModal();
     },
   });
 
@@ -531,7 +544,7 @@ export default function CardTerminalOperationsManager() {
                         <Eye className="w-3.5 h-3.5" />
                       </Button>
                       {op.status !== "conciliado" && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Vincular manualmente" onClick={() => { setLinkModalId(op.id); }}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Vincular manualmente" onClick={() => { setLinkModalId(op.id); setLinkModalAmount(parseFloat(op.amount)); }}>
                           <Link className="w-3.5 h-3.5" />
                         </Button>
                       )}
@@ -713,7 +726,7 @@ export default function CardTerminalOperationsManager() {
               )}
               <div className="flex gap-2 pt-2">
                 {detailQ.data.status !== "conciliado" && (
-                  <Button size="sm" variant="outline" onClick={() => { setLinkModalId(detailId); setDetailId(null); }}>
+                  <Button size="sm" variant="outline" onClick={() => { setLinkModalId(detailId); setLinkModalAmount(detailQ.data ? parseFloat(detailQ.data.amount) : null); setDetailId(null); }}>
                     <Link className="w-3.5 h-3.5 mr-1" /> Vincular
                   </Button>
                 )}
@@ -739,52 +752,103 @@ export default function CardTerminalOperationsManager() {
       </Dialog>
 
       {/* ── Link Manual Modal ── */}
-      <Dialog open={linkModalId !== null} onOpenChange={(o) => { if (!o) { setLinkModalId(null); setLinkEntityId(""); setLinkNotes(""); } }}>
-        <DialogContent className="max-w-md">
+      <Dialog open={linkModalId !== null} onOpenChange={(o) => { if (!o) resetLinkModal(); }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Vincular manualmente</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>Tipo de entidad</Label>
-              <Select value={linkEntityType} onValueChange={(v) => setLinkEntityType(v as "reservation" | "quote")}>
+              <Select value={linkEntityType} onValueChange={(v) => { setLinkEntityType(v as "reservation" | "quote"); setLinkSelectedId(null); setLinkSearch(""); }}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="reservation">Reserva</SelectItem>
-                  <SelectItem value="quote">Presupuesto</SelectItem>
+                  <SelectItem value="quote">Presupuesto (ID manual)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>ID de {linkEntityType === "reservation" ? "reserva" : "presupuesto"}</Label>
-              <Input
-                className="mt-1"
-                type="number"
-                placeholder="Ej: 1234"
-                value={linkEntityId}
-                onChange={(e) => setLinkEntityId(e.target.value)}
-              />
-            </div>
+
+            {linkEntityType === "reservation" ? (
+              <div className="space-y-2">
+                <Label>Buscar reserva</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    className="pl-8"
+                    placeholder="Nombre cliente o nº reserva…"
+                    value={linkSearch}
+                    onChange={(e) => { setLinkSearch(e.target.value); setLinkSelectedId(null); }}
+                  />
+                </div>
+                {linkModalAmount !== null && !linkSearch && (
+                  <p className="text-xs text-muted-foreground">
+                    Mostrando reservas sin vincular con importe {fmtCurrency(linkModalAmount)}
+                  </p>
+                )}
+                <div className="border rounded-md divide-y max-h-56 overflow-y-auto">
+                  {unlinkedResQ.isLoading && (
+                    <p className="text-xs text-muted-foreground p-3">Buscando…</p>
+                  )}
+                  {!unlinkedResQ.isLoading && (unlinkedResQ.data ?? []).length === 0 && (
+                    <p className="text-xs text-muted-foreground p-3">Sin resultados</p>
+                  )}
+                  {(unlinkedResQ.data ?? []).map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className={`w-full text-left px-3 py-2 text-sm flex justify-between items-center hover:bg-muted transition-colors ${linkSelectedId === r.id ? "bg-primary/10 font-medium" : ""}`}
+                      onClick={() => setLinkSelectedId(r.id)}
+                    >
+                      <span>
+                        <span className="font-mono text-xs text-muted-foreground mr-2">{r.reservationNumber}</span>
+                        {r.customerName}
+                      </span>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                        {fmtCurrency(r.amountTotal / 100)} · {r.bookingDate}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {linkSelectedId && (
+                  <p className="text-xs text-green-700">
+                    ✓ Seleccionada reserva #{linkSelectedId}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div>
+                <Label>ID numérico del presupuesto</Label>
+                <Input
+                  className="mt-1"
+                  type="number"
+                  placeholder="Ej: 1234"
+                  value={linkSelectedId ?? ""}
+                  onChange={(e) => setLinkSelectedId(e.target.value ? parseInt(e.target.value) : null)}
+                />
+              </div>
+            )}
+
             <div>
               <Label>Notas (opcional)</Label>
               <Textarea className="mt-1" rows={2} value={linkNotes} onChange={(e) => setLinkNotes(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setLinkModalId(null); setLinkEntityId(""); setLinkNotes(""); }}>Cancelar</Button>
+            <Button variant="outline" onClick={resetLinkModal}>Cancelar</Button>
             <Button
-              disabled={!linkEntityId || linkMut.isPending}
+              disabled={!linkSelectedId || linkMut.isPending}
               onClick={() => {
-                if (!linkModalId || !linkEntityId) return;
+                if (!linkModalId || !linkSelectedId) return;
                 linkMut.mutate({
                   id: linkModalId,
                   entityType: linkEntityType,
-                  entityId: parseInt(linkEntityId),
+                  entityId: linkSelectedId,
                   notes: linkNotes || undefined,
                 });
               }}
             >
-              {linkMut.isPending ? "Vinculando..." : "Vincular"}
+              {linkMut.isPending ? "Vinculando…" : "Vincular"}
             </Button>
           </DialogFooter>
         </DialogContent>

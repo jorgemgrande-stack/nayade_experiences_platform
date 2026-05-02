@@ -3,7 +3,7 @@ import { router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lte, like, or, sql } from "drizzle-orm";
 import { protectedProcedure } from "../_core/trpc";
 import { cardTerminalOperations, tpvFileImports, reservations, quotes, tpvSales } from "../../drizzle/schema";
 import * as XLSX from "xlsx";
@@ -374,6 +374,40 @@ export const cardTerminalOperationsRouter = router({
       const [op] = await db.select().from(cardTerminalOperations).where(eq(cardTerminalOperations.id, input.id));
       if (!op) throw new TRPCError({ code: "NOT_FOUND" });
       return op;
+    }),
+
+  searchUnlinkedReservations: adminProc
+    .input(z.object({
+      search: z.string().optional(),
+      amountEur: z.number().optional(),
+    }))
+    .query(async ({ input }) => {
+      const conditions: ReturnType<typeof eq>[] = [
+        sql`${reservations.id} NOT IN (
+          SELECT linked_entity_id FROM card_terminal_operations
+          WHERE linked_entity_type = 'reservation' AND linked_entity_id IS NOT NULL
+        )` as any,
+      ];
+      if (input.search?.trim()) {
+        const term = `%${input.search.trim()}%`;
+        conditions.push(or(
+          like(reservations.customerName, term),
+          like(reservations.reservationNumber, term),
+        ) as any);
+      }
+      if (input.amountEur !== undefined) {
+        conditions.push(eq(reservations.amountTotal, Math.round(input.amountEur * 100)) as any);
+      }
+      return db.select({
+        id: reservations.id,
+        reservationNumber: reservations.reservationNumber,
+        customerName: reservations.customerName,
+        amountTotal: reservations.amountTotal,
+        bookingDate: reservations.bookingDate,
+      }).from(reservations)
+        .where(and(...conditions))
+        .orderBy(desc(reservations.id))
+        .limit(15);
     }),
 
   linkManually: adminProc
