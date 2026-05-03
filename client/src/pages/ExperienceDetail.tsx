@@ -703,9 +703,9 @@ export default function ExperienceDetail() {
 
       {/* Reseñas de clientes */}
       {dbExp && (
-        <section className="py-12 bg-gray-50 border-t border-gray-200">
+        <section className="py-12 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-white/10">
           <div className="container max-w-5xl">
-            <ReviewSection entityType="experience" entityId={dbExp.id} theme="light" />
+            <ReviewSection entityType="experience" entityId={dbExp.id} theme="auto" />
           </div>
         </section>
       )}

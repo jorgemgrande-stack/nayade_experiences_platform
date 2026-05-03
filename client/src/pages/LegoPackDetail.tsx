@@ -482,9 +482,9 @@ export default function LegoPackDetail() {
       )}
 
       {/* Reseñas de clientes */}
-      <section className="py-12 bg-white border-t border-slate-100">
+      <section className="py-12 bg-white dark:bg-gray-900 border-t border-slate-100 dark:border-white/10">
         <div className="container max-w-5xl">
-          <ReviewSection entityType="pack" entityId={pack.id} theme="light" />
+          <ReviewSection entityType="pack" entityId={pack.id} theme="auto" />
         </div>
       </section>
     </PublicLayout>

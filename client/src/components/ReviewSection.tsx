@@ -14,8 +14,85 @@ type EntityType = "hotel" | "spa" | "experience" | "pack";
 interface ReviewSectionProps {
   entityType: EntityType;
   entityId: number;
-  /** Tema visual: "dark" para páginas con fondo oscuro (SPA, Hotel), "light" para páginas claras */
-  theme?: "dark" | "light";
+  /**
+   * "dark"  → fondo oscuro fijo (Hotel, SPA)
+   * "light" → fondo claro fijo
+   * "auto"  → sigue el modo oscuro/claro de la página (default para Experience, Pack)
+   */
+  theme?: "dark" | "light" | "auto";
+}
+
+// ─── HELPERS DE ESTILO ────────────────────────────────────────────────────────
+
+function styles(theme: "dark" | "light" | "auto") {
+  if (theme === "dark") {
+    return {
+      sectionBorder: "border-white/10",
+      heading:       "text-white",
+      sub:           "text-white/60",
+      divider:       "border-white/10",
+      formBg:        "bg-white/5 border-white/10 rounded-xl p-5 border",
+      formHeading:   "text-white",
+      cardBg:        "bg-white/5 border-white/10",
+      textPrimary:   "text-white",
+      textSecondary: "text-white/60",
+      replyBg:       "bg-teal-900/40 border-teal-700/40",
+      barTrack:      "bg-white/10",
+      barCount:      "text-white/50",
+      barLabel:      "text-white/70",
+      inputCls:      "bg-white/5 border-white/15 text-white placeholder:text-white/30 focus:border-teal-500",
+      labelCls:      "text-white/70 text-sm",
+      charCount:     "text-white/30",
+      emptyIcon:     "text-white/60",
+      paginationBtn: "text-white/60 hover:text-white",
+      skeletonBg:    "bg-white/5",
+    };
+  }
+  if (theme === "light") {
+    return {
+      sectionBorder: "border-gray-200",
+      heading:       "text-gray-900",
+      sub:           "text-gray-500",
+      divider:       "border-gray-200",
+      formBg:        "bg-gray-50 border-gray-200 rounded-xl p-5 border",
+      formHeading:   "text-gray-900",
+      cardBg:        "bg-white border-gray-200",
+      textPrimary:   "text-gray-900",
+      textSecondary: "text-gray-500",
+      replyBg:       "bg-teal-50 border-teal-200",
+      barTrack:      "bg-gray-200",
+      barCount:      "text-gray-400",
+      barLabel:      "text-gray-600",
+      inputCls:      "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-teal-500",
+      labelCls:      "text-gray-600 text-sm",
+      charCount:     "text-gray-400",
+      emptyIcon:     "text-gray-500",
+      paginationBtn: "text-gray-500",
+      skeletonBg:    "bg-gray-100",
+    };
+  }
+  // "auto" — Tailwind dark: variants, se adapta al modo del sistema/página
+  return {
+    sectionBorder: "border-gray-200 dark:border-white/10",
+    heading:       "text-gray-900 dark:text-white",
+    sub:           "text-gray-500 dark:text-white/60",
+    divider:       "border-gray-200 dark:border-white/10",
+    formBg:        "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 rounded-xl p-5 border",
+    formHeading:   "text-gray-900 dark:text-white",
+    cardBg:        "bg-white dark:bg-white/5 border-gray-200 dark:border-white/10",
+    textPrimary:   "text-gray-900 dark:text-white",
+    textSecondary: "text-gray-600 dark:text-white/60",
+    replyBg:       "bg-teal-50 dark:bg-teal-900/40 border-teal-200 dark:border-teal-700/40",
+    barTrack:      "bg-gray-200 dark:bg-white/10",
+    barCount:      "text-gray-400 dark:text-white/50",
+    barLabel:      "text-gray-600 dark:text-white/70",
+    inputCls:      "bg-white dark:bg-white/5 border-gray-300 dark:border-white/15 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30 focus:border-teal-500",
+    labelCls:      "text-gray-600 dark:text-white/70 text-sm",
+    charCount:     "text-gray-400 dark:text-white/30",
+    emptyIcon:     "text-gray-500 dark:text-white/60",
+    paginationBtn: "text-gray-500 dark:text-white/60 hover:text-gray-900 dark:hover:text-white",
+    skeletonBg:    "bg-gray-100 dark:bg-white/5",
+  };
 }
 
 // ─── COMPONENTE ESTRELLAS ─────────────────────────────────────────────────────
@@ -67,28 +144,24 @@ function RatingBar({
   stars,
   count,
   percentage,
-  theme,
+  s,
 }: {
   stars: number;
   count: number;
   percentage: number;
-  theme: "dark" | "light";
+  s: ReturnType<typeof styles>;
 }) {
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className={`w-4 text-right font-medium ${theme === "dark" ? "text-white/70" : "text-gray-600"}`}>
-        {stars}
-      </span>
+      <span className={`w-4 text-right font-medium ${s.barLabel}`}>{stars}</span>
       <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 flex-shrink-0" />
-      <div className={`flex-1 h-2 rounded-full overflow-hidden ${theme === "dark" ? "bg-white/10" : "bg-gray-200"}`}>
+      <div className={`flex-1 h-2 rounded-full overflow-hidden ${s.barTrack}`}>
         <div
           className="h-full bg-amber-400 rounded-full transition-all duration-500"
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <span className={`w-6 text-right text-xs ${theme === "dark" ? "text-white/50" : "text-gray-400"}`}>
-        {count}
-      </span>
+      <span className={`w-6 text-right text-xs ${s.barCount}`}>{count}</span>
     </div>
   );
 }
@@ -97,7 +170,7 @@ function RatingBar({
 
 function ReviewCard({
   review,
-  theme,
+  s,
 }: {
   review: {
     id: number;
@@ -110,18 +183,13 @@ function ReviewCard({
     verifiedBooking: boolean;
     createdAt: Date;
   };
-  theme: "dark" | "light";
+  s: ReturnType<typeof styles>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const MAX_CHARS = 240;
   const isLong = review.body.length > MAX_CHARS;
   const displayBody =
     isLong && !expanded ? review.body.slice(0, MAX_CHARS) + "…" : review.body;
-
-  const cardBg = theme === "dark" ? "bg-white/5 border-white/10" : "bg-white border-gray-200";
-  const textPrimary = theme === "dark" ? "text-white" : "text-gray-900";
-  const textSecondary = theme === "dark" ? "text-white/60" : "text-gray-500";
-  const replyBg = theme === "dark" ? "bg-teal-900/40 border-teal-700/40" : "bg-teal-50 border-teal-200";
 
   const date = new Date(review.createdAt).toLocaleDateString("es-ES", {
     year: "numeric",
@@ -130,11 +198,9 @@ function ReviewCard({
   });
 
   return (
-    <div className={`rounded-xl border p-5 ${cardBg}`}>
-      {/* Cabecera */}
+    <div className={`rounded-xl border p-5 ${s.cardBg}`}>
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
-          {/* Avatar inicial */}
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 flex items-center justify-center flex-shrink-0">
             <span className="text-white font-bold text-sm">
               {review.authorName.charAt(0).toUpperCase()}
@@ -142,7 +208,7 @@ function ReviewCard({
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`font-semibold text-sm ${textPrimary}`}>
+              <span className={`font-semibold text-sm ${s.textPrimary}`}>
                 {review.authorName}
               </span>
               {review.verifiedBooking && (
@@ -155,45 +221,38 @@ function ReviewCard({
                 </Badge>
               )}
             </div>
-            <span className={`text-xs ${textSecondary}`}>{date}</span>
+            <span className={`text-xs ${s.textSecondary}`}>{date}</span>
           </div>
         </div>
         <StarRating value={review.rating} size="sm" readonly />
       </div>
 
-      {/* Título */}
       {review.title && (
-        <p className={`font-semibold text-sm mb-1.5 ${textPrimary}`}>
+        <p className={`font-semibold text-sm mb-1.5 ${s.textPrimary}`}>
           {review.title}
         </p>
       )}
 
-      {/* Cuerpo */}
-      <p className={`text-sm leading-relaxed ${textSecondary}`}>{displayBody}</p>
+      <p className={`text-sm leading-relaxed ${s.textSecondary}`}>{displayBody}</p>
       {isLong && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 text-xs text-teal-400 mt-1.5 hover:text-teal-300 transition-colors"
+          className="flex items-center gap-1 text-xs text-teal-500 dark:text-teal-400 mt-1.5 hover:text-teal-600 dark:hover:text-teal-300 transition-colors"
         >
           {expanded ? (
-            <>
-              <ChevronUp className="w-3 h-3" /> Ver menos
-            </>
+            <><ChevronUp className="w-3 h-3" /> Ver menos</>
           ) : (
-            <>
-              <ChevronDown className="w-3 h-3" /> Leer más
-            </>
+            <><ChevronDown className="w-3 h-3" /> Leer más</>
           )}
         </button>
       )}
 
-      {/* Respuesta del equipo */}
       {review.adminReply && (
-        <div className={`mt-3 rounded-lg border p-3 ${replyBg}`}>
-          <p className="text-xs font-semibold text-teal-400 mb-1">
+        <div className={`mt-3 rounded-lg border p-3 ${s.replyBg}`}>
+          <p className="text-xs font-semibold text-teal-500 dark:text-teal-400 mb-1">
             Respuesta del equipo Náyade
           </p>
-          <p className={`text-xs leading-relaxed ${textSecondary}`}>
+          <p className={`text-xs leading-relaxed ${s.textSecondary}`}>
             {review.adminReply}
           </p>
         </div>
@@ -207,12 +266,12 @@ function ReviewCard({
 function ReviewForm({
   entityType,
   entityId,
-  theme,
+  s,
   onSuccess,
 }: {
   entityType: EntityType;
   entityId: number;
-  theme: "dark" | "light";
+  s: ReturnType<typeof styles>;
   onSuccess: () => void;
 }) {
   const [rating, setRating] = useState(0);
@@ -253,34 +312,25 @@ function ReviewForm({
     });
   };
 
-  const inputClass =
-    theme === "dark"
-      ? "bg-white/5 border-white/15 text-white placeholder:text-white/30 focus:border-teal-500"
-      : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-teal-500";
-  const labelClass =
-    theme === "dark" ? "text-white/70 text-sm" : "text-gray-600 text-sm";
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Valoración con estrellas */}
       <div>
-        <Label className={labelClass}>Tu valoración *</Label>
+        <Label className={s.labelCls}>Tu valoración *</Label>
         <div className="mt-2">
           <StarRating value={rating} onChange={setRating} size="lg" />
           {rating > 0 && (
-            <span className={`text-xs mt-1 block ${theme === "dark" ? "text-white/50" : "text-gray-400"}`}>
+            <span className={`text-xs mt-1 block ${s.textSecondary}`}>
               {["", "Muy malo", "Malo", "Regular", "Bueno", "Excelente"][rating]}
             </span>
           )}
         </div>
       </div>
 
-      {/* Nombre y email */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <Label className={labelClass}>Nombre *</Label>
+          <Label className={s.labelCls}>Nombre *</Label>
           <Input
-            className={`mt-1 ${inputClass}`}
+            className={`mt-1 ${s.inputCls}`}
             placeholder="Tu nombre"
             value={form.authorName}
             onChange={(e) => setForm({ ...form, authorName: e.target.value })}
@@ -289,10 +339,10 @@ function ReviewForm({
           />
         </div>
         <div>
-          <Label className={labelClass}>Email (opcional)</Label>
+          <Label className={s.labelCls}>Email (opcional)</Label>
           <Input
             type="email"
-            className={`mt-1 ${inputClass}`}
+            className={`mt-1 ${s.inputCls}`}
             placeholder="tu@email.com"
             value={form.authorEmail}
             onChange={(e) => setForm({ ...form, authorEmail: e.target.value })}
@@ -300,12 +350,11 @@ function ReviewForm({
         </div>
       </div>
 
-      {/* Título y fecha */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <Label className={labelClass}>Título de la reseña</Label>
+          <Label className={s.labelCls}>Título de la reseña</Label>
           <Input
-            className={`mt-1 ${inputClass}`}
+            className={`mt-1 ${s.inputCls}`}
             placeholder="Resumen en una frase"
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -313,21 +362,20 @@ function ReviewForm({
           />
         </div>
         <div>
-          <Label className={labelClass}>Fecha de la visita</Label>
+          <Label className={s.labelCls}>Fecha de la visita</Label>
           <Input
             type="date"
-            className={`mt-1 ${inputClass}`}
+            className={`mt-1 ${s.inputCls}`}
             value={form.stayDate}
             onChange={(e) => setForm({ ...form, stayDate: e.target.value })}
           />
         </div>
       </div>
 
-      {/* Cuerpo de la reseña */}
       <div>
-        <Label className={labelClass}>Tu opinión *</Label>
+        <Label className={s.labelCls}>Tu opinión *</Label>
         <Textarea
-          className={`mt-1 min-h-[100px] resize-none ${inputClass}`}
+          className={`mt-1 min-h-[100px] resize-none ${s.inputCls}`}
           placeholder="Cuéntanos tu experiencia con detalle (mínimo 10 caracteres)..."
           value={form.body}
           onChange={(e) => setForm({ ...form, body: e.target.value })}
@@ -335,9 +383,7 @@ function ReviewForm({
           minLength={10}
           maxLength={2000}
         />
-        <p className={`text-xs mt-1 ${theme === "dark" ? "text-white/30" : "text-gray-400"}`}>
-          {form.body.length}/2000 caracteres
-        </p>
+        <p className={`text-xs mt-1 ${s.charCount}`}>{form.body.length}/2000 caracteres</p>
       </div>
 
       <Button
@@ -347,7 +393,7 @@ function ReviewForm({
       >
         {submitMutation.isPending ? "Enviando…" : "Enviar opinión"}
       </Button>
-      <p className={`text-xs text-center ${theme === "dark" ? "text-white/30" : "text-gray-400"}`}>
+      <p className={`text-xs text-center ${s.charCount}`}>
         Tu reseña será publicada tras revisión del equipo (24-48h).
       </p>
     </form>
@@ -359,7 +405,7 @@ function ReviewForm({
 export function ReviewSection({
   entityType,
   entityId,
-  theme = "dark",
+  theme = "auto",
 }: ReviewSectionProps) {
   const [showForm, setShowForm] = useState(false);
   const [page, setPage] = useState(0);
@@ -372,30 +418,21 @@ export function ReviewSection({
     offset: page * LIMIT,
   });
 
-  const reviews = data?.reviews ?? [];
+  const reviewList = data?.reviews ?? [];
   const stats = data?.stats;
   const total = data?.total ?? 0;
   const hasMore = (page + 1) * LIMIT < total;
 
-  const sectionBg = theme === "dark" ? "border-white/10" : "border-gray-200";
-  const headingClass = theme === "dark" ? "text-white" : "text-gray-900";
-  const subClass = theme === "dark" ? "text-white/60" : "text-gray-500";
-  const dividerClass = theme === "dark" ? "border-white/10" : "border-gray-200";
-  const formBg =
-    theme === "dark"
-      ? "bg-white/5 border-white/10 rounded-xl p-5"
-      : "bg-gray-50 border-gray-200 rounded-xl p-5 border";
+  const s = styles(theme);
 
   return (
-    <section className={`border-t pt-10 mt-10 ${sectionBg}`}>
+    <section className={`border-t pt-10 mt-10 ${s.sectionBorder}`}>
       {/* Encabezado */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h2 className={`text-2xl font-bold ${headingClass}`}>
-            Opiniones de clientes
-          </h2>
+          <h2 className={`text-2xl font-bold ${s.heading}`}>Opiniones de clientes</h2>
           {stats && stats.totalReviews > 0 && (
-            <p className={`text-sm mt-1 ${subClass}`}>
+            <p className={`text-sm mt-1 ${s.sub}`}>
               {stats.totalReviews} {stats.totalReviews === 1 ? "valoración" : "valoraciones"} verificadas
             </p>
           )}
@@ -406,7 +443,7 @@ export function ReviewSection({
           className={`gap-2 ${
             theme === "dark"
               ? "border-teal-500/50 text-teal-400 hover:bg-teal-900/30 hover:border-teal-400"
-              : "border-teal-600 text-teal-600 hover:bg-teal-50"
+              : "border-teal-600 text-teal-600 hover:bg-teal-50 dark:border-teal-500/50 dark:text-teal-400 dark:hover:bg-teal-900/30"
           }`}
         >
           <MessageSquare className="w-4 h-4" />
@@ -416,27 +453,17 @@ export function ReviewSection({
 
       {/* Resumen estadístico */}
       {stats && stats.totalReviews > 0 && (
-        <div className={`flex flex-col sm:flex-row gap-6 mb-8 pb-8 border-b ${dividerClass}`}>
-          {/* Puntuación media grande */}
+        <div className={`flex flex-col sm:flex-row gap-6 mb-8 pb-8 border-b ${s.divider}`}>
           <div className="flex flex-col items-center justify-center sm:w-36 flex-shrink-0">
-            <span className={`text-6xl font-black ${headingClass}`}>
+            <span className={`text-6xl font-black ${s.heading}`}>
               {stats.averageRating.toFixed(1)}
             </span>
             <StarRating value={Math.round(stats.averageRating)} size="md" readonly />
-            <span className={`text-xs mt-1 ${subClass}`}>
-              de 5 estrellas
-            </span>
+            <span className={`text-xs mt-1 ${s.sub}`}>de 5 estrellas</span>
           </div>
-          {/* Barras de distribución */}
           <div className="flex-1 space-y-2">
             {stats.distribution.map((d) => (
-              <RatingBar
-                key={d.stars}
-                stars={d.stars}
-                count={d.count}
-                percentage={d.percentage}
-                theme={theme}
-              />
+              <RatingBar key={d.stars} stars={d.stars} count={d.count} percentage={d.percentage} s={s} />
             ))}
           </div>
         </div>
@@ -444,62 +471,50 @@ export function ReviewSection({
 
       {/* Formulario de nueva reseña */}
       {showForm && (
-        <div className={`mb-8 ${formBg}`}>
-          <h3 className={`text-lg font-semibold mb-4 ${headingClass}`}>
+        <div className={`mb-8 ${s.formBg}`}>
+          <h3 className={`text-lg font-semibold mb-4 ${s.formHeading}`}>
             Comparte tu experiencia
           </h3>
           <ReviewForm
             entityType={entityType}
             entityId={entityId}
-            theme={theme}
-            onSuccess={() => {
-              setShowForm(false);
-              refetch();
-            }}
+            s={s}
+            onSuccess={() => { setShowForm(false); refetch(); }}
           />
         </div>
       )}
 
-      {/* Listado de reseñas */}
+      {/* Listado */}
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className={`rounded-xl h-28 animate-pulse ${
-                theme === "dark" ? "bg-white/5" : "bg-gray-100"
-              }`}
-            />
+            <div key={i} className={`rounded-xl h-28 animate-pulse ${s.skeletonBg}`} />
           ))}
         </div>
-      ) : reviews.length === 0 ? (
-        <div className={`text-center py-12 ${subClass}`}>
+      ) : reviewList.length === 0 ? (
+        <div className={`text-center py-12 ${s.emptyIcon}`}>
           <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium">Aún no hay opiniones</p>
-          <p className="text-sm mt-1">
-            Sé el primero en compartir tu experiencia
-          </p>
+          <p className="text-sm mt-1">Sé el primero en compartir tu experiencia</p>
         </div>
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {reviews.map((review) => (
-              <ReviewCard key={review.id} review={review} theme={theme} />
+            {reviewList.map((review) => (
+              <ReviewCard key={review.id} review={review} s={s} />
             ))}
           </div>
-
-          {/* Paginación */}
           <div className="flex items-center justify-between mt-6">
             <Button
               variant="ghost"
               size="sm"
               disabled={page === 0}
               onClick={() => setPage(page - 1)}
-              className={theme === "dark" ? "text-white/60 hover:text-white" : "text-gray-500"}
+              className={s.paginationBtn}
             >
               ← Anteriores
             </Button>
-            <span className={`text-xs ${subClass}`}>
+            <span className={`text-xs ${s.sub}`}>
               {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} de {total}
             </span>
             <Button
@@ -507,7 +522,7 @@ export function ReviewSection({
               size="sm"
               disabled={!hasMore}
               onClick={() => setPage(page + 1)}
-              className={theme === "dark" ? "text-white/60 hover:text-white" : "text-gray-500"}
+              className={s.paginationBtn}
             >
               Siguientes →
             </Button>
