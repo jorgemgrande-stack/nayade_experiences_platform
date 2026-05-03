@@ -5,7 +5,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { MapView } from "@/components/Map";
 
 // Coordenadas exactas de Náyade Experiences / Skicenter Los Ángeles de San Rafael
-const NAYADE_LOCATION = { lat: 40.8189, lng: -4.0047 };
+const NAYADE_LOCATION = { lat: 40.786805332143686, lng: -4.245348599918632 };
 
 export default function Locations() {
   const { phone, phoneTel } = usePublicPhone();
@@ -62,7 +62,7 @@ export default function Locations() {
           <div className="rounded-2xl overflow-hidden border border-border/50 shadow-lg">
             <MapView
               initialCenter={NAYADE_LOCATION}
-              initialZoom={14}
+              initialZoom={16}
               onMapReady={handleMapReady}
               className="h-[480px]"
             />
@@ -70,7 +70,7 @@ export default function Locations() {
           {/* Botón Google Maps */}
           <div className="mt-4 flex justify-center">
             <a
-              href="https://maps.google.com/?q=Skicenter+Los+Angeles+San+Rafael+Segovia"
+              href="https://www.google.com/maps?q=40.786805332143686,-4.245348599918632"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-display font-semibold px-6 py-2.5 rounded-full transition-colors shadow-md shadow-accent/20"
@@ -78,6 +78,28 @@ export default function Locations() {
               <Navigation className="w-4 h-4" />
               Abrir en Google Maps
             </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Mapa esquemático de rutas */}
+      <section className="py-12 bg-[#0a1628] border-t border-white/5">
+        <div className="container">
+          <div className="mb-6 text-center">
+            <h2 className="text-2xl font-heading font-bold text-white mb-2">
+              Rutas de Acceso
+            </h2>
+            <p className="text-white/60 font-display text-sm max-w-xl mx-auto">
+              Desde Madrid por la A-6 salida AP-61 dirección Los Ángeles de San Rafael. Desde Segovia por la N-603.
+            </p>
+          </div>
+          <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+            <img
+              src="https://www.nayadeexperiences.es/local-storage/nayade/uploads/1777833809837-j285hn.png"
+              alt="Mapa de rutas de acceso a Náyade Experiences — Los Ángeles de San Rafael, Segovia"
+              className="w-full h-auto object-contain"
+              loading="lazy"
+            />
           </div>
         </div>
       </section>
