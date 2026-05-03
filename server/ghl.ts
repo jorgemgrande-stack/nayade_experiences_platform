@@ -197,28 +197,47 @@ export async function updateGHLContact(
   }
 
   try {
-    const body: Record<string, unknown> = {};
-    if (fields.customFields?.length) body.customFields = fields.customFields;
-    if (fields.tags?.length) body.tags = fields.tags;
-
-    const response = await fetch(`${GHL_API_URL}/contacts/${contactId}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-        "Version": GHL_API_VERSION,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      ghlLog("warn", "update_contact", "Error HTTP al actualizar contacto en GHL", {
-        contactId, httpStatus: response.status, errorBody: errorText,
+    // 1. Custom fields (sin tags) — puede fallar con 422 si el campo no existe en GHL
+    if (fields.customFields?.length) {
+      const cfResponse = await fetch(`${GHL_API_URL}/contacts/${contactId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "Version": GHL_API_VERSION,
+        },
+        body: JSON.stringify({ customFields: fields.customFields }),
       });
-      // Si el campo no existe en GHL devuelve 422 — no es fatal
-      return false;
+      if (!cfResponse.ok) {
+        const errorText = await cfResponse.text();
+        ghlLog("warn", "update_contact_cf", "Error HTTP al actualizar customFields en GHL (422 si campo no existe)", {
+          contactId, httpStatus: cfResponse.status, errorBody: errorText,
+        });
+        // No retornar — continuar con tags y notas igualmente
+      }
+    }
+
+    // 2. Tags — llamada separada para que no dependa del éxito de customFields
+    if (fields.tags?.length) {
+      const tagsResponse = await fetch(`${GHL_API_URL}/contacts/${contactId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "Version": GHL_API_VERSION,
+        },
+        body: JSON.stringify({ tags: fields.tags }),
+      });
+      if (!tagsResponse.ok) {
+        const errorText = await tagsResponse.text();
+        ghlLog("warn", "update_contact_tags", "Error HTTP al actualizar tags en GHL", {
+          contactId, httpStatus: tagsResponse.status, errorBody: errorText,
+        });
+      } else {
+        ghlLog("info", "update_contact_tags", "Tags GHL actualizados correctamente", { contactId });
+      }
     }
 
     if (fields.notes) await addGHLNote(contactId, fields.notes, apiKey);
