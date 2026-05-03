@@ -36,11 +36,11 @@ export default function TerminosCondiciones() {
                 Comercio Electrónico (LSSI-CE), se informa que el presente sitio web es titularidad de:
               </p>
               <InfoTable rows={[
-                ["Denominación social", "NAYADE EXPERIENCES S.L."],
-                ["NIF", "B-XXXXXXXX"],
-                ["Domicilio", "Complejo Los Ángeles de San Rafael, 40420 Segovia – España"],
-                ["Teléfono", "+34 930 34 77 91"],
-                ["Email", "reservas@nayadeexperiences.es"],
+                ["Denominación social", "Iron Elephant Consulting S.L."],
+                ["CIF", "B26987875"],
+                ["Domicilio", "C/ Corazón de María 57, 1º D · 28002 Madrid"],
+                ["Teléfono", "+34 911 67 51 89"],
+                ["Email", "administracion@nayadeexperiences.es"],
                 ["Sitio web", "www.nayadeexperiences.es"],
               ]} />
             </LegalSection>
@@ -174,8 +174,8 @@ export default function TerminosCondiciones() {
                 Para cualquier consulta relacionada con las presentes condiciones, puede contactar con nosotros en:
               </p>
               <InfoTable rows={[
-                ["Email", "reservas@nayadeexperiences.es"],
-                ["Teléfono", "+34 930 34 77 91"],
+                ["Email", "administracion@nayadeexperiences.es"],
+                ["Teléfono", "+34 911 67 51 89"],
                 ["Horario de atención", "Lun–Dom · 10:00–20:00 (Temporada Abril–Octubre)"],
               ]} />
             </LegalSection>

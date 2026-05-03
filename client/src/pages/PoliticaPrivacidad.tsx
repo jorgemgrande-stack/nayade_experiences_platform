@@ -37,10 +37,11 @@ export default function PoliticaPrivacidad() {
                 <strong> www.nayadeexperiences.es</strong> serán tratados por:
               </p>
               <InfoTable rows={[
-                ["Responsable", "NAYADE EXPERIENCES S.L."],
-                ["NIF", "B-XXXXXXXX"],
-                ["Domicilio social", "Complejo Los Ángeles de San Rafael, 40420 Segovia – España"],
-                ["Email de contacto", "reservas@nayadeexperiences.es"],
+                ["Responsable", "Iron Elephant Consulting S.L."],
+                ["CIF", "B26987875"],
+                ["Domicilio social", "C/ Corazón de María 57, 1º D · 28002 Madrid"],
+                ["Email de contacto", "administracion@nayadeexperiences.es"],
+                ["Teléfono", "+34 911 67 51 89"],
               ]} />
             </LegalSection>
 
@@ -99,8 +100,8 @@ export default function PoliticaPrivacidad() {
               </ul>
               <p>
                 Para ello deberá enviar una solicitud a{" "}
-                <a href="mailto:reservas@nayadeexperiences.es" className="text-accent hover:underline">
-                  reservas@nayadeexperiences.es
+                <a href="mailto:administracion@nayadeexperiences.es" className="text-accent hover:underline">
+                  administracion@nayadeexperiences.es
                 </a>{" "}
                 o a la dirección postal indicada en el apartado 1, acompañada de un documento que acredite su identidad.
                 Asimismo, tiene derecho a presentar una reclamación ante la Agencia Española de Protección de Datos
