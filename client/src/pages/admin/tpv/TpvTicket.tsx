@@ -119,9 +119,9 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-sm">
+      <DialogContent className="bg-gray-900 border-gray-700 max-w-sm">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between text-white">
+          <DialogTitle className="flex items-center justify-between text-white" style={{ color: 'white' }}>
             <span className="flex items-center gap-2">
               <ShoppingCart className="w-5 h-5 text-green-400" />
               Venta completada
@@ -130,7 +130,7 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
         </DialogHeader>
 
         {/* Ticket preview */}
-        <div className="bg-white rounded-lg p-4 text-black font-mono text-xs overflow-auto max-h-80">
+        <div className="rounded-lg p-4 font-mono text-xs overflow-auto max-h-80" style={{ backgroundColor: '#ffffff', color: '#000000' }}>
           <div ref={ticketRef}>
             <div className="center" style={{ marginBottom: "6px" }}>
               <img
@@ -142,9 +142,9 @@ export default function TpvTicket({ open, sale, onClose }: Props) {
             <div className="center bold text-sm">NÁYADE EXPERIENCES</div>
             <div className="center text-xs">Los Ángeles de San Rafael · Segovia</div>
             <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-            <div className="center" style={{ fontSize: "9px", color: "#555" }}>NEXTAIR, S.L. · CIF: B16408031</div>
-            <div className="center" style={{ fontSize: "9px", color: "#555" }}>C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D</div>
-            <div className="center" style={{ fontSize: "9px", color: "#555" }}>EDIFICIO FORUM · 18006 GRANADA</div>
+            <div className="center" style={{ fontSize: "9px", color: "#555" }}>Iron Elephant Consulting S.L. · CIF: B26987875</div>
+            <div className="center" style={{ fontSize: "9px", color: "#555" }}>C/ Corazón de María 57, 1º D</div>
+            <div className="center" style={{ fontSize: "9px", color: "#555" }}>28002 Madrid</div>
             <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
             <div className="row">
               <span>{dateStr} {timeStr}</span>

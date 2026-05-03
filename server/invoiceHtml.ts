@@ -39,12 +39,12 @@ export async function getLegalCompanySettings(): Promise<{
     .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyCity','legalCompanyZip','legalCompanyProvince','legalCompanyEmail','legalCompanyPhone','legalCompanyIban')`);
   const s: Record<string, string> = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
   return {
-    name:     s.legalCompanyName     || "NEXTAIR, S.L.",
-    cif:      s.legalCompanyCif      || "B16408031",
-    address:  s.legalCompanyAddress  || "C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM",
-    city:     s.legalCompanyCity     || "GRANADA",
-    zip:      s.legalCompanyZip      || "18006",
-    province: s.legalCompanyProvince || "Granada",
+    name:     s.legalCompanyName     || "Iron Elephant Consulting S.L.",
+    cif:      s.legalCompanyCif      || "B26987875",
+    address:  s.legalCompanyAddress  || "C/ Corazón de María 57, 1º D",
+    city:     s.legalCompanyCity     || "Madrid",
+    zip:      s.legalCompanyZip      || "28002",
+    province: s.legalCompanyProvince || "Madrid",
     email:    s.legalCompanyEmail    || "",
     phone:    s.legalCompanyPhone    || "",
     iban:     s.legalCompanyIban     || "",
