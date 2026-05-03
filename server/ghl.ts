@@ -264,7 +264,6 @@ async function addGHLNote(contactId: string, body: string, apiKey: string): Prom
 
 /**
  * Actualiza el contacto GHL de un lead con la URL del presupuesto y/o factura.
- * Si hay quoteUrl también dispara el webhook de presupuesto_generado.
  * Fire-and-forget — no lanza excepciones.
  */
 export function syncLeadUrlsToGHL(params: {
@@ -280,7 +279,7 @@ export function syncLeadUrlsToGHL(params: {
   if (!params.ghlContactId) return;
 
   const customFields: Array<{ key: string; field_value: string }> = [];
-  if (params.quoteUrl) customFields.push({ key: "nayade_quote_url", field_value: params.quoteUrl });
+  if (params.quoteUrl) customFields.push({ key: "presupuesto_url", field_value: params.quoteUrl });
   if (params.invoiceUrl) customFields.push({ key: "nayade_invoice_url", field_value: params.invoiceUrl });
 
   if (!customFields.length) return;
@@ -305,53 +304,7 @@ export function syncLeadUrlsToGHL(params: {
       });
     }
 
-    if (params.quoteUrl) {
-      await fireGHLQuoteWebhook(params.ghlContactId!, params.quoteUrl, params.email, params.phone);
-    }
   })();
-}
-
-/**
- * Dispara el webhook de GHL para notificar que se ha generado un presupuesto.
- * La URL del endpoint se configura con GHL_QUOTE_WEBHOOK_URL.
- */
-async function fireGHLQuoteWebhook(
-  ghlContactId: string,
-  presupuestoUrl: string,
-  email?: string | null,
-  phone?: string | null,
-): Promise<void> {
-  const webhookUrl = process.env.GHL_QUOTE_WEBHOOK_URL;
-  if (!webhookUrl) return;
-
-  try {
-    const body: Record<string, string> = {
-      event: "presupuesto_generado",
-      ghlContactId,
-      presupuesto_url: presupuestoUrl,
-    };
-    if (email) body.email = email;
-    if (phone) body.phone = phone;
-
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      ghlLog("warn", "quote_webhook", "Error HTTP al disparar webhook de presupuesto", {
-        contactId: ghlContactId, httpStatus: response.status, errorBody: errorText,
-      });
-    } else {
-      ghlLog("info", "quote_webhook", "Webhook presupuesto_generado enviado", { contactId: ghlContactId });
-    }
-  } catch (err: any) {
-    ghlLog("error", "quote_webhook", "Excepción al disparar webhook de presupuesto", {
-      contactId: ghlContactId, stack: err?.stack,
-    });
-  }
 }
 
 /**
