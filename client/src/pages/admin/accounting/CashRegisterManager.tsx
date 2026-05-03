@@ -477,7 +477,7 @@ export default function CashRegisterManager() {
                     const acc = accounts.find(a => a.id === mv.accountId);
                     const income = isIncome(mv.type);
                     return (
-                      <tr key={mv.id} className="border-b last:border-0 hover:bg-gray-50">
+                      <tr key={mv.id} className="border-b last:border-0 hover:bg-black/5 dark:hover:bg-white/5">
                         <td className="py-3 px-4 text-gray-600 whitespace-nowrap">{mv.date}</td>
                         <td className="py-3 px-4 text-gray-700">{acc?.name ?? "–"}</td>
                         <td className="py-3 px-4">
@@ -609,7 +609,7 @@ export default function CashRegisterManager() {
                     const isFromTpv = cl.sourceEntityType === "tpv_session";
                     const isActionable = ["difference", "reviewed"].includes(cl.status);
                     return (
-                      <tr key={cl.id} className={`border-b last:border-0 hover:bg-gray-50 ${cl.status === "difference" ? "bg-red-50/40" : ""}`}>
+                      <tr key={cl.id} className={`border-b last:border-0 hover:bg-black/5 dark:hover:bg-white/5 ${cl.status === "difference" ? "bg-red-50/40 dark:bg-red-900/10" : ""}`}>
                         <td className="py-3 px-4 text-gray-600 whitespace-nowrap">{cl.date}</td>
                         <td className="py-3 px-4 text-gray-700">{acc?.name ?? "–"}</td>
                         <td className="py-3 px-4">
