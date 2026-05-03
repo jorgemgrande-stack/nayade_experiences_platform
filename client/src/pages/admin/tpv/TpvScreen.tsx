@@ -30,6 +30,14 @@ import TpvTicket from "./TpvTicket";
 
 type ProductType = "experience" | "pack" | "spa" | "hotel" | "restaurant" | "extra" | "legoPack";
 
+interface ProductVariant {
+  id: number;
+  name: string;
+  priceModifier: string | null;
+  priceType: "fixed" | "percentage" | "per_person";
+  sortOrder: number;
+}
+
 interface CatalogProduct {
   id: number;
   title: string;
@@ -39,6 +47,7 @@ interface CatalogProduct {
   productType: ProductType;
   categoryId?: number | null;
   hasTimeSlots?: boolean | null;
+  variants?: ProductVariant[];
 }
 
 interface CartItem {
@@ -55,6 +64,8 @@ interface CartItem {
   selectedTimeSlotLabel?: string;
   selectedTime?: string;
   isManual?: boolean;
+  variantId?: number;
+  variantName?: string;
 }
 
 type PaymentMethod = "cash" | "card" | "bizum" | "other";
@@ -128,8 +139,12 @@ export default function TpvScreen() {
   const [showDiscountForm, setShowDiscountForm] = useState(false);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [serviceDate, setServiceDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  // Modal de time slots: se abre cuando se añade un producto con hasTimeSlots
+  // Modal de variantes y time slots
   const [pendingProduct, setPendingProduct] = useState<CatalogProduct | null>(null);
+  const [showVariantsModal, setShowVariantsModal] = useState(false);
+  const [pendingVariantId, setPendingVariantId] = useState<number | undefined>(undefined);
+  const [pendingVariantName, setPendingVariantName] = useState<string | undefined>(undefined);
+  const [pendingVariantPrice, setPendingVariantPrice] = useState<number | undefined>(undefined);
   const [showTimeSlotsModal, setShowTimeSlotsModal] = useState(false);
   const [tpvSelectedSlotId, setTpvSelectedSlotId] = useState<number | null>(null);
   const [tpvSelectedTime, setTpvSelectedTime] = useState("");
@@ -204,7 +219,16 @@ export default function TpvScreen() {
 
   // ── Cart helpers ────────────────────────────────────────────────────────────
   const addToCart = useCallback((product: CatalogProduct) => {
-    // Si el producto tiene time slots, abrir modal de selección antes de añadir
+    // Si tiene variantes, abrimos ese modal primero
+    if (product.variants && product.variants.length > 0) {
+      setPendingProduct(product);
+      setPendingVariantId(undefined);
+      setPendingVariantName(undefined);
+      setPendingVariantPrice(undefined);
+      setShowVariantsModal(true);
+      return;
+    }
+    // Si tiene time slots (sin variantes), abrimos el modal de horarios
     if (product.hasTimeSlots) {
       setPendingProduct(product);
       setTpvSelectedSlotId(null);
@@ -212,15 +236,24 @@ export default function TpvScreen() {
       setShowTimeSlotsModal(true);
       return;
     }
-    _addToCartDirect(product, undefined, undefined, undefined);
+    _addToCartDirect(product);
   }, [cart]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const _addToCartDirect = useCallback((product: CatalogProduct, slotId?: number, slotLabel?: string, slotTime?: string) => {
-    const price = parseFloat(String(product.basePrice ?? "0"));
+  const _addToCartDirect = useCallback((
+    product: CatalogProduct,
+    slotId?: number,
+    slotLabel?: string,
+    slotTime?: string,
+    variantId?: number,
+    variantName?: string,
+    variantPrice?: number,
+  ) => {
+    const basePrice = parseFloat(String(product.basePrice ?? "0"));
+    const price = variantPrice !== undefined ? variantPrice : basePrice;
     const discount = parseFloat(String(product.discountPercent ?? "0"));
     const existing = cart.find(
       (i) => i.product.id === product.id && i.product.productType === product.productType
-        && i.selectedTimeSlotId === slotId
+        && i.selectedTimeSlotId === slotId && i.variantId === variantId
     );
     if (existing) {
       setCart((prev) =>
@@ -232,7 +265,7 @@ export default function TpvScreen() {
       setCart((prev) => [
         ...prev,
         {
-          id: `${product.productType}-${product.id}-${Date.now()}`,
+          id: `${product.productType}-${product.id}-${variantId ?? 0}-${Date.now()}`,
           product,
           quantity: 1,
           unitPrice: price,
@@ -241,6 +274,8 @@ export default function TpvScreen() {
           selectedTimeSlotId: slotId,
           selectedTimeSlotLabel: slotLabel,
           selectedTime: slotTime,
+          variantId,
+          variantName,
         },
       ]);
     }
@@ -306,16 +341,20 @@ export default function TpvScreen() {
       items: cart.map((item) => ({
         productType: item.product.productType,
         productId: item.product.id,
-        productName: item.product.title,
+        productName: item.variantName
+          ? `${item.product.title} — ${item.variantName}`
+          : item.product.title,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         discountPercent: item.discountPercent,
         eventDate: item.eventDate,
         eventTime: item.eventTime ?? (item.selectedTimeSlotLabel ? item.selectedTimeSlotLabel : undefined),
         participants: item.participants,
-        notes: item.notes ?? (item.selectedTimeSlotLabel
-          ? `Horario: ${item.selectedTimeSlotLabel}${item.selectedTime ? ` (${item.selectedTime})` : ""}`
-          : undefined),
+        notes: [
+          item.variantName ? `Variante: ${item.variantName}` : null,
+          item.selectedTimeSlotLabel ? `Horario: ${item.selectedTimeSlotLabel}${item.selectedTime ? ` (${item.selectedTime})` : ""}` : null,
+          item.notes ?? null,
+        ].filter(Boolean).join(" · ") || undefined,
         isManual: item.isManual ?? false,
         conceptText: item.isManual ? item.product.title : undefined,
       })),
@@ -517,6 +556,11 @@ export default function TpvScreen() {
                           -{discount.toFixed(0)}%
                         </div>
                       )}
+                      {product.variants && product.variants.length > 0 && (
+                        <div className="absolute top-1 left-1 bg-violet-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                          {product.variants.length} opciones
+                        </div>
+                      )}
                       <div className="absolute bottom-1 left-1">
                         <Badge className={`text-xs bg-black/50 text-white border-0`}>
                           {TYPE_LABELS[product.productType]}
@@ -628,6 +672,12 @@ export default function TpvScreen() {
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-white line-clamp-1">{item.product.title}</p>
                           <p className="text-xs text-gray-400">{item.unitPrice.toFixed(2)}€/ud</p>
+                          {item.variantName && (
+                            <p className="text-xs text-cyan-400 flex items-center gap-0.5 mt-0.5">
+                              <Tag className="w-2.5 h-2.5" />
+                              {item.variantName}
+                            </p>
+                          )}
                           {item.selectedTimeSlotLabel && (
                             <p className="text-xs text-violet-400 flex items-center gap-0.5 mt-0.5">
                               <AlarmClock className="w-2.5 h-2.5" />
@@ -943,22 +993,136 @@ export default function TpvScreen() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal de selección de variante */}
+      {showVariantsModal && pendingProduct && (
+        <TpvVariantsModal
+          product={pendingProduct}
+          onConfirm={(variantId, variantName, variantPrice) => {
+            setShowVariantsModal(false);
+            if (pendingProduct.hasTimeSlots) {
+              // Guardar variante y abrir time slots
+              setPendingVariantId(variantId);
+              setPendingVariantName(variantName);
+              setPendingVariantPrice(variantPrice);
+              setTpvSelectedSlotId(null);
+              setTpvSelectedTime("");
+              setShowTimeSlotsModal(true);
+            } else {
+              _addToCartDirect(pendingProduct, undefined, undefined, undefined, variantId, variantName, variantPrice);
+              setPendingProduct(null);
+            }
+          }}
+          onCancel={() => {
+            setShowVariantsModal(false);
+            setPendingProduct(null);
+          }}
+        />
+      )}
+
       {/* Modal de selección de horario (time slots) para el TPV */}
       {showTimeSlotsModal && pendingProduct && (
         <TpvTimeSlotsModal
           product={pendingProduct}
           onConfirm={(slotId, slotLabel, slotTime) => {
-            _addToCartDirect(pendingProduct, slotId, slotLabel, slotTime);
+            _addToCartDirect(pendingProduct, slotId, slotLabel, slotTime, pendingVariantId, pendingVariantName, pendingVariantPrice);
             setShowTimeSlotsModal(false);
             setPendingProduct(null);
+            setPendingVariantId(undefined);
+            setPendingVariantName(undefined);
+            setPendingVariantPrice(undefined);
           }}
           onCancel={() => {
             setShowTimeSlotsModal(false);
             setPendingProduct(null);
+            setPendingVariantId(undefined);
+            setPendingVariantName(undefined);
+            setPendingVariantPrice(undefined);
           }}
         />
       )}
     </div>
+  );
+}
+
+// ─── Sub-componente: Modal de selección de variante ──────────────────────────
+
+function computeVariantPrice(basePrice: number, variant: ProductVariant): number {
+  const mod = parseFloat(String(variant.priceModifier ?? "0"));
+  if (variant.priceType === "percentage") return basePrice + basePrice * mod / 100;
+  return basePrice + mod; // fixed o per_person
+}
+
+function TpvVariantsModal({
+  product,
+  onConfirm,
+  onCancel,
+}: {
+  product: CatalogProduct;
+  onConfirm: (variantId: number, variantName: string, variantPrice: number) => void;
+  onCancel: () => void;
+}) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const basePrice = parseFloat(String(product.basePrice ?? "0"));
+  const variants = product.variants ?? [];
+
+  const handleConfirm = () => {
+    const variant = variants.find(v => v.id === selected);
+    if (!variant) { toast.error("Selecciona una opción"); return; }
+    onConfirm(variant.id, variant.name, computeVariantPrice(basePrice, variant));
+  };
+
+  return (
+    <Dialog open onOpenChange={onCancel}>
+      <DialogContent className="max-w-sm bg-gray-900 border-gray-700 text-white">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-white">
+            <Layers className="w-5 h-5 text-violet-400" />
+            Seleccionar opción
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-400">{product.title}</p>
+          <div className="grid grid-cols-1 gap-2">
+            {variants.map(variant => {
+              const price = computeVariantPrice(basePrice, variant);
+              return (
+                <button
+                  key={variant.id}
+                  type="button"
+                  onClick={() => setSelected(variant.id)}
+                  className={`px-4 py-3 rounded-xl border text-sm transition-all text-left flex items-center justify-between ${
+                    selected === variant.id
+                      ? "border-violet-500 bg-violet-900/40 text-violet-200 font-semibold"
+                      : "border-gray-700 text-gray-300 hover:border-violet-500/50 hover:bg-gray-800"
+                  }`}
+                >
+                  <span className="font-medium">{variant.name}</span>
+                  <span className={`text-base font-bold ${selected === variant.id ? "text-violet-300" : "text-violet-400"}`}>
+                    {price.toFixed(2)}€
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="outline"
+              className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800"
+              onClick={onCancel}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-violet-700 hover:bg-violet-600 text-white"
+              onClick={handleConfirm}
+              disabled={selected === null}
+            >
+              Añadir al carrito
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

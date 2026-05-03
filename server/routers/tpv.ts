@@ -7,6 +7,7 @@ import { sendEmail } from "../mailer";
 import { getBusinessEmail, getFeatureFlag, getSystemSetting } from "../config";
 import { madridDateKey } from "../utils/timezone";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity } from "../db";
+import { createCashMovementIfNotExists, getDefaultCashAccountId } from "./cashRegisterHelper";
 import { calcularREAVSimple } from "../reav";
 import {
   cashRegisters,
@@ -16,6 +17,7 @@ import {
   tpvSaleItems,
   tpvSalePayments,
   experiences,
+  experienceVariants,
   packs,
   spaTreatments,
   roomTypes,
@@ -518,8 +520,32 @@ export const tpvRouter = router({
       }).from(legoPacks).where(and(eq(legoPacks.isActive, true), eq(legoPacks.isPresentialSale, true))),
     ]);
 
+    // Variantes de experiencias
+    const expIds = exps.map(e => e.id);
+    const allVariants = expIds.length > 0
+      ? await db.select({
+          id: experienceVariants.id,
+          experienceId: experienceVariants.experienceId,
+          name: experienceVariants.name,
+          priceModifier: experienceVariants.priceModifier,
+          priceType: experienceVariants.priceType,
+          sortOrder: experienceVariants.sortOrder,
+        }).from(experienceVariants)
+          .where(inArray(experienceVariants.experienceId, expIds))
+      : [];
+
+    const varsByExp: Record<number, typeof allVariants> = {};
+    for (const v of allVariants) {
+      if (!varsByExp[v.experienceId]) varsByExp[v.experienceId] = [];
+      varsByExp[v.experienceId].push(v);
+    }
+
     return {
-      experiences: exps.map(p => ({ ...p, productType: "experience" as const })),
+      experiences: exps.map(p => ({
+        ...p,
+        productType: "experience" as const,
+        variants: (varsByExp[p.id] ?? []).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+      })),
       packs: pkgs.map(p => ({ ...p, productType: "pack" as const })),
       spa: spas.map(p => ({ ...p, productType: "spa" as const })),
       hotel: rooms.map(p => ({ ...p, productType: "hotel" as const })),
@@ -904,6 +930,27 @@ export const tpvRouter = router({
         });
       } catch (e) {
         console.error("[TPV] Error registrando en operaciones:", e);
+      }
+
+      // ── 8b-bis. Movimiento de caja automático para ventas en efectivo ─────────
+      if (primaryPaymentMethod === "cash" && reservationId) {
+        try {
+          const cashAccountId = await getDefaultCashAccountId();
+          if (cashAccountId) {
+            await createCashMovementIfNotExists({
+              accountId: cashAccountId,
+              date: madridDateKey().slice(0, 10),
+              type: "income",
+              amount: total,
+              concept: `Cobro efectivo ${ticketNumber} — ${input.customerName || "Cliente TPV"}`,
+              relatedEntityType: "reservation",
+              relatedEntityId: reservationId,
+              createdBy: sellerUserId ?? undefined,
+            });
+          }
+        } catch (e) {
+          console.error("[TPV] Error registrando movimiento de caja automático:", e);
+        }
       }
 
       // ── 8c. Generar factura automática ────────────────────────────────────────
