@@ -139,10 +139,20 @@ ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async 
     const formMessage: string | undefined =
       formData.message ?? formData.comments ?? formData.nota ?? undefined;
 
-    const contactId: string = c.id ?? payload.id ?? payload.contactId ?? "";
+    const contactId: string = c.id ?? payload.id ?? payload.contactId ?? payload.contact_id ?? "";
+
+    // Campos personalizados de GHL — llegan como claves de nivel raíz con el nombre de display
+    const experienciaInteres: string | undefined =
+      payload["Experiencia de interés"] ||
+      payload["experiencia_de_inters"] ||
+      c["Experiencia de interés"] ||
+      c["experiencia_de_inters"] ||
+      undefined;
+
     const message = [
       `Lead recibido desde GHL (${effectiveEvent}).`,
       contactId ? `ContactId GHL: ${contactId}` : "",
+      experienciaInteres ? `Experiencia de interés: ${experienciaInteres}` : "",
       formMessage ?? "",
     ].filter(Boolean).join(" ").trim();
 
@@ -165,6 +175,7 @@ ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async 
       company,
       message,
       source: "ghl_webhook",
+      selectedProduct: experienciaInteres || undefined,
     });
 
     if (logId) {
