@@ -25,8 +25,12 @@ import {
   transactions,
   legoPacks,
   finCashAccounts,
+  finCashMovements,
   finCashClosures,
   finCashAlerts,
+  expenses,
+  expenseCategories,
+  costCenters,
   invoices,
 } from "../../drizzle/schema";
 import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
@@ -468,6 +472,58 @@ export const tpvRouter = router({
       });
       const id = (result as any).insertId as number;
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));
+
+      // Retiradas de efectivo → doble apunte contable (fire-and-forget)
+      if (input.type === "out") {
+        (async () => {
+          try {
+            const today = new Date().toISOString().slice(0, 10);
+            const concept = `Retirada de caja TPV — ${input.reason}`;
+
+            // 1. Movimiento en /contabilidad/caja
+            const cashAccountId = await getDefaultCashAccountId();
+            if (cashAccountId) {
+              await db.insert(finCashMovements).values({
+                accountId: cashAccountId,
+                date: today,
+                type: "expense",
+                amount: String(input.amount),
+                concept,
+                relatedEntityType: "manual",
+                notes: `Retirada registrada en TPV sesión #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}`,
+                createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
+              });
+              await db.update(finCashAccounts)
+                .set({ currentBalance: sql`current_balance - ${input.amount}` })
+                .where(eq(finCashAccounts.id, cashAccountId));
+            }
+
+            // 2. Gasto en /contabilidad/gastos (conciliado)
+            const [cat] = await db.select({ id: expenseCategories.id })
+              .from(expenseCategories).limit(1);
+            const [cc] = await db.select({ id: costCenters.id })
+              .from(costCenters).where(eq(costCenters.active, true)).limit(1);
+
+            if (cat && cc) {
+              await db.insert(expenses).values({
+                date: today,
+                concept,
+                amount: String(input.amount),
+                categoryId: cat.id,
+                costCenterId: cc.id,
+                paymentMethod: "cash",
+                status: "conciliado",
+                notes: `Retirada de caja TPV — sesión #${input.sessionId}. Cajero: ${ctx.user.name ?? ctx.user.email}. Motivo: ${input.reason}`,
+                source: "tpv",
+                createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
+              });
+            }
+          } catch (e) {
+            console.error("[TPV] Error registrando retirada en contabilidad:", e);
+          }
+        })();
+      }
+
       return movement;
     }),
 
