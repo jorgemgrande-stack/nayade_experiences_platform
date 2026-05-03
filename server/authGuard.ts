@@ -97,6 +97,9 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "restaurantes.getAll",
   "restaurantes.getBySlug",
 
+  // ── Config pública (teléfono, branding — usada en todas las páginas públicas) ──
+  "config.getPublicSettings",
+
   // ── Presupuestos por token (página pública /presupuesto/:token) ───────────
   "crm.quotes.getByToken",
   "crm.quotes.rejectByToken",
