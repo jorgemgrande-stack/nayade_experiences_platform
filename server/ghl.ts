@@ -49,10 +49,7 @@ export interface GHLContactPayload {
   email?: string;
   phone?: string;
   companyName?: string;
-  source?: string;
   tags?: string[];
-  /** Identifica el sistema de origen para evitar bucles en automatizaciones GHL */
-  origen?: string;
   /** Mensaje / notas del lead — se guarda como nota en el contacto */
   notes?: string;
 }
@@ -105,19 +102,19 @@ export async function createGHLContact(
   }
 
   try {
+    // GHL POST /contacts/ — solo campos estándar.
+    // NO incluir customFields en el POST: si la key no existe en la location GHL
+    // devuelve 400/422 y el contacto NO se crea (ni tags ni nada).
     const body: Record<string, unknown> = {
       locationId,
       name: payload.name,
-      source: payload.source ?? "Nayade Web",
+      source: "Nayade Web",
     };
 
     if (payload.email) body.email = payload.email;
     if (payload.phone) body.phone = payload.phone;
     if (payload.companyName) body.companyName = payload.companyName;
     if (payload.tags && payload.tags.length > 0) body.tags = payload.tags;
-    if (payload.origen) {
-      body.customFields = [{ key: "origen", field_value: payload.origen }];
-    }
 
     const response = await fetch(`${GHL_API_URL}/contacts/`, {
       method: "POST",
@@ -296,18 +293,21 @@ export function syncLeadUrlsToGHL(params: {
   credentials?: { apiKey: string; locationId: string };
 }): void {
   if (!params.ghlContactId) return;
+  if (!params.quoteUrl && !params.invoiceUrl) return;
 
+  // customFields: el campo debe existir en GHL para que el PUT tenga efecto.
+  // Si no existe devuelve 422 (se loguea como warn) pero tags y notas siguen.
   const customFields: Array<{ key: string; field_value: string }> = [];
-  if (params.quoteUrl) customFields.push({ key: "presupuesto_url", field_value: params.quoteUrl });
+  if (params.quoteUrl)   customFields.push({ key: "presupuesto_url",    field_value: params.quoteUrl });
   if (params.invoiceUrl) customFields.push({ key: "nayade_invoice_url", field_value: params.invoiceUrl });
 
-  if (!customFields.length) return;
-
   const noteParts: string[] = [];
-  if (params.quoteUrl && params.quoteNumber) noteParts.push(`Presupuesto ${params.quoteNumber}: ${params.quoteUrl}`);
+  if (params.quoteUrl   && params.quoteNumber)   noteParts.push(`Presupuesto ${params.quoteNumber}: ${params.quoteUrl}`);
   if (params.invoiceUrl && params.invoiceNumber) noteParts.push(`Factura ${params.invoiceNumber}: ${params.invoiceUrl}`);
-
   const notes = noteParts.length ? noteParts.join("\n") : undefined;
+
+  // Tag presupuesto_listo: se envía siempre que haya quoteUrl, independientemente
+  // de si el custom field presupuesto_url existe o no en GHL.
   const tags = params.quoteUrl ? ["presupuesto_listo"] : undefined;
 
   (async () => {
@@ -322,7 +322,6 @@ export function syncLeadUrlsToGHL(params: {
         contactId: params.ghlContactId!, stack: err?.stack,
       });
     }
-
   })();
 }
 

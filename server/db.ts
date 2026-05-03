@@ -287,7 +287,6 @@ export async function createLead(data: {
   const ghlSource = data.source ?? "web";
   // Excluir orígenes que ya sincronizan con GHL por su cuenta para evitar duplicados
   if (ghlSource === "ghl_webhook" || ghlSource === "vapi_llamada") return leadId;
-  const ghlOrigen = "nayade_web";
   (async () => {
     const db = await getDb();
     let ghlApiKey = process.env.GHL_API_KEY;
@@ -309,9 +308,7 @@ export async function createLead(data: {
           email: data.email,
           phone: data.phone,
           companyName: data.company,
-          source: ghlSource,
           tags: getGHLTagsFromSource(ghlSource),
-          origen: ghlOrigen,
           notes: data.message
             ? `[Lead #${leadId}] ${data.message}`
             : `[Lead #${leadId}] Origen: ${ghlSource}`,
