@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 
 const EMAIL_TEMPLATES = [
-  { id: "budget-user",       label: "Solicitud de presupuesto (al cliente)" },
-  { id: "budget-admin",      label: "Solicitud de presupuesto (al admin)" },
+  { id: "budget-user",         label: "Solicitud de presupuesto (al cliente)" },
+  { id: "budget-admin",        label: "Solicitud de presupuesto (al admin)" },
   { id: "reservation-confirm", label: "Reserva confirmada (pago Redsys OK)" },
   { id: "reservation-failed",  label: "Pago fallido (Redsys KO)" },
   { id: "restaurant-confirm",  label: "Reserva de restaurante confirmada" },
@@ -26,7 +26,21 @@ const EMAIL_TEMPLATES = [
   { id: "transfer-confirm",    label: "Pago por transferencia validado" },
 ];
 
-function GHLSection() {
+// ─── Sidebar tab definitions ──────────────────────────────────────────────────
+const TABS = [
+  { id: "business",      label: "Negocio",         icon: Globe },
+  { id: "schedule",      label: "Horarios",         icon: Clock },
+  { id: "payments",      label: "Pagos",            icon: CreditCard },
+  { id: "legalCompany",  label: "Empresa legal",    icon: Building2 },
+  { id: "notifications", label: "Notificaciones",   icon: Mail },
+  { id: "ghl",           label: "GoHighLevel",      icon: Wifi },
+  { id: "emailPreview",  label: "Preview email",    icon: Send },
+] as const;
+
+type Tab = typeof TABS[number]["id"];
+
+// ─── GHL Section ──────────────────────────────────────────────────────────────
+function GHLSection({ plain = false }: { plain?: boolean }) {
   const { data: status, refetch: refetchStatus } = trpc.cms.getGHLStatus.useQuery();
   const saveMutation = trpc.cms.updateSiteSettings.useMutation({
     onSuccess: () => { toast.success("Credenciales GHL guardadas"); refetchStatus(); },
@@ -62,6 +76,84 @@ function GHLSection() {
     testMutation.mutate({ apiKey: key, locationId: loc });
   }
 
+  const inner = (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <div className={`flex items-center gap-1.5 text-xs font-display font-medium px-2.5 py-1 rounded-full ${isConfigured ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+          {isConfigured ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+          {isConfigured ? "Conectado" : "Sin configurar"}
+        </div>
+        {fromEnv && <span className="text-xs text-amber-500 font-display font-medium">· Variables de entorno activas (tienen prioridad)</span>}
+      </div>
+
+      {isConfigured && (
+        <div className="flex items-center gap-2 p-3 bg-emerald-500/8 border border-emerald-500/20 rounded-xl text-xs font-display text-emerald-700 dark:text-emerald-400">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>
+            API Key: <strong>{status?.apiKeyMasked}</strong>
+            {status?.locationId && <> · Location ID: <strong>{status.locationId}</strong></>}
+          </span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label className="text-sm font-display font-medium text-foreground/80">
+            API Key {isConfigured && <span className="text-xs text-muted-foreground">(dejar vacío para no cambiar)</span>}
+          </Label>
+          <div className="relative">
+            <Input
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder={isConfigured ? "••••••••" : "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."}
+              className="pr-10 font-mono text-xs"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-display font-medium text-foreground/80">Location ID</Label>
+          <Input
+            value={locationId}
+            onChange={e => setLocationId(e.target.value)}
+            placeholder={status?.locationId || "xxxxxxxxxxxxxxxxxxxxxxxx"}
+            className="font-mono text-xs"
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        <Button
+          onClick={handleSave}
+          disabled={saveMutation.isPending || (!apiKey && !locationId)}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-display"
+          size="sm"
+        >
+          {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+          Guardar credenciales
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleTest} disabled={testMutation.isPending} className="font-display">
+          {testMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wifi className="w-4 h-4 mr-2" />}
+          Probar conexión
+        </Button>
+      </div>
+
+      <div className="text-xs text-muted-foreground font-display space-y-1 pt-1 border-t border-border/40">
+        <p>Los leads del formulario web y presupuestos se sincronizan automáticamente como contactos en GHL con sus tags y notas.</p>
+        <p>Tags disponibles: <code className="bg-muted px-1 rounded">Lead Web</code> · <code className="bg-muted px-1 rounded">Experiencia</code> · <code className="bg-muted px-1 rounded">Presupuesto</code> · <code className="bg-muted px-1 rounded">Reserva Online</code></p>
+      </div>
+    </div>
+  );
+
+  if (plain) return inner;
+
   return (
     <div className="bg-card border border-border/50 rounded-2xl p-6">
       <div className="flex items-center justify-between mb-1">
@@ -71,98 +163,64 @@ function GHLSection() {
           </div>
           <h3 className="font-heading font-semibold text-foreground">Integración GoHighLevel</h3>
         </div>
-        <div className={`flex items-center gap-1.5 text-xs font-display font-medium px-2.5 py-1 rounded-full ${isConfigured ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}>
-          {isConfigured ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-          {isConfigured ? "Conectado" : "Sin configurar"}
-        </div>
       </div>
       <p className="text-xs text-muted-foreground mb-5 ml-11">
         Sincroniza leads y contactos con tu CRM de GoHighLevel. Las credenciales se guardan de forma segura en la base de datos.
-        {fromEnv && <span className="ml-1 text-amber-600 font-medium">· Actualmente usando variables de entorno (env vars tienen prioridad)</span>}
       </p>
-
-      <div className="ml-11 space-y-4">
-        {isConfigured && (
-          <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-display text-emerald-800">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>
-              API Key: <strong>{status?.apiKeyMasked}</strong>
-              {status?.locationId && <> · Location ID: <strong>{status.locationId}</strong></>}
-            </span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-display font-medium text-foreground/80">
-              API Key {isConfigured && <span className="text-xs text-muted-foreground">(dejar vacío para no cambiar)</span>}
-            </Label>
-            <div className="relative">
-              <Input
-                type={showKey ? "text" : "password"}
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder={isConfigured ? "••••••••" : "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."}
-                className="pr-10 font-mono text-xs"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-sm font-display font-medium text-foreground/80">Location ID</Label>
-            <Input
-              value={locationId}
-              onChange={e => setLocationId(e.target.value)}
-              placeholder={status?.locationId || "xxxxxxxxxxxxxxxxxxxxxxxx"}
-              className="font-mono text-xs"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            onClick={handleSave}
-            disabled={saveMutation.isPending || (!apiKey && !locationId)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-display"
-            size="sm"
-          >
-            {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-            Guardar credenciales
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleTest}
-            disabled={testMutation.isPending}
-            className="font-display"
-          >
-            {testMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Wifi className="w-4 h-4 mr-2" />}
-            Probar conexión
-          </Button>
-        </div>
-
-        <div className="text-xs text-muted-foreground font-display space-y-1 pt-1 border-t border-border/40">
-          <p>Los leads del formulario web y presupuestos se sincronizan automáticamente como contactos en GHL con sus tags y notas.</p>
-          <p>Tags disponibles: <code className="bg-muted px-1 rounded">Lead Web</code> · <code className="bg-muted px-1 rounded">Experiencia</code> · <code className="bg-muted px-1 rounded">Presupuesto</code> · <code className="bg-muted px-1 rounded">Reserva Online</code></p>
-        </div>
-      </div>
+      <div className="ml-11">{inner}</div>
     </div>
   );
 }
 
-function EmailPreviewSection() {
+// ─── Email Preview Section ─────────────────────────────────────────────────────
+function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
   const [templateId, setTemplateId] = useState("budget-user");
   const [toEmail, setToEmail] = useState("reservas@nayadeexperiences.es");
   const sendPreview = trpc.admin.sendEmailPreview.useMutation({
     onSuccess: (data) => toast.success(`Email enviado a ${data.to}`),
     onError: (err) => toast.error(`Error: ${err.message}`),
   });
+
+  const inner = (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-display text-muted-foreground">Plantilla</Label>
+          <Select value={templateId} onValueChange={setTemplateId}>
+            <SelectTrigger className="font-display">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EMAIL_TEMPLATES.map(t => (
+                <SelectItem key={t.id} value={t.id} className="font-display">{t.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-display text-muted-foreground">Enviar a</Label>
+          <Input
+            type="email"
+            value={toEmail}
+            onChange={e => setToEmail(e.target.value)}
+            placeholder="reservas@nayadeexperiences.es"
+            className="font-display"
+          />
+        </div>
+      </div>
+      <Button
+        onClick={() => sendPreview.mutate({ templateId, to: toEmail })}
+        disabled={sendPreview.isPending || !toEmail}
+        className="bg-orange-500 hover:bg-orange-600 text-white font-display"
+      >
+        {sendPreview.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+        Enviar email de prueba
+      </Button>
+    </div>
+  );
+
+  if (plain) return inner;
+
   return (
     <div className="bg-card border border-border/50 rounded-2xl p-6">
       <div className="flex items-center gap-3 mb-3">
@@ -174,101 +232,32 @@ function EmailPreviewSection() {
       <p className="text-sm font-display text-muted-foreground mb-4 ml-11">
         Envía una muestra de cualquier plantilla de email a la dirección que elijas para verificar el diseño.
       </p>
-      <div className="ml-11 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-display text-muted-foreground">Plantilla</Label>
-            <Select value={templateId} onValueChange={setTemplateId}>
-              <SelectTrigger className="font-display">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {EMAIL_TEMPLATES.map(t => (
-                  <SelectItem key={t.id} value={t.id} className="font-display">{t.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-display text-muted-foreground">Enviar a</Label>
-            <Input
-              type="email"
-              value={toEmail}
-              onChange={e => setToEmail(e.target.value)}
-              placeholder="reservas@nayadeexperiences.es"
-              className="font-display"
-            />
-          </div>
-        </div>
-        <Button
-          onClick={() => sendPreview.mutate({ templateId, to: toEmail })}
-          disabled={sendPreview.isPending || !toEmail}
-          className="bg-orange-500 hover:bg-orange-600 text-white font-display"
-        >
-          {sendPreview.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-          Enviar email de prueba
-        </Button>
-      </div>
+      <div className="ml-11">{inner}</div>
     </div>
   );
 }
 
-// ─── Sección reutilizable ─────────────────────────────────────────────────────
-function Section({
-  icon: Icon,
-  title,
-  description,
-  children,
-  onSave,
-  saving,
-}: {
-  icon: React.ElementType;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  onSave: () => void;
-  saving: boolean;
-}) {
-  return (
-    <div className="bg-card border border-border/50 rounded-2xl p-6">
-      <div className="flex items-center gap-3 mb-1">
-        <div className="w-8 h-8 rounded-xl bg-accent/10 flex items-center justify-center">
-          <Icon className="w-4 h-4 text-accent" />
-        </div>
-        <h3 className="font-heading font-semibold text-foreground">{title}</h3>
-      </div>
-      {description && <p className="text-xs text-muted-foreground mb-5 ml-11">{description}</p>}
-      <div className="mt-5 space-y-4">{children}</div>
-      <div className="mt-5 flex justify-end">
-        <Button
-          onClick={onSave}
-          disabled={saving}
-          className="bg-accent text-white hover:bg-accent/90 font-display font-semibold px-6"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-          Guardar cambios
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-  col2 = false,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-  col2?: boolean;
+// ─── Field helper ─────────────────────────────────────────────────────────────
+function Field({ label, hint, children, col2 = false }: {
+  label: string; hint?: string; children: React.ReactNode; col2?: boolean;
 }) {
   return (
     <div className={col2 ? "col-span-2" : ""}>
       <Label className="text-sm font-display font-medium text-foreground/80">{label}</Label>
       <div className="mt-1.5">{children}</div>
       {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+// ─── Save bar ─────────────────────────────────────────────────────────────────
+function SaveBar({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+  return (
+    <div className="flex justify-end pt-5 border-t border-border/30">
+      <Button onClick={onSave} disabled={saving} className="bg-accent text-white hover:bg-accent/90 font-display font-semibold px-6">
+        {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+        Guardar cambios
+      </Button>
     </div>
   );
 }
@@ -281,7 +270,8 @@ export default function Settings() {
     onError: (e) => toast.error("Error al guardar: " + e.message),
   });
 
-  // ── Estado local por sección ──────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<Tab>("business");
+
   const [business, setBusiness] = useState({
     businessName: "Náyade Experiences",
     businessPhone: "+34 930 34 77 91",
@@ -326,7 +316,6 @@ export default function Settings() {
 
   const [savingSection, setSavingSection] = useState<string | null>(null);
 
-  // ── Cargar datos de la BD ─────────────────────────────────────────────────
   useEffect(() => {
     if (!rawSettings) return;
     const s = rawSettings as Record<string, string | null>;
@@ -390,292 +379,211 @@ export default function Settings() {
 
   return (
     <AdminLayout title="Integraciones">
-      <div className="max-w-3xl space-y-6 pb-12">
+      <div className="max-w-5xl mx-auto px-4 py-8">
+
         {/* Header */}
-        <div>
+        <div className="mb-6">
           <h1 className="text-2xl font-heading font-bold text-foreground">Integraciones & Ajustes del Sitio</h1>
           <p className="text-sm text-muted-foreground font-display mt-1">
             Configuración del negocio, notificaciones, pagos, empresa facturadora e integración con GoHighLevel CRM.
           </p>
         </div>
 
-        {/* Banner informativo */}
-        <div className="flex items-start gap-3 bg-muted border border-border rounded-xl p-4">
+        {/* Banner */}
+        <div className="mb-5 flex items-start gap-3 bg-muted border border-border rounded-xl p-4">
           <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
           <p className="text-sm font-display text-foreground/70">
             Las credenciales sensibles (Redsys, SMTP, JWT) se gestionan en la sección <strong>Secrets</strong> del panel de gestión del proyecto, no aquí.
           </p>
         </div>
 
-        {/* ── Información del negocio ── */}
-        <Section
-          icon={Globe}
-          title="Información del Negocio"
-          description="Datos de contacto y descripción que aparecen en el sitio web y en los emails automáticos."
-          onSave={() => saveSection("business", business)}
-          saving={savingSection === "business"}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Nombre del establecimiento" col2>
-              <Input
-                value={business.businessName}
-                onChange={e => setBusiness(p => ({ ...p, businessName: e.target.value }))}
-              />
-            </Field>
-            <Field label="Teléfono">
-              <Input
-                value={business.businessPhone}
-                onChange={e => setBusiness(p => ({ ...p, businessPhone: e.target.value }))}
-                placeholder="+34 930 34 77 91"
-              />
-            </Field>
-            <Field label="Email de contacto">
-              <Input
-                type="email"
-                value={business.businessEmail}
-                onChange={e => setBusiness(p => ({ ...p, businessEmail: e.target.value }))}
-              />
-            </Field>
-            <Field label="Dirección" col2>
-              <Input
-                value={business.businessAddress}
-                onChange={e => setBusiness(p => ({ ...p, businessAddress: e.target.value }))}
-              />
-            </Field>
-            <Field label="Web corporativa" col2>
-              <Input
-                value={business.businessWebsite}
-                onChange={e => setBusiness(p => ({ ...p, businessWebsite: e.target.value }))}
-                placeholder="https://nayadeexperiences.es"
-              />
-            </Field>
-            <Field label="Descripción breve (SEO / emails)" col2>
-              <Textarea
-                value={business.businessDescription}
-                onChange={e => setBusiness(p => ({ ...p, businessDescription: e.target.value }))}
-                rows={3}
-                className="resize-none"
-              />
-            </Field>
-          </div>
-        </Section>
+        {/* Card: sidebar + content */}
+        <div className="flex gap-0 bg-card border border-border/50 rounded-2xl overflow-hidden">
 
-        {/* ── Horarios ── */}
-        <Section
-          icon={Clock}
-          title="Horarios de Apertura"
-          description="Horarios que se muestran en la web y se usan en los emails de confirmación."
-          onSave={() => saveSection("schedule", schedule)}
-          saving={savingSection === "schedule"}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Temporada alta — apertura">
-              <Input
-                type="time"
-                value={schedule.scheduleHighOpen}
-                onChange={e => setSchedule(p => ({ ...p, scheduleHighOpen: e.target.value }))}
-              />
-            </Field>
-            <Field label="Temporada alta — cierre">
-              <Input
-                type="time"
-                value={schedule.scheduleHighClose}
-                onChange={e => setSchedule(p => ({ ...p, scheduleHighClose: e.target.value }))}
-              />
-            </Field>
-            <Field label="Temporada baja — apertura">
-              <Input
-                type="time"
-                value={schedule.scheduleLowOpen}
-                onChange={e => setSchedule(p => ({ ...p, scheduleLowOpen: e.target.value }))}
-              />
-            </Field>
-            <Field label="Temporada baja — cierre">
-              <Input
-                type="time"
-                value={schedule.scheduleLowClose}
-                onChange={e => setSchedule(p => ({ ...p, scheduleLowClose: e.target.value }))}
-              />
-            </Field>
-            <div className="col-span-2">
-              <Field label="Días de apertura">
-                <Input
-                  value={schedule.scheduleDays}
-                  onChange={e => setSchedule(p => ({ ...p, scheduleDays: e.target.value }))}
-                  placeholder="Lunes a Domingo (Abril - Octubre)"
-                />
-              </Field>
-            </div>
-          </div>
-        </Section>
+          {/* Sidebar */}
+          <aside className="w-52 shrink-0 border-r border-border/50 py-3">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+                  activeTab === id
+                    ? "bg-primary/8 text-primary font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="text-sm flex-1 truncate font-display">{label}</span>
+              </button>
+            ))}
+          </aside>
 
-        {/* ── Pagos ── */}
-        <Section
-          icon={CreditCard}
-          title="Configuración de Pagos"
-          description="Parámetros financieros usados en presupuestos, reservas y cálculos de depósito."
-          onSave={() => saveSection("payments", payments)}
-          saving={savingSection === "payments"}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="IVA por defecto (%)" hint="Se aplica a presupuestos y facturas">
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                value={payments.paymentVat}
-                onChange={e => setPayments(p => ({ ...p, paymentVat: e.target.value }))}
-              />
-            </Field>
-            <Field label="Moneda">
-              <Input
-                value={payments.paymentCurrency}
-                onChange={e => setPayments(p => ({ ...p, paymentCurrency: e.target.value }))}
-                placeholder="EUR"
-              />
-            </Field>
-            <Field label="Validez de presupuestos (días)" hint="Días antes de que expire un presupuesto">
-              <Input
-                type="number"
-                min="1"
-                value={payments.paymentQuoteValidity}
-                onChange={e => setPayments(p => ({ ...p, paymentQuoteValidity: e.target.value }))}
-              />
-            </Field>
-            <Field label="Depósito por comensal en restaurante (€)" hint="Importe del depósito en reservas de restaurante">
-              <Input
-                type="number"
-                min="0"
-                step="0.5"
-                value={payments.paymentDepositRestaurant}
-                onChange={e => setPayments(p => ({ ...p, paymentDepositRestaurant: e.target.value }))}
-              />
-            </Field>
-          </div>
-        </Section>
+          {/* Content */}
+          <div className="flex-1 min-w-0 p-6">
 
-        {/* ── Empresa Facturadora ── */}
-        <Section
-          icon={Building2}
-          title="Empresa Facturadora / Datos Fiscales"
-          description="Razón social, CIF y domicilio fiscal que aparecen en facturas, presupuestos y tickets TPV."
-          onSave={() => saveSection("legalCompany", legalCompany)}
-          saving={savingSection === "legalCompany"}
-        >
-          {/* Aviso legal */}
-          <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mb-2">
-            <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-            <p className="text-xs text-amber-600 dark:text-amber-400 font-display">
-              Estos datos aparecen como <strong>emisor</strong> en todas las facturas y presupuestos generados por la plataforma, y en la cabecera de los tickets del TPV. Asegúrate de que coinciden exactamente con los datos registrados en la Agencia Tributaria.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Razón Social" col2>
-              <Input
-                value={legalCompany.legalCompanyName}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyName: e.target.value }))}
-                placeholder="NEXTAIR, S.L."
-              />
-            </Field>
-            <Field label="CIF / NIF">
-              <Input
-                value={legalCompany.legalCompanyCif}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCif: e.target.value }))}
-                placeholder="B16408031"
-              />
-            </Field>
-            <Field label="Teléfono fiscal">
-              <Input
-                value={legalCompany.legalCompanyPhone}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyPhone: e.target.value }))}
-                placeholder="+34 958 000 000"
-              />
-            </Field>
-            <Field label="Domicilio fiscal" col2>
-              <Input
-                value={legalCompany.legalCompanyAddress}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyAddress: e.target.value }))}
-                placeholder="C/JOSE LUIS PEREZ PUJADAS, Nº 14, PLTA.1, PUERTA D EDIFICIO FORUM"
-              />
-            </Field>
-            <Field label="Código Postal">
-              <Input
-                value={legalCompany.legalCompanyZip}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyZip: e.target.value }))}
-                placeholder="18006"
-              />
-            </Field>
-            <Field label="Municipio">
-              <Input
-                value={legalCompany.legalCompanyCity}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCity: e.target.value }))}
-                placeholder="GRANADA"
-              />
-            </Field>
-            <Field label="Provincia" col2>
-              <Input
-                value={legalCompany.legalCompanyProvince}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyProvince: e.target.value }))}
-                placeholder="Granada"
-              />
-            </Field>
-            <Field label="Email fiscal" col2>
-              <Input
-                type="email"
-                value={legalCompany.legalCompanyEmail}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyEmail: e.target.value }))}
-                placeholder="administracion@nextair.es"
-              />
-            </Field>
-            <Field label="IBAN (para liquidaciones)" col2
-              hint="Número de cuenta bancaria que aparece en los documentos de liquidación a proveedores">
-              <Input
-                value={legalCompany.legalCompanyIban}
-                onChange={e => setLegalCompany(p => ({ ...p, legalCompanyIban: e.target.value }))}
-                placeholder="ES00 0000 0000 0000 0000 0000"
-              />
-            </Field>
-          </div>
-        </Section>
+            {/* ── Negocio ── */}
+            {activeTab === "business" && (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground font-display">Datos de contacto y descripción que aparecen en el sitio web y en los emails automáticos.</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Nombre del establecimiento" col2>
+                    <Input value={business.businessName} onChange={e => setBusiness(p => ({ ...p, businessName: e.target.value }))} />
+                  </Field>
+                  <Field label="Teléfono">
+                    <Input value={business.businessPhone} onChange={e => setBusiness(p => ({ ...p, businessPhone: e.target.value }))} placeholder="+34 930 34 77 91" />
+                  </Field>
+                  <Field label="Email de contacto">
+                    <Input type="email" value={business.businessEmail} onChange={e => setBusiness(p => ({ ...p, businessEmail: e.target.value }))} />
+                  </Field>
+                  <Field label="Dirección" col2>
+                    <Input value={business.businessAddress} onChange={e => setBusiness(p => ({ ...p, businessAddress: e.target.value }))} />
+                  </Field>
+                  <Field label="Web corporativa" col2>
+                    <Input value={business.businessWebsite} onChange={e => setBusiness(p => ({ ...p, businessWebsite: e.target.value }))} placeholder="https://nayadeexperiences.es" />
+                  </Field>
+                  <Field label="Descripción breve (SEO / emails)" col2>
+                    <Textarea value={business.businessDescription} onChange={e => setBusiness(p => ({ ...p, businessDescription: e.target.value }))} rows={3} className="resize-none" />
+                  </Field>
+                </div>
+                <SaveBar onSave={() => saveSection("business", business)} saving={savingSection === "business"} />
+              </div>
+            )}
 
-        {/* ── Notificaciones ── */}
-        <Section
-          icon={Mail}
-          title="Notificaciones y Alertas"
-          description="Emails que reciben las alertas operativas del sistema (nuevas reservas, pagos, etc.)."
-          onSave={() => saveSection("notifications", notifications)}
-          saving={savingSection === "notifications"}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Email de alertas de reservas de experiencias" col2>
-              <Input
-                type="email"
-                value={notifications.notifEmailBooking}
-                onChange={e => setNotifications(p => ({ ...p, notifEmailBooking: e.target.value }))}
-              />
-            </Field>
-            <Field label="Email de alertas de reservas de restaurante" col2>
-              <Input
-                type="email"
-                value={notifications.notifEmailRestaurant}
-                onChange={e => setNotifications(p => ({ ...p, notifEmailRestaurant: e.target.value }))}
-              />
-            </Field>
+            {/* ── Horarios ── */}
+            {activeTab === "schedule" && (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground font-display">Horarios que se muestran en la web y se usan en los emails de confirmación.</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Temporada alta — apertura">
+                    <Input type="time" value={schedule.scheduleHighOpen} onChange={e => setSchedule(p => ({ ...p, scheduleHighOpen: e.target.value }))} />
+                  </Field>
+                  <Field label="Temporada alta — cierre">
+                    <Input type="time" value={schedule.scheduleHighClose} onChange={e => setSchedule(p => ({ ...p, scheduleHighClose: e.target.value }))} />
+                  </Field>
+                  <Field label="Temporada baja — apertura">
+                    <Input type="time" value={schedule.scheduleLowOpen} onChange={e => setSchedule(p => ({ ...p, scheduleLowOpen: e.target.value }))} />
+                  </Field>
+                  <Field label="Temporada baja — cierre">
+                    <Input type="time" value={schedule.scheduleLowClose} onChange={e => setSchedule(p => ({ ...p, scheduleLowClose: e.target.value }))} />
+                  </Field>
+                  <div className="col-span-2">
+                    <Field label="Días de apertura">
+                      <Input value={schedule.scheduleDays} onChange={e => setSchedule(p => ({ ...p, scheduleDays: e.target.value }))} placeholder="Lunes a Domingo (Abril - Octubre)" />
+                    </Field>
+                  </div>
+                </div>
+                <SaveBar onSave={() => saveSection("schedule", schedule)} saving={savingSection === "schedule"} />
+              </div>
+            )}
+
+            {/* ── Pagos ── */}
+            {activeTab === "payments" && (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground font-display">Parámetros financieros usados en presupuestos, reservas y cálculos de depósito.</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="IVA por defecto (%)" hint="Se aplica a presupuestos y facturas">
+                    <Input type="number" min="0" max="100" value={payments.paymentVat} onChange={e => setPayments(p => ({ ...p, paymentVat: e.target.value }))} />
+                  </Field>
+                  <Field label="Moneda">
+                    <Input value={payments.paymentCurrency} onChange={e => setPayments(p => ({ ...p, paymentCurrency: e.target.value }))} placeholder="EUR" />
+                  </Field>
+                  <Field label="Validez de presupuestos (días)" hint="Días antes de que expire un presupuesto">
+                    <Input type="number" min="1" value={payments.paymentQuoteValidity} onChange={e => setPayments(p => ({ ...p, paymentQuoteValidity: e.target.value }))} />
+                  </Field>
+                  <Field label="Depósito por comensal en restaurante (€)" hint="Importe del depósito en reservas de restaurante">
+                    <Input type="number" min="0" step="0.5" value={payments.paymentDepositRestaurant} onChange={e => setPayments(p => ({ ...p, paymentDepositRestaurant: e.target.value }))} />
+                  </Field>
+                </div>
+                <SaveBar onSave={() => saveSection("payments", payments)} saving={savingSection === "payments"} />
+              </div>
+            )}
+
+            {/* ── Empresa legal ── */}
+            {activeTab === "legalCompany" && (
+              <div className="space-y-5">
+                <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                  <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-display">
+                    Estos datos aparecen como <strong>emisor</strong> en todas las facturas y presupuestos generados por la plataforma, y en la cabecera de los tickets del TPV. Asegúrate de que coinciden exactamente con los datos registrados en la Agencia Tributaria.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Razón Social" col2>
+                    <Input value={legalCompany.legalCompanyName} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyName: e.target.value }))} placeholder="NEXTAIR, S.L." />
+                  </Field>
+                  <Field label="CIF / NIF">
+                    <Input value={legalCompany.legalCompanyCif} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCif: e.target.value }))} placeholder="B16408031" />
+                  </Field>
+                  <Field label="Teléfono fiscal">
+                    <Input value={legalCompany.legalCompanyPhone} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyPhone: e.target.value }))} placeholder="+34 958 000 000" />
+                  </Field>
+                  <Field label="Domicilio fiscal" col2>
+                    <Input value={legalCompany.legalCompanyAddress} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyAddress: e.target.value }))} />
+                  </Field>
+                  <Field label="Código Postal">
+                    <Input value={legalCompany.legalCompanyZip} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyZip: e.target.value }))} placeholder="18006" />
+                  </Field>
+                  <Field label="Municipio">
+                    <Input value={legalCompany.legalCompanyCity} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyCity: e.target.value }))} placeholder="GRANADA" />
+                  </Field>
+                  <Field label="Provincia" col2>
+                    <Input value={legalCompany.legalCompanyProvince} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyProvince: e.target.value }))} placeholder="Granada" />
+                  </Field>
+                  <Field label="Email fiscal" col2>
+                    <Input type="email" value={legalCompany.legalCompanyEmail} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyEmail: e.target.value }))} placeholder="administracion@nextair.es" />
+                  </Field>
+                  <Field label="IBAN (para liquidaciones)" col2 hint="Número de cuenta bancaria que aparece en los documentos de liquidación a proveedores">
+                    <Input value={legalCompany.legalCompanyIban} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyIban: e.target.value }))} placeholder="ES00 0000 0000 0000 0000 0000" />
+                  </Field>
+                </div>
+                <SaveBar onSave={() => saveSection("legalCompany", legalCompany)} saving={savingSection === "legalCompany"} />
+              </div>
+            )}
+
+            {/* ── Notificaciones ── */}
+            {activeTab === "notifications" && (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground font-display">Emails que reciben las alertas operativas del sistema (nuevas reservas, pagos, etc.).</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Email de alertas de reservas de experiencias" col2>
+                    <Input type="email" value={notifications.notifEmailBooking} onChange={e => setNotifications(p => ({ ...p, notifEmailBooking: e.target.value }))} />
+                  </Field>
+                  <Field label="Email de alertas de reservas de restaurante" col2>
+                    <Input type="email" value={notifications.notifEmailRestaurant} onChange={e => setNotifications(p => ({ ...p, notifEmailRestaurant: e.target.value }))} />
+                  </Field>
+                </div>
+                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
+                  <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <p className="text-xs text-muted-foreground font-display">
+                    Las notificaciones SMS se configuran a través del conector de GoHighLevel (GHL). Activa la integración en la pestaña GoHighLevel.
+                  </p>
+                </div>
+                <SaveBar onSave={() => saveSection("notifications", notifications)} saving={savingSection === "notifications"} />
+              </div>
+            )}
+
+            {/* ── GoHighLevel ── */}
+            {activeTab === "ghl" && (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground font-display">
+                  Sincroniza leads y contactos con tu CRM de GoHighLevel. Las credenciales se guardan de forma segura en la base de datos.
+                </p>
+                <GHLSection plain />
+              </div>
+            )}
+
+            {/* ── Preview email ── */}
+            {activeTab === "emailPreview" && (
+              <div className="space-y-5">
+                <p className="text-sm text-muted-foreground font-display">
+                  Envía una muestra de cualquier plantilla de email a la dirección que elijas para verificar el diseño.
+                </p>
+                <EmailPreviewSection plain />
+              </div>
+            )}
+
           </div>
-          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
-            <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
-            <p className="text-xs text-muted-foreground font-display">
-              Las notificaciones SMS se configuran a través del conector de GoHighLevel (GHL). Activa la integración en Secrets del panel de gestión.
-            </p>
-          </div>
-        </Section>
-
-        {/* ── Integración GHL ── */}
-        <GHLSection />
-
-        {/* ── Prueba de plantillas de email ── */}
-        <EmailPreviewSection />
-
+        </div>
       </div>
     </AdminLayout>
   );
