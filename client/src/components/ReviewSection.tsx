@@ -71,27 +71,27 @@ function styles(theme: "dark" | "light" | "auto") {
       skeletonBg:    "bg-gray-100",
     };
   }
-  // "auto" — Tailwind dark: variants, se adapta al modo del sistema/página
+  // "auto" — CSS variables del sistema, se adaptan solas al modo light/dark
   return {
-    sectionBorder: "border-gray-200 dark:border-white/10",
-    heading:       "text-gray-900 dark:text-white",
-    sub:           "text-gray-500 dark:text-white/60",
-    divider:       "border-gray-200 dark:border-white/10",
-    formBg:        "bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 rounded-xl p-5 border",
-    formHeading:   "text-gray-900 dark:text-white",
-    cardBg:        "bg-white dark:bg-white/5 border-gray-200 dark:border-white/10",
-    textPrimary:   "text-gray-900 dark:text-white",
-    textSecondary: "text-gray-600 dark:text-white/60",
-    replyBg:       "bg-teal-50 dark:bg-teal-900/40 border-teal-200 dark:border-teal-700/40",
-    barTrack:      "bg-gray-200 dark:bg-white/10",
-    barCount:      "text-gray-400 dark:text-white/50",
-    barLabel:      "text-gray-600 dark:text-white/70",
-    inputCls:      "bg-white dark:bg-white/5 border-gray-300 dark:border-white/15 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30 focus:border-teal-500",
-    labelCls:      "text-gray-600 dark:text-white/70 text-sm",
-    charCount:     "text-gray-400 dark:text-white/30",
-    emptyIcon:     "text-gray-500 dark:text-white/60",
-    paginationBtn: "text-gray-500 dark:text-white/60 hover:text-gray-900 dark:hover:text-white",
-    skeletonBg:    "bg-gray-100 dark:bg-white/5",
+    sectionBorder: "border-border",
+    heading:       "text-foreground",
+    sub:           "text-muted-foreground",
+    divider:       "border-border",
+    formBg:        "bg-muted border-border rounded-xl p-5 border",
+    formHeading:   "text-foreground",
+    cardBg:        "bg-card border-border",
+    textPrimary:   "text-card-foreground",
+    textSecondary: "text-muted-foreground",
+    replyBg:       "bg-muted border-border",
+    barTrack:      "bg-muted",
+    barCount:      "text-muted-foreground",
+    barLabel:      "text-muted-foreground",
+    inputCls:      "bg-background border-input text-foreground placeholder:text-muted-foreground focus:border-teal-500",
+    labelCls:      "text-muted-foreground text-sm",
+    charCount:     "text-muted-foreground",
+    emptyIcon:     "text-muted-foreground",
+    paginationBtn: "text-muted-foreground hover:text-foreground",
+    skeletonBg:    "bg-muted",
   };
 }
 

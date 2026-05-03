@@ -771,8 +771,10 @@ export default function HotelRoom() {
       </div>
 
       {/* Sección de reseñas */}
-      <div className="max-w-6xl mx-auto px-4 pb-16">
-        <ReviewSection entityType="hotel" entityId={room.id} theme="dark" />
+      <div className="bg-slate-900 border-t border-white/10">
+        <div className="max-w-6xl mx-auto px-4 py-16">
+          <ReviewSection entityType="hotel" entityId={room.id} theme="dark" />
+        </div>
       </div>
 
       {/* Booking Modal */}
