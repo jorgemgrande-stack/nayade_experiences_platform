@@ -770,7 +770,7 @@ export default function SpaDetail() {
           </div>
 
           {/* Reseñas */}
-          <ReviewSection entityType="spa" entityId={treatment.id} theme="dark" />
+          <ReviewSection entityType="spa" entityId={treatment.id} theme="auto" />
 
           {/* Back link */}
           <div className="mt-16 text-center">

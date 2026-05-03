@@ -771,9 +771,9 @@ export default function HotelRoom() {
       </div>
 
       {/* Sección de reseñas */}
-      <div className="bg-slate-900 border-t border-white/10">
+      <div className="bg-muted border-t border-border">
         <div className="max-w-6xl mx-auto px-4 py-16">
-          <ReviewSection entityType="hotel" entityId={room.id} theme="dark" />
+          <ReviewSection entityType="hotel" entityId={room.id} theme="auto" />
         </div>
       </div>
 
