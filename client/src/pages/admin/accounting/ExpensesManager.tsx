@@ -333,6 +333,10 @@ export default function ExpensesManager() {
   function getCostCenterName(id: number) {
     return costCenters.find((c) => c.id === id)?.name ?? `CC ${id}`;
   }
+  function getSupplierName(id: number | null | undefined) {
+    if (!id) return "—";
+    return suppliers.find((s) => s.id === id)?.name ?? "—";
+  }
 
   function openCreateFromMovement(m: NonNullable<typeof bankCandidatesQ.data>["data"][number]) {
     setCreateFromMovId(m.id);
@@ -609,9 +613,9 @@ export default function ExpensesManager() {
               <thead className="bg-muted/50">
                 <tr>
                   <th className="text-left p-3 font-medium">Fecha</th>
+                  <th className="text-left p-3 font-medium">Proveedor</th>
                   <th className="text-left p-3 font-medium">Concepto</th>
                   <th className="text-left p-3 font-medium">Categoría</th>
-                  <th className="text-left p-3 font-medium">Centro coste</th>
                   <th className="text-left p-3 font-medium">Método</th>
                   <th className="text-right p-3 font-medium">Importe</th>
                   <th className="text-center p-3 font-medium">Estado</th>
@@ -628,6 +632,7 @@ export default function ExpensesManager() {
                   filtered.map((e) => (
                     <tr key={e.id} className="border-t hover:bg-muted/20">
                       <td className="p-3 whitespace-nowrap">{e.date}</td>
+                      <td className="p-3 text-xs text-muted-foreground max-w-[120px] truncate" title={getSupplierName((e as any).supplierId)}>{getSupplierName((e as any).supplierId)}</td>
                       <td className="p-3 max-w-[220px]" title={e.concept}>
                         <div className="flex items-center gap-1.5 min-w-0">
                           {(e as any).source === "email" && (
@@ -644,7 +649,6 @@ export default function ExpensesManager() {
                         )}
                       </td>
                       <td className="p-3 text-xs text-muted-foreground">{getCategoryName(e.categoryId)}</td>
-                      <td className="p-3 text-xs text-muted-foreground">{getCostCenterName(e.costCenterId)}</td>
                       <td className="p-3 text-xs">{PAYMENT_METHOD_LABELS[e.paymentMethod]}</td>
                       <td className="p-3 text-right font-medium text-red-600">{parseFloat(e.amount).toFixed(2)} €</td>
                       <td className="p-3 text-center">
