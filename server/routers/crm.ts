@@ -2625,7 +2625,7 @@ export const crmRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        // 1. Buscar si ya existe un lead con ese email, o crear uno nuevo
+        // 1. Resolver leadId: lead existente → cliente existente con lead → crear lead nuevo
         let leadId: number;
         const [existingLead] = await db
           .select({ id: leads.id })
@@ -2637,24 +2637,35 @@ export const crmRouter = router({
         if (existingLead) {
           leadId = existingLead.id;
         } else {
-          // Crear lead silencioso con source="presupuesto_directo"
-          const [leadResult] = await db.insert(leads).values({
-            name: input.clientName,
-            email: input.clientEmail,
-            phone: input.clientPhone ?? "",
-            company: input.clientCompany ?? "",
-            source: "presupuesto_directo",
-            status: "en_proceso",
-            opportunityStatus: "nueva",
-            priority: "media",
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-          leadId = (leadResult as { insertId: number }).insertId;
-          await logActivity("lead", leadId, "lead_created_from_quote", ctx.user.id, ctx.user.name, { name: input.clientName });
+          // Sin lead — buscar cliente existente que ya tenga leadId (p.ej. vino por reserva)
+          const [existingClient] = await db
+            .select({ leadId: clients.leadId })
+            .from(clients)
+            .where(eq(clients.email, input.clientEmail))
+            .limit(1);
+
+          if (existingClient?.leadId) {
+            leadId = existingClient.leadId;
+          } else {
+            // Cliente nuevo sin historial — crear lead silencioso
+            const [leadResult] = await db.insert(leads).values({
+              name: input.clientName,
+              email: input.clientEmail,
+              phone: input.clientPhone ?? "",
+              company: input.clientCompany ?? "",
+              source: "presupuesto_directo",
+              status: "en_proceso",
+              opportunityStatus: "nueva",
+              priority: "media",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            leadId = (leadResult as { insertId: number }).insertId;
+            await logActivity("lead", leadId, "lead_created_from_quote", ctx.user.id, ctx.user.name, { name: input.clientName });
+          }
         }
 
-        // 2. Upsert de cliente — MISMO PATRÓN ROBUSTO que createLead en db.ts
+        // 2. Upsert de cliente — nunca sobreescribe leadId si ya tiene uno válido
         try {
           await db.insert(clients).values({
             leadId,
@@ -2668,7 +2679,7 @@ export const crmRouter = router({
             totalBookings: 0,
           }).onDuplicateKeyUpdate({
             set: {
-              leadId,
+              leadId: sql`IF(${clients.leadId} IS NULL, ${leadId}, ${clients.leadId})`,
               name: sql`IF(TRIM(${clients.name}) = '' OR ${clients.name} IS NULL, ${input.clientName}, ${clients.name})`,
               phone: sql`IF(TRIM(${clients.phone}) = '' OR ${clients.phone} IS NULL, ${input.clientPhone ?? ''}, ${clients.phone})`,
               company: sql`IF(TRIM(${clients.company}) = '' OR ${clients.company} IS NULL, ${input.clientCompany ?? ''}, ${clients.company})`,
