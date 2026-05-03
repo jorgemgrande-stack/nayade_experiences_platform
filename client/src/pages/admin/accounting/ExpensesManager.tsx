@@ -103,6 +103,16 @@ export default function ExpensesManager() {
   const [emailLogsOpen, setEmailLogsOpen] = useState(false);
   const [filterSource, setFilterSource] = useState<"all" | "email">("all");
 
+  // Quick-create sub-dialogs
+  const [quickCatOpen, setQuickCatOpen] = useState(false);
+  const [quickCatName, setQuickCatName] = useState("");
+  const [quickCatDesc, setQuickCatDesc] = useState("");
+  const [quickCCOpen, setQuickCCOpen] = useState(false);
+  const [quickCCName, setQuickCCName] = useState("");
+  const [quickCCDesc, setQuickCCDesc] = useState("");
+  const [quickSupOpen, setQuickSupOpen] = useState(false);
+  const [quickSupName, setQuickSupName] = useState("");
+
   // Bank detection state
   const [showBankDetected, setShowBankDetected] = useState(true);
   const [createFromMovId, setCreateFromMovId] = useState<number | null>(null);
@@ -155,6 +165,34 @@ export default function ExpensesManager() {
   const uploadFileMut = trpc.financial.expenses.uploadFile.useMutation();
   const deleteFileMut = trpc.financial.expenses.deleteFile.useMutation({
     onSuccess: () => { utils.financial.expenses.list.invalidate(); },
+  });
+
+  const createCatMut = trpc.financial.categories.create.useMutation({
+    onSuccess: (res) => {
+      utils.financial.categories.list.invalidate();
+      setForm((f) => ({ ...f, categoryId: String(res.id) }));
+      setQuickCatOpen(false); setQuickCatName(""); setQuickCatDesc("");
+      toast.success("Categoría creada");
+    },
+    onError: () => toast.error("Error al crear categoría"),
+  });
+  const createCCMut = trpc.financial.costCenters.create.useMutation({
+    onSuccess: (res) => {
+      utils.financial.costCenters.list.invalidate();
+      setForm((f) => ({ ...f, costCenterId: String(res.id) }));
+      setQuickCCOpen(false); setQuickCCName(""); setQuickCCDesc("");
+      toast.success("Centro de coste creado");
+    },
+    onError: () => toast.error("Error al crear centro de coste"),
+  });
+  const createSupMut = trpc.financial.suppliers.create.useMutation({
+    onSuccess: (res) => {
+      utils.financial.suppliers.list.invalidate();
+      setForm((f) => ({ ...f, supplierId: String(res.id) }));
+      setQuickSupOpen(false); setQuickSupName("");
+      toast.success("Proveedor creado");
+    },
+    onError: () => toast.error("Error al crear proveedor"),
   });
 
   const bankCandidatesQ = trpc.bankMovements.listExpenseCandidates.useQuery(
@@ -677,7 +715,12 @@ export default function ExpensesManager() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Categoría *</Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label>Categoría *</Label>
+                  <button type="button" onClick={() => { setQuickCatName(""); setQuickCatDesc(""); setQuickCatOpen(true); }} className="flex items-center gap-0.5 text-xs text-primary/70 hover:text-primary">
+                    <Plus className="w-3 h-3" />Nueva
+                  </button>
+                </div>
                 <Select value={form.categoryId} onValueChange={(v) => setForm({ ...form, categoryId: v })}>
                   <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                   <SelectContent>
@@ -686,7 +729,12 @@ export default function ExpensesManager() {
                 </Select>
               </div>
               <div>
-                <Label>Centro de coste *</Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label>Centro de coste *</Label>
+                  <button type="button" onClick={() => { setQuickCCName(""); setQuickCCDesc(""); setQuickCCOpen(true); }} className="flex items-center gap-0.5 text-xs text-primary/70 hover:text-primary">
+                    <Plus className="w-3 h-3" />Nuevo
+                  </button>
+                </div>
                 <Select value={form.costCenterId} onValueChange={(v) => setForm({ ...form, costCenterId: v })}>
                   <SelectTrigger><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                   <SelectContent>
@@ -698,7 +746,12 @@ export default function ExpensesManager() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Proveedor</Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label>Proveedor</Label>
+                  <button type="button" onClick={() => { setQuickSupName(""); setQuickSupOpen(true); }} className="flex items-center gap-0.5 text-xs text-primary/70 hover:text-primary">
+                    <Plus className="w-3 h-3" />Nuevo
+                  </button>
+                </div>
                 <Select value={form.supplierId || "none"} onValueChange={(v) => setForm({ ...form, supplierId: v === "none" ? "" : v })}>
                   <SelectTrigger><SelectValue placeholder="Sin proveedor" /></SelectTrigger>
                   <SelectContent>
@@ -966,6 +1019,92 @@ export default function ExpensesManager() {
                 ))}
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Quick-create: Categoría */}
+      <Dialog open={quickCatOpen} onOpenChange={setQuickCatOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Nueva categoría de gasto</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nombre *</Label>
+              <Input
+                value={quickCatName}
+                onChange={(e) => setQuickCatName(e.target.value)}
+                placeholder="Ej: Suministros"
+                onKeyDown={(e) => e.key === "Enter" && quickCatName.trim() && createCatMut.mutate({ name: quickCatName.trim(), description: quickCatDesc || undefined })}
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label>Descripción</Label>
+              <Input value={quickCatDesc} onChange={(e) => setQuickCatDesc(e.target.value)} placeholder="Opcional" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setQuickCatOpen(false)}>Cancelar</Button>
+              <Button
+                onClick={() => quickCatName.trim() && createCatMut.mutate({ name: quickCatName.trim(), description: quickCatDesc || undefined })}
+                disabled={!quickCatName.trim() || createCatMut.isPending}
+              >Crear y seleccionar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick-create: Centro de coste */}
+      <Dialog open={quickCCOpen} onOpenChange={setQuickCCOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Nuevo centro de coste</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nombre *</Label>
+              <Input
+                value={quickCCName}
+                onChange={(e) => setQuickCCName(e.target.value)}
+                placeholder="Ej: Actividades acuáticas"
+                onKeyDown={(e) => e.key === "Enter" && quickCCName.trim() && createCCMut.mutate({ name: quickCCName.trim(), description: quickCCDesc || undefined })}
+                autoFocus
+              />
+            </div>
+            <div>
+              <Label>Descripción</Label>
+              <Input value={quickCCDesc} onChange={(e) => setQuickCCDesc(e.target.value)} placeholder="Opcional" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setQuickCCOpen(false)}>Cancelar</Button>
+              <Button
+                onClick={() => quickCCName.trim() && createCCMut.mutate({ name: quickCCName.trim(), description: quickCCDesc || undefined })}
+                disabled={!quickCCName.trim() || createCCMut.isPending}
+              >Crear y seleccionar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick-create: Proveedor */}
+      <Dialog open={quickSupOpen} onOpenChange={setQuickSupOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Nuevo proveedor</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nombre comercial *</Label>
+              <Input
+                value={quickSupName}
+                onChange={(e) => setQuickSupName(e.target.value)}
+                placeholder="Ej: Ferretería López"
+                onKeyDown={(e) => e.key === "Enter" && quickSupName.trim() && createSupMut.mutate({ name: quickSupName.trim() })}
+                autoFocus
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Podrás añadir NIF, IBAN y más datos desde la sección Proveedores.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setQuickSupOpen(false)}>Cancelar</Button>
+              <Button
+                onClick={() => quickSupName.trim() && createSupMut.mutate({ name: quickSupName.trim() })}
+                disabled={!quickSupName.trim() || createSupMut.isPending}
+              >Crear y seleccionar</Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
