@@ -500,7 +500,10 @@ export const tpvRouter = router({
 
             // 2. Gasto en /contabilidad/gastos (conciliado)
             const [cat] = await db.select({ id: expenseCategories.id })
-              .from(expenseCategories).limit(1);
+              .from(expenseCategories)
+              .where(eq(expenseCategories.name, "Salidas de caja"))
+              .limit(1)
+              .then(async (rows) => rows.length ? rows : db.select({ id: expenseCategories.id }).from(expenseCategories).limit(1));
             const [cc] = await db.select({ id: costCenters.id })
               .from(costCenters).where(eq(costCenters.active, true)).limit(1);
 
