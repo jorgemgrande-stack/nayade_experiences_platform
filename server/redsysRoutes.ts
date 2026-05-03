@@ -6,7 +6,7 @@
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
-import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, createVentaPerdidaLead } from "./db";
+import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, createVentaPerdidaLead, getGHLCredentials } from "./db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "./reav";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
@@ -302,13 +302,16 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             }
 
             // Sync URL del presupuesto + factura al contacto GHL (fire-and-forget)
-            syncLeadUrlsToGHL({
-              ghlContactId: (lead as any)?.ghlContactId,
-              quoteUrl: quote.paymentLinkToken
-                ? `${process.env.APP_URL ?? "https://www.nayadeexperiences.es"}/presupuesto/${quote.paymentLinkToken}`
-                : undefined,
-              invoiceNumber,
-              quoteNumber: quote.quoteNumber,
+            getGHLCredentials().then(ghlCreds => {
+              syncLeadUrlsToGHL({
+                ghlContactId: (lead as any)?.ghlContactId,
+                quoteUrl: quote.paymentLinkToken
+                  ? `${process.env.APP_URL ?? "https://www.nayadeexperiences.es"}/presupuesto/${quote.paymentLinkToken}`
+                  : undefined,
+                invoiceNumber,
+                quoteNumber: quote.quoteNumber,
+                credentials: ghlCreds ?? undefined,
+              });
             });
           }
         } catch (e) {

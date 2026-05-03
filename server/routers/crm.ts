@@ -2,7 +2,7 @@
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */import { router, protectedProcedure, publicProcedure, staffProcedure } from "../_core/trpc";
-import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation } from "../db";
+import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "../reav";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -1423,12 +1423,15 @@ export const crmRouter = router({
         await logActivity("lead", quote.leadId, "quote_sent_to_client", ctx.user.id, ctx.user.name, { quoteId: input.id });
 
         // Sync URL del presupuesto al contacto GHL (fire-and-forget)
-        syncLeadUrlsToGHL({
-          ghlContactId: (lead as any).ghlContactId,
-          quoteUrl: acceptUrl,
-          quoteNumber: quote.quoteNumber,
-          email: lead.email,
-          phone: lead.phone,
+        getGHLCredentials().then(ghlCreds => {
+          syncLeadUrlsToGHL({
+            ghlContactId: (lead as any).ghlContactId,
+            quoteUrl: acceptUrl,
+            quoteNumber: quote.quoteNumber,
+            email: lead.email,
+            phone: lead.phone,
+            credentials: ghlCreds ?? undefined,
+          });
         });
 
         return { success: true, acceptUrl, token };
@@ -1491,12 +1494,15 @@ export const crmRouter = router({
         await logActivity("quote", input.id, "quote_resent", ctx.user.id, ctx.user.name, { paymentLinkUrl });
 
         // Sync URL del presupuesto regenerado al contacto GHL (fire-and-forget)
-        syncLeadUrlsToGHL({
-          ghlContactId: (lead as any).ghlContactId,
-          quoteUrl: paymentLinkUrl ?? undefined,
-          quoteNumber: quote.quoteNumber,
-          email: lead.email,
-          phone: lead.phone,
+        getGHLCredentials().then(ghlCreds => {
+          syncLeadUrlsToGHL({
+            ghlContactId: (lead as any).ghlContactId,
+            quoteUrl: paymentLinkUrl ?? undefined,
+            quoteNumber: quote.quoteNumber,
+            email: lead.email,
+            phone: lead.phone,
+            credentials: ghlCreds ?? undefined,
+          });
         });
 
         return { success: true };
@@ -1725,10 +1731,13 @@ export const crmRouter = router({
         await logActivity("invoice", invoiceId, "invoice_generated", ctx.user.id, ctx.user.name, { pdfUrl });
 
         // Sync URL de factura al contacto GHL (fire-and-forget)
-        syncLeadUrlsToGHL({
-          ghlContactId: (lead as any).ghlContactId,
-          invoiceUrl: pdfUrl ?? undefined,
-          invoiceNumber,
+        getGHLCredentials().then(ghlCreds => {
+          syncLeadUrlsToGHL({
+            ghlContactId: (lead as any).ghlContactId,
+            invoiceUrl: pdfUrl ?? undefined,
+            invoiceNumber,
+            credentials: ghlCreds ?? undefined,
+          });
         });
 
         // Send emails

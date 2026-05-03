@@ -47,6 +47,24 @@ export async function getDb() {
   return _db;
 }
 
+/** Carga credenciales GHL desde env vars con fallback a siteSettings en DB. */
+export async function getGHLCredentials(): Promise<{ apiKey: string; locationId: string } | null> {
+  let apiKey = process.env.GHL_API_KEY;
+  let locationId = process.env.GHL_LOCATION_ID;
+  if (!apiKey || !locationId) {
+    const db = await getDb();
+    if (db) {
+      const rows = await db.select().from(siteSettings)
+        .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
+      const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+      apiKey = apiKey || map.ghlApiKey || undefined;
+      locationId = locationId || map.ghlLocationId || undefined;
+    }
+  }
+  if (!apiKey || !locationId) return null;
+  return { apiKey, locationId };
+}
+
 // ─── ACTIVITY LOG ────────────────────────────────────────────────────────────
 
 /**
