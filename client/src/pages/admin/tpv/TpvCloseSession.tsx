@@ -99,7 +99,6 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
               <Input
                 type="number"
                 step="0.01"
-                min="0"
                 value={countedCash}
                 onChange={(e) => setCountedCash(e.target.value)}
                 className="pl-9 bg-gray-800 border-gray-700 text-white text-lg font-bold"

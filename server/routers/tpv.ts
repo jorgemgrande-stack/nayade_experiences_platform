@@ -217,7 +217,7 @@ export const tpvRouter = router({
     .input(
       z.object({
         sessionId: z.number(),
-        countedCash: z.number().min(0),
+        countedCash: z.number(),
         notes: z.string().optional(),
       })
     )
