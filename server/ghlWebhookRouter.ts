@@ -176,6 +176,7 @@ ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async 
       message,
       source: "ghl_webhook",
       selectedProduct: experienciaInteres || undefined,
+      ghlContactId: contactId || undefined,
     });
 
     if (logId) {

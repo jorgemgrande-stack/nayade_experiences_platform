@@ -204,6 +204,7 @@ export async function createLead(data: {
   source?: string;
   selectedCategory?: string;
   selectedProduct?: string;
+  ghlContactId?: string;
   activitiesJson?: {
     experienceId: number;
     experienceTitle: string;
@@ -233,6 +234,7 @@ export async function createLead(data: {
     source: data.source ?? "web",
     selectedCategory: data.selectedCategory ?? null,
     selectedProduct: data.selectedProduct ?? null,
+    ghlContactId: data.ghlContactId ?? null,
     activitiesJson: data.activitiesJson ?? null,
   });
   const leadId = Number(result[0].insertId);
