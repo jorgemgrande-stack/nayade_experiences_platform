@@ -121,29 +121,66 @@ function Panel({ title, icon: Icon, iconColor, children, action, badge }: {
 }
 
 // ─── Channel Card ─────────────────────────────────────────────────────────────
+const CHANNEL_COLORS: Record<string, {
+  border: string; bg: string; iconBg: string; iconText: string; arrowHover: string; alertCls: string;
+}> = {
+  violet: {
+    border:     "border-violet-700/30 hover:border-violet-500/50",
+    bg:         "bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/60 dark:to-[#080e1c]/80",
+    iconBg:     "bg-violet-500/20",
+    iconText:   "text-violet-500 dark:text-violet-400",
+    arrowHover: "group-hover:text-violet-500",
+    alertCls:   "text-violet-400 bg-violet-500/10",
+  },
+  blue: {
+    border:     "border-blue-700/30 hover:border-blue-500/50",
+    bg:         "bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/60 dark:to-[#080e1c]/80",
+    iconBg:     "bg-blue-500/20",
+    iconText:   "text-blue-500 dark:text-blue-400",
+    arrowHover: "group-hover:text-blue-500",
+    alertCls:   "text-blue-400 bg-blue-500/10",
+  },
+  emerald: {
+    border:     "border-emerald-700/30 hover:border-emerald-500/50",
+    bg:         "bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/60 dark:to-[#080e1c]/80",
+    iconBg:     "bg-emerald-500/20",
+    iconText:   "text-emerald-500 dark:text-emerald-400",
+    arrowHover: "group-hover:text-emerald-500",
+    alertCls:   "text-emerald-400 bg-emerald-500/10",
+  },
+  orange: {
+    border:     "border-orange-700/30 hover:border-orange-500/50",
+    bg:         "bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/60 dark:to-[#080e1c]/80",
+    iconBg:     "bg-orange-500/20",
+    iconText:   "text-orange-500 dark:text-orange-400",
+    arrowHover: "group-hover:text-orange-500",
+    alertCls:   "text-orange-400 bg-orange-500/10",
+  },
+};
+
 function ChannelCard({ title, icon: Icon, color, href, children, alertMsg }: {
   title: string; icon: React.ElementType; color: string; href: string;
   children: React.ReactNode; alertMsg?: string;
 }) {
+  const c = CHANNEL_COLORS[color] ?? CHANNEL_COLORS.violet;
   return (
     <Link href={href}>
       <div className={cn(
         "rounded-xl border p-4 cursor-pointer group transition-all hover:brightness-110",
-        `border-${color}-700/30 hover:border-${color}-500/50`,
-        `bg-gradient-to-br from-${color}-50 to-white dark:from-${color}-950/60 dark:to-[#080e1c]/80`
+        c.border, c.bg
       )}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", `bg-${color}-500/20`)}>
-              <Icon className={cn("w-4 h-4", `text-${color}-500 dark:text-${color}-400`)} />
+            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", c.iconBg)}>
+              <Icon className={cn("w-4 h-4", c.iconText)} />
             </div>
-            <span className={cn("font-semibold text-sm text-foreground")}>{title}</span>
+            <span className="font-semibold text-sm text-foreground">{title}</span>
           </div>
-          <ArrowRight className={cn("w-4 h-4 text-foreground/20 group-hover:text-foreground/60 transition-colors", `group-hover:text-${color}-500`)} />
+          <ArrowRight className={cn("w-4 h-4 text-foreground/20 group-hover:text-foreground/60 transition-colors", c.arrowHover)} />
         </div>
         {children}
         {alertMsg && (
-          <div className={cn("mt-2 flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5", `text-${color}-400 bg-${color}-500/10`)}>
+          <div className={cn("mt-2 flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5", c.alertCls)}>
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
             {alertMsg}
           </div>
