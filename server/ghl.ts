@@ -49,6 +49,8 @@ export interface GHLContactPayload {
   email?: string;
   phone?: string;
   companyName?: string;
+  /** Ignorado en el POST — el source enviado a GHL siempre es "Nayade Web" */
+  source?: string;
   tags?: string[];
   /** Mensaje / notas del lead — se guarda como nota en el contacto */
   notes?: string;
