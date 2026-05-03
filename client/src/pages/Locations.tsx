@@ -1,25 +1,12 @@
-﻿import { useRef } from "react";
-import { usePublicPhone } from "@/hooks/usePublicPhone";
+﻿import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { Navigation, Car, Train, Clock, MapPin, Phone, Mail } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
-import { MapView } from "@/components/Map";
 
-// Coordenadas exactas de Náyade Experiences / Skicenter Los Ángeles de San Rafael
-const NAYADE_LOCATION = { lat: 40.786805332143686, lng: -4.245348599918632 };
+const GMAPS_EMBED_URL =
+  "https://www.google.com/maps/embed?pb=!1m14!1m12!1m3!1d3020.816126486095!2d-4.245520261519737!3d40.7880563570962!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!5e0!3m2!1ses!2ses!4v1777834777298!5m2!1ses!2ses";
 
 export default function Locations() {
   const { phone, phoneTel } = usePublicPhone();
-  const mapRef = useRef<google.maps.Map | null>(null);
-
-  function handleMapReady(map: google.maps.Map) {
-    mapRef.current = map;
-    // Marcador con etiqueta personalizada
-    new window.google.maps.marker.AdvancedMarkerElement({
-      map,
-      position: NAYADE_LOCATION,
-      title: "Náyade Experiences · Skicenter",
-    });
-  }
 
   return (
     <PublicLayout>
@@ -60,11 +47,15 @@ export default function Locations() {
             </p>
           </div>
           <div className="rounded-2xl overflow-hidden border border-border/50 shadow-lg">
-            <MapView
-              initialCenter={NAYADE_LOCATION}
-              initialZoom={16}
-              onMapReady={handleMapReady}
-              className="h-[480px]"
+            <iframe
+              src={GMAPS_EMBED_URL}
+              width="100%"
+              height="480"
+              style={{ border: 0, display: "block" }}
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              title="Mapa Náyade Experiences — Los Ángeles de San Rafael"
             />
           </div>
           {/* Botón Google Maps */}
