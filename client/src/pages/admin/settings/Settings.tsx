@@ -380,7 +380,7 @@ export default function Settings() {
 
   if (isLoading) {
     return (
-      <AdminLayout title="Configuración">
+      <AdminLayout title="Integraciones">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-6 h-6 animate-spin text-accent" />
         </div>
@@ -389,20 +389,20 @@ export default function Settings() {
   }
 
   return (
-    <AdminLayout title="Configuración">
+    <AdminLayout title="Integraciones">
       <div className="max-w-3xl space-y-6 pb-12">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-heading font-bold text-foreground">Configuración General</h1>
+          <h1 className="text-2xl font-heading font-bold text-foreground">Integraciones & Ajustes del Sitio</h1>
           <p className="text-sm text-muted-foreground font-display mt-1">
-            Ajustes globales de la plataforma Náyade Experiences. Los cambios se guardan en la base de datos.
+            Configuración del negocio, notificaciones, pagos, empresa facturadora e integración con GoHighLevel CRM.
           </p>
         </div>
 
         {/* Banner informativo */}
-        <div className="flex items-start gap-3 bg-accent/5 border border-accent/20 rounded-xl p-4">
-          <Info className="w-4 h-4 text-accent mt-0.5 shrink-0" />
-          <p className="text-sm font-display text-foreground/80">
+        <div className="flex items-start gap-3 bg-muted border border-border rounded-xl p-4">
+          <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+          <p className="text-sm font-display text-foreground/70">
             Las credenciales sensibles (Redsys, SMTP, JWT) se gestionan en la sección <strong>Secrets</strong> del panel de gestión del proyecto, no aquí.
           </p>
         </div>
@@ -563,9 +563,9 @@ export default function Settings() {
           saving={savingSection === "legalCompany"}
         >
           {/* Aviso legal */}
-          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2">
-            <Info className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-            <p className="text-xs text-amber-800 font-display">
+          <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mb-2">
+            <Info className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+            <p className="text-xs text-amber-600 dark:text-amber-400 font-display">
               Estos datos aparecen como <strong>emisor</strong> en todas las facturas y presupuestos generados por la plataforma, y en la cabecera de los tickets del TPV. Asegúrate de que coinciden exactamente con los datos registrados en la Agencia Tributaria.
             </p>
           </div>

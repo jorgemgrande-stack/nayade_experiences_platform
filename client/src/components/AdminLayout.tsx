@@ -190,6 +190,7 @@ const navItems = [
     roles: ["admin"],
     children: [
       { label: "Ajustes generales",   href: "/admin/configuracion" },
+      { label: "Integraciones",       href: "/admin/configuracion/sitio" },
       { label: "Estado del sistema",  href: "/admin/configuracion/estado" },
       { label: "Onboarding",          href: "/admin/onboarding" },
       { label: "Plantillas de Email", href: "/admin/plantillas-email" },
