@@ -5478,7 +5478,7 @@ export default function CRMDashboard() {
                 label="Oportunidad Enviada"
                 value={leadCounters?.enviada ?? 0}
                 icon={Send}
-                color="amber"
+                color="blue"
                 subtitle="Presupuesto en cliente"
                 amount={leadCounters?.valorEnviada}
                 active={tab === "leads" && filterStatus === "enviada"}
@@ -5488,7 +5488,7 @@ export default function CRMDashboard() {
                 label="Oportunidad Ganada"
                 value={leadCounters?.ganada ?? 0}
                 icon={Star}
-                color="green"
+                color="blue"
                 subtitle="Reservas confirmadas"
                 amount={leadCounters?.valorGanada}
                 active={tab === "leads" && filterStatus === "ganada"}
@@ -5498,7 +5498,7 @@ export default function CRMDashboard() {
                 label="Oportunidad Perdida"
                 value={leadCounters?.perdida ?? 0}
                 icon={XCircle}
-                color="red"
+                color="blue"
                 subtitle="Descartadas manualmente"
                 amount={leadCounters?.valorPerdida}
                 active={tab === "leads" && filterStatus === "perdida"}
@@ -5519,7 +5519,7 @@ export default function CRMDashboard() {
                 label="En Borrador"
                 value={quoteCounters?.borrador ?? 0}
                 icon={FileText}
-                color="slate"
+                color="orange"
                 subtitle="Pendientes de enviar"
                 amount={quoteCounters?.importeBorrador}
                 active={tab === "quotes" && filterStatus === "borrador"}
@@ -5529,7 +5529,7 @@ export default function CRMDashboard() {
                 label="Enviados al Cliente"
                 value={quoteCounters?.enviado ?? 0}
                 icon={Clock}
-                color="amber"
+                color="orange"
                 subtitle="Esperando respuesta"
                 amount={quoteCounters?.importeEnviado}
                 active={tab === "quotes" && filterStatus === "enviado"}
@@ -5540,7 +5540,7 @@ export default function CRMDashboard() {
                   label="Pago Fallido"
                   value={quoteCounters?.pagoFallido ?? 0}
                   icon={XCircle}
-                  color="red"
+                  color="orange"
                   subtitle="Recuperables"
                   amount={quoteCounters?.importePagoFallido}
                   active={tab === "quotes" && filterStatus === "pago_fallido"}
@@ -5551,7 +5551,7 @@ export default function CRMDashboard() {
                 label="Reservas Hoy"
                 value={resCounters?.hoy ?? 0}
                 icon={CalendarCheck}
-                color="green"
+                color="orange"
                 subtitle="Confirmadas hoy"
                 amount={resCounters?.importeServicioHoy}
                 active={tab === "reservations"}
@@ -5592,7 +5592,7 @@ export default function CRMDashboard() {
                 label="Pendiente de Pago"
                 value={resCounters?.pendientePago ?? 0}
                 icon={Clock}
-                color="amber"
+                color="green"
                 subtitle="Esperando cobro"
                 amount={resCounters?.importePendientePago}
                 active={tab === "reservations"}
@@ -5602,7 +5602,7 @@ export default function CRMDashboard() {
                 label="Servicio Hoy"
                 value={resCounters?.servicioHoy ?? 0}
                 icon={CalendarCheck}
-                color={resCounters?.servicioHoy ? "blue" : "slate"}
+                color="green"
                 subtitle="Actividades programadas"
                 amount={resCounters?.importeServicioHoy}
                 active={tab === "reservations"}
@@ -5612,7 +5612,7 @@ export default function CRMDashboard() {
                 label="Próximos 7 días"
                 value={resCounters?.proximasSemana ?? 0}
                 icon={Calendar}
-                color="indigo"
+                color="green"
                 subtitle="Servicios confirmados"
                 amount={resCounters?.importeProximasSemana}
                 active={tab === "reservations"}
@@ -5622,7 +5622,7 @@ export default function CRMDashboard() {
                 label="Este Mes"
                 value={resCounters?.esteMes ?? 0}
                 icon={Banknote}
-                color="orange"
+                color="green"
                 subtitle="Confirmadas este mes"
                 amount={resCounters?.importeEsteMes}
                 active={tab === "reservations"}
@@ -5633,7 +5633,7 @@ export default function CRMDashboard() {
                   label="Canceladas"
                   value={resCounters?.canceladas ?? 0}
                   icon={XCircle}
-                  color="red"
+                  color="green"
                   subtitle="Reservas anuladas"
                   active={tab === "reservations"}
                   onClick={() => handleTabChange("reservations")}
@@ -5677,7 +5677,7 @@ export default function CRMDashboard() {
                 label="Total"
                 value={anulCounters?.total ?? 0}
                 icon={Archive}
-                color="slate"
+                color="red"
                 subtitle="Todas las solicitudes"
                 amount={anulCounters?.importeTotal}
                 active={tab === "anulaciones"}
@@ -5797,7 +5797,7 @@ export default function CRMDashboard() {
                 label="Canjeados"
                 value={voucherCounters?.canjeados ?? 0}
                 icon={CheckCircle}
-                color="green"
+                color="purple"
                 subtitle="Usados por clientes"
                 active={tab === "bonos"}
                 onClick={() => handleTabChange("bonos")}
@@ -5806,7 +5806,7 @@ export default function CRMDashboard() {
                 label="Caducados"
                 value={voucherCounters?.caducados ?? 0}
                 icon={Clock}
-                color="slate"
+                color="purple"
                 subtitle="Sin canjear a tiempo"
                 active={tab === "bonos"}
                 onClick={() => handleTabChange("bonos")}
