@@ -13,7 +13,7 @@ import {
   adminGetReviewStats,
 } from "../db/reviewsDb";
 
-const entityTypeSchema = z.enum(["hotel", "spa", "experience", "pack"]);
+const entityTypeSchema = z.enum(["hotel", "spa", "experience", "pack", "restaurant"]);
 
 export const reviewsRouter = router({
   // ─── PÚBLICOS ────────────────────────────────────────────────────────────────

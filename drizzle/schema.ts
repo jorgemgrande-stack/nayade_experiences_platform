@@ -955,7 +955,7 @@ export type SpaScheduleTemplate = typeof spaScheduleTemplates.$inferSelect;
  */
 export const reviews = mysqlTable("reviews", {
   id: int("id").autoincrement().primaryKey(),
-  entityType: mysqlEnum("entityType", ["hotel", "spa", "experience", "pack"]).notNull(),
+  entityType: mysqlEnum("entityType", ["hotel", "spa", "experience", "pack", "restaurant"]).notNull(),
   entityId: int("entityId").notNull(),
   authorName: varchar("authorName", { length: 256 }).notNull(),
   authorEmail: varchar("authorEmail", { length: 320 }),

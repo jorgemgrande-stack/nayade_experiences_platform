@@ -3,6 +3,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Clock, Phone, Mail, MapPin, Loader2, Users } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { ReviewSection } from "@/components/ReviewSection";
 
 const FALLBACK_IMAGES: Record<string, string> = {
   "el-galeon": "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/hotel-lago_f2ec080b.jpg",
@@ -211,6 +212,13 @@ export default function RestauranteDetail() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Reseñas de clientes */}
+      <section className="py-12 bg-muted border-t border-border">
+        <div className="container max-w-5xl">
+          <ReviewSection entityType="restaurant" entityId={restaurant.id} theme="auto" />
         </div>
       </section>
     </PublicLayout>
