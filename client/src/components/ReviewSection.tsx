@@ -9,7 +9,7 @@ import { Star, MessageSquare, ChevronDown, ChevronUp, ThumbsUp } from "lucide-re
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
 
-type EntityType = "hotel" | "spa";
+type EntityType = "hotel" | "spa" | "experience" | "pack";
 
 interface ReviewSectionProps {
   entityType: EntityType;

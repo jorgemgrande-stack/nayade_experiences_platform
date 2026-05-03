@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
+import { ReviewSection } from "@/components/ReviewSection";
 
 import { trpc } from "@/lib/trpc";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
@@ -700,6 +701,14 @@ export default function ExperienceDetail() {
         </DialogContent>
       </Dialog>
 
+      {/* Reseñas de clientes */}
+      {dbExp && (
+        <section className="py-12 bg-gray-50 border-t border-gray-200">
+          <div className="container max-w-5xl">
+            <ReviewSection entityType="experience" entityId={dbExp.id} theme="light" />
+          </div>
+        </section>
+      )}
 
     </PublicLayout>
   );

@@ -10,7 +10,7 @@ async function getDb() {
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────
 
-export type EntityType = "hotel" | "spa";
+export type EntityType = "hotel" | "spa" | "experience" | "pack";
 
 export interface ReviewStats {
   totalReviews: number;

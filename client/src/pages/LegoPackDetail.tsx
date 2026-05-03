@@ -1,6 +1,7 @@
 ﻿import { useParams, Link } from "wouter";
 import { useState } from "react";
 import PublicLayout from "@/components/PublicLayout";
+import { ReviewSection } from "@/components/ReviewSection";
 import { trpc } from "@/lib/trpc";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { Button } from "@/components/ui/button";
@@ -479,6 +480,13 @@ export default function LegoPackDetail() {
           </div>
         </section>
       )}
+
+      {/* Reseñas de clientes */}
+      <section className="py-12 bg-white border-t border-slate-100">
+        <div className="container max-w-5xl">
+          <ReviewSection entityType="pack" entityId={pack.id} theme="light" />
+        </div>
+      </section>
     </PublicLayout>
   );
 }
