@@ -543,15 +543,17 @@ export const tpvRouter = router({
         items: z.array(
           z.object({
             productType: z.enum(["experience", "pack", "spa", "hotel", "restaurant", "extra", "legoPack"]),
-            productId: z.number(),
+            productId: z.number().min(0),
             productName: z.string(),
             quantity: z.number().int().positive(),
-            unitPrice: z.number().positive(),
+            unitPrice: z.number().min(0.01).max(10000),
             discountPercent: z.number().min(0).max(100).default(0),
             eventDate: z.string().optional(),
             eventTime: z.string().optional(),
             participants: z.number().int().positive().default(1),
             notes: z.string().optional(),
+            isManual: z.boolean().optional().default(false),
+            conceptText: z.string().max(500).optional(),
           })
         ).min(1),
         payments: z.array(
@@ -581,6 +583,12 @@ export const tpvRouter = router({
         });
       }
 
+      // Manual items require admin role
+      const hasManual = input.items.some(i => i.isManual);
+      if (hasManual && (ctx as any).user?.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Solo los administradores pueden añadir conceptos libres" });
+      }
+
       // ── 2. Calcular fiscalidad por línea ────────────────────────────────────
       const linesFiscal: Array<{
         fiscalRegime: "reav" | "general" | "mixed";
@@ -591,7 +599,9 @@ export const tpvRouter = router({
 
       for (const item of input.items) {
         const lineSubtotal = item.unitPrice * item.quantity * (1 - item.discountPercent / 100);
-        const fiscalData = await getProductFiscalData(item.productType, item.productId);
+        const fiscalData = item.isManual
+          ? { fiscalRegime: "reav" as const, taxRate: 0, providerPercent: 60, agencyMarginPercent: 40 }
+          : await getProductFiscalData(item.productType, item.productId);
         const fiscal = calcLineFiscal(lineSubtotal, fiscalData.fiscalRegime, fiscalData.taxRate, fiscalData.providerPercent, fiscalData.agencyMarginPercent);
         linesFiscal.push({ fiscalRegime: fiscalData.fiscalRegime, ...fiscal, lineSubtotal });
       }
@@ -666,6 +676,8 @@ export const tpvRouter = router({
           reavCost:   String(lf.reavCost.toFixed(2)),
           reavMargin: String(lf.reavMargin.toFixed(2)),
           reavTax:    String(lf.reavTax.toFixed(2)),
+          isManual:   item.isManual ? 1 : 0,
+          conceptText: item.conceptText ?? null,
         } as any);
       }
 
@@ -897,7 +909,7 @@ export const tpvRouter = router({
       // ── 8c. Generar factura automática ────────────────────────────────────────
       try {
         const invoiceNumber = await generateDocumentNumber("factura", "tpv:createSale", "system");
-        const invoicePayMethod: "tarjeta_fisica" | "efectivo" | "otro" =
+        const invoicePayMethod =
           primaryPaymentMethod === "cash" ? "efectivo" :
           primaryPaymentMethod === "card" ? "tarjeta_fisica" : "otro";
 

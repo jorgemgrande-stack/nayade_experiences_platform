@@ -2167,7 +2167,7 @@ export async function postConfirmOperation(params: {
   description?: string;
   // Vínculo con presupuesto (CRM)
   quoteId?: number | null;
-  sourceChannel?: "redsys" | "transferencia" | "efectivo" | "otro";
+  sourceChannel?: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta_fisica" | "tarjeta_redsys";
   // Vínculo con TPV
   tpvSaleId?: number | null;
 }) {

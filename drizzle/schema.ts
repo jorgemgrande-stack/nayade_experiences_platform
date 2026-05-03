@@ -1547,6 +1547,8 @@ export const tpvSaleItems = mysqlTable("tpv_sale_items", {
   reavCost:     decimal("reavCost_tsi",  { precision: 10, scale: 2 }).default("0"),
   reavMargin:   decimal("reavMargin_tsi",{ precision: 10, scale: 2 }).default("0"),
   reavTax:      decimal("reavTax_tsi",   { precision: 10, scale: 2 }).default("0"),
+  isManual:     boolean("is_manual").notNull().default(false),
+  conceptText:  varchar("concept_text",  { length: 500 }),
 });
 export type TpvSaleItem = typeof tpvSaleItems.$inferSelect;
 

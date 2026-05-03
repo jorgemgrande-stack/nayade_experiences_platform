@@ -17,7 +17,7 @@ import {
   ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone,
   Layers, X, User, Calendar, Clock, Users, Tag, ChevronDown, ChevronUp,
   Zap, Waves, Baby, Sparkles, Star, Sun, Filter, LogOut, Settings,
-  Receipt, ArrowLeft, SplitSquareHorizontal, AlarmClock,
+  Receipt, ArrowLeft, SplitSquareHorizontal, AlarmClock, PenLine, BarChart3,
 } from "lucide-react";
 import { Link } from "wouter";
 import TpvOpenSession from "./TpvOpenSession";
@@ -54,6 +54,7 @@ interface CartItem {
   selectedTimeSlotId?: number;
   selectedTimeSlotLabel?: string;
   selectedTime?: string;
+  isManual?: boolean;
 }
 
 type PaymentMethod = "cash" | "card" | "bizum" | "other";
@@ -132,6 +133,10 @@ export default function TpvScreen() {
   const [showTimeSlotsModal, setShowTimeSlotsModal] = useState(false);
   const [tpvSelectedSlotId, setTpvSelectedSlotId] = useState<number | null>(null);
   const [tpvSelectedTime, setTpvSelectedTime] = useState("");
+  // Modal de concepto libre (solo admin)
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualConcept, setManualConcept] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
 
   // Check active session
   const { data: activeSession, refetch: refetchSession } = trpc.tpv.getActiveSession.useQuery(
@@ -311,6 +316,8 @@ export default function TpvScreen() {
         notes: item.notes ?? (item.selectedTimeSlotLabel
           ? `Horario: ${item.selectedTimeSlotLabel}${item.selectedTime ? ` (${item.selectedTime})` : ""}`
           : undefined),
+        isManual: item.isManual ?? false,
+        conceptText: item.isManual ? item.product.title : undefined,
       })),
       payments: [{ method, amount: cartTotal }],
     });
@@ -386,6 +393,17 @@ export default function TpvScreen() {
               Backoffice
             </Button>
           </Link>
+          <Link href="/admin/contabilidad/control-diario">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-violet-400 hover:text-violet-300 h-8 px-2 text-xs gap-1"
+              title="Control de operaciones diario"
+            >
+              <BarChart3 className="w-3 h-3" />
+              Control
+            </Button>
+          </Link>
           <Button
             size="sm"
             variant="ghost"
@@ -456,6 +474,21 @@ export default function TpvScreen() {
           {/* Product grid */}
           <ScrollArea className="flex-1 min-h-0">
             <div className="grid grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 p-4">
+              {/* Producto flexible — solo admin, siempre primero */}
+              {user?.role === "admin" && (
+                <button
+                  onClick={() => { setManualConcept(""); setManualPrice(""); setShowManualModal(true); }}
+                  className="group relative bg-gray-900 rounded-xl overflow-hidden border border-dashed border-violet-600 hover:border-violet-400 transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                >
+                  <div className="h-28 bg-gradient-to-br from-violet-900/60 to-purple-900/60 flex items-center justify-center">
+                    <PenLine className="w-10 h-10 text-violet-400 group-hover:text-violet-300 transition-colors" />
+                  </div>
+                  <div className="p-2">
+                    <p className="text-xs font-medium text-violet-300 line-clamp-2 leading-tight mb-1">Producto flexible</p>
+                    <p className="text-[10px] text-gray-500">Concepto + precio libre</p>
+                  </div>
+                </button>
+              )}
               {filteredProducts.map((product) => {
                 const price = parseFloat(String(product.basePrice ?? "0"));
                 const discount = parseFloat(String(product.discountPercent ?? "0"));
@@ -840,6 +873,75 @@ export default function TpvScreen() {
           onClose={() => setShowTicket(false)}
         />
       )}
+
+      {/* Modal de concepto libre (solo admin) */}
+      <Dialog open={showManualModal} onOpenChange={setShowManualModal}>
+        <DialogContent className="bg-gray-900 border border-gray-700 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-white">
+              <PenLine className="w-4 h-4 text-violet-400" />
+              Producto flexible
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-300">Concepto *</Label>
+              <Input
+                autoFocus
+                placeholder="Ej: Entrada especial, Servicio extra…"
+                value={manualConcept}
+                onChange={(e) => setManualConcept(e.target.value)}
+                className="bg-gray-800 border-gray-700 text-white placeholder:text-gray-500"
+                onKeyDown={(e) => e.key === "Enter" && document.getElementById("manual-price-input")?.focus()}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-300">Precio (€) *</Label>
+              <Input
+                id="manual-price-input"
+                type="number"
+                min={0.01}
+                max={10000}
+                step={0.01}
+                placeholder="0.00"
+                value={manualPrice}
+                onChange={(e) => setManualPrice(e.target.value)}
+                className="bg-gray-800 border-gray-700 text-white placeholder:text-gray-500"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const price = parseFloat(manualPrice);
+                    if (manualConcept.trim() && price >= 0.01 && price <= 10000) {
+                      setCart(prev => [...prev, {
+                        id: `manual-${Date.now()}`,
+                        product: { id: 0, title: manualConcept.trim(), basePrice: String(price), coverImageUrl: null, discountPercent: null, productType: "extra" as const },
+                        quantity: 1, unitPrice: price, discountPercent: 0, participants: 1, isManual: true,
+                      }]);
+                      setShowManualModal(false);
+                    }
+                  }
+                }}
+              />
+              <p className="text-[10px] text-gray-500">Mín 0.01 € · Máx 10.000 €</p>
+            </div>
+            <Button
+              className="w-full bg-violet-600 hover:bg-violet-500 text-white"
+              disabled={!manualConcept.trim() || parseFloat(manualPrice) < 0.01 || parseFloat(manualPrice) > 10000 || isNaN(parseFloat(manualPrice))}
+              onClick={() => {
+                const price = parseFloat(manualPrice);
+                if (!manualConcept.trim() || isNaN(price) || price < 0.01 || price > 10000) return;
+                setCart(prev => [...prev, {
+                  id: `manual-${Date.now()}`,
+                  product: { id: 0, title: manualConcept.trim(), basePrice: String(price), coverImageUrl: null, discountPercent: null, productType: "extra" as const },
+                  quantity: 1, unitPrice: price, discountPercent: 0, participants: 1, isManual: true,
+                }]);
+                setShowManualModal(false);
+              }}
+            >
+              Añadir al carrito
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de selección de horario (time slots) para el TPV */}
       {showTimeSlotsModal && pendingProduct && (
