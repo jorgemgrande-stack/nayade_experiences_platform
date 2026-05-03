@@ -1049,7 +1049,7 @@ export default function TpvScreen() {
 function computeVariantPrice(basePrice: number, variant: ProductVariant): number {
   const mod = parseFloat(String(variant.priceModifier ?? "0"));
   if (variant.priceType === "percentage") return basePrice + basePrice * mod / 100;
-  return basePrice + mod; // fixed o per_person
+  return mod; // fixed y per_person: priceModifier ES el precio total (no un offset)
 }
 
 function TpvVariantsModal({
