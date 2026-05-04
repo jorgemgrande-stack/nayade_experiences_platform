@@ -5295,11 +5295,27 @@ export default function CRMDashboard() {
     onError: (e) => toast.error(e.message),
   });
 
-  const downloadInvoicePdf = (invoice: any) => {
+  const viewInvoicePdf = (invoice: any) => {
     if (invoice.pdfUrl) {
       window.open(invoice.pdfUrl, "_blank");
     } else {
       toast.error("No hay PDF disponible para esta factura");
+    }
+  };
+
+  const downloadInvoicePdf = async (invoice: any) => {
+    if (!invoice.pdfUrl) { toast.error("No hay PDF disponible para esta factura"); return; }
+    try {
+      const res = await fetch(invoice.pdfUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${invoice.invoiceNumber ?? "factura"}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(invoice.pdfUrl, "_blank");
     }
   };
 
@@ -6976,10 +6992,17 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            {/* PDF */}
+                            {/* Visualizar PDF */}
                             {inv.pdfUrl && (
-                              <button onClick={() => downloadInvoicePdf(inv)} title="Descargar PDF"
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-foreground transition-colors">
+                              <button onClick={() => viewInvoicePdf(inv)} title="Visualizar factura"
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            )}
+                            {/* Descargar PDF */}
+                            {inv.pdfUrl && (
+                              <button onClick={() => downloadInvoicePdf(inv)} title="Descargar factura"
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors">
                                 <FileDown className="w-4 h-4" />
                               </button>
                             )}
