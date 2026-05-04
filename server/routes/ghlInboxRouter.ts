@@ -17,10 +17,9 @@
 import express from "express";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, desc, and } from "drizzle-orm";
-import { ghlConversations, ghlMessages, ghlWebhookEvents } from "../../drizzle/schema";
+import { eq, desc, and, sql } from "drizzle-orm";
+import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
-import { getGHLCredentials } from "../db";
 import type { Response } from "express";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
@@ -128,13 +127,35 @@ const CONVERSATION_EVENTS = new Set([
   ...MESSAGE_EVENTS,
 ]);
 
+// ─── Credenciales específicas del módulo inbox ───────────────────────────────
+
+async function getInboxCredentials(): Promise<{ token: string; locationId: string } | null> {
+  try {
+    const rows = await db.select().from(siteSettings)
+      .where(sql`${siteSettings.key} IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId')`);
+    const map = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+    // Prioridad: claves propias del módulo > claves generales de GHL > env vars
+    const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
+      ?? map.ghlInboxToken
+      ?? map.ghlApiKey
+      ?? "";
+    const locationId = process.env.GHL_LOCATION_ID
+      ?? map.ghlInboxLocationId
+      ?? map.ghlLocationId
+      ?? "";
+    if (!token || !locationId) return null;
+    return { token, locationId };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Buscar conversación por contacto via GHL API ────────────────────────────
 
 async function fetchLatestConversationForContact(contactId: string): Promise<any | null> {
-  const creds = await getGHLCredentials().catch(() => null);
-  const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? creds?.apiKey;
-  const locationId = process.env.GHL_LOCATION_ID ?? creds?.locationId;
-  if (!token || !locationId) return null;
+  const creds = await getInboxCredentials();
+  if (!creds) return null;
+  const { token, locationId } = creds;
 
   try {
     const res = await fetch(
@@ -305,8 +326,8 @@ ghlInboxRouter.post(
     const locationId: string | null = payload.locationId ?? null;
 
     // 2. Validar locationId si está configurado (env var o BD)
-    const _creds = await getGHLCredentials().catch(() => null);
-    const expectedLocation = process.env.GHL_LOCATION_ID ?? _creds?.locationId;
+    const _creds = await getInboxCredentials();
+    const expectedLocation = _creds?.locationId;
     if (expectedLocation && locationId && locationId !== expectedLocation) {
       log("warn", "Webhook ignorado — locationId no coincide", { locationId, expectedLocation });
       return res.status(200).json({ ok: true, ignored: true });
@@ -403,17 +424,15 @@ ghlInboxRouter.post(
       return res.status(400).json({ ok: false, error: "El mensaje no puede estar vacío" });
     }
 
-    const replyCreds = await getGHLCredentials().catch(() => null);
-    const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? replyCreds?.apiKey;
-    const locationId = process.env.GHL_LOCATION_ID ?? replyCreds?.locationId;
-
-    if (!token || !locationId) {
+    const replyCreds = await getInboxCredentials();
+    if (!replyCreds) {
       return res.status(200).json({
         ok: false,
         notConfigured: true,
-        message: "El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL. Configura las credenciales en Configuración → GoHighLevel.",
+        message: "Configura el Token y Location ID en WhatsApp GHL → Estadísticas → Configuración.",
       });
     }
+    const { token, locationId } = replyCreds;
 
     try {
       const ghlRes = await fetch(`${GHL_BASE_URL}/conversations/${ghlConvId}/messages`, {
@@ -480,16 +499,14 @@ ghlInboxRouter.post(
 
 // ── POST /api/ghl/inbox/sync — sincronización manual ─────────────────────────
 ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), async (req, res) => {
-  const syncCreds = await getGHLCredentials().catch(() => null);
-  const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? syncCreds?.apiKey;
-  const locationId = process.env.GHL_LOCATION_ID ?? syncCreds?.locationId;
-
-  if (!token || !locationId) {
+  const syncCreds = await getInboxCredentials();
+  if (!syncCreds) {
     return res.status(200).json({
       ok: false,
-      message: "Credenciales GHL no configuradas. Ve a Configuración → GoHighLevel para añadirlas.",
+      message: "Credenciales GHL no configuradas. Ve a WhatsApp GHL → Estadísticas → Configuración.",
     });
   }
+  const { token, locationId } = syncCreds;
 
   try {
     // Fetch conversaciones recientes de GHL — sin filtro channel (no es param válido)

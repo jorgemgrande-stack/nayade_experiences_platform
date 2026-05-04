@@ -8,7 +8,7 @@ import { staffProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq, desc, and, or, like, isNotNull, sql } from "drizzle-orm";
-import { ghlConversations, ghlMessages, ghlWebhookEvents } from "../../drizzle/schema";
+import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { getGHLCredentials } from "../db";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
@@ -156,6 +156,37 @@ export const ghlInboxRouter = router({
       return { ok: true };
     }),
 
+  // ─── Credenciales del módulo inbox ──────────────────────────────────────
+  getInboxCredentials: staffProcedure
+    .query(async () => {
+      const rows = await db.select().from(siteSettings)
+        .where(sql`${siteSettings.key} IN ('ghlInboxToken','ghlInboxLocationId')`);
+      const map = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+      const token = map.ghlInboxToken ?? "";
+      return {
+        hasToken: !!token,
+        tokenMasked: token ? `${token.slice(0, 10)}…${token.slice(-4)}` : "",
+        locationId: map.ghlInboxLocationId ?? "",
+      };
+    }),
+
+  saveInboxCredentials: staffProcedure
+    .input(z.object({
+      token: z.string().min(1),
+      locationId: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      await _pool.execute(
+        "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
+        ["ghlInboxToken", input.token]
+      );
+      await _pool.execute(
+        "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
+        ["ghlInboxLocationId", input.locationId]
+      );
+      return { ok: true };
+    }),
+
   // ─── Diagnóstico: últimos eventos de webhook ─────────────────────────────
   listWebhookEvents: staffProcedure
     .input(z.object({ limit: z.number().min(1).max(100).default(30) }))
@@ -203,10 +234,14 @@ export const ghlInboxRouter = router({
           lastReceived: evtStats?.lastReceived ?? null,
         },
         configured: await (async () => {
-          const creds = await getGHLCredentials().catch(() => null);
+          const rows = await db.select().from(siteSettings)
+            .where(sql`${siteSettings.key} IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId')`);
+          const map = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+          const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? map.ghlInboxToken ?? map.ghlApiKey ?? "";
+          const locId = process.env.GHL_LOCATION_ID ?? map.ghlInboxLocationId ?? map.ghlLocationId ?? "";
           return {
-            hasToken: !!(process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? creds?.apiKey),
-            hasLocation: !!(process.env.GHL_LOCATION_ID ?? creds?.locationId),
+            hasToken: !!token,
+            hasLocation: !!locId,
             webhookEnabled: process.env.GHL_WEBHOOK_ENABLED !== "false",
           };
         })(),

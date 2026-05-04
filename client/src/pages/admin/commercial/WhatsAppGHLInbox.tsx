@@ -108,6 +108,10 @@ export default function WhatsAppGHLInbox() {
   const [linkQuoteId, setLinkQuoteId] = useState("");
   const [linkResId, setLinkResId] = useState("");
 
+  // ── Credenciales del módulo ───────────────────────────────────────────────
+  const [credToken, setCredToken] = useState("");
+  const [credLocation, setCredLocation] = useState("");
+
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: convData, isLoading: convsLoading, refetch: refetchConvs } =
     trpc.ghlInbox.listConversations.useQuery(
@@ -126,6 +130,20 @@ export default function WhatsAppGHLInbox() {
 
   const { data: webhookEvents, refetch: refetchEvents } =
     trpc.ghlInbox.listWebhookEvents.useQuery({ limit: 30 }, { enabled: tab === "diag" });
+
+  const { data: inboxCreds } = trpc.ghlInbox.getInboxCredentials.useQuery(
+    undefined, { enabled: tab === "stats" }
+  );
+
+  const saveCredsMut = trpc.ghlInbox.saveInboxCredentials.useMutation({
+    onSuccess: () => {
+      toast.success("Credenciales guardadas. Prueba Sincronizar.");
+      setCredToken("");
+      setCredLocation("");
+      refetchStats();
+    },
+    onError: e => toast.error(e.message),
+  });
 
   const selectedConv = convData?.rows.find(c => c.ghlConversationId === selectedConvId);
 
@@ -276,17 +294,65 @@ export default function WhatsAppGHLInbox() {
               <h3 className="text-sm font-semibold text-foreground/70">Configuración GHL</h3>
               <div className={`flex items-center gap-2 text-xs ${stats?.configured.hasToken ? "text-emerald-400" : "text-red-400"}`}>
                 {stats?.configured.hasToken ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                {stats?.configured.hasToken ? "Token GHL configurado" : "GHL_PRIVATE_INTEGRATION_TOKEN no configurado"}
+                {stats?.configured.hasToken
+                  ? `Token configurado${inboxCreds?.tokenMasked ? ` (${inboxCreds.tokenMasked})` : ""}`
+                  : "Token GHL no configurado"}
               </div>
               <div className={`flex items-center gap-2 text-xs ${stats?.configured.hasLocation ? "text-emerald-400" : "text-red-400"}`}>
                 {stats?.configured.hasLocation ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                {stats?.configured.hasLocation ? "Location ID configurado" : "GHL_LOCATION_ID no configurado"}
+                {stats?.configured.hasLocation
+                  ? `Location ID: ${inboxCreds?.locationId || "✓"}`
+                  : "Location ID no configurado"}
               </div>
               <div className="text-xs text-foreground/40 mt-3">
                 Webhook URL: <code className="text-orange-400 font-mono">{window.location.origin}/api/ghl/inbox/webhook</code>
               </div>
               <div className="text-xs text-foreground/40">
                 Webhooks recibidos: <span className="text-foreground/70">{stats?.webhooks.total ?? 0}</span> · Fallidos: <span className="text-red-400">{stats?.webhooks.failed ?? 0}</span>
+              </div>
+            </div>
+
+            {/* ── Formulario de credenciales ─────────────────────────────── */}
+            <div className="max-w-3xl mt-4 rounded-xl border border-foreground/[0.08] bg-background p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-foreground/70 flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Configurar credenciales GHL Inbox
+              </h3>
+              <p className="text-xs text-foreground/40">
+                Credenciales exclusivas de este módulo. Obtén el token en GHL → Settings → Private Integrations.
+              </p>
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs text-foreground/60">Private Integration Token</Label>
+                  <Input
+                    type="password"
+                    value={credToken}
+                    onChange={e => setCredToken(e.target.value)}
+                    placeholder={inboxCreds?.tokenMasked || "pit-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}
+                    className="h-8 text-xs font-mono mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-foreground/60">Location ID</Label>
+                  <Input
+                    value={credLocation}
+                    onChange={e => setCredLocation(e.target.value)}
+                    placeholder={inboxCreds?.locationId || "dhvershHYyPZo3wHP3kN"}
+                    className="h-8 text-xs font-mono mt-1"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  disabled={saveCredsMut.isPending || !credToken.trim() || !credLocation.trim()}
+                  onClick={() => saveCredsMut.mutate({
+                    token: credToken.trim(),
+                    locationId: credLocation.trim(),
+                  })}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {saveCredsMut.isPending ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : null}
+                  Guardar credenciales
+                </Button>
               </div>
             </div>
           </div>
