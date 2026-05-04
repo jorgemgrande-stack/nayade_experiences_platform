@@ -52,7 +52,7 @@ import {
   buildInstallmentReminderHtml,
 } from "../emailTemplates";
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
-import { syncLeadUrlsToGHL } from "../ghl";
+import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource } from "../ghl";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 
@@ -2748,6 +2748,49 @@ export const crmRouter = router({
             paymentLinkUrl: acceptUrl,
           });
           await logActivity("quote", quoteId, "quote_sent", ctx.user.id, ctx.user.name, { email: input.clientEmail, acceptUrl });
+
+          // Sync GHL: crear contacto si no existe, luego sincronizar URL del presupuesto
+          getGHLCredentials().then(async (ghlCreds) => {
+            if (!ghlCreds) return;
+            try {
+              // Leer el lead para saber si ya tiene ghlContactId
+              const [lead] = await db.select({ ghlContactId: (leads as any).ghlContactId })
+                .from(leads).where(eq(leads.id, leadId)).limit(1);
+              let ghlContactId: string | null = (lead as any)?.ghlContactId ?? null;
+
+              // Si no tiene contacto en GHL, crearlo ahora
+              if (!ghlContactId) {
+                ghlContactId = await createGHLContact(
+                  {
+                    name: input.clientName,
+                    email: input.clientEmail,
+                    phone: input.clientPhone,
+                    companyName: input.clientCompany,
+                    tags: getGHLTagsFromSource("presupuesto_directo"),
+                    notes: `[Lead #${leadId}] Presupuesto directo ${quoteNumber}`,
+                  },
+                  ghlCreds,
+                );
+                if (ghlContactId) {
+                  await db.update(leads)
+                    .set({ ghlContactId, updatedAt: new Date() } as any)
+                    .where(eq(leads.id, leadId));
+                }
+              }
+
+              // Sincronizar URL del presupuesto al contacto GHL
+              syncLeadUrlsToGHL({
+                ghlContactId,
+                quoteUrl: acceptUrl,
+                quoteNumber,
+                email: input.clientEmail,
+                phone: input.clientPhone,
+                credentials: ghlCreds,
+              });
+            } catch (err: any) {
+              console.error("[createDirect] Error sync GHL:", err?.message);
+            }
+          });
         }
 
         return { success: true, quoteId, quoteNumber, leadId, sent: input.sendNow };
