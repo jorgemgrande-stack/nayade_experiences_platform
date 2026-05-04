@@ -128,11 +128,47 @@ const CONVERSATION_EVENTS = new Set([
   ...MESSAGE_EVENTS,
 ]);
 
+// ─── Buscar conversación por contacto via GHL API ────────────────────────────
+
+async function fetchLatestConversationForContact(contactId: string): Promise<any | null> {
+  const creds = await getGHLCredentials().catch(() => null);
+  const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? creds?.apiKey;
+  const locationId = process.env.GHL_LOCATION_ID ?? creds?.locationId;
+  if (!token || !locationId) return null;
+
+  try {
+    const res = await fetch(
+      `${GHL_BASE_URL}/conversations/search?contactId=${encodeURIComponent(contactId)}&locationId=${encodeURIComponent(locationId)}&limit=1`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Version: GHL_API_VERSION,
+        },
+      }
+    );
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const convs: any[] = data?.conversations ?? data?.data ?? [];
+    return convs[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Procesamiento asíncrono del webhook ──────────────────────────────────────
 
 async function processWebhookEvent(eventRowId: number, payload: any, eventType: string): Promise<void> {
-  const convId: string | null = extractConversationId(payload);
+  let convId: string | null = extractConversationId(payload);
   const contactId: string | null = extractContactId(payload);
+
+  // Si no viene conversationId pero sí contactId, buscarlo via GHL API
+  // (los workflows de GHL no tienen merge tag {{conversation.id}})
+  let apiConv: any = null;
+  if (!convId && contactId) {
+    apiConv = await fetchLatestConversationForContact(contactId);
+    convId = apiConv?.id ?? null;
+    log("info", "ConvId resuelto via API", { contactId, convId });
+  }
 
   try {
     // Ignorar eventos que no son de conversación/mensaje
@@ -145,6 +181,20 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
 
     // ── Upsert conversación ──────────────────────────────────────────────────
     if (convId) {
+      // Si resolviamos la conversación via API, enriquecer el payload con esos datos
+      if (apiConv) {
+        payload = {
+          ...payload,
+          body: payload.body || apiConv.lastMessageBody,
+          locationId: payload.locationId ?? apiConv.locationId,
+          contact: {
+            name: payload.contact?.name ?? apiConv.contactName ?? apiConv.fullName,
+            phone: payload.contact?.phone ?? apiConv.phone,
+            email: payload.contact?.email ?? apiConv.email,
+          },
+          sentAt: payload.sentAt ?? apiConv.lastMessageDate,
+        };
+      }
       const contact = extractContact(payload);
       const messageBody = extractMessageBody(payload);
       const message = payload.message ?? {};
