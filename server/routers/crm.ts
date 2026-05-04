@@ -4671,6 +4671,36 @@ export const crmRouter = router({
         return invoice;
       }),
 
+    // ─── Regenerar PDF de factura existente ───────────────────────────────────
+    regeneratePdf: staff
+      .input(z.object({ invoiceId: z.number() }))
+      .mutation(async ({ input }) => {
+        const [invoice] = await db.select().from(invoices).where(eq(invoices.id, input.invoiceId));
+        if (!invoice) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const pdf = await generateInvoicePdf({
+          invoiceNumber: invoice.invoiceNumber,
+          clientName: invoice.clientName,
+          clientEmail: invoice.clientEmail,
+          clientPhone: invoice.clientPhone,
+          clientNif: invoice.clientNif,
+          clientAddress: invoice.clientAddress,
+          itemsJson: (invoice.itemsJson as any[]) ?? [],
+          subtotal: invoice.subtotal,
+          taxRate: invoice.taxRate ?? "21",
+          taxAmount: invoice.taxAmount ?? "0",
+          taxBreakdown: (invoice.taxBreakdown as any) ?? undefined,
+          total: invoice.total,
+          issuedAt: invoice.issuedAt,
+        });
+
+        await db.update(invoices)
+          .set({ pdfUrl: pdf.url, pdfKey: pdf.key, updatedAt: new Date() })
+          .where(eq(invoices.id, input.invoiceId));
+
+        return { pdfUrl: pdf.url };
+      }),
+
     // ─── Listado completo con filtros ──────────────────────────────────────────
     listAll: staff
       .input(z.object({

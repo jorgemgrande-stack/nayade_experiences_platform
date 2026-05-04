@@ -5295,6 +5295,14 @@ export default function CRMDashboard() {
     onError: (e) => toast.error(e.message),
   });
 
+  const regenerateInvoicePdfMutation = trpc.crm.invoices.regeneratePdf.useMutation({
+    onSuccess: () => {
+      refetchInvoices();
+      utils.crm.invoices.listAll.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const viewInvoicePdf = (invoice: any) => {
     if (invoice.pdfUrl) {
       window.open(invoice.pdfUrl, "_blank");
@@ -6992,18 +7000,27 @@ export default function CRMDashboard() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
-                            {/* Visualizar PDF */}
-                            {inv.pdfUrl && (
-                              <button onClick={() => viewInvoicePdf(inv)} title="Visualizar factura"
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
-                                <Eye className="w-4 h-4" />
-                              </button>
-                            )}
-                            {/* Descargar PDF */}
-                            {inv.pdfUrl && (
-                              <button onClick={() => downloadInvoicePdf(inv)} title="Descargar factura"
-                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors">
-                                <FileDown className="w-4 h-4" />
+                            {/* PDF: Generar si no existe, ver+descargar si existe */}
+                            {inv.pdfUrl ? (
+                              <>
+                                <button onClick={() => viewInvoicePdf(inv)} title="Visualizar factura"
+                                  className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-sky-400 transition-colors">
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => downloadInvoicePdf(inv)} title="Descargar factura"
+                                  className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/50 hover:text-emerald-400 transition-colors">
+                                  <FileDown className="w-4 h-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => regenerateInvoicePdfMutation.mutate({ invoiceId: inv.id })}
+                                disabled={regenerateInvoicePdfMutation.isPending}
+                                title="Generar PDF"
+                                className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-amber-400 transition-colors disabled:opacity-40">
+                                {regenerateInvoicePdfMutation.isPending
+                                  ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                  : <FilePlus className="w-4 h-4" />}
                               </button>
                             )}
                             {/* Reenviar */}
