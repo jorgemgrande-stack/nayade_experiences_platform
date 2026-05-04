@@ -579,6 +579,13 @@ ghlInboxRouter.post(
     }
     const { token, locationId } = replyCreds;
 
+    // Leer el contactId desde la BD para incluirlo en la llamada a GHL
+    const [convRows]: any = await _pool.execute(
+      "SELECT ghlContactId FROM ghl_conversations WHERE ghlConversationId = ? LIMIT 1",
+      [ghlConvId]
+    ).catch(() => [[]]);
+    const ghlContactId: string | null = (convRows as any[])[0]?.ghlContactId ?? null;
+
     try {
       const ghlRes = await fetch(`${GHL_BASE_URL}/conversations/messages`, {
         method: "POST",
@@ -590,6 +597,7 @@ ghlInboxRouter.post(
         body: JSON.stringify({
           type: "WhatsApp",
           conversationId: ghlConvId,
+          ...(ghlContactId ? { contactId: ghlContactId } : {}),
           message,
           locationId,
         }),
