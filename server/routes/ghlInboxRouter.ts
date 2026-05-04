@@ -517,7 +517,7 @@ ghlInboxRouter.post(
     const { token, locationId } = replyCreds;
 
     try {
-      const ghlRes = await fetch(`${GHL_BASE_URL}/conversations/${ghlConvId}/messages`, {
+      const ghlRes = await fetch(`${GHL_BASE_URL}/conversations/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -526,6 +526,7 @@ ghlInboxRouter.post(
         },
         body: JSON.stringify({
           type: "WhatsApp",
+          conversationId: ghlConvId,
           message,
           locationId,
         }),
