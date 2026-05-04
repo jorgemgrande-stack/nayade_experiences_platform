@@ -207,8 +207,8 @@ ghlInboxRouter.post(
         (req.headers["x-ghl-secret"] as string | undefined) ??
         (req.query.secret as string | undefined);
       if (provided !== secret) {
-        log("warn", "Webhook rechazado — secreto inválido");
-        return res.status(401).json({ ok: false });
+        log("warn", "Webhook con secreto inválido — ignorado silenciosamente");
+        return res.status(200).json({ ok: true }); // Siempre 200 para evitar reintentos de GHL
       }
     }
 
