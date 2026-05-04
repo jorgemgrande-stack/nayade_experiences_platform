@@ -16,12 +16,105 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
-import { quotes, ghlWebhookLogs } from "../drizzle/schema";
+import { quotes, ghlWebhookLogs, vapiCalls } from "../drizzle/schema";
 import { createLead } from "./db";
 import { generateDocumentNumber } from "./documentNumbers";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
 const _db = drizzle(_pool);
+
+const VAPI_BASE_URL = "https://api.vapi.ai";
+
+// Extrae datos de llamada de forma defensiva desde el payload de Vapi
+function extractCallData(payload: any): {
+  vapiCallId: string | null;
+  assistantId: string | null;
+  phoneNumber: string | null;
+  customerName: string | null;
+  startedAt: Date | null;
+  endedAt: Date | null;
+  durationSeconds: number | null;
+  status: string | null;
+  endedReason: string | null;
+  recordingUrl: string | null;
+  transcript: string | null;
+  summary: string | null;
+  structuredData: any;
+} {
+  // Vapi puede enviar el payload con o sin wrapper "message"
+  const msg = payload.message ?? payload;
+  const call = msg.call ?? payload.call ?? {};
+
+  const vapiCallId = call.id ?? msg.callId ?? payload.callId ?? null;
+  const assistantId = call.assistantId ?? msg.assistantId ?? null;
+  const phoneNumber = call.customer?.number ?? call.phoneNumber ?? payload.phoneNumber ?? null;
+  const customerName = call.customer?.name ?? payload.customerName ?? null;
+
+  const startedAtRaw = call.startedAt ?? msg.startedAt ?? null;
+  const endedAtRaw = call.endedAt ?? msg.endedAt ?? null;
+  const startedAt = startedAtRaw ? new Date(startedAtRaw) : null;
+  const endedAt = endedAtRaw ? new Date(endedAtRaw) : null;
+
+  let durationSeconds: number | null = msg.durationSeconds ?? call.duration ?? null;
+  if (!durationSeconds && startedAt && endedAt) {
+    durationSeconds = Math.round((endedAt.getTime() - startedAt.getTime()) / 1000);
+  }
+
+  const status = call.status ?? msg.status ?? null;
+  const endedReason = msg.endedReason ?? call.endedReason ?? null;
+  const recordingUrl = msg.recordingUrl ?? msg.artifact?.recordingUrl ?? call.recordingUrl ?? null;
+  const transcript = msg.transcript ?? msg.artifact?.transcript ?? null;
+  const summary = msg.analysis?.summary ?? msg.summary ?? null;
+  const structuredData = msg.analysis?.structuredData ?? msg.structuredData ?? null;
+
+  return {
+    vapiCallId, assistantId, phoneNumber, customerName,
+    startedAt, endedAt, durationSeconds, status, endedReason,
+    recordingUrl, transcript, summary, structuredData,
+  };
+}
+
+// Crea las tablas si no existen (auto-heal para Railway)
+async function initVapiTables(): Promise<void> {
+  try {
+    await _pool.execute(`
+      CREATE TABLE IF NOT EXISTS vapi_calls (
+        id int AUTO_INCREMENT PRIMARY KEY,
+        vapiCallId varchar(128) NOT NULL,
+        assistantId varchar(128) NULL,
+        phoneNumber varchar(32) NULL,
+        customerName varchar(255) NULL,
+        customerEmail varchar(320) NULL,
+        startedAt timestamp NULL,
+        endedAt timestamp NULL,
+        durationSeconds int NULL,
+        status varchar(64) NULL,
+        endedReason varchar(128) NULL,
+        recordingUrl text NULL,
+        transcript mediumtext NULL,
+        summary text NULL,
+        structuredData json NULL,
+        rawPayload json NULL,
+        linkedLeadId int NULL,
+        linkedBudgetId int NULL,
+        linkedReservationId int NULL,
+        reviewed boolean NOT NULL DEFAULT false,
+        createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_vapi_call_id (vapiCallId),
+        INDEX idx_vapi_call_startedAt (startedAt),
+        INDEX idx_vapi_call_status (status),
+        INDEX idx_vapi_call_reviewed (reviewed),
+        INDEX idx_vapi_call_leadId (linkedLeadId)
+      )
+    `);
+    console.log("[VAPI] Tabla vapi_calls verificada/creada OK");
+  } catch (err: any) {
+    console.error("[VAPI] Error creando tabla vapi_calls:", err.message);
+  }
+}
+
+initVapiTables();
 
 const vapiWebhookRouter = express.Router();
 
@@ -63,6 +156,42 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
     logId = Number((ins[0] as any).insertId);
   } catch (logErr: any) {
     console.error("[VAPI Webhook] Error al guardar log:", logErr.message);
+  }
+
+  // 3b. Siempre intentar guardar datos de llamada (incluso sin lead)
+  const earlyCallData = extractCallData(payload);
+  if (earlyCallData.vapiCallId) {
+    await _db.insert(vapiCalls).values({
+      vapiCallId: earlyCallData.vapiCallId,
+      assistantId: earlyCallData.assistantId ?? undefined,
+      phoneNumber: earlyCallData.phoneNumber ?? phone ?? undefined,
+      customerName: earlyCallData.customerName ?? (name !== "Contacto VAPI" ? name : undefined) ?? undefined,
+      customerEmail: email || undefined,
+      startedAt: earlyCallData.startedAt ?? undefined,
+      endedAt: earlyCallData.endedAt ?? undefined,
+      durationSeconds: earlyCallData.durationSeconds ?? undefined,
+      status: earlyCallData.status ?? undefined,
+      endedReason: earlyCallData.endedReason ?? undefined,
+      recordingUrl: earlyCallData.recordingUrl ?? undefined,
+      transcript: earlyCallData.transcript ?? undefined,
+      summary: earlyCallData.summary ?? undefined,
+      structuredData: earlyCallData.structuredData ?? undefined,
+      rawPayload: payload,
+    }).onDuplicateKeyUpdate({
+      set: {
+        endedAt: earlyCallData.endedAt ?? undefined,
+        durationSeconds: earlyCallData.durationSeconds ?? undefined,
+        status: earlyCallData.status ?? undefined,
+        endedReason: earlyCallData.endedReason ?? undefined,
+        recordingUrl: earlyCallData.recordingUrl ?? undefined,
+        transcript: earlyCallData.transcript ?? undefined,
+        summary: earlyCallData.summary ?? undefined,
+        structuredData: earlyCallData.structuredData ?? undefined,
+        updatedAt: new Date(),
+      },
+    }).catch((e: any) => {
+      if (e.code !== "ER_DUP_ENTRY") console.warn("[VAPI Webhook] Error guardando llamada:", e.message);
+    });
   }
 
   if (!email && !phone) {
@@ -123,6 +252,44 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
         .set({ status: "procesado" })
         .where(eq(ghlWebhookLogs.id, logId))
         .catch(() => {});
+    }
+
+    // 6. Guardar datos de la llamada en vapi_calls (vinculada al lead)
+    const callData = extractCallData(payload);
+    if (callData.vapiCallId) {
+      await _db.insert(vapiCalls).values({
+        vapiCallId: callData.vapiCallId,
+        assistantId: callData.assistantId ?? undefined,
+        phoneNumber: callData.phoneNumber ?? phone ?? undefined,
+        customerName: callData.customerName ?? name ?? undefined,
+        customerEmail: email || undefined,
+        startedAt: callData.startedAt ?? undefined,
+        endedAt: callData.endedAt ?? undefined,
+        durationSeconds: callData.durationSeconds ?? undefined,
+        status: callData.status ?? undefined,
+        endedReason: callData.endedReason ?? undefined,
+        recordingUrl: callData.recordingUrl ?? undefined,
+        transcript: callData.transcript ?? undefined,
+        summary: callData.summary ?? undefined,
+        structuredData: callData.structuredData ?? undefined,
+        rawPayload: payload,
+        linkedLeadId: leadId,
+      }).onDuplicateKeyUpdate({
+        set: {
+          endedAt: callData.endedAt ?? undefined,
+          durationSeconds: callData.durationSeconds ?? undefined,
+          status: callData.status ?? undefined,
+          endedReason: callData.endedReason ?? undefined,
+          recordingUrl: callData.recordingUrl ?? undefined,
+          transcript: callData.transcript ?? undefined,
+          summary: callData.summary ?? undefined,
+          structuredData: callData.structuredData ?? undefined,
+          linkedLeadId: leadId,
+          updatedAt: new Date(),
+        },
+      }).catch((e: any) => {
+        console.warn("[VAPI Webhook] No se pudo guardar en vapi_calls:", e.message);
+      });
     }
 
     console.log(`[VAPI Webhook] Lead #${leadId} creado — ${quoteNumber} — ${presupuestoUrl}`);

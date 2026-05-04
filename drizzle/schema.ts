@@ -2889,4 +2889,34 @@ export const commercialCommunications = mysqlTable("commercial_communications", 
 });
 export type CommercialCommunication = typeof commercialCommunications.$inferSelect;
 
+// ─── VAPI CALLS ───────────────────────────────────────────────────────────────
+
+export const vapiCalls = mysqlTable("vapi_calls", {
+  id: int("id").autoincrement().primaryKey(),
+  vapiCallId: varchar("vapiCallId", { length: 128 }).notNull().unique(),
+  assistantId: varchar("assistantId", { length: 128 }),
+  phoneNumber: varchar("phoneNumber", { length: 32 }),
+  customerName: varchar("customerName", { length: 255 }),
+  customerEmail: varchar("customerEmail", { length: 320 }),
+  startedAt: timestamp("startedAt"),
+  endedAt: timestamp("endedAt"),
+  durationSeconds: int("durationSeconds"),
+  status: varchar("status", { length: 64 }),
+  endedReason: varchar("endedReason", { length: 128 }),
+  recordingUrl: text("recordingUrl"),
+  transcript: mediumtext("transcript"),
+  summary: text("summary"),
+  structuredData: json("structuredData"),
+  rawPayload: json("rawPayload"),
+  linkedLeadId: int("linkedLeadId"),
+  linkedBudgetId: int("linkedBudgetId"),
+  linkedReservationId: int("linkedReservationId"),
+  reviewed: boolean("reviewed").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type VapiCall = typeof vapiCalls.$inferSelect;
+export type InsertVapiCall = typeof vapiCalls.$inferInsert;
+
 export type InsertFinCashClosureAction = typeof finCashClosureActions.$inferInsert;

@@ -182,6 +182,7 @@ import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
 import { commercialFollowupRouter } from "./routers/commercialFollowup";
 import { ghlInboxRouter } from "./routers/ghlInbox";
+import { vapiCallsRouter } from "./routers/vapiCalls";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -1852,6 +1853,7 @@ export const appRouter = router({
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
   ghlInbox: ghlInboxRouter,
+  vapiCalls: vapiCallsRouter,
   suppliers: suppliersRouter,
   timeSlots: timeSlotsRouter,
   tpv: tpvRouter,

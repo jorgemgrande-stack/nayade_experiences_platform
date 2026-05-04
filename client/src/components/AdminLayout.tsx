@@ -5,7 +5,7 @@ import {
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
-  Sun, Moon, ExternalLink, Target, MessageCircle,
+  Sun, Moon, ExternalLink, Target, MessageCircle, Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -79,6 +79,7 @@ const navItems = [
       { label: "Historial", href: "/admin/atencion-comercial?tab=history", key: "ac-history" },
       { label: "Configuración", href: "/admin/atencion-comercial?tab=settings", key: "ac-settings" },
       { label: "WhatsApp GHL", href: "/admin/atencion-comercial/whatsapp", key: "ac-whatsapp", icon: MessageCircle },
+      { label: "Agente IA Vapi", href: "/admin/atencion-comercial/agente-ia", key: "ac-vapi", icon: Bot },
     ],
   },
   {
