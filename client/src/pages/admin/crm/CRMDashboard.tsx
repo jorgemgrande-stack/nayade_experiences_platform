@@ -4772,12 +4772,15 @@ export default function CRMDashboard() {
     return "leads";
   };
   const [tab, setTab] = useState<Tab>(() => tabFromSearch(searchStr));
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => {
+    try { return new URLSearchParams(searchStr).get("search") ?? ""; } catch { return ""; }
+  });
   const [filterStatus, setFilterStatus] = useState<string>("all");
   // Cuando el usuario navega via sidebar (?tab= cambia), sincronizar el estado interno
   useEffect(() => {
+    const params = new URLSearchParams(searchStr);
     setTab(tabFromSearch(searchStr));
-    setSearch("");
+    setSearch(params.get("search") ?? "");
     setFilterStatus("all");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchStr]);
@@ -6668,9 +6671,16 @@ export default function CRMDashboard() {
                            res.channel === "groupon" || res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? "Cupón"}` :
                            res.channel ?? "—"}
                         </span>
-                        {res.channelDetail && (
+                        {(res.channel === "tpv" || res.channel === "TPV_FISICO") && (res as any).tpvOperationNumber ? (
+                          <a
+                            href={`/admin/contabilidad/operaciones-tpv?search=${encodeURIComponent((res as any).tpvOperationNumber)}`}
+                            className="block text-[9px] text-violet-400/70 hover:text-violet-300 hover:underline mt-0.5 font-mono truncate max-w-[80px]"
+                          >
+                            #{(res as any).tpvOperationNumber}
+                          </a>
+                        ) : res.channelDetail ? (
                           <div className="text-[9px] text-foreground/40 mt-0.5 truncate max-w-[80px]">{res.channelDetail}</div>
-                        )}
+                        ) : null}
                       </td>
                       {/* F. Compra */}
                       <td className="px-4 py-3 hidden lg:table-cell">

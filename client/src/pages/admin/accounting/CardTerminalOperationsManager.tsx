@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "../../../components/ui/button";
@@ -73,7 +73,9 @@ export default function CardTerminalOperationsManager() {
   // Filters
   const [statusFilter, setStatusFilter] = useState<OpStatus>("todos");
   const [typeFilter, setTypeFilter] = useState<OpType>("todos");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("search") ?? ""; } catch { return ""; }
+  });
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -570,9 +572,18 @@ export default function CardTerminalOperationsManager() {
                   </td>
                   <td className="p-3 text-xs">
                     {op.linkedEntityType && op.linkedEntityType !== "none" ? (
-                      <span className="text-green-700">
-                        {op.linkedEntityType === "reservation" ? "Reserva" : "Presupuesto"} #{op.linkedEntityId}
-                      </span>
+                      op.linkedEntityType === "reservation" ? (
+                        <a
+                          href={`/admin/crm?tab=reservations&search=${encodeURIComponent((op as any).linkedReservationNumber ?? String(op.linkedEntityId))}`}
+                          className="text-sky-400 hover:text-sky-300 hover:underline font-medium"
+                        >
+                          {(op as any).linkedReservationNumber ?? `#${op.linkedEntityId}`}
+                        </a>
+                      ) : (
+                        <span className="text-amber-400 font-medium">
+                          Presupuesto #{op.linkedEntityId}
+                        </span>
+                      )
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

@@ -3790,11 +3790,19 @@ export const crmRouter = router({
               ...getTableColumns(reservations),
               invoicePdfUrl: invoices.pdfUrl,
               clientId: clients.id,
+              tpvOperationNumber: cardTerminalOperations.operationNumber,
             })
             .from(reservations)
             .leftJoin(invoices, eq(invoices.id, reservations.invoiceId as any))
             .leftJoin(quotes, eq(quotes.id, reservations.quoteId as any))
             .leftJoin(clients, eq(clients.leadId, quotes.leadId))
+            .leftJoin(
+              cardTerminalOperations,
+              and(
+                eq(cardTerminalOperations.linkedEntityId, reservations.id),
+                eq(cardTerminalOperations.linkedEntityType, "reservation")
+              )
+            )
             .where(where)
             .orderBy(desc(reservations.createdAt))
             .limit(input.limit)

@@ -362,7 +362,28 @@ export const cardTerminalOperationsRouter = router({
         .filter((r) => r.operationType === "DEVOLUCION" && r.status !== "ignorado")
         .reduce((s, r) => s + parseFloat(String(r.amount)), 0);
 
-      return { data, total, totalVentas, totalDevoluciones };
+      // Enriquecer con reservationNumber para las operaciones vinculadas a reservas
+      const reservationIds = data
+        .filter(r => r.linkedEntityType === "reservation" && r.linkedEntityId)
+        .map(r => r.linkedEntityId!);
+
+      const reservationNumberMap: Record<number, string> = {};
+      if (reservationIds.length > 0) {
+        const resRows = await db
+          .select({ id: reservations.id, reservationNumber: reservations.reservationNumber })
+          .from(reservations)
+          .where(sql`${reservations.id} IN (${sql.join(reservationIds.map(id => sql`${id}`), sql`, `)})`);
+        for (const r of resRows) reservationNumberMap[r.id] = r.reservationNumber;
+      }
+
+      const enrichedData = data.map(r => ({
+        ...r,
+        linkedReservationNumber: r.linkedEntityType === "reservation" && r.linkedEntityId
+          ? (reservationNumberMap[r.linkedEntityId] ?? null)
+          : null,
+      }));
+
+      return { data: enrichedData, total, totalVentas, totalDevoluciones };
     }),
 
   getById: adminProc
