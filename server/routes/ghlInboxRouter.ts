@@ -20,6 +20,7 @@ import mysql from "mysql2/promise";
 import { eq, desc, and } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents } from "../../drizzle/schema";
 import { ghlInboxEmitter } from "../ghlInboxEvents";
+import { getGHLCredentials } from "../db";
 import type { Response } from "express";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
@@ -216,8 +217,9 @@ ghlInboxRouter.post(
     const eventType = extractEventType(payload);
     const locationId: string | null = payload.locationId ?? null;
 
-    // 2. Validar locationId si está configurado
-    const expectedLocation = process.env.GHL_LOCATION_ID;
+    // 2. Validar locationId si está configurado (env var o BD)
+    const _creds = await getGHLCredentials().catch(() => null);
+    const expectedLocation = process.env.GHL_LOCATION_ID ?? _creds?.locationId;
     if (expectedLocation && locationId && locationId !== expectedLocation) {
       log("warn", "Webhook ignorado — locationId no coincide", { locationId, expectedLocation });
       return res.status(200).json({ ok: true, ignored: true });
@@ -314,14 +316,15 @@ ghlInboxRouter.post(
       return res.status(400).json({ ok: false, error: "El mensaje no puede estar vacío" });
     }
 
-    const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? process.env.GHL_API_KEY;
-    const locationId = process.env.GHL_LOCATION_ID;
+    const replyCreds = await getGHLCredentials().catch(() => null);
+    const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? replyCreds?.apiKey;
+    const locationId = process.env.GHL_LOCATION_ID ?? replyCreds?.locationId;
 
     if (!token || !locationId) {
       return res.status(200).json({
         ok: false,
         notConfigured: true,
-        message: "El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL. Configura GHL_PRIVATE_INTEGRATION_TOKEN y GHL_LOCATION_ID.",
+        message: "El envío de WhatsApp desde Nayade todavía no está habilitado para esta cuenta GHL. Configura las credenciales en Configuración → GoHighLevel.",
       });
     }
 
@@ -390,13 +393,14 @@ ghlInboxRouter.post(
 
 // ── POST /api/ghl/inbox/sync — sincronización manual ─────────────────────────
 ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), async (req, res) => {
-  const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? process.env.GHL_API_KEY;
-  const locationId = process.env.GHL_LOCATION_ID;
+  const syncCreds = await getGHLCredentials().catch(() => null);
+  const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? syncCreds?.apiKey;
+  const locationId = process.env.GHL_LOCATION_ID ?? syncCreds?.locationId;
 
   if (!token || !locationId) {
     return res.status(200).json({
       ok: false,
-      message: "GHL_PRIVATE_INTEGRATION_TOKEN y GHL_LOCATION_ID no configurados. La sincronización automática requiere credenciales GHL.",
+      message: "Credenciales GHL no configuradas. Ve a Configuración → GoHighLevel para añadirlas.",
     });
   }
 

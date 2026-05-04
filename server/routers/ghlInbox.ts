@@ -9,6 +9,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq, desc, and, or, like, isNotNull, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents } from "../../drizzle/schema";
+import { getGHLCredentials } from "../db";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
@@ -201,11 +202,14 @@ export const ghlInboxRouter = router({
           failed: Number(evtStats?.failed ?? 0),
           lastReceived: evtStats?.lastReceived ?? null,
         },
-        configured: {
-          hasToken: !!(process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? process.env.GHL_API_KEY),
-          hasLocation: !!process.env.GHL_LOCATION_ID,
-          webhookEnabled: process.env.GHL_WEBHOOK_ENABLED !== "false",
-        },
+        configured: await (async () => {
+          const creds = await getGHLCredentials().catch(() => null);
+          return {
+            hasToken: !!(process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? creds?.apiKey),
+            hasLocation: !!(process.env.GHL_LOCATION_ID ?? creds?.locationId),
+            webhookEnabled: process.env.GHL_WEBHOOK_ENABLED !== "false",
+          };
+        })(),
       };
     }),
 });
