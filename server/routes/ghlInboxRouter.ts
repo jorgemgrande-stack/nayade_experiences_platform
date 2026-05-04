@@ -254,6 +254,65 @@ async function fetchLatestConversationForContact(contactId: string): Promise<any
   }
 }
 
+// ─── Fetchear y sincronizar mensajes de una conversación via GHL API ────────
+
+async function fetchAndSyncMessages(convId: string, limit = 25): Promise<void> {
+  const creds = await getInboxCredentials();
+  if (!creds) return;
+  const { token } = creds;
+
+  try {
+    const res = await fetch(
+      `${GHL_BASE_URL}/conversations/${encodeURIComponent(convId)}/messages?limit=${limit}`,
+      { headers: { Authorization: `Bearer ${token}`, Version: GHL_API_VERSION } }
+    );
+    if (!res.ok) {
+      log("warn", "fetchAndSyncMessages: respuesta no-OK de GHL", { convId, status: res.status });
+      return;
+    }
+    const data: any = await res.json();
+    // GHL puede devolver { messages: [...] } o { messages: { messages: [...] } }
+    const raw = data?.messages;
+    const msgs: any[] = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.messages)
+        ? raw.messages
+        : [];
+
+    for (const m of msgs) {
+      const msgId: string = m.id ?? m.messageId;
+      if (!msgId) continue;
+      const body: string = m.body ?? m.text ?? m.message ?? "";
+      const dir = (m.direction ?? "inbound") === "outbound" ? "outbound" : "inbound";
+      const sentAt = m.dateAdded ? new Date(m.dateAdded) : new Date();
+
+      try {
+        await db.insert(ghlMessages).values({
+          ghlMessageId: msgId,
+          ghlConversationId: convId,
+          direction: dir,
+          messageType: m.messageType ?? m.type?.toString() ?? "text",
+          body: body || undefined,
+          attachmentsJson: m.attachments?.length ? m.attachments : undefined,
+          senderName: dir === "inbound" ? (m.contactName ?? undefined) : (m.userId ? "Nayade" : "Nayade"),
+          sentAt,
+          deliveryStatus: m.status ?? undefined,
+          rawPayloadJson: m,
+        }).onDuplicateKeyUpdate({
+          set: { deliveryStatus: m.status ?? "delivered" },
+        });
+      } catch (e: any) {
+        if (e.code !== "ER_DUP_ENTRY") {
+          log("warn", "fetchAndSyncMessages: error upserting msg", { msgId, error: e.message });
+        }
+      }
+    }
+    log("info", "fetchAndSyncMessages OK", { convId, count: msgs.length });
+  } catch (err: any) {
+    log("warn", "fetchAndSyncMessages: excepción", { convId, error: err.message });
+  }
+}
+
 // ─── Procesamiento asíncrono del webhook ──────────────────────────────────────
 
 async function processWebhookEvent(eventRowId: number, payload: any, eventType: string): Promise<void> {
@@ -334,7 +393,7 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
         );
       }
 
-      // ── Upsert mensaje ─────────────────────────────────────────────────────
+      // ── Intentar upsert del mensaje desde el propio payload ───────────────
       const msgId: string | null = extractMessageId(payload.message ?? payload);
       if (msgId && (messageBody || payload.attachments?.length || message.attachments?.length)) {
         await db.insert(ghlMessages).values({
@@ -354,6 +413,10 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
           set: { deliveryStatus: payload.status ?? message.status ?? "delivered" },
         });
       }
+
+      // ── Siempre fetchear mensajes desde GHL API (el payload del workflow
+      //    no suele incluir el cuerpo completo del mensaje)
+      await fetchAndSyncMessages(convId);
     }
 
     // Marcar evento como procesado
@@ -643,6 +706,8 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), asy
           },
         });
         upserted++;
+        // Fetchear mensajes de cada conversación en paralelo (máx 5 concurrentes)
+        await fetchAndSyncMessages(conv.id, 50).catch(() => {});
       } catch (e: any) {
         log("warn", "Error upserting conversation during sync", { convId: conv.id, error: e.message });
       }
