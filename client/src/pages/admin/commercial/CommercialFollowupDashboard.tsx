@@ -185,7 +185,7 @@ export default function CommercialFollowupDashboard() {
 
   // ── Open quotes filters ──────────────────────────────────────────────────
   const [openSearch, setOpenSearch] = useState("");
-  const [openStatus, setOpenStatus] = useState("");
+  const [openStatus, setOpenStatus] = useState("all");
   const [openViewed, setOpenViewed] = useState<"all" | "yes" | "no">("all");
 
   // ── Rule form ────────────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ export default function CommercialFollowupDashboard() {
 
   const { data: openData, isLoading: openLoading, refetch: refetchOpen } =
     trpc.commercialFollowup.listOpen.useQuery(
-      { search: openSearch || undefined, commercialStatus: openStatus || undefined, viewed: openViewed, limit: 100, offset: 0 },
+      { search: openSearch || undefined, commercialStatus: openStatus === "all" ? undefined : openStatus || undefined, viewed: openViewed, limit: 100, offset: 0 },
       { enabled: tab === "open" }
     );
 
@@ -426,7 +426,7 @@ export default function CommercialFollowupDashboard() {
                   <SelectValue placeholder="Estado comercial" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los estados</SelectItem>
+                  <SelectItem value="all">Todos los estados</SelectItem>
                   {Object.entries(COMMERCIAL_STATUS_CONFIG).map(([k, v]) => (
                     <SelectItem key={k} value={k}>{v.label}</SelectItem>
                   ))}
