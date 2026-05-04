@@ -44,6 +44,7 @@ function extractConversationId(payload: any): string | null {
     payload.conversationId ??
     payload.conversation_id ??
     payload.conversation?.id ??
+    payload.message?.conversationId ??
     null
   );
 }
@@ -53,18 +54,29 @@ function extractContactId(payload: any): string | null {
     payload.contactId ??
     payload.contact_id ??
     payload.contact?.id ??
+    payload.message?.contactId ??
     null
   );
 }
 
 function extractEventType(payload: any): string {
-  return (
+  // GHL workflows pueden enviar el tipo en distintos campos
+  const raw =
     payload.type ??
     payload.event ??
     payload.eventType ??
     payload.event_type ??
-    "unknown"
-  );
+    payload.messageType ??
+    "";
+  // Normalizar: si viene "WhatsApp" como tipo de mensaje, inferir dirección
+  if (!raw || raw === "WhatsApp") {
+    const dir = payload.direction ?? payload.message?.direction ?? "";
+    if (dir === "inbound") return "InboundMessage";
+    if (dir === "outbound") return "OutboundMessage";
+    // Si tiene conversationId con body, asumir mensaje entrante
+    if (payload.conversationId || payload.message?.conversationId) return "InboundMessage";
+  }
+  return raw || "unknown";
 }
 
 function extractMessageId(payload: any): string | null {
@@ -75,6 +87,30 @@ function extractMessageId(payload: any): string | null {
     payload.id ??
     null
   );
+}
+
+// Extrae el cuerpo del mensaje soportando múltiples formatos de payload GHL
+function extractMessageBody(payload: any): string {
+  return (
+    payload.message?.body ??
+    payload.body ??
+    payload.text ??
+    payload.message?.text ??
+    payload.messageBody ??
+    ""
+  );
+}
+
+// Extrae datos del contacto de forma robusta
+function extractContact(payload: any): { name?: string; phone?: string; email?: string } {
+  const c = payload.contact ?? payload.contactData ?? {};
+  return {
+    name: c.name ?? c.fullName ?? c.firstName
+      ? [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || c.name || c.fullName
+      : payload.contactName ?? payload.fullName ?? undefined,
+    phone: c.phone ?? c.phoneNumber ?? payload.phone ?? payload.phoneNumber ?? undefined,
+    email: c.email ?? payload.email ?? undefined,
+  };
 }
 
 // Eventos de GHL que corresponden a mensajes/conversaciones de WhatsApp
@@ -109,29 +145,32 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
 
     // ── Upsert conversación ──────────────────────────────────────────────────
     if (convId) {
-      const contact = payload.contact ?? {};
+      const contact = extractContact(payload);
+      const messageBody = extractMessageBody(payload);
       const message = payload.message ?? {};
-      const messageBody: string = message.body ?? payload.body ?? payload.text ?? "";
-      const isInbound = (message.direction ?? payload.direction ?? "inbound") === "inbound";
-      const sentAtRaw = message.dateAdded ?? payload.dateAdded ?? payload.sentAt ?? null;
+      const isInbound = (message.direction ?? payload.direction ?? "inbound") !== "outbound";
+      const sentAtRaw = message.dateAdded ?? payload.dateAdded ?? payload.sentAt ?? payload.createdAt ?? null;
       const sentAt = sentAtRaw ? new Date(sentAtRaw) : new Date();
+      const channel = payload.channel ?? (
+        (payload.type ?? payload.messageType ?? "").toLowerCase().includes("whatsapp") ? "whatsapp" : "whatsapp"
+      );
 
       await db.insert(ghlConversations).values({
         ghlConversationId: convId,
         ghlContactId: contactId ?? undefined,
         locationId: payload.locationId ?? undefined,
-        channel: payload.channel ?? payload.type?.toLowerCase?.().includes("whatsapp") ? "whatsapp" : (payload.channel ?? "whatsapp"),
-        customerName: contact.name ?? contact.fullName ?? payload.contactName ?? undefined,
-        phone: contact.phone ?? contact.phoneNumber ?? payload.phone ?? undefined,
-        email: contact.email ?? payload.email ?? undefined,
+        channel,
+        customerName: contact.name ?? undefined,
+        phone: contact.phone ?? undefined,
+        email: contact.email ?? undefined,
         lastMessagePreview: messageBody.slice(0, 200) || undefined,
         lastMessageAt: sentAt,
         unreadCount: isInbound ? 1 : 0,
         status: "open",
       }).onDuplicateKeyUpdate({
         set: {
-          ...(contact.name ? { customerName: contact.name ?? contact.fullName } : {}),
-          ...(contact.phone ? { phone: contact.phone ?? contact.phoneNumber } : {}),
+          ...(contact.name ? { customerName: contact.name } : {}),
+          ...(contact.phone ? { phone: contact.phone } : {}),
           ...(messageBody ? { lastMessagePreview: messageBody.slice(0, 200) } : {}),
           lastMessageAt: sentAt,
           updatedAt: new Date(),
@@ -148,12 +187,12 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
 
       // ── Upsert mensaje ─────────────────────────────────────────────────────
       const msgId: string | null = extractMessageId(payload.message ?? payload);
-      if (msgId && (messageBody || payload.attachments?.length)) {
+      if (msgId && (messageBody || payload.attachments?.length || message.attachments?.length)) {
         await db.insert(ghlMessages).values({
           ghlMessageId: msgId,
           ghlConversationId: convId,
           direction: isInbound ? "inbound" : "outbound",
-          messageType: message.type ?? payload.messageType ?? "text",
+          messageType: message.type ?? payload.messageType ?? payload.type ?? "text",
           body: messageBody || undefined,
           attachmentsJson: payload.attachments ?? message.attachments ?? undefined,
           senderName: isInbound
@@ -163,9 +202,7 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
           deliveryStatus: payload.status ?? message.status ?? undefined,
           rawPayloadJson: payload,
         }).onDuplicateKeyUpdate({
-          set: {
-            deliveryStatus: payload.status ?? message.status ?? "delivered",
-          },
+          set: { deliveryStatus: payload.status ?? message.status ?? "delivered" },
         });
       }
     }
@@ -405,9 +442,9 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), asy
   }
 
   try {
-    // Fetch conversaciones recientes de GHL
+    // Fetch conversaciones recientes de GHL — sin filtro channel (no es param válido)
     const ghlRes = await fetch(
-      `${GHL_BASE_URL}/conversations/search?locationId=${locationId}&limit=50&channel=whatsapp`,
+      `${GHL_BASE_URL}/conversations/search?locationId=${encodeURIComponent(locationId)}&limit=100`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -421,12 +458,13 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), asy
       log("warn", "Error al sincronizar desde GHL API", { status: ghlRes.status, body: errText.slice(0, 200) });
       return res.status(200).json({
         ok: false,
-        message: `Error al conectar con GHL: HTTP ${ghlRes.status}`,
+        message: `Error al conectar con GHL: HTTP ${ghlRes.status} — ${errText.slice(0, 120)}`,
       });
     }
 
     const data: any = await ghlRes.json();
-    const conversations: any[] = data?.conversations ?? data?.data ?? [];
+    // GHL puede devolver { conversations: [] } o { data: [] }
+    const conversations: any[] = data?.conversations ?? data?.data ?? data ?? [];
     let upserted = 0;
 
     for (const conv of conversations) {
