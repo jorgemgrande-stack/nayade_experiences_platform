@@ -119,8 +119,12 @@ initVapiTables();
 const vapiWebhookRouter = express.Router();
 
 vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), async (req, res) => {
-  // 1. Secreto opcional
-  const secret = process.env.VAPI_WEBHOOK_SECRET ?? process.env.GHL_WEBHOOK_SECRET;
+  // 1. Secreto opcional — env var con fallback a BD
+  const [secretRows]: any = await _pool.execute(
+    "SELECT `value` FROM site_settings WHERE `key` = 'vapiWebhookSecret' LIMIT 1"
+  ).catch(() => [[]]);
+  const dbSecret = (secretRows as any[])[0]?.value ?? "";
+  const secret = process.env.VAPI_WEBHOOK_SECRET || dbSecret || process.env.GHL_WEBHOOK_SECRET || "";
   if (secret) {
     const provided =
       (req.headers["x-vapi-secret"] as string | undefined) ??

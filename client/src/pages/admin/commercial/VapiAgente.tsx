@@ -4,12 +4,14 @@ import AdminLayout from "@/components/AdminLayout";
 import { toast } from "sonner";
 import {
   Phone, PhoneCall, PhoneOff, PhoneMissed, RefreshCw,
-  Clock, CheckCircle2, User, Play, FileText, ChevronDown,
+  Clock, CheckCircle2, User, FileText, ChevronDown,
   ChevronUp, Mic, BarChart3, AlertTriangle, Bot,
-  ExternalLink, UserPlus, Eye, EyeOff,
+  ExternalLink, UserPlus, Eye, EyeOff, Settings, Copy,
+  KeyRound, Webhook,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -303,13 +305,18 @@ export default function VapiAgente() {
   const [onlyUnreviewed, setOnlyUnreviewed] = useState(false);
   const [selectedCallId, setSelectedCallId] = useState<number | null>(null);
   const [page, setPage] = useState(0);
+  const [showConfig, setShowConfig] = useState(false);
+  const [credApiKey, setCredApiKey] = useState("");
+  const [credSecret, setCredSecret] = useState("");
   const PAGE_SIZE = 50;
 
-  const { data: stats, isLoading: statsLoading } = trpc.vapiCalls.getStats.useQuery(
+  const { data: stats } = trpc.vapiCalls.getStats.useQuery(
     undefined, { refetchInterval: 60000 }
   );
 
-  const { data: callsData, isLoading: callsLoading, refetch: refetchCalls } =
+  const { data: creds, refetch: refetchCreds } = trpc.vapiCalls.getCredentials.useQuery();
+
+  const { data: callsData, isLoading: callsLoading } =
     trpc.vapiCalls.listCalls.useQuery({
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
@@ -326,6 +333,18 @@ export default function VapiAgente() {
     onError: (e) => toast.error(e.message),
   });
 
+  const saveCreds = trpc.vapiCalls.saveCredentials.useMutation({
+    onSuccess: () => {
+      toast.success("Credenciales guardadas");
+      setCredApiKey("");
+      setCredSecret("");
+      refetchCreds();
+      utils.vapiCalls.getStats.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const webhookUrl = `${window.location.origin}/api/vapi/webhook`;
   const calls = callsData?.rows ?? [];
   const total = callsData?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -346,23 +365,115 @@ export default function VapiAgente() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!stats?.apiConfigured && (
-              <span className="flex items-center gap-1 text-xs text-amber-400">
-                <AlertTriangle className="w-3 h-3" /> VAPI_API_KEY no configurada
-              </span>
-            )}
             <Button
               size="sm"
               variant="outline"
               onClick={() => sync.mutate({ limit: 100 })}
-              disabled={sync.isPending || !stats?.apiConfigured}
+              disabled={sync.isPending || !creds?.hasApiKey}
               className="gap-1"
             >
               <RefreshCw className={`w-3 h-3 ${sync.isPending ? "animate-spin" : ""}`} />
               Sincronizar
             </Button>
+            <Button
+              size="sm"
+              variant={showConfig ? "default" : "outline"}
+              onClick={() => setShowConfig(v => !v)}
+              className="gap-1"
+            >
+              <Settings className="w-3 h-3" />
+              Configuración
+            </Button>
           </div>
         </div>
+
+        {/* Panel de configuración de credenciales */}
+        {showConfig && (
+          <div className="rounded-xl border border-border/50 bg-card p-5 space-y-4">
+            <h2 className="text-sm font-semibold flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-sky-400" /> Credenciales Vapi
+            </h2>
+
+            {/* Estado actual */}
+            <div className="flex flex-wrap gap-4 text-xs">
+              <div className={`flex items-center gap-1.5 ${creds?.hasApiKey ? "text-emerald-400" : "text-red-400"}`}>
+                <span className={`w-2 h-2 rounded-full ${creds?.hasApiKey ? "bg-emerald-400" : "bg-red-400"}`} />
+                {creds?.hasApiKey ? `API Key: ${creds.apiKeyMasked}` : "API Key no configurada"}
+              </div>
+              <div className={`flex items-center gap-1.5 ${creds?.webhookSecret ? "text-emerald-400" : "text-amber-400"}`}>
+                <span className={`w-2 h-2 rounded-full ${creds?.webhookSecret ? "bg-emerald-400" : "bg-amber-400"}`} />
+                {creds?.webhookSecret ? "Webhook secret configurado" : "Webhook secret no configurado (webhook abierto)"}
+              </div>
+            </div>
+
+            {/* Formulario */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">API Key de Vapi <span className="text-red-400">*</span></Label>
+                <Input
+                  type="password"
+                  placeholder={creds?.hasApiKey ? "••••••••••••  (dejar vacío para mantener)" : "Pega tu API Key de Vapi"}
+                  value={credApiKey}
+                  onChange={e => setCredApiKey(e.target.value)}
+                  className="h-8 text-sm font-mono"
+                />
+                <p className="text-xs text-foreground/40">Encuéntrala en dashboard.vapi.ai → API Keys</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Webhook Secret</Label>
+                <Input
+                  placeholder={creds?.webhookSecret ? "••••••••  (dejar vacío para mantener)" : "Secreto para validar webhooks (opcional)"}
+                  value={credSecret}
+                  onChange={e => setCredSecret(e.target.value)}
+                  className="h-8 text-sm font-mono"
+                />
+                <p className="text-xs text-foreground/40">Se valida como header x-vapi-secret en cada webhook</p>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={() => {
+                if (!credApiKey && !creds?.hasApiKey) {
+                  toast.error("La API Key es obligatoria");
+                  return;
+                }
+                saveCreds.mutate({
+                  apiKey: credApiKey,
+                  webhookSecret: credSecret,
+                });
+              }}
+              disabled={saveCreds.isPending}
+              className="gap-1"
+            >
+              {saveCreds.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <KeyRound className="w-3 h-3" />}
+              Guardar credenciales
+            </Button>
+
+            {/* URL del webhook */}
+            <div className="pt-2 border-t border-border/40 space-y-1.5">
+              <div className="text-xs text-foreground/50 flex items-center gap-1">
+                <Webhook className="w-3 h-3" /> URL del webhook — pega esta URL en el panel de Vapi
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-foreground/5 border border-border/40 rounded px-3 py-1.5 text-sky-300 truncate">
+                  {webhookUrl}{creds?.webhookSecret ? `  (secret: ${creds.webhookSecret})` : ""}
+                </code>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(webhookUrl);
+                    toast.success("URL copiada");
+                  }}
+                >
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* KPIs */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

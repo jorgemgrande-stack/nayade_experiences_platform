@@ -7,8 +7,8 @@ import { z } from "zod";
 import { staffProcedure, router } from "../_core/trpc";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, desc, and, sql, isNull, isNotNull, gte, lte } from "drizzle-orm";
-import { vapiCalls, leads } from "../../drizzle/schema";
+import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
+import { vapiCalls } from "../../drizzle/schema";
 import { createLead } from "../db";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
@@ -16,8 +16,23 @@ const db = drizzle(_pool);
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 
-function getVapiApiKey(): string | null {
-  return process.env.VAPI_API_KEY ?? null;
+async function getVapiCredentials(): Promise<{ apiKey: string; webhookSecret: string }> {
+  try {
+    const [rows]: any = await _pool.execute(
+      "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('vapiApiKey','vapiWebhookSecret')"
+    );
+    const map: Record<string, string> = {};
+    for (const r of (rows as any[])) map[r.key] = r.value ?? "";
+    return {
+      apiKey: process.env.VAPI_API_KEY || map.vapiApiKey || "",
+      webhookSecret: process.env.VAPI_WEBHOOK_SECRET || map.vapiWebhookSecret || "",
+    };
+  } catch {
+    return {
+      apiKey: process.env.VAPI_API_KEY || "",
+      webhookSecret: process.env.VAPI_WEBHOOK_SECRET || "",
+    };
+  }
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────
@@ -50,7 +65,7 @@ export const vapiCallsRouter = router({
       failed: Number(stats?.failed ?? 0),
       unreviewed: Number(stats?.unreviewed ?? 0),
       withLead: Number(stats?.withLead ?? 0),
-      apiConfigured: !!getVapiApiKey(),
+      apiConfigured: !!(await getVapiCredentials()).apiKey,
     };
   }),
 
@@ -164,13 +179,51 @@ export const vapiCallsRouter = router({
       return { ok: true, leadId, existing: false };
     }),
 
+  // ─── Credenciales del módulo ─────────────────────────────────────────────
+  getCredentials: staffProcedure.query(async () => {
+    const [rows]: any = await _pool.execute(
+      "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('vapiApiKey','vapiWebhookSecret')"
+    ).catch(() => [[]]);
+    const map: Record<string, string> = {};
+    for (const r of (rows as any[])) map[r.key] = r.value ?? "";
+    const apiKey = process.env.VAPI_API_KEY || map.vapiApiKey || "";
+    const webhookSecret = process.env.VAPI_WEBHOOK_SECRET || map.vapiWebhookSecret || "";
+    return {
+      hasApiKey: !!apiKey,
+      apiKeyMasked: apiKey ? `${apiKey.slice(0, 8)}…${apiKey.slice(-4)}` : "",
+      webhookSecret,
+    };
+  }),
+
+  saveCredentials: staffProcedure
+    .input(z.object({
+      apiKey: z.string().default(""),
+      webhookSecret: z.string().default(""),
+    }))
+    .mutation(async ({ input }) => {
+      // Solo actualizar si se proporciona un valor real (no "KEEP" ni vacío)
+      if (input.apiKey && input.apiKey !== "KEEP") {
+        await _pool.execute(
+          "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
+          ["vapiApiKey", input.apiKey]
+        );
+      }
+      if (input.webhookSecret) {
+        await _pool.execute(
+          "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
+          ["vapiWebhookSecret", input.webhookSecret]
+        );
+      }
+      return { ok: true };
+    }),
+
   // ─── Sincronizar llamadas desde API de Vapi ───────────────────────────────
   syncCalls: staffProcedure
     .input(z.object({ limit: z.number().min(1).max(200).default(50) }))
     .mutation(async ({ input }) => {
-      const apiKey = getVapiApiKey();
+      const { apiKey } = await getVapiCredentials();
       if (!apiKey) {
-        throw new Error("VAPI_API_KEY no configurada. Añádela en las variables de entorno de Railway.");
+        throw new Error("API Key de Vapi no configurada. Guárdala en la sección de Configuración del módulo.");
       }
 
       const res = await fetch(`${VAPI_BASE_URL}/call?limit=${input.limit}&sortOrder=DESC`, {
