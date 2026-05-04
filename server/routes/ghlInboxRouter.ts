@@ -28,6 +28,86 @@ const db = drizzle(_pool);
 const GHL_BASE_URL = process.env.GHL_BASE_URL ?? "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
 
+// ─── Auto-creación de tablas ─────────────────────────────────────────────────
+// Garantiza que las tablas existen aunque la migración de Drizzle no haya corrido.
+// CREATE TABLE IF NOT EXISTS es idempotente y seguro en producción.
+
+async function initGhlTables(): Promise<void> {
+  try {
+    await _pool.execute(`
+      CREATE TABLE IF NOT EXISTS ghl_conversations (
+        id int AUTO_INCREMENT PRIMARY KEY,
+        ghlConversationId varchar(64) NOT NULL,
+        ghlContactId varchar(64),
+        locationId varchar(64),
+        channel varchar(32) NOT NULL DEFAULT 'whatsapp',
+        customerName varchar(255),
+        phone varchar(32),
+        email varchar(320),
+        lastMessagePreview text,
+        lastMessageAt timestamp NULL,
+        unreadCount int NOT NULL DEFAULT 0,
+        inbox varchar(64),
+        starred boolean NOT NULL DEFAULT false,
+        status enum('new','open','pending','replied','closed') NOT NULL DEFAULT 'new',
+        assignedUserId int NULL,
+        linkedQuoteId int NULL,
+        linkedReservationId int NULL,
+        createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updatedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_ghl_conv_id (ghlConversationId),
+        INDEX idx_ghl_conv_status (status),
+        INDEX idx_ghl_conv_lastMsg (lastMessageAt),
+        INDEX idx_ghl_conv_contact (ghlContactId)
+      )
+    `);
+    await _pool.execute(`
+      CREATE TABLE IF NOT EXISTS ghl_messages (
+        id int AUTO_INCREMENT PRIMARY KEY,
+        ghlMessageId varchar(64) NOT NULL,
+        ghlConversationId varchar(64) NOT NULL,
+        direction enum('inbound','outbound') NOT NULL DEFAULT 'inbound',
+        messageType varchar(32) DEFAULT 'text',
+        body text,
+        attachmentsJson json,
+        senderName varchar(255),
+        sentAt timestamp NULL,
+        deliveryStatus varchar(32),
+        rawPayloadJson json,
+        createdAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_ghl_msg_id (ghlMessageId),
+        INDEX idx_ghl_msg_conv (ghlConversationId),
+        INDEX idx_ghl_msg_sentAt (sentAt)
+      )
+    `);
+    await _pool.execute(`
+      CREATE TABLE IF NOT EXISTS ghl_webhook_events (
+        id int AUTO_INCREMENT PRIMARY KEY,
+        eventId varchar(128) NULL,
+        eventType varchar(128) NOT NULL,
+        ghlConversationId varchar(64),
+        ghlContactId varchar(64),
+        locationId varchar(64),
+        rawPayloadJson json,
+        processedStatus enum('pending','processed','failed','ignored') NOT NULL DEFAULT 'pending',
+        errorMessage text,
+        receivedAt timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        processedAt timestamp NULL,
+        UNIQUE KEY uq_ghl_event_id (eventId),
+        INDEX idx_ghl_evt_conv (ghlConversationId),
+        INDEX idx_ghl_evt_status (processedStatus),
+        INDEX idx_ghl_evt_received (receivedAt)
+      )
+    `);
+    console.log(JSON.stringify({ ts: new Date().toISOString(), context: "GHLInbox", msg: "Tablas GHL verificadas/creadas OK" }));
+  } catch (err: any) {
+    console.error(JSON.stringify({ ts: new Date().toISOString(), context: "GHLInbox", msg: "Error creando tablas GHL", error: err.message }));
+  }
+}
+
+// Ejecutar al cargar el módulo (asíncrono, no bloquea arranque)
+initGhlTables();
+
 function log(level: "info" | "warn" | "error", msg: string, ctx?: object) {
   const entry = { ts: new Date().toISOString(), context: "GHLInbox", msg, ...ctx };
   const line = JSON.stringify(entry);
@@ -573,6 +653,41 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), asy
   } catch (err: any) {
     log("error", "Excepción en sync GHL", { error: err.message });
     return res.status(200).json({ ok: false, message: err.message });
+  }
+});
+
+// ── GET /api/ghl/inbox/health — diagnóstico sin autenticación ─────────────────
+ghlInboxRouter.get("/api/ghl/inbox/health", async (req, res) => {
+  const result: Record<string, any> = { ok: false, tables: {}, credentials: {}, lastEvent: null };
+  try {
+    const tables = ["ghl_conversations", "ghl_messages", "ghl_webhook_events"];
+    for (const t of tables) {
+      try {
+        const [rows]: any = await _pool.execute(`SELECT COUNT(*) as cnt FROM \`${t}\``);
+        result.tables[t] = { exists: true, count: Number(rows[0]?.cnt ?? 0) };
+      } catch {
+        result.tables[t] = { exists: false, count: 0 };
+      }
+    }
+
+    const creds = await getInboxCredentials();
+    result.credentials = {
+      hasToken: !!creds?.token,
+      hasLocationId: !!creds?.locationId,
+      hasWebhookSecret: !!creds?.webhookSecret,
+    };
+
+    try {
+      const [evtRows]: any = await _pool.execute(
+        "SELECT id, eventType, processedStatus, errorMessage, receivedAt FROM ghl_webhook_events ORDER BY receivedAt DESC LIMIT 1"
+      );
+      result.lastEvent = (evtRows as any[])[0] ?? null;
+    } catch { /* tabla no existe */ }
+
+    result.ok = Object.values(result.tables).every((t: any) => t.exists);
+    return res.status(200).json(result);
+  } catch (err: any) {
+    return res.status(200).json({ ok: false, error: err.message });
   }
 });
 
