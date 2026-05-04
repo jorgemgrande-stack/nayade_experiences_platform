@@ -159,14 +159,16 @@ export const ghlInboxRouter = router({
   // ─── Credenciales del módulo inbox ──────────────────────────────────────
   getInboxCredentials: staffProcedure
     .query(async () => {
-      const rows = await db.select().from(siteSettings)
-        .where(sql`${siteSettings.key} IN ('ghlInboxToken','ghlInboxLocationId')`);
-      const map = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
-      const token = map.ghlInboxToken ?? "";
+      const [rawRows]: any = await _pool.execute(
+        "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId')"
+      );
+      const map: Record<string, string> = {};
+      for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+      const token = map.ghlInboxToken || "";
       return {
         hasToken: !!token,
         tokenMasked: token ? `${token.slice(0, 10)}…${token.slice(-4)}` : "",
-        locationId: map.ghlInboxLocationId ?? "",
+        locationId: map.ghlInboxLocationId || "",
       };
     }),
 
@@ -234,9 +236,11 @@ export const ghlInboxRouter = router({
           lastReceived: evtStats?.lastReceived ?? null,
         },
         configured: await (async () => {
-          const rows = await db.select().from(siteSettings)
-            .where(sql`${siteSettings.key} IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId')`);
-          const map = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
+          const [rawRows]: any = await _pool.execute(
+            "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId')"
+          );
+          const map: Record<string, string> = {};
+          for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
           const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
             || map.ghlInboxToken || map.ghlApiKey || "";
           const locId = process.env.GHL_LOCATION_ID

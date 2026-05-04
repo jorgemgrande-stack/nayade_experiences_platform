@@ -292,16 +292,16 @@ export default function WhatsAppGHLInbox() {
 
             <div className="max-w-3xl mt-6 rounded-xl border border-foreground/[0.08] bg-background p-4 space-y-2">
               <h3 className="text-sm font-semibold text-foreground/70">Configuración GHL</h3>
-              <div className={`flex items-center gap-2 text-xs ${stats?.configured.hasToken ? "text-emerald-400" : "text-red-400"}`}>
-                {stats?.configured.hasToken ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                {stats?.configured.hasToken
-                  ? `Token configurado${inboxCreds?.tokenMasked ? ` (${inboxCreds.tokenMasked})` : ""}`
+              <div className={`flex items-center gap-2 text-xs ${inboxCreds?.hasToken ? "text-emerald-400" : "text-red-400"}`}>
+                {inboxCreds?.hasToken ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                {inboxCreds?.hasToken
+                  ? `Token configurado${inboxCreds.tokenMasked ? ` (${inboxCreds.tokenMasked})` : ""}`
                   : "Token GHL no configurado"}
               </div>
-              <div className={`flex items-center gap-2 text-xs ${stats?.configured.hasLocation ? "text-emerald-400" : "text-red-400"}`}>
-                {stats?.configured.hasLocation ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                {stats?.configured.hasLocation
-                  ? `Location ID: ${inboxCreds?.locationId || "✓"}`
+              <div className={`flex items-center gap-2 text-xs ${inboxCreds?.locationId ? "text-emerald-400" : "text-red-400"}`}>
+                {inboxCreds?.locationId ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                {inboxCreds?.locationId
+                  ? `Location ID: ${inboxCreds.locationId}`
                   : "Location ID no configurado"}
               </div>
               <div className="text-xs text-foreground/40 mt-3">
