@@ -305,7 +305,10 @@ export default function WhatsAppGHLInbox() {
                   : "Location ID no configurado"}
               </div>
               <div className="text-xs text-foreground/40 mt-3">
-                Webhook URL: <code className="text-orange-400 font-mono">{window.location.origin}/api/ghl/inbox/webhook</code>
+                Webhook URL:{" "}
+                <code className="text-orange-400 font-mono break-all">
+                  {window.location.origin}/api/ghl/inbox/webhook{stats?.configured.webhookSecret ? `?secret=${stats.configured.webhookSecret}` : ""}
+                </code>
               </div>
               <div className="text-xs text-foreground/40">
                 Webhooks recibidos: <span className="text-foreground/70">{stats?.webhooks.total ?? 0}</span> · Fallidos: <span className="text-red-400">{stats?.webhooks.failed ?? 0}</span>

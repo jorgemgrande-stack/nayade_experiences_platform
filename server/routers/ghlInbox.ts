@@ -245,6 +245,7 @@ export const ghlInboxRouter = router({
             hasToken: !!token,
             hasLocation: !!locId,
             webhookEnabled: process.env.GHL_WEBHOOK_ENABLED !== "false",
+            webhookSecret: process.env.GHL_WEBHOOK_SECRET || "",
           };
         })(),
       };
