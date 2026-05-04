@@ -129,18 +129,20 @@ const CONVERSATION_EVENTS = new Set([
 
 // ─── Credenciales específicas del módulo inbox ───────────────────────────────
 
-async function getInboxCredentials(): Promise<{ token: string; locationId: string } | null> {
+async function getInboxCredentials(): Promise<{ token: string; locationId: string; webhookSecret: string } | null> {
   try {
-    const rows = await db.select().from(siteSettings)
-      .where(sql`${siteSettings.key} IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId')`);
-    const map = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
-    // Prioridad: claves propias del módulo > claves generales de GHL > env vars
+    const [rawRows]: any = await _pool.execute(
+      "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId','ghlInboxWebhookSecret')"
+    );
+    const map: Record<string, string> = {};
+    for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
     const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
       || map.ghlInboxToken || map.ghlApiKey || "";
     const locationId = process.env.GHL_LOCATION_ID
       || map.ghlInboxLocationId || map.ghlLocationId || "";
+    const webhookSecret = process.env.GHL_WEBHOOK_SECRET || map.ghlInboxWebhookSecret || "";
     if (!token || !locationId) return null;
-    return { token, locationId };
+    return { token, locationId, webhookSecret };
   } catch {
     return null;
   }
@@ -305,8 +307,12 @@ ghlInboxRouter.post(
   "/api/ghl/inbox/webhook",
   express.json({ limit: "2mb" }),
   async (req, res) => {
-    // 1. Validar secreto
-    const secret = process.env.GHL_WEBHOOK_SECRET;
+    // 1. Validar secreto (env var con fallback a BD)
+    const [secretRows]: any = await _pool.execute(
+      "SELECT `value` FROM site_settings WHERE `key` = 'ghlInboxWebhookSecret' LIMIT 1"
+    ).catch(() => [[]]);
+    const dbSecret = (secretRows as any[])[0]?.value ?? "";
+    const secret = process.env.GHL_WEBHOOK_SECRET || dbSecret;
     if (secret) {
       const provided =
         (req.headers["x-ghl-secret"] as string | undefined) ??

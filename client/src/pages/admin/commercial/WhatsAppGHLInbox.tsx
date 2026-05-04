@@ -111,6 +111,7 @@ export default function WhatsAppGHLInbox() {
   // ── Credenciales del módulo ───────────────────────────────────────────────
   const [credToken, setCredToken] = useState("");
   const [credLocation, setCredLocation] = useState("");
+  const [credSecret, setCredSecret] = useState("");
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: convData, isLoading: convsLoading, refetch: refetchConvs } =
@@ -307,7 +308,7 @@ export default function WhatsAppGHLInbox() {
               <div className="text-xs text-foreground/40 mt-3">
                 Webhook URL:{" "}
                 <code className="text-orange-400 font-mono break-all">
-                  {window.location.origin}/api/ghl/inbox/webhook{stats?.configured.webhookSecret ? `?secret=${stats.configured.webhookSecret}` : ""}
+                  {window.location.origin}/api/ghl/inbox/webhook{inboxCreds?.webhookSecret ? `?secret=${inboxCreds.webhookSecret}` : ""}
                 </code>
               </div>
               <div className="text-xs text-foreground/40">
@@ -344,12 +345,22 @@ export default function WhatsAppGHLInbox() {
                     className="h-8 text-xs font-mono mt-1"
                   />
                 </div>
+                <div>
+                  <Label className="text-xs text-foreground/60">Webhook Secret</Label>
+                  <Input
+                    value={credSecret}
+                    onChange={e => setCredSecret(e.target.value)}
+                    placeholder={inboxCreds?.webhookSecret || "NAYADE2026_ULTRA"}
+                    className="h-8 text-xs font-mono mt-1"
+                  />
+                </div>
                 <Button
                   size="sm"
                   disabled={saveCredsMut.isPending || !credToken.trim() || !credLocation.trim()}
                   onClick={() => saveCredsMut.mutate({
                     token: credToken.trim(),
                     locationId: credLocation.trim(),
+                    webhookSecret: credSecret.trim() || inboxCreds?.webhookSecret || "NAYADE2026_ULTRA",
                   })}
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >

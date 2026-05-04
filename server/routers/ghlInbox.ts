@@ -160,15 +160,17 @@ export const ghlInboxRouter = router({
   getInboxCredentials: staffProcedure
     .query(async () => {
       const [rawRows]: any = await _pool.execute(
-        "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId')"
+        "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlInboxWebhookSecret')"
       );
       const map: Record<string, string> = {};
       for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
       const token = map.ghlInboxToken || "";
+      const secret = process.env.GHL_WEBHOOK_SECRET || map.ghlInboxWebhookSecret || "";
       return {
         hasToken: !!token,
         tokenMasked: token ? `${token.slice(0, 10)}…${token.slice(-4)}` : "",
         locationId: map.ghlInboxLocationId || "",
+        webhookSecret: secret,
       };
     }),
 
@@ -176,6 +178,7 @@ export const ghlInboxRouter = router({
     .input(z.object({
       token: z.string().min(1),
       locationId: z.string().min(1),
+      webhookSecret: z.string().default("NAYADE2026_ULTRA"),
     }))
     .mutation(async ({ input }) => {
       await _pool.execute(
@@ -185,6 +188,10 @@ export const ghlInboxRouter = router({
       await _pool.execute(
         "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
         ["ghlInboxLocationId", input.locationId]
+      );
+      await _pool.execute(
+        "INSERT INTO site_settings (`key`, `value`, `type`, updatedAt) VALUES (?, ?, 'text', NOW()) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), updatedAt = NOW()",
+        ["ghlInboxWebhookSecret", input.webhookSecret]
       );
       return { ok: true };
     }),
