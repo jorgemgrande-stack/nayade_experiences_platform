@@ -181,6 +181,7 @@ import { onboardingRouter } from "./routers/onboardingRouter";
 import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
 import { commercialFollowupRouter } from "./routers/commercialFollowup";
+import { ghlInboxRouter } from "./routers/ghlInbox";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -1850,6 +1851,7 @@ export const appRouter = router({
   restaurants: restaurantsRouter,
   crm: crmRouter,
   commercialFollowup: commercialFollowupRouter,
+  ghlInbox: ghlInboxRouter,
   suppliers: suppliersRouter,
   timeSlots: timeSlotsRouter,
   tpv: tpvRouter,

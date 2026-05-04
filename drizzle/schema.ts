@@ -548,6 +548,59 @@ export const ghlWebhookLogs = mysqlTable("ghl_webhook_logs", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+// ─── GHL INBOX (WhatsApp) ─────────────────────────────────────────────────────
+
+export const ghlConversations = mysqlTable("ghl_conversations", {
+  id: int("id").autoincrement().primaryKey(),
+  ghlConversationId: varchar("ghlConversationId", { length: 64 }).notNull().unique(),
+  ghlContactId: varchar("ghlContactId", { length: 64 }),
+  locationId: varchar("locationId", { length: 64 }),
+  channel: varchar("channel", { length: 32 }).notNull().default("whatsapp"),
+  customerName: varchar("customerName", { length: 255 }),
+  phone: varchar("phone", { length: 32 }),
+  email: varchar("email", { length: 320 }),
+  lastMessagePreview: text("lastMessagePreview"),
+  lastMessageAt: timestamp("lastMessageAt"),
+  unreadCount: int("unreadCount").notNull().default(0),
+  inbox: varchar("inbox", { length: 64 }),
+  starred: boolean("starred").notNull().default(false),
+  status: mysqlEnum("status", ["new", "open", "pending", "replied", "closed"]).notNull().default("new"),
+  assignedUserId: int("assignedUserId"),
+  linkedQuoteId: int("linkedQuoteId"),
+  linkedReservationId: int("linkedReservationId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const ghlMessages = mysqlTable("ghl_messages", {
+  id: int("id").autoincrement().primaryKey(),
+  ghlMessageId: varchar("ghlMessageId", { length: 64 }).notNull().unique(),
+  ghlConversationId: varchar("ghlConversationId", { length: 64 }).notNull(),
+  direction: mysqlEnum("direction", ["inbound", "outbound"]).notNull().default("inbound"),
+  messageType: varchar("messageType", { length: 32 }).default("text"),
+  body: text("body"),
+  attachmentsJson: json("attachmentsJson"),
+  senderName: varchar("senderName", { length: 255 }),
+  sentAt: timestamp("sentAt"),
+  deliveryStatus: varchar("deliveryStatus", { length: 32 }),
+  rawPayloadJson: json("rawPayloadJson"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const ghlWebhookEvents = mysqlTable("ghl_webhook_events", {
+  id: int("id").autoincrement().primaryKey(),
+  eventId: varchar("eventId", { length: 128 }),
+  eventType: varchar("eventType", { length: 128 }).notNull(),
+  ghlConversationId: varchar("ghlConversationId", { length: 64 }),
+  ghlContactId: varchar("ghlContactId", { length: 64 }),
+  locationId: varchar("locationId", { length: 64 }),
+  rawPayloadJson: json("rawPayloadJson"),
+  processedStatus: mysqlEnum("processedStatus", ["pending", "processed", "failed", "ignored"]).notNull().default("pending"),
+  errorMessage: text("errorMessage"),
+  receivedAt: timestamp("receivedAt").defaultNow().notNull(),
+  processedAt: timestamp("processedAt"),
+});
+
 // ─── HOME MODULES ────────────────────────────────────────────────────────────
 export const homeModuleItems = mysqlTable("home_module_items", {
   id: int("id").autoincrement().primaryKey(),

@@ -17,6 +17,7 @@ import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
+import ghlInboxRouter from "../routes/ghlInboxRouter";
 import vapiWebhookRouter from "../vapiWebhookRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCommercialFollowupJob } from "../commercialFollowupJob";
@@ -163,8 +164,10 @@ async function startServer() {
   // Invoice HTML on-demand preview (no storage required)
   app.use(invoicePreviewRouter);
   app.use(kbRouter);
-  // GHL webhook receiver
+  // GHL webhook receiver (leads/contactos — existente)
   app.use(ghlWebhookRouter);
+  // GHL Inbox — WhatsApp conversations, mensajes y SSE
+  app.use(ghlInboxRouter);
   // VAPI webhook receiver (lead + presupuesto síncrono)
   app.use(vapiWebhookRouter);
   // tRPC API

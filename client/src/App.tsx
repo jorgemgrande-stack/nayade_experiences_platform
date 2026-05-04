@@ -108,6 +108,7 @@ const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
 const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
+const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
 
 // Fiscal REAV
@@ -281,6 +282,7 @@ function Router() {
       <Route path="/admin/restaurantes/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantsManager /></Suspense>}</Route>
 
       {/* Atención Comercial */}
+      <Route path="/admin/atencion-comercial/whatsapp">{() => <Suspense fallback={<AdminLoadingFallback />}><WhatsAppGHLInbox /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial">{() => <Suspense fallback={<AdminLoadingFallback />}><CommercialFollowupDashboard /></Suspense>}</Route>
 
       {/* CRM */}
