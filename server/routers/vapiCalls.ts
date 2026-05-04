@@ -226,7 +226,7 @@ export const vapiCallsRouter = router({
         throw new Error("API Key de Vapi no configurada. Guárdala en la sección de Configuración del módulo.");
       }
 
-      const res = await fetch(`${VAPI_BASE_URL}/call?limit=${input.limit}&sortOrder=DESC`, {
+      const res = await fetch(`${VAPI_BASE_URL}/call?limit=${input.limit}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
 
