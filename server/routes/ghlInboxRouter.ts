@@ -136,13 +136,9 @@ async function getInboxCredentials(): Promise<{ token: string; locationId: strin
     const map = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
     // Prioridad: claves propias del módulo > claves generales de GHL > env vars
     const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
-      ?? map.ghlInboxToken
-      ?? map.ghlApiKey
-      ?? "";
+      || map.ghlInboxToken || map.ghlApiKey || "";
     const locationId = process.env.GHL_LOCATION_ID
-      ?? map.ghlInboxLocationId
-      ?? map.ghlLocationId
-      ?? "";
+      || map.ghlInboxLocationId || map.ghlLocationId || "";
     if (!token || !locationId) return null;
     return { token, locationId };
   } catch {

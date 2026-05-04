@@ -237,8 +237,10 @@ export const ghlInboxRouter = router({
           const rows = await db.select().from(siteSettings)
             .where(sql`${siteSettings.key} IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId')`);
           const map = Object.fromEntries(rows.map(r => [r.key, r.value ?? ""]));
-          const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN ?? map.ghlInboxToken ?? map.ghlApiKey ?? "";
-          const locId = process.env.GHL_LOCATION_ID ?? map.ghlInboxLocationId ?? map.ghlLocationId ?? "";
+          const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
+            || map.ghlInboxToken || map.ghlApiKey || "";
+          const locId = process.env.GHL_LOCATION_ID
+            || map.ghlInboxLocationId || map.ghlLocationId || "";
           return {
             hasToken: !!token,
             hasLocation: !!locId,
