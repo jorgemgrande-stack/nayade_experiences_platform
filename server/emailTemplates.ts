@@ -2356,3 +2356,134 @@ export function buildProposalHtml(d: ProposalEmailData): string {
     ${emailFooter()}`;
   return emailWrapper(`Propuesta ${d.proposalNumber} — ${getBrandName()}`, body);
 }
+
+// ─── MÓDULO ATENCIÓN COMERCIAL — Plantillas de recordatorio ──────────────────
+
+export interface CommercialReminderEmailData {
+  clientName: string;
+  quoteNumber: string;
+  quoteTitle?: string | null;
+  total?: string | null;
+  paymentLinkUrl?: string | null;
+  customSubject?: string;
+  customBody?: string;
+}
+
+function buildReminderCtaBlock(paymentLinkUrl: string | null | undefined): string {
+  if (!paymentLinkUrl) return "";
+  return `
+  <tr><td style="padding:24px 32px 8px;text-align:center;">
+    <!--[if mso]>
+    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${paymentLinkUrl}"
+      style="height:48px;v-text-anchor:middle;width:280px;" arcsize="10%"
+      fillcolor="${BRAND_ORANGE}" strokecolor="${BRAND_ORANGE}">
+      <w:anchorlock/>
+      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:700;">Ver mi propuesta</center>
+    </v:roundrect>
+    <![endif]-->
+    <!--[if !mso]><!-->
+    <a href="${paymentLinkUrl}"
+       style="display:inline-block;background:linear-gradient(135deg,${BRAND_ORANGE},#ea580c);color:#ffffff;font-size:15px;font-weight:700;letter-spacing:0.5px;padding:14px 36px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
+      Ver mi propuesta &rarr;
+    </a>
+    <!--<![endif]-->
+  </td></tr>`;
+}
+
+function buildCommercialReminderHtml(
+  d: CommercialReminderEmailData,
+  subtitle: string,
+  tagline: string,
+  bodyHtml: string,
+): string {
+  const body = `
+    ${emailHeader(subtitle, tagline)}
+    <tr><td style="padding:28px 32px 8px;">
+      <p style="color:#1e3a6e;font-size:22px;font-weight:700;margin:0 0 6px;font-family:Georgia,serif;">
+        Hola, ${escHtml(d.clientName)}
+      </p>
+      ${d.quoteNumber ? `<p style="color:#6b7280;font-size:12px;margin:0;font-family:Arial,sans-serif;">Presupuesto <strong>${escHtml(d.quoteNumber)}</strong>${d.total ? ` · <strong style="color:${BRAND_ORANGE};">${escHtml(d.total)} €</strong>` : ""}</p>` : ""}
+    </td></tr>
+    <tr><td style="padding:8px 32px 16px;">
+      ${bodyHtml}
+    </td></tr>
+    ${buildReminderCtaBlock(d.paymentLinkUrl)}
+    <tr><td style="padding:20px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background:#f0f4ff;border-radius:8px;border-left:4px solid ${BRAND_MID_BLUE};">
+        <tr><td style="padding:14px 18px;">
+          <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+            ¿Tienes alguna duda o quieres ajustar algo? Escríbenos a
+            <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+            o llámanos — también por WhatsApp.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${emotionalBlock("Cada experiencia en el lago es única. Estamos aquí para hacer la tuya inolvidable.")}
+    ${emailFooter()}`;
+  return emailWrapper(`${d.customSubject ?? subtitle} — ${getBrandName()}`, body);
+}
+
+function escHtml(s: string | null | undefined): string {
+  return (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export function buildCommercialReminder1Html(d: CommercialReminderEmailData): string {
+  const bodyHtml = `
+    <p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">
+      Te escribimos porque hace unas horas te enviamos tu propuesta para disfrutar de
+      <strong style="color:${BRAND_MID_BLUE};">${getBrandName()}</strong>.
+    </p>
+    <p style="color:#374151;font-size:15px;line-height:1.8;margin:12px 0 0;font-family:Arial,sans-serif;">
+      Si tienes cualquier duda, podemos ayudarte a terminar la reserva o ajustar
+      la experiencia a lo que necesitas. Solo tienes que decirnos.
+    </p>`;
+  return buildCommercialReminderHtml(
+    d,
+    "Tu propuesta te está esperando",
+    "Queremos que disfrutes de una experiencia única",
+    d.customBody
+      ? `<p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">${escHtml(d.customBody).replace(/\n/g, "<br>")}</p>`
+      : bodyHtml,
+  );
+}
+
+export function buildCommercialReminder2Html(d: CommercialReminderEmailData): string {
+  const bodyHtml = `
+    <p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">
+      Tu propuesta sigue activa, pero te recomendamos confirmarla cuanto antes
+      para asegurar <strong>disponibilidad en la fecha seleccionada</strong>.
+    </p>
+    <p style="color:#374151;font-size:15px;line-height:1.8;margin:12px 0 0;font-family:Arial,sans-serif;">
+      Las plazas son limitadas y no queremos que te quedes sin tu experiencia.
+    </p>`;
+  return buildCommercialReminderHtml(
+    d,
+    "Tu propuesta sigue disponible",
+    "Confirma antes de que se agoten las plazas",
+    d.customBody
+      ? `<p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">${escHtml(d.customBody).replace(/\n/g, "<br>")}</p>`
+      : bodyHtml,
+  );
+}
+
+export function buildCommercialReminder3Html(d: CommercialReminderEmailData): string {
+  const bodyHtml = `
+    <p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">
+      Queríamos recordarte <strong>por última vez</strong> que tu propuesta sigue
+      pendiente de confirmación.
+    </p>
+    <p style="color:#374151;font-size:15px;line-height:1.8;margin:12px 0 0;font-family:Arial,sans-serif;">
+      Si quieres mantener la fecha y la disponibilidad, puedes revisarla y confirmarla
+      desde aquí. Si has cambiado de planes, no te preocupes — entendemos perfectamente.
+    </p>`;
+  return buildCommercialReminderHtml(
+    d,
+    "Última llamada para tu experiencia",
+    "No queremos que te la pierdas",
+    d.customBody
+      ? `<p style="color:#374151;font-size:15px;line-height:1.8;margin:0;font-family:Arial,sans-serif;">${escHtml(d.customBody).replace(/\n/g, "<br>")}</p>`
+      : bodyHtml,
+  );
+}

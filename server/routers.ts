@@ -180,6 +180,7 @@ import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
 import { dailyControlRouter } from "./routers/dailyControl";
 import { proposalsRouter } from "./routers/proposals";
+import { commercialFollowupRouter } from "./routers/commercialFollowup";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -1848,6 +1849,7 @@ export const appRouter = router({
   reviews: reviewsRouter,
   restaurants: restaurantsRouter,
   crm: crmRouter,
+  commercialFollowup: commercialFollowupRouter,
   suppliers: suppliersRouter,
   timeSlots: timeSlotsRouter,
   tpv: tpvRouter,

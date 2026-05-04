@@ -19,6 +19,7 @@ import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
 import vapiWebhookRouter from "../vapiWebhookRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
+import { startCommercialFollowupJob } from "../commercialFollowupJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
@@ -1086,6 +1087,7 @@ runMigrations()
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
   .then(() => conditionallyStartJob("quote_reminder_job_enabled",          startQuoteReminderJob,         "Quote Reminder"))
+  .then(() => conditionallyStartJob("commercial_followup_job_enabled",     startCommercialFollowupJob,    "Commercial Followup"))
   .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
   .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
   .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))

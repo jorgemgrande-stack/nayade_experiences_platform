@@ -107,6 +107,7 @@ const OnboardingWizard = lazy(() => import("./pages/admin/onboarding/OnboardingW
 const CRMDashboard = lazy(() => import("./pages/admin/crm/CRMDashboard"));
 const ClientsManager = lazy(() => import("./pages/admin/crm/ClientsManager"));
 const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
+const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
 
 // Fiscal REAV
@@ -278,6 +279,9 @@ function Router() {
       <Route path="/admin/restaurantes/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantsManager /></Suspense>}</Route>
       <Route path="/admin/restaurantes/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><GlobalCalendar /></Suspense>}</Route>
       <Route path="/admin/restaurantes/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><RestaurantsManager /></Suspense>}</Route>
+
+      {/* Atención Comercial */}
+      <Route path="/admin/atencion-comercial">{() => <Suspense fallback={<AdminLoadingFallback />}><CommercialFollowupDashboard /></Suspense>}</Route>
 
       {/* CRM */}
       <Route path="/admin/crm">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>

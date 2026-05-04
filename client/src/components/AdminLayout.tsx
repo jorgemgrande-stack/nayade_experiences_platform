@@ -5,7 +5,7 @@ import {
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
-  Sun, Moon, ExternalLink,
+  Sun, Moon, ExternalLink, Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -65,6 +65,19 @@ const navItems = [
       { label: "Facturas", href: "/admin/crm?tab=invoices", key: "crm-facturas" },
       { label: "Clientes", href: "/admin/crm/clientes", key: "crm-clientes" },
       { label: "Anulaciones", href: "/admin/crm?tab=anulaciones", key: "crm-anulaciones" },
+    ],
+  },
+  {
+    label: "Atención Comercial",
+    href: "/admin/atencion-comercial",
+    icon: Target,
+    roles: ["admin", "agente"],
+    children: [
+      { label: "Panel de seguimiento", href: "/admin/atencion-comercial?tab=dashboard", key: "ac-dashboard" },
+      { label: "Presupuestos abiertos", href: "/admin/atencion-comercial?tab=open", key: "ac-open" },
+      { label: "Reglas de recordatorio", href: "/admin/atencion-comercial?tab=rules", key: "ac-rules" },
+      { label: "Historial", href: "/admin/atencion-comercial?tab=history", key: "ac-history" },
+      { label: "Configuración", href: "/admin/atencion-comercial?tab=settings", key: "ac-settings" },
     ],
   },
   {
