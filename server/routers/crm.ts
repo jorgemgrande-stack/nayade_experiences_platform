@@ -32,6 +32,8 @@ import {
   bankMovements,
   bankMovementLinks,
   cardTerminalOperations,
+  ghlConversations,
+  vapiCalls,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
@@ -5456,6 +5458,53 @@ export const crmRouter = router({
         .filter((inv) => inv.status !== "anulada" && inv.status !== "abonada")
         .reduce((acc, inv) => acc + Math.round(parseFloat(inv.total ?? "0") * 100), 0);
 
+      // ── Conversaciones WhatsApp (por teléfono o email) ────────────────────
+      const waConditions: any[] = [];
+      if (client.phone) waConditions.push(eq(ghlConversations.phone, client.phone));
+      if (client.email) waConditions.push(eq(ghlConversations.email, client.email));
+      const clientWhatsApp = waConditions.length
+        ? await db.select({
+            ghlConversationId: ghlConversations.ghlConversationId,
+            customerName: ghlConversations.customerName,
+            phone: ghlConversations.phone,
+            lastMessagePreview: ghlConversations.lastMessagePreview,
+            lastMessageAt: ghlConversations.lastMessageAt,
+            status: ghlConversations.status,
+            unreadCount: ghlConversations.unreadCount,
+          }).from(ghlConversations)
+            .where(waConditions.length === 1 ? waConditions[0] : or(...waConditions))
+            .orderBy(desc(ghlConversations.lastMessageAt))
+        : [];
+
+      // ── Llamadas Vapi (por leadId, teléfono o email) ──────────────────────
+      const vapiConditions: any[] = [];
+      if (resolvedLeadId) vapiConditions.push(eq(vapiCalls.linkedLeadId, resolvedLeadId));
+      if (client.phone) vapiConditions.push(eq(vapiCalls.phoneNumber, client.phone));
+      if (client.email) vapiConditions.push(eq(vapiCalls.customerEmail, client.email));
+      const rawVapiCalls = vapiConditions.length
+        ? await db.select({
+            id: vapiCalls.id,
+            vapiCallId: vapiCalls.vapiCallId,
+            phoneNumber: vapiCalls.phoneNumber,
+            customerName: vapiCalls.customerName,
+            startedAt: vapiCalls.startedAt,
+            durationSeconds: vapiCalls.durationSeconds,
+            status: vapiCalls.status,
+            endedReason: vapiCalls.endedReason,
+            summary: vapiCalls.summary,
+            recordingUrl: vapiCalls.recordingUrl,
+          }).from(vapiCalls)
+            .where(vapiConditions.length === 1 ? vapiConditions[0] : or(...vapiConditions))
+            .orderBy(desc(vapiCalls.startedAt))
+        : [];
+      // Deduplicar por vapiCallId
+      const seenVapi = new Set<string>();
+      const clientVapiCalls = rawVapiCalls.filter(c => {
+        if (seenVapi.has(c.vapiCallId)) return false;
+        seenVapi.add(c.vapiCallId);
+        return true;
+      });
+
       return {
         client,
         lead,
@@ -5465,6 +5514,8 @@ export const crmRouter = router({
         cancellations: clientCancellations,
         discountUses: clientDiscountUses,
         activityLog,
+        whatsappConversations: clientWhatsApp,
+        vapiCalls: clientVapiCalls,
         kpis: {
           totalQuotes: clientQuotes.length,
           totalReservations: clientReservations.length,
@@ -5472,6 +5523,8 @@ export const crmRouter = router({
           totalCancellations: clientCancellations.length,
           totalSpentCents,
           paidReservations: clientReservations.filter((r) => r.status === "paid").length,
+          totalWhatsApp: clientWhatsApp.length,
+          totalVapiCalls: clientVapiCalls.length,
         },
       };
     }),

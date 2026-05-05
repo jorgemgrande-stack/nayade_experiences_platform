@@ -11,7 +11,7 @@ import {
   MapPin, CreditCard, Calendar, Globe, Tag, Ticket,
   History, FileCheck, Ban, BadgePercent, Activity,
   TrendingUp, ShoppingBag, Receipt, AlertCircle, CheckCircle2,
-  Clock, Eye, ChevronDown, ChevronUp, Euro
+  Clock, Eye, ChevronDown, ChevronUp, Euro, MessageCircle, Bot, Mic,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { Link } from "wouter";
@@ -339,7 +339,7 @@ function TimelineDot({ color }: { color: string }) {
   );
 }
 
-function ClientHistoryModal({ client, onClose }: { client: ClientRow; onClose: () => void }) {
+function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: ClientRow; onClose: () => void; onStartWhatsApp?: (phone: string, name: string) => void }) {
   const [tab, setTab] = useState<HistoryTab>("resumen");
   const { data, isLoading } = trpc.crm.clients.getHistory.useQuery({ id: client.id });
 
@@ -355,7 +355,7 @@ function ClientHistoryModal({ client, onClose }: { client: ClientRow; onClose: (
     const events: Array<{
       id: string;
       date: Date;
-      type: "lead" | "quote" | "reservation" | "invoice" | "cancellation" | "discount";
+      type: "lead" | "quote" | "reservation" | "invoice" | "cancellation" | "discount" | "whatsapp" | "vapi";
       title: string;
       subtitle: string;
       color: string;
@@ -445,6 +445,41 @@ function ClientHistoryModal({ client, onClose }: { client: ClientRow; onClose: (
       });
     }
 
+    for (const wa of (data as any).whatsappConversations ?? []) {
+      if (!wa.lastMessageAt) continue;
+      events.push({
+        id: `wa-${wa.ghlConversationId}`,
+        date: new Date(wa.lastMessageAt),
+        type: "whatsapp",
+        title: `WhatsApp — ${wa.customerName ?? wa.phone ?? "—"}`,
+        subtitle: wa.lastMessagePreview
+          ? `${wa.lastMessagePreview.slice(0, 80)}${wa.lastMessagePreview.length > 80 ? "…" : ""}`
+          : `Estado: ${wa.status ?? "—"}`,
+        color: "border-l-emerald-500",
+        dotColor: "bg-emerald-500 border-emerald-300",
+        icon: <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />,
+        href: "/admin/atencion-comercial/whatsapp",
+      });
+    }
+
+    for (const call of (data as any).vapiCalls ?? []) {
+      if (!call.startedAt) continue;
+      const dur = call.durationSeconds ? `${Math.floor(call.durationSeconds / 60)}m ${call.durationSeconds % 60}s` : "—";
+      events.push({
+        id: `vapi-${call.vapiCallId}`,
+        date: new Date(call.startedAt),
+        type: "vapi",
+        title: `Llamada IA Vapi — ${call.customerName ?? call.phoneNumber ?? "—"}`,
+        subtitle: call.summary
+          ? call.summary.slice(0, 100)
+          : `Duración: ${dur} · ${call.endedReason ?? call.status ?? "—"}`,
+        color: "border-l-violet-500",
+        dotColor: "bg-violet-500 border-violet-300",
+        icon: <Mic className="w-3.5 h-3.5 text-violet-400" />,
+        href: "/admin/atencion-comercial/agente-ia",
+      });
+    }
+
     return events.sort((a, b) => b.date.getTime() - a.date.getTime());
   }, [data]);
 
@@ -463,6 +498,15 @@ function ClientHistoryModal({ client, onClose }: { client: ClientRow; onClose: (
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {client.phone && onStartWhatsApp && (
+            <button
+              onClick={() => onStartWhatsApp(client.phone!, client.name)}
+              title={`Iniciar WhatsApp con ${client.name}`}
+              className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-1 hover:bg-emerald-500/20 transition-colors"
+            >
+              <MessageCircle className="w-3 h-3" /> WhatsApp
+            </button>
+          )}
           {client.isConverted ? (
             <span className="px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-300 text-xs flex items-center gap-1">
               <UserCheck className="w-3 h-3" /> Cliente
@@ -526,6 +570,14 @@ function ClientHistoryModal({ client, onClose }: { client: ClientRow; onClose: (
                   <div className="rounded-xl p-4 bg-red-500/5 border border-red-500/15">
                     <div className="text-2xl font-bold text-red-400">{data.kpis.totalCancellations}</div>
                     <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Ban className="w-3 h-3" />Anulaciones</div>
+                  </div>
+                  <div className="rounded-xl p-4 bg-emerald-500/5 border border-emerald-500/15">
+                    <div className="text-2xl font-bold text-emerald-400">{(data as any).kpis?.totalWhatsApp ?? 0}</div>
+                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><MessageCircle className="w-3 h-3" />Convs. WhatsApp</div>
+                  </div>
+                  <div className="rounded-xl p-4 bg-violet-500/5 border border-violet-500/15">
+                    <div className="text-2xl font-bold text-violet-400">{(data as any).kpis?.totalVapiCalls ?? 0}</div>
+                    <div className="text-white/40 text-xs mt-0.5 flex items-center gap-1"><Mic className="w-3 h-3" />Llamadas Vapi</div>
                   </div>
                 </div>
 
@@ -822,6 +874,39 @@ export default function ClientsManager() {
     onError: (e) => toast.error(e.message),
   });
 
+  // ── WhatsApp: iniciar conversación directamente desde CRM ─────────────────
+  const [waPhone, setWaPhone] = useState("");
+  const [waName, setWaName] = useState("");
+  const [waSending, setWaSending] = useState(false);
+
+  async function startWhatsApp(phone: string, name: string) {
+    setWaSending(true);
+    try {
+      const res = await fetch("/api/ghl/conversations/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, contactName: name }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Conversación iniciada con ${name}`, {
+          description: "Ve a WhatsApp GHL para escribir el mensaje",
+          action: { label: "Abrir", onClick: () => window.open("/admin/atencion-comercial/whatsapp", "_blank") },
+        });
+      } else {
+        // Si falla (fuera de ventana 24h), abrir la bandeja de WA para usar plantilla
+        toast.error("No se pudo enviar directamente", {
+          description: data.message?.slice(0, 100) ?? "Puede que necesites una plantilla",
+          action: { label: "Abrir WA", onClick: () => window.open("/admin/atencion-comercial/whatsapp", "_blank") },
+        });
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setWaSending(false);
+    }
+  }
+
   return (
     <AdminLayout>
       <div className="min-h-screen bg-[#080e1c] text-white px-6 py-6">
@@ -1003,6 +1088,15 @@ export default function ClientsManager() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      {client.phone && (
+                        <Button size="sm" variant="ghost"
+                          className="text-emerald-400 hover:text-emerald-300 h-7 px-2"
+                          onClick={() => startWhatsApp(client.phone!, client.name)}
+                          title="Iniciar WhatsApp"
+                          disabled={waSending}>
+                          <MessageCircle className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost"
                         className="text-purple-400 hover:text-purple-300 h-7 px-2"
                         onClick={() => setHistoryClient(client)}
@@ -1041,7 +1135,7 @@ export default function ClientsManager() {
       {/* Client History Modal */}
       <Dialog open={historyClient !== null} onOpenChange={(o) => !o && setHistoryClient(null)}>
         {historyClient && (
-          <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} />
+          <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} onStartWhatsApp={startWhatsApp} />
         )}
       </Dialog>
 

@@ -16,7 +16,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
-import { quotes, ghlWebhookLogs, vapiCalls } from "../drizzle/schema";
+import { quotes, ghlWebhookLogs, vapiCalls, clients } from "../drizzle/schema";
 import { createLead } from "./db";
 import { generateDocumentNumber } from "./documentNumbers";
 
@@ -220,6 +220,21 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       message,
       source: "vapi_llamada",
     });
+
+    // 4b. Auto-crear cliente si no existe (para que aparezca en /admin/crm/clientes)
+    try {
+      const effectiveEmail = email || `vapi-${leadId}@noreply.nayade`;
+      await _db.insert(clients).values({
+        leadId,
+        source: "lead",
+        name,
+        email: effectiveEmail,
+        phone: phone || "",
+        isConverted: false,
+        totalBookings: 0,
+        totalSpent: "0",
+      } as any).onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
+    } catch {}
 
     // 5. Generar presupuesto borrador con URL pública
     const quoteNumber = await generateDocumentNumber("presupuesto", "vapi:quote", "system");
