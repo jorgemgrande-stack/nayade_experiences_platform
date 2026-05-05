@@ -669,6 +669,148 @@ ghlInboxRouter.post(
   }
 );
 
+// ── GET /api/ghl/templates — listar plantillas WhatsApp aprobadas ─────────────
+ghlInboxRouter.get("/api/ghl/templates", async (req, res) => {
+  const creds = await getInboxCredentials();
+  if (!creds) return res.status(200).json({ ok: false, templates: [], message: "Sin credenciales" });
+  const { token, locationId } = creds;
+  try {
+    const r = await fetch(
+      `${GHL_BASE_URL}/locations/${encodeURIComponent(locationId)}/templates?originId=${encodeURIComponent(locationId)}&limit=50&deleted=false`,
+      { headers: { Authorization: `Bearer ${token}`, Version: GHL_API_VERSION } }
+    );
+    const data: any = await r.json();
+    const templates: any[] = data?.templates ?? data?.data ?? [];
+    return res.status(200).json({ ok: true, templates });
+  } catch (err: any) {
+    return res.status(200).json({ ok: false, templates: [], message: err.message });
+  }
+});
+
+// ── POST /api/ghl/conversations/new — iniciar nueva conversación ──────────────
+ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" }), async (req, res) => {
+  const { phone, contactName, message, templateId } = req.body ?? {};
+
+  if (!phone?.trim()) return res.status(400).json({ ok: false, message: "Teléfono requerido" });
+  if (!message?.trim() && !templateId) return res.status(400).json({ ok: false, message: "Mensaje o plantilla requerida" });
+
+  const creds = await getInboxCredentials();
+  if (!creds) return res.status(200).json({ ok: false, message: "Credenciales GHL no configuradas." });
+  const { token, locationId } = creds;
+
+  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}`, Version: GHL_API_VERSION };
+
+  try {
+    // 1. Buscar contacto por teléfono
+    let contactId: string | null = null;
+    const searchRes = await fetch(
+      `${GHL_BASE_URL}/contacts/search/duplicate?locationId=${encodeURIComponent(locationId)}&number=${encodeURIComponent(phone)}`,
+      { headers }
+    );
+    if (searchRes.ok) {
+      const sd: any = await searchRes.json();
+      contactId = sd?.contact?.id ?? null;
+    }
+
+    // 2. Crear contacto si no existe
+    if (!contactId) {
+      const [firstName, ...rest] = (contactName ?? "").trim().split(" ");
+      const createRes = await fetch(`${GHL_BASE_URL}/contacts/`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ locationId, phone, firstName: firstName || phone, lastName: rest.join(" ") || undefined }),
+      });
+      if (!createRes.ok) {
+        const t = await createRes.text();
+        return res.status(200).json({ ok: false, message: `Error creando contacto: ${t.slice(0, 120)}` });
+      }
+      const cd: any = await createRes.json();
+      contactId = cd?.contact?.id ?? cd?.id ?? null;
+    }
+
+    if (!contactId) return res.status(200).json({ ok: false, message: "No se pudo obtener contactId de GHL" });
+
+    // 3. Crear o recuperar conversación
+    const convRes = await fetch(`${GHL_BASE_URL}/conversations/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ locationId, contactId }),
+    });
+    const convData: any = await convRes.json();
+    const conversationId: string | null = convData?.conversation?.id ?? convData?.id ?? null;
+    if (!conversationId) {
+      return res.status(200).json({ ok: false, message: `No se pudo crear conversación en GHL: ${JSON.stringify(convData).slice(0, 120)}` });
+    }
+
+    // 4. Enviar mensaje o plantilla
+    const msgBody: any = {
+      type: "WhatsApp",
+      conversationId,
+      contactId,
+      locationId,
+    };
+    if (templateId) {
+      msgBody.templateId = templateId;
+    } else {
+      msgBody.message = message;
+    }
+
+    const msgRes = await fetch(`${GHL_BASE_URL}/conversations/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(msgBody),
+    });
+
+    if (!msgRes.ok) {
+      const errText = await msgRes.text();
+      return res.status(200).json({ ok: false, message: `Error enviando mensaje: ${errText.slice(0, 150)}` });
+    }
+    const msgData: any = await msgRes.json();
+    const msgId = msgData?.message?.id ?? msgData?.id ?? `local-${Date.now()}`;
+
+    // 5. Guardar conversación + mensaje en BD local
+    await db.insert(ghlConversations).values({
+      ghlConversationId: conversationId,
+      ghlContactId: contactId,
+      locationId,
+      channel: "whatsapp",
+      customerName: contactName ?? phone,
+      phone,
+      lastMessagePreview: (templateId ? `[Plantilla: ${templateId}]` : message).slice(0, 200),
+      lastMessageAt: new Date(),
+      unreadCount: 0,
+      status: "open",
+    }).onDuplicateKeyUpdate({
+      set: {
+        customerName: contactName ?? phone,
+        phone,
+        lastMessagePreview: (templateId ? `[Plantilla: ${templateId}]` : message).slice(0, 200),
+        lastMessageAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+
+    await db.insert(ghlMessages).values({
+      ghlMessageId: msgId,
+      ghlConversationId: conversationId,
+      direction: "outbound",
+      messageType: "text",
+      body: templateId ? `[Plantilla: ${templateId}]` : message,
+      senderName: "Nayade",
+      sentAt: new Date(),
+      deliveryStatus: "sent",
+      rawPayloadJson: msgData,
+    }).onDuplicateKeyUpdate({ set: { deliveryStatus: "sent" } });
+
+    ghlInboxEmitter.emit("update", { type: "conversation_updated", conversationId, timestamp: Date.now() });
+
+    return res.status(200).json({ ok: true, conversationId, contactId, messageId: msgId });
+  } catch (err: any) {
+    log("error", "Error creando nueva conversación GHL", { error: err.message });
+    return res.status(200).json({ ok: false, message: err.message });
+  }
+});
+
 // ── POST /api/ghl/inbox/sync — sincronización manual ─────────────────────────
 ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), async (req, res) => {
   const syncCreds = await getInboxCredentials();

@@ -6,7 +6,7 @@ import {
   MessageCircle, Search, RefreshCw, Star, Phone, Mail, Link2,
   CheckCircle2, Clock, XCircle, Send, ChevronRight, AlertTriangle,
   Wifi, WifiOff, BarChart3, Activity, ExternalLink, Unlink,
-  MessageSquare, User, FileText, CalendarDays, Settings,
+  MessageSquare, User, FileText, CalendarDays, Settings, Plus,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -101,6 +101,66 @@ export default function WhatsAppGHLInbox() {
   const [replyText, setReplyText] = useState("");
   const [showDiag, setShowDiag] = useState(false);
   const [tab, setTab] = useState<"inbox" | "stats" | "diag">("inbox");
+
+  // ── Nueva conversación ────────────────────────────────────────────────────
+  const [showNewConv, setShowNewConv] = useState(false);
+  const [newConvPhone, setNewConvPhone] = useState("");
+  const [newConvName, setNewConvName] = useState("");
+  const [newConvMessage, setNewConvMessage] = useState("");
+  const [newConvTemplateId, setNewConvTemplateId] = useState("");
+  const [newConvMode, setNewConvMode] = useState<"text" | "template">("text");
+  const [newConvSending, setNewConvSending] = useState(false);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+
+  async function loadTemplates() {
+    setTemplatesLoading(true);
+    try {
+      const r = await fetch("/api/ghl/templates");
+      const d = await r.json();
+      setTemplates(d.templates ?? []);
+    } catch {}
+    finally { setTemplatesLoading(false); }
+  }
+
+  function openNewConv() {
+    setNewConvPhone(""); setNewConvName(""); setNewConvMessage("");
+    setNewConvTemplateId(""); setNewConvMode("text");
+    setShowNewConv(true);
+    loadTemplates();
+  }
+
+  async function sendNewConv() {
+    if (!newConvPhone.trim()) { toast.error("Introduce un número de teléfono"); return; }
+    if (newConvMode === "text" && !newConvMessage.trim()) { toast.error("Escribe un mensaje"); return; }
+    if (newConvMode === "template" && !newConvTemplateId) { toast.error("Selecciona una plantilla"); return; }
+    setNewConvSending(true);
+    try {
+      const res = await fetch("/api/ghl/conversations/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: newConvPhone.trim(),
+          contactName: newConvName.trim() || undefined,
+          message: newConvMode === "text" ? newConvMessage.trim() : undefined,
+          templateId: newConvMode === "template" ? newConvTemplateId : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success("Conversación iniciada");
+        setShowNewConv(false);
+        refetchConvs();
+        if (data.conversationId) setSelectedConvId(data.conversationId);
+      } else {
+        toast.error(data.message ?? "Error al iniciar conversación");
+      }
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setNewConvSending(false);
+    }
+  }
 
   // ── Link modals ───────────────────────────────────────────────────────────
   const [linkQuoteOpen, setLinkQuoteOpen] = useState(false);
@@ -480,14 +540,23 @@ export default function WhatsAppGHLInbox() {
             <div className="w-72 shrink-0 flex flex-col border-r border-foreground/[0.08]">
               {/* Buscador + filtros */}
               <div className="p-2 space-y-2 border-b border-foreground/[0.08]">
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/30" />
-                  <Input
-                    placeholder="Buscar..."
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    className="pl-7 h-7 text-xs"
-                  />
+                <div className="flex gap-1.5">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/30" />
+                    <Input
+                      placeholder="Buscar..."
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      className="pl-7 h-7 text-xs"
+                    />
+                  </div>
+                  <button
+                    onClick={openNewConv}
+                    title="Nueva conversación"
+                    className="h-7 w-7 flex items-center justify-center rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
                 </div>
                 <div className="flex gap-1.5">
                   <Select value={filter} onValueChange={v => setFilter(v as FilterKey)}>
@@ -895,6 +964,117 @@ export default function WhatsAppGHLInbox() {
                 reservationId: Number(linkResId),
               })}>
               Vincular
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* ── Modal: nueva conversación ─────────────────────────────────────── */}
+      <Dialog open={showNewConv} onOpenChange={setShowNewConv}>
+        <DialogContent className="max-w-md flex flex-col max-h-[90vh]">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="w-4 h-4 text-green-400" />
+              Nueva conversación WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 overflow-y-auto flex-1 pr-1 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs">Teléfono *</Label>
+              <Input
+                value={newConvPhone}
+                onChange={e => setNewConvPhone(e.target.value)}
+                placeholder="+34 600 000 000"
+                className="h-8 text-xs font-mono"
+              />
+              <p className="text-[10px] text-foreground/40">Incluye el código de país. Si el contacto no existe en GHL se creará automáticamente.</p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Nombre del contacto (opcional)</Label>
+              <Input
+                value={newConvName}
+                onChange={e => setNewConvName(e.target.value)}
+                placeholder="Ej: María García"
+                className="h-8 text-xs"
+              />
+            </div>
+
+            {/* Toggle modo */}
+            <div className="flex rounded-lg overflow-hidden border border-foreground/[0.12] text-xs font-medium">
+              <button
+                onClick={() => setNewConvMode("text")}
+                className={`flex-1 py-1.5 transition-colors ${newConvMode === "text" ? "bg-green-600/20 text-green-400" : "text-foreground/40 hover:text-foreground"}`}
+              >
+                Texto libre
+              </button>
+              <button
+                onClick={() => setNewConvMode("template")}
+                className={`flex-1 py-1.5 transition-colors border-l border-foreground/[0.12] ${newConvMode === "template" ? "bg-green-600/20 text-green-400" : "text-foreground/40 hover:text-foreground"}`}
+              >
+                Plantilla WhatsApp
+              </button>
+            </div>
+
+            {newConvMode === "text" && (
+              <div className="space-y-1">
+                <Label className="text-xs">Mensaje *</Label>
+                <Textarea
+                  value={newConvMessage}
+                  onChange={e => setNewConvMessage(e.target.value)}
+                  placeholder="Escribe el mensaje..."
+                  rows={3}
+                  className="text-xs resize-none"
+                />
+                <p className="text-[10px] text-amber-400/80">Solo funciona si el contacto te ha escrito en las últimas 24h. Para contactos nuevos usa plantilla.</p>
+              </div>
+            )}
+
+            {newConvMode === "template" && (
+              <div className="space-y-2">
+                <Label className="text-xs">Plantilla aprobada *</Label>
+                {templatesLoading ? (
+                  <div className="flex items-center gap-2 text-xs text-foreground/40 py-2">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> Cargando plantillas...
+                  </div>
+                ) : templates.length === 0 ? (
+                  <p className="text-xs text-red-400/80">No se encontraron plantillas aprobadas en GHL. Créalas en GHL → Marketing → Plantillas.</p>
+                ) : (
+                  <Select value={newConvTemplateId} onValueChange={setNewConvTemplateId}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Selecciona una plantilla" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((t: any) => (
+                        <SelectItem key={t.id ?? t._id} value={t.id ?? t._id}>
+                          <div className="py-0.5">
+                            <div className="font-medium text-xs">{t.name ?? t.title}</div>
+                            {t.body && <div className="text-[10px] text-foreground/50 truncate max-w-[260px]">{t.body}</div>}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newConvTemplateId && templates.find((t: any) => (t.id ?? t._id) === newConvTemplateId)?.body && (
+                  <div className="rounded-lg bg-green-500/5 border border-green-500/20 p-3 text-xs text-foreground/70 whitespace-pre-wrap">
+                    {templates.find((t: any) => (t.id ?? t._id) === newConvTemplateId).body}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="shrink-0">
+            <Button variant="outline" size="sm" onClick={() => setShowNewConv(false)}>Cancelar</Button>
+            <Button
+              size="sm"
+              className="bg-green-600 hover:bg-green-700 text-white"
+              disabled={newConvSending}
+              onClick={sendNewConv}
+            >
+              {newConvSending ? <RefreshCw className="w-3.5 h-3.5 animate-spin mr-1" /> : <Send className="w-3.5 h-3.5 mr-1" />}
+              Enviar e iniciar
             </Button>
           </DialogFooter>
         </DialogContent>
