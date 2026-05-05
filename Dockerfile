@@ -8,8 +8,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Instalar pnpm
-RUN npm install -g pnpm
+# Instalar pnpm (versión fijada = misma que el lockfile local)
+RUN npm install -g pnpm@10.32.1
 
 # Copiar manifiestos de dependencias y patches
 COPY package.json pnpm-lock.yaml* ./
