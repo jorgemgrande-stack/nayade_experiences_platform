@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { WhatsAppNotification } from "./WhatsAppNotification";
 import { cn } from "@/lib/utils";
 import { useLocation as useWouterLocation } from "wouter";
 import { getLoginUrl } from "@/const";
@@ -720,6 +721,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
           {children}
         </main>
       </div>
+      <WhatsAppNotification />
     </div>
   );
 }

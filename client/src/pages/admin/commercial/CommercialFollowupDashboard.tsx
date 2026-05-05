@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
@@ -18,7 +18,9 @@ import {
   MessageSquare, Phone, MessageCircle, StickyNote, Settings, List,
   History, ChevronRight, RefreshCw, Pencil, Trash2, Plus, TrendingUp,
   Users, Clock, AlertTriangle, Ban, Target, ArrowRight,
+  Bot, Bell, BellOff, Volume2, VolumeX,
 } from "lucide-react";
+import { NOTIF_POPUP_KEY, NOTIF_SOUND_KEY } from "@/components/WhatsAppNotification";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,9 +198,24 @@ export default function CommercialFollowupDashboard() {
     maxSendsPerQuoteForThisRule: 1, emailSubject: "", emailBody: "", sortOrder: 0,
   });
 
+  // ─── Notif settings (localStorage) ───────────────────────────────────────
+  const [popupDisabled, setPopupDisabledState] = useState(() => localStorage.getItem(NOTIF_POPUP_KEY) === "true");
+  const [soundDisabled, setSoundDisabledState] = useState(() => localStorage.getItem(NOTIF_SOUND_KEY) === "true");
+
+  const setPopupDisabled = (v: boolean) => { localStorage.setItem(NOTIF_POPUP_KEY, String(v)); setPopupDisabledState(v); };
+  const setSoundDisabled = (v: boolean) => { localStorage.setItem(NOTIF_SOUND_KEY, String(v)); setSoundDisabledState(v); };
+
   // ─── Queries ──────────────────────────────────────────────────────────────
   const { data: dashboard, isLoading: dashLoading, refetch: refetchDash } =
     trpc.commercialFollowup.getDashboard.useQuery(undefined, { enabled: tab === "dashboard" });
+
+  const { data: whatsappStats } = trpc.ghlInbox.getStats.useQuery(undefined, {
+    enabled: tab === "dashboard", refetchInterval: 60000,
+  });
+
+  const { data: vapiStats } = trpc.vapiCalls.getStats.useQuery(undefined, {
+    enabled: tab === "dashboard", refetchInterval: 60000,
+  });
 
   const { data: openData, isLoading: openLoading, refetch: refetchOpen } =
     trpc.commercialFollowup.listOpen.useQuery(
@@ -370,6 +387,96 @@ export default function CommercialFollowupDashboard() {
                   <KpiCard label="Fríos (+7 días)" value={kpis?.cold ?? 0} color="text-zinc-400" icon={Clock} />
                   <KpiCard label="Convertidos" value={kpis?.converted ?? 0} color="text-emerald-400" icon={CheckCircle2} />
                   <KpiCard label="Perdidos" value={kpis?.lost ?? 0} color="text-red-400" icon={XCircle} />
+                </div>
+
+                {/* ─── KPIs WhatsApp + Vapi ──────────────────────────────────── */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-500/15 shrink-0">
+                      <MessageCircle className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-emerald-400">
+                        {whatsappStats?.conversations?.statusNew ?? 0}
+                      </div>
+                      <div className="text-xs text-foreground/50">WhatsApp nuevas</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-sky-500/15 shrink-0">
+                      <MessageCircle className="w-4 h-4 text-sky-400" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-sky-400">
+                        {whatsappStats?.conversations?.unread ?? 0}
+                      </div>
+                      <div className="text-xs text-foreground/50">WhatsApp no leídas</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-violet-500/15 shrink-0">
+                      <Bot className="w-4 h-4 text-violet-400" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-violet-400">
+                        {vapiStats?.today ?? 0}
+                      </div>
+                      <div className="text-xs text-foreground/50">Vapi llamadas hoy</div>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-amber-500/15 shrink-0">
+                      <Bot className="w-4 h-4 text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-amber-400">
+                        {vapiStats?.unreviewed ?? 0}
+                      </div>
+                      <div className="text-xs text-foreground/50">Vapi sin revisar</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ─── Control notificaciones WhatsApp ───────────────────────── */}
+                <div className="rounded-xl border border-border/50 bg-card p-4">
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-foreground/70">
+                    <Bell className="w-4 h-4 text-sky-400" />
+                    Notificaciones WhatsApp — ventana emergente
+                  </h3>
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none group">
+                      <div
+                        className={`w-9 h-5 rounded-full transition-colors relative ${popupDisabled ? "bg-foreground/20" : "bg-sky-500"}`}
+                        onClick={() => setPopupDisabled(!popupDisabled)}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${popupDisabled ? "left-0.5" : "left-4"}`} />
+                      </div>
+                      <div>
+                        <div className="text-sm flex items-center gap-1.5">
+                          {popupDisabled
+                            ? <><BellOff className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">Ventana emergente desactivada</span></>
+                            : <><Bell className="w-3.5 h-3.5 text-sky-400" /> <span>Ventana emergente activada</span></>
+                          }
+                        </div>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                      <div
+                        className={`w-9 h-5 rounded-full transition-colors relative ${soundDisabled ? "bg-foreground/20" : "bg-emerald-500"}`}
+                        onClick={() => setSoundDisabled(!soundDisabled)}
+                      >
+                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${soundDisabled ? "left-0.5" : "left-4"}`} />
+                      </div>
+                      <div>
+                        <div className="text-sm flex items-center gap-1.5">
+                          {soundDisabled
+                            ? <><VolumeX className="w-3.5 h-3.5 text-foreground/40" /> <span className="text-foreground/50">Sonido desactivado</span></>
+                            : <><Volume2 className="w-3.5 h-3.5 text-emerald-400" /> <span>Sonido activado</span></>
+                          }
+                        </div>
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
                 {/* Attention list */}
