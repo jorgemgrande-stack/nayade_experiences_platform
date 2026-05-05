@@ -609,6 +609,11 @@ export default function EmailInbox() {
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
               </div>
+            ) : emails.isError ? (
+              <div className="flex flex-col items-center justify-center py-16 text-red-400/70 gap-1 px-4 text-center">
+                <span className="text-sm font-medium">Error al cargar correos</span>
+                <span className="text-xs text-foreground/40">{(emails.error as any)?.message ?? "Error desconocido"}</span>
+              </div>
             ) : !emails.data?.rows.length ? (
               <div className="flex flex-col items-center justify-center py-16 text-foreground/30">
                 <Mail className="w-10 h-10 mb-2" />

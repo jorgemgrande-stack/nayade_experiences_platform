@@ -129,7 +129,11 @@ export const emailInboxRouter = router({
 
       const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
-      // List query (no body — fast)
+      // LIMIT/OFFSET inlined as validated integers (mysql2 prepared statements
+      // have a known issue with LIMIT ? in server-side prepared statements)
+      const limit = Math.min(Math.max(1, input.limit), 200);
+      const offset = Math.max(0, input.offset);
+
       const [rows]: any = await _pool.execute(
         `SELECT id, account_id, message_id, in_reply_to, from_email, from_name,
                 to_emails, cc_emails, subject, snippet, sent_at,
@@ -138,8 +142,8 @@ export const emailInboxRouter = router({
                 linked_quote_id, linked_reservation_id, created_at
          FROM commercial_emails ${where}
          ORDER BY sent_at DESC
-         LIMIT ? OFFSET ?`,
-        [...params, input.limit, input.offset],
+         LIMIT ${limit} OFFSET ${offset}`,
+        params,
       );
 
       const [countRows]: any = await _pool.execute(
