@@ -312,7 +312,10 @@ export default function EmailAccountsSettings() {
     onError: e => toast.error(e.message),
   });
   const syncMut = trpc.emailAccounts.syncNow.useMutation({
-    onSuccess: () => { toast.success("Sync completado"); utils.emailAccounts.list.invalidate(); },
+    onSuccess: (data) => {
+      toast.success(`Sync completado — ${data.synced} emails nuevos${data.errors ? `, ${data.errors} errores` : ""}`);
+      utils.emailAccounts.list.invalidate();
+    },
     onError: e => toast.error(e.message),
   });
 

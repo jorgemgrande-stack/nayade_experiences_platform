@@ -243,7 +243,7 @@ export const emailAccountsRouter = router({
     .input(z.object({ accountId: z.number().int().positive().optional() }))
     .mutation(async ({ input }) => {
       const { runCommercialEmailSync } = await import("../services/commercialEmailService");
-      await runCommercialEmailSync();
-      return { ok: true };
+      const result = await runCommercialEmailSync();
+      return { ok: true, synced: result.synced, errors: result.errors };
     }),
 });

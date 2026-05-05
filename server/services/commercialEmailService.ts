@@ -132,6 +132,128 @@ async function detectCrmEntity(fromEmail: string): Promise<{
 
 // ─── Sync one account ─────────────────────────────────────────────────────────
 
+async function syncFolder(
+  client: ImapFlow,
+  pool: mysql.Pool,
+  account: any,
+  folderName: string,
+  isSent: boolean,
+  maxMessages: number,
+  since: Date,
+): Promise<number> {
+  let synced = 0;
+
+  let lock: any;
+  try {
+    lock = await client.getMailboxLock(folderName);
+  } catch (err: any) {
+    console.warn(`[CommercialEmail] No se puede abrir carpeta "${folderName}" en ${account.email}: ${err.message}`);
+    return 0;
+  }
+
+  try {
+    // Collect UIDs of recent messages
+    const uids: number[] = [];
+    for await (const msg of client.fetch(
+      { since },
+      { uid: true },
+    )) {
+      if (msg.uid) uids.push(msg.uid);
+    }
+
+    if (uids.length === 0) return 0;
+
+    // Take the most recent N messages
+    const batch = uids.slice(-maxMessages);
+    console.log(`[CommercialEmail] ${account.email} / ${folderName}: ${batch.length} mensajes a procesar`);
+
+    for (const uid of batch) {
+      try {
+        const msgData = await client.fetchOne(
+          String(uid),
+          { source: true, flags: true },
+          { uid: true },
+        ) as any;
+        if (!msgData?.source) continue;
+
+        const parsed = await simpleParser(msgData.source as Buffer);
+        const messageId = (parsed.messageId ?? `uid-${account.id}-${folderName}-${uid}`).slice(0, 512);
+
+        // Dedup by message_id
+        const [existing]: any = await pool.execute(
+          "SELECT id FROM commercial_emails WHERE message_id = ? LIMIT 1",
+          [messageId],
+        );
+        if ((existing as any[]).length > 0) continue;
+
+        const fromAddr = parsed.from?.value?.[0];
+        const fromEmail = (fromAddr?.address ?? "").toLowerCase().slice(0, 319);
+        const fromName = (fromAddr?.name ?? "").slice(0, 254) || null;
+
+        const toArr = parsed.to
+          ? (Array.isArray(parsed.to.value) ? parsed.to.value : [parsed.to.value])
+              .map((a: any) => a?.address ?? "").filter(Boolean)
+          : [];
+        const ccArr = parsed.cc
+          ? (Array.isArray(parsed.cc.value) ? parsed.cc.value : [parsed.cc.value])
+              .map((a: any) => a?.address ?? "").filter(Boolean)
+          : [];
+
+        const bodyHtml = parsed.html || null;
+        const bodyText = parsed.text || null;
+        const snippet = (parsed.text || parsed.subject || "")
+          .slice(0, 280).replace(/\s+/g, " ").trim();
+        const hasAttachments = (parsed.attachments ?? []).length > 0;
+
+        // For sent folder: is_read = TRUE, is_sent = TRUE
+        // For inbox: is_read depends on IMAP \Seen flag
+        const isRead = isSent
+          ? true
+          : (msgData.flags ? msgData.flags.has("\\Seen") : false);
+
+        const { linkedLeadId, linkedClientId } = await detectCrmEntity(fromEmail);
+
+        await pool.execute(
+          `INSERT IGNORE INTO commercial_emails
+            (account_id, message_id, in_reply_to, from_email, from_name,
+             to_emails, cc_emails, subject, body_html, body_text, snippet,
+             sent_at, is_read, is_sent, has_attachments, folder, labels,
+             linked_lead_id, linked_client_id, imap_uid, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, NOW(), NOW())`,
+          [
+            account.id,
+            messageId,
+            parsed.inReplyTo?.slice(0, 511) ?? null,
+            fromEmail,
+            fromName,
+            JSON.stringify(toArr),
+            JSON.stringify(ccArr),
+            (parsed.subject ?? "(Sin asunto)").slice(0, 511),
+            bodyHtml,
+            bodyText,
+            snippet || null,
+            parsed.date ?? null,
+            isRead ? 1 : 0,
+            isSent ? 1 : 0,
+            hasAttachments ? 1 : 0,
+            folderName,
+            linkedLeadId,
+            linkedClientId,
+            uid,
+          ],
+        );
+        synced++;
+      } catch (msgErr: any) {
+        console.warn(`[CommercialEmail] Error procesando UID ${uid} en ${folderName}:`, msgErr.message);
+      }
+    }
+  } finally {
+    lock.release();
+  }
+
+  return synced;
+}
+
 async function syncAccount(account: any): Promise<{ synced: number; errors: number }> {
   const pool = getPool();
   let synced = 0;
@@ -146,101 +268,29 @@ async function syncAccount(account: any): Promise<{ synced: number; errors: numb
       pass: decryptPassword(account.imap_password_enc),
     },
     logger: false,
+    tls: { rejectUnauthorized: false },
   });
 
   try {
     await client.connect();
-    const lock = await client.getMailboxLock(account.folder_inbox || "INBOX");
 
-    try {
-      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // last 30 days
-      const uids: number[] = [];
-      for await (const msg of client.fetch({ since }, { uid: true })) {
-        uids.push(msg.uid);
-      }
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // last 30 days
+    const max = account.max_emails_per_sync || 50;
 
-      const batch = uids.slice(-(account.max_emails_per_sync || 50));
+    // Sync INBOX
+    const inboxFolder = account.folder_inbox || "INBOX";
+    synced += await syncFolder(client, pool, account, inboxFolder, false, max, since);
 
-      for (const uid of batch) {
-        try {
-          const msgData = await client.fetchOne(uid, { source: true }, { uid: true }) as any;
-          if (!msgData?.source) continue;
-
-          const parsed = await simpleParser(msgData.source as Buffer);
-          const messageId = (parsed.messageId ?? `uid-${account.id}-${uid}`).slice(0, 512);
-
-          // Dedup check
-          const [existing]: any = await pool.execute(
-            "SELECT id FROM commercial_emails WHERE message_id = ? LIMIT 1",
-            [messageId],
-          );
-          if ((existing as any[]).length > 0) continue;
-
-          const fromAddr = parsed.from?.value?.[0];
-          const fromEmail = (fromAddr?.address ?? "").toLowerCase().slice(0, 319);
-          const fromName = (fromAddr?.name ?? "").slice(0, 254) || null;
-
-          const toArr = parsed.to
-            ? (Array.isArray(parsed.to.value) ? parsed.to.value : [parsed.to.value])
-                .map((a: any) => a?.address ?? "")
-                .filter(Boolean)
-            : [];
-          const ccArr = parsed.cc
-            ? (Array.isArray(parsed.cc.value) ? parsed.cc.value : [parsed.cc.value])
-                .map((a: any) => a?.address ?? "")
-                .filter(Boolean)
-            : [];
-
-          const bodyHtml = parsed.html || null;
-          const bodyText = parsed.text || null;
-          const snippet = (parsed.text || parsed.subject || "")
-            .slice(0, 280)
-            .replace(/\s+/g, " ")
-            .trim();
-          const hasAttachments = (parsed.attachments ?? []).length > 0;
-          const { linkedLeadId, linkedClientId } = await detectCrmEntity(fromEmail);
-
-          await pool.execute(
-            `INSERT IGNORE INTO commercial_emails
-              (account_id, message_id, in_reply_to, from_email, from_name,
-               to_emails, cc_emails, subject, body_html, body_text, snippet,
-               sent_at, is_read, has_attachments, folder, labels,
-               linked_lead_id, linked_client_id, imap_uid, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?, '[]', ?, ?, ?, NOW(), NOW())`,
-            [
-              account.id,
-              messageId,
-              parsed.inReplyTo?.slice(0, 511) ?? null,
-              fromEmail,
-              fromName,
-              JSON.stringify(toArr),
-              JSON.stringify(ccArr),
-              (parsed.subject ?? "(Sin asunto)").slice(0, 511),
-              bodyHtml,
-              bodyText,
-              snippet || null,
-              parsed.date ?? null,
-              hasAttachments,
-              account.folder_inbox || "INBOX",
-              linkedLeadId,
-              linkedClientId,
-              uid,
-            ],
-          );
-          synced++;
-        } catch (msgErr: any) {
-          console.warn(`[CommercialEmail] Error procesando UID ${uid}:`, msgErr.message);
-          errors++;
-        }
-      }
-    } finally {
-      lock.release();
-    }
+    // Sync Sent
+    const sentFolder = account.folder_sent || "Sent";
+    synced += await syncFolder(client, pool, account, sentFolder, true, max, since);
 
     await pool.execute(
       "UPDATE email_accounts SET last_sync_at = NOW(), last_sync_error = NULL WHERE id = ?",
       [account.id],
     );
+
+    console.log(`[CommercialEmail] ${account.email}: +${synced} emails sincronizados`);
   } catch (err: any) {
     console.error(`[CommercialEmail] Error en cuenta ${account.email}:`, err.message);
     await pool.execute(
@@ -259,29 +309,38 @@ async function syncAccount(account: any): Promise<{ synced: number; errors: numb
 
 let isRunning = false;
 
-export async function runCommercialEmailSync(): Promise<void> {
-  if (isRunning) return;
+export async function runCommercialEmailSync(): Promise<{ synced: number; errors: number }> {
+  if (isRunning) {
+    console.log("[CommercialEmail] Sync ya en curso, omitiendo");
+    return { synced: 0, errors: 0 };
+  }
   isRunning = true;
   const pool = getPool();
+  let totalSynced = 0;
+  let totalErrors = 0;
 
   try {
     const [accounts]: any = await pool.execute(
       "SELECT * FROM email_accounts WHERE is_active = TRUE AND sync_enabled = TRUE",
     );
 
+    console.log(`[CommercialEmail] Iniciando sync de ${(accounts as any[]).length} cuenta(s)`);
+
     for (const account of accounts as any[]) {
       const { synced, errors } = await syncAccount(account);
-      if (synced > 0 || errors > 0) {
-        console.log(
-          `[CommercialEmail] Cuenta ${account.email}: +${synced} emails, ${errors} errores`,
-        );
-      }
+      totalSynced += synced;
+      totalErrors += errors;
     }
+
+    console.log(`[CommercialEmail] Sync completado: +${totalSynced} emails, ${totalErrors} errores`);
   } catch (err: any) {
     console.error("[CommercialEmail] Error en ciclo de sync:", err.message);
+    totalErrors++;
   } finally {
     isRunning = false;
   }
+
+  return { synced: totalSynced, errors: totalErrors };
 }
 
 // ─── Send reply via account SMTP ─────────────────────────────────────────────
