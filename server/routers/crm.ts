@@ -5459,8 +5459,12 @@ export const crmRouter = router({
         .reduce((acc, inv) => acc + Math.round(parseFloat(inv.total ?? "0") * 100), 0);
 
       // ── Conversaciones WhatsApp (por teléfono o email) ────────────────────
+      // GHL puede guardar teléfonos con o sin '+'; se normaliza eliminándolo en ambos lados.
       const waConditions: any[] = [];
-      if (client.phone) waConditions.push(eq(ghlConversations.phone, client.phone));
+      if (client.phone) {
+        const normalizedPhone = client.phone.replace(/^\+/, "");
+        waConditions.push(sql`REPLACE(${ghlConversations.phone}, '+', '') = ${normalizedPhone}`);
+      }
       if (client.email) waConditions.push(eq(ghlConversations.email, client.email));
       const clientWhatsApp = waConditions.length
         ? await db.select({
