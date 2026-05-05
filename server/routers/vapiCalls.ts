@@ -102,6 +102,8 @@ export const vapiCallsRouter = router({
           vapiCallId: vapiCalls.vapiCallId,
           phoneNumber: vapiCalls.phoneNumber,
           customerName: vapiCalls.customerName,
+          customerEmail: vapiCalls.customerEmail,
+          structuredData: vapiCalls.structuredData,
           startedAt: vapiCalls.startedAt,
           endedAt: vapiCalls.endedAt,
           durationSeconds: vapiCalls.durationSeconds,
@@ -259,7 +261,13 @@ export const vapiCallsRouter = router({
         const summary = c.analysis?.summary ?? c.summary ?? undefined;
         const structuredData = c.analysis?.structuredData ?? undefined;
         const phoneNumber = c.customer?.number ?? c.customer?.phoneNumber ?? undefined;
-        const customerName = c.customer?.name ?? undefined;
+        const sd = structuredData ?? {};
+        const customerName =
+          sd.name ?? sd.customerName ?? sd.nombre ?? sd.fullName ??
+          c.customer?.name ?? undefined;
+        const customerEmail =
+          sd.email ?? sd.customerEmail ?? sd.correo ?? sd.emailAddress ??
+          c.customer?.email ?? undefined;
 
         try {
           const existing = await db.select({ id: vapiCalls.id }).from(vapiCalls)
@@ -271,6 +279,7 @@ export const vapiCallsRouter = router({
               assistantId: c.assistantId ?? undefined,
               phoneNumber,
               customerName,
+              customerEmail,
               startedAt,
               endedAt,
               durationSeconds,
@@ -286,6 +295,8 @@ export const vapiCallsRouter = router({
           } else {
             await db.update(vapiCalls)
               .set({
+                ...(customerName ? { customerName } : {}),
+                ...(customerEmail ? { customerEmail } : {}),
                 endedAt,
                 durationSeconds,
                 status: c.status ?? undefined,
