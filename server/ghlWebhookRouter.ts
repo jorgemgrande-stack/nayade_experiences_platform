@@ -43,7 +43,10 @@ const ghlWebhookRouter = express.Router();
 
 ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async (req, res) => {
   // 1. Validación de secreto opcional
-  const secret = process.env.GHL_WEBHOOK_SECRET;
+  // IMPORTANTE: usar GHL_LEAD_WEBHOOK_SECRET (NO GHL_WEBHOOK_SECRET) para no
+  // colisionar con el secreto del inbox webhook. El workflow de GHL llama a este
+  // endpoint sin secreto — el check solo se activa si se configura esta variable.
+  const secret = process.env.GHL_LEAD_WEBHOOK_SECRET || "";
   if (secret) {
     const provided =
       (req.headers["x-ghl-secret"] as string | undefined) ??
