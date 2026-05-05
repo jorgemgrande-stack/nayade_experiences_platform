@@ -65,7 +65,8 @@ export const emailInboxRouter = router({
            SUM(CASE WHEN is_archived = FALSE AND is_sent = FALSE THEN 1 ELSE 0 END) as totalInbox,
            SUM(CASE WHEN is_answered = FALSE AND is_sent = FALSE AND is_archived = FALSE AND is_read = TRUE THEN 1 ELSE 0 END) as pendingReply,
            SUM(CASE WHEN is_sent = TRUE THEN 1 ELSE 0 END) as sent,
-           SUM(CASE WHEN is_archived = TRUE AND is_sent = FALSE THEN 1 ELSE 0 END) as archived
+           SUM(CASE WHEN is_archived = TRUE AND is_sent = FALSE THEN 1 ELSE 0 END) as archived,
+           SUM(CASE WHEN is_sent = FALSE AND is_deleted = FALSE AND DATE(sent_at) = CURDATE() THEN 1 ELSE 0 END) as receivedToday
          FROM commercial_emails ${where}`,
         params,
       );
@@ -76,6 +77,7 @@ export const emailInboxRouter = router({
         pendingReply: Number(r.pendingReply ?? 0),
         sent: Number(r.sent ?? 0),
         archived: Number(r.archived ?? 0),
+        receivedToday: Number(r.receivedToday ?? 0),
       };
     }),
 

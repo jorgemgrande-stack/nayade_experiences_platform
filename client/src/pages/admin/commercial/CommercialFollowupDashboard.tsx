@@ -18,7 +18,7 @@ import {
   MessageSquare, Phone, MessageCircle, StickyNote, Settings, List,
   History, ChevronRight, RefreshCw, Pencil, Trash2, Plus, TrendingUp,
   Users, Clock, AlertTriangle, Ban, Target, ArrowRight,
-  Bot, Bell, BellOff, Volume2, VolumeX,
+  Bot, Bell, BellOff, Volume2, VolumeX, Mail, MailOpen, SendHorizonal,
 } from "lucide-react";
 import { NOTIF_POPUP_KEY, NOTIF_SOUND_KEY } from "@/components/WhatsAppNotification";
 
@@ -215,6 +215,10 @@ export default function CommercialFollowupDashboard() {
 
   const { data: vapiStats } = trpc.vapiCalls.getStats.useQuery(undefined, {
     enabled: tab === "dashboard", refetchInterval: 15000,
+  });
+
+  const { data: emailStats } = trpc.emailInbox.getStats.useQuery({}, {
+    enabled: tab === "dashboard", refetchInterval: 30000,
   });
 
   const { data: openData, isLoading: openLoading, refetch: refetchOpen } =
@@ -435,6 +439,43 @@ export default function CommercialFollowupDashboard() {
                       <div className="text-xs text-foreground/50">Vapi sin revisar</div>
                     </div>
                   </div>
+                </div>
+
+                {/* ─── KPIs Email Comercial ──────────────────────────────────── */}
+                <div className="grid grid-cols-3 gap-3">
+                  <a href="/admin/atencion-comercial/email" className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 flex items-center gap-3 hover:bg-sky-500/10 transition-colors">
+                    <div className="p-2 rounded-lg bg-sky-500/15 shrink-0">
+                      <Mail className="w-4 h-4 text-sky-400" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-sky-400">
+                        {emailStats?.receivedToday ?? 0}
+                      </div>
+                      <div className="text-xs text-foreground/50">Emails de hoy</div>
+                    </div>
+                  </a>
+                  <a href="/admin/atencion-comercial/email" className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-4 flex items-center gap-3 hover:bg-orange-500/10 transition-colors">
+                    <div className="p-2 rounded-lg bg-orange-500/15 shrink-0">
+                      <MailOpen className="w-4 h-4 text-orange-400" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-orange-400">
+                        {emailStats?.unreadInbox ?? 0}
+                      </div>
+                      <div className="text-xs text-foreground/50">Emails no leídos</div>
+                    </div>
+                  </a>
+                  <a href="/admin/atencion-comercial/email?folder=sent" className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-4 flex items-center gap-3 hover:bg-teal-500/10 transition-colors">
+                    <div className="p-2 rounded-lg bg-teal-500/15 shrink-0">
+                      <SendHorizonal className="w-4 h-4 text-teal-400" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-teal-400">
+                        {emailStats?.sent ?? 0}
+                      </div>
+                      <div className="text-xs text-foreground/50">Emails enviados</div>
+                    </div>
+                  </a>
                 </div>
 
                 {/* ─── Control notificaciones WhatsApp ───────────────────────── */}
