@@ -523,8 +523,9 @@ export default function VapiAgente() {
               <thead>
                 <tr className="border-b border-border/40 text-xs text-foreground/50">
                   <th className="text-left px-4 py-2 font-medium">Fecha</th>
-                  <th className="text-left px-4 py-2 font-medium">Teléfono</th>
                   <th className="text-left px-4 py-2 font-medium">Nombre</th>
+                  <th className="text-left px-4 py-2 font-medium">Correo</th>
+                  <th className="text-left px-4 py-2 font-medium">Teléfono</th>
                   <th className="text-left px-4 py-2 font-medium">Duración</th>
                   <th className="text-left px-4 py-2 font-medium">Estado</th>
                   <th className="text-left px-4 py-2 font-medium">Resumen</th>
@@ -535,14 +536,14 @@ export default function VapiAgente() {
               <tbody>
                 {callsLoading && (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-foreground/30">
+                    <td colSpan={9} className="text-center py-10 text-foreground/30">
                       <RefreshCw className="w-4 h-4 animate-spin inline-block mr-2" />Cargando…
                     </td>
                   </tr>
                 )}
                 {!callsLoading && calls.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-xs text-foreground/30">
+                    <td colSpan={9} className="text-center py-10 text-xs text-foreground/30">
                       No hay llamadas. Sincroniza desde el botón superior o espera a que lleguen webhooks de Vapi.
                     </td>
                   </tr>
@@ -555,11 +556,14 @@ export default function VapiAgente() {
                     <td className="px-4 py-2.5 text-xs text-foreground/70 whitespace-nowrap">
                       {fmtDateTime(call.startedAt)}
                     </td>
+                    <td className="px-4 py-2.5 text-foreground/80 max-w-[140px] truncate">
+                      {(() => { const sd: any = call.structuredData ?? {}; return call.customerName || sd.name || sd.customerName || sd.nombre || sd.fullName || "—"; })()}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-foreground/60 max-w-[160px] truncate">
+                      {(() => { const sd: any = call.structuredData ?? {}; return call.customerEmail || sd.email || sd.customerEmail || sd.correo || sd.emailAddress || "—"; })()}
+                    </td>
                     <td className="px-4 py-2.5 font-medium whitespace-nowrap">
                       {fmtPhone(call.phoneNumber)}
-                    </td>
-                    <td className="px-4 py-2.5 text-foreground/80 max-w-[140px] truncate">
-                      {call.customerName ?? "—"}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-foreground/60 whitespace-nowrap">
                       {fmtDuration(call.durationSeconds)}
