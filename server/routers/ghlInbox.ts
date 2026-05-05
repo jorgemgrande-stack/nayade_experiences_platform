@@ -212,7 +212,7 @@ export const ghlInboxRouter = router({
       const [stats] = await db.select({
         total: sql<number>`COUNT(*)`,
         unread: sql<number>`SUM(CASE WHEN unreadCount > 0 THEN 1 ELSE 0 END)`,
-        statusNew: sql<number>`SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END)`,
+        newToday: sql<number>`SUM(CASE WHEN DATE(lastMessageAt) = CURDATE() THEN 1 ELSE 0 END)`,
         open: sql<number>`SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END)`,
         pending: sql<number>`SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)`,
         replied: sql<number>`SUM(CASE WHEN status = 'replied' THEN 1 ELSE 0 END)`,
@@ -231,7 +231,7 @@ export const ghlInboxRouter = router({
         conversations: {
           total: Number(stats?.total ?? 0),
           unread: Number(stats?.unread ?? 0),
-          statusNew: Number(stats?.statusNew ?? 0),
+          newToday: Number(stats?.newToday ?? 0),
           open: Number(stats?.open ?? 0),
           pending: Number(stats?.pending ?? 0),
           replied: Number(stats?.replied ?? 0),

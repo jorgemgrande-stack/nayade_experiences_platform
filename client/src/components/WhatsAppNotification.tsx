@@ -31,17 +31,48 @@ export function WhatsAppNotification() {
   const [count, setCount] = useState(0);
   const prevUnread = useRef<number | null>(null);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const utils = trpc.useUtils();
 
   const { data: stats } = trpc.ghlInbox.getStats.useQuery(undefined, {
-    refetchInterval: 30000,
+    refetchInterval: 15000,
   });
+
+  // SSE: invalidar stats en tiempo real cuando llega un nuevo mensaje
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function connect() {
+      try {
+        es = new EventSource("/api/ghl/inbox/stream?token=nayade-ghl-stream");
+        es.onmessage = (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            if (payload?.type && payload.type !== "connected") {
+              utils.ghlInbox.getStats.invalidate();
+            }
+          } catch {}
+        };
+        es.onerror = () => {
+          es?.close();
+          es = null;
+          retryTimer = setTimeout(connect, 10000);
+        };
+      } catch {}
+    }
+
+    connect();
+    return () => {
+      es?.close();
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, []);
 
   useEffect(() => {
     const current = stats?.conversations?.unread ?? 0;
 
     if (prevUnread.current === null) {
       prevUnread.current = current;
-      // Mostrar en carga inicial si hay no leídos (sin sonido)
       if (current > 0 && localStorage.getItem(NOTIF_POPUP_KEY) !== "true") {
         const t = setTimeout(() => { setCount(current); setVisible(true); }, 2000);
         return () => clearTimeout(t);

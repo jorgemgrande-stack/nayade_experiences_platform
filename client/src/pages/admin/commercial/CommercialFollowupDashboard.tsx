@@ -210,11 +210,11 @@ export default function CommercialFollowupDashboard() {
     trpc.commercialFollowup.getDashboard.useQuery(undefined, { enabled: tab === "dashboard" });
 
   const { data: whatsappStats } = trpc.ghlInbox.getStats.useQuery(undefined, {
-    enabled: tab === "dashboard", refetchInterval: 60000,
+    enabled: tab === "dashboard", refetchInterval: 15000,
   });
 
   const { data: vapiStats } = trpc.vapiCalls.getStats.useQuery(undefined, {
-    enabled: tab === "dashboard", refetchInterval: 60000,
+    enabled: tab === "dashboard", refetchInterval: 15000,
   });
 
   const { data: openData, isLoading: openLoading, refetch: refetchOpen } =
@@ -397,9 +397,9 @@ export default function CommercialFollowupDashboard() {
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-emerald-400">
-                        {whatsappStats?.conversations?.statusNew ?? 0}
+                        {whatsappStats?.conversations?.newToday ?? 0}
                       </div>
-                      <div className="text-xs text-foreground/50">WhatsApp nuevas</div>
+                      <div className="text-xs text-foreground/50">WhatsApp hoy</div>
                     </div>
                   </div>
                   <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 flex items-center gap-3">
