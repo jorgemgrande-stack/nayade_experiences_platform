@@ -110,6 +110,8 @@ const ProposalsPage = lazy(() => import("./pages/admin/crm/ProposalsPage"));
 const CommercialFollowupDashboard = lazy(() => import("./pages/admin/commercial/CommercialFollowupDashboard"));
 const WhatsAppGHLInbox = lazy(() => import("./pages/admin/commercial/WhatsAppGHLInbox"));
 const VapiAgente = lazy(() => import("./pages/admin/commercial/VapiAgente"));
+const EmailInbox = lazy(() => import("./pages/admin/commercial/EmailInbox"));
+const EmailAccountsSettings = lazy(() => import("./pages/admin/settings/EmailAccountsSettings"));
 const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
 
 // Fiscal REAV
@@ -285,6 +287,7 @@ function Router() {
       {/* Atención Comercial */}
       <Route path="/admin/atencion-comercial/whatsapp">{() => <Suspense fallback={<AdminLoadingFallback />}><WhatsAppGHLInbox /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial/agente-ia">{() => <Suspense fallback={<AdminLoadingFallback />}><VapiAgente /></Suspense>}</Route>
+      <Route path="/admin/atencion-comercial/email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailInbox /></Suspense>}</Route>
       <Route path="/admin/atencion-comercial">{() => <Suspense fallback={<AdminLoadingFallback />}><CommercialFollowupDashboard /></Suspense>}</Route>
 
       {/* CRM */}
@@ -303,6 +306,7 @@ function Router() {
       <Route path="/admin/configuracion/sitio">{() => <Suspense fallback={<AdminLoadingFallback />}><Settings /></Suspense>}</Route>
       <Route path="/admin/configuracion/estado">{() => <Suspense fallback={<AdminLoadingFallback />}><ConfigStatus /></Suspense>}</Route>
       <Route path="/admin/configuracion/avanzado">{() => <Suspense fallback={<AdminLoadingFallback />}><AdvancedSettings /></Suspense>}</Route>
+      <Route path="/admin/configuracion/email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailAccountsSettings /></Suspense>}</Route>
       <Route path="/admin/onboarding">{() => <Suspense fallback={<AdminLoadingFallback />}><OnboardingWizard /></Suspense>}</Route>
       <Route path="/admin/numeracion">{() => <Suspense fallback={<AdminLoadingFallback />}><DocumentNumbersAdmin /></Suspense>}</Route>
 

@@ -109,7 +109,7 @@ const SECTIONS: SectionDef[] = [
     icon: Plug,
     description: "IMAP para ingesta de emails del datáfono y otros servicios externos.",
     settingKeys: ["imap_host", "imap_user", "imap_port", "imap_tls"],
-    flagModules: ["email_ingestion"],
+    flagModules: ["email_ingestion", "commercial_email"],
     requiredKeys: [],
   },
   {

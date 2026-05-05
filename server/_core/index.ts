@@ -24,6 +24,7 @@ import { startCommercialFollowupJob } from "../commercialFollowupJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
+import { startCommercialEmailSyncJob } from "../services/commercialEmailService";
 import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { startRelinkJob } from "../services/cardTerminalRelinkService";
 import { serveStatic, setupVite } from "./vite";
@@ -689,6 +690,18 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
+    // Feature flag — módulo de Email Comercial (bandeja IMAP/SMTP multi-cuenta)
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 0, 0, 'low')`,
+      [
+        "commercial_email_enabled",
+        "Email Comercial",
+        "Activa la bandeja de email comercial con sincronización IMAP multi-cuenta y el módulo de configuración de cuentas.",
+        "commercial_email",
+      ]
+    );
+
     await conn.end();
     console.log("[DB] Schema expense email ingestion verificado");
   } catch (err: any) {
@@ -1096,6 +1109,7 @@ runMigrations()
   .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))
   .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,              "Email Ingestion"))
   .then(() => conditionallyStartJob("expense_email_ingestion_enabled",     startExpenseEmailIngestionJob,       "Expense Email Ingestion"))
+  .then(() => conditionallyStartJob("commercial_email_enabled",            startCommercialEmailSyncJob,          "Commercial Email Sync"))
   .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
   .then(() => conditionallyStartJob("card_terminal_relink_enabled",   startRelinkJob,   "Card Terminal Relink",   true))
   .catch(console.error);
