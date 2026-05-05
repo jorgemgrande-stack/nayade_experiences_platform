@@ -329,6 +329,24 @@ async function processWebhookEvent(eventRowId: number, payload: any, eventType: 
   }
 
   try {
+    // ── Manejar borrado de conversación ──────────────────────────────────────
+    const DELETION_EVENTS = new Set([
+      "ConversationDeleted", "conversation_deleted",
+      "ConversationUnsubscribed", "conversation_unsubscribed",
+    ]);
+    if (DELETION_EVENTS.has(eventType)) {
+      if (convId) {
+        await _pool.execute("DELETE FROM ghl_messages WHERE ghlConversationId = ?", [convId]);
+        await _pool.execute("DELETE FROM ghl_conversations WHERE ghlConversationId = ?", [convId]);
+        ghlInboxEmitter.emit("update", { type: "conversation_deleted", conversationId: convId, timestamp: Date.now() });
+        log("info", "Conversación eliminada por webhook", { eventType, convId });
+      }
+      await db.update(ghlWebhookEvents)
+        .set({ processedStatus: "processed", processedAt: new Date() })
+        .where(eq(ghlWebhookEvents.id, eventRowId));
+      return;
+    }
+
     // Ignorar eventos que no son de conversación/mensaje
     if (!CONVERSATION_EVENTS.has(eventType) && !convId) {
       await db.update(ghlWebhookEvents)
@@ -721,9 +739,26 @@ ghlInboxRouter.post("/api/ghl/inbox/sync", express.json({ limit: "128kb" }), asy
       }
     }
 
+    // ── Delta-delete: purgar conversaciones que ya no existen en GHL ─────────
+    // Solo si GHL devolvió < 100 resultados (set completo, sin paginación pendiente)
+    let purged = 0;
+    if (conversations.length < 100) {
+      const ghlIds = new Set(conversations.map((c: any) => c.id).filter(Boolean));
+      const [localRows]: any = await _pool.execute(
+        "SELECT ghlConversationId FROM ghl_conversations"
+      );
+      const toDelete = (localRows as any[]).filter(r => r.ghlConversationId && !ghlIds.has(r.ghlConversationId));
+      for (const row of toDelete) {
+        await _pool.execute("DELETE FROM ghl_messages WHERE ghlConversationId = ?", [row.ghlConversationId]);
+        await _pool.execute("DELETE FROM ghl_conversations WHERE ghlConversationId = ?", [row.ghlConversationId]);
+        log("info", "Conversación purgada (ausente en GHL)", { ghlConversationId: row.ghlConversationId });
+        purged++;
+      }
+    }
+
     ghlInboxEmitter.emit("update", { type: "sync_complete", timestamp: Date.now() });
-    log("info", `Sync completado — ${upserted} conversaciones actualizadas`);
-    return res.status(200).json({ ok: true, upserted, total: conversations.length });
+    log("info", `Sync completado — ${upserted} actualizadas, ${purged} purgadas`);
+    return res.status(200).json({ ok: true, upserted, purged, total: conversations.length });
   } catch (err: any) {
     log("error", "Excepción en sync GHL", { error: err.message });
     return res.status(200).json({ ok: false, message: err.message });
