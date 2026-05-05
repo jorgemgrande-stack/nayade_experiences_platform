@@ -24,7 +24,7 @@ import { startCommercialFollowupJob } from "../commercialFollowupJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
-import { startCommercialEmailSyncJob, initCommercialEmailTables } from "../services/commercialEmailService";
+import { startCommercialEmailSyncJob } from "../services/commercialEmailService";
 import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { startRelinkJob } from "../services/cardTerminalRelinkService";
 import { serveStatic, setupVite } from "./vite";
@@ -702,6 +702,80 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
+    // Tablas del módulo de Email Comercial
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`email_accounts\` (
+        \`id\`                  INT AUTO_INCREMENT PRIMARY KEY,
+        \`name\`                VARCHAR(100) NOT NULL,
+        \`email\`               VARCHAR(320) NOT NULL,
+        \`imap_host\`           VARCHAR(255) NOT NULL DEFAULT '',
+        \`imap_port\`           INT NOT NULL DEFAULT 993,
+        \`imap_secure\`         TINYINT(1) NOT NULL DEFAULT 1,
+        \`imap_user\`           VARCHAR(320) NOT NULL DEFAULT '',
+        \`imap_password_enc\`   TEXT NOT NULL,
+        \`smtp_host\`           VARCHAR(255) NOT NULL DEFAULT '',
+        \`smtp_port\`           INT NOT NULL DEFAULT 587,
+        \`smtp_secure\`         TINYINT(1) NOT NULL DEFAULT 0,
+        \`smtp_user\`           VARCHAR(320) NOT NULL DEFAULT '',
+        \`smtp_password_enc\`   TEXT NOT NULL,
+        \`from_name\`           VARCHAR(255) NOT NULL DEFAULT '',
+        \`from_email\`          VARCHAR(320) NOT NULL DEFAULT '',
+        \`is_active\`           TINYINT(1) NOT NULL DEFAULT 1,
+        \`is_default\`          TINYINT(1) NOT NULL DEFAULT 0,
+        \`sync_enabled\`        TINYINT(1) NOT NULL DEFAULT 1,
+        \`sync_interval_min\`   INT NOT NULL DEFAULT 5,
+        \`last_sync_at\`        TIMESTAMP NULL,
+        \`last_sync_error\`     TEXT NULL,
+        \`folder_inbox\`        VARCHAR(100) NOT NULL DEFAULT 'INBOX',
+        \`folder_sent\`         VARCHAR(100) NOT NULL DEFAULT 'Sent',
+        \`folder_archive\`      VARCHAR(100) NOT NULL DEFAULT 'Archive',
+        \`folder_trash\`        VARCHAR(100) NOT NULL DEFAULT 'Trash',
+        \`max_emails_per_sync\` INT NOT NULL DEFAULT 50,
+        \`created_at\`          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\`          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`commercial_emails\` (
+        \`id\`                    INT AUTO_INCREMENT PRIMARY KEY,
+        \`account_id\`            INT NOT NULL,
+        \`message_id\`            VARCHAR(512) NOT NULL,
+        \`in_reply_to\`           VARCHAR(512) NULL,
+        \`from_email\`            VARCHAR(320) NOT NULL,
+        \`from_name\`             VARCHAR(255) NULL,
+        \`to_emails\`             JSON NOT NULL,
+        \`cc_emails\`             JSON NOT NULL,
+        \`subject\`               VARCHAR(512) NOT NULL,
+        \`body_html\`             MEDIUMTEXT NULL,
+        \`body_text\`             MEDIUMTEXT NULL,
+        \`snippet\`               VARCHAR(300) NULL,
+        \`sent_at\`               TIMESTAMP NULL,
+        \`is_read\`               TINYINT(1) NOT NULL DEFAULT 0,
+        \`is_answered\`           TINYINT(1) NOT NULL DEFAULT 0,
+        \`is_archived\`           TINYINT(1) NOT NULL DEFAULT 0,
+        \`is_deleted\`            TINYINT(1) NOT NULL DEFAULT 0,
+        \`is_sent\`               TINYINT(1) NOT NULL DEFAULT 0,
+        \`folder\`                VARCHAR(100) NOT NULL DEFAULT 'INBOX',
+        \`has_attachments\`       TINYINT(1) NOT NULL DEFAULT 0,
+        \`labels\`                JSON NULL,
+        \`assigned_user_id\`      INT NULL,
+        \`linked_lead_id\`        INT NULL,
+        \`linked_client_id\`      INT NULL,
+        \`linked_quote_id\`       INT NULL,
+        \`linked_reservation_id\` INT NULL,
+        \`imap_uid\`              INT NULL,
+        \`created_at\`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\`            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_ce_msg_id\` (\`message_id\`(255)),
+        INDEX \`idx_ce_account\`    (\`account_id\`),
+        INDEX \`idx_ce_sent_at\`    (\`sent_at\`),
+        INDEX \`idx_ce_from_email\` (\`from_email\`(100)),
+        INDEX \`idx_ce_folder\`     (\`folder\`),
+        INDEX \`idx_ce_is_read\`    (\`is_read\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    console.log("[DB] Tablas email_accounts y commercial_emails verificadas");
+
     await conn.end();
     console.log("[DB] Schema expense email ingestion verificado");
   } catch (err: any) {
@@ -1098,7 +1172,6 @@ runMigrations()
   .then(() => ensureRefundColumns())
   .then(() => ensureDiscountColumns())
   .then(() => ensureExpenseEmailIngestionSchema())
-  .then(() => initCommercialEmailTables())
   .then(() => fixBrokenInvoicePdfUrls())
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())

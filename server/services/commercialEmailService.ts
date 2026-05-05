@@ -81,7 +81,7 @@ export async function initCommercialEmailTables(): Promise<void> {
         is_sent BOOLEAN NOT NULL DEFAULT FALSE,
         folder VARCHAR(100) NOT NULL DEFAULT 'INBOX',
         has_attachments BOOLEAN NOT NULL DEFAULT FALSE,
-        labels JSON NOT NULL DEFAULT ('[]'),
+        labels JSON NULL,
         assigned_user_id INT NULL,
         linked_lead_id INT NULL,
         linked_client_id INT NULL,
