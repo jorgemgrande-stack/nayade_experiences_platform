@@ -737,7 +737,9 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
       body: JSON.stringify({ locationId, contactId }),
     });
     const convData: any = await convRes.json();
-    const conversationId: string | null = convData?.conversation?.id ?? convData?.id ?? null;
+    // GHL devuelve el ID en distintos lugares según si la conversación es nueva o ya existía
+    const conversationId: string | null =
+      convData?.conversation?.id ?? convData?.id ?? convData?.conversationId ?? null;
     if (!conversationId) {
       return res.status(200).json({ ok: false, message: `No se pudo crear conversación en GHL: ${JSON.stringify(convData).slice(0, 120)}` });
     }
