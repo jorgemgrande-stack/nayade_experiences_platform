@@ -166,7 +166,7 @@ export const vapiCallsRouter = router({
         call.transcript ? `\nTranscripción:\n${call.transcript.slice(0, 2000)}` : "",
       ].filter(Boolean).join("\n");
 
-      const leadId = await createLead({
+      const { id: leadId } = await createLead({
         name: call.customerName || "Llamada Vapi",
         email: call.customerEmail || `vapi-${call.vapiCallId}@noreply.nayade`,
         phone: call.phoneNumber ?? undefined,
