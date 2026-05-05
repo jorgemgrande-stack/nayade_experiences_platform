@@ -31,6 +31,7 @@ function extractCallData(payload: any): {
   assistantId: string | null;
   phoneNumber: string | null;
   customerName: string | null;
+  customerEmail: string | null;
   startedAt: Date | null;
   endedAt: Date | null;
   durationSeconds: number | null;
@@ -48,7 +49,6 @@ function extractCallData(payload: any): {
   const vapiCallId = call.id ?? msg.callId ?? payload.callId ?? null;
   const assistantId = call.assistantId ?? msg.assistantId ?? null;
   const phoneNumber = call.customer?.number ?? call.phoneNumber ?? payload.phoneNumber ?? null;
-  const customerName = call.customer?.name ?? payload.customerName ?? null;
 
   const startedAtRaw = call.startedAt ?? msg.startedAt ?? null;
   const endedAtRaw = call.endedAt ?? msg.endedAt ?? null;
@@ -67,8 +67,18 @@ function extractCallData(payload: any): {
   const summary = msg.analysis?.summary ?? msg.summary ?? null;
   const structuredData = msg.analysis?.structuredData ?? msg.structuredData ?? null;
 
+  // El nombre/email del contacto puede venir del objeto call.customer (datos del
+  // número de teléfono) o de structuredData (extraído por la IA durante la llamada).
+  const sd = structuredData ?? {};
+  const customerName =
+    sd.name ?? sd.customerName ?? sd.nombre ?? sd.fullName ??
+    call.customer?.name ?? payload.customerName ?? null;
+  const customerEmail =
+    sd.email ?? sd.customerEmail ?? sd.correo ?? sd.emailAddress ??
+    call.customer?.email ?? payload.customerEmail ?? payload.email ?? null;
+
   return {
-    vapiCallId, assistantId, phoneNumber, customerName,
+    vapiCallId, assistantId, phoneNumber, customerName, customerEmail,
     startedAt, endedAt, durationSeconds, status, endedReason,
     recordingUrl, transcript, summary, structuredData,
   };
@@ -170,7 +180,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       assistantId: earlyCallData.assistantId ?? undefined,
       phoneNumber: earlyCallData.phoneNumber ?? phone ?? undefined,
       customerName: earlyCallData.customerName ?? (name !== "Contacto VAPI" ? name : undefined) ?? undefined,
-      customerEmail: email || undefined,
+      customerEmail: earlyCallData.customerEmail ?? email || undefined,
       startedAt: earlyCallData.startedAt ?? undefined,
       endedAt: earlyCallData.endedAt ?? undefined,
       durationSeconds: earlyCallData.durationSeconds ?? undefined,
@@ -183,6 +193,9 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       rawPayload: payload,
     }).onDuplicateKeyUpdate({
       set: {
+        // Actualizar nombre/email si structuredData los trae (webhook end-of-call)
+        ...(earlyCallData.customerName ? { customerName: earlyCallData.customerName } : {}),
+        ...(earlyCallData.customerEmail ? { customerEmail: earlyCallData.customerEmail } : {}),
         endedAt: earlyCallData.endedAt ?? undefined,
         durationSeconds: earlyCallData.durationSeconds ?? undefined,
         status: earlyCallData.status ?? undefined,
