@@ -690,6 +690,18 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
+    // Feature flag — módulo de Email Comercial (bandeja IMAP/SMTP multi-cuenta)
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 0, 0, 'low')`,
+      [
+        "commercial_email_enabled",
+        "Email Comercial",
+        "Activa la bandeja de email comercial con sincronización IMAP multi-cuenta y el módulo de configuración de cuentas.",
+        "commercial_email",
+      ]
+    );
+
     await conn.end();
     console.log("[DB] Schema expense email ingestion verificado");
   } catch (err: any) {
