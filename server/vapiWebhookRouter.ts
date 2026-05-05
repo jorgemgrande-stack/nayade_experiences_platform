@@ -180,7 +180,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       assistantId: earlyCallData.assistantId ?? undefined,
       phoneNumber: earlyCallData.phoneNumber ?? phone ?? undefined,
       customerName: earlyCallData.customerName ?? (name !== "Contacto VAPI" ? name : undefined) ?? undefined,
-      customerEmail: earlyCallData.customerEmail ?? email || undefined,
+      customerEmail: (earlyCallData.customerEmail ?? email) || undefined,
       startedAt: earlyCallData.startedAt ?? undefined,
       endedAt: earlyCallData.endedAt ?? undefined,
       durationSeconds: earlyCallData.durationSeconds ?? undefined,
