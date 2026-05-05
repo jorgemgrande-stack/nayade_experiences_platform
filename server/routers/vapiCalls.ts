@@ -316,6 +316,38 @@ export const vapiCallsRouter = router({
         }
       }
 
+      // Backfill: rellenar nombre/email desde rawPayload para registros sin datos
+      try {
+        await _pool.execute(`
+          UPDATE vapi_calls SET
+            customerName = COALESCE(
+              customerName,
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.message.analysis.structuredData.name')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.message.analysis.structuredData.customerName')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.message.analysis.structuredData.nombre')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.message.analysis.structuredData.fullName')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.analysis.structuredData.name')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.analysis.structuredData.nombre')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.call.customer.name')), 'null')
+            ),
+            customerEmail = COALESCE(
+              customerEmail,
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.message.analysis.structuredData.email')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.message.analysis.structuredData.customerEmail')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.message.analysis.structuredData.correo')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.message.analysis.structuredData.emailAddress')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.analysis.structuredData.email')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.analysis.structuredData.correo')), 'null'),
+              NULLIF(JSON_UNQUOTE(JSON_EXTRACT(rawPayload, '$.call.customer.email')), 'null')
+            ),
+            updatedAt = NOW()
+          WHERE rawPayload IS NOT NULL
+            AND (customerName IS NULL OR customerEmail IS NULL)
+        `);
+      } catch (backfillErr: any) {
+        console.warn("[VAPI Sync] Backfill parcial:", backfillErr.message);
+      }
+
       return {
         ok: true,
         total: calls.length,
