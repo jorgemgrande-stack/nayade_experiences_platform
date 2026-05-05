@@ -5579,7 +5579,32 @@ export const crmRouter = router({
               .limit(input.limit)
           : Promise.resolve([]),
       ]);
-      return [...expRows, ...legoRows];
+
+      // Attach variants to experience rows
+      const expIds = (expRows as any[]).map((r: any) => r.id as number);
+      const variantsByExpId: Record<number, any[]> = {};
+      if (expIds.length > 0) {
+        const varRows = await db.select({
+          id: experienceVariants.id,
+          experienceId: experienceVariants.experienceId,
+          name: experienceVariants.name,
+          description: experienceVariants.description,
+          priceModifier: experienceVariants.priceModifier,
+          priceType: experienceVariants.priceType,
+          isRequired: experienceVariants.isRequired,
+          sortOrder: experienceVariants.sortOrder,
+        }).from(experienceVariants)
+          .where(inArray(experienceVariants.experienceId, expIds))
+          .orderBy(experienceVariants.sortOrder);
+        for (const v of varRows) {
+          if (!variantsByExpId[v.experienceId]) variantsByExpId[v.experienceId] = [];
+          variantsByExpId[v.experienceId].push(v);
+        }
+      }
+      return [
+        ...(expRows as any[]).map((r: any) => ({ ...r, variants: variantsByExpId[r.id] ?? [] })),
+        ...(legoRows as any[]),
+      ];
     }),
   }),
 
