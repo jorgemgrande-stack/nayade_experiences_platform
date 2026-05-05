@@ -1008,14 +1008,14 @@ export default function UsersManager() {
 
         {/* ── Create User Dialog ── */}
         <Dialog open={showCreate} onOpenChange={(open) => { setShowCreate(open); if (!open) { setForm({ name: "", email: "", role: "user" }); setCreateRbacRoles(LEGACY_RBAC_SUGGESTION["user"]); } }}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
+          <DialogContent className="sm:max-w-lg flex flex-col max-h-[90vh]">
+            <DialogHeader className="shrink-0">
               <DialogTitle className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" />
                 Crear nuevo usuario
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 py-2 overflow-y-auto flex-1 pr-1">
               <div className="space-y-1.5">
                 <Label htmlFor="new-name">Nombre completo *</Label>
                 <Input id="new-name" placeholder="Ej: María García" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
