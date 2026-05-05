@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -87,14 +87,21 @@ function ComposeModal({
   const accounts = trpc.emailAccounts.list.useQuery(undefined, { enabled: open });
 
   const [selAccount, setSelAccount] = useState<number | null>(accountId ?? null);
-  const [to, setTo] = useState(replyTo ? replyTo.fromEmail : "");
-  const [subject, setSubject] = useState(
-    replyTo
-      ? replyTo.subject.startsWith("Re:") ? replyTo.subject : `Re: ${replyTo.subject}`
-      : "",
-  );
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setTo(replyTo ? replyTo.fromEmail : "");
+      setSubject(replyTo
+        ? (replyTo.subject.startsWith("Re:") ? replyTo.subject : `Re: ${replyTo.subject}`)
+        : "");
+      setBody("");
+      setSending(false);
+    }
+  }, [open, replyTo?.id]);
 
   const replyMut = trpc.emailInbox.reply.useMutation({
     onSuccess: () => {
@@ -180,7 +187,6 @@ function ComposeModal({
               onChange={e => setTo(e.target.value)}
               placeholder="email@ejemplo.com, otro@email.com"
               className="h-8 text-xs"
-              readOnly={!!replyTo}
             />
           </div>
 
