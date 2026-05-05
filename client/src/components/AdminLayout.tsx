@@ -5,7 +5,7 @@ import {
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
-  Sun, Moon, ExternalLink, Target, MessageCircle, Bot,
+  Sun, Moon, ExternalLink, Target, MessageCircle, Bot, Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -81,6 +81,7 @@ const navItems = [
       { label: "Configuración", href: "/admin/atencion-comercial?tab=settings", key: "ac-settings" },
       { label: "WhatsApp GHL", href: "/admin/atencion-comercial/whatsapp", key: "ac-whatsapp", icon: MessageCircle },
       { label: "Agente IA Vapi", href: "/admin/atencion-comercial/agente-ia", key: "ac-vapi", icon: Bot },
+      { label: "Email Comercial", href: "/admin/atencion-comercial/email", key: "ac-email", icon: Mail, flagKey: "commercial_email_enabled" },
     ],
   },
   {
@@ -210,6 +211,7 @@ const navItems = [
       { label: "Estado del sistema",  href: "/admin/configuracion/estado" },
       { label: "Onboarding",          href: "/admin/onboarding" },
       { label: "Plantillas de Email", href: "/admin/plantillas-email" },
+      { label: "Cuentas de Email", href: "/admin/configuracion/email", flagKey: "commercial_email_enabled" },
     ],
   },
 ];
@@ -498,7 +500,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                     </button>
                     {sidebarOpen && isExpanded && item.children && (
                       <div className="ml-4 mt-1 space-y-0.5">
-                        {item.children.map((child) => (
+                        {item.children.filter(child => isFlagVisible((child as any).flagKey)).map((child) => (
                           <Link key={(child as any).key ?? child.href} href={child.href}>
                             <div className={cn(
                               "block px-3 py-2 rounded-lg text-xs font-medium transition-all",

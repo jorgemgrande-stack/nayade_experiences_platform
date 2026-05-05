@@ -2920,3 +2920,74 @@ export type VapiCall = typeof vapiCalls.$inferSelect;
 export type InsertVapiCall = typeof vapiCalls.$inferInsert;
 
 export type InsertFinCashClosureAction = typeof finCashClosureActions.$inferInsert;
+
+// ─── COMMERCIAL EMAIL MODULE ──────────────────────────────────────────────────
+
+export const emailAccounts = mysqlTable("email_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  imapHost: varchar("imap_host", { length: 255 }).notNull().default(""),
+  imapPort: int("imap_port").notNull().default(993),
+  imapSecure: boolean("imap_secure").notNull().default(true),
+  imapUser: varchar("imap_user", { length: 320 }).notNull().default(""),
+  imapPasswordEnc: text("imap_password_enc").notNull().default(""),
+  smtpHost: varchar("smtp_host", { length: 255 }).notNull().default(""),
+  smtpPort: int("smtp_port").notNull().default(587),
+  smtpSecure: boolean("smtp_secure").notNull().default(false),
+  smtpUser: varchar("smtp_user", { length: 320 }).notNull().default(""),
+  smtpPasswordEnc: text("smtp_password_enc").notNull().default(""),
+  fromName: varchar("from_name", { length: 255 }).notNull().default(""),
+  fromEmail: varchar("from_email", { length: 320 }).notNull().default(""),
+  isActive: boolean("is_active").notNull().default(true),
+  isDefault: boolean("is_default").notNull().default(false),
+  syncEnabled: boolean("sync_enabled").notNull().default(true),
+  syncIntervalMinutes: int("sync_interval_min").notNull().default(5),
+  lastSyncAt: timestamp("last_sync_at"),
+  lastSyncError: text("last_sync_error"),
+  folderInbox: varchar("folder_inbox", { length: 100 }).notNull().default("INBOX"),
+  folderSent: varchar("folder_sent", { length: 100 }).notNull().default("Sent"),
+  folderArchive: varchar("folder_archive", { length: 100 }).notNull().default("Archive"),
+  folderTrash: varchar("folder_trash", { length: 100 }).notNull().default("Trash"),
+  maxEmailsPerSync: int("max_emails_per_sync").notNull().default(50),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type EmailAccount = typeof emailAccounts.$inferSelect;
+export type InsertEmailAccount = typeof emailAccounts.$inferInsert;
+
+export const commercialEmails = mysqlTable("commercial_emails", {
+  id: int("id").autoincrement().primaryKey(),
+  accountId: int("account_id").notNull(),
+  messageId: varchar("message_id", { length: 512 }).notNull(),
+  inReplyTo: varchar("in_reply_to", { length: 512 }),
+  fromEmail: varchar("from_email", { length: 320 }).notNull(),
+  fromName: varchar("from_name", { length: 255 }),
+  toEmails: json("to_emails").$type<string[]>().notNull(),
+  ccEmails: json("cc_emails").$type<string[]>().default([]),
+  subject: varchar("subject", { length: 512 }).notNull(),
+  bodyHtml: mediumtext("body_html"),
+  bodyText: mediumtext("body_text"),
+  snippet: varchar("snippet", { length: 300 }),
+  sentAt: timestamp("sent_at"),
+  isRead: boolean("is_read").notNull().default(false),
+  isAnswered: boolean("is_answered").notNull().default(false),
+  isArchived: boolean("is_archived").notNull().default(false),
+  isDeleted: boolean("is_deleted").notNull().default(false),
+  isSent: boolean("is_sent").notNull().default(false),
+  folder: varchar("folder", { length: 100 }).notNull().default("INBOX"),
+  hasAttachments: boolean("has_attachments").notNull().default(false),
+  labels: json("labels").$type<string[]>().default([]),
+  assignedUserId: int("assigned_user_id"),
+  linkedLeadId: int("linked_lead_id"),
+  linkedClientId: int("linked_client_id"),
+  linkedQuoteId: int("linked_quote_id"),
+  linkedReservationId: int("linked_reservation_id"),
+  imapUid: int("imap_uid"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CommercialEmail = typeof commercialEmails.$inferSelect;
+export type InsertCommercialEmail = typeof commercialEmails.$inferInsert;

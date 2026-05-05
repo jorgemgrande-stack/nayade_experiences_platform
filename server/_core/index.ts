@@ -24,6 +24,7 @@ import { startCommercialFollowupJob } from "../commercialFollowupJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
+import { startCommercialEmailSyncJob } from "../services/commercialEmailService";
 import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { startRelinkJob } from "../services/cardTerminalRelinkService";
 import { serveStatic, setupVite } from "./vite";
@@ -1096,6 +1097,7 @@ runMigrations()
   .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))
   .then(() => conditionallyStartJob("email_ingestion_enabled",             startEmailIngestionJob,              "Email Ingestion"))
   .then(() => conditionallyStartJob("expense_email_ingestion_enabled",     startExpenseEmailIngestionJob,       "Expense Email Ingestion"))
+  .then(() => conditionallyStartJob("commercial_email_enabled",            startCommercialEmailSyncJob,          "Commercial Email Sync"))
   .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
   .then(() => conditionallyStartJob("card_terminal_relink_enabled",   startRelinkJob,   "Card Terminal Relink",   true))
   .catch(console.error);
