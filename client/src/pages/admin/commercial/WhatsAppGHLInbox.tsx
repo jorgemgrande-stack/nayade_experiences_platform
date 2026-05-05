@@ -117,7 +117,7 @@ export default function WhatsAppGHLInbox() {
   const { data: convData, isLoading: convsLoading, refetch: refetchConvs } =
     trpc.ghlInbox.listConversations.useQuery(
       { search: search || undefined, filter, status: statusFilter, limit: 80, offset: 0 },
-      { refetchInterval: 60000 }
+      { refetchInterval: 15000 }
     );
 
   const { data: messages, isLoading: msgsLoading, refetch: refetchMsgs } =
@@ -204,6 +204,7 @@ export default function WhatsAppGHLInbox() {
 
   async function syncNow() {
     setSyncing(true);
+    resetCountdown();
     try {
       const res = await fetch("/api/ghl/inbox/sync", { method: "POST" });
       const data = await res.json();
@@ -218,6 +219,47 @@ export default function WhatsAppGHLInbox() {
     } finally {
       setSyncing(false);
     }
+  }
+
+  // ── Auto-sync cada 60s (red de seguridad bajo el SSE) ────────────────────
+  const AUTO_SYNC_S = 60;
+  const [syncCountdown, setSyncCountdown] = useState(AUTO_SYNC_S);
+  const countdownRef = useRef(AUTO_SYNC_S);
+  const autoSyncTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (tab !== "inbox") return;
+
+    async function silentSync() {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const res = await fetch("/api/ghl/inbox/sync", { method: "POST" });
+        const data = await res.json();
+        if (data.ok) refetchConvs();
+      } catch {}
+    }
+
+    // Tick cada segundo para el countdown + sync cuando llega a 0
+    autoSyncTimer.current = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      countdownRef.current -= 1;
+      setSyncCountdown(countdownRef.current);
+      if (countdownRef.current <= 0) {
+        countdownRef.current = AUTO_SYNC_S;
+        setSyncCountdown(AUTO_SYNC_S);
+        silentSync();
+      }
+    }, 1000);
+
+    return () => {
+      if (autoSyncTimer.current) clearInterval(autoSyncTimer.current);
+    };
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reiniciar countdown cuando el usuario hace sync manual
+  function resetCountdown() {
+    countdownRef.current = AUTO_SYNC_S;
+    setSyncCountdown(AUTO_SYNC_S);
   }
 
   // ── SSE ───────────────────────────────────────────────────────────────────
@@ -263,9 +305,11 @@ export default function WhatsAppGHLInbox() {
               </button>
             ))}
             <button onClick={syncNow} disabled={syncing}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors disabled:opacity-50">
+              className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-green-600/20 text-green-400 hover:bg-green-600/30 transition-colors disabled:opacity-50"
+              title={`Auto-sync en ${syncCountdown}s`}
+            >
               <RefreshCw className={`w-3 h-3 ${syncing ? "animate-spin" : ""}`} />
-              Sincronizar
+              {syncing ? "Sincronizando…" : `Sincronizar · ${syncCountdown}s`}
             </button>
           </div>
         </div>
