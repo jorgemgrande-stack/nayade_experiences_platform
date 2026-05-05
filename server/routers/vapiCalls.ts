@@ -16,6 +16,37 @@ const db = drizzle(_pool);
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
 
+// ─── Extracción de nombre/email desde transcript ──────────────────────────────
+
+export function extractFromTranscript(transcript: string | null | undefined): {
+  name: string | null;
+  email: string | null;
+} {
+  if (!transcript) return { name: null, email: null };
+
+  // Email: primera dirección de email válida que aparece en el texto
+  const emailMatch = transcript.match(
+    /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/,
+  );
+  const email = emailMatch ? emailMatch[0].toLowerCase() : null;
+
+  // Nombre: patrones en español comunes en conversaciones de voz
+  const namePatterns = [
+    /(?:mi nombre es|me llamo|soy)\s+([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+(?:\s+[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+){1,3})/i,
+    /(?:User:|Cliente:)\s*(?:.*?(?:mi nombre es|me llamo|soy)\s+)([A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+(?:\s+[A-ZÁÉÍÓÚÜÑ][a-záéíóúüñ]+){1,3})/i,
+  ];
+  let name: string | null = null;
+  for (const pattern of namePatterns) {
+    const m = transcript.match(pattern);
+    if (m?.[1]) {
+      name = m[1].trim();
+      break;
+    }
+  }
+
+  return { name, email };
+}
+
 async function getVapiCredentials(): Promise<{ apiKey: string; webhookSecret: string }> {
   try {
     const [rows]: any = await _pool.execute(
@@ -346,6 +377,37 @@ export const vapiCallsRouter = router({
         `);
       } catch (backfillErr: any) {
         console.warn("[VAPI Sync] Backfill parcial:", backfillErr.message);
+      }
+
+      // Backfill desde transcript: para registros que siguen sin nombre/email
+      // pero tienen transcript (structuredData vacío es lo habitual sin analysisPlan)
+      try {
+        const [missing]: any = await _pool.execute(
+          `SELECT id, transcript FROM vapi_calls
+           WHERE transcript IS NOT NULL
+             AND (customerName IS NULL OR customerEmail IS NULL)
+           LIMIT 200`,
+        );
+        let transcriptUpdates = 0;
+        for (const row of missing as any[]) {
+          const { name, email } = extractFromTranscript(row.transcript);
+          if (!name && !email) continue;
+          const sets: string[] = ["updatedAt = NOW()"];
+          const vals: any[] = [];
+          if (name)  { sets.push("customerName = COALESCE(customerName, ?)");  vals.push(name); }
+          if (email) { sets.push("customerEmail = COALESCE(customerEmail, ?)"); vals.push(email); }
+          vals.push(row.id);
+          await _pool.execute(
+            `UPDATE vapi_calls SET ${sets.join(", ")} WHERE id = ?`,
+            vals,
+          );
+          transcriptUpdates++;
+        }
+        if (transcriptUpdates > 0) {
+          console.log(`[VAPI Sync] Backfill transcript: ${transcriptUpdates} registros actualizados`);
+        }
+      } catch (transcriptErr: any) {
+        console.warn("[VAPI Sync] Backfill transcript error:", transcriptErr.message);
       }
 
       return {

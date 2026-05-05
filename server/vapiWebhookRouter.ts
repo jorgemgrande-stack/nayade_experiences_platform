@@ -19,6 +19,7 @@ import { randomBytes } from "crypto";
 import { quotes, ghlWebhookLogs, vapiCalls } from "../drizzle/schema";
 import { createLead } from "./db";
 import { generateDocumentNumber } from "./documentNumbers";
+import { extractFromTranscript } from "./routers/vapiCalls";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
 const _db = drizzle(_pool);
@@ -67,15 +68,16 @@ function extractCallData(payload: any): {
   const summary = msg.analysis?.summary ?? msg.summary ?? null;
   const structuredData = msg.analysis?.structuredData ?? msg.structuredData ?? null;
 
-  // El nombre/email del contacto puede venir del objeto call.customer (datos del
-  // número de teléfono) o de structuredData (extraído por la IA durante la llamada).
+  // El nombre/email puede venir de structuredData (si el asistente tiene analysisPlan)
+  // o de customer, o como último recurso se extrae del transcript por regex.
   const sd = structuredData ?? {};
-  const customerName =
-    sd.name ?? sd.customerName ?? sd.nombre ?? sd.fullName ??
-    call.customer?.name ?? payload.customerName ?? null;
-  const customerEmail =
-    sd.email ?? sd.customerEmail ?? sd.correo ?? sd.emailAddress ??
-    call.customer?.email ?? payload.customerEmail ?? payload.email ?? null;
+  const sdName = sd.name ?? sd.customerName ?? sd.nombre ?? sd.fullName ?? null;
+  const sdEmail = sd.email ?? sd.customerEmail ?? sd.correo ?? sd.emailAddress ?? null;
+
+  const { name: tName, email: tEmail } = extractFromTranscript(transcript);
+
+  const customerName = sdName ?? call.customer?.name ?? payload.customerName ?? tName ?? null;
+  const customerEmail = sdEmail ?? call.customer?.email ?? payload.customerEmail ?? payload.email ?? tEmail ?? null;
 
   return {
     vapiCallId, assistantId, phoneNumber, customerName, customerEmail,
