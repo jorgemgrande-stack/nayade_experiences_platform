@@ -24,7 +24,7 @@ function getPool(): mysql.Pool {
 
 // ─── Auto-create tables ───────────────────────────────────────────────────────
 
-async function initTables(): Promise<void> {
+export async function initCommercialEmailTables(): Promise<void> {
   const pool = getPool();
   try {
     await pool.execute(`
@@ -321,7 +321,7 @@ export async function sendViaAccountSmtp(
 // ─── Cron job ─────────────────────────────────────────────────────────────────
 
 export async function startCommercialEmailSyncJob(): Promise<void> {
-  await initTables();
+  await initCommercialEmailTables();
 
   // Boot run
   runCommercialEmailSync().catch(err =>

@@ -24,7 +24,7 @@ import { startCommercialFollowupJob } from "../commercialFollowupJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
-import { startCommercialEmailSyncJob } from "../services/commercialEmailService";
+import { startCommercialEmailSyncJob, initCommercialEmailTables } from "../services/commercialEmailService";
 import { startMatchingJob } from "../services/cardTerminalMatchingService";
 import { startRelinkJob } from "../services/cardTerminalRelinkService";
 import { serveStatic, setupVite } from "./vite";
@@ -1098,6 +1098,7 @@ runMigrations()
   .then(() => ensureRefundColumns())
   .then(() => ensureDiscountColumns())
   .then(() => ensureExpenseEmailIngestionSchema())
+  .then(() => initCommercialEmailTables())
   .then(() => fixBrokenInvoicePdfUrls())
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
