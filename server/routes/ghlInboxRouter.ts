@@ -692,7 +692,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
   const { phone, contactName, message, templateId } = req.body ?? {};
 
   if (!phone?.trim()) return res.status(400).json({ ok: false, message: "Teléfono requerido" });
-  if (!message?.trim() && !templateId) return res.status(400).json({ ok: false, message: "Mensaje o plantilla requerida" });
+  // message y templateId son opcionales: si no vienen solo se crea/recupera la conversación
 
   const creds = await getInboxCredentials();
   if (!creds) return res.status(200).json({ ok: false, message: "Credenciales GHL no configuradas." });
@@ -742,33 +742,7 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
       return res.status(200).json({ ok: false, message: `No se pudo crear conversación en GHL: ${JSON.stringify(convData).slice(0, 120)}` });
     }
 
-    // 4. Enviar mensaje o plantilla
-    const msgBody: any = {
-      type: "WhatsApp",
-      conversationId,
-      contactId,
-      locationId,
-    };
-    if (templateId) {
-      msgBody.templateId = templateId;
-    } else {
-      msgBody.message = message;
-    }
-
-    const msgRes = await fetch(`${GHL_BASE_URL}/conversations/messages`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(msgBody),
-    });
-
-    if (!msgRes.ok) {
-      const errText = await msgRes.text();
-      return res.status(200).json({ ok: false, message: `Error enviando mensaje: ${errText.slice(0, 150)}` });
-    }
-    const msgData: any = await msgRes.json();
-    const msgId = msgData?.message?.id ?? msgData?.id ?? `local-${Date.now()}`;
-
-    // 5. Guardar conversación + mensaje en BD local
+    // 4. Guardar conversación en BD local (siempre)
     await db.insert(ghlConversations).values({
       ghlConversationId: conversationId,
       ghlContactId: contactId,
@@ -776,35 +750,58 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
       channel: "whatsapp",
       customerName: contactName ?? phone,
       phone,
-      lastMessagePreview: (templateId ? `[Plantilla: ${templateId}]` : message).slice(0, 200),
-      lastMessageAt: new Date(),
       unreadCount: 0,
       status: "open",
     }).onDuplicateKeyUpdate({
       set: {
         customerName: contactName ?? phone,
         phone,
-        lastMessagePreview: (templateId ? `[Plantilla: ${templateId}]` : message).slice(0, 200),
-        lastMessageAt: new Date(),
         updatedAt: new Date(),
       },
     });
 
-    await db.insert(ghlMessages).values({
-      ghlMessageId: msgId,
-      ghlConversationId: conversationId,
-      direction: "outbound",
-      messageType: "text",
-      body: templateId ? `[Plantilla: ${templateId}]` : message,
-      senderName: "Nayade",
-      sentAt: new Date(),
-      deliveryStatus: "sent",
-      rawPayloadJson: msgData,
-    }).onDuplicateKeyUpdate({ set: { deliveryStatus: "sent" } });
+    // 5. Enviar mensaje o plantilla solo si se proporcionaron
+    if (message?.trim() || templateId) {
+      const msgBody: any = { type: "WhatsApp", conversationId, contactId, locationId };
+      if (templateId) msgBody.templateId = templateId;
+      else msgBody.message = message;
 
-    ghlInboxEmitter.emit("update", { type: "conversation_updated", conversationId, timestamp: Date.now() });
+      const msgRes = await fetch(`${GHL_BASE_URL}/conversations/messages`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(msgBody),
+      });
 
-    return res.status(200).json({ ok: true, conversationId, contactId, messageId: msgId });
+      if (!msgRes.ok) {
+        const errText = await msgRes.text();
+        return res.status(200).json({ ok: false, message: `Error enviando mensaje: ${errText.slice(0, 150)}` });
+      }
+      const msgData: any = await msgRes.json();
+      const msgId = msgData?.message?.id ?? msgData?.id ?? `local-${Date.now()}`;
+      const preview = (templateId ? `[Plantilla: ${templateId}]` : message!).slice(0, 200);
+
+      await db.update(ghlConversations)
+        .set({ lastMessagePreview: preview, lastMessageAt: new Date(), updatedAt: new Date() })
+        .where(eq(ghlConversations.ghlConversationId, conversationId));
+
+      await db.insert(ghlMessages).values({
+        ghlMessageId: msgId,
+        ghlConversationId: conversationId,
+        direction: "outbound",
+        messageType: "text",
+        body: preview,
+        senderName: "Nayade",
+        sentAt: new Date(),
+        deliveryStatus: "sent",
+        rawPayloadJson: msgData,
+      }).onDuplicateKeyUpdate({ set: { deliveryStatus: "sent" } });
+
+      ghlInboxEmitter.emit("update", { type: "conversation_updated", conversationId, timestamp: Date.now() });
+
+      return res.status(200).json({ ok: true, conversationId, contactId, messageId: msgId });
+    }
+
+    return res.status(200).json({ ok: true, conversationId, contactId, messageId: null });
   } catch (err: any) {
     log("error", "Error creando nueva conversación GHL", { error: err.message });
     return res.status(200).json({ ok: false, message: err.message });

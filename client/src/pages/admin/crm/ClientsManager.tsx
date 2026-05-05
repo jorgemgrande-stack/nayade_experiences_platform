@@ -889,15 +889,12 @@ export default function ClientsManager() {
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success(`Conversación iniciada con ${name}`, {
-          description: "Ve a WhatsApp GHL para escribir el mensaje",
-          action: { label: "Abrir", onClick: () => window.open("/admin/atencion-comercial/whatsapp", "_blank") },
-        });
+        // Navegar directamente a la bandeja de WhatsApp para escribir el mensaje
+        window.location.href = "/admin/atencion-comercial/whatsapp";
       } else {
-        // Si falla (fuera de ventana 24h), abrir la bandeja de WA para usar plantilla
-        toast.error("No se pudo enviar directamente", {
-          description: data.message?.slice(0, 100) ?? "Puede que necesites una plantilla",
-          action: { label: "Abrir WA", onClick: () => window.open("/admin/atencion-comercial/whatsapp", "_blank") },
+        toast.error("No se pudo abrir la conversación", {
+          description: data.message?.slice(0, 100) ?? "Error desconocido",
+          action: { label: "Abrir WA", onClick: () => { window.location.href = "/admin/atencion-comercial/whatsapp"; } },
         });
       }
     } catch (e: any) {
