@@ -167,6 +167,10 @@ export default function WhatsAppGHLInbox() {
   const [linkResOpen, setLinkResOpen] = useState(false);
   const [linkQuoteId, setLinkQuoteId] = useState("");
   const [linkResId, setLinkResId] = useState("");
+  const [linkQuoteSearch, setLinkQuoteSearch] = useState("");
+  const [linkResSearch, setLinkResSearch] = useState("");
+  const [linkQuoteSelected, setLinkQuoteSelected] = useState<{ id: number; quoteNumber: string; clientName: string } | null>(null);
+  const [linkResSelected, setLinkResSelected] = useState<{ id: number; bookingNumber: string; clientName: string } | null>(null);
 
   // ── Credenciales del módulo ───────────────────────────────────────────────
   const [credToken, setCredToken] = useState("");
@@ -220,14 +224,23 @@ export default function WhatsAppGHLInbox() {
   });
 
   const linkQuoteMut = trpc.ghlInbox.linkQuote.useMutation({
-    onSuccess: () => { toast.success("Presupuesto vinculado"); setLinkQuoteOpen(false); refetchConvs(); },
+    onSuccess: () => { toast.success("Presupuesto vinculado"); setLinkQuoteOpen(false); setLinkQuoteSearch(""); setLinkQuoteSelected(null); refetchConvs(); },
     onError: e => toast.error(e.message),
   });
 
   const linkResMut = trpc.ghlInbox.linkReservation.useMutation({
-    onSuccess: () => { toast.success("Reserva vinculada"); setLinkResOpen(false); refetchConvs(); },
+    onSuccess: () => { toast.success("Reserva vinculada"); setLinkResOpen(false); setLinkResSearch(""); setLinkResSelected(null); refetchConvs(); },
     onError: e => toast.error(e.message),
   });
+
+  const { data: quoteSearchResults } = trpc.ghlInbox.searchQuotes.useQuery(
+    { query: linkQuoteSearch },
+    { enabled: linkQuoteOpen && linkQuoteSearch.length >= 1 }
+  );
+  const { data: resSearchResults } = trpc.ghlInbox.searchReservations.useQuery(
+    { query: linkResSearch },
+    { enabled: linkResOpen && linkResSearch.length >= 1 }
+  );
 
   // ── Reply ─────────────────────────────────────────────────────────────────
   const [replySending, setReplySending] = useState(false);
@@ -841,9 +854,9 @@ export default function WhatsAppGHLInbox() {
                       </span>
                       {selectedConv.linkedQuoteId ? (
                         <div className="flex items-center gap-1">
-                          <a href={`/admin/crm?tab=quotes&search=${selectedConv.linkedQuoteId}`}
+                          <a href={`/admin/crm?tab=quotes&search=${(selectedConv as any).linkedQuoteNumber ?? selectedConv.linkedQuoteId}`}
                             className="text-[10px] text-sky-400 hover:underline font-mono">
-                            #{selectedConv.linkedQuoteId}
+                            {(selectedConv as any).linkedQuoteNumber ?? `#${selectedConv.linkedQuoteId}`}
                           </a>
                           <button onClick={() => linkQuoteMut.mutate({ ghlConversationId: selectedConv.ghlConversationId, quoteId: null })}
                             className="text-foreground/20 hover:text-red-400 transition-colors">
@@ -851,7 +864,7 @@ export default function WhatsAppGHLInbox() {
                           </button>
                         </div>
                       ) : (
-                        <button onClick={() => { setLinkQuoteId(""); setLinkQuoteOpen(true); }}
+                        <button onClick={() => { setLinkQuoteSearch(""); setLinkQuoteSelected(null); setLinkQuoteOpen(true); }}
                           className="text-[10px] text-foreground/30 hover:text-sky-400 flex items-center gap-0.5">
                           <Link2 className="w-2.5 h-2.5" /> Vincular
                         </button>
@@ -865,9 +878,9 @@ export default function WhatsAppGHLInbox() {
                       </span>
                       {selectedConv.linkedReservationId ? (
                         <div className="flex items-center gap-1">
-                          <a href={`/admin/crm?tab=reservations&search=${selectedConv.linkedReservationId}`}
+                          <a href={`/admin/crm?tab=reservations&search=${(selectedConv as any).linkedReservationNumber ?? selectedConv.linkedReservationId}`}
                             className="text-[10px] text-violet-400 hover:underline font-mono">
-                            #{selectedConv.linkedReservationId}
+                            {(selectedConv as any).linkedReservationNumber ?? `#${selectedConv.linkedReservationId}`}
                           </a>
                           <button onClick={() => linkResMut.mutate({ ghlConversationId: selectedConv.ghlConversationId, reservationId: null })}
                             className="text-foreground/20 hover:text-red-400 transition-colors">
@@ -875,7 +888,7 @@ export default function WhatsAppGHLInbox() {
                           </button>
                         </div>
                       ) : (
-                        <button onClick={() => { setLinkResId(""); setLinkResOpen(true); }}
+                        <button onClick={() => { setLinkResSearch(""); setLinkResSelected(null); setLinkResOpen(true); }}
                           className="text-[10px] text-foreground/30 hover:text-violet-400 flex items-center gap-0.5">
                           <Link2 className="w-2.5 h-2.5" /> Vincular
                         </button>
@@ -888,11 +901,11 @@ export default function WhatsAppGHLInbox() {
                 <div>
                   <h3 className="text-[10px] font-semibold text-foreground/40 uppercase tracking-wider mb-2">Acceso rápido</h3>
                   <div className="space-y-1.5">
-                    <a href="/admin/crm?tab=quotes"
+                    <a href={`/admin/crm?tab=quotes&newContact=${encodeURIComponent(selectedConv.customerName ?? "")}&newPhone=${encodeURIComponent(selectedConv.phone ?? "")}&newEmail=${encodeURIComponent(selectedConv.email ?? "")}`}
                       className="flex items-center gap-1.5 text-[10px] text-foreground/40 hover:text-sky-400 transition-colors">
                       <FileText className="w-3 h-3" /> Nuevo presupuesto
                     </a>
-                    <a href="/admin/crm?tab=reservations"
+                    <a href={`/admin/crm?tab=reservations&newContact=${encodeURIComponent(selectedConv.customerName ?? "")}&newPhone=${encodeURIComponent(selectedConv.phone ?? "")}&newEmail=${encodeURIComponent(selectedConv.email ?? "")}`}
                       className="flex items-center gap-1.5 text-[10px] text-foreground/40 hover:text-violet-400 transition-colors">
                       <CalendarDays className="w-3 h-3" /> Nueva reserva
                     </a>
@@ -920,23 +933,52 @@ export default function WhatsAppGHLInbox() {
       </div>
 
       {/* ── Modal: vincular presupuesto ───────────────────────────────────── */}
-      <Dialog open={linkQuoteOpen} onOpenChange={setLinkQuoteOpen}>
+      <Dialog open={linkQuoteOpen} onOpenChange={open => { setLinkQuoteOpen(open); if (!open) { setLinkQuoteSearch(""); setLinkQuoteSelected(null); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Vincular presupuesto</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">ID del presupuesto (número interno)</Label>
-              <Input type="number" value={linkQuoteId} onChange={e => setLinkQuoteId(e.target.value)}
-                className="h-8 text-xs" placeholder="Ej: 42" />
-            </div>
+            {linkQuoteSelected ? (
+              <div className="rounded-lg border border-sky-500/40 bg-sky-500/10 p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-mono text-sky-400">{linkQuoteSelected.quoteNumber}</p>
+                  <p className="text-[10px] text-foreground/60">{linkQuoteSelected.clientName}</p>
+                </div>
+                <button onClick={() => setLinkQuoteSelected(null)} className="text-foreground/30 hover:text-red-400 text-[10px]">✕ Cambiar</button>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Label className="text-xs">Buscar por número, nombre o email</Label>
+                <Input
+                  autoFocus
+                  value={linkQuoteSearch}
+                  onChange={e => setLinkQuoteSearch(e.target.value)}
+                  className="h-8 text-xs"
+                  placeholder="Ej: PRES-2026, Ricardo Torres…"
+                />
+                {linkQuoteSearch.length >= 1 && (
+                  <div className="mt-1 rounded-md border border-border/40 bg-card overflow-hidden max-h-48 overflow-y-auto">
+                    {!quoteSearchResults?.length ? (
+                      <p className="text-[10px] text-foreground/40 text-center py-3">Sin resultados</p>
+                    ) : quoteSearchResults.map(q => (
+                      <button key={q.id}
+                        onClick={() => setLinkQuoteSelected({ id: q.id, quoteNumber: q.quoteNumber, clientName: q.clientName })}
+                        className="w-full text-left px-3 py-2 hover:bg-foreground/5 border-b border-border/20 last:border-0">
+                        <p className="text-xs font-mono text-sky-400">{q.quoteNumber}</p>
+                        <p className="text-[10px] text-foreground/60 truncate">{q.clientName || q.title} · {q.status} · {q.total}€</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setLinkQuoteOpen(false)}>Cancelar</Button>
             <Button size="sm" className="bg-sky-600 hover:bg-sky-700 text-white"
-              disabled={!linkQuoteId || linkQuoteMut.isPending}
-              onClick={() => selectedConv && linkQuoteMut.mutate({
+              disabled={!linkQuoteSelected || linkQuoteMut.isPending}
+              onClick={() => selectedConv && linkQuoteSelected && linkQuoteMut.mutate({
                 ghlConversationId: selectedConv.ghlConversationId,
-                quoteId: Number(linkQuoteId),
+                quoteId: linkQuoteSelected.id,
               })}>
               Vincular
             </Button>
@@ -945,23 +987,52 @@ export default function WhatsAppGHLInbox() {
       </Dialog>
 
       {/* ── Modal: vincular reserva ───────────────────────────────────────── */}
-      <Dialog open={linkResOpen} onOpenChange={setLinkResOpen}>
+      <Dialog open={linkResOpen} onOpenChange={open => { setLinkResOpen(open); if (!open) { setLinkResSearch(""); setLinkResSelected(null); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Vincular reserva</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">ID de la reserva (número interno)</Label>
-              <Input type="number" value={linkResId} onChange={e => setLinkResId(e.target.value)}
-                className="h-8 text-xs" placeholder="Ej: 123" />
-            </div>
+            {linkResSelected ? (
+              <div className="rounded-lg border border-violet-500/40 bg-violet-500/10 p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-mono text-violet-400">{linkResSelected.bookingNumber}</p>
+                  <p className="text-[10px] text-foreground/60">{linkResSelected.clientName}</p>
+                </div>
+                <button onClick={() => setLinkResSelected(null)} className="text-foreground/30 hover:text-red-400 text-[10px]">✕ Cambiar</button>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Label className="text-xs">Buscar por número de reserva o nombre</Label>
+                <Input
+                  autoFocus
+                  value={linkResSearch}
+                  onChange={e => setLinkResSearch(e.target.value)}
+                  className="h-8 text-xs"
+                  placeholder="Ej: RES-2026, Ricardo Torres…"
+                />
+                {linkResSearch.length >= 1 && (
+                  <div className="mt-1 rounded-md border border-border/40 bg-card overflow-hidden max-h-48 overflow-y-auto">
+                    {!resSearchResults?.length ? (
+                      <p className="text-[10px] text-foreground/40 text-center py-3">Sin resultados</p>
+                    ) : resSearchResults.map(r => (
+                      <button key={r.id}
+                        onClick={() => setLinkResSelected({ id: r.id, bookingNumber: r.bookingNumber, clientName: r.clientName })}
+                        className="w-full text-left px-3 py-2 hover:bg-foreground/5 border-b border-border/20 last:border-0">
+                        <p className="text-xs font-mono text-violet-400">{r.bookingNumber}</p>
+                        <p className="text-[10px] text-foreground/60 truncate">{r.clientName} · {r.status} · {r.totalAmount}€</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setLinkResOpen(false)}>Cancelar</Button>
             <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white"
-              disabled={!linkResId || linkResMut.isPending}
-              onClick={() => selectedConv && linkResMut.mutate({
+              disabled={!linkResSelected || linkResMut.isPending}
+              onClick={() => selectedConv && linkResSelected && linkResMut.mutate({
                 ghlConversationId: selectedConv.ghlConversationId,
-                reservationId: Number(linkResId),
+                reservationId: linkResSelected.id,
               })}>
               Vincular
             </Button>

@@ -64,10 +64,79 @@ export const ghlInboxRouter = router({
         db.select({ count: sql<number>`COUNT(*)` }).from(ghlConversations).where(where),
       ]);
 
+      // Enriquecer con números legibles de presupuesto y reserva
+      const quoteIds = rows.filter(r => r.linkedQuoteId != null).map(r => r.linkedQuoteId!);
+      const bookingIds = rows.filter(r => r.linkedReservationId != null).map(r => r.linkedReservationId!);
+      const quoteNumbers: Record<number, string> = {};
+      const bookingNumbers: Record<number, string> = {};
+      if (quoteIds.length) {
+        const [qRows]: any = await _pool.execute(
+          `SELECT id, quoteNumber FROM quotes WHERE id IN (${quoteIds.join(",")})`,
+        );
+        for (const q of (qRows as any[])) quoteNumbers[Number(q.id)] = q.quoteNumber;
+      }
+      if (bookingIds.length) {
+        const [bRows]: any = await _pool.execute(
+          `SELECT id, bookingNumber FROM bookings WHERE id IN (${bookingIds.join(",")})`,
+        );
+        for (const b of (bRows as any[])) bookingNumbers[Number(b.id)] = b.bookingNumber;
+      }
+
       return {
-        rows,
+        rows: rows.map(r => ({
+          ...r,
+          linkedQuoteNumber: r.linkedQuoteId ? (quoteNumbers[r.linkedQuoteId] ?? null) : null,
+          linkedReservationNumber: r.linkedReservationId ? (bookingNumbers[r.linkedReservationId] ?? null) : null,
+        })),
         total: Number(countRows[0]?.count ?? 0),
       };
+    }),
+
+  // ─── Buscar presupuestos para vincular ────────────────────────────────────
+  searchQuotes: staffProcedure
+    .input(z.object({ query: z.string() }))
+    .query(async ({ input }) => {
+      if (!input.query.trim()) return [];
+      const q = `%${input.query.trim()}%`;
+      const [rows]: any = await _pool.execute(
+        `SELECT q.id, q.quoteNumber, q.title, q.status, q.total,
+                COALESCE(l.name, '') AS clientName
+         FROM quotes q
+         LEFT JOIN leads l ON q.leadId = l.id
+         WHERE q.quoteNumber LIKE ? OR q.title LIKE ? OR l.name LIKE ? OR l.email LIKE ?
+         ORDER BY q.createdAt DESC LIMIT 8`,
+        [q, q, q, q],
+      );
+      return (rows as any[]).map((r: any) => ({
+        id: Number(r.id),
+        quoteNumber: String(r.quoteNumber ?? ""),
+        title: String(r.title ?? ""),
+        status: String(r.status ?? ""),
+        total: String(r.total ?? "0"),
+        clientName: String(r.clientName ?? ""),
+      }));
+    }),
+
+  // ─── Buscar reservas (bookings) para vincular ─────────────────────────────
+  searchReservations: staffProcedure
+    .input(z.object({ query: z.string() }))
+    .query(async ({ input }) => {
+      if (!input.query.trim()) return [];
+      const q = `%${input.query.trim()}%`;
+      const [rows]: any = await _pool.execute(
+        `SELECT id, bookingNumber, clientName, clientEmail, status, totalAmount
+         FROM bookings
+         WHERE bookingNumber LIKE ? OR clientName LIKE ? OR clientEmail LIKE ?
+         ORDER BY createdAt DESC LIMIT 8`,
+        [q, q, q],
+      );
+      return (rows as any[]).map((r: any) => ({
+        id: Number(r.id),
+        bookingNumber: String(r.bookingNumber ?? ""),
+        clientName: String(r.clientName ?? ""),
+        status: String(r.status ?? ""),
+        totalAmount: String(r.totalAmount ?? "0"),
+      }));
     }),
 
   // ─── Obtener mensajes de una conversación ─────────────────────────────────
