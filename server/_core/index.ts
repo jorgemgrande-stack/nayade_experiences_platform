@@ -776,6 +776,11 @@ async function ensureExpenseEmailIngestionSchema() {
     `);
     console.log("[DB] Tablas email_accounts y commercial_emails verificadas");
 
+    // Columna de metadatos de adjuntos (añadida en mayo 2026)
+    await conn.execute(
+      "ALTER TABLE commercial_emails ADD COLUMN IF NOT EXISTS attachments_meta JSON NULL"
+    ).catch(() => {});
+
     await conn.end();
     console.log("[DB] Schema expense email ingestion verificado");
   } catch (err: any) {

@@ -203,7 +203,15 @@ async function syncFolder(
         const bodyText = parsed.text || null;
         const snippet = (parsed.text || parsed.subject || "")
           .slice(0, 280).replace(/\s+/g, " ").trim();
-        const hasAttachments = (parsed.attachments ?? []).length > 0;
+        const rawAttachments = (parsed.attachments ?? []).filter((a: any) => !a.related); // skip inline CID
+        const hasAttachments = rawAttachments.length > 0;
+        const attachmentsMeta = hasAttachments
+          ? JSON.stringify(rawAttachments.map((a: any) => ({
+              filename: a.filename ?? "adjunto",
+              contentType: a.contentType ?? "application/octet-stream",
+              size: a.size ?? 0,
+            })))
+          : null;
 
         // For sent folder: is_read = TRUE, is_sent = TRUE
         // For inbox: is_read depends on IMAP \Seen flag
@@ -217,9 +225,9 @@ async function syncFolder(
           `INSERT IGNORE INTO commercial_emails
             (account_id, message_id, in_reply_to, from_email, from_name,
              to_emails, cc_emails, subject, body_html, body_text, snippet,
-             sent_at, is_read, is_sent, has_attachments, folder, labels,
+             sent_at, is_read, is_sent, has_attachments, attachments_meta, folder, labels,
              linked_lead_id, linked_client_id, imap_uid, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, NOW(), NOW())`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, NOW(), NOW())`,
           [
             account.id,
             messageId,
@@ -236,6 +244,7 @@ async function syncFolder(
             isRead ? 1 : 0,
             isSent ? 1 : 0,
             hasAttachments ? 1 : 0,
+            attachmentsMeta,
             folderName,
             linkedLeadId,
             linkedClientId,
@@ -285,6 +294,20 @@ async function syncAccount(account: any): Promise<{ synced: number; errors: numb
     const sentFolder = account.folder_sent || "Sent";
     synced += await syncFolder(client, pool, account, sentFolder, true, max, since);
 
+    // Sync custom IMAP folders (Spam, carpetas de usuario, etc.)
+    try {
+      const allFolders = await client.list();
+      for (const f of allFolders) {
+        if (!isVirtualImapPath(f.path) && f.path !== inboxFolder && f.path !== sentFolder) {
+          // Spam/Junk y carpetas de usuario personalizadas
+          const isSpam = /spam|junk/i.test(f.path);
+          synced += await syncFolder(client, pool, account, f.path, false, isSpam ? 20 : max, since);
+        }
+      }
+    } catch (fErr: any) {
+      console.warn(`[CommercialEmail] No se pudo sincronizar carpetas extra en ${account.email}:`, fErr.message);
+    }
+
     await pool.execute(
       "UPDATE email_accounts SET last_sync_at = NOW(), last_sync_error = NULL WHERE id = ?",
       [account.id],
@@ -303,6 +326,18 @@ async function syncAccount(account: any): Promise<{ synced: number; errors: numb
   }
 
   return { synced, errors };
+}
+
+// Carpetas IMAP que ya están cubiertas por carpetas virtuales (no sincronizar de nuevo)
+const VIRTUAL_IMAP_PATHS = new Set([
+  "inbox", "sent", "sent items", "sent messages", "elementos enviados",
+  "archive", "archives", "archivados", "archived", "all mail",
+  "trash", "deleted", "deleted items", "papelera", "basura", "deleted messages",
+  "drafts", "borradores", "draft",
+]);
+
+function isVirtualImapPath(path: string): boolean {
+  return VIRTUAL_IMAP_PATHS.has(path.toLowerCase());
 }
 
 // ─── IMAP folder management ───────────────────────────────────────────────────

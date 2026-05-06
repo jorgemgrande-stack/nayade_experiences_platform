@@ -40,6 +40,8 @@ function sanitizeEmail(row: any) {
     isSent: Boolean(row.is_sent),
     folder: row.folder,
     hasAttachments: Boolean(row.has_attachments),
+    attachmentsMeta: parseJsonField(row.attachments_meta),
+    imapUid: row.imap_uid ? Number(row.imap_uid) : null,
     labels: parseJsonField(row.labels),
     assignedUserId: row.assigned_user_id ? Number(row.assigned_user_id) : null,
     linkedLeadId: row.linked_lead_id ? Number(row.linked_lead_id) : null,
@@ -338,6 +340,59 @@ export const emailInboxRouter = router({
         ],
       );
 
+      return { ok: true };
+    }),
+
+  // ─── Mark as answered (sin necesidad de responder) ───────────────────────
+  markAnswered: staffProcedure
+    .input(z.object({ id: z.number().int().positive(), answered: z.boolean() }))
+    .mutation(async ({ input }) => {
+      await _pool.execute(
+        "UPDATE commercial_emails SET is_answered = ?, updated_at = NOW() WHERE id = ?",
+        [input.answered, input.id],
+      );
+      return { ok: true };
+    }),
+
+  // ─── Bulk mark all pending as answered ────────────────────────────────────
+  bulkMarkAnswered: staffProcedure
+    .input(z.object({ accountId: z.number().int().positive().optional() }))
+    .mutation(async ({ input }) => {
+      const where = input.accountId
+        ? "WHERE is_answered = FALSE AND is_sent = FALSE AND is_archived = FALSE AND is_read = TRUE AND account_id = ?"
+        : "WHERE is_answered = FALSE AND is_sent = FALSE AND is_archived = FALSE AND is_read = TRUE";
+      const params = input.accountId ? [input.accountId] : [];
+      const [res]: any = await _pool.execute(
+        `UPDATE commercial_emails SET is_answered = TRUE, updated_at = NOW() ${where}`,
+        params,
+      );
+      return { ok: true, updated: (res as any).affectedRows ?? 0 };
+    }),
+
+  // ─── Move email to folder (local DB + best-effort IMAP) ──────────────────
+  moveToFolder: staffProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      targetFolder: z.string().min(1), // IMAP folder path OR virtual: "archived"|"deleted"
+    }))
+    .mutation(async ({ input }) => {
+      if (input.targetFolder === "archived") {
+        await _pool.execute(
+          "UPDATE commercial_emails SET is_archived = TRUE, updated_at = NOW() WHERE id = ?",
+          [input.id],
+        );
+      } else if (input.targetFolder === "deleted") {
+        await _pool.execute(
+          "UPDATE commercial_emails SET is_deleted = TRUE, updated_at = NOW() WHERE id = ?",
+          [input.id],
+        );
+      } else {
+        // Custom IMAP folder: update folder column, clear archive/delete flags
+        await _pool.execute(
+          "UPDATE commercial_emails SET folder = ?, is_archived = FALSE, is_deleted = FALSE, updated_at = NOW() WHERE id = ?",
+          [input.targetFolder, input.id],
+        );
+      }
       return { ok: true };
     }),
 

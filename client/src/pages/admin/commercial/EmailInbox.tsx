@@ -9,13 +9,15 @@ import {
   Mail, MailOpen, Send, Archive, Trash2, RefreshCw, Search,
   Inbox, Clock, ChevronLeft, ChevronRight, Reply, X,
   User, ExternalLink, Loader2, Plus, FolderPlus, Folder,
-  FolderOpen, Pencil, Check,
+  FolderOpen, Pencil, Check, Paperclip, ShieldAlert, CheckCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Folder = "inbox" | "sent" | "archived" | "deleted" | "pending";
+
+type AttachmentMeta = { filename: string; contentType: string; size: number };
 
 type EmailRow = {
   id: number;
@@ -38,6 +40,8 @@ type EmailRow = {
   isSent: boolean;
   folder: string;
   hasAttachments: boolean;
+  attachmentsMeta: AttachmentMeta[];
+  imapUid: number | null;
   labels: string[];
   assignedUserId: number | null;
   linkedLeadId: number | null;
@@ -235,12 +239,14 @@ function EmailDetail({
   onReply,
   onArchive,
   onDelete,
+  onMarkAnswered,
 }: {
   emailId: number;
   onClose: () => void;
   onReply: (email: EmailRow) => void;
   onArchive: (id: number, archived: boolean) => void;
   onDelete: (id: number) => void;
+  onMarkAnswered: (id: number, answered: boolean) => void;
 }) {
   const { data, isLoading } = trpc.emailInbox.getEmail.useQuery({ id: emailId });
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -295,6 +301,13 @@ function EmailDetail({
             onClick={() => onReply(email)}>
             <Reply className="w-3.5 h-3.5" /> Responder
           </Button>
+          {!email.isSent && !email.isAnswered && (
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-emerald-400 hover:text-emerald-300"
+              title="Marcar como sin respuesta pendiente"
+              onClick={() => onMarkAnswered(email.id, true)}>
+              <CheckCheck className="w-3.5 h-3.5" />
+            </Button>
+          )}
           {!email.isArchived && !email.isSent && (
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1"
               onClick={() => onArchive(email.id, true)}>
@@ -336,12 +349,36 @@ function EmailDetail({
           </div>
         </div>
 
+        {/* Attachments */}
+        {email.hasAttachments && (email.attachmentsMeta ?? []).length > 0 && (
+          <div className="px-5 py-3 border-b border-border/50 flex flex-wrap gap-2">
+            {(email.attachmentsMeta ?? []).map((att, i) => (
+              <div key={i} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted/40 border border-border/60 text-xs text-foreground/70">
+                <Paperclip className="w-3 h-3 text-orange-400 shrink-0" />
+                <span className="max-w-[160px] truncate">{att.filename}</span>
+                <span className="text-foreground/30 shrink-0">
+                  {att.size > 1024 * 1024
+                    ? `${(att.size / 1024 / 1024).toFixed(1)} MB`
+                    : att.size > 1024
+                    ? `${(att.size / 1024).toFixed(0)} KB`
+                    : `${att.size} B`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {email.hasAttachments && !(email.attachmentsMeta ?? []).length && (
+          <div className="px-5 py-2 border-b border-border/50 flex items-center gap-1.5 text-xs text-foreground/40">
+            <Paperclip className="w-3 h-3" /> Este email tiene adjuntos (se verán al resincronizar)
+          </div>
+        )}
+
         {/* Body */}
         <div className="flex-1">
           {email.bodyHtml ? (
             <iframe
               ref={iframeCallbackRef}
-              sandbox="allow-same-origin"
+              sandbox="allow-same-origin allow-popups"
               className="w-full border-0"
               style={{ minHeight: "300px", height: "auto" }}
               onLoad={(e) => {
@@ -410,16 +447,23 @@ function EmailDetail({
 
 // ─── IMAP folder sidebar ─────────────────────────────────────────────────────
 
-// Standard IMAP folders that are already covered by virtual folders
+// Standard IMAP folders covered by virtual folders (no mostrar en "Mis carpetas")
 const VIRTUAL_IMAP_NAMES = new Set([
-  "inbox", "sent", "sent items", "sent messages",
-  "archive", "archives", "archivados", "archived",
-  "trash", "deleted", "deleted items", "papelera", "basura",
-  "junk", "spam", "drafts", "borradores",
+  "inbox", "sent", "sent items", "sent messages", "elementos enviados",
+  "archive", "archives", "archivados", "archived", "all mail",
+  "trash", "deleted", "deleted items", "papelera", "basura", "deleted messages",
+  "drafts", "borradores", "draft",
+  // Spam se muestra como carpeta dedicada, no en "Mis carpetas"
+  "spam", "junk", "correo no deseado",
 ]);
 
 function isVirtualFolder(path: string) {
   return VIRTUAL_IMAP_NAMES.has(path.toLowerCase());
+}
+
+// Detecta si una carpeta IMAP es Spam/Junk
+function isSpamFolder(path: string) {
+  return /spam|junk|no.?deseado/i.test(path);
 }
 
 function ImapFolderItem({
@@ -517,6 +561,10 @@ export default function EmailInbox() {
   const [newFolderInput, setNewFolderInput] = useState("");
   const [showNewFolder, setShowNewFolder] = useState(false);
 
+  // Drag & drop
+  const [dragEmailId, setDragEmailId] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
   // Data
   const accounts = trpc.emailAccounts.list.useQuery();
 
@@ -566,6 +614,29 @@ export default function EmailInbox() {
     },
     onError: (e) => toast.error(e.message),
   });
+  const markAnsweredMut = trpc.emailInbox.markAnswered.useMutation({
+    onSuccess: () => {
+      utils.emailInbox.listEmails.invalidate();
+      utils.emailInbox.getStats.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const bulkMarkAnsweredMut = trpc.emailInbox.bulkMarkAnswered.useMutation({
+    onSuccess: (d) => {
+      toast.success(`${d.updated} emails marcados como respondidos`);
+      utils.emailInbox.listEmails.invalidate();
+      utils.emailInbox.getStats.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const moveToFolderMut = trpc.emailInbox.moveToFolder.useMutation({
+    onSuccess: () => {
+      utils.emailInbox.listEmails.invalidate();
+      utils.emailInbox.getStats.invalidate();
+      setSelectedId(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const createFolderMut = trpc.emailAccounts.createFolder.useMutation({
     onSuccess: () => {
       utils.emailAccounts.listFolders.invalidate();
@@ -598,8 +669,10 @@ export default function EmailInbox() {
   const total = emails.data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  // Custom IMAP folders (exclude those mapped to virtual folders)
-  const customFolders = (imapFolders.data ?? []).filter(f => !isVirtualFolder(f.path));
+  // Custom IMAP folders (exclude virtual + spam which gets its own entry)
+  const customFolders = (imapFolders.data ?? []).filter(f => !isVirtualFolder(f.path) && !isSpamFolder(f.path));
+  // Spam folder (first match in IMAP list)
+  const spamImapFolder = (imapFolders.data ?? []).find(f => isSpamFolder(f.path));
 
   const folderItems: { key: Folder; label: string; icon: React.ElementType; count?: number }[] = [
     { key: "inbox", label: "Recibidos", icon: Inbox, count: s?.unreadInbox },
@@ -637,6 +710,14 @@ export default function EmailInbox() {
   function handleDelete(id: number) {
     deleteMut.mutate({ id, deleted: true });
     toast.success("Movido a Papelera");
+  }
+
+  function handleDrop(targetFolder: string, emailId: number) {
+    setDragEmailId(null);
+    setDropTarget(null);
+    if (!emailId) return;
+    moveToFolderMut.mutate({ id: emailId, targetFolder });
+    toast.success(`Email movido a ${targetFolder}`);
   }
 
   function handleCreateFolder() {
@@ -684,24 +765,59 @@ export default function EmailInbox() {
               <button
                 key={key}
                 onClick={() => handleFolderChange(key)}
+                onDragOver={e => { e.preventDefault(); setDropTarget(key); }}
+                onDragLeave={() => setDropTarget(null)}
+                onDrop={e => { e.preventDefault(); if (dragEmailId) handleDrop(key, dragEmailId); }}
                 className={cn(
                   "w-full flex items-center justify-between px-3 py-2 text-sm rounded-md mx-1 transition-colors",
                   !imapFolder && folder === key
                     ? "bg-orange-500/15 text-orange-400"
                     : "text-foreground/60 hover:text-foreground hover:bg-muted/50",
+                  dropTarget === key && "ring-1 ring-orange-400 bg-orange-500/10",
                 )}
               >
                 <div className="flex items-center gap-2">
                   <Icon className="w-4 h-4 shrink-0" />
                   <span>{label}</span>
                 </div>
-                {!!count && (
-                  <span className="text-[10px] bg-orange-500 text-white rounded-full px-1.5 py-0.5 font-medium">
-                    {count}
-                  </span>
-                )}
+                <div className="flex items-center gap-1">
+                  {key === "pending" && (s?.pendingReply ?? 0) > 0 && (
+                    <button
+                      title="Limpiar pendientes"
+                      onClick={e => { e.stopPropagation(); bulkMarkAnsweredMut.mutate({ accountId }); }}
+                      className="opacity-0 group-hover:opacity-100 text-foreground/30 hover:text-emerald-400 p-0.5"
+                    >
+                      <CheckCheck className="w-3 h-3" />
+                    </button>
+                  )}
+                  {!!count && (
+                    <span className="text-[10px] bg-orange-500 text-white rounded-full px-1.5 py-0.5 font-medium">
+                      {count}
+                    </span>
+                  )}
+                </div>
               </button>
             ))}
+
+            {/* Spam folder (dedicated entry from IMAP) */}
+            {spamImapFolder && (
+              <button
+                onClick={() => handleImapFolderChange(spamImapFolder.path)}
+                onDragOver={e => { e.preventDefault(); setDropTarget("__spam__"); }}
+                onDragLeave={() => setDropTarget(null)}
+                onDrop={e => { e.preventDefault(); if (dragEmailId) handleDrop(spamImapFolder.path, dragEmailId); }}
+                className={cn(
+                  "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md mx-1 transition-colors",
+                  imapFolder === spamImapFolder.path
+                    ? "bg-orange-500/15 text-orange-400"
+                    : "text-foreground/60 hover:text-foreground hover:bg-muted/50",
+                  dropTarget === "__spam__" && "ring-1 ring-orange-400 bg-orange-500/10",
+                )}
+              >
+                <ShieldAlert className="w-4 h-4 shrink-0" />
+                <span>Spam</span>
+              </button>
+            )}
 
             {/* Custom IMAP folders */}
             {(customFolders.length > 0 || folderAccountId) && (
@@ -748,26 +864,32 @@ export default function EmailInbox() {
                 )}
 
                 {customFolders.map(f => (
-                  <ImapFolderItem
+                  <div
                     key={f.path}
-                    path={f.path}
-                    name={f.name}
-                    isSelected={imapFolder === f.path}
-                    onSelect={() => handleImapFolderChange(f.path)}
-                    onRename={newName => {
-                      if (!folderAccountId) return;
-                      // Build new path: replace last segment
-                      const parts = f.path.split(f.delimiter ?? "/");
-                      parts[parts.length - 1] = newName;
-                      const newPath = parts.join(f.delimiter ?? "/");
-                      renameFolderMut.mutate({ accountId: folderAccountId, oldPath: f.path, newPath });
-                    }}
-                    onDelete={() => {
-                      if (!folderAccountId) return;
-                      if (!confirm(`¿Eliminar la carpeta "${f.name}" y todos sus emails?`)) return;
-                      deleteFolderMut.mutate({ accountId: folderAccountId, path: f.path });
-                    }}
-                  />
+                    onDragOver={e => { e.preventDefault(); setDropTarget(f.path); }}
+                    onDragLeave={() => setDropTarget(null)}
+                    onDrop={e => { e.preventDefault(); if (dragEmailId) handleDrop(f.path, dragEmailId); }}
+                    className={cn(dropTarget === f.path && "ring-1 ring-inset ring-orange-400 rounded-md mx-1")}
+                  >
+                    <ImapFolderItem
+                      path={f.path}
+                      name={f.name}
+                      isSelected={imapFolder === f.path}
+                      onSelect={() => handleImapFolderChange(f.path)}
+                      onRename={newName => {
+                        if (!folderAccountId) return;
+                        const parts = f.path.split(f.delimiter ?? "/");
+                        parts[parts.length - 1] = newName;
+                        const newPath = parts.join(f.delimiter ?? "/");
+                        renameFolderMut.mutate({ accountId: folderAccountId, oldPath: f.path, newPath });
+                      }}
+                      onDelete={() => {
+                        if (!folderAccountId) return;
+                        if (!confirm(`¿Eliminar la carpeta "${f.name}" y todos sus emails?`)) return;
+                        deleteFolderMut.mutate({ accountId: folderAccountId, path: f.path });
+                      }}
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -844,13 +966,17 @@ export default function EmailInbox() {
               emails.data.rows.map(email => (
                 <button
                   key={email.id}
+                  draggable
+                  onDragStart={() => setDragEmailId(email.id)}
+                  onDragEnd={() => { setDragEmailId(null); setDropTarget(null); }}
                   onClick={() => handleSelectEmail(email)}
                   className={cn(
-                    "w-full text-left px-3 py-3 border-b border-border/50 transition-colors",
+                    "w-full text-left px-3 py-3 border-b border-border/50 transition-colors cursor-grab active:cursor-grabbing",
                     selectedId === email.id
                       ? "bg-orange-500/10 border-l-2 border-l-orange-500"
                       : "hover:bg-muted/30",
                     !email.isRead && "bg-sky-500/5",
+                    dragEmailId === email.id && "opacity-50",
                   )}
                 >
                   <div className="flex items-start gap-2.5">
@@ -928,6 +1054,7 @@ export default function EmailInbox() {
               onReply={(email) => { setReplyEmail(email); setComposeOpen(true); }}
               onArchive={handleArchive}
               onDelete={handleDelete}
+              onMarkAnswered={(id, answered) => markAnsweredMut.mutate({ id, answered })}
             />
           </div>
         ) : (
