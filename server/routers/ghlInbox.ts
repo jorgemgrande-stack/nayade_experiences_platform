@@ -319,10 +319,18 @@ export const ghlInboxRouter = router({
           );
           const map: Record<string, string> = {};
           for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+          // Fuente de verdad desde Fase 1: systemSettings
+          const [sysRows]: any = await _pool.execute(
+            "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('site_ghl_api_key','site_ghl_location_id')"
+          );
+          const sysMap: Record<string, string> = {};
+          for (const r of (sysRows as any[])) sysMap[r.key] = r.value ?? "";
           const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
-            || map.ghlInboxToken || map.ghlApiKey || "";
+            || map.ghlInboxToken
+            || sysMap.site_ghl_api_key || map.ghlApiKey || "";
           const locId = process.env.GHL_LOCATION_ID
-            || map.ghlInboxLocationId || map.ghlLocationId || "";
+            || map.ghlInboxLocationId
+            || sysMap.site_ghl_location_id || map.ghlLocationId || "";
           return {
             hasToken: !!token,
             hasLocation: !!locId,

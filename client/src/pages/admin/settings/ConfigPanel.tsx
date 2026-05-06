@@ -9,13 +9,13 @@ import {
   AlertTriangle, Building2, Receipt, Mail, CreditCard,
   Monitor, Wallet, Landmark, Bot, Plug, Palette, Settings2,
   Shield, Save, Loader2, Check, ExternalLink, History,
-  CircleDot,
+  CircleDot, Clock,
 } from "lucide-react";
 
 // ─── Section Definitions ──────────────────────────────────────────────────────
 
 type SectionId =
-  | "negocio" | "fiscal" | "emails" | "pagos" | "tpv"
+  | "negocio" | "fiscal" | "horarios" | "emails" | "pagos" | "tpv"
   | "caja" | "banco" | "automatizaciones" | "integraciones" | "branding" | "avanzado";
 
 interface SectionDef {
@@ -35,7 +35,7 @@ const SECTIONS: SectionDef[] = [
     label: "Información del negocio",
     icon: Building2,
     description: "Nombre, teléfono, dominio y datos de contacto de la empresa.",
-    settingKeys: ["brand_name", "brand_short_name", "brand_phone", "brand_support_phone", "brand_domain", "brand_website_url", "brand_location"],
+    settingKeys: ["brand_name", "brand_short_name", "brand_phone", "brand_support_phone", "brand_domain", "brand_website_url", "brand_location", "site_business_email", "site_business_description"],
     flagModules: [],
     requiredKeys: ["brand_name"],
   },
@@ -43,17 +43,26 @@ const SECTIONS: SectionDef[] = [
     id: "fiscal",
     label: "Datos fiscales",
     icon: Receipt,
-    description: "NIF/CIF, dirección fiscal y tipos de IVA.",
-    settingKeys: ["brand_nif", "brand_address", "tax_rate_general", "tax_rate_reduced"],
+    description: "NIF/CIF, empresa facturadora, dirección fiscal y tipos de IVA.",
+    settingKeys: ["site_legal_name", "brand_nif", "site_legal_phone", "brand_address", "site_legal_zip", "site_legal_city", "site_legal_province", "site_legal_email", "site_legal_iban", "tax_rate_general", "tax_rate_reduced"],
     flagModules: [],
     requiredKeys: ["brand_nif", "brand_address"],
+  },
+  {
+    id: "horarios",
+    label: "Horarios",
+    icon: Clock,
+    description: "Horarios de apertura por temporada y días operativos.",
+    settingKeys: ["site_schedule_high_open", "site_schedule_high_close", "site_schedule_low_open", "site_schedule_low_close", "site_schedule_days"],
+    flagModules: [],
+    requiredKeys: [],
   },
   {
     id: "emails",
     label: "Emails y notificaciones",
     icon: Mail,
     description: "Direcciones de correo para cada tipo de notificación. Vacío = usa la dirección por defecto del sistema.",
-    settingKeys: ["email_reservations", "email_admin_alerts", "email_accounting", "email_cancellations", "email_tpv_ingestion", "email_noreply_sender", "email_copy_recipient"],
+    settingKeys: ["email_reservations", "email_admin_alerts", "email_accounting", "email_cancellations", "email_tpv_ingestion", "email_noreply_sender", "email_copy_recipient", "site_notif_email_restaurant"],
     flagModules: [],
     requiredKeys: [],
   },
@@ -62,7 +71,7 @@ const SECTIONS: SectionDef[] = [
     label: "Pagos y pasarelas",
     icon: CreditCard,
     description: "Configuración de Redsys y otras pasarelas de pago.",
-    settingKeys: ["redsys_environment", "redsys_currency"],
+    settingKeys: ["redsys_environment", "redsys_currency", "site_payment_currency", "site_payment_deposit_restaurant"],
     flagModules: [],
     requiredKeys: [],
     envVarHints: ["REDSYS_MERCHANT_CODE", "REDSYS_SECRET_KEY", "REDSYS_TERMINAL"],
@@ -107,8 +116,8 @@ const SECTIONS: SectionDef[] = [
     id: "integraciones",
     label: "Integraciones externas",
     icon: Plug,
-    description: "IMAP para ingesta de emails del datáfono y otros servicios externos.",
-    settingKeys: ["imap_host", "imap_user", "imap_port", "imap_tls"],
+    description: "GoHighLevel CRM, IMAP para ingesta de emails del datáfono y otros conectores externos.",
+    settingKeys: ["site_ghl_api_key", "site_ghl_location_id"],
     flagModules: ["email_ingestion", "commercial_email"],
     requiredKeys: [],
   },
@@ -132,12 +141,63 @@ const SECTIONS: SectionDef[] = [
   },
 ];
 
-// ─── Confirmation Modal ────────────────────────────────────────────────────────
+// ─── Dangerous settings ────────────────────────────────────────────────────────
+
+const DANGEROUS_SETTINGS: Record<string, string> = {
+  redsys_environment: "Cambiar el entorno de Redsys afecta los cobros en tiempo real. En modo producción los pagos son reales e irreversibles.",
+};
+
+function DangerousSettingModal({ settingKey, label, newValue, warning, onConfirm, onClose }: {
+  settingKey: string;
+  label: string;
+  newValue: string;
+  warning: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  const canConfirm = typed === "CONFIRMAR";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-background border border-border rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 bg-red-100 rounded-lg shrink-0">
+            <AlertTriangle className="w-5 h-5 text-red-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-foreground">Cambio crítico</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Vas a guardar <strong>{label}</strong> con valor <code className="text-xs bg-muted px-1 rounded">{newValue}</code>.
+            </p>
+            <p className="text-sm text-red-600 mt-2">{warning}</p>
+          </div>
+        </div>
+        <div className="mb-4">
+          <p className="text-xs text-muted-foreground mb-1.5">Escribe <strong>CONFIRMAR</strong> para continuar:</p>
+          <Input
+            className="h-8 text-sm font-mono"
+            value={typed}
+            onChange={e => setTyped(e.target.value)}
+            placeholder="CONFIRMAR"
+            autoFocus
+          />
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={!canConfirm}>Guardar</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Confirmation Modal (feature flags) ──────────────────────────────────────
 
 interface PendingFlag {
   key: string;
   name: string;
   newEnabled: boolean;
+  riskLevel: string;
 }
 
 function ConfirmModal({ pending, onConfirm, onClose }: {
@@ -145,6 +205,9 @@ function ConfirmModal({ pending, onConfirm, onClose }: {
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const [typed, setTyped] = useState("");
+  const requireTyping = pending.riskLevel === "high" && !pending.newEnabled;
+  const canConfirm = !requireTyping || typed === "CONFIRMAR";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-background border border-border rounded-2xl shadow-xl p-6 max-w-sm w-full mx-4">
@@ -160,9 +223,21 @@ function ConfirmModal({ pending, onConfirm, onClose }: {
             </p>
           </div>
         </div>
+        {requireTyping && (
+          <div className="mb-4">
+            <p className="text-xs text-muted-foreground mb-1.5">Escribe <strong>CONFIRMAR</strong> para continuar:</p>
+            <Input
+              className="h-8 text-sm font-mono"
+              value={typed}
+              onChange={e => setTyped(e.target.value)}
+              placeholder="CONFIRMAR"
+              autoFocus
+            />
+          </div>
+        )}
         <div className="flex gap-2 justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm}>Confirmar</Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={!canConfirm}>Confirmar</Button>
         </div>
       </div>
     </div>
@@ -182,6 +257,8 @@ interface SettingFieldProps {
 function SettingField({ settingKey, label, description, value, isSensitive }: SettingFieldProps) {
   const [local, setLocal] = useState(value ?? "");
   const [dirty, setDirty] = useState(false);
+  const [pendingSave, setPendingSave] = useState(false);
+  const isDangerous = settingKey in DANGEROUS_SETTINGS;
   const settingsQ = trpc.config.listSystemSettings.useQuery();
   const updateMut = trpc.config.updateSystemSetting.useMutation({
     onSuccess: () => {
@@ -191,6 +268,14 @@ function SettingField({ settingKey, label, description, value, isSensitive }: Se
     },
     onError: (e) => toast.error("Error: " + e.message),
   });
+
+  function handleSave() {
+    if (isDangerous) {
+      setPendingSave(true);
+    } else {
+      updateMut.mutate({ key: settingKey, value: local });
+    }
+  }
 
   if (isSensitive) {
     return (
@@ -209,31 +294,46 @@ function SettingField({ settingKey, label, description, value, isSensitive }: Se
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 py-3 border-b border-border/30 last:border-0">
-      <div className="min-w-0 flex-1">
-        <span className="text-sm font-medium text-foreground">{label}</span>
-        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
-        <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>
+    <>
+      <div className="flex items-center justify-between gap-4 py-3 border-b border-border/30 last:border-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-medium text-foreground">{label}</span>
+            {isDangerous && <AlertTriangle className="w-3.5 h-3.5 text-amber-500" title="Cambio crítico — requiere confirmación" />}
+          </div>
+          {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
+          <p className="text-xs font-mono text-muted-foreground/50 mt-0.5">{settingKey}</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Input
+            className="w-52 h-8 text-sm"
+            value={local}
+            onChange={(e) => { setLocal(e.target.value); setDirty(true); }}
+            placeholder="(valor por defecto)"
+          />
+          {dirty && (
+            <Button
+              size="sm"
+              className="h-8 px-3"
+              disabled={updateMut.isPending}
+              onClick={handleSave}
+            >
+              {updateMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            </Button>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <Input
-          className="w-52 h-8 text-sm"
-          value={local}
-          onChange={(e) => { setLocal(e.target.value); setDirty(true); }}
-          placeholder="(valor por defecto)"
+      {pendingSave && (
+        <DangerousSettingModal
+          settingKey={settingKey}
+          label={label}
+          newValue={local}
+          warning={DANGEROUS_SETTINGS[settingKey]}
+          onConfirm={() => { setPendingSave(false); updateMut.mutate({ key: settingKey, value: local }); }}
+          onClose={() => setPendingSave(false)}
         />
-        {dirty && (
-          <Button
-            size="sm"
-            className="h-8 px-3"
-            disabled={updateMut.isPending}
-            onClick={() => updateMut.mutate({ key: settingKey, value: local })}
-          >
-            {updateMut.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          </Button>
-        )}
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 
@@ -432,6 +532,12 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
   if (section.id === "avanzado") {
     return (
       <div className="space-y-6">
+        <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
+          <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800 dark:text-amber-300">
+            <strong>Solo administradores técnicos.</strong> Los cambios en esta sección pueden afectar el funcionamiento del sistema en producción.
+          </p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <a
             href="/admin/configuracion/avanzado"
@@ -448,7 +554,7 @@ function SectionContent({ section, allSettings, allFlags, onRequestFlagChange, i
             className="flex items-center justify-between gap-3 p-4 bg-card border border-border/50 rounded-xl hover:border-border transition-colors"
           >
             <div>
-              <p className="text-sm font-medium text-foreground">Configuración del sitio web</p>
+              <p className="text-sm font-medium text-foreground">Datos del negocio</p>
               <p className="text-xs text-muted-foreground mt-0.5">Textos, imágenes y contenido CMS de la web pública</p>
             </div>
             <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -583,7 +689,7 @@ export default function ConfigPanel() {
   function handleFlagChangeRequest(key: string, name: string, newEnabled: boolean) {
     const flag = allFlags.find(f => f.key === key);
     if (flag?.riskLevel === "high") {
-      setPendingFlag({ key, name, newEnabled });
+      setPendingFlag({ key, name, newEnabled, riskLevel: flag.riskLevel });
     } else {
       updateFlagMut.mutate({ key, enabled: newEnabled });
     }
@@ -629,7 +735,10 @@ export default function ConfigPanel() {
                   >
                     <Icon className="w-4 h-4 shrink-0" />
                     <span className="text-sm flex-1 truncate">{section.label}</span>
-                    <StatusDot status={status} />
+                    {section.id === "avanzado"
+                      ? <Shield className="w-3.5 h-3.5 shrink-0 text-amber-500" title="Solo administradores técnicos" />
+                      : <StatusDot status={status} />
+                    }
                   </button>
                 );
               })}
