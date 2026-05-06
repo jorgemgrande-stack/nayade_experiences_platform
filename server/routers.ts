@@ -131,7 +131,7 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
-import { siteSettings, packs, legoPacks as legoPacksTable, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes } from "../drizzle/schema";
+import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes } from "../drizzle/schema";
 
 // ─── Pricing helper (per_person | per_unit) ───────────────────────────────────
 /**
@@ -547,22 +547,91 @@ export const appRouter = router({
         return upsertPage(input);
       }),
 
-    // ── Site Settings ─────────────────────────────────────────────────────────
+    // ── Site Settings — lee y escribe en system_settings (fuente de verdad única) ──
     getSiteSettings: adminProcedure.query(async () => {
       const db = await getDb();
       if (!db) return {};
-      const rows = await db.select().from(siteSettings);
-      return Object.fromEntries(rows.map(r => [r.key, r.value]));
+      // Reverse map: clave de system_settings → clave camelCase que espera Settings.tsx
+      const REV: Record<string, string> = {
+        brand_name:                      "businessName",
+        brand_phone:                     "businessPhone",
+        site_business_email:             "businessEmail",
+        brand_location:                  "businessAddress",
+        brand_website_url:               "businessWebsite",
+        site_business_description:       "businessDescription",
+        site_schedule_high_open:         "scheduleHighOpen",
+        site_schedule_high_close:        "scheduleHighClose",
+        site_schedule_low_open:          "scheduleLowOpen",
+        site_schedule_low_close:         "scheduleLowClose",
+        site_schedule_days:              "scheduleDays",
+        tax_rate_general:                "paymentVat",
+        site_payment_currency:           "paymentCurrency",
+        quote_validity_days:             "paymentQuoteValidity",
+        site_payment_deposit_restaurant: "paymentDepositRestaurant",
+        site_legal_name:                 "legalCompanyName",
+        brand_nif:                       "legalCompanyCif",
+        site_legal_phone:                "legalCompanyPhone",
+        brand_address:                   "legalCompanyAddress",
+        site_legal_zip:                  "legalCompanyZip",
+        site_legal_city:                 "legalCompanyCity",
+        site_legal_province:             "legalCompanyProvince",
+        site_legal_email:                "legalCompanyEmail",
+        site_legal_iban:                 "legalCompanyIban",
+        email_reservations:              "notifEmailBooking",
+        site_notif_email_restaurant:     "notifEmailRestaurant",
+        site_ghl_api_key:                "ghlApiKey",
+        site_ghl_location_id:            "ghlLocationId",
+      };
+      const rows = await db
+        .select({ key: systemSettings.key, value: systemSettings.value, isSensitive: systemSettings.isSensitive })
+        .from(systemSettings);
+      const out: Record<string, string | null> = {};
+      for (const row of rows) {
+        const camelKey = REV[row.key];
+        if (camelKey) out[camelKey] = row.isSensitive ? null : (row.value ?? "");
+      }
+      return out;
     }),
     updateSiteSettings: adminProcedure
       .input(z.object({ settings: z.record(z.string(), z.string().nullable()) }))
       .mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB not available" });
-        for (const [key, value] of Object.entries(input.settings)) {
-          await db.insert(siteSettings)
-            .values({ key, value: value ?? "", type: "text" })
-            .onDuplicateKeyUpdate({ set: { value: value ?? "" } });
+        const KEY_MAP: Record<string, string> = {
+          businessName:             "brand_name",
+          businessPhone:            "brand_phone",
+          businessEmail:            "site_business_email",
+          businessAddress:          "brand_location",
+          businessWebsite:          "brand_website_url",
+          businessDescription:      "site_business_description",
+          scheduleHighOpen:         "site_schedule_high_open",
+          scheduleHighClose:        "site_schedule_high_close",
+          scheduleLowOpen:          "site_schedule_low_open",
+          scheduleLowClose:         "site_schedule_low_close",
+          scheduleDays:             "site_schedule_days",
+          paymentVat:               "tax_rate_general",
+          paymentCurrency:          "site_payment_currency",
+          paymentQuoteValidity:     "quote_validity_days",
+          paymentDepositRestaurant: "site_payment_deposit_restaurant",
+          legalCompanyName:         "site_legal_name",
+          legalCompanyCif:          "brand_nif",
+          legalCompanyPhone:        "site_legal_phone",
+          legalCompanyAddress:      "brand_address",
+          legalCompanyZip:          "site_legal_zip",
+          legalCompanyCity:         "site_legal_city",
+          legalCompanyProvince:     "site_legal_province",
+          legalCompanyEmail:        "site_legal_email",
+          legalCompanyIban:         "site_legal_iban",
+          notifEmailBooking:        "email_reservations",
+          notifEmailRestaurant:     "site_notif_email_restaurant",
+          ghlApiKey:                "site_ghl_api_key",
+          ghlLocationId:            "site_ghl_location_id",
+        };
+        for (const [camelKey, value] of Object.entries(input.settings)) {
+          const sysKey = KEY_MAP[camelKey] ?? camelKey;
+          await db.update(systemSettings)
+            .set({ value: value ?? "" })
+            .where(eq(systemSettings.key, sysKey));
         }
         return { ok: true };
       }),
@@ -580,11 +649,13 @@ export const appRouter = router({
       let dbKey = "";
       let dbLoc = "";
       if (db) {
-        const rows = await db.select().from(siteSettings)
-          .where(sqlDrizzle`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
+        const rows = await db
+          .select({ key: systemSettings.key, value: systemSettings.value })
+          .from(systemSettings)
+          .where(sqlDrizzle`${systemSettings.key} IN ('site_ghl_api_key','site_ghl_location_id')`);
         const map = Object.fromEntries(rows.map((r: any) => [r.key, r.value]));
-        dbKey = map.ghlApiKey ?? "";
-        dbLoc = map.ghlLocationId ?? "";
+        dbKey = map.site_ghl_api_key ?? "";
+        dbLoc = map.site_ghl_location_id ?? "";
       }
       return {
         configured: !!(envKey || dbKey) && !!(envLoc || dbLoc),

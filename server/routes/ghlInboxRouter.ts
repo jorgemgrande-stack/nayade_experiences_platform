@@ -211,15 +211,26 @@ const CONVERSATION_EVENTS = new Set([
 
 async function getInboxCredentials(): Promise<{ token: string; locationId: string; webhookSecret: string } | null> {
   try {
+    // Credenciales específicas del inbox (siguen en site_settings)
     const [rawRows]: any = await _pool.execute(
       "SELECT `key`, `value` FROM site_settings WHERE `key` IN ('ghlInboxToken','ghlInboxLocationId','ghlApiKey','ghlLocationId','ghlInboxWebhookSecret')"
     );
     const map: Record<string, string> = {};
     for (const r of (rawRows as any[])) map[r.key] = r.value ?? "";
+
+    // Credenciales principales GHL: systemSettings es la fuente de verdad desde Fase 1
+    const [sysRows]: any = await _pool.execute(
+      "SELECT `key`, `value` FROM system_settings WHERE `key` IN ('site_ghl_api_key','site_ghl_location_id')"
+    );
+    const sysMap: Record<string, string> = {};
+    for (const r of (sysRows as any[])) sysMap[r.key] = r.value ?? "";
+
     const token = process.env.GHL_PRIVATE_INTEGRATION_TOKEN
-      || map.ghlInboxToken || map.ghlApiKey || "";
+      || map.ghlInboxToken
+      || sysMap.site_ghl_api_key || map.ghlApiKey || "";
     const locationId = process.env.GHL_LOCATION_ID
-      || map.ghlInboxLocationId || map.ghlLocationId || "";
+      || map.ghlInboxLocationId
+      || sysMap.site_ghl_location_id || map.ghlLocationId || "";
     const webhookSecret = process.env.GHL_WEBHOOK_SECRET || map.ghlInboxWebhookSecret || "";
     if (!token || !locationId) return null;
     return { token, locationId, webhookSecret };

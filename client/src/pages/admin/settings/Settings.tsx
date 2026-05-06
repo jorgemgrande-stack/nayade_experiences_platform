@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Settings as SettingsIcon, Globe, Phone, Mail, Clock,
   CreditCard, Loader2, CheckCircle2, Info, Send, Building2,
-  Eye, EyeOff, Wifi, WifiOff,
+  Eye, EyeOff, Wifi, WifiOff, Check,
 } from "lucide-react";
 
 const EMAIL_TEMPLATES = [
@@ -33,8 +33,6 @@ const TABS = [
   { id: "payments",      label: "Pagos",            icon: CreditCard },
   { id: "legalCompany",  label: "Empresa legal",    icon: Building2 },
   { id: "notifications", label: "Notificaciones",   icon: Mail },
-  { id: "ghl",           label: "GoHighLevel",      icon: Wifi },
-  { id: "emailPreview",  label: "Preview email",    icon: Send },
 ] as const;
 
 type Tab = typeof TABS[number]["id"];
@@ -250,14 +248,14 @@ function Field({ label, hint, children, col2 = false }: {
   );
 }
 
-// ─── Save bar ─────────────────────────────────────────────────────────────────
-function SaveBar({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+// ─── Auto-save indicator ──────────────────────────────────────────────────────
+function AutoSaveStatus({ saving }: { saving: boolean }) {
   return (
-    <div className="flex justify-end pt-5 border-t border-border/30">
-      <Button onClick={onSave} disabled={saving} className="bg-accent text-white hover:bg-accent/90 font-display font-semibold px-6">
-        {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-        Guardar cambios
-      </Button>
+    <div className="flex items-center gap-1.5 pt-4 border-t border-border/20 text-xs text-muted-foreground">
+      {saving
+        ? <><Loader2 className="w-3 h-3 animate-spin" /> Guardando…</>
+        : <><Check className="w-3 h-3 text-emerald-500" /> Los cambios se guardan automáticamente</>
+      }
     </div>
   );
 }
@@ -314,10 +312,20 @@ export default function Settings() {
     legalCompanyIban:     "",
   });
 
-  const [savingSection, setSavingSection] = useState<string | null>(null);
+  const initialized = useRef(false);
+  const debounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const scheduleAutoSave = useCallback((section: string, data: Record<string, string>) => {
+    if (!initialized.current) return;
+    if (debounceRef.current[section]) clearTimeout(debounceRef.current[section]);
+    debounceRef.current[section] = setTimeout(() => {
+      updateMutation.mutate({ settings: data });
+    }, 1400);
+  }, [updateMutation]);
 
   useEffect(() => {
     if (!rawSettings) return;
+    initialized.current = false;
     const s = rawSettings as Record<string, string | null>;
     setBusiness(prev => ({
       businessName:        s.businessName        ?? prev.businessName,
@@ -356,20 +364,20 @@ export default function Settings() {
       legalCompanyPhone:    s.legalCompanyPhone    ?? prev.legalCompanyPhone,
       legalCompanyIban:     s.legalCompanyIban     ?? prev.legalCompanyIban,
     }));
+    // Activar auto-save después de que React aplique todos los setState anteriores
+    requestAnimationFrame(() => { initialized.current = true; });
   }, [rawSettings]);
 
-  async function saveSection(section: string, data: Record<string, string>) {
-    setSavingSection(section);
-    try {
-      await updateMutation.mutateAsync({ settings: data });
-    } finally {
-      setSavingSection(null);
-    }
-  }
+  // Auto-save: un efecto por sección, se dispara 1.4s después del último cambio
+  useEffect(() => { scheduleAutoSave("business", business); }, [business]);
+  useEffect(() => { scheduleAutoSave("schedule", schedule); }, [schedule]);
+  useEffect(() => { scheduleAutoSave("payments", { paymentCurrency: payments.paymentCurrency, paymentDepositRestaurant: payments.paymentDepositRestaurant }); }, [payments]);
+  useEffect(() => { scheduleAutoSave("legalCompany", legalCompany); }, [legalCompany]);
+  useEffect(() => { scheduleAutoSave("notifications", { notifEmailBooking: notifications.notifEmailBooking, notifEmailRestaurant: notifications.notifEmailRestaurant }); }, [notifications]);
 
   if (isLoading) {
     return (
-      <AdminLayout title="Integraciones">
+      <AdminLayout title="Datos del negocio">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-6 h-6 animate-spin text-accent" />
         </div>
@@ -378,14 +386,14 @@ export default function Settings() {
   }
 
   return (
-    <AdminLayout title="Integraciones">
+    <AdminLayout title="Datos del negocio">
       <div className="max-w-5xl mx-auto px-4 py-8">
 
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-heading font-bold text-foreground">Integraciones & Ajustes del Sitio</h1>
+          <h1 className="text-2xl font-heading font-bold text-foreground">Datos del negocio</h1>
           <p className="text-sm text-muted-foreground font-display mt-1">
-            Configuración del negocio, notificaciones, pagos, empresa facturadora e integración con GoHighLevel CRM.
+            Información del establecimiento, horarios, condiciones comerciales, empresa facturadora y notificaciones.
           </p>
         </div>
 
@@ -393,7 +401,7 @@ export default function Settings() {
         <div className="mb-5 flex items-start gap-3 bg-muted border border-border rounded-xl p-4">
           <Info className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
           <p className="text-sm font-display text-foreground/70">
-            Las credenciales sensibles (Redsys, SMTP, JWT) se gestionan en la sección <strong>Secrets</strong> del panel de gestión del proyecto, no aquí.
+            Las credenciales sensibles (Redsys, SMTP, JWT, GoHighLevel) se gestionan en <strong>Configuración → Ajustes del sistema</strong> o en las variables de entorno del proyecto.
           </p>
         </div>
 
@@ -445,7 +453,7 @@ export default function Settings() {
                     <Textarea value={business.businessDescription} onChange={e => setBusiness(p => ({ ...p, businessDescription: e.target.value }))} rows={3} className="resize-none" />
                   </Field>
                 </div>
-                <SaveBar onSave={() => saveSection("business", business)} saving={savingSection === "business"} />
+                <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
 
@@ -472,29 +480,23 @@ export default function Settings() {
                     </Field>
                   </div>
                 </div>
-                <SaveBar onSave={() => saveSection("schedule", schedule)} saving={savingSection === "schedule"} />
+                <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
 
             {/* ── Pagos ── */}
             {activeTab === "payments" && (
               <div className="space-y-5">
-                <p className="text-sm text-muted-foreground font-display">Parámetros financieros usados en presupuestos, reservas y cálculos de depósito.</p>
+                <p className="text-sm text-muted-foreground font-display">Parámetros financieros usados en reservas y cálculos de depósito. El IVA y la validez de presupuestos se configuran en <strong>Configuración → Ajustes del sistema</strong>.</p>
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="IVA por defecto (%)" hint="Se aplica a presupuestos y facturas">
-                    <Input type="number" min="0" max="100" value={payments.paymentVat} onChange={e => setPayments(p => ({ ...p, paymentVat: e.target.value }))} />
-                  </Field>
                   <Field label="Moneda">
                     <Input value={payments.paymentCurrency} onChange={e => setPayments(p => ({ ...p, paymentCurrency: e.target.value }))} placeholder="EUR" />
-                  </Field>
-                  <Field label="Validez de presupuestos (días)" hint="Días antes de que expire un presupuesto">
-                    <Input type="number" min="1" value={payments.paymentQuoteValidity} onChange={e => setPayments(p => ({ ...p, paymentQuoteValidity: e.target.value }))} />
                   </Field>
                   <Field label="Depósito por comensal en restaurante (€)" hint="Importe del depósito en reservas de restaurante">
                     <Input type="number" min="0" step="0.5" value={payments.paymentDepositRestaurant} onChange={e => setPayments(p => ({ ...p, paymentDepositRestaurant: e.target.value }))} />
                   </Field>
                 </div>
-                <SaveBar onSave={() => saveSection("payments", payments)} saving={savingSection === "payments"} />
+                <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
 
@@ -536,7 +538,7 @@ export default function Settings() {
                     <Input value={legalCompany.legalCompanyIban} onChange={e => setLegalCompany(p => ({ ...p, legalCompanyIban: e.target.value }))} placeholder="ES00 0000 0000 0000 0000 0000" />
                   </Field>
                 </div>
-                <SaveBar onSave={() => saveSection("legalCompany", legalCompany)} saving={savingSection === "legalCompany"} />
+                <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
 
@@ -558,27 +560,7 @@ export default function Settings() {
                     Las notificaciones SMS se configuran a través del conector de GoHighLevel (GHL). Activa la integración en la pestaña GoHighLevel.
                   </p>
                 </div>
-                <SaveBar onSave={() => saveSection("notifications", notifications)} saving={savingSection === "notifications"} />
-              </div>
-            )}
-
-            {/* ── GoHighLevel ── */}
-            {activeTab === "ghl" && (
-              <div className="space-y-5">
-                <p className="text-sm text-muted-foreground font-display">
-                  Sincroniza leads y contactos con tu CRM de GoHighLevel. Las credenciales se guardan de forma segura en la base de datos.
-                </p>
-                <GHLSection plain />
-              </div>
-            )}
-
-            {/* ── Preview email ── */}
-            {activeTab === "emailPreview" && (
-              <div className="space-y-5">
-                <p className="text-sm text-muted-foreground font-display">
-                  Envía una muestra de cualquier plantilla de email a la dirección que elijas para verificar el diseño.
-                </p>
-                <EmailPreviewSection plain />
+                <AutoSaveStatus saving={updateMutation.isPending} />
               </div>
             )}
 

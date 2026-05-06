@@ -381,6 +381,98 @@ async function ensureCriticalSeeds() {
   }
 }
 
+// ─── MIGRATE: site_settings → system_settings (fuente de verdad única) ───────
+async function migrateSiteSettingsToSystemSettings() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+
+    // 1. Seed nuevas claves en system_settings (INSERT IGNORE preserva valores existentes)
+    const seeds: [string, string, string, string, string, number, number][] = [
+      ["site_business_email",           "string", "negocio",       "Email de contacto",                        "Email público de contacto del negocio",                      0, 0],
+      ["site_business_description",     "string", "negocio",       "Descripción breve del negocio",            "Usada en SEO y cabeceras de email",                          0, 1],
+      ["site_schedule_high_open",       "string", "horarios",      "Temporada alta — apertura",                "Hora de apertura en temporada alta (HH:MM)",                 0, 1],
+      ["site_schedule_high_close",      "string", "horarios",      "Temporada alta — cierre",                  "Hora de cierre en temporada alta (HH:MM)",                   0, 1],
+      ["site_schedule_low_open",        "string", "horarios",      "Temporada baja — apertura",                "Hora de apertura en temporada baja (HH:MM)",                 0, 1],
+      ["site_schedule_low_close",       "string", "horarios",      "Temporada baja — cierre",                  "Hora de cierre en temporada baja (HH:MM)",                   0, 1],
+      ["site_schedule_days",            "string", "horarios",      "Días de apertura",                         "Texto libre de días operativos (ej: Lunes a Domingo)",       0, 1],
+      ["site_payment_currency",         "string", "pagos",         "Moneda",                                   "Código ISO de la moneda principal (EUR, USD…)",              0, 0],
+      ["site_payment_deposit_restaurant","number","pagos",         "Depósito por comensal en restaurante (€)", "Importe del depósito en reservas de restaurante",            0, 0],
+      ["site_legal_name",               "string", "fiscal",        "Razón social",                             "Nombre legal de la empresa facturadora",                     0, 0],
+      ["site_legal_phone",              "string", "fiscal",        "Teléfono fiscal",                          "Teléfono registrado ante la Agencia Tributaria",             0, 0],
+      ["site_legal_zip",                "string", "fiscal",        "Código postal",                            "CP del domicilio fiscal",                                    0, 0],
+      ["site_legal_city",               "string", "fiscal",        "Municipio",                                "Ciudad del domicilio fiscal",                                0, 0],
+      ["site_legal_province",           "string", "fiscal",        "Provincia",                                "Provincia del domicilio fiscal",                             0, 0],
+      ["site_legal_email",              "string", "fiscal",        "Email fiscal",                             "Email registrado en la Agencia Tributaria",                  0, 0],
+      ["site_legal_iban",               "string", "fiscal",        "IBAN (para liquidaciones)",                "Número de cuenta que aparece en documentos de liquidación",  0, 0],
+      ["site_notif_email_restaurant",   "string", "emails",        "Email de alertas de restaurante",          "Recibe notificaciones de nuevas reservas de restaurante",    0, 0],
+      ["site_ghl_api_key",              "string", "integraciones", "GoHighLevel API Key",                      "Credencial de API de GoHighLevel",                           1, 0],
+      ["site_ghl_location_id",          "string", "integraciones", "GoHighLevel Location ID",                  "Location ID del workspace de GoHighLevel",                   0, 0],
+    ];
+
+    for (const [key, valueType, category, label, description, isSensitive, isPublic] of seeds) {
+      await conn.execute(
+        `INSERT IGNORE INTO system_settings (\`key\`, value_type, category, label, description, is_sensitive, is_public)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [key, valueType, category, label, description, isSensitive, isPublic],
+      );
+    }
+
+    // 2. Migrar datos existentes de site_settings → system_settings (solo si destino vacío)
+    const KEY_MAP: Record<string, string> = {
+      businessName:             "brand_name",
+      businessPhone:            "brand_phone",
+      businessEmail:            "site_business_email",
+      businessAddress:          "brand_location",
+      businessWebsite:          "brand_website_url",
+      businessDescription:      "site_business_description",
+      scheduleHighOpen:         "site_schedule_high_open",
+      scheduleHighClose:        "site_schedule_high_close",
+      scheduleLowOpen:          "site_schedule_low_open",
+      scheduleLowClose:         "site_schedule_low_close",
+      scheduleDays:             "site_schedule_days",
+      paymentVat:               "tax_rate_general",
+      paymentCurrency:          "site_payment_currency",
+      paymentQuoteValidity:     "quote_validity_days",
+      paymentDepositRestaurant: "site_payment_deposit_restaurant",
+      legalCompanyName:         "site_legal_name",
+      legalCompanyCif:          "brand_nif",
+      legalCompanyPhone:        "site_legal_phone",
+      legalCompanyAddress:      "brand_address",
+      legalCompanyZip:          "site_legal_zip",
+      legalCompanyCity:         "site_legal_city",
+      legalCompanyProvince:     "site_legal_province",
+      legalCompanyEmail:        "site_legal_email",
+      legalCompanyIban:         "site_legal_iban",
+      notifEmailBooking:        "email_reservations",
+      notifEmailRestaurant:     "site_notif_email_restaurant",
+      ghlApiKey:                "site_ghl_api_key",
+      ghlLocationId:            "site_ghl_location_id",
+    };
+
+    const [tableCheck] = await conn.execute(
+      `SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'site_settings'`,
+    ) as any[];
+
+    if ((tableCheck as any[]).length > 0) {
+      const [siteRows] = await conn.execute("SELECT `key`, `value` FROM site_settings") as any[];
+      for (const row of siteRows as any[]) {
+        const sysKey = KEY_MAP[row.key];
+        if (!sysKey || !row.value) continue;
+        await conn.execute(
+          `UPDATE system_settings SET value = ? WHERE \`key\` = ? AND (value IS NULL OR value = '')`,
+          [row.value, sysKey],
+        );
+      }
+      console.log("[DB] Migración site_settings → system_settings completada");
+    }
+
+    await conn.end();
+  } catch (err) {
+    console.error("[DB] Error en migración site_settings:", err);
+  }
+}
+
 // ─── SEED: restaurar experiencias si la tabla está vacía ──────────────────────
 async function seedExperiencesIfEmpty() {
   try {
@@ -1173,6 +1265,7 @@ async function conditionallyStartJob(
 
 runMigrations()
   .then(() => ensureCriticalSeeds())
+  .then(() => migrateSiteSettingsToSystemSettings())
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
   .then(() => ensureDiscountColumns())

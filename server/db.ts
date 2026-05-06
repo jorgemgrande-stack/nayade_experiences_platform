@@ -6,7 +6,7 @@ import {
   users, InsertUser,
   experiences, categories, locations, experienceVariants,
   leads, quotes, bookings, bookingMonitors, dailyOrders,
-  transactions, slideshowItems, menuItems, mediaFiles, siteSettings,
+  transactions, slideshowItems, menuItems, mediaFiles, siteSettings, systemSettings,
   ghlWebhookLogs,
   homeModuleItems,
   packs, InsertPack,
@@ -47,18 +47,30 @@ export async function getDb() {
   return _db;
 }
 
-/** Carga credenciales GHL desde env vars con fallback a siteSettings en DB. */
+/** Carga credenciales GHL: env vars → systemSettings → siteSettings (legacy). */
 export async function getGHLCredentials(): Promise<{ apiKey: string; locationId: string } | null> {
   let apiKey = process.env.GHL_API_KEY;
   let locationId = process.env.GHL_LOCATION_ID;
   if (!apiKey || !locationId) {
     const db = await getDb();
     if (db) {
-      const rows = await db.select().from(siteSettings)
-        .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
-      const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
-      apiKey = apiKey || map.ghlApiKey || undefined;
-      locationId = locationId || map.ghlLocationId || undefined;
+      // Fuente de verdad: systemSettings (desde Fase 1 de la reorganización)
+      const sysRows = await db
+        .select({ key: systemSettings.key, value: systemSettings.value })
+        .from(systemSettings)
+        .where(sql`${systemSettings.key} IN ('site_ghl_api_key','site_ghl_location_id')`);
+      const sysMap = Object.fromEntries(sysRows.map(r => [r.key, r.value ?? ""]));
+      apiKey = apiKey || sysMap.site_ghl_api_key || undefined;
+      locationId = locationId || sysMap.site_ghl_location_id || undefined;
+
+      // Fallback legacy: siteSettings (datos pre-Fase 1)
+      if (!apiKey || !locationId) {
+        const legacyRows = await db.select().from(siteSettings)
+          .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
+        const legacyMap = Object.fromEntries(legacyRows.map(r => [r.key, r.value ?? ""]));
+        apiKey = apiKey || legacyMap.ghlApiKey || undefined;
+        locationId = locationId || legacyMap.ghlLocationId || undefined;
+      }
     }
   }
   if (!apiKey || !locationId) return null;
@@ -310,11 +322,22 @@ export async function createLead(data: {
     let ghlApiKey = process.env.GHL_API_KEY;
     let ghlLocationId = process.env.GHL_LOCATION_ID;
     if ((!ghlApiKey || !ghlLocationId) && db) {
-      const rows = await db.select().from(siteSettings)
-        .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
-      const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
-      ghlApiKey = ghlApiKey || map.ghlApiKey || undefined;
-      ghlLocationId = ghlLocationId || map.ghlLocationId || undefined;
+      // Fuente de verdad: systemSettings
+      const sysRows = await db
+        .select({ key: systemSettings.key, value: systemSettings.value })
+        .from(systemSettings)
+        .where(sql`${systemSettings.key} IN ('site_ghl_api_key','site_ghl_location_id')`);
+      const sysMap = Object.fromEntries(sysRows.map(r => [r.key, r.value ?? ""]));
+      ghlApiKey = ghlApiKey || sysMap.site_ghl_api_key || undefined;
+      ghlLocationId = ghlLocationId || sysMap.site_ghl_location_id || undefined;
+      // Fallback legacy: siteSettings
+      if (!ghlApiKey || !ghlLocationId) {
+        const legacyRows = await db.select().from(siteSettings)
+          .where(sql`${siteSettings.key} IN ('ghlApiKey','ghlLocationId')`);
+        const legacyMap = Object.fromEntries(legacyRows.map(r => [r.key, r.value ?? ""]));
+        ghlApiKey = ghlApiKey || legacyMap.ghlApiKey || undefined;
+        ghlLocationId = ghlLocationId || legacyMap.ghlLocationId || undefined;
+      }
     }
 
     if (!ghlApiKey || !ghlLocationId) return; // credenciales no configuradas — skip silencioso
