@@ -246,4 +246,77 @@ export const emailAccountsRouter = router({
       const result = await runCommercialEmailSync();
       return { ok: true, synced: result.synced, errors: result.errors };
     }),
+
+  // ─── IMAP folder management ────────────────────────────────────────────────
+
+  listFolders: staffProcedure
+    .input(z.object({ accountId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const [rows]: any = await _pool.execute(
+        "SELECT * FROM email_accounts WHERE id = ? LIMIT 1",
+        [input.accountId],
+      );
+      if (!(rows as any[]).length) throw new Error("Cuenta no encontrada");
+      const { listImapFolders } = await import("../services/commercialEmailService");
+      return await listImapFolders((rows as any[])[0]);
+    }),
+
+  createFolder: staffProcedure
+    .input(z.object({
+      accountId: z.number().int().positive(),
+      path: z.string().min(1).max(200),
+    }))
+    .mutation(async ({ input }) => {
+      const [rows]: any = await _pool.execute(
+        "SELECT * FROM email_accounts WHERE id = ? LIMIT 1",
+        [input.accountId],
+      );
+      if (!(rows as any[]).length) throw new Error("Cuenta no encontrada");
+      const { createImapFolder } = await import("../services/commercialEmailService");
+      await createImapFolder((rows as any[])[0], input.path);
+      return { ok: true };
+    }),
+
+  deleteFolder: staffProcedure
+    .input(z.object({
+      accountId: z.number().int().positive(),
+      path: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const [rows]: any = await _pool.execute(
+        "SELECT * FROM email_accounts WHERE id = ? LIMIT 1",
+        [input.accountId],
+      );
+      if (!(rows as any[]).length) throw new Error("Cuenta no encontrada");
+      const { deleteImapFolder } = await import("../services/commercialEmailService");
+      await deleteImapFolder((rows as any[])[0], input.path);
+      // Eliminar también los emails locales de esa carpeta
+      await _pool.execute(
+        "DELETE FROM commercial_emails WHERE account_id = ? AND folder = ?",
+        [input.accountId, input.path],
+      );
+      return { ok: true };
+    }),
+
+  renameFolder: staffProcedure
+    .input(z.object({
+      accountId: z.number().int().positive(),
+      oldPath: z.string().min(1),
+      newPath: z.string().min(1).max(200),
+    }))
+    .mutation(async ({ input }) => {
+      const [rows]: any = await _pool.execute(
+        "SELECT * FROM email_accounts WHERE id = ? LIMIT 1",
+        [input.accountId],
+      );
+      if (!(rows as any[]).length) throw new Error("Cuenta no encontrada");
+      const { renameImapFolder } = await import("../services/commercialEmailService");
+      await renameImapFolder((rows as any[])[0], input.oldPath, input.newPath);
+      // Actualizar registros locales
+      await _pool.execute(
+        "UPDATE commercial_emails SET folder = ? WHERE account_id = ? AND folder = ?",
+        [input.newPath, input.accountId, input.oldPath],
+      );
+      return { ok: true };
+    }),
 });

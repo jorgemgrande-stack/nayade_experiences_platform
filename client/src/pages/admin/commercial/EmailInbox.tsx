@@ -8,7 +8,8 @@ import AdminLayout from "@/components/AdminLayout";
 import {
   Mail, MailOpen, Send, Archive, Trash2, RefreshCw, Search,
   Inbox, Clock, ChevronLeft, ChevronRight, Reply, X,
-  User, ExternalLink, Loader2, PenSquare, Plus,
+  User, ExternalLink, Loader2, Plus, FolderPlus, Folder,
+  FolderOpen, Pencil, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -407,11 +408,100 @@ function EmailDetail({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+// ─── IMAP folder sidebar ─────────────────────────────────────────────────────
+
+// Standard IMAP folders that are already covered by virtual folders
+const VIRTUAL_IMAP_NAMES = new Set([
+  "inbox", "sent", "sent items", "sent messages",
+  "archive", "archives", "archivados", "archived",
+  "trash", "deleted", "deleted items", "papelera", "basura",
+  "junk", "spam", "drafts", "borradores",
+]);
+
+function isVirtualFolder(path: string) {
+  return VIRTUAL_IMAP_NAMES.has(path.toLowerCase());
+}
+
+function ImapFolderItem({
+  path, name, isSelected,
+  onSelect, onRename, onDelete,
+}: {
+  path: string; name: string; isSelected: boolean;
+  onSelect: () => void;
+  onRename: (newName: string) => void;
+  onDelete: () => void;
+}) {
+  const [editMode, setEditMode] = useState(false);
+  const [editVal, setEditVal] = useState(name);
+  const [showActions, setShowActions] = useState(false);
+
+  function commitRename() {
+    const trimmed = editVal.trim();
+    if (trimmed && trimmed !== name) onRename(trimmed);
+    setEditMode(false);
+  }
+
+  return (
+    <div
+      className={cn(
+        "group flex items-center gap-1 px-3 py-1.5 rounded-md mx-1 transition-colors cursor-pointer",
+        isSelected ? "bg-orange-500/15 text-orange-400" : "text-foreground/60 hover:text-foreground hover:bg-muted/50",
+      )}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => { setShowActions(false); }}
+      onClick={!editMode ? onSelect : undefined}
+    >
+      {isSelected
+        ? <FolderOpen className="w-3.5 h-3.5 shrink-0" />
+        : <Folder className="w-3.5 h-3.5 shrink-0" />}
+
+      {editMode ? (
+        <input
+          autoFocus
+          value={editVal}
+          onChange={e => setEditVal(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter") commitRename();
+            if (e.key === "Escape") setEditMode(false);
+          }}
+          onBlur={commitRename}
+          onClick={e => e.stopPropagation()}
+          className="flex-1 bg-transparent border-b border-orange-500 text-xs outline-none min-w-0"
+        />
+      ) : (
+        <span className="flex-1 text-xs truncate">{name}</span>
+      )}
+
+      {showActions && !editMode && (
+        <div className="flex items-center gap-0.5 ml-auto" onClick={e => e.stopPropagation()}>
+          <button
+            title="Renombrar"
+            onClick={() => { setEditVal(name); setEditMode(true); }}
+            className="p-0.5 text-foreground/30 hover:text-foreground/70"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+          <button
+            title="Eliminar"
+            onClick={onDelete}
+            className="p-0.5 text-foreground/30 hover:text-red-400"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function EmailInbox() {
   const utils = trpc.useUtils();
 
   // UI state
   const [folder, setFolder] = useState<Folder>("inbox");
+  const [imapFolder, setImapFolder] = useState<string | undefined>(undefined); // custom IMAP folder
   const [accountId, setAccountId] = useState<number | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -423,11 +513,23 @@ export default function EmailInbox() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [replyEmail, setReplyEmail] = useState<EmailRow | null>(null);
 
+  // New folder input
+  const [newFolderInput, setNewFolderInput] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+
   // Data
   const accounts = trpc.emailAccounts.list.useQuery();
+
+  // Resolve which account to query folders from (prefer explicit selection, fall back to first)
+  const folderAccountId = accountId ?? accounts.data?.[0]?.id;
   const stats = trpc.emailInbox.getStats.useQuery({ accountId });
+  const imapFolders = trpc.emailAccounts.listFolders.useQuery(
+    { accountId: folderAccountId! },
+    { enabled: !!folderAccountId, staleTime: 60_000 },
+  );
   const emails = trpc.emailInbox.listEmails.useQuery({
     folder,
+    imapFolder,
     accountId,
     search: search || undefined,
     onlyUnread,
@@ -464,10 +566,40 @@ export default function EmailInbox() {
     },
     onError: (e) => toast.error(e.message),
   });
+  const createFolderMut = trpc.emailAccounts.createFolder.useMutation({
+    onSuccess: () => {
+      utils.emailAccounts.listFolders.invalidate();
+      toast.success("Carpeta creada");
+      setNewFolderInput("");
+      setShowNewFolder(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteFolderMut = trpc.emailAccounts.deleteFolder.useMutation({
+    onSuccess: () => {
+      utils.emailAccounts.listFolders.invalidate();
+      utils.emailInbox.listEmails.invalidate();
+      if (imapFolder) { setImapFolder(undefined); setFolder("inbox"); }
+      toast.success("Carpeta eliminada");
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const renameFolderMut = trpc.emailAccounts.renameFolder.useMutation({
+    onSuccess: (_d, vars) => {
+      utils.emailAccounts.listFolders.invalidate();
+      utils.emailInbox.listEmails.invalidate();
+      if (imapFolder === vars.oldPath) setImapFolder(vars.newPath);
+      toast.success("Carpeta renombrada");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const s = stats.data;
   const total = emails.data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  // Custom IMAP folders (exclude those mapped to virtual folders)
+  const customFolders = (imapFolders.data ?? []).filter(f => !isVirtualFolder(f.path));
 
   const folderItems: { key: Folder; label: string; icon: React.ElementType; count?: number }[] = [
     { key: "inbox", label: "Recibidos", icon: Inbox, count: s?.unreadInbox },
@@ -486,6 +618,13 @@ export default function EmailInbox() {
 
   function handleFolderChange(f: Folder) {
     setFolder(f);
+    setImapFolder(undefined);
+    setPage(0);
+    setSelectedId(null);
+  }
+
+  function handleImapFolderChange(path: string) {
+    setImapFolder(path);
     setPage(0);
     setSelectedId(null);
   }
@@ -498,6 +637,12 @@ export default function EmailInbox() {
   function handleDelete(id: number) {
     deleteMut.mutate({ id, deleted: true });
     toast.success("Movido a Papelera");
+  }
+
+  function handleCreateFolder() {
+    const path = newFolderInput.trim();
+    if (!path || !folderAccountId) return;
+    createFolderMut.mutate({ accountId: folderAccountId, path });
   }
 
   return (
@@ -532,15 +677,16 @@ export default function EmailInbox() {
             </div>
           )}
 
-          {/* Folders */}
+          {/* Virtual folders + IMAP folders */}
           <nav className="flex-1 overflow-y-auto py-1">
+            {/* Standard virtual folders */}
             {folderItems.map(({ key, label, icon: Icon, count }) => (
               <button
                 key={key}
                 onClick={() => handleFolderChange(key)}
                 className={cn(
                   "w-full flex items-center justify-between px-3 py-2 text-sm rounded-md mx-1 transition-colors",
-                  folder === key
+                  !imapFolder && folder === key
                     ? "bg-orange-500/15 text-orange-400"
                     : "text-foreground/60 hover:text-foreground hover:bg-muted/50",
                 )}
@@ -556,6 +702,75 @@ export default function EmailInbox() {
                 )}
               </button>
             ))}
+
+            {/* Custom IMAP folders */}
+            {(customFolders.length > 0 || folderAccountId) && (
+              <div className="mt-2 pt-2 border-t border-border/50">
+                <div className="flex items-center justify-between px-3 mb-1">
+                  <span className="text-[10px] text-foreground/30 uppercase tracking-wider">Mis carpetas</span>
+                  <button
+                    title="Nueva carpeta"
+                    onClick={() => setShowNewFolder(v => !v)}
+                    className="text-foreground/30 hover:text-orange-400"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* New folder input */}
+                {showNewFolder && (
+                  <div className="flex items-center gap-1 px-2 mb-1">
+                    <input
+                      autoFocus
+                      value={newFolderInput}
+                      onChange={e => setNewFolderInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter") handleCreateFolder();
+                        if (e.key === "Escape") { setShowNewFolder(false); setNewFolderInput(""); }
+                      }}
+                      placeholder="Nombre carpeta"
+                      className="flex-1 h-6 text-xs bg-background border border-border rounded px-1.5 outline-none focus:border-orange-500"
+                    />
+                    <button
+                      onClick={handleCreateFolder}
+                      disabled={!newFolderInput.trim() || createFolderMut.isPending}
+                      className="text-orange-400 hover:text-orange-300 disabled:opacity-40"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {imapFolders.isLoading && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-foreground/30 text-xs">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Cargando…
+                  </div>
+                )}
+
+                {customFolders.map(f => (
+                  <ImapFolderItem
+                    key={f.path}
+                    path={f.path}
+                    name={f.name}
+                    isSelected={imapFolder === f.path}
+                    onSelect={() => handleImapFolderChange(f.path)}
+                    onRename={newName => {
+                      if (!folderAccountId) return;
+                      // Build new path: replace last segment
+                      const parts = f.path.split(f.delimiter ?? "/");
+                      parts[parts.length - 1] = newName;
+                      const newPath = parts.join(f.delimiter ?? "/");
+                      renameFolderMut.mutate({ accountId: folderAccountId, oldPath: f.path, newPath });
+                    }}
+                    onDelete={() => {
+                      if (!folderAccountId) return;
+                      if (!confirm(`¿Eliminar la carpeta "${f.name}" y todos sus emails?`)) return;
+                      deleteFolderMut.mutate({ accountId: folderAccountId, path: f.path });
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </nav>
 
           {/* Sync button */}

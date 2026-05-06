@@ -85,6 +85,7 @@ export const emailInboxRouter = router({
   listEmails: staffProcedure
     .input(z.object({
       folder: z.enum(["inbox", "sent", "archived", "deleted", "pending"]).default("inbox"),
+      imapFolder: z.string().optional(), // carpeta IMAP real (ej: "Work", "Projects/Alpha")
       accountId: z.number().int().positive().optional(),
       search: z.string().optional(),
       onlyUnread: z.boolean().default(false),
@@ -100,23 +101,28 @@ export const emailInboxRouter = router({
         params.push(input.accountId);
       }
 
-      switch (input.folder) {
-        case "inbox":
-          conditions.push("is_archived = FALSE AND is_sent = FALSE");
-          break;
-        case "sent":
-          conditions.push("is_sent = TRUE");
-          break;
-        case "archived":
-          conditions.push("is_archived = TRUE AND is_sent = FALSE");
-          break;
-        case "deleted":
-          // override first condition
-          conditions[0] = "is_deleted = TRUE";
-          break;
-        case "pending":
-          conditions.push("is_answered = FALSE AND is_sent = FALSE AND is_archived = FALSE AND is_read = TRUE");
-          break;
+      if (input.imapFolder) {
+        // Carpeta IMAP personalizada: filtra directamente por la columna folder
+        conditions.push("folder = ?");
+        params.push(input.imapFolder);
+      } else {
+        switch (input.folder) {
+          case "inbox":
+            conditions.push("is_archived = FALSE AND is_sent = FALSE");
+            break;
+          case "sent":
+            conditions.push("is_sent = TRUE");
+            break;
+          case "archived":
+            conditions.push("is_archived = TRUE AND is_sent = FALSE");
+            break;
+          case "deleted":
+            conditions[0] = "is_deleted = TRUE";
+            break;
+          case "pending":
+            conditions.push("is_answered = FALSE AND is_sent = FALSE AND is_archived = FALSE AND is_read = TRUE");
+            break;
+        }
       }
 
       if (input.onlyUnread) conditions.push("is_read = FALSE");

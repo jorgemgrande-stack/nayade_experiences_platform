@@ -305,6 +305,72 @@ async function syncAccount(account: any): Promise<{ synced: number; errors: numb
   return { synced, errors };
 }
 
+// ─── IMAP folder management ───────────────────────────────────────────────────
+
+function makeImapClient(account: any): ImapFlow {
+  return new ImapFlow({
+    host: account.imap_host,
+    port: Number(account.imap_port),
+    secure: Boolean(account.imap_secure),
+    auth: { user: account.imap_user, pass: decryptPassword(account.imap_password_enc) },
+    logger: false,
+    tls: { rejectUnauthorized: false },
+  });
+}
+
+export async function listImapFolders(account: any): Promise<Array<{
+  path: string;
+  name: string;
+  delimiter: string | null;
+  flags: string[];
+  specialUse: string | null;
+}>> {
+  const client = makeImapClient(account);
+  await client.connect();
+  try {
+    const list = await client.list();
+    return list.map((f: any) => ({
+      path: f.path,
+      name: f.name,
+      delimiter: f.delimiter ?? null,
+      flags: [...(f.flags ?? [])],
+      specialUse: f.specialUse ?? null,
+    }));
+  } finally {
+    try { await client.logout(); } catch {}
+  }
+}
+
+export async function createImapFolder(account: any, path: string): Promise<void> {
+  const client = makeImapClient(account);
+  await client.connect();
+  try {
+    await client.mailboxCreate(path);
+  } finally {
+    try { await client.logout(); } catch {}
+  }
+}
+
+export async function deleteImapFolder(account: any, path: string): Promise<void> {
+  const client = makeImapClient(account);
+  await client.connect();
+  try {
+    await client.mailboxDelete(path);
+  } finally {
+    try { await client.logout(); } catch {}
+  }
+}
+
+export async function renameImapFolder(account: any, oldPath: string, newPath: string): Promise<void> {
+  const client = makeImapClient(account);
+  await client.connect();
+  try {
+    await client.mailboxRename(oldPath, newPath);
+  } finally {
+    try { await client.logout(); } catch {}
+  }
+}
+
 // ─── Main sync cycle ──────────────────────────────────────────────────────────
 
 let isRunning = false;
