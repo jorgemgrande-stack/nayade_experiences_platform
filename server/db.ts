@@ -25,7 +25,7 @@ import {
   restaurantBookings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { createGHLContact, getGHLTagsFromSource } from "./ghl";
+import { createGHLContact, getGHLTagsFromSource, updateGHLContact } from "./ghl";
 import { generateDocumentNumber } from "./documentNumbers";
 
 export async function generateReservationNumber(): Promise<string> {
@@ -2210,6 +2210,8 @@ export async function postConfirmOperation(params: {
   sourceChannel?: "redsys" | "transferencia" | "efectivo" | "otro" | "tarjeta_fisica" | "tarjeta_redsys";
   // Vínculo con TPV
   tpvSaleId?: number | null;
+  // GHL: contacto para añadir tag reserva_confirmada
+  ghlContactId?: string | null;
 }) {
   const db = await getDb();
   if (!db) return { bookingId: null, transactionId: null };
@@ -2340,6 +2342,16 @@ export async function postConfirmOperation(params: {
     }
   } catch (e) {
     console.error("[postConfirmOperation] Error en reservation_operational:", e);
+  }
+
+  // 5. Tag reserva_confirmada en GHL (fire-and-forget)
+  if (params.ghlContactId) {
+    getGHLCredentials().then(ghlCreds => {
+      if (!ghlCreds) return;
+      updateGHLContact(params.ghlContactId!, { tags: ["reserva_confirmada"] }, ghlCreds).catch(e => {
+        console.warn("[postConfirmOperation] Error añadiendo tag reserva_confirmada a GHL:", e);
+      });
+    });
   }
 
   return { bookingId, transactionId };
