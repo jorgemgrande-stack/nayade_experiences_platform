@@ -25,7 +25,7 @@ import {
   restaurantBookings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { createGHLContact, getGHLTagsFromSource, updateGHLContact } from "./ghl";
+import { createGHLContact, getGHLTagsFromSource, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 import { generateDocumentNumber } from "./documentNumbers";
 
 export async function generateReservationNumber(): Promise<string> {
@@ -363,6 +363,20 @@ export async function createLead(data: {
           .set({ ghlContactId, updatedAt: new Date() } as any)
           .where(eq(leads.id, leadId));
         console.log(`[GHL] ghlContactId ${ghlContactId} persistido en lead #${leadId}`);
+
+        // Disparar workflow trigger de GHL si está configurado
+        const webhookUrl = process.env.GHL_LEAD_WEBHOOK_URL;
+        if (webhookUrl) {
+          triggerGHLWorkflow(webhookUrl, {
+            contactId: ghlContactId,
+            leadId,
+            name: data.name,
+            email: data.email ?? null,
+            phone: data.phone ?? null,
+            source: ghlSource,
+            message: data.message ?? null,
+          }).catch(() => {}); // fire-and-forget
+        }
       } else if (!ghlContactId && db) {
         // GHL devolvió null — registrar el fallo en ghlWebhookLogs para trazabilidad
         await db.insert(ghlWebhookLogs).values({

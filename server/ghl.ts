@@ -342,3 +342,36 @@ export function getGHLTagsFromSource(source: string): string[] {
   };
   return tagMap[source] ?? ["Lead Web"];
 }
+
+/**
+ * Dispara un webhook trigger de GHL (workflow automation).
+ * Se usa para notificar a GHL de eventos relevantes (nuevo lead, reserva confirmada, etc.)
+ * y activar los workflows configurados en GHL.
+ * Fire-and-forget — devuelve false si falla sin lanzar excepción.
+ */
+export async function triggerGHLWorkflow(
+  webhookUrl: string,
+  payload: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      ghlLog("error", "trigger_workflow", "Error al disparar webhook trigger de GHL", {
+        url: webhookUrl, httpStatus: response.status, errorBody: errorText,
+      });
+      return false;
+    }
+    ghlLog("info", "trigger_workflow", "Webhook trigger GHL disparado correctamente", { url: webhookUrl });
+    return true;
+  } catch (err: any) {
+    ghlLog("error", "trigger_workflow", "Excepción al disparar webhook trigger de GHL", {
+      url: webhookUrl, stack: err?.stack,
+    });
+    return false;
+  }
+}
