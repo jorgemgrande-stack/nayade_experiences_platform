@@ -1930,6 +1930,7 @@ export const crmRouter = router({
             description: `Pago CRM — ${quote.quoteNumber} — ${lead.name}`,
             quoteId: quote.id,
             sourceChannel: "otro",
+            ghlContactId: (lead as any).ghlContactId ?? null,
           });
           await logActivity("reservation", reservationId, "booking_and_transaction_created", ctx.user.id, ctx.user.name, { invoiceNumber, serviceDate });
         } catch (e) {
@@ -2311,6 +2312,7 @@ export const crmRouter = router({
             description: `Transferencia CRM — ${quote.quoteNumber} — ${lead.name}`,
             quoteId: quote.id,
             sourceChannel: "transferencia",
+            ghlContactId: (lead as any).ghlContactId ?? null,
           });
         } catch (e) { console.error("[confirmTransfer] Error en postConfirmOperation:", e); }
         try {
