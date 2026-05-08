@@ -1967,6 +1967,7 @@ export const couponRedemptions = mysqlTable("coupon_redemptions", {
   // Admin
   adminUserId: int("adminUserId"),
   notes: text("notes"),
+  ghlContactId: varchar("ghlContactId", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -2110,6 +2111,7 @@ export const cancellationRequests = mysqlTable("cancellation_requests", {
   refundProofUrl: varchar("refund_proof_url", { length: 512 }),
   adminNotes: text("admin_notes"),
   assignedUserId: int("assigned_user_id"),
+  ghlContactId: varchar("ghl_contact_id", { length: 128 }),
   closedAt: timestamp("closed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),

@@ -34,7 +34,8 @@ import {
 } from "../emailTemplates";
 import { storagePut } from "../storage";
 import { generateDocumentNumber } from "../documentNumbers";
-import { logActivity } from "../db";
+import { logActivity, getGHLCredentials } from "../db";
+import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
@@ -508,6 +509,21 @@ export const cancellationsRouter = router({
         }
       ).catch(() => {});
 
+      // GHL — fire and forget
+      if (input.email) {
+        setImmediate(async () => {
+          try {
+            const creds = await getGHLCredentials();
+            if (!creds) return;
+            const ghlId = await createGHLContact({ name: input.fullName, email: input.email!, phone: input.phone }, creds);
+            if (ghlId) {
+              await db.update(cancellationRequests).set({ ghlContactId: ghlId }).where(eq(cancellationRequests.id, requestId));
+              await updateGHLContact(ghlId, { tags: ["anulacion_recibida"] }, creds);
+            }
+          } catch { /* silent */ }
+        });
+      }
+
       return { success: true, requestId };
     }),
 
@@ -787,6 +803,22 @@ export const cancellationsRouter = router({
         await addLog(input.id, "email_sent", { type: "rechazo", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
       }
 
+      // GHL — fire and forget
+      if (req.email) {
+        setImmediate(async () => {
+          try {
+            const creds = await getGHLCredentials();
+            if (!creds) return;
+            let ghlId = req.ghlContactId ?? null;
+            if (!ghlId) {
+              ghlId = await createGHLContact({ name: req.fullName, email: req.email!, phone: req.phone ?? undefined }, creds);
+              if (ghlId) await db.update(cancellationRequests).set({ ghlContactId: ghlId }).where(eq(cancellationRequests.id, input.id));
+            }
+            if (ghlId) await updateGHLContact(ghlId, { tags: ["anulacion_rechazada"] }, creds);
+          } catch { /* silent */ }
+        });
+      }
+
       return { success: true };
     }),
 
@@ -956,6 +988,25 @@ export const cancellationsRouter = router({
           }).catch(() => {});
           await addLog(input.id, "email_sent", { type: "aceptacion_bono", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
         }
+      }
+
+      // GHL — fire and forget
+      if (req.email) {
+        setImmediate(async () => {
+          try {
+            const creds = await getGHLCredentials();
+            if (!creds) return;
+            let ghlId = req.ghlContactId ?? null;
+            if (!ghlId) {
+              ghlId = await createGHLContact({ name: req.fullName, email: req.email!, phone: req.phone ?? undefined }, creds);
+              if (ghlId) await db.update(cancellationRequests).set({ ghlContactId: ghlId }).where(eq(cancellationRequests.id, input.id));
+            }
+            if (ghlId) {
+              const tag = input.compensationType === "devolucion" ? "anulacion_aceptada_devolucion" : "anulacion_aceptada_bono";
+              await updateGHLContact(ghlId, { tags: [tag] }, creds);
+            }
+          } catch { /* silent */ }
+        });
       }
 
       // ── Propagación: bifurca según ámbito ────────────────────────────────────

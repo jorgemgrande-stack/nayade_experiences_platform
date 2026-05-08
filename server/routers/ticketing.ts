@@ -25,7 +25,8 @@ import { sendEmail as sharedSendEmail } from "../mailer";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
-import { postConfirmOperation, logActivity, generateReservationNumber } from "../db";
+import { postConfirmOperation, logActivity, generateReservationNumber, getGHLCredentials } from "../db";
+import { createGHLContact, updateGHLContact } from "../ghl";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { getSystemSettingSync } from "../config";
 
@@ -462,6 +463,20 @@ export const ticketingRouter = router({
       }
 
       if (validResults.length > 0) {
+        // GHL — fire and forget
+        const acceptedIds = results.filter(r => r.accepted && r.redemptionId).map(r => r.redemptionId!);
+        setImmediate(async () => {
+          try {
+            const creds = await getGHLCredentials();
+            if (!creds) return;
+            const ghlId = await createGHLContact({ name: input.customerName, email: input.email, phone: input.phone }, creds);
+            if (ghlId) {
+              if (acceptedIds.length > 0) await db.update(couponRedemptions).set({ ghlContactId: ghlId }).where(inArray(couponRedemptions.id, acceptedIds));
+              await updateGHLContact(ghlId, { tags: ["cupon_recibido"] }, creds);
+            }
+          } catch { /* silent */ }
+        });
+
         // Email confirmación cliente
         sendEmail({
           to: input.email,
@@ -666,6 +681,20 @@ export const ticketingRouter = router({
         }),
       }).catch(console.error);
 
+      // GHL — fire and forget
+      setImmediate(async () => {
+        try {
+          const creds = await getGHLCredentials();
+          if (!creds) return;
+          let ghlId = item.ghlContactId ?? null;
+          if (!ghlId) {
+            ghlId = await createGHLContact({ name: item.customerName, email: item.email, phone: item.phone ?? undefined }, creds);
+            if (ghlId) await db.update(couponRedemptions).set({ ghlContactId: ghlId }).where(eq(couponRedemptions.id, input.id));
+          }
+          if (ghlId) await updateGHLContact(ghlId, { tags: ["cupon_pospuesto"] }, creds);
+        } catch { /* silent */ }
+      });
+
       return { success: true };
     }),
 
@@ -679,6 +708,23 @@ export const ticketingRouter = router({
       await db.update(couponRedemptions)
         .set({ statusFinancial: "incidencia", notes: input.notes ?? null, adminUserId: ctx.user.id })
         .where(eq(couponRedemptions.id, input.id));
+
+      // GHL — fire and forget
+      setImmediate(async () => {
+        try {
+          const creds = await getGHLCredentials();
+          if (!creds) return;
+          const [cur] = await db.select({ ghlContactId: couponRedemptions.ghlContactId, email: couponRedemptions.email, customerName: couponRedemptions.customerName, phone: couponRedemptions.phone }).from(couponRedemptions).where(eq(couponRedemptions.id, input.id)).limit(1);
+          if (!cur) return;
+          let ghlId = cur.ghlContactId ?? null;
+          if (!ghlId && cur.email) {
+            ghlId = await createGHLContact({ name: cur.customerName, email: cur.email, phone: cur.phone ?? undefined }, creds);
+            if (ghlId) await db.update(couponRedemptions).set({ ghlContactId: ghlId }).where(eq(couponRedemptions.id, input.id));
+          }
+          if (ghlId) await updateGHLContact(ghlId, { tags: ["cupon_incidencia"] }, creds);
+        } catch { /* silent */ }
+      });
+
       return { success: true };
     }),
 
@@ -843,6 +889,20 @@ export const ticketingRouter = router({
           merchantOrder,
         }
       ).catch(() => {});
+
+      // GHL — fire and forget
+      setImmediate(async () => {
+        try {
+          const creds = await getGHLCredentials();
+          if (!creds) return;
+          let ghlId = item.ghlContactId ?? null;
+          if (!ghlId) {
+            ghlId = await createGHLContact({ name: item.customerName, email: item.email, phone: item.phone ?? undefined }, creds);
+            if (ghlId) await db.update(couponRedemptions).set({ ghlContactId: ghlId }).where(eq(couponRedemptions.id, input.id));
+          }
+          if (ghlId) await updateGHLContact(ghlId, { tags: ["cupon_convertido"] }, creds);
+        } catch { /* silent */ }
+      });
 
       return { success: true, reservationId, productName: resolvedProductName, pvpPrice: resolvedPvpPrice, netPrice: resolvedNetPrice };
     }),
@@ -1644,6 +1704,20 @@ export const ticketingRouter = router({
         submissionId,
       });
       const redemptionId = (result as { insertId: number }).insertId;
+
+      // GHL — fire and forget
+      setImmediate(async () => {
+        try {
+          const creds = await getGHLCredentials();
+          if (!creds) return;
+          const ghlId = await createGHLContact({ name: input.customerName, email: input.email, phone: input.phone }, creds);
+          if (ghlId) {
+            await db.update(couponRedemptions).set({ ghlContactId: ghlId }).where(eq(couponRedemptions.id, redemptionId));
+            await updateGHLContact(ghlId, { tags: ["cupon_recibido"] }, creds);
+          }
+        } catch { /* silent */ }
+      });
+
       // Upsert cliente en CRM — SELECT + INSERT/UPDATE
       try {
         const [existingClient2] = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).where(eq(clients.email, input.email)).limit(1);
