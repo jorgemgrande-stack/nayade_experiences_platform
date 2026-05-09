@@ -99,6 +99,11 @@ export async function initCommercialEmailTables(): Promise<void> {
         INDEX idx_ce_is_read (is_read)
       )
     `);
+    // Add attachments_meta column if missing (schema drift fix)
+    await pool.execute(
+      `ALTER TABLE commercial_emails ADD COLUMN attachments_meta JSON NULL AFTER has_attachments`,
+    ).catch((e: any) => { if (e.code !== "ER_DUP_FIELDNAME") throw e; });
+
     console.log("[CommercialEmail] Tablas verificadas/creadas OK");
   } catch (err: any) {
     console.error("[CommercialEmail] Error creando tablas:", err.message);
