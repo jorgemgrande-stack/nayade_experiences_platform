@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Building2, Plus, LogOut, Loader2, LayoutDashboard } from "lucide-react";
+import { trpc } from "@/lib/trpc";
+import { Building2, Plus, LogOut, Loader2, LayoutDashboard, CalendarCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function PartnerLayout({ children }: { children: React.ReactNode }) {
@@ -29,8 +30,20 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   if (role !== "partner_admin" && role !== "partner_user") return null;
 
   return (
+    <PartnerLayoutInner user={user} location={location} navigate={navigate} logout={logout}>
+      {children}
+    </PartnerLayoutInner>
+  );
+}
+
+function PartnerLayoutInner({ user, location, navigate, logout, children }: {
+  user: any; location: string; navigate: any; logout: any; children: React.ReactNode;
+}) {
+  const { data: partner } = trpc.partners.getMyPartner.useQuery();
+  const canReserve = partner?.canCreateReservations ?? false;
+
+  return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top navbar */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
@@ -59,6 +72,18 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
                   Nuevo lead
                 </button>
               </Link>
+              {canReserve && (
+                <Link href="/partner/reservas/nueva">
+                  <button className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    location.startsWith("/partner/reservas")
+                      ? "bg-orange-50 text-orange-600 font-medium"
+                      : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                  }`}>
+                    <CalendarCheck className="w-4 h-4" />
+                    Nueva reserva
+                  </button>
+                </Link>
+              )}
             </nav>
           </div>
 

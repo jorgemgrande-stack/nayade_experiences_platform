@@ -13,7 +13,8 @@ import { partners, users, leads } from "../../drizzle/schema";
 import { eq, desc } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
-import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword } from "../db";
+import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, postConfirmOperation, generateReservationNumber } from "../db";
+import { reservations } from "../../drizzle/schema";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
@@ -375,6 +376,103 @@ export const partnersRouter = router({
         .from(leads)
         .where(eq((leads as any).partnerId, user.partnerId))
         .orderBy(desc(leads.createdAt))
+        .limit(100);
+      return rows;
+    }),
+
+  // ── PARTNER: Crear reserva directa confirmada ─────────────────────────────
+  createReservation: partnerProcedure
+    .input(z.object({
+      customerName: z.string().min(2),
+      customerEmail: z.string().email(),
+      customerPhone: z.string().optional(),
+      productId: z.number().int(),
+      productName: z.string().min(1),
+      bookingDate: z.string().min(1),
+      people: z.number().int().min(1),
+      amountTotal: z.number().min(0),     // en euros
+      notes: z.string().optional(),
+      selectedTimeSlotId: z.number().int().optional(),
+      selectedTime: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const user = ctx.user as any;
+
+      // Verificar permisos del partner
+      const [partner] = await db.select().from(partners).where(eq(partners.id, user.partnerId)).limit(1);
+      if (!partner) throw new TRPCError({ code: "FORBIDDEN", message: "Partner no encontrado" });
+      if (!partner.canCreateReservations) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Tu partner no tiene permiso para crear reservas directas" });
+      }
+
+      // Verificar producto permitido (si hay lista restringida)
+      const allowedIds = partner.allowedReservationProductIds as number[] | null;
+      if (allowedIds && allowedIds.length > 0 && !allowedIds.includes(input.productId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Este producto no está disponible para tu partner" });
+      }
+
+      const amountCents = Math.round(input.amountTotal * 100);
+      const merchantOrder = `PAR${Date.now().toString(36).slice(-8).toUpperCase()}`;
+      const reservationNumber = await generateReservationNumber();
+      const now = Date.now();
+
+      const [result] = await db.insert(reservations).values({
+        productId: input.productId,
+        productName: input.productName,
+        bookingDate: input.bookingDate,
+        people: input.people,
+        amountTotal: amountCents,
+        amountPaid: 0,
+        status: "paid",
+        statusReservation: "CONFIRMADA",
+        statusPayment: "PENDIENTE",
+        channel: "PARTNER",
+        paymentMethod: "otro",
+        customerName: input.customerName,
+        customerEmail: input.customerEmail,
+        customerPhone: input.customerPhone ?? null,
+        merchantOrder,
+        reservationNumber,
+        notes: input.notes ?? `Reserva directa creada por partner ${partner.name}`,
+        selectedTimeSlotId: input.selectedTimeSlotId ?? null,
+        selectedTime: input.selectedTime ?? null,
+        partnerId: user.partnerId,
+        partnerUserId: user.id,
+        createdAt: now,
+        updatedAt: now,
+      } as any);
+
+      const reservationId = (result as any).insertId as number;
+
+      // Crear booking operativo + transacción contable (fire-and-forget, no bloquea)
+      postConfirmOperation({
+        reservationId,
+        productId: input.productId,
+        productName: input.productName,
+        serviceDate: input.bookingDate,
+        people: input.people,
+        amountCents,
+        customerName: input.customerName,
+        customerEmail: input.customerEmail,
+        customerPhone: input.customerPhone,
+        totalAmount: input.amountTotal,
+        paymentMethod: "otro",
+        saleChannel: "delegado",
+        sourceChannel: "otro",
+      }).catch((e: any) => console.error("[Partners] Error en postConfirmOperation:", e.message));
+
+      return { reservationId, reservationNumber, merchantOrder };
+    }),
+
+  // ── PARTNER: Listar mis reservas directas ─────────────────────────────────
+  listMyReservations: partnerProcedure
+    .query(async ({ ctx }) => {
+      const user = ctx.user as any;
+      const rows = await db
+        .select()
+        .from(reservations)
+        .where(eq((reservations as any).partnerId, user.partnerId))
+        .orderBy(desc(reservations.createdAt))
         .limit(100);
       return rows;
     }),

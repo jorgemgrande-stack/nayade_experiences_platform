@@ -124,6 +124,7 @@ const PartnersManager = lazy(() => import("./pages/admin/partners/PartnersManage
 const ActivarPartner = lazy(() => import("./pages/partner/ActivarPartner"));
 const PartnerDashboard = lazy(() => import("./pages/partner/PartnerDashboard"));
 const PartnerLeadNuevo = lazy(() => import("./pages/partner/PartnerLeadNuevo"));
+const PartnerReservaNueva = lazy(() => import("./pages/partner/PartnerReservaNueva"));
 
 // Suppliers & Settlements
 const SuppliersManager = lazy(() => import("./pages/admin/suppliers/SuppliersManager"));
@@ -198,6 +199,7 @@ function Router() {
       <Route path="/partner/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivarPartner /></Suspense>}</Route>
       <Route path="/partner/dashboard">{() => <Suspense fallback={<AdminLoadingFallback />}><PartnerDashboard /></Suspense>}</Route>
       <Route path="/partner/leads/nuevo">{() => <Suspense fallback={<AdminLoadingFallback />}><PartnerLeadNuevo /></Suspense>}</Route>
+      <Route path="/partner/reservas/nueva">{() => <Suspense fallback={<AdminLoadingFallback />}><PartnerReservaNueva /></Suspense>}</Route>
       <Route path="/partner">{() => { window.location.replace("/partner/dashboard"); return null; }}</Route>
       {/* ── LEGAL PAGES ── */}
       <Route path="/privacidad" component={PoliticaPrivacidad} />
