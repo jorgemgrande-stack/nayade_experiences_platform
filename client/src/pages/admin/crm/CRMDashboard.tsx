@@ -6711,7 +6711,20 @@ export default function CRMDashboard() {
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px]">
+              <table className="w-full min-w-[1100px] table-fixed">
+                <colgroup>
+                  <col style={{width:"40px"}} />
+                  <col style={{width:"145px"}} />
+                  <col />
+                  <col style={{width:"185px"}} className="hidden md:table-column" />
+                  <col style={{width:"135px"}} />
+                  <col style={{width:"105px"}} />
+                  <col style={{width:"95px"}} className="hidden xl:table-column" />
+                  <col style={{width:"95px"}} className="hidden lg:table-column" />
+                  <col style={{width:"105px"}} className="hidden lg:table-column" />
+                  <col style={{width:"90px"}} />
+                  <col style={{width:"190px"}} />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                     <th className="w-10 px-3 py-3">
@@ -6726,7 +6739,7 @@ export default function CRMDashboard() {
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">F. Compra</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">F. Actividad</th>
                     <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Importe</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap w-[180px]">Acciones</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6751,18 +6764,18 @@ export default function CRMDashboard() {
                         )}
                       </td>
                       {/* Cliente */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 overflow-hidden">
                         {(res as typeof res & { clientId?: number }).clientId ? (
                           <a
                             href={`/admin/crm/clientes?clientId=${(res as typeof res & { clientId?: number }).clientId}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors block"
+                            className="text-sm font-medium text-foreground hover:text-blue-300 hover:underline transition-colors block truncate"
                           >{res.customerName}</a>
                         ) : (
-                          <div className="text-sm font-medium text-foreground">{res.customerName}</div>
+                          <div className="text-sm font-medium text-foreground truncate">{res.customerName}</div>
                         )}
-                        <div className="text-xs text-foreground/50">{res.customerEmail}</div>
-                        {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5">{res.customerPhone}</div>}
+                        <div className="text-xs text-foreground/50 truncate">{res.customerEmail}</div>
+                        {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5 truncate">{res.customerPhone}</div>}
                         {res.merchantOrder && <div className="text-xs font-mono text-foreground/30 mt-0.5">{res.merchantOrder}</div>}
                       </td>
                       {/* Producto */}
