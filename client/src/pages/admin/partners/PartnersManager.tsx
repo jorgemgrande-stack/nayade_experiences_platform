@@ -12,7 +12,7 @@ import {
   Plus, Search, Building2, Users, Edit2, ToggleLeft, ToggleRight,
   ChevronRight, Mail, Phone, X, Check, AlertCircle, UserPlus, Trash2,
   CreditCard, RefreshCw, KeyRound, Send, Eye, EyeOff,
-  ClipboardList, CalendarDays, TrendingUp, Euro,
+  ClipboardList, CalendarDays, TrendingUp, Euro, BellRing, Megaphone,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -703,6 +703,115 @@ function PartnerOperationsPanel({ partnerId }: { partnerId: number }) {
   );
 }
 
+// ─── Panel de notas/avisos al partner ────────────────────────────────────────
+
+function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
+  const utils = trpc.useUtils();
+  const { data: rawAnnouncements = [] } = trpc.partners.getAnnouncements.useQuery(undefined, { enabled: false }) as any;
+  // Para admin usamos adminSaveAnnouncements directamente con estado local
+  const [announcements, setAnnouncements] = useState<{id: string; text: string; isNew: boolean; createdAt: string}[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [newText, setNewText] = useState("");
+
+  const { data: partnerData } = trpc.partners.get.useQuery({ id: partnerId });
+
+  // Cargar anuncios del partner cuando llegan datos
+  if (partnerData && !loaded) {
+    const ann = (partnerData as any).announcements;
+    setAnnouncements(Array.isArray(ann) ? ann : []);
+    setLoaded(true);
+  }
+
+  const saveMut = trpc.partners.adminSaveAnnouncements.useMutation({
+    onSuccess: () => {
+      utils.partners.get.invalidate();
+      toast.success("Notas guardadas");
+    },
+    onError: (e) => toast.error("Error: " + e.message),
+  });
+
+  function addNote() {
+    if (!newText.trim()) return;
+    const note = { id: crypto.randomUUID(), text: newText.trim(), isNew: true, createdAt: new Date().toISOString() };
+    const updated = [...announcements, note];
+    setAnnouncements(updated);
+    saveMut.mutate({ partnerId, announcements: updated });
+    setNewText("");
+  }
+
+  function removeNote(id: string) {
+    const updated = announcements.filter(a => a.id !== id);
+    setAnnouncements(updated);
+    saveMut.mutate({ partnerId, announcements: updated });
+  }
+
+  function toggleNew(id: string) {
+    const updated = announcements.map(a => a.id === id ? { ...a, isNew: !a.isNew } : a);
+    setAnnouncements(updated);
+    saveMut.mutate({ partnerId, announcements: updated });
+  }
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold text-foreground/70 uppercase tracking-wider flex items-center gap-2">
+        <Megaphone className="w-4 h-4 text-amber-400" />
+        Notas / Avisos al partner
+        <span className="text-xs font-normal text-foreground/30 normal-case">(aparecen en modal al acceder al portal)</span>
+      </h3>
+
+      {/* Nota nueva */}
+      <div className="flex gap-2">
+        <Input
+          value={newText}
+          onChange={e => setNewText(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && addNote()}
+          placeholder="Ej: Las actividades acuáticas están suspendidas hoy por mal tiempo"
+          className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
+        />
+        <Button size="sm" onClick={addNote} disabled={!newText.trim() || saveMut.isPending}
+          className="bg-amber-500 hover:bg-amber-600 text-white shrink-0">
+          <Plus className="w-3.5 h-3.5 mr-1" /> Añadir
+        </Button>
+      </div>
+
+      {/* Lista de notas */}
+      {announcements.length === 0 ? (
+        <p className="text-xs text-foreground/30 italic">Sin notas activas para este partner</p>
+      ) : (
+        <div className="space-y-2">
+          {announcements.map(a => (
+            <div key={a.id} className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-foreground/80">{a.text}</p>
+                <p className="text-[10px] text-foreground/30 mt-1">
+                  {new Date(a.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => toggleNew(a.id)}
+                  title={a.isNew ? "Marcar como leída" : "Marcar como nueva"}
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                    a.isNew
+                      ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                      : "bg-foreground/[0.08] text-foreground/30 border-foreground/20 hover:bg-foreground/[0.15]"
+                  }`}
+                >
+                  {a.isNew ? "🔴 Nueva" : "Leída"}
+                </button>
+                <button onClick={() => removeNote(a.id)}
+                  className="text-foreground/20 hover:text-red-400 transition-colors">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function PartnersManager() {
@@ -1010,13 +1119,18 @@ export default function PartnersManager() {
                   <PartnerOperationsPanel partnerId={selectedPartner.id} />
                 </div>
 
-                {/* Notas */}
+                {/* Notas internas (admin) */}
                 {selectedPartner.notes && (
                   <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
                     <p className="text-xs text-amber-400/70 font-semibold uppercase tracking-wider mb-1">Notas internas</p>
                     <p className="text-sm text-foreground/70">{selectedPartner.notes}</p>
                   </div>
                 )}
+
+                {/* Notas visibles al partner */}
+                <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4">
+                  <PartnerAnnouncementsPanel partnerId={selectedPartner.id} />
+                </div>
               </div>
             )}
 

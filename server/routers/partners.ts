@@ -716,6 +716,36 @@ export const partnersRouter = router({
       return { ok: true };
     }),
 
+  // ── PARTNER: Notas/anuncios del admin al partner ─────────────────────────
+  getAnnouncements: partnerProcedure
+    .query(async ({ ctx }) => {
+      const user = ctx.user as any;
+      const [partner] = await db
+        .select({ announcements: partners.announcements })
+        .from(partners)
+        .where(eq(partners.id, user.partnerId))
+        .limit(1);
+      return (partner?.announcements as any[]) ?? [];
+    }),
+
+  // ── ADMIN: Guardar notas/anuncios para un partner ─────────────────────────
+  adminSaveAnnouncements: adminProcedure
+    .input(z.object({
+      partnerId: z.number().int(),
+      announcements: z.array(z.object({
+        id: z.string(),
+        text: z.string().min(1),
+        isNew: z.boolean(),
+        createdAt: z.string(),
+      })),
+    }))
+    .mutation(async ({ input }) => {
+      await db.update(partners)
+        .set({ announcements: input.announcements } as any)
+        .where(eq(partners.id, input.partnerId));
+      return { ok: true };
+    }),
+
   // ── PARTNER: Productos disponibles para reservar ─────────────────────────
   getAvailableProducts: partnerProcedure
     .query(async ({ ctx }) => {

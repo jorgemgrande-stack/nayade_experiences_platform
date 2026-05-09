@@ -962,6 +962,7 @@ async function ensureExpenseEmailIngestionSchema() {
       { table: "partners", column: "notes",                        ddl: "text NULL" },
       { table: "partners", column: "createdAt",                    ddl: "timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP" },
       { table: "partners", column: "updatedAt",                    ddl: "timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" },
+      { table: "partners", column: "announcements",                ddl: "json NULL" },
     ];
     for (const { table, column, ddl } of partnerColsToAdd) {
       const [existing] = await conn.execute(
