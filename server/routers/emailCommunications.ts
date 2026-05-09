@@ -17,6 +17,7 @@ import {
 } from "../../drizzle/schema";
 import { eq, and, desc, asc, gte, lte, like, count, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
+import { runEmailAutomationJob } from "../emailAutomationJob";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
@@ -328,6 +329,17 @@ export const emailCommunicationsRouter = router({
       activeTemplates,
       activeRules,
     };
+  }),
+
+  // ── Manual trigger del automation job ────────────────────────────────────
+
+  runAutomationJobNow: staff.mutation(async () => {
+    try {
+      const result = await runEmailAutomationJob(true); // forceRun=true omite el feature flag
+      return { ok: true, ...result };
+    } catch (err: any) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: err?.message ?? "Error ejecutando job" });
+    }
   }),
 
   // ── Test email ─────────────────────────────────────────────────────────────

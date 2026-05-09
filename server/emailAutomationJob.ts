@@ -62,12 +62,21 @@ function isWithinWindow(start: string, end: string): boolean {
 const PAID_STATUSES = ["pagado", "convertido_reserva", "facturado"] as const;
 const CONVERTED_STATUSES = ["convertido_reserva", "pagado", "facturado"] as const;
 
-export async function runEmailAutomationJob(): Promise<void> {
-  // Feature flag
-  const enabled = await getFeatureFlag("email_automation_job_enabled");
-  if (!enabled) {
-    log("info", "Feature flag desactivado — job omitido");
-    return;
+export interface AutomationJobResult {
+  processed: number;
+  sent: number;
+  skipped: number;
+  failed: number;
+}
+
+export async function runEmailAutomationJob(forceRun = false): Promise<AutomationJobResult> {
+  // Feature flag (omitir si se fuerza la ejecución manual)
+  if (!forceRun) {
+    const enabled = await getFeatureFlag("email_automation_job_enabled");
+    if (!enabled) {
+      log("info", "Feature flag desactivado — job omitido");
+      return { processed: 0, sent: 0, skipped: 0, failed: 0 };
+    }
   }
 
   const now = new Date();
@@ -87,7 +96,7 @@ export async function runEmailAutomationJob(): Promise<void> {
 
   if (!jobs.length) {
     log("info", "Sin jobs pendientes");
-    return;
+    return { processed: 0, sent: 0, skipped: 0, failed: 0 };
   }
 
   log("info", `Procesando ${jobs.length} jobs`);
@@ -277,6 +286,7 @@ export async function runEmailAutomationJob(): Promise<void> {
   }
 
   log("info", `Job completado — sent:${sent} skipped:${skipped} failed:${failed}`);
+  return { processed: jobs.length, sent, skipped, failed };
 }
 
 async function finalize(

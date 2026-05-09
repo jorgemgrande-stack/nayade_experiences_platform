@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 type JobStatus = "pending" | "sent" | "skipped" | "failed" | "cancelled";
 
@@ -36,6 +37,7 @@ export default function PendingJobsTab() {
   const [statusFilter, setStatusFilter] = useState<JobStatus | "all">("all");
   const [templateFilter, setTemplateFilter] = useState("");
   const [page, setPage] = useState(0);
+  const [lastRunResult, setLastRunResult] = useState<{ processed: number; sent: number; skipped: number; failed: number } | null>(null);
   const pageSize = 50;
 
   const { data, isLoading, refetch } = trpc.emailCommunications.listScheduledJobs.useQuery({
@@ -46,13 +48,27 @@ export default function PendingJobsTab() {
   });
 
   const { data: logs, isLoading: logsLoading, refetch: refetchLogs } = trpc.emailCommunications.listCommLog.useQuery({
+    isAutomatic: true,
     limit: 100,
     offset: 0,
   });
 
+  const flagsQ = trpc.config.listFeatureFlags.useQuery();
+  const automationFlag = flagsQ.data?.find(f => f.key === "email_automation_job_enabled");
+
   const cancelJob = trpc.emailCommunications.cancelJob.useMutation({
     onSuccess: () => { toast.success("Job cancelado"); refetch(); },
     onError: (e) => toast.error(e.message),
+  });
+
+  const runNow = trpc.emailCommunications.runAutomationJobNow.useMutation({
+    onSuccess: (result) => {
+      setLastRunResult(result);
+      toast.success(`Job ejecutado — ${result.sent} enviados, ${result.skipped} saltados, ${result.failed} fallidos`);
+      refetch();
+      refetchLogs();
+    },
+    onError: (e) => toast.error("Error: " + e.message),
   });
 
   const rows = data?.rows ?? [];
@@ -63,17 +79,59 @@ export default function PendingJobsTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-white">Cola de envíos</h2>
           <p className="text-sm text-gray-400 mt-1">
             Jobs programados por las reglas de automatización. El cron corre cada 10 minutos.
           </p>
         </div>
-        <button onClick={() => refetch()} className="text-gray-500 hover:text-white transition-colors text-xs px-3 py-1.5 rounded border border-[#2a2a2a] hover:border-[#444]">
-          ↻ Actualizar
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => { refetch(); refetchLogs(); }} className="text-gray-500 hover:text-white transition-colors text-xs px-3 py-1.5 rounded border border-[#2a2a2a] hover:border-[#444]">
+            ↻ Actualizar
+          </button>
+          <button
+            onClick={() => runNow.mutate()}
+            disabled={runNow.isPending}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-orange-500 hover:bg-orange-600 text-white disabled:opacity-50 transition-colors"
+          >
+            {runNow.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>▶</span>}
+            Ejecutar ahora
+          </button>
+        </div>
       </div>
+
+      {/* Feature flag status */}
+      <div className={`flex items-center justify-between rounded-lg border px-4 py-3 ${automationFlag?.enabled ? "bg-green-900/20 border-green-700/40" : "bg-yellow-900/20 border-yellow-700/40"}`}>
+        <div className="flex items-center gap-3">
+          <span className={`w-2 h-2 rounded-full ${automationFlag?.enabled ? "bg-green-400" : "bg-yellow-400"}`} />
+          <div>
+            <span className="text-sm font-medium text-white">Cron email_automation_job_enabled</span>
+            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${automationFlag?.enabled ? "bg-green-900/50 text-green-300" : "bg-yellow-900/50 text-yellow-300"}`}>
+              {automationFlag?.enabled ? "Activo" : "Inactivo"}
+            </span>
+          </div>
+        </div>
+        {!automationFlag?.enabled && (
+          <span className="text-xs text-yellow-400">
+            Activa el flag en Settings → Avanzado → Feature Flags para que el cron corra automáticamente.
+            El botón "Ejecutar ahora" funciona igualmente para pruebas.
+          </span>
+        )}
+      </div>
+
+      {/* Resultado última ejecución manual */}
+      {lastRunResult && (
+        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-3">
+          <div className="text-xs text-gray-500 mb-2">Resultado de la última ejecución manual</div>
+          <div className="flex gap-4 text-sm">
+            <span className="text-gray-400">Procesados: <strong className="text-white">{lastRunResult.processed}</strong></span>
+            <span className="text-green-400">Enviados: <strong>{lastRunResult.sent}</strong></span>
+            <span className="text-gray-500">Saltados: <strong>{lastRunResult.skipped}</strong></span>
+            {lastRunResult.failed > 0 && <span className="text-red-400">Fallidos: <strong>{lastRunResult.failed}</strong></span>}
+          </div>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -186,7 +244,7 @@ export default function PendingJobsTab() {
       {/* Historial reciente */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-medium text-gray-400">Historial de emails (últimos 100)</div>
+          <div className="text-sm font-medium text-gray-400">Historial de emails automáticos (últimos 100)</div>
           <button onClick={() => refetchLogs()} className="text-xs text-gray-600 hover:text-white transition-colors">↻</button>
         </div>
         {logsLoading ? (
