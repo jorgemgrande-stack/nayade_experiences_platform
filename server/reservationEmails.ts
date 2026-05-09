@@ -8,6 +8,7 @@
 import { notifyOwner } from "./_core/notification";
 import { buildReservationConfirmHtml, buildReservationFailedHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
+import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 
 export interface ReservationEmailData {
@@ -93,36 +94,33 @@ export async function sendReservationPaidNotifications(
   const adminEmail = process.env.ADMIN_EMAIL;
   const bccList = [copyEmail, ...(adminEmail ? [adminEmail] : [])];
 
+  const confirmSubject = `✅ Reserva confirmada — ${reservation.productName} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`;
+  const confirmHtml = buildReservationConfirmHtml({
+    merchantOrder: reservation.merchantOrder,
+    productName: reservation.productName,
+    customerName: reservation.customerName,
+    date,
+    people: reservation.people,
+    amount,
+    extras,
+  });
+
   try {
-    await sendEmail({
-      to: reservation.customerEmail,
-      subject: `✅ Reserva confirmada — ${reservation.productName} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
-      html: buildReservationConfirmHtml({
-        merchantOrder: reservation.merchantOrder,
-        productName: reservation.productName,
-        customerName: reservation.customerName,
-        date,
-        people: reservation.people,
-        amount,
-        extras,
-      }),
-      text: `Reserva confirmada. Ref: ${reservation.merchantOrder}. Producto: ${reservation.productName}. Fecha: ${date}. Personas: ${reservation.people}. Total: ${amount}. Contacto: ${getSystemSettingSync("email_reservations", "")}`,
+    await sendManagedEmail({
+      templateKey: "reservation_confirm",
+      triggerEvent: "reservation_paid",
+      recipientEmail: reservation.customerEmail,
+      subject: confirmSubject,
+      html: confirmHtml,
+      relatedEntityType: "reservation",
+      relatedEntityId: reservation.id,
+      reservationId: reservation.id,
     });
-    // BCC manual al equipo
+    // BCC manual al equipo (copias separadas para el equipo interno)
     for (const bcc of bccList) {
-      await sendEmail({
-        to: bcc,
-        subject: `[COPIA] Reserva confirmada — ${reservation.merchantOrder} — ${reservation.customerName}`,
-        html: buildReservationConfirmHtml({
-          merchantOrder: reservation.merchantOrder,
-          productName: reservation.productName,
-          customerName: reservation.customerName,
-          date,
-          people: reservation.people,
-          amount,
-          extras,
-        }),
-      });
+      const bccSubject = `[COPIA] Reserva confirmada — ${reservation.merchantOrder} — ${reservation.customerName}`;
+      const bccSent = await sendEmail({ to: bcc, subject: bccSubject, html: confirmHtml }).catch(() => false);
+      logDirectEmail({ templateKey: "reservation_confirm", triggerEvent: "reservation_paid_admin_copy", recipientEmail: bcc, subject: bccSubject, sent: !!bccSent, isAutomatic: true }).catch(() => {});
     }
     console.log(`[ReservationEmails] Email de confirmacion enviado a ${reservation.customerEmail}`);
   } catch (error) {
@@ -159,8 +157,10 @@ export async function sendReservationFailedNotifications(
 
   // ── 2. Email informativo al cliente ──────────────────────────────────────
   try {
-    await sendEmail({
-      to: reservation.customerEmail,
+    await sendManagedEmail({
+      templateKey: "reservation_failed",
+      triggerEvent: "reservation_payment_failed",
+      recipientEmail: reservation.customerEmail,
       subject: `❌ Pago no completado — ${reservation.productName} — Náyade Experiences`,
       html: buildReservationFailedHtml({
         merchantOrder: reservation.merchantOrder,
@@ -168,7 +168,9 @@ export async function sendReservationFailedNotifications(
         customerName: reservation.customerName,
         responseCode: redsysResponseCode,
       }),
-      text: `Tu pago para ${reservation.productName} no pudo procesarse. Ref: ${reservation.merchantOrder}. Contacta: reservas@nayadeexperiences.es o +34 911 67 51 89 (también WhatsApp).`,
+      relatedEntityType: "reservation",
+      relatedEntityId: reservation.id,
+      reservationId: reservation.id,
     });
     console.log(`[ReservationEmails] Email de fallo enviado a ${reservation.customerEmail}`);
   } catch (error) {

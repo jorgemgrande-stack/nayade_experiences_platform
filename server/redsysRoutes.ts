@@ -18,6 +18,7 @@ import { notifyOwner } from "./_core/notification";
 import { logActivity } from "./db";
 import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
+import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 import { generateDocumentNumber } from "./documentNumbers";
@@ -293,8 +294,20 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   contactPhone: "+34 911 67 51 89",
                   quoteUrl,
                 });
-                await sendEmail({ to: clientEmail, subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`, html });
-                await sendEmail({ to: COPY_EMAIL, subject: `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`, html });
+                await sendManagedEmail({
+                  templateKey: "confirmation",
+                  triggerEvent: "redsys_payment_confirmed",
+                  recipientEmail: clientEmail,
+                  subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
+                  html,
+                  relatedEntityType: "quote",
+                  relatedEntityId: quote.id,
+                  quoteId: quote.id,
+                  extraCc: COPY_EMAIL,
+                });
+                const copySubject = `[COPIA] Reserva confirmada — ${quote.quoteNumber} — ${clientName}`;
+                await sendEmail({ to: COPY_EMAIL, subject: copySubject, html });
+                logDirectEmail({ templateKey: "confirmation", triggerEvent: "redsys_payment_confirmed_admin_copy", recipientEmail: COPY_EMAIL, subject: copySubject, sent: true, isAutomatic: true }).catch(() => {});
                 console.log(`[Redsys IPN] Email de confirmación enviado a ${clientEmail}`);
               } catch (emailErr) {
                 console.error("[Redsys IPN] Error al enviar email de confirmación:", emailErr);

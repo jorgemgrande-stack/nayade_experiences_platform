@@ -15,6 +15,7 @@ import { getDb } from "./db";
 import { users, passwordResetTokens } from "../drizzle/schema";
 import { buildPasswordResetHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
+import { logDirectEmail } from "./emailManager";
 import { getSystemSettingSync } from "./config";
 
 // ─── Configuración ────────────────────────────────────────────────────────────
@@ -23,7 +24,9 @@ const BCRYPT_ROUNDS = 12;
 
 async function sendResetEmail(to: string, resetUrl: string, name: string) {
   const html = buildPasswordResetHtml({ name: name ?? "", resetUrl, expiryMinutes: TOKEN_EXPIRY_MINUTES });
-  const sent = await sendEmail({ to, subject: `Recuperar contraseña — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`, html });
+  const resetSubject = `Recuperar contraseña — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`;
+  const sent = await sendEmail({ to, subject: resetSubject, html });
+  logDirectEmail({ templateKey: "password_reset", triggerEvent: "password_reset_requested", recipientEmail: to, subject: resetSubject, sent }).catch(() => {});
   if (!sent) {
     // Fallback: imprimir en consola para desarrollo
     console.log(`\n[PasswordReset] 📧 Enlace de recuperación para ${to}:\n  ${resetUrl}\n`);

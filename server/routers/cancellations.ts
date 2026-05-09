@@ -24,6 +24,7 @@ import {
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql, lt, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
+import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import {
   buildCancellationReceivedHtml,
   buildCancellationRejectedHtml,
@@ -476,23 +477,30 @@ export const cancellationsRouter = router({
 
       // Email acuse de recibo al cliente
       if (input.email) {
-        await sendEmail({
-          to: input.email,
-          cc: await getCopyEmail(),
+        await sendManagedEmail({
+          templateKey: "cancellation_received",
+          triggerEvent: "cancellation_request_submitted",
+          recipientEmail: input.email,
           subject: `Solicitud de anulación recibida — Ref. #${requestId}`,
           html: emailAcuseRecibo(input.fullName, requestId),
-        }).catch(() => {});
+          relatedEntityType: "cancellation_request",
+          relatedEntityId: requestId,
+          extraCc: await getCopyEmail(),
+        });
       }
 
       // Notificación interna a reservas
+      const cancAdminEmail = await getCopyEmail();
+      const cancAdminSubject = `Nueva solicitud de anulación #${requestId} — ${input.fullName}`;
       await sendEmail({
-        to: await getCopyEmail(),
-        subject: `Nueva solicitud de anulación #${requestId} — ${input.fullName}`,
+        to: cancAdminEmail,
+        subject: cancAdminSubject,
         html: `<p>Nueva solicitud de anulación recibida desde la landing pública.</p>
                <p><strong>Cliente:</strong> ${input.fullName} (${input.email ?? "sin email"})</p>
                <p><strong>Motivo:</strong> ${input.reason}</p>
                <p><strong>Fecha actividad:</strong> ${input.activityDate}</p>`,
       }).catch(() => {});
+      logDirectEmail({ templateKey: "cancellation_received", triggerEvent: "cancellation_admin_notification", recipientEmail: cancAdminEmail, subject: cancAdminSubject, sent: true, isAutomatic: true }).catch(() => {});
 
       // Registrar en el log de actividad del dashboard
       await logActivity(
@@ -794,12 +802,16 @@ export const cancellationsRouter = router({
       );
 
       if (input.sendEmail && req.email) {
-        await sendEmail({
-          to: req.email,
-          cc: await getCopyEmail(),
+        await sendManagedEmail({
+          templateKey: "cancellation_rejected",
+          triggerEvent: "cancellation_rejected",
+          recipientEmail: req.email,
           subject: `Resolución de tu solicitud de anulación #${input.id}`,
           html: emailRechazo(req.fullName, input.id, input.adminText),
-        }).catch(() => {});
+          relatedEntityType: "cancellation_request",
+          relatedEntityId: input.id,
+          extraCc: await getCopyEmail(),
+        });
         await addLog(input.id, "email_sent", { type: "rechazo", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
       }
 
@@ -890,12 +902,16 @@ export const cancellationsRouter = router({
         );
 
         if (input.sendEmail && req.email) {
-          await sendEmail({
-            to: req.email,
-            cc: await getCopyEmail(),
+          await sendManagedEmail({
+            templateKey: "cancellation_accepted_refund",
+            triggerEvent: "cancellation_accepted_refund",
+            recipientEmail: req.email,
             subject: `Aceptación de tu solicitud de anulación #${input.id}`,
             html: emailAceptacionDevolucion(req.fullName, input.id, String(input.refundAmount), input.isPartial),
-          }).catch(() => {});
+            relatedEntityType: "cancellation_request",
+            relatedEntityId: input.id,
+            extraCc: await getCopyEmail(),
+          });
           await addLog(input.id, "email_sent", { type: "aceptacion_devolucion", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
         }
 
@@ -976,16 +992,20 @@ export const cancellationsRouter = router({
           const expiresStr = input.voucherExpiresAt
             ? new Date(input.voucherExpiresAt).toLocaleDateString("es-ES")
             : "Sin caducidad";
-          await sendEmail({
-            to: req.email,
-            cc: await getCopyEmail(),
+          await sendManagedEmail({
+            templateKey: "cancellation_accepted_voucher",
+            triggerEvent: "cancellation_accepted_voucher",
+            recipientEmail: req.email,
             subject: `Bono de compensación — Solicitud #${input.id}`,
             html: emailAceptacionBono(
               req.fullName, input.id, code,
               input.activityName ?? "Actividad Náyade Experiences",
               String(input.voucherValue), expiresStr, input.isPartial
             ),
-          }).catch(() => {});
+            relatedEntityType: "cancellation_request",
+            relatedEntityId: input.id,
+            extraCc: await getCopyEmail(),
+          });
           await addLog(input.id, "email_sent", { type: "aceptacion_bono", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
         }
       }
@@ -1065,12 +1085,17 @@ export const cancellationsRouter = router({
 
       let emailSent = false;
       if (input.sendEmail && req.email) {
-        emailSent = await sendEmail({
-          to: req.email,
-          cc: await getCopyEmail(),
+        const docResult = await sendManagedEmail({
+          templateKey: "cancellation_documentation",
+          triggerEvent: "cancellation_docs_requested",
+          recipientEmail: req.email,
           subject: `Documentación requerida — Solicitud #${input.id}`,
           html: emailSolicitudDocumentacion(req.fullName, input.id, input.text),
+          relatedEntityType: "cancellation_request",
+          relatedEntityId: input.id,
+          extraCc: await getCopyEmail(),
         });
+        emailSent = docResult.sent;
         if (emailSent) {
           await addLog(input.id, "email_sent", { type: "solicitud_documentacion", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
         } else {
@@ -1179,9 +1204,10 @@ export const cancellationsRouter = router({
       if (req.email) {
         const amount = req.resolvedAmount != null ? Number(req.resolvedAmount).toFixed(2) : "—";
         const executedAtFormatted = executedAt.toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" });
-        const emailSent = await sendEmail({
-          to: req.email,
-          cc: await getCopyEmail(),
+        const refundResult = await sendManagedEmail({
+          templateKey: "cancellation_refund_executed",
+          triggerEvent: "cancellation_refund_executed",
+          recipientEmail: req.email,
           subject: `Devolución realizada — Solicitud #${input.id}`,
           html: buildCancellationRefundExecutedHtml({
             fullName: req.fullName,
@@ -1189,7 +1215,11 @@ export const cancellationsRouter = router({
             amount,
             executedAt: executedAtFormatted,
           }),
+          relatedEntityType: "cancellation_request",
+          relatedEntityId: input.id,
+          extraCc: await getCopyEmail(),
         });
+        const emailSent = refundResult.sent;
         if (emailSent) {
           await addLog(input.id, "email_sent", { type: "refund_executed_notification", to: req.email }, ctx.user.id, ctx.user.name ?? "Admin");
         } else {
@@ -1535,12 +1565,17 @@ export const cancellationsRouter = router({
 
       // Email acuse de recibo al cliente (mismo que en la landing pública)
       if (input.email) {
-        await sendEmail({
-          to: input.email,
-          cc: await getCopyEmail(),
+        await sendManagedEmail({
+          templateKey: "cancellation_received",
+          triggerEvent: "cancellation_request_submitted_admin",
+          recipientEmail: input.email,
           subject: `Solicitud de anulación recibida — Ref. #${requestId}`,
           html: emailAcuseRecibo(input.fullName, requestId, input.locator, input.reason),
-        }).catch(() => {});
+          relatedEntityType: "cancellation_request",
+          relatedEntityId: requestId,
+          extraCc: await getCopyEmail(),
+          sentByUserId: (ctx.user as any).id,
+        });
         await addLog(requestId, "email_sent", { type: "acuse_recibo", to: input.email }, ctx.user.id, ctx.user.name ?? "Admin");
       }
 

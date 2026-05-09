@@ -123,6 +123,7 @@ import {
 import { sendInviteEmail } from "./inviteEmail";
 import { testGHLConnection } from "./ghl";
 import { sendEmail } from "./mailer";
+import { sendManagedEmail } from "./emailManager";
 import {
   buildBudgetRequestUserHtml, buildBudgetRequestAdminHtml,
   buildReservationConfirmHtml, buildReservationFailedHtml,
@@ -366,18 +367,28 @@ export const appRouter = router({
         };
 
         // Email al usuario
-        sendEmail({
-          to: input.email,
+        sendManagedEmail({
+          templateKey: "budget_request_user",
+          triggerEvent: "lead_submitted",
+          recipientEmail: input.email,
           subject: "Solicitud de presupuesto recibida — Náyade Experiences",
           html: buildBudgetRequestUserHtml(emailData),
+          relatedEntityType: "lead",
+          relatedEntityId: lead.id,
+          leadId: lead.id,
         }).catch(err => console.error("[submitBudget] Email al usuario fallido:", err));
 
         // Email al administrador
         const adminEmail = process.env.ADMIN_EMAIL ?? await getBusinessEmail('reservations');
-        sendEmail({
-          to: adminEmail,
+        sendManagedEmail({
+          templateKey: "budget_request_admin",
+          triggerEvent: "lead_submitted",
+          recipientEmail: adminEmail,
           subject: `⚠️ Nueva solicitud — ${input.name} (${input.selectedCategory})`,
           html: buildBudgetRequestAdminHtml(emailData),
+          relatedEntityType: "lead",
+          relatedEntityId: lead.id,
+          leadId: lead.id,
         }).catch(err => console.error("[submitBudget] Email al admin fallido:", err));
 
         return { success: true, leadId: lead.id };

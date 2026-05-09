@@ -18,7 +18,7 @@ import {
 import {
   eq, desc, asc, and, or, gte, lte, like, isNull, isNotNull, count, sql,
 } from "drizzle-orm";
-import { sendEmail } from "../mailer";
+import { sendManagedEmail } from "../emailManager";
 import {
   buildCommercialReminder1Html,
   buildCommercialReminder2Html,
@@ -385,11 +385,19 @@ export const commercialFollowupRouter = router({
       const subject = input.customSubject ?? `Recordatorio — tu propuesta ${quote.quoteNumber} · ${process.env.BRAND_NAME ?? "Náyade Experiences"}`;
       const html = pickReminderTemplate(newCount, emailData);
 
-      const sent = await sendEmail({
-        to: quote.clientEmail,
+      const templateKey = `commercial_reminder_${Math.min(newCount, 3)}` as "commercial_reminder_1" | "commercial_reminder_2" | "commercial_reminder_3";
+      const result = await sendManagedEmail({
+        templateKey,
+        triggerEvent: "manual_reminder_sent",
+        recipientEmail: quote.clientEmail,
         subject,
         html,
+        relatedEntityType: "quote",
+        relatedEntityId: input.quoteId,
+        quoteId: input.quoteId,
+        sentByUserId: (ctx.user as any).id,
       });
+      const sent = result.sent;
 
       await db.insert(commercialCommunications).values({
         quoteId: input.quoteId,

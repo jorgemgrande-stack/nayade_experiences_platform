@@ -10,6 +10,7 @@ import mysql from "mysql2/promise";
 import { and, eq, lt, sql } from "drizzle-orm";
 import { cancellationRequests, cancellationLogs } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
+import { logDirectEmail } from "./emailManager";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 const STALE_HOURS = 48;
 
@@ -93,11 +94,9 @@ async function runCancellationStaleJob() {
     `;
 
     const copyEmail = await getBusinessEmail('cancellations');
-    await sendEmail({
-      to: copyEmail,
-      subject: `⚠ ${trulyStale.length} anulación${trulyStale.length > 1 ? "es" : ""} sin atender (>48h)`,
-      html,
-    }).catch(() => {});
+    const staleSubject = `⚠ ${trulyStale.length} anulación${trulyStale.length > 1 ? "es" : ""} sin atender (>48h)`;
+    await sendEmail({ to: copyEmail, subject: staleSubject, html }).catch(() => {});
+    logDirectEmail({ templateKey: "cancellation_stale_alert", triggerEvent: "stale_cancellations_alert", recipientEmail: copyEmail, subject: staleSubject, sent: true, isAutomatic: true }).catch(() => {});
 
     console.log(`[CancellationStale] Alerta enviada: ${trulyStale.length} expedientes sin atender`);
   } catch (err) {

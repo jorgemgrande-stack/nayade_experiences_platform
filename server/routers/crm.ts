@@ -40,6 +40,7 @@ import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRe
 import { eq, desc, and, gte, lte, like, or, sql, count, sum, isNull, max, ne, notInArray, inArray, isNotNull, getTableColumns } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
+import { sendManagedEmail, logDirectEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { htmlToPdf } from "../pdfGenerator";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
@@ -158,11 +159,19 @@ async function sendQuoteEmail(quote: {
     installmentPlan: quote.installmentPlan ?? undefined,
   });
 
-  await sendEmail({
-    to: quote.clientEmail,
-    subject: `Tu propuesta de Náyade Experiences — ${quote.quoteNumber}`,
+  const quoteSubject = `Tu propuesta de Náyade Experiences — ${quote.quoteNumber}`;
+  await sendManagedEmail({
+    templateKey: "quote",
+    triggerEvent: "quote_sent",
+    recipientEmail: quote.clientEmail,
+    subject: quoteSubject,
     html,
+    relatedEntityType: "quote",
+    relatedEntityId: (quote as any).id,
+    quoteId: (quote as any).id,
   });
+  const _cq = getSystemSettingSync("email_copy_recipient", "");
+  if (_cq) sharedSendEmail({ to: _cq, subject: `[COPIA] ${quoteSubject}`, html }).catch(() => {});
 }
 
 async function sendConfirmationEmail(data: {
@@ -197,11 +206,16 @@ async function sendConfirmationEmail(data: {
     installmentPlan: data.installmentPlan,
   });
 
-  await sendEmail({
-    to: data.clientEmail,
-    subject: `✅ Reserva confirmada — ${data.reservationRef} · Náyade Experiences`,
+  const confSubject = `✅ Reserva confirmada — ${data.reservationRef} · Náyade Experiences`;
+  await sendManagedEmail({
+    templateKey: "confirmation",
+    triggerEvent: "reservation_confirmed",
+    recipientEmail: data.clientEmail,
+    subject: confSubject,
     html,
   });
+  const _cc = getSystemSettingSync("email_copy_recipient", "");
+  if (_cc) sharedSendEmail({ to: _cc, subject: `[COPIA] ${confSubject}`, html }).catch(() => {});
 }
 
 
@@ -241,11 +255,10 @@ async function sendInternalNotification(data: {
 </body>
 </html>`;
 
-  await sendEmail({
-    to: await getBusinessEmail('reservations'),
-    subject: `💰 Compra efectuada "${data.clientName}" — ${data.reservationRef}`,
-    html,
-  });
+  const internalRecipient = await getBusinessEmail('reservations');
+  const internalSubject = `💰 Compra efectuada "${data.clientName}" — ${data.reservationRef}`;
+  await sharedSendEmail({ to: internalRecipient, subject: internalSubject, html });
+  logDirectEmail({ templateKey: "confirmation", triggerEvent: "reservation_confirmed_admin", recipientEmail: internalRecipient, subject: internalSubject, sent: true }).catch(() => {});
 }
 
 // ─── Email: Confirmación de pago por transferencia bancaria (al cliente) ────
@@ -3337,11 +3350,19 @@ export const crmRouter = router({
                 amountFormatted: `${(inst.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 })} €`,
                 dueDate: inst.dueDate,
               });
-              await sendEmail({
-                to: lead.email,
-                subject: `✅ Pago recibido — Cuota ${inst.installmentNumber}/${allInstallments.length} — ${quote.quoteNumber}`,
+              const instSubject = `✅ Pago recibido — Cuota ${inst.installmentNumber}/${allInstallments.length} — ${quote.quoteNumber}`;
+              await sendManagedEmail({
+                templateKey: "installment_reminder",
+                triggerEvent: "installment_paid",
+                recipientEmail: lead.email,
+                subject: instSubject,
                 html,
+                relatedEntityType: "quote",
+                relatedEntityId: inst.quoteId,
+                quoteId: inst.quoteId,
               });
+              const _ci = getSystemSettingSync("email_copy_recipient", "");
+              if (_ci) sharedSendEmail({ to: _ci, subject: `[COPIA] ${instSubject}`, html }).catch(() => {});
             }
           }
         } catch (emailErr) {
@@ -3461,11 +3482,19 @@ export const crmRouter = router({
               dueDate: nextPending.dueDate,
               paymentUrl,
             });
-            await sendEmail({
-              to: lead.email,
-              subject: `💳 Enlace de pago — Cuota ${nextPending.installmentNumber}/${allInstallments.length} — ${quote.quoteNumber}`,
+            const linkSubject = `💳 Enlace de pago — Cuota ${nextPending.installmentNumber}/${allInstallments.length} — ${quote.quoteNumber}`;
+            await sendManagedEmail({
+              templateKey: "installment_reminder",
+              triggerEvent: "installment_link_sent",
+              recipientEmail: lead.email,
+              subject: linkSubject,
               html,
+              relatedEntityType: "quote",
+              relatedEntityId: input.quoteId,
+              quoteId: input.quoteId,
             });
+            const _cl = getSystemSettingSync("email_copy_recipient", "");
+            if (_cl) sharedSendEmail({ to: _cl, subject: `[COPIA] ${linkSubject}`, html }).catch(() => {});
           } catch (emailErr) {
             console.error("[generateInstallmentLink] Error enviando email:", emailErr);
           }

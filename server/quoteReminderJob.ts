@@ -10,7 +10,7 @@ import mysql from "mysql2/promise";
 import { and, eq, isNull, lt, isNotNull } from "drizzle-orm";
 import { quotes, leads } from "../drizzle/schema";
 import { buildQuoteHtml } from "./emailTemplates";
-import { sendEmail } from "./mailer";
+import { sendManagedEmail } from "./emailManager";
 import { notifyOwner } from "./_core/notification";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 
@@ -87,11 +87,17 @@ async function runQuoteReminderJob() {
       });
 
       try {
-        await sendEmail({
-          to: clientEmail,
-          cc: await getBusinessEmail('reservations'),
+        await sendManagedEmail({
+          templateKey: "quote",
+          triggerEvent: "quote_auto_reminder",
+          recipientEmail: clientEmail,
           subject: `⏰ Recordatorio: tu presupuesto ${quote.quoteNumber} sigue disponible — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
           html,
+          isAutomatic: true,
+          relatedEntityType: "quote",
+          relatedEntityId: quote.id,
+          quoteId: quote.id,
+          extraCc: await getBusinessEmail("reservations"),
         });
 
         // Actualizar contador de reenvíos y sentAt al nuevo envío
