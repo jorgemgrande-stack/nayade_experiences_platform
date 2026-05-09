@@ -28,18 +28,13 @@ export default function PartnerReservaNueva() {
   const [search, setSearch] = useState("");
 
   const { data: partner } = trpc.partners.getMyPartner.useQuery();
-  const { data: allExperiences } = trpc.public.getExperiences.useQuery({ limit: 100 });
-
-  const allowedIds = partner?.allowedReservationProductIds as number[] | null | undefined;
+  const { data: allProducts, isError: productsError } = trpc.partners.getAvailableProducts.useQuery();
 
   const experiences = useMemo(() => {
-    if (!allExperiences) return [];
-    const filtered = (allowedIds && allowedIds.length > 0)
-      ? allExperiences.filter((e: any) => allowedIds.includes(e.id))
-      : allExperiences;
-    if (!search) return filtered;
-    return filtered.filter((e: any) => e.title.toLowerCase().includes(search.toLowerCase()));
-  }, [allExperiences, allowedIds, search]);
+    if (!allProducts) return [];
+    if (!search) return allProducts;
+    return allProducts.filter((e: any) => e.title.toLowerCase().includes(search.toLowerCase()));
+  }, [allProducts, search]);
 
   const people = parseInt(form.people) || 1;
 
@@ -175,7 +170,9 @@ export default function PartnerReservaNueva() {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar actividad…" className="pl-9" />
             </div>
-            {!allExperiences ? (
+            {productsError ? (
+              <div className="text-red-400 text-sm">Error al cargar actividades. Recarga la página.</div>
+            ) : !allProducts ? (
               <div className="flex items-center gap-2 text-gray-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Cargando actividades…</div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">

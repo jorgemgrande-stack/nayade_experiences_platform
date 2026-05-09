@@ -9,7 +9,7 @@ import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_c
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems } from "../../drizzle/schema";
+import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, notInArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
@@ -714,6 +714,49 @@ export const partnersRouter = router({
       await db.delete(partnerBillingBatchItems).where(eq(partnerBillingBatchItems.batchId, input.id));
       await db.delete(partnerBillingBatches).where(eq(partnerBillingBatches.id, input.id));
       return { ok: true };
+    }),
+
+  // ── PARTNER: Productos disponibles para reservar ─────────────────────────
+  getAvailableProducts: partnerProcedure
+    .query(async ({ ctx }) => {
+      const user = ctx.user as any;
+      const [partner] = await db
+        .select({ allowedReservationProductIds: partners.allowedReservationProductIds })
+        .from(partners)
+        .where(eq(partners.id, user.partnerId))
+        .limit(1);
+
+      const allProds = await db
+        .select({
+          id: experiences.id,
+          title: experiences.title,
+          basePrice: experiences.basePrice,
+          pricingType: experiences.pricingType,
+        })
+        .from(experiences)
+        .where(and(eq(experiences.isActive, true), eq(experiences.isPublished, true)))
+        .orderBy(experiences.sortOrder);
+
+      const allowedIds = partner?.allowedReservationProductIds as number[] | null;
+      if (allowedIds && allowedIds.length > 0) {
+        return allProds.filter(p => allowedIds.includes(p.id));
+      }
+      return allProds;
+    }),
+
+  // ── ADMIN: Todos los productos (para configurar allowed en el formulario) ─
+  adminGetAllProducts: adminProcedure
+    .query(async () => {
+      return db
+        .select({
+          id: experiences.id,
+          title: experiences.title,
+          basePrice: experiences.basePrice,
+          isActive: experiences.isActive,
+          isPublished: experiences.isPublished,
+        })
+        .from(experiences)
+        .orderBy(experiences.sortOrder);
     }),
 
   // ── ADMIN: Leads generados por un partner ────────────────────────────────

@@ -35,8 +35,8 @@ type Partner = {
   billingEmail?: string | null;
   canCreateReservations: boolean;
   canCreateLeads: boolean;
-  allowedReservationProductIds?: number[] | null;
-  allowedLeadProductIds?: number[] | null;
+  allowedReservationProductIds?: number[] | null | unknown;
+  allowedLeadProductIds?: number[] | null | unknown;
   commissionType: string;
   commissionValue?: string | null;
   billingEnabled: boolean;
@@ -81,6 +81,7 @@ type PartnerFormData = {
   billingEmail: string;
   canCreateReservations: boolean;
   canCreateLeads: boolean;
+  allowedReservationProductIds: number[];
   commissionType: string;
   commissionValue: string;
   billingEnabled: boolean;
@@ -93,6 +94,7 @@ const EMPTY_FORM: PartnerFormData = {
   name: "", fiscalName: "", nif: "", address: "", city: "", postalCode: "",
   country: "ES", contactName: "", contactEmail: "", contactPhone: "",
   billingEmail: "", canCreateReservations: false, canCreateLeads: true,
+  allowedReservationProductIds: [],
   commissionType: "none", commissionValue: "", billingEnabled: false,
   billingPeriod: "monthly", monthlyQuota: "", notes: "",
 };
@@ -110,6 +112,16 @@ function PartnerForm({
 }) {
   const [form, setForm] = useState<PartnerFormData>({ ...EMPTY_FORM, ...initial });
   const set = (k: keyof PartnerFormData, v: any) => setForm(f => ({ ...f, [k]: v }));
+  const { data: allProducts = [] } = trpc.partners.adminGetAllProducts.useQuery();
+
+  function toggleProduct(id: number) {
+    setForm(f => ({
+      ...f,
+      allowedReservationProductIds: f.allowedReservationProductIds.includes(id)
+        ? f.allowedReservationProductIds.filter(x => x !== id)
+        : [...f.allowedReservationProductIds, id],
+    }));
+  }
 
   return (
     <div className="space-y-6">
@@ -194,6 +206,49 @@ function PartnerForm({
               <span className="text-xs text-foreground/40 ml-1">— Situación 1</span>
             </span>
           </label>
+
+          {/* Selector de productos permitidos */}
+          {(form.canCreateReservations || form.canCreateLeads) && (
+            <div className="ml-1 mt-2 p-3 bg-foreground/[0.04] border border-foreground/[0.10] rounded-xl space-y-2">
+              <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">
+                Productos permitidos para reservar
+                <span className="ml-2 font-normal text-foreground/30 normal-case">(vacío = todos)</span>
+              </p>
+              {allProducts.length === 0 ? (
+                <p className="text-xs text-foreground/30">Cargando productos…</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-52 overflow-y-auto pr-1">
+                  {allProducts.map((p: any) => {
+                    const checked = form.allowedReservationProductIds.includes(p.id);
+                    return (
+                      <label key={p.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer transition-all text-xs ${
+                        checked
+                          ? "border-orange-500/40 bg-orange-500/10 text-orange-300"
+                          : "border-foreground/[0.10] text-foreground/50 hover:border-foreground/20"
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleProduct(p.id)}
+                          className="accent-orange-500 shrink-0"
+                        />
+                        <span className="truncate">{p.title}</span>
+                        {p.basePrice && (
+                          <span className="ml-auto shrink-0 text-foreground/30">{parseFloat(p.basePrice).toFixed(0)}€</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {form.allowedReservationProductIds.length > 0 && (
+                <p className="text-[10px] text-orange-400/70">
+                  {form.allowedReservationProductIds.length} producto{form.allowedReservationProductIds.length !== 1 ? "s" : ""} seleccionado{form.allowedReservationProductIds.length !== 1 ? "s" : ""}
+                  {" "}— los demás no estarán disponibles para este partner
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
@@ -692,6 +747,7 @@ export default function PartnersManager() {
     billingEmail: p.billingEmail ?? "",
     canCreateReservations: p.canCreateReservations,
     canCreateLeads: p.canCreateLeads,
+    allowedReservationProductIds: (p.allowedReservationProductIds as number[] | null) ?? [],
     commissionType: p.commissionType,
     commissionValue: p.commissionValue ?? "",
     billingEnabled: p.billingEnabled,
@@ -715,6 +771,7 @@ export default function PartnersManager() {
       billingEmail: data.billingEmail || undefined,
       canCreateReservations: data.canCreateReservations,
       canCreateLeads: data.canCreateLeads,
+      allowedReservationProductIds: data.allowedReservationProductIds.length > 0 ? data.allowedReservationProductIds : undefined,
       commissionType: data.commissionType as any,
       commissionValue: data.commissionValue || undefined,
       billingEnabled: data.billingEnabled,
@@ -741,6 +798,7 @@ export default function PartnersManager() {
       billingEmail: data.billingEmail || null,
       canCreateReservations: data.canCreateReservations,
       canCreateLeads: data.canCreateLeads,
+      allowedReservationProductIds: data.allowedReservationProductIds.length > 0 ? data.allowedReservationProductIds : null,
       commissionType: data.commissionType as any,
       commissionValue: data.commissionValue || null,
       billingEnabled: data.billingEnabled,
