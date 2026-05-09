@@ -74,6 +74,10 @@ const navItems = [
     icon: Building2,
     roles: ["admin"],
     flagKey: "partners_module_enabled",
+    children: [
+      { label: "Colaboradores", href: "/admin/partners", key: "partners-list" },
+      { label: "Facturación", href: "/admin/partners/facturacion", key: "partners-billing" },
+    ],
   },
   {
     label: "Atención Comercial",

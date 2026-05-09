@@ -119,6 +119,7 @@ const ReavManager = lazy(() => import("./pages/admin/fiscal/ReavManager"));
 
 // Partners (admin)
 const PartnersManager = lazy(() => import("./pages/admin/partners/PartnersManager"));
+const PartnerBillingManager = lazy(() => import("./pages/admin/partners/PartnerBillingManager"));
 
 // Partner portal (lazy)
 const ActivarPartner = lazy(() => import("./pages/partner/ActivarPartner"));
@@ -310,6 +311,7 @@ function Router() {
       <Route path="/admin/crm">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/plantillas-email">{() => <Suspense fallback={<AdminLoadingFallback />}><EmailTemplatesManager /></Suspense>}</Route>
       <Route path="/admin/partners">{() => <Suspense fallback={<AdminLoadingFallback />}><PartnersManager /></Suspense>}</Route>
+      <Route path="/admin/partners/facturacion">{() => <Suspense fallback={<AdminLoadingFallback />}><PartnerBillingManager /></Suspense>}</Route>
       <Route path="/admin/crm/leads">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/presupuestos">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>
       <Route path="/admin/crm/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><CRMDashboard /></Suspense>}</Route>

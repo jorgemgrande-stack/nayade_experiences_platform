@@ -9,8 +9,8 @@ import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_c
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { partners, users, leads } from "../../drizzle/schema";
-import { eq, desc } from "drizzle-orm";
+import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems } from "../../drizzle/schema";
+import { eq, desc, and, gte, lte, notInArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
 import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, postConfirmOperation, generateReservationNumber } from "../db";
@@ -475,5 +475,225 @@ export const partnersRouter = router({
         .orderBy(desc(reservations.createdAt))
         .limit(100);
       return rows;
+    }),
+
+  // ─── FACTURACIÓN AGRUPADA ─────────────────────────────────────────────────
+
+  // ── ADMIN: Listar liquidaciones ───────────────────────────────────────────
+  listBatches: adminProcedure
+    .input(z.object({
+      partnerId: z.number().int().optional(),
+      status: z.enum(["borrador", "emitida", "cobrada", "anulada"]).optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const rows = await db
+        .select({
+          id: partnerBillingBatches.id,
+          batchNumber: partnerBillingBatches.batchNumber,
+          partnerId: partnerBillingBatches.partnerId,
+          periodType: partnerBillingBatches.periodType,
+          periodStart: partnerBillingBatches.periodStart,
+          periodEnd: partnerBillingBatches.periodEnd,
+          totalAmount: partnerBillingBatches.totalAmount,
+          status: partnerBillingBatches.status,
+          notes: partnerBillingBatches.notes,
+          createdAt: partnerBillingBatches.createdAt,
+          partnerName: partners.name,
+          partnerFiscalName: partners.fiscalName,
+          partnerNif: partners.nif,
+        })
+        .from(partnerBillingBatches)
+        .leftJoin(partners, eq(partnerBillingBatches.partnerId, partners.id))
+        .orderBy(desc(partnerBillingBatches.createdAt));
+
+      let filtered = rows;
+      if (input?.partnerId) filtered = filtered.filter(r => r.partnerId === input.partnerId);
+      if (input?.status) filtered = filtered.filter(r => r.status === input.status);
+      return filtered;
+    }),
+
+  // ── ADMIN: Detalle de una liquidación ─────────────────────────────────────
+  getBatch: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .query(async ({ input }) => {
+      const [batch] = await db
+        .select({
+          id: partnerBillingBatches.id,
+          batchNumber: partnerBillingBatches.batchNumber,
+          partnerId: partnerBillingBatches.partnerId,
+          periodType: partnerBillingBatches.periodType,
+          periodStart: partnerBillingBatches.periodStart,
+          periodEnd: partnerBillingBatches.periodEnd,
+          totalAmount: partnerBillingBatches.totalAmount,
+          status: partnerBillingBatches.status,
+          notes: partnerBillingBatches.notes,
+          createdAt: partnerBillingBatches.createdAt,
+          partnerName: partners.name,
+          partnerFiscalName: partners.fiscalName,
+          partnerNif: partners.nif,
+          partnerAddress: partners.address,
+          partnerCity: partners.city,
+          partnerPostalCode: partners.postalCode,
+          partnerBillingEmail: partners.billingEmail,
+        })
+        .from(partnerBillingBatches)
+        .leftJoin(partners, eq(partnerBillingBatches.partnerId, partners.id))
+        .where(eq(partnerBillingBatches.id, input.id))
+        .limit(1);
+
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const items = await db
+        .select({
+          id: partnerBillingBatchItems.id,
+          reservationId: partnerBillingBatchItems.reservationId,
+          amount: partnerBillingBatchItems.amount,
+          description: partnerBillingBatchItems.description,
+          customerName: reservations.customerName,
+          customerEmail: reservations.customerEmail,
+          productName: reservations.productName,
+          bookingDate: reservations.bookingDate,
+          people: reservations.people,
+          reservationNumber: reservations.reservationNumber,
+          amountTotal: reservations.amountTotal,
+        })
+        .from(partnerBillingBatchItems)
+        .leftJoin(reservations, eq(partnerBillingBatchItems.reservationId, reservations.id))
+        .where(eq(partnerBillingBatchItems.batchId, input.id));
+
+      return { ...batch, items };
+    }),
+
+  // ── ADMIN: Reservas sin liquidar de un partner en un período ──────────────
+  getUnbilled: adminProcedure
+    .input(z.object({
+      partnerId: z.number().int(),
+      periodStart: z.string().min(1),
+      periodEnd: z.string().min(1),
+    }))
+    .query(async ({ input }) => {
+      const allItems = await db
+        .select({ rid: partnerBillingBatchItems.reservationId })
+        .from(partnerBillingBatchItems);
+      const billedIds = allItems.map(r => r.rid);
+
+      const conds: any[] = [
+        eq((reservations as any).partnerId, input.partnerId),
+        gte(reservations.bookingDate, input.periodStart),
+        lte(reservations.bookingDate, input.periodEnd),
+      ];
+      if (billedIds.length > 0) conds.push(notInArray(reservations.id, billedIds));
+
+      const rows = await db
+        .select()
+        .from(reservations)
+        .where(and(...conds))
+        .orderBy(reservations.bookingDate);
+      return rows;
+    }),
+
+  // ── ADMIN: Crear una liquidación ──────────────────────────────────────────
+  createBatch: adminProcedure
+    .input(z.object({
+      partnerId: z.number().int(),
+      periodType: z.enum(["weekly", "biweekly", "monthly", "manual"]).default("monthly"),
+      periodStart: z.string().min(1),
+      periodEnd: z.string().min(1),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [partner] = await db.select().from(partners).where(eq(partners.id, input.partnerId)).limit(1);
+      if (!partner) throw new TRPCError({ code: "NOT_FOUND", message: "Partner no encontrado" });
+
+      const allItems = await db
+        .select({ rid: partnerBillingBatchItems.reservationId })
+        .from(partnerBillingBatchItems);
+      const billedIds = allItems.map(r => r.rid);
+
+      const conds: any[] = [
+        eq((reservations as any).partnerId, input.partnerId),
+        gte(reservations.bookingDate, input.periodStart),
+        lte(reservations.bookingDate, input.periodEnd),
+      ];
+      if (billedIds.length > 0) conds.push(notInArray(reservations.id, billedIds));
+
+      const unbilled = await db.select().from(reservations).where(and(...conds));
+      if (unbilled.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No hay reservas sin liquidar en ese período" });
+      }
+
+      const totalEuros = unbilled.reduce((acc, r) => acc + (r.amountTotal ?? 0) / 100, 0);
+
+      // Número secuencial: LIQ-YYYY-XXXX
+      const year = new Date().getFullYear();
+      const [countRow] = await db
+        .select({ cnt: sql<number>`COUNT(*)` })
+        .from(partnerBillingBatches)
+        .where(sql`YEAR(\`createdAt\`) = ${year}`);
+      const seq = (Number((countRow as any).cnt ?? 0) + 1).toString().padStart(4, "0");
+      const batchNumber = `LIQ-${year}-${seq}`;
+
+      const user = ctx.user as any;
+      const [result] = await db.insert(partnerBillingBatches).values({
+        batchNumber,
+        partnerId: input.partnerId,
+        periodType: input.periodType,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        totalAmount: totalEuros.toFixed(2),
+        status: "borrador",
+        notes: input.notes ?? null,
+        createdBy: user.id,
+      } as any);
+      const batchId = (result as any).insertId as number;
+
+      await db.insert(partnerBillingBatchItems).values(
+        unbilled.map(r => ({
+          batchId,
+          reservationId: r.id,
+          amount: ((r.amountTotal ?? 0) / 100).toFixed(2),
+          description: `${r.productName ?? ""} · ${r.bookingDate ?? ""} · ${r.customerName ?? ""}`,
+        } as any))
+      );
+
+      return { batchId, batchNumber, total: totalEuros, itemCount: unbilled.length };
+    }),
+
+  // ── ADMIN: Cambiar estado de una liquidación ──────────────────────────────
+  updateBatchStatus: adminProcedure
+    .input(z.object({
+      id: z.number().int(),
+      status: z.enum(["borrador", "emitida", "cobrada", "anulada"]),
+    }))
+    .mutation(async ({ input }) => {
+      const [existing] = await db
+        .select()
+        .from(partnerBillingBatches)
+        .where(eq(partnerBillingBatches.id, input.id))
+        .limit(1);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      await db
+        .update(partnerBillingBatches)
+        .set({ status: input.status })
+        .where(eq(partnerBillingBatches.id, input.id));
+      return { ok: true };
+    }),
+
+  // ── ADMIN: Eliminar liquidación (solo borrador) ───────────────────────────
+  deleteBatch: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const [existing] = await db
+        .select()
+        .from(partnerBillingBatches)
+        .where(eq(partnerBillingBatches.id, input.id))
+        .limit(1);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (existing.status !== "borrador") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se pueden eliminar liquidaciones en borrador" });
+      }
+      await db.delete(partnerBillingBatchItems).where(eq(partnerBillingBatchItems.batchId, input.id));
+      await db.delete(partnerBillingBatches).where(eq(partnerBillingBatches.id, input.id));
+      return { ok: true };
     }),
 });
