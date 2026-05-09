@@ -62,6 +62,8 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
     htmlContent: params.html,
     ...(params.text ? { textContent: params.text } : {}),
     ...(ccList ? { cc: ccList } : {}),
+    // Desactivar click-tracking de Brevo para que los enlaces lleguen directos sin redirección
+    headers: { "X-Mailin-no-track": "1" },
   };
 
   try {
