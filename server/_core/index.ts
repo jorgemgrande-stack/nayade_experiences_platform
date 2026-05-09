@@ -807,6 +807,31 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
+    // Feature flag — cron de seguimiento comercial de presupuestos (commercial_followup_rules)
+    // No estaba en ninguna migración ni en código; sin este INSERT el job nunca arranca.
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 1, 1, 'medium')`,
+      [
+        "commercial_followup_job_enabled",
+        "Cron seguimiento comercial",
+        "Envía recordatorios automáticos de presupuestos según las reglas configuradas en Atención Comercial.",
+        "crm",
+      ]
+    );
+
+    // Feature flag — job de revinculación de datáfono (no estaba en ninguna migración)
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 1, 1, 'low')`,
+      [
+        "card_terminal_relink_enabled",
+        "Job revinculación datáfono",
+        "Reintenta periódicamente vincular batches de datáfono sin conciliar.",
+        "card_terminal",
+      ]
+    );
+
     // Tablas del módulo de Email Comercial
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS \`email_accounts\` (
