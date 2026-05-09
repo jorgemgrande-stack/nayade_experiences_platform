@@ -185,6 +185,7 @@ import { ghlInboxRouter } from "./routers/ghlInbox";
 import { vapiCallsRouter } from "./routers/vapiCalls";
 import { emailAccountsRouter } from "./routers/emailAccounts";
 import { emailInboxRouter } from "./routers/emailInbox";
+import { emailCommunicationsRouter } from "./routers/emailCommunications";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -1929,6 +1930,7 @@ export const appRouter = router({
   vapiCalls: vapiCallsRouter,
   emailAccounts: emailAccountsRouter,
   emailInbox: emailInboxRouter,
+  emailCommunications: emailCommunicationsRouter,
   suppliers: suppliersRouter,
   timeSlots: timeSlotsRouter,
   tpv: tpvRouter,

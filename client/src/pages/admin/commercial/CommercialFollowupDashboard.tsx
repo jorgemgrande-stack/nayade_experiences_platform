@@ -25,10 +25,12 @@ import { NOTIF_POPUP_KEY, NOTIF_SOUND_KEY } from "@/components/WhatsAppNotificat
 import CommunicationsMap from "./CommunicationsMap";
 import LegacyAutomationsTab from "./LegacyAutomationsTab";
 import EmailAuditTab from "./EmailAuditTab";
+import TemplateRulesTab from "./TemplateRulesTab";
+import PendingJobsTab from "./PendingJobsTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "dashboard" | "open" | "rules" | "history" | "settings" | "mapa" | "automatizaciones" | "auditoria";
+type Tab = "dashboard" | "open" | "rules" | "history" | "settings" | "mapa" | "automatizaciones" | "auditoria" | "plantillas" | "cola";
 
 const COMMERCIAL_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pending_followup: { label: "Pendiente",       color: "text-slate-300",   bg: "bg-slate-500/15",   border: "border-slate-500/30" },
@@ -322,6 +324,8 @@ export default function CommercialFollowupDashboard() {
     { id: "history", label: "Historial", icon: History },
     { id: "settings", label: "Configuración", icon: Settings },
     { id: "mapa", label: "Mapa de emails", icon: Map },
+    { id: "plantillas", label: "Plantillas y reglas", icon: Settings },
+    { id: "cola", label: "Cola de envíos", icon: Bell },
     { id: "automatizaciones", label: "Automatizaciones", icon: Zap },
     { id: "auditoria", label: "Auditoría", icon: ClipboardCheck },
   ];
@@ -761,6 +765,12 @@ export default function CommercialFollowupDashboard() {
 
         {/* ── TAB: MAPA DE EMAILS ─────────────────────────────────────────── */}
         {tab === "mapa" && <CommunicationsMap />}
+
+        {/* ── TAB: PLANTILLAS Y REGLAS ─────────────────────────────────────── */}
+        {tab === "plantillas" && <TemplateRulesTab />}
+
+        {/* ── TAB: COLA DE ENVÍOS ──────────────────────────────────────────── */}
+        {tab === "cola" && <PendingJobsTab />}
 
         {/* ── TAB: AUTOMATIZACIONES ────────────────────────────────────────── */}
         {tab === "automatizaciones" && <LegacyAutomationsTab />}

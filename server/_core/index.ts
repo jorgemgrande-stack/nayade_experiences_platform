@@ -22,6 +22,7 @@ import vapiWebhookRouter from "../vapiWebhookRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCommercialFollowupJob } from "../commercialFollowupJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
+import { startEmailAutomationJob } from "../emailAutomationJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
 import { startExpenseEmailIngestionJob } from "../services/expenseEmailIngestionService";
 import { startCommercialEmailSyncJob } from "../services/commercialEmailService";
@@ -1284,5 +1285,6 @@ runMigrations()
   .then(() => conditionallyStartJob("commercial_email_enabled",            startCommercialEmailSyncJob,          "Commercial Email Sync"))
   .then(() => conditionallyStartJob("card_terminal_matching_enabled", startMatchingJob, "Card Terminal Matching", true))
   .then(() => conditionallyStartJob("card_terminal_relink_enabled",   startRelinkJob,   "Card Terminal Relink",   true))
+  .then(() => conditionallyStartJob("email_automation_job_enabled",   startEmailAutomationJob, "Email Automation"))
   .catch(console.error);
 

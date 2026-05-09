@@ -2992,4 +2992,108 @@ export const commercialEmails = mysqlTable("commercial_emails", {
 });
 
 export type CommercialEmail = typeof commercialEmails.$inferSelect;
+
+// ─── EMAIL COMMUNICATIONS SYSTEM (Fase 2) ────────────────────────────────────
+
+/** Configuración operativa por plantilla de email (overlay sobre build* functions) */
+export const emailTemplateConfigs = mysqlTable("email_template_configs", {
+  id:             int("id").autoincrement().primaryKey(),
+  key:            varchar("key", { length: 128 }).notNull().unique(),
+  category:       varchar("category", { length: 64 }),
+  friendlyName:   varchar("friendlyName", { length: 256 }),
+  isActive:       boolean("isActive").notNull().default(true),
+  sendToCustomer: boolean("sendToCustomer").notNull().default(true),
+  sendToAdmin:    boolean("sendToAdmin").notNull().default(false),
+  adminCopyEmail: varchar("adminCopyEmail", { length: 320 }),
+  customSubject:  varchar("customSubject", { length: 512 }),
+  notes:          text("notes"),
+  createdAt:      timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:      timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type EmailTemplateConfig = typeof emailTemplateConfigs.$inferSelect;
+export type InsertEmailTemplateConfig = typeof emailTemplateConfigs.$inferInsert;
+
+/** Reglas de automatización: reenvíos programados por plantilla */
+export const emailAutomationRules = mysqlTable("email_automation_rules", {
+  id:                 int("id").autoincrement().primaryKey(),
+  templateKey:        varchar("templateKey", { length: 128 }).notNull(),
+  name:               varchar("name", { length: 256 }).notNull(),
+  isActive:           boolean("isActive").notNull().default(true),
+  sortOrder:          int("sortOrder").notNull().default(0),
+  delayHours:         int("delayHours").notNull().default(24),
+  calculateFrom:      mysqlEnum("calculateFrom", ["trigger_time", "last_reminder", "created_at", "viewed_at", "expires_at"]).notNull().default("trigger_time"),
+  conditionsJson:     json("conditionsJson").$type<Record<string, unknown>>(),
+  maxSendsPerEntity:  int("maxSendsPerEntity").notNull().default(1),
+  allowedSendStart:   varchar("allowedSendStart", { length: 5 }).notNull().default("09:00"),
+  allowedSendEnd:     varchar("allowedSendEnd", { length: 5 }).notNull().default("21:00"),
+  stopIfConverted:    boolean("stopIfConverted").notNull().default(true),
+  stopIfPaid:         boolean("stopIfPaid").notNull().default(true),
+  emailSubject:       varchar("emailSubject", { length: 512 }),
+  emailBody:          text("emailBody"),
+  createdAt:          timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:          timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type EmailAutomationRule = typeof emailAutomationRules.$inferSelect;
+export type InsertEmailAutomationRule = typeof emailAutomationRules.$inferInsert;
+
+/** Log global de todos los emails salientes */
+export const emailCommLog = mysqlTable("email_comm_log", {
+  id:                 int("id").autoincrement().primaryKey(),
+  leadId:             int("leadId"),
+  quoteId:            int("quoteId"),
+  reservationId:      int("reservationId"),
+  relatedEntityType:  varchar("relatedEntityType", { length: 64 }),
+  relatedEntityId:    int("relatedEntityId"),
+  templateKey:        varchar("templateKey", { length: 128 }),
+  ruleId:             int("ruleId"),
+  triggerEvent:       varchar("triggerEvent", { length: 128 }),
+  channel:            varchar("channel", { length: 32 }).notNull().default("email"),
+  recipientEmail:     varchar("recipientEmail", { length: 320 }),
+  ccEmail:            varchar("ccEmail", { length: 320 }),
+  subject:            varchar("subject", { length: 512 }),
+  status:             mysqlEnum("status", ["sent", "failed", "skipped"]).notNull().default("sent"),
+  provider:           varchar("provider", { length: 32 }),
+  errorMessage:       text("errorMessage"),
+  sentByUserId:       int("sentByUserId"),
+  isAutomatic:        boolean("isAutomatic").notNull().default(false),
+  skipReason:         varchar("skipReason", { length: 256 }),
+  createdAt:          timestamp("createdAt").defaultNow().notNull(),
+});
+export type EmailCommLog = typeof emailCommLog.$inferSelect;
+export type InsertEmailCommLog = typeof emailCommLog.$inferInsert;
+
+/** Cola de jobs programados para reenvíos automáticos */
+export const emailScheduledJobs = mysqlTable("email_scheduled_jobs", {
+  id:                 int("id").autoincrement().primaryKey(),
+  relatedEntityType:  varchar("relatedEntityType", { length: 64 }).notNull(),
+  relatedEntityId:    int("relatedEntityId").notNull(),
+  templateKey:        varchar("templateKey", { length: 128 }).notNull(),
+  ruleId:             int("ruleId").notNull(),
+  recipientEmail:     varchar("recipientEmail", { length: 320 }),
+  scheduledFor:       timestamp("scheduledFor").notNull(),
+  status:             mysqlEnum("status", ["pending", "sent", "skipped", "failed", "cancelled"]).notNull().default("pending"),
+  attempts:           int("attempts").notNull().default(0),
+  lastAttemptAt:      timestamp("lastAttemptAt"),
+  errorMessage:       text("errorMessage"),
+  skipReason:         varchar("skipReason", { length: 256 }),
+  lockedAt:           timestamp("lockedAt"),
+  metadataJson:       json("metadataJson").$type<Record<string, unknown>>(),
+  createdAt:          timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:          timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type EmailScheduledJob = typeof emailScheduledJobs.$inferSelect;
+export type InsertEmailScheduledJob = typeof emailScheduledJobs.$inferInsert;
+
+/** Preferencias de automatización por cliente (email) */
+export const customerEmailPrefs = mysqlTable("customer_email_prefs", {
+  id:                 int("id").autoincrement().primaryKey(),
+  email:              varchar("email", { length: 320 }).notNull().unique(),
+  automationsPaused:  boolean("automationsPaused").notNull().default(false),
+  pauseReason:        text("pauseReason"),
+  pausedAt:           timestamp("pausedAt"),
+  pausedByUserId:     int("pausedByUserId"),
+  createdAt:          timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:          timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type CustomerEmailPref = typeof customerEmailPrefs.$inferSelect;
 export type InsertCommercialEmail = typeof commercialEmails.$inferInsert;
