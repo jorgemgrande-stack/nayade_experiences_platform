@@ -1,8 +1,8 @@
 ﻿import React, { useState, useMemo, useCallback } from "react";
 import { Link } from "wouter";
 import {
-  CheckCircle, Phone, Mail, ChevronRight,
-  Send, Star, Shield, Zap, ArrowRight,
+  CheckCircle, Phone, Mail, Users, ChevronRight,
+  Send, Star, Shield, Zap, ArrowRight, Waves,
   Sparkles, Heart, TreePine, SunMedium, Plus, X,
   Clock,
 } from "lucide-react";
