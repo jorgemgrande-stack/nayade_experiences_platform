@@ -132,7 +132,7 @@ import {
   buildTransferConfirmationHtml,
 } from "./emailTemplates";
 import { getDb } from "./db";
-import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes } from "../drizzle/schema";
+import { siteSettings, systemSettings, packs, legoPacks as legoPacksTable, reservations as reservationsSchema, reservationOperational as reservationOperationalSchema, discountCodes, users as usersTable } from "../drizzle/schema";
 
 // ─── Pricing helper (per_person | per_unit) ───────────────────────────────────
 /**
@@ -1265,6 +1265,9 @@ export const appRouter = router({
       const bcrypt = await import("bcryptjs");
       const passwordHash = await bcrypt.hash(input.password, 12);
       await setUserPassword(input.userId, passwordHash);
+      // Asegurarse de que la cuenta queda activa tras cambio manual de contraseña
+      const db2 = await getDb();
+      if (db2) await db2.update(usersTable).set({ isActive: true } as any).where(eq(usersTable.id, input.userId));
       return { success: true };
     }),
     deleteUser: adminProcedure.input(z.object({

@@ -242,13 +242,12 @@ export const partnersRouter = router({
 
       if (existing) {
         // Vincular usuario existente al partner y guardar token de activación
+        // No tocar isActive: si ya tenía cuenta activa, puede seguir entrando
         await db.update(users)
           .set({
             role: input.role as any,
             inviteToken: token,
             inviteTokenExpiry: expiry,
-            inviteAccepted: false,
-            isActive: false,
             ...(({ partnerId: input.partnerId }) as any),
           } as any)
           .where(eq(users.id, existing.id));
