@@ -298,6 +298,14 @@ export const emailCommunicationsRouter = router({
       return { ok: true };
     }),
 
+  listPausedCustomers: staff.query(async () => {
+    return db
+      .select()
+      .from(customerEmailPrefs)
+      .where(eq(customerEmailPrefs.automationsPaused, true))
+      .orderBy(desc(customerEmailPrefs.pausedAt));
+  }),
+
   // ── Dashboard KPIs ─────────────────────────────────────────────────────────
 
   getDashboardKpis: staff.query(async () => {

@@ -77,6 +77,8 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronUp,
+  BellOff,
+  Bell,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -358,6 +360,8 @@ function LeadDetailModal({
   onConvert: (leadId: number, leadName?: string) => void;
 }) {
   const [note, setNote] = useState("");
+  const [pauseReason, setPauseReason] = useState("");
+  const [showPauseInput, setShowPauseInput] = useState(false);
   const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.crm.leads.get.useQuery({ id: leadId });
@@ -403,6 +407,20 @@ function LeadDetailModal({
     onError: (e) => toast.error(e.message),
   });
 
+  const emailPrefsQ = trpc.emailCommunications.getCustomerPrefs.useQuery(
+    { email: data?.lead?.email ?? "" },
+    { enabled: !!data?.lead?.email }
+  );
+  const setPrefs = trpc.emailCommunications.setCustomerPrefs.useMutation({
+    onSuccess: () => {
+      toast.success(emailPrefsQ.data?.automationsPaused ? "Automatizaciones reanudadas" : "Automatizaciones pausadas");
+      setPauseReason("");
+      setShowPauseInput(false);
+      emailPrefsQ.refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   if (isLoading) {
     return (
       <DialogContent className="w-[95vw] max-w-2xl bg-[#0d1526] border-foreground/[0.12] text-white">
@@ -415,6 +433,7 @@ function LeadDetailModal({
 
   if (!data) return null;
   const { lead, activity, quotes: relatedQuotes } = data;
+  const emailPrefs = emailPrefsQ.data;
 
   return (
     <>
@@ -545,6 +564,74 @@ function LeadDetailModal({
             </div>
           </div>
         )}
+
+        {/* Email automation preferences */}
+        <div>
+          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Emails automáticos</h4>
+          <div className={`rounded-lg border px-4 py-3 flex items-start justify-between gap-3 ${emailPrefs?.automationsPaused ? "bg-amber-950/30 border-amber-700/40" : "bg-foreground/[0.04] border-foreground/[0.10]"}`}>
+            <div className="flex items-start gap-2.5">
+              {emailPrefs?.automationsPaused
+                ? <BellOff className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                : <Bell className="w-4 h-4 text-green-400 mt-0.5 shrink-0" />}
+              <div>
+                <div className="text-sm font-medium text-white">
+                  {emailPrefs?.automationsPaused ? "Automatizaciones pausadas" : "Automatizaciones activas"}
+                </div>
+                {emailPrefs?.automationsPaused && emailPrefs.pauseReason && (
+                  <div className="text-xs text-amber-400/80 mt-0.5">Motivo: {emailPrefs.pauseReason}</div>
+                )}
+                {emailPrefs?.automationsPaused && emailPrefs.pausedAt && (
+                  <div className="text-xs text-foreground/40 mt-0.5">
+                    Pausado el {new Date(emailPrefs.pausedAt).toLocaleDateString("es-ES")}
+                  </div>
+                )}
+                {!emailPrefs?.automationsPaused && (
+                  <div className="text-xs text-foreground/40 mt-0.5">Este cliente recibe emails automáticos normalmente</div>
+                )}
+              </div>
+            </div>
+            <div className="shrink-0">
+              {emailPrefs?.automationsPaused ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7 border-green-700/50 text-green-400 hover:bg-green-900/30"
+                  onClick={() => setPrefs.mutate({ email: lead.email, automationsPaused: false })}
+                  disabled={setPrefs.isPending}
+                >
+                  <Bell className="w-3 h-3 mr-1" /> Reanudar
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7 border-amber-700/50 text-amber-400 hover:bg-amber-900/30"
+                  onClick={() => setShowPauseInput(v => !v)}
+                >
+                  <BellOff className="w-3 h-3 mr-1" /> Pausar
+                </Button>
+              )}
+            </div>
+          </div>
+          {showPauseInput && !emailPrefs?.automationsPaused && (
+            <div className="mt-2 flex gap-2">
+              <Input
+                value={pauseReason}
+                onChange={e => setPauseReason(e.target.value)}
+                placeholder="Motivo (opcional)..."
+                className="h-8 text-xs bg-foreground/[0.05] border-foreground/[0.12] text-white"
+              />
+              <Button
+                size="sm"
+                className="h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                onClick={() => setPrefs.mutate({ email: lead.email, automationsPaused: true, pauseReason: pauseReason || null })}
+                disabled={setPrefs.isPending}
+              >
+                Confirmar pausa
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* Notes */}
         <div>
