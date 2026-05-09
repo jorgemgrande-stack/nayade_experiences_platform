@@ -5,7 +5,7 @@ import {
   Settings, Menu, X, LogOut, Users, Image, ChevronDown,
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
-  Sun, Moon, ExternalLink, Target, MessageCircle, Bot, Mail,
+  Sun, Moon, ExternalLink, Target, MessageCircle, Bot, Mail, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
