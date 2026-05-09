@@ -8,25 +8,29 @@
  * 1. Buscar jobs en estado "pending" con scheduledFor <= NOW().
  * 2. Bloquear el job (lockedAt) para evitar doble ejecución.
  * 3. Cargar la regla y config de plantilla.
- * 4. Verificar condiciones (template activa, cliente no pausado).
- * 5. Intentar enviar via sendEmail().
- * 6. Registrar en email_comm_log.
- * 7. Marcar job como sent/skipped/failed.
+ * 4. Verificar condiciones (template activa, cliente no pausado, entidad no pagada/convertida).
+ * 5. Verificar maxSendsPerEntity para no superar el límite de envíos por entidad.
+ * 6. Intentar enviar via sendEmail() (CC global via mergeGlobalCc en mailer.ts).
+ * 7. Registrar en email_comm_log.
+ * 8. Marcar job como sent/skipped/failed.
  *
  * Este job convive con los crons legacy (quoteReminderJob, etc.).
  * Solo procesa jobs creados explícitamente en email_scheduled_jobs.
+ * emailManager.ts bloquea el auto-scheduling para templates con cobertura legacy.
  */
 
 import cron from "node-cron";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, lte, isNull, sql } from "drizzle-orm";
+import { eq, and, lte, isNull, sql, count } from "drizzle-orm";
 import {
   emailScheduledJobs,
   emailAutomationRules,
   emailTemplateConfigs,
   emailCommLog,
   customerEmailPrefs,
+  quotes,
+  leads,
 } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
 import { getFeatureFlag } from "./config";
@@ -54,6 +58,9 @@ function isWithinWindow(start: string, end: string): boolean {
   const now = madridHHMM();
   return now >= start && now <= end;
 }
+
+const PAID_STATUSES = ["pagado", "convertido_reserva", "facturado"] as const;
+const CONVERTED_STATUSES = ["convertido_reserva", "pagado", "facturado"] as const;
 
 export async function runEmailAutomationJob(): Promise<void> {
   // Feature flag
@@ -87,7 +94,7 @@ export async function runEmailAutomationJob(): Promise<void> {
   let sent = 0, skipped = 0, failed = 0;
 
   for (const job of jobs) {
-    // Bloquear el job
+    // Bloquear el job para evitar procesamiento concurrente
     await db
       .update(emailScheduledJobs)
       .set({ lockedAt: new Date(), attempts: sql`${emailScheduledJobs.attempts} + 1`, lastAttemptAt: new Date() })
@@ -97,6 +104,7 @@ export async function runEmailAutomationJob(): Promise<void> {
     let skipReason: string | undefined;
     let errorMessage: string | undefined;
     let provider: string | undefined;
+    let finalSubject = "";
 
     try {
       // Cargar regla
@@ -113,9 +121,8 @@ export async function runEmailAutomationJob(): Promise<void> {
         continue;
       }
 
-      // Verificar ventana horaria
+      // Verificar ventana horaria — reprogramar en lugar de saltar
       if (!isWithinWindow(rule.allowedSendStart, rule.allowedSendEnd)) {
-        // Reprogramar para dentro de 1h en lugar de saltar
         const nextTry = new Date(now.getTime() + 60 * 60 * 1000);
         await db.update(emailScheduledJobs).set({ lockedAt: null, scheduledFor: nextTry }).where(eq(emailScheduledJobs.id, job.id));
         log("info", `Job ${job.id} reprogramado por horario`, { ruleId: job.ruleId });
@@ -152,7 +159,71 @@ export async function runEmailAutomationJob(): Promise<void> {
         }
       }
 
-      // Construir email desde la regla
+      // Verificar estado de la entidad (stopIfPaid / stopIfConverted)
+      const entityType = job.relatedEntityType;
+      const entityId = job.relatedEntityId;
+
+      if (entityType === "quote" && entityId) {
+        const [q] = await db
+          .select({ status: quotes.status, paidAt: quotes.paidAt })
+          .from(quotes)
+          .where(eq(quotes.id, entityId))
+          .limit(1);
+
+        if (q) {
+          if (rule.stopIfPaid && (q.paidAt !== null || (PAID_STATUSES as readonly string[]).includes(q.status))) {
+            skipReason = "entity_paid";
+            await finalize(job.id, "skipped", { skipReason });
+            skipped++;
+            log("info", `Job ${job.id} saltado — presupuesto ya pagado`, { entityId });
+            continue;
+          }
+          if (rule.stopIfConverted && (CONVERTED_STATUSES as readonly string[]).includes(q.status)) {
+            skipReason = "entity_converted";
+            await finalize(job.id, "skipped", { skipReason });
+            skipped++;
+            log("info", `Job ${job.id} saltado — presupuesto convertido en reserva`, { entityId });
+            continue;
+          }
+        }
+      }
+
+      if (entityType === "lead" && entityId && rule.stopIfConverted) {
+        const [l] = await db
+          .select({ status: leads.status })
+          .from(leads)
+          .where(eq(leads.id, entityId))
+          .limit(1);
+
+        if (l?.status === "convertido") {
+          skipReason = "entity_converted";
+          await finalize(job.id, "skipped", { skipReason });
+          skipped++;
+          log("info", `Job ${job.id} saltado — lead ya convertido`, { entityId });
+          continue;
+        }
+      }
+
+      // Verificar maxSendsPerEntity — contar envíos anteriores de esta regla sobre la misma entidad
+      const [{ alreadySent }] = await db
+        .select({ alreadySent: count() })
+        .from(emailScheduledJobs)
+        .where(and(
+          eq(emailScheduledJobs.relatedEntityType, entityType),
+          eq(emailScheduledJobs.relatedEntityId, entityId),
+          eq(emailScheduledJobs.templateKey, job.templateKey),
+          eq(emailScheduledJobs.ruleId, job.ruleId),
+          eq(emailScheduledJobs.status, "sent"),
+        ));
+
+      if ((alreadySent as number) >= rule.maxSendsPerEntity) {
+        skipReason = "max_sends_reached";
+        await finalize(job.id, "skipped", { skipReason });
+        skipped++;
+        continue;
+      }
+
+      // Verificar contenido mínimo
       if (!rule.emailSubject || !rule.emailBody || !job.recipientEmail) {
         skipReason = "missing_content";
         await finalize(job.id, "skipped", { skipReason });
@@ -160,17 +231,17 @@ export async function runEmailAutomationJob(): Promise<void> {
         continue;
       }
 
-      const subject = rule.emailSubject;
+      finalSubject = rule.emailSubject;
       const html = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">${rule.emailBody}</div>`;
 
-      // Enviar
-      const ok = await sendEmail({ to: job.recipientEmail, subject, html });
+      // Enviar (mergeGlobalCc en mailer.ts añade reservas@ automáticamente)
+      const ok = await sendEmail({ to: job.recipientEmail, subject: finalSubject, html });
       status = ok ? "sent" : "failed";
       provider = process.env.BREVO_API_KEY ? "brevo" : "smtp";
 
       if (ok) {
         sent++;
-        log("info", "Email automático enviado", { jobId: job.id, to: job.recipientEmail, rule: rule.name });
+        log("info", "Email automático enviado", { jobId: job.id, to: job.recipientEmail, rule: rule.name, subject: finalSubject });
       } else {
         failed++;
         errorMessage = "sendEmail returned false";
@@ -183,7 +254,7 @@ export async function runEmailAutomationJob(): Promise<void> {
       log("error", "Error procesando job", { jobId: job.id, error: errorMessage });
     }
 
-    // Registrar en log
+    // Registrar en email_comm_log
     try {
       await db.insert(emailCommLog).values({
         templateKey: job.templateKey,
@@ -191,7 +262,7 @@ export async function runEmailAutomationJob(): Promise<void> {
         triggerEvent: `auto_rule_${job.ruleId}`,
         channel: "email",
         recipientEmail: job.recipientEmail ?? "",
-        subject: "",
+        subject: finalSubject,
         status,
         provider,
         errorMessage,
@@ -200,7 +271,7 @@ export async function runEmailAutomationJob(): Promise<void> {
         relatedEntityType: job.relatedEntityType,
         relatedEntityId: job.relatedEntityId,
       });
-    } catch { /* no interrumpir */ }
+    } catch { /* no interrumpir el flujo */ }
 
     await finalize(job.id, status, { skipReason, errorMessage });
   }

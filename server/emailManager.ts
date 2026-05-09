@@ -28,6 +28,10 @@ import { getSystemSettingSync } from "./config";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
 const db = drizzle(_pool);
 
+// Templates con cron legacy propio — no programar jobs automáticos para evitar duplicados.
+// quoteReminderJob gestiona sus propios recordatorios con lógica propia (reminderCount, 48h).
+const LEGACY_CRON_TEMPLATES = new Set(["quote"]);
+
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
 
 export interface ManagedEmailOptions {
@@ -156,7 +160,7 @@ export async function sendManagedEmail(opts: ManagedEmailOptions): Promise<Manag
 
   // 6. Programar jobs de automatización si hay reglas activas
   let jobsScheduled = 0;
-  if (sent && relatedEntityType && relatedEntityId) {
+  if (sent && relatedEntityType && relatedEntityId && !LEGACY_CRON_TEMPLATES.has(templateKey)) {
     try {
       const rules = await db
         .select()

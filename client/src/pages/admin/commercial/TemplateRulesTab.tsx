@@ -48,6 +48,12 @@ const CATEGORIES = [
   "Anulaciones", "Cupones", "Restaurantes", "Operaciones internas", "Administración",
 ];
 
+// Templates con cron legacy propio. emailManager bloquea el auto-scheduling para estas claves,
+// así que las reglas de automatización no generarán jobs aunque se creen aquí.
+const LEGACY_CRON_KEYS: Record<string, string> = {
+  quote: "quoteReminderJob — 48h, max 2 recordatorios, sin feature flag",
+};
+
 function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <div className="flex items-center justify-between">
@@ -266,6 +272,19 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
 
       {expanded && (
         <div className="border-t border-[#2a2a2a] p-4 space-y-4">
+          {/* Aviso de cobertura legacy */}
+          {LEGACY_CRON_KEYS[config.key] && (
+            <div className="bg-amber-900/20 border border-amber-700/40 rounded-lg p-3 flex gap-2 text-xs text-amber-300">
+              <span className="shrink-0 mt-0.5">⚠</span>
+              <div>
+                <span className="font-semibold">Cron legacy activo:</span>{" "}
+                {LEGACY_CRON_KEYS[config.key]}.<br />
+                Las reglas de automatización que crees aquí <strong>no generarán jobs automáticos</strong> para esta plantilla
+                — el sistema los bloquea en <code className="font-mono text-amber-200">emailManager.ts</code> para evitar duplicados.
+                Los recordatorios siguen siendo gestionados por el cron legacy.
+              </div>
+            </div>
+          )}
           {/* Config toggles */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-3 bg-[#111] rounded-lg p-3">

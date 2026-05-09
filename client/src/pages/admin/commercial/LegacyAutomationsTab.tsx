@@ -22,14 +22,42 @@ interface CronCard {
 
 const CRONS: CronCard[] = [
   {
+    id: "email_automation_job",
+    name: "emailAutomationJob",
+    file: "server/emailAutomationJob.ts",
+    schedule: "*/10 * * * *",
+    scheduleHuman: "Cada 10 minutos",
+    featureFlag: "email_automation_job_enabled",
+    status: "active_with_flag",
+    statusLabel: "Activo con feature flag — controlado",
+    condition:
+      "Jobs en email_scheduled_jobs con status='pending' y scheduledFor <= NOW(). Los jobs se crean automáticamente cuando sendManagedEmail() envía con éxito y hay reglas activas para esa plantilla.",
+    maxPerRun: 50,
+    maxPerQuote: null,
+    templates: ["Configurable por regla — emailSubject / emailBody en email_automation_rules"],
+    recipient: "client",
+    subject: "Configurable por regla de automatización (campo emailSubject)",
+    recommendation:
+      "Sistema nuevo. Activar el feature flag desde Settings > Avanzado > Feature Flags. No crear reglas para plantillas con cron legacy propio ('quote'). El bloqueo anti-duplicado es automático en emailManager.",
+    recommendationType: "keep",
+    details: [
+      { label: "Feature flag", value: "email_automation_job_enabled (desactivado por defecto)" },
+      { label: "Anti-duplicado", value: "lockedAt + maxSendsPerEntity + LEGACY_CRON_TEMPLATES guard" },
+      { label: "Ventana horaria", value: "allowedSendStart – allowedSendEnd por regla (Europe/Madrid)" },
+      { label: "Condiciones de parada", value: "stopIfPaid, stopIfConverted, automationsPaused" },
+      { label: "Registro", value: "email_comm_log (isAutomatic=true, ruleId)" },
+      { label: "CC", value: "GLOBAL_CC_EMAIL vía mergeGlobalCc en mailer.ts (reservas@nayadeexperiences.es)" },
+    ],
+  },
+  {
     id: "quote_reminder",
     name: "quoteReminderJob",
     file: "server/quoteReminderJob.ts",
     schedule: "0 * * * *",
     scheduleHuman: "Cada hora (en el minuto 0)",
     featureFlag: null,
-    status: "superseded",
-    statusLabel: "Activo sin flag — supersedido",
+    status: "active_no_flag",
+    statusLabel: "Activo sin flag — modo compatibilidad",
     condition:
       "Presupuesto en estado 'enviado', sin viewedAt, sin paidAt, con paymentLinkToken, sentAt hace >48h, reminderCount < 2",
     maxPerRun: 50,
@@ -38,14 +66,15 @@ const CRONS: CronCard[] = [
     recipient: "both",
     subject: "⏰ Recordatorio: tu presupuesto {quoteNumber} sigue disponible — {brandName}",
     recommendation:
-      "Desactivar o poner bajo feature flag. commercialFollowupJob cubre esta funcionalidad con reglas configurables. Ambos corren en paralelo y pueden enviar al mismo cliente.",
-    recommendationType: "deprecate",
+      "Mantener en modo compatibilidad. emailManager bloquea automáticamente el auto-scheduling para la plantilla 'quote', garantizando que emailAutomationJob no genere duplicados con este cron.",
+    recommendationType: "keep",
     details: [
       { label: "MAX_REMINDERS", value: "2 reenvíos por presupuesto" },
       { label: "Cutoff", value: "48 horas sin abrir" },
       { label: "CC", value: "getBusinessEmail('reservations')" },
       { label: "Alerta interna", value: "notifyOwner() si se envió ≥1" },
       { label: "Ejecuta al arrancar", value: "Sí — sin esperar la hora" },
+      { label: "Anti-duplicado", value: "LEGACY_CRON_TEMPLATES en emailManager bloquea scheduling automático" },
     ],
   },
   {
@@ -265,27 +294,27 @@ export default function LegacyAutomationsTab() {
       </div>
 
       {/* Info banner */}
-      <div className="bg-yellow-900/20 border border-yellow-800/40 rounded-lg p-3 flex gap-2 text-xs text-yellow-300">
-        <span className="shrink-0">⚠</span>
+      <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-3 flex gap-2 text-xs text-blue-300">
+        <span className="shrink-0">ℹ</span>
         <span>
-          <strong>quoteReminderJob</strong> y <strong>commercialFollowupJob</strong> corren en paralelo y ambos
-          pueden contactar al mismo cliente en la misma hora. Revisa la recomendación de depreciación antes de activar
-          nuevas reglas en commercialFollowupJob.
+          <strong>emailAutomationJob</strong> es el nuevo sistema centralizado (controlado por feature flag).
+          Los crons legacy siguen activos en modo compatibilidad. <strong>emailManager</strong> bloquea automáticamente
+          el scheduling para la plantilla <code className="font-mono">'quote'</code> para evitar duplicados con quoteReminderJob.
         </span>
       </div>
 
       {/* Summary row */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-white">3</div>
+          <div className="text-2xl font-bold text-white">4</div>
           <div className="text-xs text-gray-500 mt-1">Cron jobs totales</div>
         </div>
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-red-400">1</div>
-          <div className="text-xs text-gray-500 mt-1">Sin feature flag y supersedido</div>
+          <div className="text-2xl font-bold text-yellow-400">2</div>
+          <div className="text-xs text-gray-500 mt-1">Sin feature flag (legacy)</div>
         </div>
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-center">
-          <div className="text-2xl font-bold text-green-400">2</div>
+          <div className="text-2xl font-bold text-green-400">4</div>
           <div className="text-xs text-gray-500 mt-1">Recomendados mantener</div>
         </div>
       </div>
