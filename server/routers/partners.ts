@@ -241,12 +241,16 @@ export const partnersRouter = router({
         .limit(1);
 
       if (existing) {
-        // Vincular usuario existente al partner
+        // Vincular usuario existente al partner y guardar token de activación
         await db.update(users)
           .set({
             role: input.role as any,
+            inviteToken: token,
+            inviteTokenExpiry: expiry,
+            inviteAccepted: false,
+            isActive: false,
             ...(({ partnerId: input.partnerId }) as any),
-          })
+          } as any)
           .where(eq(users.id, existing.id));
       } else {
         // Crear usuario pendiente de activación
