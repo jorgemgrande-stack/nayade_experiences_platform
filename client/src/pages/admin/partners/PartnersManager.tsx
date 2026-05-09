@@ -12,6 +12,7 @@ import {
   Plus, Search, Building2, Users, Edit2, ToggleLeft, ToggleRight,
   ChevronRight, Mail, Phone, X, Check, AlertCircle, UserPlus, Trash2,
   CreditCard, RefreshCw, KeyRound, Send, Eye, EyeOff,
+  ClipboardList, CalendarDays, TrendingUp, Euro,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -472,6 +473,181 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
   );
 }
 
+// ─── Panel de operaciones del partner (leads + reservas) ─────────────────────
+
+const LEAD_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  nuevo:      { label: "Nuevo",      color: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  contactado: { label: "Contactado", color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  en_proceso: { label: "En proceso", color: "bg-violet-500/15 text-violet-400 border-violet-500/30" },
+  convertido: { label: "Convertido", color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+  perdido:    { label: "Perdido",    color: "bg-red-500/15 text-red-400 border-red-500/30" },
+};
+
+const RES_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  PENDIENTE_CONFIRMACION: { label: "Pendiente",  color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  CONFIRMADA:             { label: "Confirmada", color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+  EN_CURSO:               { label: "En curso",   color: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  FINALIZADA:             { label: "Finalizada", color: "bg-gray-500/15 text-gray-400 border-gray-500/30" },
+  NO_SHOW:                { label: "No show",    color: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
+  ANULADA:                { label: "Anulada",    color: "bg-red-500/15 text-red-400 border-red-500/30" },
+};
+
+function StatusBadgeOp({ label, color }: { label: string; color: string }) {
+  return (
+    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${color}`}>
+      {label}
+    </span>
+  );
+}
+
+function PartnerOperationsPanel({ partnerId }: { partnerId: number }) {
+  const [tab, setTab] = useState<"leads" | "reservas">("leads");
+
+  const { data: leads = [], isLoading: leadsLoading } = trpc.partners.adminListLeads.useQuery({ partnerId });
+  const { data: reservas = [], isLoading: resLoading } = trpc.partners.adminListReservations.useQuery({ partnerId });
+
+  const totalLeads = leads.length;
+  const totalReservas = reservas.length;
+  const totalFact = reservas.reduce((acc, r) => acc + (r.amountTotal ?? 0), 0);
+
+  return (
+    <div className="space-y-3">
+      {/* KPIs rápidos */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-center">
+          <div className="text-xl font-bold text-blue-400">{totalLeads}</div>
+          <div className="text-[10px] text-blue-400/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+            <TrendingUp className="w-3 h-3" /> Leads enviados
+          </div>
+        </div>
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-center">
+          <div className="text-xl font-bold text-emerald-400">{totalReservas}</div>
+          <div className="text-[10px] text-emerald-400/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+            <CalendarDays className="w-3 h-3" /> Reservas
+          </div>
+        </div>
+        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 text-center">
+          <div className="text-xl font-bold text-violet-400">{(totalFact / 100).toFixed(2)} €</div>
+          <div className="text-[10px] text-violet-400/70 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+            <Euro className="w-3 h-3" /> Facturado total
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-foreground/[0.08]">
+        <button
+          onClick={() => setTab("leads")}
+          className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
+            tab === "leads"
+              ? "border-blue-500 text-blue-400"
+              : "border-transparent text-foreground/40 hover:text-foreground/70"
+          }`}
+        >
+          <ClipboardList className="w-3.5 h-3.5 inline mr-1.5" />
+          Leads ({totalLeads})
+        </button>
+        <button
+          onClick={() => setTab("reservas")}
+          className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
+            tab === "reservas"
+              ? "border-emerald-500 text-emerald-400"
+              : "border-transparent text-foreground/40 hover:text-foreground/70"
+          }`}
+        >
+          <CalendarDays className="w-3.5 h-3.5 inline mr-1.5" />
+          Reservas ({totalReservas})
+        </button>
+      </div>
+
+      {/* Tabla de leads */}
+      {tab === "leads" && (
+        leadsLoading ? (
+          <div className="text-center py-6"><RefreshCw className="w-5 h-5 animate-spin mx-auto text-foreground/30" /></div>
+        ) : leads.length === 0 ? (
+          <div className="text-center py-8 text-foreground/30 text-sm">Sin leads todavía</div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-foreground/[0.08]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-foreground/[0.08] bg-foreground/[0.03]">
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Fecha</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Cliente</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Contacto</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Categoría</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leads.map(l => {
+                  const st = LEAD_STATUS_LABELS[l.status] ?? { label: l.status, color: "bg-gray-500/15 text-gray-400 border-gray-500/30" };
+                  return (
+                    <tr key={l.id} className="border-b border-foreground/[0.06] hover:bg-foreground/[0.03] transition-colors">
+                      <td className="px-3 py-2 text-foreground/50">
+                        {l.createdAt ? new Date(l.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                      </td>
+                      <td className="px-3 py-2 font-medium text-foreground">{l.name}</td>
+                      <td className="px-3 py-2 text-foreground/50">
+                        <div>{l.email}</div>
+                        {l.phone && <div className="text-foreground/30">{l.phone}</div>}
+                      </td>
+                      <td className="px-3 py-2 text-foreground/50">{l.selectedCategory ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        <StatusBadgeOp {...st} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      {/* Tabla de reservas */}
+      {tab === "reservas" && (
+        resLoading ? (
+          <div className="text-center py-6"><RefreshCw className="w-5 h-5 animate-spin mx-auto text-foreground/30" /></div>
+        ) : reservas.length === 0 ? (
+          <div className="text-center py-8 text-foreground/30 text-sm">Sin reservas todavía</div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-foreground/[0.08]">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-foreground/[0.08] bg-foreground/[0.03]">
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Ref.</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Fecha reserva</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Cliente</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Producto</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Importe</th>
+                  <th className="text-left px-3 py-2 text-foreground/40 font-semibold">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reservas.map(r => {
+                  const st = RES_STATUS_LABELS[r.statusReservation ?? ""] ?? { label: r.status, color: "bg-gray-500/15 text-gray-400 border-gray-500/30" };
+                  return (
+                    <tr key={r.id} className="border-b border-foreground/[0.06] hover:bg-foreground/[0.03] transition-colors">
+                      <td className="px-3 py-2 text-foreground/40 font-mono">{r.reservationNumber ?? `#${r.id}`}</td>
+                      <td className="px-3 py-2 text-foreground/50">{r.bookingDate ?? "—"}</td>
+                      <td className="px-3 py-2 font-medium text-foreground">{r.customerName}</td>
+                      <td className="px-3 py-2 text-foreground/60 max-w-[140px] truncate">{r.productName}</td>
+                      <td className="px-3 py-2 font-semibold text-violet-400">{((r.amountTotal ?? 0) / 100).toFixed(2)} €</td>
+                      <td className="px-3 py-2">
+                        <StatusBadgeOp {...st} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function PartnersManager() {
@@ -766,6 +942,14 @@ export default function PartnersManager() {
                 {/* Usuarios del partner */}
                 <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4">
                   <PartnerUsersPanel partnerId={selectedPartner.id} partnerName={selectedPartner.name} />
+                </div>
+
+                {/* Operaciones (leads + reservas) */}
+                <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4">
+                  <h3 className="text-sm font-semibold text-foreground/70 uppercase tracking-wider mb-4">
+                    Operaciones generadas
+                  </h3>
+                  <PartnerOperationsPanel partnerId={selectedPartner.id} />
                 </div>
 
                 {/* Notas */}

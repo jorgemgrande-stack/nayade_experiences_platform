@@ -716,4 +716,52 @@ export const partnersRouter = router({
       await db.delete(partnerBillingBatches).where(eq(partnerBillingBatches.id, input.id));
       return { ok: true };
     }),
+
+  // ── ADMIN: Leads generados por un partner ────────────────────────────────
+  adminListLeads: adminProcedure
+    .input(z.object({ partnerId: z.number().int() }))
+    .query(async ({ input }) => {
+      const rows = await db
+        .select({
+          id: leads.id,
+          name: leads.name,
+          email: leads.email,
+          phone: leads.phone,
+          status: leads.status,
+          opportunityStatus: leads.opportunityStatus,
+          priority: leads.priority,
+          selectedCategory: (leads as any).selectedCategory,
+          createdAt: leads.createdAt,
+        })
+        .from(leads)
+        .where(eq((leads as any).partnerId, input.partnerId))
+        .orderBy(desc(leads.createdAt))
+        .limit(200);
+      return rows;
+    }),
+
+  // ── ADMIN: Reservas generadas por un partner ─────────────────────────────
+  adminListReservations: adminProcedure
+    .input(z.object({ partnerId: z.number().int() }))
+    .query(async ({ input }) => {
+      const rows = await db
+        .select({
+          id: reservations.id,
+          reservationNumber: (reservations as any).reservationNumber,
+          productName: reservations.productName,
+          bookingDate: reservations.bookingDate,
+          people: reservations.people,
+          amountTotal: reservations.amountTotal,
+          customerName: reservations.customerName,
+          customerEmail: reservations.customerEmail,
+          status: reservations.status,
+          statusReservation: (reservations as any).statusReservation,
+          createdAt: reservations.createdAt,
+        })
+        .from(reservations)
+        .where(eq((reservations as any).partnerId, input.partnerId))
+        .orderBy(desc(reservations.createdAt))
+        .limit(200);
+      return rows;
+    }),
 });
