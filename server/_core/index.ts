@@ -832,6 +832,116 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
+    // Tablas del sistema de comunicaciones (migración 0086 — creación programática por si no aplicó)
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`email_template_configs\` (
+        \`id\`             INT AUTO_INCREMENT PRIMARY KEY,
+        \`key\`            VARCHAR(128) NOT NULL UNIQUE,
+        \`category\`       VARCHAR(64),
+        \`friendlyName\`   VARCHAR(256),
+        \`isActive\`       BOOLEAN NOT NULL DEFAULT TRUE,
+        \`sendToCustomer\` BOOLEAN NOT NULL DEFAULT TRUE,
+        \`sendToAdmin\`    BOOLEAN NOT NULL DEFAULT FALSE,
+        \`adminCopyEmail\` VARCHAR(320),
+        \`customSubject\`  VARCHAR(512),
+        \`notes\`          TEXT,
+        \`createdAt\`      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updatedAt\`      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`email_automation_rules\` (
+        \`id\`                INT AUTO_INCREMENT PRIMARY KEY,
+        \`templateKey\`       VARCHAR(128) NOT NULL,
+        \`name\`              VARCHAR(256) NOT NULL,
+        \`isActive\`          BOOLEAN NOT NULL DEFAULT TRUE,
+        \`sortOrder\`         INT NOT NULL DEFAULT 0,
+        \`delayHours\`        INT NOT NULL DEFAULT 24,
+        \`calculateFrom\`     ENUM('trigger_time','last_reminder','created_at','viewed_at','expires_at') NOT NULL DEFAULT 'trigger_time',
+        \`conditionsJson\`    JSON,
+        \`maxSendsPerEntity\` INT NOT NULL DEFAULT 1,
+        \`allowedSendStart\`  VARCHAR(5) NOT NULL DEFAULT '09:00',
+        \`allowedSendEnd\`    VARCHAR(5) NOT NULL DEFAULT '21:00',
+        \`stopIfConverted\`   BOOLEAN NOT NULL DEFAULT TRUE,
+        \`stopIfPaid\`        BOOLEAN NOT NULL DEFAULT TRUE,
+        \`emailSubject\`      VARCHAR(512),
+        \`emailBody\`         TEXT,
+        \`createdAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updatedAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_ear_template_key (\`templateKey\`),
+        INDEX idx_ear_active (\`isActive\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`email_comm_log\` (
+        \`id\`                INT AUTO_INCREMENT PRIMARY KEY,
+        \`leadId\`            INT,
+        \`quoteId\`           INT,
+        \`reservationId\`     INT,
+        \`relatedEntityType\` VARCHAR(64),
+        \`relatedEntityId\`   INT,
+        \`templateKey\`       VARCHAR(128),
+        \`ruleId\`            INT,
+        \`triggerEvent\`      VARCHAR(128),
+        \`channel\`           VARCHAR(32) NOT NULL DEFAULT 'email',
+        \`recipientEmail\`    VARCHAR(320),
+        \`ccEmail\`           VARCHAR(320),
+        \`subject\`           VARCHAR(512),
+        \`status\`            ENUM('sent','failed','skipped') NOT NULL DEFAULT 'sent',
+        \`provider\`          VARCHAR(32),
+        \`errorMessage\`      TEXT,
+        \`sentByUserId\`      INT,
+        \`isAutomatic\`       BOOLEAN NOT NULL DEFAULT FALSE,
+        \`skipReason\`        VARCHAR(256),
+        \`createdAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_ecl_template  (\`templateKey\`),
+        INDEX idx_ecl_entity    (\`relatedEntityType\`, \`relatedEntityId\`),
+        INDEX idx_ecl_recipient (\`recipientEmail\`(32)),
+        INDEX idx_ecl_created   (\`createdAt\`),
+        INDEX idx_ecl_status    (\`status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`email_scheduled_jobs\` (
+        \`id\`                INT AUTO_INCREMENT PRIMARY KEY,
+        \`relatedEntityType\` VARCHAR(64) NOT NULL,
+        \`relatedEntityId\`   INT NOT NULL,
+        \`templateKey\`       VARCHAR(128) NOT NULL,
+        \`ruleId\`            INT NOT NULL,
+        \`recipientEmail\`    VARCHAR(320),
+        \`scheduledFor\`      TIMESTAMP NOT NULL,
+        \`status\`            ENUM('pending','sent','skipped','failed','cancelled') NOT NULL DEFAULT 'pending',
+        \`attempts\`          INT NOT NULL DEFAULT 0,
+        \`lastAttemptAt\`     TIMESTAMP NULL,
+        \`errorMessage\`      TEXT,
+        \`skipReason\`        VARCHAR(256),
+        \`lockedAt\`          TIMESTAMP NULL,
+        \`metadataJson\`      JSON,
+        \`createdAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updatedAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_esj_status_sched (\`status\`, \`scheduledFor\`),
+        INDEX idx_esj_entity       (\`relatedEntityType\`, \`relatedEntityId\`),
+        INDEX idx_esj_template     (\`templateKey\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`customer_email_prefs\` (
+        \`id\`                INT AUTO_INCREMENT PRIMARY KEY,
+        \`email\`             VARCHAR(320) NOT NULL UNIQUE,
+        \`automationsPaused\` BOOLEAN NOT NULL DEFAULT FALSE,
+        \`pauseReason\`       TEXT,
+        \`pausedAt\`          TIMESTAMP NULL,
+        \`pausedByUserId\`    INT,
+        \`createdAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updatedAt\`         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_cep_email (\`email\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
     // Limpiar reglas de budget_request_user sembradas anteriormente (Opción B — simplificación):
     // commercialFollowupJob cubre todo el seguimiento comercial; emailAutomationJob queda
     // reservado para plantillas sin cron propio (ej: post-reserva, post-pago).
