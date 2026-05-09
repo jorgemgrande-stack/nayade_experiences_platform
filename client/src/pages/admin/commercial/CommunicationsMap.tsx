@@ -67,7 +67,7 @@ const CATALOG: CategoryEntry[] = [
     color: "orange",
     templates: [
       {
-        key: "quote_sent",
+        key: "quote",
         name: "Presupuesto enviado al cliente",
         trigger: "Operadora pulsa 'Enviar presupuesto' en el CRM",
         function: "buildQuoteHtml",
@@ -109,7 +109,7 @@ const CATALOG: CategoryEntry[] = [
         status: "active",
       },
       {
-        key: "proposal_sent",
+        key: "proposal",
         name: "Propuesta comercial enviada",
         trigger: "Operadora envía propuesta desde módulo Propuestas",
         function: "buildProposalHtml",
@@ -148,7 +148,7 @@ const CATALOG: CategoryEntry[] = [
         status: "active",
       },
       {
-        key: "confirmation_generic",
+        key: "confirmation",
         name: "Confirmación genérica de reserva",
         trigger: "Reserva creada manualmente desde CRM",
         function: "buildConfirmationHtml",
@@ -286,7 +286,7 @@ const CATALOG: CategoryEntry[] = [
     color: "amber",
     templates: [
       {
-        key: "coupon_redemption_received",
+        key: "coupon_received",
         name: "Solicitud de canje recibida",
         trigger: "Cliente envía formulario de canje de cupón",
         function: "buildCouponRedemptionReceivedHtml",
@@ -393,7 +393,7 @@ const CATALOG: CategoryEntry[] = [
     color: "teal",
     templates: [
       {
-        key: "user_invite",
+        key: "invite",
         name: "Invitación de usuario",
         trigger: "Admin invita a un nuevo usuario al sistema",
         function: "buildInviteHtml",

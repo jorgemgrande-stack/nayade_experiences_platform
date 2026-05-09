@@ -32,10 +32,20 @@ import {
   buildCancellationAcceptedRefundHtml,
   buildCancellationAcceptedVoucherHtml,
   buildCancellationDocumentationHtml,
+  buildCancellationRefundExecutedHtml,
   buildTpvTicketHtml,
   buildCouponRedemptionReceivedHtml,
   buildCouponPostponedHtml,
   buildCouponInternalAlertHtml,
+  buildPendingPaymentHtml,
+  buildPendingPaymentReminderHtml,
+  buildInstallmentReminderHtml,
+  buildCommercialReminder1Html,
+  buildCommercialReminder2Html,
+  buildCommercialReminder3Html,
+  buildProposalHtml,
+  buildCashOpenHtml,
+  buildCashCloseHtml,
 } from "../emailTemplates";
 
 // ─── Admin guard ──────────────────────────────────────────────────────────────
@@ -77,7 +87,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     buildHtml: () => buildReservationFailedHtml({ merchantOrder:"NAY-2026-0043", productName:"Kayak en el lago", customerName:"Carlos Martínez", responseCode:"0190" }),
   },
   {
-    id: "reservation_confirmation_full",
+    id: "confirmation",
     name: "Confirmación Completa de Reserva",
     description: "Email completo con todos los detalles de la reserva, instrucciones y mapa.",
     category: "reservas", recipient: "cliente",
@@ -137,7 +147,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     buildHtml: () => buildBudgetRequestAdminHtml({ name:"Laura Fernández", email:"laura@empresa.com", phone:"612 345 678", arrivalDate:"15 de noviembre de 2026", adults:25, children:0, selectedCategory:"Team Building", selectedProduct:"Actividad de team building acuático", comments:"Somos un grupo de empresa.", submittedAt:new Date().toLocaleDateString("es-ES") }),
   },
   {
-    id: "quote_sent",
+    id: "quote",
     name: "Presupuesto Enviado al Cliente",
     description: "Email con el presupuesto detallado y enlace de pago.",
     category: "presupuestos", recipient: "cliente",
@@ -237,6 +247,106 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     buildHtml: () => buildCouponInternalAlertHtml({ customerName:"Miguel Ángel Ruiz", email:"miguel@ejemplo.com", phone:"634 567 890", coupons:[{couponCode:"GV-2026-ABC123",provider:"Groupon"}], submissionId:"TKT-2026-0091", requestedDate:"22 de agosto de 2026" }),
   },
   {
+    id: "cancellation_refund_executed",
+    name: "Devolución Ejecutada",
+    description: "Email enviado al cliente cuando la devolución económica de su anulación ha sido transferida.",
+    category: "anulaciones", recipient: "cliente",
+    subject: "💸 Devolución realizada · Náyade Experiences",
+    headerTitle: "Devolución Realizada", headerSubtitle: "Tu dinero está en camino",
+    variables: JSON.stringify(["fullName","requestId","amount","executedAt"]),
+    buildHtml: () => buildCancellationRefundExecutedHtml({ fullName:"Roberto Jiménez", requestId:23, amount:"89.00", executedAt:"9 de mayo de 2026" }),
+  },
+  {
+    id: "commercial_reminder_1",
+    name: "Recordatorio Comercial #1",
+    description: "Primer recordatorio automático enviado 48h después de enviar un presupuesto sin respuesta.",
+    category: "presupuestos", recipient: "cliente",
+    subject: "⏰ Tu propuesta te está esperando · Náyade Experiences",
+    headerTitle: "Tu Propuesta Te Espera", headerSubtitle: "Queremos que disfrutes de una experiencia única",
+    variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
+    buildHtml: () => buildCommercialReminder1Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Team Building Acuático", total:"798.60", paymentLinkUrl:"https://nayadeexperiences.es/pago/PRE-2026-0015" }),
+  },
+  {
+    id: "commercial_reminder_2",
+    name: "Recordatorio Comercial #2",
+    description: "Segundo recordatorio enviado 96h después. Urgencia de disponibilidad.",
+    category: "presupuestos", recipient: "cliente",
+    subject: "📅 Tu propuesta sigue disponible · Náyade Experiences",
+    headerTitle: "Plazas Limitadas", headerSubtitle: "Confirma antes de que se agoten",
+    variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
+    buildHtml: () => buildCommercialReminder2Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Team Building Acuático", total:"798.60", paymentLinkUrl:"https://nayadeexperiences.es/pago/PRE-2026-0015" }),
+  },
+  {
+    id: "commercial_reminder_3",
+    name: "Recordatorio Comercial #3 — Último Aviso",
+    description: "Tercer y último recordatorio. Cierre inminente de la propuesta.",
+    category: "presupuestos", recipient: "cliente",
+    subject: "🔔 Última llamada para tu experiencia · Náyade Experiences",
+    headerTitle: "Última Oportunidad", headerSubtitle: "No queremos que te la pierdas",
+    variables: JSON.stringify(["clientName","quoteNumber","quoteTitle","total","paymentLinkUrl"]),
+    buildHtml: () => buildCommercialReminder3Html({ clientName:"Laura Fernández", quoteNumber:"PRE-2026-0015", quoteTitle:"Team Building Acuático", total:"798.60", paymentLinkUrl:"https://nayadeexperiences.es/pago/PRE-2026-0015" }),
+  },
+  {
+    id: "proposal",
+    name: "Propuesta Comercial Enviada",
+    description: "Email con propuesta detallada enviado al cliente desde el módulo de Propuestas.",
+    category: "presupuestos", recipient: "cliente",
+    subject: "📋 Tu propuesta personalizada · Náyade Experiences",
+    headerTitle: "Tu Propuesta", headerSubtitle: "Hemos preparado varias opciones para ti",
+    variables: JSON.stringify(["proposalNumber","title","clientName","total","publicUrl"]),
+    buildHtml: () => buildProposalHtml({ proposalNumber:"PROP-2026-0003", title:"Experiencia Team Building Acuático", clientName:"Laura Fernández", mode:"configurable", items:[{description:"Kayak doble (12 uds)",quantity:12,unitPrice:35,total:420},{description:"SUP (8 uds)",quantity:8,unitPrice:30,total:240}], subtotal:"660.00", discount:"0", tax:"138.60", total:"798.60", publicUrl:"https://nayadeexperiences.es/propuesta/PROP-2026-0003" }),
+  },
+  {
+    id: "pending_payment",
+    name: "Aviso de Pago Pendiente",
+    description: "Email enviado cuando una reserva queda confirmada con pago diferido.",
+    category: "pagos", recipient: "cliente",
+    subject: "💳 Reserva confirmada — Pago pendiente · Náyade Experiences",
+    headerTitle: "Pago Pendiente", headerSubtitle: "Tu reserva está confirmada",
+    variables: JSON.stringify(["clientName","productName","amountFormatted","dueDate","ibanInfo"]),
+    buildHtml: () => buildPendingPaymentHtml({ clientName:"María García", productName:"Wakeboard para principiantes", amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm", ibanInfo:"ES12 3456 7890 1234 5678 9012\nConcepto: NAY-2026-0042" }),
+  },
+  {
+    id: "pending_payment_reminder",
+    name: "Recordatorio de Pago Pendiente",
+    description: "Recordatorio enviado 5 días antes de la fecha límite de pago.",
+    category: "pagos", recipient: "cliente",
+    subject: "⚠️ Pago pendiente — Fecha límite próxima · Náyade Experiences",
+    headerTitle: "Recordatorio de Pago", headerSubtitle: "Fecha límite próxima",
+    variables: JSON.stringify(["clientName","productName","amountFormatted","dueDate"]),
+    buildHtml: () => buildPendingPaymentReminderHtml({ clientName:"María García", productName:"Wakeboard para principiantes", amountFormatted:"89,00 €", dueDate:"30 de mayo de 2026", origin:"crm" }),
+  },
+  {
+    id: "installment_reminder",
+    name: "Recordatorio de Cuota Fraccionada",
+    description: "Recordatorio enviado 3 días antes del vencimiento de una cuota del plan de pago.",
+    category: "pagos", recipient: "cliente",
+    subject: "📅 Recordatorio de cuota · Náyade Experiences",
+    headerTitle: "Recordatorio de Cuota", headerSubtitle: "Cuota próxima a vencer",
+    variables: JSON.stringify(["clientName","quoteNumber","installmentNumber","totalInstallments","amountFormatted","dueDate"]),
+    buildHtml: () => buildInstallmentReminderHtml({ clientName:"Laura Fernández", clientEmail:"laura@empresa.com", quoteNumber:"PRE-2026-0015", installmentNumber:2, totalInstallments:3, amountFormatted:"266,20 €", dueDate:"15 de junio de 2026" }),
+  },
+  {
+    id: "cash_open",
+    name: "Apertura de Caja",
+    description: "Notificación interna enviada al abrir una sesión de caja en el TPV.",
+    category: "operaciones", recipient: "admin",
+    subject: "🟢 Caja abierta · Náyade Experiences",
+    headerTitle: "Apertura de Caja", headerSubtitle: "Sesión de caja iniciada",
+    variables: JSON.stringify(["sessionId","cashierName","registerName","openingAmount","openedAt"]),
+    buildHtml: () => buildCashOpenHtml({ sessionId:42, cashierName:"Ana Rodríguez", registerName:"TPV Principal", openingAmount:200, openedAt:new Date() }),
+  },
+  {
+    id: "cash_close",
+    name: "Cierre de Caja",
+    description: "Resumen de la sesión de caja enviado al equipo al cerrar el TPV.",
+    category: "operaciones", recipient: "admin",
+    subject: "🔴 Cierre de caja · Náyade Experiences",
+    headerTitle: "Cierre de Caja", headerSubtitle: "Resumen de la sesión",
+    variables: JSON.stringify(["sessionId","cashierName","totalCash","totalCard","countedCash","cashDifference"]),
+    buildHtml: () => buildCashCloseHtml({ sessionId:42, cashierName:"Ana Rodríguez", registerName:"TPV Principal", openedAt:new Date(Date.now()-6*3600000), closedAt:new Date(), totalCash:185, totalCard:340, totalBizum:50, totalMixed:0, countedCash:185, cashDifference:0, channels:[] }),
+  },
+  {
     id: "invite",
     name: "Invitación de Usuario",
     description: "Email enviado cuando se invita a un nuevo usuario a la plataforma.",
@@ -258,26 +368,29 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
   },
 ];
 
-// ─── Helper: seed templates to DB if empty ───────────────────────────────────
+// ─── Helper: seed templates — inserta las que faltan, no sobrescribe edits ───
 async function ensureTemplatesSeeded() {
-  const existing = await db.select({ id: emailTemplates.id }).from(emailTemplates).limit(1);
-  if (existing.length > 0) return;
+  const existingRows = await db.select({ id: emailTemplates.id }).from(emailTemplates);
+  const existingIds = new Set(existingRows.map(r => r.id));
 
   for (const tpl of SYSTEM_TEMPLATES) {
-    await db.insert(emailTemplates).values({
-      id: tpl.id,
-      name: tpl.name,
-      description: tpl.description,
-      category: tpl.category,
-      recipient: tpl.recipient,
-      subject: tpl.subject,
-      headerTitle: tpl.headerTitle,
-      headerSubtitle: tpl.headerSubtitle,
-      bodyHtml: tpl.buildHtml(),
-      variables: tpl.variables,
-      isCustom: false,
-      isActive: true,
-    }).onDuplicateKeyUpdate({ set: { name: tpl.name } });
+    if (existingIds.has(tpl.id)) continue;
+    try {
+      await db.insert(emailTemplates).values({
+        id: tpl.id,
+        name: tpl.name,
+        description: tpl.description,
+        category: tpl.category,
+        recipient: tpl.recipient,
+        subject: tpl.subject,
+        headerTitle: tpl.headerTitle,
+        headerSubtitle: tpl.headerSubtitle,
+        bodyHtml: tpl.buildHtml(),
+        variables: tpl.variables,
+        isCustom: false,
+        isActive: true,
+      });
+    } catch { /* duplicate race, ignorar */ }
   }
 }
 
