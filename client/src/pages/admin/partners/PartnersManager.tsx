@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import AdminLayout from "@/components/AdminLayout";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -375,10 +376,12 @@ export default function PartnersManager() {
   const { data: partners, isLoading } = trpc.partners.list.useQuery();
 
   const createMut = trpc.partners.create.useMutation({
-    onSuccess: () => { utils.partners.list.invalidate(); setShowCreate(false); },
+    onSuccess: () => { utils.partners.list.invalidate(); setShowCreate(false); toast.success("Partner creado correctamente"); },
+    onError: (e) => toast.error("Error al crear partner: " + e.message),
   });
   const updateMut = trpc.partners.update.useMutation({
-    onSuccess: () => { utils.partners.list.invalidate(); utils.partners.get.invalidate(); setEditingId(null); },
+    onSuccess: () => { utils.partners.list.invalidate(); utils.partners.get.invalidate(); setEditingId(null); toast.success("Partner actualizado"); },
+    onError: (e) => toast.error("Error al actualizar: " + e.message),
   });
   const toggleMut = trpc.partners.toggleActive.useMutation({
     onSuccess: () => utils.partners.list.invalidate(),
