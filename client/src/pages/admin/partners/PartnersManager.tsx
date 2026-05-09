@@ -4,10 +4,14 @@ import AdminLayout from "@/components/AdminLayout";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Plus, Search, Building2, Users, Edit2, ToggleLeft, ToggleRight,
   ChevronRight, Mail, Phone, X, Check, AlertCircle, UserPlus, Trash2,
-  CreditCard, RefreshCw,
+  CreditCard, RefreshCw, KeyRound, Send, Eye, EyeOff,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -278,15 +282,45 @@ function PartnerForm({
 function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; partnerName: string }) {
   const utils = trpc.useUtils();
   const { data: users, isLoading } = trpc.partners.listUsers.useQuery({ partnerId });
+
   const inviteMut = trpc.partners.inviteUser.useMutation({
-    onSuccess: () => { utils.partners.listUsers.invalidate(); setShowInvite(false); setInviteForm({ name: "", email: "", role: "partner_user" }); },
+    onSuccess: () => {
+      utils.partners.listUsers.invalidate();
+      setShowInvite(false);
+      setInviteForm({ name: "", email: "", role: "partner_user" });
+      toast.success("Invitación enviada", { description: "El usuario recibirá un email con el enlace de activación." });
+    },
+    onError: (e) => toast.error("Error al invitar: " + e.message),
   });
+
+  const resendMut = trpc.partners.inviteUser.useMutation({
+    onSuccess: () => {
+      utils.partners.listUsers.invalidate();
+      toast.success("Invitación reenviada", { description: "Se ha generado un nuevo enlace de activación." });
+    },
+    onError: (e) => toast.error("Error al reenviar: " + e.message),
+  });
+
+  const setPasswordMut = trpc.admin.setUserPassword.useMutation({
+    onSuccess: () => {
+      setPasswordTarget(null);
+      setNewPassword("");
+      setShowPwd(false);
+      toast.success("Contraseña actualizada correctamente");
+    },
+    onError: (e) => toast.error("Error al cambiar contraseña: " + e.message),
+  });
+
   const removeMut = trpc.partners.removeUser.useMutation({
-    onSuccess: () => utils.partners.listUsers.invalidate(),
+    onSuccess: () => { utils.partners.listUsers.invalidate(); toast.success("Usuario desvinculado"); },
+    onError: (e) => toast.error("Error: " + e.message),
   });
 
   const [showInvite, setShowInvite] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: "", email: "", role: "partner_user" });
+  const [passwordTarget, setPasswordTarget] = useState<{ id: number; name: string } | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -356,7 +390,29 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
               }`}>
                 {u.inviteAccepted ? "Activo" : "Pendiente"}
               </span>
+
+              {/* Reenviar invitación (solo si pendiente) */}
+              {!u.inviteAccepted && (
+                <Button size="sm" variant="ghost"
+                  title="Reenviar enlace de activación"
+                  className="text-foreground/30 hover:text-blue-400 h-7 w-7 p-0"
+                  disabled={resendMut.isPending}
+                  onClick={() => resendMut.mutate({ partnerId, name: u.name ?? "", email: u.email ?? "", role: u.role as any })}>
+                  <Send className="w-3.5 h-3.5" />
+                </Button>
+              )}
+
+              {/* Cambiar contraseña */}
               <Button size="sm" variant="ghost"
+                title="Cambiar contraseña"
+                className="text-foreground/30 hover:text-violet-400 h-7 w-7 p-0"
+                onClick={() => { setPasswordTarget({ id: u.id, name: u.name ?? u.email ?? "usuario" }); setNewPassword(""); setShowPwd(false); }}>
+                <KeyRound className="w-3.5 h-3.5" />
+              </Button>
+
+              {/* Desvincular */}
+              <Button size="sm" variant="ghost"
+                title="Desvincular usuario"
                 className="text-foreground/30 hover:text-red-400 h-7 w-7 p-0"
                 onClick={() => { if (confirm("¿Desvincular usuario?")) removeMut.mutate({ userId: u.id }); }}>
                 <Trash2 className="w-3.5 h-3.5" />
@@ -365,6 +421,53 @@ function PartnerUsersPanel({ partnerId, partnerName }: { partnerId: number; part
           ))}
         </div>
       )}
+
+      {/* ── Modal cambiar contraseña ── */}
+      <Dialog open={!!passwordTarget} onOpenChange={(open) => { if (!open) { setPasswordTarget(null); setNewPassword(""); setShowPwd(false); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-violet-600" />
+              Cambiar contraseña — {passwordTarget?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="partner-new-password" className="text-sm text-gray-600">
+              Nueva contraseña (mínimo 8 caracteres)
+            </Label>
+            <div className="relative">
+              <Input
+                id="partner-new-password"
+                type={showPwd ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="new-password"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                onClick={() => setShowPwd(v => !v)}
+              >
+                {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPasswordTarget(null); setNewPassword(""); setShowPwd(false); }}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => passwordTarget && setPasswordMut.mutate({ userId: passwordTarget.id, password: newPassword })}
+              disabled={newPassword.length < 8 || setPasswordMut.isPending}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+            >
+              {setPasswordMut.isPending ? "Guardando..." : "Guardar contraseña"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
