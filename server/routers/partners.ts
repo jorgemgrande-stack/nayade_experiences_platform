@@ -2,16 +2,18 @@
  * partners.ts — Router tRPC para el módulo Partners / Colaboradores.
  *
  * Fase 1: CRUD de partners desde admin + gestión de usuarios.
- * Fase 2 (futuro): endpoints del portal del partner.
+ * Fase 2: Portal del partner — activación de cuenta, creación de leads, listado.
  */
 import { z } from "zod";
-import { adminProcedure, partnerProcedure, router } from "../_core/trpc";
+import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { partners, users } from "../../drizzle/schema";
+import { partners, users, leads } from "../../drizzle/schema";
 import { eq, desc } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
+import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword } from "../db";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
 const db = drizzle(_pool);
@@ -300,5 +302,80 @@ export const partnersRouter = router({
         .limit(1);
       if (!row) throw new Error("Partner no encontrado");
       return row;
+    }),
+
+  // ── PUBLIC: Activar cuenta de partner (desde enlace de invitación) ─────────
+  activateInvite: publicProcedure
+    .input(z.object({
+      token: z.string(),
+      password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+    }))
+    .mutation(async ({ input }) => {
+      const user = await getUserByInviteToken(input.token);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Enlace inválido o ya utilizado" });
+      if (user.inviteTokenExpiry && new Date() > user.inviteTokenExpiry) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace ha expirado. Solicita un nuevo enlace al administrador." });
+      }
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(input.password, 12);
+      await setUserPassword(user.id, passwordHash); // limpia el token, sets inviteAccepted
+      await db.update(users).set({ isActive: true } as any).where(eq(users.id, user.id));
+      return { ok: true, name: user.name };
+    }),
+
+  // ── PARTNER: Crear lead desde el portal ───────────────────────────────────
+  createLead: partnerProcedure
+    .input(z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      preferredDate: z.string().optional(),
+      numberOfAdults: z.number().int().min(1).default(1),
+      numberOfChildren: z.number().int().min(0).default(0),
+      comments: z.string().optional(),
+      selectedCategory: z.string().optional(),
+      selectedProduct: z.string().optional(),
+      activitiesJson: z.array(z.object({
+        experienceId: z.number(),
+        experienceTitle: z.string(),
+        family: z.string(),
+        participants: z.number(),
+        details: z.record(z.union([z.string(), z.number()])),
+      })).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const user = ctx.user as any;
+      const result = await dbCreateLead({
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        preferredDate: input.preferredDate,
+        numberOfAdults: input.numberOfAdults,
+        numberOfChildren: input.numberOfChildren,
+        numberOfPersons: input.numberOfAdults + (input.numberOfChildren ?? 0),
+        message: input.comments,
+        source: "PARTNER",
+        selectedCategory: input.selectedCategory,
+        selectedProduct: input.selectedProduct,
+        activitiesJson: input.activitiesJson,
+      });
+      // Vincular el lead al partner y al usuario que lo creó
+      await db.update(leads)
+        .set({ partnerId: user.partnerId, partnerUserId: user.id } as any)
+        .where(eq(leads.id, result.id));
+      return { leadId: result.id };
+    }),
+
+  // ── PARTNER: Listar mis leads ─────────────────────────────────────────────
+  listMyLeads: partnerProcedure
+    .query(async ({ ctx }) => {
+      const user = ctx.user as any;
+      const rows = await db
+        .select()
+        .from(leads)
+        .where(eq((leads as any).partnerId, user.partnerId))
+        .orderBy(desc(leads.createdAt))
+        .limit(100);
+      return rows;
     }),
 });

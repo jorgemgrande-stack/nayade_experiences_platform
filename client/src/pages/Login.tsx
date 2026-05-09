@@ -33,7 +33,10 @@ export default function Login() {
   useEffect(() => {
     if (meQuery.data) {
       const params = new URLSearchParams(window.location.search);
-      navigate(params.get("returnTo") ?? "/admin");
+      const returnTo = params.get("returnTo");
+      const role = (meQuery.data as any)?.role as string | undefined;
+      const isPartner = role === "partner_admin" || role === "partner_user";
+      navigate(returnTo ?? (isPartner ? "/partner/dashboard" : "/admin"));
     }
   }, [meQuery.data, navigate]);
 
@@ -59,10 +62,14 @@ export default function Login() {
 
       // Invalidar caché de auth para que useAuth recargue el usuario
       await utils.auth.me.invalidate();
+      const me = await utils.auth.me.fetch();
 
-      // Redirigir al destino
+      // Redirigir al destino según rol
       const params = new URLSearchParams(window.location.search);
-      navigate(params.get("returnTo") ?? "/admin");
+      const returnTo = params.get("returnTo");
+      const role = (me as any)?.role as string | undefined;
+      const isPartner = role === "partner_admin" || role === "partner_user";
+      navigate(returnTo ?? (isPartner ? "/partner/dashboard" : "/admin"));
     } catch {
       setError("Error de conexión. Comprueba que el servidor está en marcha.");
     } finally {

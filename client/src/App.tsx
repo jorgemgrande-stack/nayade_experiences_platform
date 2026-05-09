@@ -117,8 +117,13 @@ const SolicitarAnulacion = lazy(() => import("./pages/SolicitarAnulacion"));
 // Fiscal REAV
 const ReavManager = lazy(() => import("./pages/admin/fiscal/ReavManager"));
 
-// Partners
+// Partners (admin)
 const PartnersManager = lazy(() => import("./pages/admin/partners/PartnersManager"));
+
+// Partner portal (lazy)
+const ActivarPartner = lazy(() => import("./pages/partner/ActivarPartner"));
+const PartnerDashboard = lazy(() => import("./pages/partner/PartnerDashboard"));
+const PartnerLeadNuevo = lazy(() => import("./pages/partner/PartnerLeadNuevo"));
 
 // Suppliers & Settlements
 const SuppliersManager = lazy(() => import("./pages/admin/suppliers/SuppliersManager"));
@@ -188,6 +193,12 @@ function Router() {
       <Route path="/recuperar-contrasena" component={ForgotPassword} />
       <Route path="/nueva-contrasena" component={ResetPassword} />
       <Route path="/establecer-contrasena" component={SetPassword} />
+
+      {/* ── PARTNER PORTAL ── */}
+      <Route path="/partner/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivarPartner /></Suspense>}</Route>
+      <Route path="/partner/dashboard">{() => <Suspense fallback={<AdminLoadingFallback />}><PartnerDashboard /></Suspense>}</Route>
+      <Route path="/partner/leads/nuevo">{() => <Suspense fallback={<AdminLoadingFallback />}><PartnerLeadNuevo /></Suspense>}</Route>
+      <Route path="/partner">{() => { window.location.replace("/partner/dashboard"); return null; }}</Route>
       {/* ── LEGAL PAGES ── */}
       <Route path="/privacidad" component={PoliticaPrivacidad} />
       <Route path="/terminos" component={TerminosCondiciones} />
