@@ -31,6 +31,7 @@ import {
   customerEmailPrefs,
   quotes,
   leads,
+  emailTemplates,
 } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
 import { getFeatureFlag } from "./config";
@@ -152,6 +153,13 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
         continue;
       }
 
+      // Cargar contenido del template desde email_templates (fuente de verdad del diseño)
+      const [template] = await db
+        .select({ subject: emailTemplates.subject, bodyHtml: emailTemplates.bodyHtml })
+        .from(emailTemplates)
+        .where(eq(emailTemplates.id, job.templateKey))
+        .limit(1);
+
       // Verificar preferencias del cliente
       if (job.recipientEmail) {
         const [prefs] = await db
@@ -232,16 +240,24 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
         continue;
       }
 
-      // Verificar contenido mínimo
-      if (!rule.emailSubject || !rule.emailBody || !job.recipientEmail) {
+      // Resolver contenido: template de email_templates tiene prioridad sobre rule.emailBody.
+      // rule.emailSubject puede sobrescribir el asunto del template.
+      const resolvedSubject = rule.emailSubject ?? template?.subject ?? null;
+      const resolvedHtml = template?.bodyHtml
+        ? template.bodyHtml
+        : rule.emailBody
+          ? `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">${rule.emailBody}</div>`
+          : null;
+
+      if (!resolvedSubject || !resolvedHtml || !job.recipientEmail) {
         skipReason = "missing_content";
         await finalize(job.id, "skipped", { skipReason });
         skipped++;
         continue;
       }
 
-      finalSubject = rule.emailSubject;
-      const html = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">${rule.emailBody}</div>`;
+      finalSubject = resolvedSubject;
+      const html = resolvedHtml;
 
       // Enviar (mergeGlobalCc en mailer.ts añade reservas@ automáticamente)
       const ok = await sendEmail({ to: job.recipientEmail, subject: finalSubject, html });
@@ -250,7 +266,7 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
 
       if (ok) {
         sent++;
-        log("info", "Email automático enviado", { jobId: job.id, to: job.recipientEmail, rule: rule.name, subject: finalSubject });
+        log("info", "Email automático enviado", { jobId: job.id, to: job.recipientEmail, rule: rule.name, subject: finalSubject, contentSource: template ? "email_templates" : "rule_body" });
       } else {
         failed++;
         errorMessage = "sendEmail returned false";

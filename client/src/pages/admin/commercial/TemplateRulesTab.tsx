@@ -157,13 +157,16 @@ function RuleCard({
               <Toggle value={form.stopIfPaid} onChange={v => setForm(f => ({ ...f, stopIfPaid: v }))} label="Parar si ya está pagado" />
               <Toggle value={form.isActive} onChange={v => setForm(f => ({ ...f, isActive: v }))} label="Regla activa" />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Asunto del email (opcional)</Label>
-              <Input value={form.emailSubject ?? ""} onChange={e => setForm(f => ({ ...f, emailSubject: e.target.value || null }))} className="h-8 text-xs" />
+            <div className="col-span-2 rounded-md bg-blue-950/40 border border-blue-800/40 px-3 py-2 text-xs text-blue-300">
+              El contenido del email se lee automáticamente desde <strong>/admin/plantillas-email</strong>. Los campos de abajo son opcionales: solo rellena si quieres sobrescribir el asunto o usar un cuerpo distinto al de la plantilla.
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Cuerpo del email (HTML o texto)</Label>
-              <Textarea value={form.emailBody ?? ""} onChange={e => setForm(f => ({ ...f, emailBody: e.target.value || null }))} rows={4} className="text-xs font-mono" />
+              <Label className="text-xs">Sobrescribir asunto <span className="text-gray-600">(opcional)</span></Label>
+              <Input value={form.emailSubject ?? ""} onChange={e => setForm(f => ({ ...f, emailSubject: e.target.value || null }))} className="h-8 text-xs" placeholder="Vacío = usa el asunto de la plantilla" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Cuerpo alternativo en HTML <span className="text-gray-600">(fallback si no hay plantilla)</span></Label>
+              <Textarea value={form.emailBody ?? ""} onChange={e => setForm(f => ({ ...f, emailBody: e.target.value || null }))} rows={4} className="text-xs font-mono" placeholder="Vacío = usa el diseño de /admin/plantillas-email" />
             </div>
           </div>
           <DialogFooter>
@@ -388,13 +391,16 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
                 <Input value={ruleForm.allowedSendEnd} onChange={e => setRuleForm(f => ({ ...f, allowedSendEnd: e.target.value }))} className="h-8 text-xs font-mono" />
               </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Asunto del recordatorio</Label>
-              <Input value={ruleForm.emailSubject} onChange={e => setRuleForm(f => ({ ...f, emailSubject: e.target.value }))} className="h-8 text-xs" placeholder="Asunto del email de reenvío" />
+            <div className="col-span-2 rounded-md bg-blue-950/40 border border-blue-800/40 px-3 py-2 text-xs text-blue-300">
+              El contenido del email se lee automáticamente desde <strong>/admin/plantillas-email</strong>. Los campos de abajo son opcionales: solo rellena si quieres sobrescribir el asunto o usar un cuerpo distinto al de la plantilla.
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Cuerpo del recordatorio (HTML)</Label>
-              <Textarea value={ruleForm.emailBody} onChange={e => setRuleForm(f => ({ ...f, emailBody: e.target.value }))} rows={4} className="text-xs font-mono" />
+              <Label className="text-xs">Sobrescribir asunto <span className="text-gray-600">(opcional)</span></Label>
+              <Input value={ruleForm.emailSubject} onChange={e => setRuleForm(f => ({ ...f, emailSubject: e.target.value }))} className="h-8 text-xs" placeholder="Vacío = usa el asunto de la plantilla" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Cuerpo alternativo en HTML <span className="text-gray-600">(fallback si no hay plantilla)</span></Label>
+              <Textarea value={ruleForm.emailBody} onChange={e => setRuleForm(f => ({ ...f, emailBody: e.target.value }))} rows={4} className="text-xs font-mono" placeholder="Vacío = usa el diseño de /admin/plantillas-email" />
             </div>
           </div>
           <DialogFooter>
