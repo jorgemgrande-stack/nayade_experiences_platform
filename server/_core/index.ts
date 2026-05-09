@@ -795,6 +795,18 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
+    // Feature flag — job centralizado de automatizaciones de email (cola email_scheduled_jobs)
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 0, 0, 'medium')`,
+      [
+        "email_automation_job_enabled",
+        "Cron automatizaciones email",
+        "Procesa la cola email_scheduled_jobs cada 10 min — envía recordatorios programados por reglas de automatización.",
+        "email",
+      ]
+    );
+
     // Tablas del módulo de Email Comercial
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS \`email_accounts\` (
