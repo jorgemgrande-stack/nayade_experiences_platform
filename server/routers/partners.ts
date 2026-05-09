@@ -102,31 +102,47 @@ export const partnersRouter = router({
     }))
     .mutation(async ({ input }) => {
       const slug = input.slug || slugify(input.name);
-      const [result] = await db.insert(partners).values({
+      // Drizzle 0.44+: pasar undefined (no null) para campos opcionales evita
+      // problemas de generación SQL con columnas JSON y DECIMAL sin default.
+      const insertValues: Record<string, any> = {
         name: input.name,
         slug,
-        fiscalName: input.fiscalName ?? null,
-        nif: input.nif ?? null,
-        address: input.address ?? null,
-        city: input.city ?? null,
-        postalCode: input.postalCode ?? null,
         country: input.country,
-        contactName: input.contactName ?? null,
-        contactEmail: input.contactEmail ?? null,
-        contactPhone: input.contactPhone ?? null,
-        billingEmail: input.billingEmail ?? null,
         canCreateReservations: input.canCreateReservations,
         canCreateLeads: input.canCreateLeads,
-        allowedReservationProductIds: input.allowedReservationProductIds ?? null,
-        allowedLeadProductIds: input.allowedLeadProductIds ?? null,
         commissionType: input.commissionType,
-        commissionValue: input.commissionValue ?? null,
         billingEnabled: input.billingEnabled,
         billingPeriod: input.billingPeriod,
-        monthlyQuota: input.monthlyQuota ?? null,
-        notes: input.notes ?? null,
-      });
-      return { id: (result as any).insertId as number };
+      };
+      if (input.fiscalName)    insertValues.fiscalName    = input.fiscalName;
+      if (input.nif)           insertValues.nif           = input.nif;
+      if (input.address)       insertValues.address       = input.address;
+      if (input.city)          insertValues.city          = input.city;
+      if (input.postalCode)    insertValues.postalCode    = input.postalCode;
+      if (input.contactName)   insertValues.contactName   = input.contactName;
+      if (input.contactEmail)  insertValues.contactEmail  = input.contactEmail;
+      if (input.contactPhone)  insertValues.contactPhone  = input.contactPhone;
+      if (input.billingEmail)  insertValues.billingEmail  = input.billingEmail;
+      if (input.commissionValue) insertValues.commissionValue = input.commissionValue;
+      if (input.monthlyQuota !== undefined) insertValues.monthlyQuota = input.monthlyQuota;
+      if (input.notes)         insertValues.notes         = input.notes;
+      if (input.allowedReservationProductIds?.length) {
+        insertValues.allowedReservationProductIds = input.allowedReservationProductIds;
+      }
+      if (input.allowedLeadProductIds?.length) {
+        insertValues.allowedLeadProductIds = input.allowedLeadProductIds;
+      }
+
+      try {
+        const [result] = await db.insert(partners).values(insertValues as any);
+        return { id: (result as any).insertId as number };
+      } catch (e: any) {
+        const cause = e.cause ?? e;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: cause.sqlMessage ?? cause.message ?? e.message,
+        });
+      }
     }),
 
   // ── ADMIN: Editar partner ──────────────────────────────────────────────────
