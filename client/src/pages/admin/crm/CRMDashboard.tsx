@@ -633,6 +633,14 @@ function LeadDetailModal({
           )}
         </div>
 
+        {/* Emails automáticos programados para este lead */}
+        <div>
+          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-2">
+            <Mail className="w-3 h-3" /> Emails programados
+          </h4>
+          <ScheduledJobsMini entityType="lead" entityId={leadId} />
+        </div>
+
         {/* Notes */}
         <div>
           <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2">Notas internas</h4>
@@ -2846,6 +2854,99 @@ function QuoteEditModal({
   );
 }
 
+// ─── SCHEDULED JOBS MINI ─────────────────────────────────────────────────────
+
+function ScheduledJobsMini({ entityType, entityId }: { entityType: string; entityId: number }) {
+  const utils = trpc.useUtils();
+  const { data, isLoading, isError } = trpc.emailCommunications.listScheduledJobs.useQuery(
+    { relatedEntityType: entityType, relatedEntityId: entityId, limit: 20 },
+    { retry: 1 }
+  );
+  const cancelJob = trpc.emailCommunications.cancelJob.useMutation({
+    onSuccess: () => {
+      toast.success("Job cancelado");
+      utils.emailCommunications.listScheduledJobs.invalidate({ relatedEntityType: entityType, relatedEntityId: entityId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const rows = data?.rows ?? [];
+  const pending = rows.filter(r => r.status === "pending");
+  const rest = rows.filter(r => r.status !== "pending");
+
+  const STATUS_STYLE: Record<string, { label: string; color: string }> = {
+    pending:   { label: "Pendiente",  color: "text-amber-300" },
+    sent:      { label: "Enviado",    color: "text-green-400" },
+    skipped:   { label: "Saltado",    color: "text-gray-500"  },
+    failed:    { label: "Fallido",    color: "text-red-400"   },
+    cancelled: { label: "Cancelado",  color: "text-zinc-600"  },
+  };
+
+  if (isLoading) return <div className="text-xs text-foreground/40 py-2">Cargando emails programados...</div>;
+  if (isError) return null;
+  if (!rows.length) return (
+    <div className="text-xs text-foreground/35 py-1">Sin emails automáticos programados para este elemento.</div>
+  );
+
+  function fmtDate(d: Date | string | null | undefined) {
+    if (!d) return "—";
+    const date = new Date(d);
+    const diff = date.getTime() - Date.now();
+    const abs = Math.abs(diff);
+    const h = Math.floor(abs / 3600000);
+    const m = Math.floor((abs % 3600000) / 60000);
+    const rel = diff > 0
+      ? `en ${h > 24 ? `${Math.floor(h / 24)}d` : h > 0 ? `${h}h ${m}m` : `${m}m`}`
+      : `hace ${h > 24 ? `${Math.floor(h / 24)}d` : h > 0 ? `${h}h` : `${m}m`}`;
+    return `${date.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" })} ${date.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })} (${rel})`;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {pending.length > 0 && (
+        <div className="space-y-1">
+          {pending.map(job => (
+            <div key={job.id} className="flex items-center justify-between bg-amber-950/20 border border-amber-700/25 rounded-lg px-3 py-2 gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-amber-300 font-medium">Pendiente</span>
+                  <span className="text-xs text-foreground/50 font-mono">{job.templateKey}</span>
+                </div>
+                <div className="text-xs text-foreground/40 mt-0.5">{fmtDate(job.scheduledFor)}</div>
+                {job.recipientEmail && <div className="text-xs text-foreground/35 truncate">{job.recipientEmail}</div>}
+              </div>
+              <button
+                onClick={() => cancelJob.mutate({ id: job.id })}
+                disabled={cancelJob.isPending}
+                className="text-xs text-red-500 hover:text-red-400 shrink-0 px-2 py-1 rounded hover:bg-foreground/[0.06] transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {rest.length > 0 && (
+        <div className="space-y-1">
+          {rest.map(job => {
+            const s = STATUS_STYLE[job.status] ?? STATUS_STYLE.skipped;
+            return (
+              <div key={job.id} className="flex items-center justify-between bg-foreground/[0.03] border border-foreground/[0.07] rounded-lg px-3 py-1.5 gap-3">
+                <div className="min-w-0 flex items-center gap-2">
+                  <span className={`text-xs ${s.color}`}>{s.label}</span>
+                  <span className="text-xs text-foreground/40 font-mono truncate">{job.templateKey}</span>
+                  {job.skipReason && <span className="text-xs text-foreground/30">({job.skipReason})</span>}
+                </div>
+                <div className="text-xs text-foreground/30 shrink-0">{fmtDate(job.scheduledFor)}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── QUOTE DETAIL MODAL ───────────────────────────────────────────────────────
 
 // ─── QUOTE TIMELINE COMPONENT ────────────────────────────────────────────────
@@ -3369,6 +3470,14 @@ function QuoteDetailModal({
             ))}
           </div>
         )}
+
+        {/* Emails automáticos programados */}
+        <div>
+          <h4 className="text-xs font-semibold text-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-2">
+            <Mail className="w-3 h-3" /> Emails automáticos
+          </h4>
+          <ScheduledJobsMini entityType="quote" entityId={quoteId} />
+        </div>
 
         {/* Timeline de actividad */}
         <div>

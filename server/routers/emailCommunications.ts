@@ -235,6 +235,8 @@ export const emailCommunicationsRouter = router({
     .input(z.object({
       status: z.enum(["pending", "sent", "skipped", "failed", "cancelled"]).optional(),
       templateKey: z.string().optional(),
+      relatedEntityType: z.string().optional(),
+      relatedEntityId: z.number().int().optional(),
       limit: z.number().int().min(1).max(500).default(100),
       offset: z.number().int().min(0).default(0),
     }))
@@ -242,6 +244,8 @@ export const emailCommunicationsRouter = router({
       const conditions: any[] = [];
       if (input.status) conditions.push(eq(emailScheduledJobs.status, input.status));
       if (input.templateKey) conditions.push(eq(emailScheduledJobs.templateKey, input.templateKey));
+      if (input.relatedEntityType) conditions.push(eq(emailScheduledJobs.relatedEntityType, input.relatedEntityType));
+      if (input.relatedEntityId) conditions.push(eq(emailScheduledJobs.relatedEntityId, input.relatedEntityId));
 
       const [rows, [{ total }]] = await Promise.all([
         db.select().from(emailScheduledJobs)
