@@ -40,18 +40,18 @@ export default function PendingJobsTab() {
   const [lastRunResult, setLastRunResult] = useState<{ processed: number; sent: number; skipped: number; failed: number } | null>(null);
   const pageSize = 50;
 
-  const { data, isLoading, refetch } = trpc.emailCommunications.listScheduledJobs.useQuery({
+  const { data, isLoading, isError, error, refetch } = trpc.emailCommunications.listScheduledJobs.useQuery({
     status: statusFilter === "all" ? undefined : statusFilter,
     templateKey: templateFilter || undefined,
     limit: pageSize,
     offset: page * pageSize,
-  });
+  }, { retry: 1 });
 
-  const { data: logs, isLoading: logsLoading, refetch: refetchLogs } = trpc.emailCommunications.listCommLog.useQuery({
+  const { data: logs, isLoading: logsLoading, isError: logsError, refetch: refetchLogs } = trpc.emailCommunications.listCommLog.useQuery({
     isAutomatic: true,
     limit: 100,
     offset: 0,
-  });
+  }, { retry: 1 });
 
   const flagsQ = trpc.config.listFeatureFlags.useQuery();
   const automationFlag = flagsQ.data?.find(f => f.key === "email_automation_job_enabled");
@@ -165,6 +165,13 @@ export default function PendingJobsTab() {
       {/* Jobs table */}
       {isLoading ? (
         <div className="py-12 text-center text-gray-600 text-sm">Cargando jobs...</div>
+      ) : isError ? (
+        <div className="py-8 text-center space-y-2">
+          <div className="text-red-400 text-sm font-medium">Error al cargar los jobs</div>
+          <div className="text-red-600 text-xs font-mono">{(error as any)?.message ?? "Error desconocido"}</div>
+          <div className="text-gray-600 text-xs">Las tablas de automatización pueden no existir aún. Espera el redeploy de Railway y actualiza.</div>
+          <button onClick={() => refetch()} className="mt-2 text-xs px-3 py-1.5 rounded border border-[#2a2a2a] hover:border-[#444] text-gray-400 hover:text-white transition-colors">↻ Reintentar</button>
+        </div>
       ) : rows.length === 0 ? (
         <div className="py-12 text-center text-gray-600 text-sm">Sin jobs para los filtros actuales</div>
       ) : (
@@ -249,6 +256,12 @@ export default function PendingJobsTab() {
         </div>
         {logsLoading ? (
           <div className="text-sm text-gray-600 py-4 text-center">Cargando historial...</div>
+        ) : logsError ? (
+          <div className="py-4 text-center space-y-1">
+            <div className="text-red-400 text-sm">Error al cargar el historial</div>
+            <div className="text-gray-600 text-xs">Espera el redeploy de Railway y actualiza.</div>
+            <button onClick={() => refetchLogs()} className="mt-1 text-xs px-3 py-1 rounded border border-[#2a2a2a] hover:border-[#444] text-gray-400 hover:text-white transition-colors">↻ Reintentar</button>
+          </div>
         ) : !logs?.rows?.length ? (
           <div className="text-sm text-gray-600 py-4 text-center">Sin registros aún. Los emails enviados via <code className="font-mono">sendManagedEmail()</code> aparecerán aquí.</div>
         ) : (
