@@ -6,11 +6,15 @@
  */
 import { z } from "zod";
 import { adminProcedure, partnerProcedure, router } from "../_core/trpc";
-import { db } from "../db";
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import { partners, users } from "../../drizzle/schema";
-import { eq, desc, and, like, or } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
+
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const db = drizzle(_pool);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
