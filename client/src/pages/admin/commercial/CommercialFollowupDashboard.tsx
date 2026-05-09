@@ -19,12 +19,16 @@ import {
   History, ChevronRight, RefreshCw, Pencil, Trash2, Plus, TrendingUp,
   Users, Clock, AlertTriangle, Ban, Target, ArrowRight,
   Bot, Bell, BellOff, Volume2, VolumeX, Mail, MailOpen, SendHorizonal,
+  Map, Zap, ClipboardCheck,
 } from "lucide-react";
 import { NOTIF_POPUP_KEY, NOTIF_SOUND_KEY } from "@/components/WhatsAppNotification";
+import CommunicationsMap from "./CommunicationsMap";
+import LegacyAutomationsTab from "./LegacyAutomationsTab";
+import EmailAuditTab from "./EmailAuditTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "dashboard" | "open" | "rules" | "history" | "settings";
+type Tab = "dashboard" | "open" | "rules" | "history" | "settings" | "mapa" | "automatizaciones" | "auditoria";
 
 const COMMERCIAL_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pending_followup: { label: "Pendiente",       color: "text-slate-300",   bg: "bg-slate-500/15",   border: "border-slate-500/30" },
@@ -317,6 +321,9 @@ export default function CommercialFollowupDashboard() {
     { id: "rules", label: "Reglas", icon: Settings },
     { id: "history", label: "Historial", icon: History },
     { id: "settings", label: "Configuración", icon: Settings },
+    { id: "mapa", label: "Mapa de emails", icon: Map },
+    { id: "automatizaciones", label: "Automatizaciones", icon: Zap },
+    { id: "auditoria", label: "Auditoría", icon: ClipboardCheck },
   ];
 
   const kpis = dashboard?.kpis;
@@ -751,6 +758,15 @@ export default function CommercialFollowupDashboard() {
             )}
           </div>
         )}
+
+        {/* ── TAB: MAPA DE EMAILS ─────────────────────────────────────────── */}
+        {tab === "mapa" && <CommunicationsMap />}
+
+        {/* ── TAB: AUTOMATIZACIONES ────────────────────────────────────────── */}
+        {tab === "automatizaciones" && <LegacyAutomationsTab />}
+
+        {/* ── TAB: AUDITORÍA ───────────────────────────────────────────────── */}
+        {tab === "auditoria" && <EmailAuditTab />}
 
         {/* ── TAB: SETTINGS ───────────────────────────────────────────────── */}
         {tab === "settings" && settings && (
