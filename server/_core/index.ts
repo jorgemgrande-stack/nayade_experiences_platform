@@ -1046,20 +1046,28 @@ async function ensureRefundColumns() {
     const mysql = await import("mysql2/promise");
     const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
 
+    const colsToEnsure: Array<{ name: string; ddl: string }> = [
+      { name: "refund_executed_at",   ddl: "TIMESTAMP NULL" },
+      { name: "refund_proof_url",     ddl: "VARCHAR(512) NULL" },
+      { name: "cancellation_scope",   ddl: "VARCHAR(10) NOT NULL DEFAULT 'total'" },
+      { name: "cancelled_items_json", ddl: "TEXT NULL" },
+      { name: "cancellation_number",  ddl: "VARCHAR(32) NULL" },
+      { name: "ghl_contact_id",       ddl: "VARCHAR(128) NULL" },
+    ];
+
     const [cols] = await conn.execute(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cancellation_requests'
-       AND COLUMN_NAME IN ('refund_executed_at', 'refund_proof_url')`
+       AND COLUMN_NAME IN (${colsToEnsure.map(() => "?").join(",")})`,
+      colsToEnsure.map(c => c.name)
     ) as any[];
     const found = new Set(cols.map((c: any) => c.COLUMN_NAME));
 
-    if (!found.has("refund_executed_at")) {
-      await conn.execute("ALTER TABLE `cancellation_requests` ADD COLUMN `refund_executed_at` TIMESTAMP NULL");
-      console.log("[DB] ✅ cancellation_requests.refund_executed_at añadida");
-    }
-    if (!found.has("refund_proof_url")) {
-      await conn.execute("ALTER TABLE `cancellation_requests` ADD COLUMN `refund_proof_url` VARCHAR(512) NULL");
-      console.log("[DB] ✅ cancellation_requests.refund_proof_url añadida");
+    for (const col of colsToEnsure) {
+      if (!found.has(col.name)) {
+        await conn.execute(`ALTER TABLE \`cancellation_requests\` ADD COLUMN \`${col.name}\` ${col.ddl}`);
+        console.log(`[DB] ✅ cancellation_requests.${col.name} añadida`);
+      }
     }
 
     await conn.end();
