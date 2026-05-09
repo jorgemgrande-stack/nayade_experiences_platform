@@ -187,6 +187,7 @@ import { vapiCallsRouter } from "./routers/vapiCalls";
 import { emailAccountsRouter } from "./routers/emailAccounts";
 import { emailInboxRouter } from "./routers/emailInbox";
 import { emailCommunicationsRouter } from "./routers/emailCommunications";
+import { partnersRouter } from "./routers/partners";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -206,6 +207,7 @@ export const appRouter = router({
   cancellations: cancellationsRouter,
   proposals: proposalsRouter,
   emailTemplates: emailTemplatesRouter,
+  partners: partnersRouter,
   operations: operationsRouter,
   pdfTemplates: pdfTemplatesRouter,
   auth: router({

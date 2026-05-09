@@ -20,7 +20,8 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest", "controler"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest", "controler", "partner_admin", "partner_user"]).default("user").notNull(),
+  partnerId: int("partnerId"),
   phone: varchar("phone", { length: 32 }),
   avatarUrl: text("avatarUrl"),
   isActive: boolean("isActive").default(true).notNull(),
@@ -228,6 +229,8 @@ export const leads = mysqlTable("leads", {
   assignedTo: int("assignedTo"),
   ghlContactId: varchar("ghlContactId", { length: 128 }),
   source: varchar("source", { length: 128 }).default("web"),
+  partnerId: int("partnerId"),
+  partnerUserId: int("partnerUserId"),
   selectedCategory: varchar("selectedCategory", { length: 128 }),
   selectedProduct: varchar("selectedProduct", { length: 256 }),
   activitiesJson: json("activitiesJson").$type<{
@@ -444,6 +447,9 @@ export const invoices = mysqlTable("invoices", {
   lastSentAt: timestamp("lastSentAt"),
   sentCount: int("sentCount").default(0).notNull(),
   issuedAt: timestamp("issuedAt").defaultNow().notNull(),
+  // Partner billing
+  partnerId: int("partnerId"),
+  partnerBillingBatchId: int("partnerBillingBatchId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -684,6 +690,9 @@ export const reservations = mysqlTable("reservations", {
   reservationNumber: varchar("reservation_number", { length: 32 }).unique(),
   // Anulación vinculada (FK → cancellation_requests.id)
   cancellationRequestId: int("cancellation_request_id"),
+  // Partner
+  partnerId: int("partner_id"),
+  partnerUserId: int("partner_user_id"),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────
@@ -3097,3 +3106,71 @@ export const customerEmailPrefs = mysqlTable("customer_email_prefs", {
 });
 export type CustomerEmailPref = typeof customerEmailPrefs.$inferSelect;
 export type InsertCommercialEmail = typeof commercialEmails.$inferInsert;
+
+// ─── PARTNERS / COLABORADORES ────────────────────────────────────────────────
+
+export const partners = mysqlTable("partners", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 256 }).notNull(),
+  slug: varchar("slug", { length: 128 }).notNull().unique(),
+  // Datos fiscales
+  fiscalName: varchar("fiscalName", { length: 256 }),
+  nif: varchar("nif", { length: 32 }),
+  address: text("address"),
+  city: varchar("city", { length: 128 }),
+  postalCode: varchar("postalCode", { length: 16 }),
+  country: varchar("country", { length: 4 }).default("ES").notNull(),
+  // Contacto
+  contactName: varchar("contactName", { length: 256 }),
+  contactEmail: varchar("contactEmail", { length: 320 }),
+  contactPhone: varchar("contactPhone", { length: 32 }),
+  billingEmail: varchar("billingEmail", { length: 320 }),
+  // Capacidades
+  canCreateReservations: boolean("canCreateReservations").default(false).notNull(),
+  canCreateLeads: boolean("canCreateLeads").default(true).notNull(),
+  // Productos permitidos (null = todos)
+  allowedReservationProductIds: json("allowedReservationProductIds").$type<number[]>(),
+  allowedLeadProductIds: json("allowedLeadProductIds").$type<number[]>(),
+  // Comisiones (preparado, por defecto sin comisión)
+  commissionType: mysqlEnum("commissionType", ["none", "fixed_lead", "fixed_reservation", "percent", "per_product", "manual"]).default("none").notNull(),
+  commissionValue: decimal("commissionValue", { precision: 10, scale: 4 }),
+  // Facturación agrupada
+  billingEnabled: boolean("billingEnabled").default(false).notNull(),
+  billingPeriod: mysqlEnum("billingPeriod", ["weekly", "biweekly", "monthly", "manual"]).default("monthly").notNull(),
+  // Control de cupos (null = sin límite)
+  monthlyQuota: int("monthlyQuota"),
+  // Estado
+  isActive: boolean("isActive").default(true).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Partner = typeof partners.$inferSelect;
+export type InsertPartner = typeof partners.$inferInsert;
+
+export const partnerBillingBatches = mysqlTable("partner_billing_batches", {
+  id: int("id").autoincrement().primaryKey(),
+  batchNumber: varchar("batchNumber", { length: 32 }).notNull().unique(),
+  partnerId: int("partnerId").notNull(),
+  periodType: mysqlEnum("periodType", ["weekly", "biweekly", "monthly", "manual"]).default("monthly").notNull(),
+  periodStart: varchar("periodStart", { length: 10 }).notNull(),
+  periodEnd: varchar("periodEnd", { length: 10 }).notNull(),
+  totalAmount: decimal("totalAmount", { precision: 12, scale: 2 }).default("0").notNull(),
+  status: mysqlEnum("status", ["borrador", "emitida", "cobrada", "anulada"]).default("borrador").notNull(),
+  invoiceId: int("invoiceId"),
+  notes: text("notes"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PartnerBillingBatch = typeof partnerBillingBatches.$inferSelect;
+
+export const partnerBillingBatchItems = mysqlTable("partner_billing_batch_items", {
+  id: int("id").autoincrement().primaryKey(),
+  batchId: int("batchId").notNull(),
+  reservationId: int("reservationId").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).default("0").notNull(),
+  description: varchar("description", { length: 512 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type PartnerBillingBatchItem = typeof partnerBillingBatchItems.$inferSelect;

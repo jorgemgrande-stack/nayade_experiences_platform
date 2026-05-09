@@ -832,6 +832,110 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
+    // Feature flags — Módulo Partners / Colaboradores (Fase 1)
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 1, 1, 'low')`,
+      ["partners_module_enabled", "Módulo Partners", "Activa el módulo de Partners/Colaboradores en el admin.", "partners"]
+    );
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 0, 0, 'medium')`,
+      ["partners_direct_reservations", "Partners: Reservas directas", "Permite a partners crear reservas directas confirmadas (Fase 3).", "partners"]
+    );
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 0, 0, 'medium')`,
+      ["partners_billing_enabled", "Partners: Facturación agrupada", "Activa la facturación agrupada por periodos para partners (Fase 4).", "partners"]
+    );
+    await conn.execute(
+      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
+       VALUES (?, ?, ?, ?, 0, 0, 'high')`,
+      ["partners_commissions_enabled", "Partners: Comisiones", "Activa el cálculo y liquidación de comisiones para partners (Fase 5).", "partners"]
+    );
+
+    // Módulo Partners — tablas (migración 0088, creación programática por si Drizzle no la aplicó)
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`partners\` (
+        \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        \`name\` varchar(256) NOT NULL,
+        \`slug\` varchar(128) NOT NULL,
+        \`fiscalName\` varchar(256),
+        \`nif\` varchar(32),
+        \`address\` text,
+        \`city\` varchar(128),
+        \`postalCode\` varchar(16),
+        \`country\` varchar(4) NOT NULL DEFAULT 'ES',
+        \`contactName\` varchar(256),
+        \`contactEmail\` varchar(320),
+        \`contactPhone\` varchar(32),
+        \`billingEmail\` varchar(320),
+        \`canCreateReservations\` boolean NOT NULL DEFAULT false,
+        \`canCreateLeads\` boolean NOT NULL DEFAULT true,
+        \`allowedReservationProductIds\` json,
+        \`allowedLeadProductIds\` json,
+        \`commissionType\` enum('none','fixed_lead','fixed_reservation','percent','per_product','manual') NOT NULL DEFAULT 'none',
+        \`commissionValue\` decimal(10,4),
+        \`billingEnabled\` boolean NOT NULL DEFAULT false,
+        \`billingPeriod\` enum('weekly','biweekly','monthly','manual') NOT NULL DEFAULT 'monthly',
+        \`monthlyQuota\` int NULL,
+        \`isActive\` boolean NOT NULL DEFAULT true,
+        \`notes\` text,
+        \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_partner_slug\` (\`slug\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`partner_billing_batches\` (
+        \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        \`batchNumber\` varchar(32) NOT NULL,
+        \`partnerId\` int NOT NULL,
+        \`periodType\` enum('weekly','biweekly','monthly','manual') NOT NULL DEFAULT 'monthly',
+        \`periodStart\` varchar(10) NOT NULL,
+        \`periodEnd\` varchar(10) NOT NULL,
+        \`totalAmount\` decimal(12,2) NOT NULL DEFAULT 0,
+        \`status\` enum('borrador','emitida','cobrada','anulada') NOT NULL DEFAULT 'borrador',
+        \`invoiceId\` int NULL,
+        \`notes\` text,
+        \`createdBy\` int NULL,
+        \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY \`uq_batch_number\` (\`batchNumber\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`partner_billing_batch_items\` (
+        \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        \`batchId\` int NOT NULL,
+        \`reservationId\` int NOT NULL,
+        \`amount\` decimal(10,2) NOT NULL DEFAULT 0,
+        \`description\` varchar(512),
+        \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    // Columnas adicionales en tablas existentes (ADD COLUMN IF NOT EXISTS)
+    for (const sql of [
+      "ALTER TABLE `users` ADD COLUMN IF NOT EXISTS `partnerId` int NULL",
+      "ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `partnerId` int NULL",
+      "ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `partnerUserId` int NULL",
+      "ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `partner_id` int NULL",
+      "ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `partner_user_id` int NULL",
+      "ALTER TABLE `invoices` ADD COLUMN IF NOT EXISTS `partnerId` int NULL",
+      "ALTER TABLE `invoices` ADD COLUMN IF NOT EXISTS `partnerBillingBatchId` int NULL",
+    ]) {
+      await conn.execute(sql).catch((e: any) => {
+        if (!e.message?.includes("Duplicate column")) console.warn("[DB] Partners column:", e.message);
+      });
+    }
+    // Extender enum role en users
+    await conn.execute(
+      `ALTER TABLE \`users\` MODIFY COLUMN \`role\`
+       enum('user','admin','monitor','agente','adminrest','controler','partner_admin','partner_user')
+       NOT NULL DEFAULT 'user'`
+    ).catch(() => {});
+    console.log("[DB] ✅ Módulo Partners: tablas y columnas verificadas");
+
     // Tablas del sistema de comunicaciones (migración 0086 — creación programática por si no aplicó)
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS \`email_template_configs\` (

@@ -133,6 +133,29 @@ export function anyPermissionProcedure(permissionKeys: string[], fallbackRoles: 
 }
 
 /**
+ * partnerProcedure: acceso portal de partners.
+ * Solo permite roles partner_admin y partner_user.
+ * Garantiza que user.partnerId está presente para evitar acceso cruzado.
+ */
+export const partnerProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+    if (!ctx.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    }
+    const allowed = ["partner_admin", "partner_user"].includes(ctx.user.role as string);
+    if (!allowed) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al portal de partners" });
+    }
+    const user = ctx.user as any;
+    if (!user.partnerId) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Usuario no vinculado a ningún partner" });
+    }
+    return next({ ctx: { ...ctx, user: ctx.user } });
+  }),
+);
+
+/**
  * adminrestProcedure: acceso módulo restaurantes.
  * RBAC: permiso restaurants.view. Legacy fallback: admin | adminrest.
  */

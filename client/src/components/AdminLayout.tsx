@@ -69,6 +69,13 @@ const navItems = [
     ],
   },
   {
+    label: "Partners",
+    href: "/admin/partners",
+    icon: Building2,
+    roles: ["admin"],
+    flagKey: "partners_module_enabled",
+  },
+  {
     label: "Atención Comercial",
     href: "/admin/atencion-comercial",
     icon: Target,
