@@ -916,6 +916,7 @@ async function ensureExpenseEmailIngestionSchema() {
     `);
     // Columnas adicionales en tablas existentes — verificar con INFORMATION_SCHEMA antes de añadir
     const partnerColsToAdd: Array<{ table: string; column: string; ddl: string }> = [
+      // Columnas en otras tablas
       { table: "users",        column: "partnerId",              ddl: "int NULL" },
       { table: "leads",        column: "partnerId",              ddl: "int NULL" },
       { table: "leads",        column: "partnerUserId",          ddl: "int NULL" },
@@ -923,6 +924,28 @@ async function ensureExpenseEmailIngestionSchema() {
       { table: "reservations", column: "partner_user_id",        ddl: "int NULL" },
       { table: "invoices",     column: "partnerId",              ddl: "int NULL" },
       { table: "invoices",     column: "partnerBillingBatchId",  ddl: "int NULL" },
+      // Columnas de partners que pueden faltar si la tabla se creó con schema anterior
+      { table: "partners", column: "fiscalName",                   ddl: "varchar(256) NULL" },
+      { table: "partners", column: "nif",                          ddl: "varchar(32) NULL" },
+      { table: "partners", column: "address",                      ddl: "text NULL" },
+      { table: "partners", column: "city",                         ddl: "varchar(128) NULL" },
+      { table: "partners", column: "postalCode",                   ddl: "varchar(16) NULL" },
+      { table: "partners", column: "country",                      ddl: "varchar(4) NOT NULL DEFAULT 'ES'" },
+      { table: "partners", column: "contactName",                  ddl: "varchar(256) NULL" },
+      { table: "partners", column: "contactEmail",                 ddl: "varchar(320) NULL" },
+      { table: "partners", column: "contactPhone",                 ddl: "varchar(32) NULL" },
+      { table: "partners", column: "billingEmail",                 ddl: "varchar(320) NULL" },
+      { table: "partners", column: "canCreateReservations",        ddl: "boolean NOT NULL DEFAULT false" },
+      { table: "partners", column: "canCreateLeads",               ddl: "boolean NOT NULL DEFAULT true" },
+      { table: "partners", column: "allowedReservationProductIds", ddl: "json NULL" },
+      { table: "partners", column: "allowedLeadProductIds",        ddl: "json NULL" },
+      { table: "partners", column: "commissionType",               ddl: "enum('none','fixed_lead','fixed_reservation','percent','per_product','manual') NOT NULL DEFAULT 'none'" },
+      { table: "partners", column: "commissionValue",              ddl: "decimal(10,4) NULL" },
+      { table: "partners", column: "billingEnabled",               ddl: "boolean NOT NULL DEFAULT false" },
+      { table: "partners", column: "billingPeriod",                ddl: "enum('weekly','biweekly','monthly','manual') NOT NULL DEFAULT 'monthly'" },
+      { table: "partners", column: "monthlyQuota",                 ddl: "int NULL" },
+      { table: "partners", column: "isActive",                     ddl: "boolean NOT NULL DEFAULT true" },
+      { table: "partners", column: "notes",                        ddl: "text NULL" },
     ];
     for (const { table, column, ddl } of partnerColsToAdd) {
       const [existing] = await conn.execute(
