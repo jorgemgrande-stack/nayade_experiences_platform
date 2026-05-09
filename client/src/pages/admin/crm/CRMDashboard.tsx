@@ -6711,22 +6711,22 @@ export default function CRMDashboard() {
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px]">
+              <table className="w-full min-w-[1100px]">
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
                     <th className="w-10 px-3 py-3">
                       <input type="checkbox" className="rounded border-foreground/30 bg-background cursor-pointer" checked={!!resData?.rows?.length && selectedRes.size === resData.rows.length} onChange={e => setSelectedRes(e.target.checked ? new Set(resData?.rows?.map((r: any) => r.id)) : new Set())} />
                     </th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Nº Reserva</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Nº Reserva</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Est. Reserva</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Est. Pago</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell">Canal</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">F. Compra</th>
-                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">F. Actividad</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Importe</th>
-                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Est. Reserva</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Est. Pago</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell whitespace-nowrap">Canal</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">F. Compra</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell whitespace-nowrap">F. Actividad</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap">Importe</th>
+                    <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium whitespace-nowrap w-[180px]">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -6897,7 +6897,7 @@ export default function CRMDashboard() {
                           <div className="text-xs text-foreground/40">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right w-[180px] whitespace-nowrap">
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver detalles */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-sky-300 h-7 w-7 p-0"
