@@ -832,91 +832,18 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
-    // Reglas de automatización por defecto — budget_request_user (24h / 72h / 120h)
-    // Usan INSERT INTO ... WHERE NOT EXISTS para ser idempotentes sin clave UNIQUE en la tabla.
-    const defaultRules = [
-      {
-        name: "Recordatorio 24h — solicitud sin respuesta",
-        delayHours: 24,
-        sortOrder: 1,
-        emailSubject: "¿Has podido revisar tu solicitud? — Náyade Experiences",
-        emailBody: `<table width="100%" style="max-width:580px;margin:0 auto;background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-<tr><td style="background:#0a1628;padding:20px;text-align:center;">
-  <span style="color:#fff;font-family:Georgia,serif;font-size:20px;font-weight:900;letter-spacing:4px;">NÁYADE</span><br>
-  <span style="color:#c8d8f0;font-size:9px;letter-spacing:5px;text-transform:uppercase;">EXPERIENCES</span>
-</td></tr>
-<tr><td style="padding:28px 28px 20px;">
-  <p style="color:#0a1628;font-size:16px;font-weight:700;margin:0 0 14px;">Queremos asegurarnos de que tienes todo lo que necesitas</p>
-  <p style="color:#4b5563;font-size:14px;line-height:1.7;margin:0 0 14px;">
-    Hace 24 horas recibimos tu solicitud de presupuesto y ya estamos trabajando en una propuesta personalizada para ti.
-  </p>
-  <p style="color:#4b5563;font-size:14px;line-height:1.7;margin:0 0 20px;">
-    Si tienes alguna duda o quieres ajustar algún detalle — número de personas, fechas, tipo de experiencia — responde directamente a este email y lo gestionamos de inmediato.
-  </p>
-  <p style="color:#9ca3af;font-size:12px;margin:0;">El equipo de Náyade Experiences</p>
-</td></tr>
-</table>`,
-      },
-      {
-        name: "Recordatorio 72h — seguimiento comercial",
-        delayHours: 72,
-        sortOrder: 2,
-        emailSubject: "Tu experiencia Náyade está casi lista — ¿seguimos adelante?",
-        emailBody: `<table width="100%" style="max-width:580px;margin:0 auto;background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-<tr><td style="background:#0a1628;padding:20px;text-align:center;">
-  <span style="color:#fff;font-family:Georgia,serif;font-size:20px;font-weight:900;letter-spacing:4px;">NÁYADE</span><br>
-  <span style="color:#c8d8f0;font-size:9px;letter-spacing:5px;text-transform:uppercase;">EXPERIENCES</span>
-</td></tr>
-<tr><td style="padding:28px 28px 20px;">
-  <p style="color:#0a1628;font-size:16px;font-weight:700;margin:0 0 14px;">Seguimos pensando en tu experiencia perfecta</p>
-  <p style="color:#4b5563;font-size:14px;line-height:1.7;margin:0 0 14px;">
-    Han pasado 3 días desde tu solicitud y queríamos recordarte que estamos aquí para ayudarte a planificar una experiencia memorable.
-  </p>
-  <p style="color:#4b5563;font-size:14px;line-height:1.7;margin:0 0 20px;">
-    Si aún tienes preguntas o necesitas ajustar algún aspecto de la propuesta, escríbenos y lo resolvemos juntos.
-  </p>
-  <p style="color:#9ca3af;font-size:12px;margin:0;">El equipo de Náyade Experiences</p>
-</td></tr>
-</table>`,
-      },
-      {
-        name: "Última oportunidad 120h",
-        delayHours: 120,
-        sortOrder: 3,
-        emailSubject: "Última oportunidad — Náyade Experiences espera tu respuesta",
-        emailBody: `<table width="100%" style="max-width:580px;margin:0 auto;background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-<tr><td style="background:#0a1628;padding:20px;text-align:center;">
-  <span style="color:#fff;font-family:Georgia,serif;font-size:20px;font-weight:900;letter-spacing:4px;">NÁYADE</span><br>
-  <span style="color:#c8d8f0;font-size:9px;letter-spacing:5px;text-transform:uppercase;">EXPERIENCES</span>
-</td></tr>
-<tr><td style="padding:28px 28px 20px;">
-  <p style="color:#0a1628;font-size:16px;font-weight:700;margin:0 0 14px;">No queremos que pierdas esta oportunidad</p>
-  <p style="color:#4b5563;font-size:14px;line-height:1.7;margin:0 0 14px;">
-    Ha pasado casi una semana desde que nos enviaste tu solicitud. Queremos asegurarnos de que no se queda sin respuesta.
-  </p>
-  <p style="color:#4b5563;font-size:14px;line-height:1.7;margin:0 0 20px;">
-    Si cambió tu situación o ya no necesitas la experiencia, no te preocupes — solo responde a este email y lo cerramos. Si sigues interesado, estaremos encantados de retomar la propuesta.
-  </p>
-  <p style="color:#9ca3af;font-size:12px;margin:0;">El equipo de Náyade Experiences</p>
-</td></tr>
-</table>`,
-      },
-    ];
-
-    for (const rule of defaultRules) {
-      await conn.execute(
-        `INSERT INTO email_automation_rules
-           (templateKey, name, isActive, sortOrder, delayHours, calculateFrom, maxSendsPerEntity,
-            allowedSendStart, allowedSendEnd, stopIfConverted, stopIfPaid, emailSubject, emailBody)
-         SELECT ?, ?, 1, ?, ?, 'trigger_time', 1, '09:00', '20:00', 1, 1, ?, ?
-         FROM DUAL
-         WHERE NOT EXISTS (
-           SELECT 1 FROM email_automation_rules WHERE templateKey = ? AND name = ?
-         )`,
-        ["budget_request_user", rule.name, rule.sortOrder, rule.delayHours, rule.emailSubject, rule.emailBody,
-         "budget_request_user", rule.name]
-      );
-    }
+    // Limpiar reglas de budget_request_user sembradas anteriormente (Opción B — simplificación):
+    // commercialFollowupJob cubre todo el seguimiento comercial; emailAutomationJob queda
+    // reservado para plantillas sin cron propio (ej: post-reserva, post-pago).
+    await conn.execute(
+      `DELETE FROM email_automation_rules
+       WHERE templateKey = 'budget_request_user'
+         AND name IN (
+           'Recordatorio 24h — solicitud sin respuesta',
+           'Recordatorio 72h — seguimiento comercial',
+           'Última oportunidad 120h'
+         )`
+    );
 
     // Tablas del módulo de Email Comercial
     await conn.execute(`

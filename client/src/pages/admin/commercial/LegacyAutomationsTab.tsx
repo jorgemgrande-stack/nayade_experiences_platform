@@ -38,7 +38,7 @@ const CRONS: CronCard[] = [
     recipient: "client",
     subject: "Configurable por regla de automatización (campo emailSubject)",
     recommendation:
-      "Sistema nuevo. Activar el feature flag desde Settings > Avanzado > Feature Flags. No crear reglas para plantillas con cron legacy propio ('quote'). El bloqueo anti-duplicado es automático en emailManager.",
+      "Motor genérico de automatización. NO usar para seguimiento de presupuestos — eso lo gestiona commercialFollowupJob. Usar para plantillas sin cron propio: post-reserva, post-pago, bienvenida, etc. El bloqueo anti-duplicado para 'quote' es automático en emailManager.",
     recommendationType: "keep",
     details: [
       { label: "Feature flag", value: "email_automation_job_enabled (desactivado por defecto)" },
@@ -297,9 +297,10 @@ export default function LegacyAutomationsTab() {
       <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-3 flex gap-2 text-xs text-blue-300">
         <span className="shrink-0">ℹ</span>
         <span>
-          <strong>emailAutomationJob</strong> es el nuevo sistema centralizado (controlado por feature flag).
-          Los crons legacy siguen activos en modo compatibilidad. <strong>emailManager</strong> bloquea automáticamente
-          el scheduling para la plantilla <code className="font-mono">'quote'</code> para evitar duplicados con quoteReminderJob.
+          <strong>commercialFollowupJob</strong> es el sistema de seguimiento de presupuestos — no duplicar con emailAutomationJob.
+          <strong>emailAutomationJob</strong> está reservado para automaciones genéricas en plantillas sin cron propio
+          (post-reserva, post-pago, etc.). <strong>emailManager</strong> bloquea automáticamente el scheduling
+          para <code className="font-mono">'quote'</code> evitando duplicados con quoteReminderJob.
         </span>
       </div>
 
