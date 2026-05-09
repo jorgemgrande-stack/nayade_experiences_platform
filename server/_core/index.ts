@@ -854,7 +854,21 @@ async function ensureExpenseEmailIngestionSchema() {
       ["partners_commissions_enabled", "Partners: Comisiones", "Activa el cálculo y liquidación de comisiones para partners (Fase 5).", "partners"]
     );
 
-    // Módulo Partners — tablas (migración 0088, creación programática por si Drizzle no la aplicó)
+    // Módulo Partners — asegurar tabla con schema correcto
+    // Si la tabla tiene un schema antiguo incompatible (detectado por columna 'access_key'),
+    // la eliminamos y la recreamos. La tabla está vacía (todos los inserts fallaron).
+    {
+      const [oldCols] = await conn.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'partners' AND COLUMN_NAME = 'access_key'`
+      ) as any[];
+      if (oldCols && oldCols.length > 0) {
+        console.log("[DB] Partners: schema antiguo detectado (access_key), recreando tabla...");
+        await conn.execute("SET FOREIGN_KEY_CHECKS=0");
+        await conn.execute("DROP TABLE IF EXISTS `partners`");
+        await conn.execute("SET FOREIGN_KEY_CHECKS=1");
+      }
+    }
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS \`partners\` (
         \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
