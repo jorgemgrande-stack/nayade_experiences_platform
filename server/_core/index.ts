@@ -914,19 +914,26 @@ async function ensureExpenseEmailIngestionSchema() {
         \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
-    // Columnas adicionales en tablas existentes (ADD COLUMN IF NOT EXISTS)
-    for (const sql of [
-      "ALTER TABLE `users` ADD COLUMN IF NOT EXISTS `partnerId` int NULL",
-      "ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `partnerId` int NULL",
-      "ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `partnerUserId` int NULL",
-      "ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `partner_id` int NULL",
-      "ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `partner_user_id` int NULL",
-      "ALTER TABLE `invoices` ADD COLUMN IF NOT EXISTS `partnerId` int NULL",
-      "ALTER TABLE `invoices` ADD COLUMN IF NOT EXISTS `partnerBillingBatchId` int NULL",
-    ]) {
-      await conn.execute(sql).catch((e: any) => {
-        if (!e.message?.includes("Duplicate column")) console.warn("[DB] Partners column:", e.message);
-      });
+    // Columnas adicionales en tablas existentes — verificar con INFORMATION_SCHEMA antes de añadir
+    const partnerColsToAdd: Array<{ table: string; column: string; ddl: string }> = [
+      { table: "users",        column: "partnerId",              ddl: "int NULL" },
+      { table: "leads",        column: "partnerId",              ddl: "int NULL" },
+      { table: "leads",        column: "partnerUserId",          ddl: "int NULL" },
+      { table: "reservations", column: "partner_id",             ddl: "int NULL" },
+      { table: "reservations", column: "partner_user_id",        ddl: "int NULL" },
+      { table: "invoices",     column: "partnerId",              ddl: "int NULL" },
+      { table: "invoices",     column: "partnerBillingBatchId",  ddl: "int NULL" },
+    ];
+    for (const { table, column, ddl } of partnerColsToAdd) {
+      const [existing] = await conn.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+        [table, column]
+      ) as any[];
+      if (!existing || existing.length === 0) {
+        await conn.execute(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${ddl}`)
+          .catch((e: any) => console.warn(`[DB] Partners column ${table}.${column}:`, e.message));
+      }
     }
     // Extender enum role en users
     await conn.execute(
