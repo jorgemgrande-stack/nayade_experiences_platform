@@ -115,23 +115,29 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
   const partnerName = partner?.name ?? "";
 
   return (
-    <div className="relative min-h-screen bg-[#080e1c] text-white">
-      {/* Fondo con foto fija */}
+    <div
+      className="min-h-screen text-white"
+      style={{
+        backgroundColor: "#080e1c",
+        ...(bgImage && {
+          backgroundImage: `url('${bgImage}')`,
+          backgroundSize: "cover",
+          backgroundPosition: "center top",
+          backgroundAttachment: "fixed",
+          backgroundRepeat: "no-repeat",
+        }),
+      }}
+    >
+      {/* Overlay oscuro sobre la foto */}
       {bgImage && (
-        <>
-          <div
-            className="fixed inset-0"
-            style={{ backgroundImage: `url('${bgImage}')`, backgroundSize: "cover", backgroundPosition: "center top", zIndex: 0 }}
-          />
-          <div
-            className="fixed inset-0"
-            style={{ background: "linear-gradient(rgba(8,14,28,0.78) 0%, rgba(8,14,28,0.84) 55%, rgba(8,14,28,0.93) 100%)", zIndex: 1 }}
-          />
-        </>
+        <div
+          className="fixed inset-0 pointer-events-none"
+          style={{ background: "linear-gradient(rgba(8,14,28,0.78) 0%, rgba(8,14,28,0.84) 55%, rgba(8,14,28,0.93) 100%)", zIndex: 10 }}
+        />
       )}
 
-      {/* Todo el contenido por encima del fondo */}
-      <div className="relative" style={{ zIndex: 2 }}>
+      {/* Contenido por encima del overlay */}
+      <div className="relative" style={{ zIndex: 20 }}>
       {/* Anuncios */}
       {partner?.id && <AnnouncementsModal partnerId={partner.id} />}
 
