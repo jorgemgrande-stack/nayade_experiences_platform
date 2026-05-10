@@ -10,6 +10,13 @@ build/
 # Environment variables
 .env
 .env.local
+
+# Scripts con credenciales hardcodeadas — nunca subir
+scripts/insert-reviews.mjs
+scripts/seed-reviews.mjs
+scripts/seed-reviews.sql
+scripts/_tmp_*.mts
+scripts/push-enum-changes.mjs
 .env.development.local
 .env.test.local
 .env.production.local
