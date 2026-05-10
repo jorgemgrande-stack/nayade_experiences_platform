@@ -6441,16 +6441,16 @@ export default function CRMDashboard() {
                         <div className="text-sm text-foreground/60">{lead.preferredDate ? new Date(lead.preferredDate).toLocaleDateString("es-ES") : "—"}</div>
                       </td>
                       <td className="px-4 py-3 hidden xl:table-cell">
-                        {lead.leadSource ? (
+                        {lead.lsName ? (
                           <span
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border"
                             style={{
-                              color: lead.leadSource.color ?? "#9CA3AF",
-                              borderColor: `${lead.leadSource.color ?? "#9CA3AF"}40`,
-                              backgroundColor: `${lead.leadSource.color ?? "#9CA3AF"}15`,
+                              color: lead.lsColor ?? "#9CA3AF",
+                              borderColor: `${lead.lsColor ?? "#9CA3AF"}40`,
+                              backgroundColor: `${lead.lsColor ?? "#9CA3AF"}15`,
                             }}
                           >
-                            {lead.leadSource.name}
+                            {lead.lsName}
                           </span>
                         ) : (
                           <span className="text-xs text-foreground/30">—</span>

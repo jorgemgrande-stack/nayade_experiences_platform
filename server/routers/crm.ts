@@ -614,13 +614,10 @@ export const crmRouter = router({
             .select({
               ...getTableColumns(leads),
               clientId: clients.id,
-              leadSource: {
-                id: crmLeadSources.id,
-                code: crmLeadSources.code,
-                name: crmLeadSources.name,
-                color: crmLeadSources.color,
-                icon: crmLeadSources.icon,
-              },
+              lsName: crmLeadSources.name,
+              lsColor: crmLeadSources.color,
+              lsCode: crmLeadSources.code,
+              lsIcon: crmLeadSources.icon,
             })
             .from(leads)
             .leftJoin(clients, eq(clients.leadId, leads.id))
