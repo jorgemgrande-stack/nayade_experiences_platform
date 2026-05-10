@@ -53,6 +53,8 @@ import {
   buildPendingPaymentHtml,
   buildPendingPaymentReminderHtml,
   buildInstallmentReminderHtml,
+  buildBudgetRequestUserHtml,
+  buildBudgetRequestAdminHtml,
 } from "../emailTemplates";
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
 import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource } from "../ghl";
@@ -1129,6 +1131,45 @@ export const crmRouter = router({
           await db.update(leads).set({ activitiesJson: input.activitiesJson }).where(eq(leads.id, result.id));
         }
         await logActivity("lead", result.id, "lead_created_admin", ctx.user.id, ctx.user.name, { name: input.name });
+
+        // Disparar automatizaciones de email (igual que submitBudget)
+        const emailData = {
+          name: input.name,
+          email: input.email,
+          phone: input.phone ?? "",
+          arrivalDate: input.preferredDate
+            ? new Date(input.preferredDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+            : "",
+          adults: input.numberOfAdults ?? 1,
+          children: input.numberOfChildren ?? 0,
+          selectedCategory: input.selectedCategory ?? "",
+          selectedProduct: input.selectedProduct ?? "",
+          comments: input.message ?? "",
+          submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
+          activitiesJson: input.activitiesJson ?? undefined,
+        };
+        sendManagedEmail({
+          templateKey: "budget_request_user",
+          triggerEvent: "lead_submitted",
+          recipientEmail: input.email,
+          subject: "Solicitud de presupuesto recibida — Náyade Experiences",
+          html: buildBudgetRequestUserHtml(emailData),
+          relatedEntityType: "lead",
+          relatedEntityId: result.id,
+          leadId: result.id,
+        }).catch(err => console.error("[leads.create] Email al usuario fallido:", err));
+        const adminEmail = process.env.ADMIN_EMAIL ?? await getBusinessEmail("reservations");
+        sendManagedEmail({
+          templateKey: "budget_request_admin",
+          triggerEvent: "lead_submitted",
+          recipientEmail: adminEmail,
+          subject: `⚠️ Nueva solicitud — ${input.name} (${input.selectedCategory ?? "Sin categoría"})`,
+          html: buildBudgetRequestAdminHtml(emailData),
+          relatedEntityType: "lead",
+          relatedEntityId: result.id,
+          leadId: result.id,
+        }).catch(err => console.error("[leads.create] Email al admin fallido:", err));
+
         return result;
       }),
 
