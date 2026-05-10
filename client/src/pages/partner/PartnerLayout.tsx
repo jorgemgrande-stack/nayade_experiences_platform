@@ -114,18 +114,24 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
   const userName = (user as any).name ?? (user as any).email ?? "Colaborador";
   const partnerName = partner?.name ?? "";
 
-  const bgStyle = bgImage
-    ? {
-        backgroundImage: `linear-gradient(rgba(8,14,28,0.82) 0%, rgba(8,14,28,0.87) 60%, rgba(8,14,28,0.94) 100%), url('${bgImage}')`,
-        backgroundSize: "cover",
-        backgroundPosition: "center top",
-        backgroundRepeat: "no-repeat",
-        backgroundAttachment: "scroll",
-      }
-    : undefined;
-
   return (
-    <div className="min-h-screen bg-[#080e1c] text-white" style={bgStyle}>
+    <div className="relative min-h-screen bg-[#080e1c] text-white">
+      {/* Fondo con foto fija */}
+      {bgImage && (
+        <>
+          <div
+            className="fixed inset-0"
+            style={{ backgroundImage: `url('${bgImage}')`, backgroundSize: "cover", backgroundPosition: "center top", zIndex: 0 }}
+          />
+          <div
+            className="fixed inset-0"
+            style={{ background: "linear-gradient(rgba(8,14,28,0.78) 0%, rgba(8,14,28,0.84) 55%, rgba(8,14,28,0.93) 100%)", zIndex: 1 }}
+          />
+        </>
+      )}
+
+      {/* Todo el contenido por encima del fondo */}
+      <div className="relative" style={{ zIndex: 2 }}>
       {/* Anuncios */}
       {partner?.id && <AnnouncementsModal partnerId={partner.id} />}
 
@@ -233,6 +239,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
           </div>
         </div>
       </footer>
+      </div>{/* /relative z-2 */}
     </div>
   );
 }
