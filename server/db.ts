@@ -688,6 +688,8 @@ export async function getDashboardMetrics() {
     [revenueThisMonthResult],
     [bookingsThisMonthResult],
     [leadsConvertedResult],
+    [partnerPendingResult],
+    [partnerPendingCountResult],
   ] = await Promise.all([
     db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'paid'`),
     db.select({ count: sql<number>`count(*)` }).from(leads),
@@ -696,6 +698,9 @@ export async function getDashboardMetrics() {
     db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`),
     db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status IN ('paid','pending_payment') AND created_at >= ${startOfMonthMs}`),
     db.select({ count: sql<number>`count(*)` }).from(leads).where(eq(leads.status, "convertido")),
+    // Devengo partners: reservas confirmadas pendientes de cobro
+    db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'pending_payment' AND channel = 'PARTNER'`),
+    db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'pending_payment' AND channel = 'PARTNER'`),
   ]);
 
   const totalLeadsCount = Number(totalLeadsResult?.count ?? 0);
@@ -710,6 +715,8 @@ export async function getDashboardMetrics() {
     revenueThisMonth: parseFloat(revenueThisMonthResult?.total ?? "0"),
     bookingsThisMonth: Number(bookingsThisMonthResult?.count ?? 0),
     conversionRate,
+    partnerPendingAmount: parseFloat(partnerPendingResult?.total ?? "0"),
+    partnerPendingCount: Number(partnerPendingCountResult?.count ?? 0),
   };
 }
 
@@ -1769,6 +1776,8 @@ export async function getDashboardOverview() {
       invoicesPendingCount: 0,
       invoicesPendingAmount: 0,
       reservationsPaidThisMonth: 0,
+      partnerPendingAmount: 0,
+      partnerPendingCount: 0,
     },
     funnel: { leads: 0, quotes: 0, reservations: 0, invoices: 0 },
     recentActivity: [] as { id: number; entityType: string; action: string; actorName: string | null; entityId: number; details: Record<string, unknown> | null; createdAt: Date }[],
@@ -1827,6 +1836,8 @@ export async function getDashboardOverview() {
       [spaToday],
       [restaurantToday],
       [leadsAgingRow],
+      [partnerPendingAmt],
+      [partnerPendingCnt],
     ] = await Promise.all([
       // KPIs: Ingresos — reservas pagadas (amountTotal en céntimos → euros)
       db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'paid' AND created_at >= ${startOfMonthMs}`),
@@ -1877,6 +1888,9 @@ export async function getDashboardOverview() {
       // Leads sin atender: activos, sin acción o sin contacto en los últimos 3 días
       db.select({ count: sql<number>`count(*)` }).from(leads)
         .where(sql`status NOT IN ('convertido','perdido') AND (lastContactAt IS NULL OR lastContactAt < ${threeDaysAgo})`),
+      // Devengo partners: reservas confirmadas pendientes de cobro
+      db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'pending_payment' AND channel = 'PARTNER'`),
+      db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'pending_payment' AND channel = 'PARTNER'`),
     ]);
 
     // Enriquecer reservas con nombres de experiencias
@@ -1906,6 +1920,8 @@ export async function getDashboardOverview() {
         invoicesPendingCount: Number(invoicesPendingCount?.count ?? 0),
         invoicesPendingAmount: parseFloat(invoicesPendingAmt?.total ?? "0"),
         reservationsPaidThisMonth: Number(resPaidThisMonth?.count ?? 0),
+        partnerPendingAmount: parseFloat(partnerPendingAmt?.total ?? "0"),
+        partnerPendingCount: Number(partnerPendingCnt?.count ?? 0),
       },
       funnel: {
         leads: Number(fLeads?.count ?? 0),

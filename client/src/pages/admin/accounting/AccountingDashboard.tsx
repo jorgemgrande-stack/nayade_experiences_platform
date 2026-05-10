@@ -160,6 +160,28 @@ export default function AccountingDashboard() {
         ))}
       </div>
 
+      {/* ── Devengo Partners: ingresos confirmados pendientes de cobro ──── */}
+      {(metrics?.partnerPendingAmount ?? 0) > 0 && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <Clock className="w-5 h-5 text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800">
+              Ingreso devengado pendiente de cobro — Partners
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">
+              {metrics?.partnerPendingCount} reserva{(metrics?.partnerPendingCount ?? 0) !== 1 ? "s" : ""} confirmada{(metrics?.partnerPendingCount ?? 0) !== 1 ? "s" : ""} de partners, aún sin liquidar.
+              El importe quedará contabilizado como ingreso cuando se procese la liquidación correspondiente.
+            </p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-xl font-bold text-amber-700">{fmtEur(metrics?.partnerPendingAmount ?? 0)}</p>
+            <p className="text-[10px] text-amber-500 mt-0.5">Por cobrar</p>
+          </div>
+        </div>
+      )}
+
       {/* ── KPI Caja prevista ────────────────────────────────────────────── */}
       {cashflow && (
         <div className="mb-6">

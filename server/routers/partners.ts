@@ -9,8 +9,8 @@ import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_c
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences } from "../../drizzle/schema";
-import { eq, desc, and, gte, lte, notInArray, sql } from "drizzle-orm";
+import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences, transactions } from "../../drizzle/schema";
+import { eq, desc, and, gte, lte, notInArray, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
 import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber } from "../db";
@@ -702,10 +702,82 @@ export const partnersRouter = router({
         .where(eq(partnerBillingBatches.id, input.id))
         .limit(1);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const now = Date.now();
       await db
         .update(partnerBillingBatches)
         .set({ status: input.status })
         .where(eq(partnerBillingBatches.id, input.id));
+
+      // Al marcar como cobrada: liquidar reservas + crear transacciones contables
+      if (input.status === "cobrada") {
+        const items = await db
+          .select({ reservationId: partnerBillingBatchItems.reservationId, amount: partnerBillingBatchItems.amount })
+          .from(partnerBillingBatchItems)
+          .where(eq(partnerBillingBatchItems.batchId, input.id));
+
+        const reservationIds = items.map(i => i.reservationId).filter((id): id is number => id != null);
+
+        if (reservationIds.length > 0) {
+          // Obtener datos de las reservas para crear las transacciones
+          const resRows = await db
+            .select()
+            .from(reservations)
+            .where(inArray(reservations.id, reservationIds));
+
+          // Actualizar todas las reservas a pagadas
+          await db.update(reservations)
+            .set({
+              status: "paid",
+              statusPayment: "PAGADO",
+              paidAt: now,
+              updatedAt: now,
+            } as any)
+            .where(inArray(reservations.id, reservationIds));
+
+          // Actualizar amountPaid por separado (igual a amountTotal para cada una)
+          for (const res of resRows) {
+            await db.update(reservations)
+              .set({ amountPaid: res.amountTotal ?? 0 } as any)
+              .where(eq(reservations.id, res.id));
+          }
+
+          // Crear transacciones contables (una por reserva, idempotente)
+          for (const res of resRows) {
+            const existingTx = await db
+              .select({ id: transactions.id })
+              .from(transactions)
+              .where(eq((transactions as any).reservationId, res.id))
+              .limit(1);
+            if (existingTx.length > 0) continue;
+
+            const txNumber = `TX-PAR-${existing.batchNumber}-${res.id}`;
+            await db.insert(transactions).values({
+              transactionNumber: txNumber,
+              type: "ingreso",
+              amount: String(((res.amountTotal ?? 0) / 100).toFixed(2)),
+              currency: "EUR",
+              paymentMethod: "otro",
+              status: "completado",
+              description: `Liquidación partner ${existing.batchNumber} — ${res.productName ?? ""} · ${res.bookingDate ?? ""} · ${res.customerName ?? ""}`,
+              processedAt: new Date(now),
+              clientName: res.customerName ?? null,
+              clientEmail: res.customerEmail ?? null,
+              clientPhone: res.customerPhone ?? null,
+              productName: res.productName ?? null,
+              saleChannel: "delegado",
+              taxBase: "0",
+              taxAmount: "0",
+              reavMargin: "0",
+              fiscalRegime: "general",
+              reservationId: res.id,
+            } as any);
+          }
+
+          console.log(`[Partners] Batch ${existing.batchNumber} cobrada — ${reservationIds.length} reservas liquidadas`);
+        }
+      }
+
       return { ok: true };
     }),
 
