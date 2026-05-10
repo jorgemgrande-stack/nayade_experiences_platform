@@ -22,6 +22,7 @@ import {
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql, count, inArray, sum } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
+import { sendManagedEmail } from "../emailManager";
 import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
@@ -478,17 +479,30 @@ export const ticketingRouter = router({
         });
 
         // Email confirmación cliente
-        sendEmail({
-          to: input.email,
+        sendManagedEmail({
+          templateKey: "coupon_received",
+          triggerEvent: "coupon_received",
+          recipientEmail: input.email,
           subject: `Hemos recibido tu solicitud de canje — ${input.provider}`,
           html: buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate }),
+          relatedEntityType: "coupon_redemption",
+          relatedEntityId: acceptedIds[0],
         }).catch(console.error);
 
         // Alerta interna
         const [cfg] = await db.select().from(couponEmailConfig).limit(1);
         if (!cfg || cfg.autoSendInternalAlert) {
           const alertEmail = cfg?.internalAlertEmail ?? getCopyEmail();
-          sendEmail({ to: alertEmail, subject: `[Ticketing] Nuevo envío: ${validResults.length} cupón${validResults.length > 1 ? "es" : ""} — ${input.customerName}`, html: buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate }) }).catch(console.error);
+          sendManagedEmail({
+            templateKey: "coupon_internal_alert",
+            triggerEvent: "coupon_internal_alert",
+            recipientEmail: alertEmail,
+            subject: `[Ticketing] Nuevo envío: ${validResults.length} cupón${validResults.length > 1 ? "es" : ""} — ${input.customerName}`,
+            html: buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate }),
+            relatedEntityType: "coupon_redemption",
+            relatedEntityId: acceptedIds[0],
+            forceCustomer: true,
+          }).catch(console.error);
         }
       }
 
@@ -669,8 +683,10 @@ export const ticketingRouter = router({
         .where(eq(couponRedemptions.id, input.id));
 
       // Email automático al cliente
-      sendEmail({
-        to: item.email,
+      sendManagedEmail({
+        templateKey: "coupon_postponed",
+        triggerEvent: "coupon_postponed",
+        recipientEmail: item.email,
         subject: `Información sobre tu solicitud de canje — ${item.provider}`,
         html: buildPostponeEmailHtml({
           customerName: item.customerName,
@@ -679,6 +695,8 @@ export const ticketingRouter = router({
           productName,
           requestedDate: item.requestedDate ?? undefined,
         }),
+        relatedEntityType: "coupon_redemption",
+        relatedEntityId: item.id,
       }).catch(console.error);
 
       // GHL — fire and forget

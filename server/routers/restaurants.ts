@@ -17,6 +17,7 @@ import {
 import { notifyOwner } from "../_core/notification";
 import { buildRedsysForm, generateMerchantOrder, getRedsysUrl } from "../redsys";
 import { buildRestaurantPaymentLinkHtml, buildRestaurantConfirmHtml } from "../emailTemplates";
+import { sendManagedEmail } from "../emailManager";
 
 // ─── Helper: enviar email de link de pago ─────────────────────────────────────
 async function sendRestaurantPaymentEmail(params: {
@@ -33,10 +34,12 @@ async function sendRestaurantPaymentEmail(params: {
   signature: string;
   signatureVersion: string;
   origin: string;
+  bookingId: number;
 }) {
-  await sendEmail({
-    to: params.guestEmail,
-    cc: await getBusinessEmail('reservations'),
+  await sendManagedEmail({
+    templateKey: "restaurant_payment_link",
+    triggerEvent: "restaurant_payment_link",
+    recipientEmail: params.guestEmail,
     subject: `💳 Completa tu reserva en ${params.restaurantName} — Depósito pendiente (${params.locator})`,
     html: buildRestaurantPaymentLinkHtml({
       guestName: params.guestName,
@@ -52,6 +55,9 @@ async function sendRestaurantPaymentEmail(params: {
       signature: params.signature,
       signatureVersion: params.signatureVersion,
     }),
+    relatedEntityType: "restaurant_booking",
+    relatedEntityId: params.bookingId,
+    extraCc: await getBusinessEmail("reservations"),
   });
   console.log(`[RestaurantPaymentEmail] Email enviado a ${params.guestEmail} para ${params.locator}`);
 }
@@ -67,10 +73,12 @@ async function sendRestaurantConfirmEmail(params: {
   locator: string;
   depositAmount: string;
   requiresPayment: boolean;
+  bookingId: number;
 }) {
-  await sendEmail({
-    to: params.guestEmail,
-    cc: await getBusinessEmail('reservations'),
+  await sendManagedEmail({
+    templateKey: "restaurant_confirm",
+    triggerEvent: "restaurant_confirm",
+    recipientEmail: params.guestEmail,
     subject: `🏔️ Reserva recibida en ${params.restaurantName} — ${params.locator}`,
     html: buildRestaurantConfirmHtml({
       guestName: params.guestName,
@@ -82,6 +90,9 @@ async function sendRestaurantConfirmEmail(params: {
       depositAmount: params.depositAmount,
       requiresPayment: params.requiresPayment,
     }),
+    relatedEntityType: "restaurant_booking",
+    relatedEntityId: params.bookingId,
+    extraCc: await getBusinessEmail("reservations"),
   });
   console.log(`[RestaurantConfirmEmail] Email enviado a ${params.guestEmail} para ${params.locator}`);
 }
@@ -195,6 +206,7 @@ export const restaurantsRouter = router({
         locator: result.locator,
         depositAmount,
         requiresPayment,
+        bookingId: result.insertId,
       }).catch(() => {});
       // Notificación al adminrest asignado + owner
       await notifyRestaurantStaff(
@@ -368,6 +380,7 @@ export const restaurantsRouter = router({
           signature: redsysForm.Ds_Signature,
           signatureVersion: redsysForm.Ds_SignatureVersion,
           origin: input.origin,
+          bookingId: booking!.id,
         }).catch(err => console.error("[RestaurantPaymentEmail] Error:", err));
       } else {
         // Sin depósito requerido → enviar email de confirmación directa al cliente
@@ -381,6 +394,7 @@ export const restaurantsRouter = router({
           depositAmount: "0",
           locator,
           requiresPayment: false,
+          bookingId: booking!.id,
         }).catch(err => console.error("[RestaurantConfirmEmail] Error:", err));
       }
       // Notificación interna

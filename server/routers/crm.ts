@@ -5785,7 +5785,16 @@ export const crmRouter = router({
             ibanInfo: legal.iban ? `Banco: Nayade Experiences\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
             origin: input.origin ?? "",
           });
-          await sendEmail({ to: input.clientEmail, subject: `Reserva confirmada — Pago pendiente hasta el ${dueDateFormatted}`, html });
+          await sendManagedEmail({
+            templateKey: "pending_payment",
+            triggerEvent: "pending_payment",
+            recipientEmail: input.clientEmail,
+            subject: `Reserva confirmada — Pago pendiente hasta el ${dueDateFormatted}`,
+            html,
+            relatedEntityType: "pending_payment",
+            relatedEntityId: ppId,
+            quoteId: input.quoteId,
+          });
         }
         await logActivity("quote", input.quoteId, "pending_payment_created", ctx.user.id, ctx.user.name, { ppId, dueDate: input.dueDate, amountCents: input.amountCents });
         return { success: true, id: ppId };
@@ -6002,7 +6011,16 @@ export const crmRouter = router({
           ibanInfo: legal.iban ? `Banco: Nayade Experiences\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
           origin: "",
         });
-        await sendEmail({ to: pp.clientEmail, subject: `Recordatorio urgente: pago pendiente hasta el ${dueDateFormatted}`, html });
+        await sendManagedEmail({
+          templateKey: "pending_payment_reminder",
+          triggerEvent: "pending_payment_reminder",
+          recipientEmail: pp.clientEmail,
+          subject: `Recordatorio urgente: pago pendiente hasta el ${dueDateFormatted}`,
+          html,
+          relatedEntityType: "pending_payment",
+          relatedEntityId: input.id,
+          quoteId: pp.quoteId,
+        });
         await db.update(pendingPayments).set({ reminderSentAt: Date.now(), updatedAt: Date.now() }).where(eq(pendingPayments.id, input.id));
         await logActivity("quote", pp.quoteId, "pending_payment_reminder_sent", ctx.user.id, ctx.user.name, { ppId: input.id });
         return { success: true };

@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { buildReservationConfirmHtml, buildTpvTicketHtml, buildCashOpenHtml, buildCashCloseHtml, type ChannelSummary } from "../emailTemplates";
 import { sendEmail } from "../mailer";
+import { sendManagedEmail } from "../emailManager";
 import { getBusinessEmail, getFeatureFlag, getSystemSetting } from "../config";
 import { madridDateKey } from "../utils/timezone";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity } from "../db";
@@ -1229,11 +1230,15 @@ export const tpvRouter = router({
         })),
         total: parseFloat(String(sale.total)),
       });
-      await sendEmail({
-        to: input.email,
-        cc: await getBusinessEmail('reservations'),
+      await sendManagedEmail({
+        templateKey: "tpv_ticket",
+        triggerEvent: "tpv_ticket",
+        recipientEmail: input.email,
         subject: `Tu ticket de compra ${sale.ticketNumber} — Náyade Experiences`,
         html: emailHtml,
+        relatedEntityType: "tpv_sale",
+        relatedEntityId: sale.id,
+        forceCustomer: true,
       });
 
       return { ok: true };

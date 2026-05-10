@@ -11,6 +11,7 @@ import mysql from "mysql2/promise";
 import { proposals, proposalOptions, leads, quotes } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, inArray, like, or, count } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
+import { sendManagedEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
 import { buildProposalHtml } from "../emailTemplates";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
@@ -307,11 +308,18 @@ export const proposalsRouter = router({
         publicUrl,
       });
 
-      const emailSent = await sendEmail({
-        to: lead.email,
-        subject: `Tu Propuesta Comercial — ${proposal.proposalNumber} · Náyade Experiences`,
-        html,
-      });
+      const { sent: emailSent } = lead.email
+        ? await sendManagedEmail({
+            templateKey: "proposal",
+            triggerEvent: "proposal_sent",
+            recipientEmail: lead.email,
+            subject: `Tu Propuesta Comercial — ${proposal.proposalNumber} · Náyade Experiences`,
+            html,
+            relatedEntityType: "proposal",
+            relatedEntityId: input.id,
+            leadId: proposal.leadId,
+          })
+        : { sent: false };
 
       await db.update(proposals).set({
         token,
