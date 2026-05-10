@@ -107,6 +107,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
 }) {
   const { data: partner } = trpc.partners.getMyPartner.useQuery();
   const { data: publicSettings } = trpc.config.getPublicSettings.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  const { data: announcements = [] } = trpc.partners.getAnnouncements.useQuery(undefined, { staleTime: 2 * 60 * 1000 });
   const canReserve = partner?.canCreateReservations ?? false;
 
   const brandLogo = (publicSettings as any)?.brand_logo_url || LOGO_FALLBACK;
@@ -197,6 +198,20 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
             </a>
           </nav>
         </div>
+
+        {/* Banner de avisos del día (persistente, visible en todos los módulos) */}
+        {(announcements as any[]).length > 0 && (
+          <div className="border-t border-amber-500/20 bg-amber-500/[0.07]">
+            <div className="max-w-5xl mx-auto px-4 py-2 flex items-start gap-2.5">
+              <BellRing className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex flex-col gap-1">
+                {(announcements as any[]).map((a: any) => (
+                  <p key={a.id} className="text-[11px] text-amber-200/70 leading-snug">{a.text}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Contenido */}

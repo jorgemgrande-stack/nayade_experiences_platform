@@ -725,7 +725,9 @@ export const partnersRouter = router({
         .from(partners)
         .where(eq(partners.id, user.partnerId))
         .limit(1);
-      return (partner?.announcements as any[]) ?? [];
+      const all = (partner?.announcements as any[]) ?? [];
+      const now = new Date();
+      return all.filter((a: any) => !a.expiresAt || new Date(a.expiresAt) > now);
     }),
 
   // ── ADMIN: Guardar notas/anuncios para un partner ─────────────────────────
@@ -737,6 +739,7 @@ export const partnersRouter = router({
         text: z.string().min(1),
         isNew: z.boolean(),
         createdAt: z.string(),
+        expiresAt: z.string().nullable().optional(),
       })),
     }))
     .mutation(async ({ input }) => {

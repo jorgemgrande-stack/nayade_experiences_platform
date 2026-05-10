@@ -705,13 +705,23 @@ function PartnerOperationsPanel({ partnerId }: { partnerId: number }) {
 
 // ─── Panel de notas/avisos al partner ────────────────────────────────────────
 
+type Announcement = { id: string; text: string; isNew: boolean; createdAt: string; expiresAt?: string | null };
+
+const DURATION_OPTIONS = [
+  { value: "0",    label: "Perpetua (sin caducidad)" },
+  { value: "1",    label: "1 día" },
+  { value: "3",    label: "3 días" },
+  { value: "7",    label: "7 días" },
+  { value: "15",   label: "15 días" },
+  { value: "30",   label: "30 días" },
+];
+
 function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
   const utils = trpc.useUtils();
-  const { data: rawAnnouncements = [] } = trpc.partners.getAnnouncements.useQuery(undefined, { enabled: false }) as any;
-  // Para admin usamos adminSaveAnnouncements directamente con estado local
-  const [announcements, setAnnouncements] = useState<{id: string; text: string; isNew: boolean; createdAt: string}[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [newText, setNewText] = useState("");
+  const [newDuration, setNewDuration] = useState("0");
 
   const { data: partnerData } = trpc.partners.get.useQuery({ id: partnerId });
 
@@ -732,11 +742,15 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
 
   function addNote() {
     if (!newText.trim()) return;
-    const note = { id: crypto.randomUUID(), text: newText.trim(), isNew: true, createdAt: new Date().toISOString() };
+    const expiresAt = newDuration === "0"
+      ? null
+      : new Date(Date.now() + parseInt(newDuration) * 24 * 60 * 60 * 1000).toISOString();
+    const note: Announcement = { id: crypto.randomUUID(), text: newText.trim(), isNew: true, createdAt: new Date().toISOString(), expiresAt };
     const updated = [...announcements, note];
     setAnnouncements(updated);
     saveMut.mutate({ partnerId, announcements: updated });
     setNewText("");
+    setNewDuration("0");
   }
 
   function removeNote(id: string) {
@@ -760,7 +774,7 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
       </h3>
 
       {/* Nota nueva */}
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2">
         <Input
           value={newText}
           onChange={e => setNewText(e.target.value)}
@@ -768,10 +782,21 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
           placeholder="Ej: Las actividades acuáticas están suspendidas hoy por mal tiempo"
           className="bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm"
         />
-        <Button size="sm" onClick={addNote} disabled={!newText.trim() || saveMut.isPending}
-          className="bg-amber-500 hover:bg-amber-600 text-white shrink-0">
-          <Plus className="w-3.5 h-3.5 mr-1" /> Añadir
-        </Button>
+        <div className="flex gap-2">
+          <select
+            value={newDuration}
+            onChange={e => setNewDuration(e.target.value)}
+            className="flex-1 bg-foreground/[0.05] border border-foreground/[0.12] text-white/70 text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+          >
+            {DURATION_OPTIONS.map(o => (
+              <option key={o.value} value={o.value} className="bg-[#0f1e35] text-white">{o.label}</option>
+            ))}
+          </select>
+          <Button size="sm" onClick={addNote} disabled={!newText.trim() || saveMut.isPending}
+            className="bg-amber-500 hover:bg-amber-600 text-white shrink-0">
+            <Plus className="w-3.5 h-3.5 mr-1" /> Añadir
+          </Button>
+        </div>
       </div>
 
       {/* Lista de notas */}
@@ -785,6 +810,10 @@ function PartnerAnnouncementsPanel({ partnerId }: { partnerId: number }) {
                 <p className="text-sm text-foreground/80">{a.text}</p>
                 <p className="text-[10px] text-foreground/30 mt-1">
                   {new Date(a.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  {a.expiresAt
+                    ? <span className="ml-2 text-orange-400/60">· caduca {new Date(a.expiresAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}</span>
+                    : <span className="ml-2 text-foreground/20">· perpetua</span>
+                  }
                 </p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">

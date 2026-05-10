@@ -3143,7 +3143,7 @@ export const partners = mysqlTable("partners", {
   isActive: boolean("isActive").default(true).notNull(),
   notes: text("notes"),
   // Notas visibles para los recepcionistas del partner (modal de alertas)
-  announcements: json("announcements").$type<{id: string; text: string; isNew: boolean; createdAt: string}[]>(),
+  announcements: json("announcements").$type<{id: string; text: string; isNew: boolean; createdAt: string; expiresAt?: string | null}[]>(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
