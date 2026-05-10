@@ -9,7 +9,7 @@ import { cardTerminalOperations, tpvFileImports, reservations, quotes, tpvSales 
 import * as XLSX from "xlsx";
 import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 const adminProc = protectedProcedure.use(({ ctx, next }) => {

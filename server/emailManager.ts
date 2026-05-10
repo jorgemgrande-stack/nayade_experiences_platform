@@ -25,7 +25,7 @@ import {
 import { sendEmail } from "./mailer";
 import { getSystemSettingSync } from "./config";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 // Templates con cron legacy propio — no programar jobs automáticos para evitar duplicados.

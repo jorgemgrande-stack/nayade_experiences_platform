@@ -38,7 +38,7 @@ import { generateDocumentNumber } from "../documentNumbers";
 import { logActivity, getGHLCredentials } from "../db";
 import { createGHLContact, updateGHLContact } from "../ghl";
 import { getBusinessEmail } from "../config";
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 const getCopyEmail = () => getBusinessEmail('cancellations');

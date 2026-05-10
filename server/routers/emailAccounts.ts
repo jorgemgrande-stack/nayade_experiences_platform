@@ -9,7 +9,7 @@ import nodemailer from "nodemailer";
 import mysql from "mysql2/promise";
 import { encryptPassword, decryptPassword } from "../utils/emailCrypto";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 

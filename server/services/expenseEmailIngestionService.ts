@@ -46,7 +46,7 @@ let isRunning = false;
 
 // ─── DB ──────────────────────────────────────────────────────────────────────
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────

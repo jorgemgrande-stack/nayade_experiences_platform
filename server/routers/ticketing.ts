@@ -31,7 +31,7 @@ import { createGHLContact, updateGHLContact } from "../ghl";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { getSystemSettingSync } from "../config";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 const getCopyEmail = () => getSystemSettingSync("email_reservations", "contacto@tuempresa.com");

@@ -17,7 +17,7 @@ import { decryptPassword } from "../utils/emailCrypto";
 let _pool: mysql.Pool | null = null;
 function getPool(): mysql.Pool {
   if (!_pool) {
-    _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+    _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
   }
   return _pool;
 }

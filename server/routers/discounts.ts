@@ -10,7 +10,7 @@ import { discountCodes, discountCodeUses, compensationVouchers } from "../../dri
 import { eq, desc, like, and, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────

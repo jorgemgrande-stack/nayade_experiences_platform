@@ -11,7 +11,7 @@ import { getSystemSetting } from "../config";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { madridDateKey } from "../utils/timezone";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 // RBAC-aware procedures. Fallback: admin only (cash module is admin-only by default).

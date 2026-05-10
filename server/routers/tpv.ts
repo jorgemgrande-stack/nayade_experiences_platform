@@ -38,7 +38,7 @@ import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { generateDocumentNumber } from "../documentNumbers";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 // ─── RBAC-AWARE PROCEDURES ────────────────────────────────────────────────────

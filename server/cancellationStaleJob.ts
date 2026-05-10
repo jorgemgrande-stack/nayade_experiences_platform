@@ -15,7 +15,7 @@ import { getBusinessEmail, getSystemSettingSync } from "./config";
 const STALE_HOURS = 48;
 
 async function runCancellationStaleJob() {
-  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
   const db = drizzle(pool);
 
   try {

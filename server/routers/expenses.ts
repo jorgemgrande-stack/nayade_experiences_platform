@@ -7,7 +7,7 @@ import { router, permissionProcedure } from "../_core/trpc";
 const adminProcedure = permissionProcedure("accounting.expenses.view", ["admin"]);
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 import {
   costCenters,

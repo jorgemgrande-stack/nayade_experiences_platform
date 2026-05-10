@@ -17,7 +17,7 @@ import { getBusinessEmail, getSystemSettingSync } from "./config";
 const MAX_REMINDERS = 2; // máximo de reenvíos automáticos por presupuesto
 
 async function runQuoteReminderJob() {
-  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+  const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
   const db = drizzle(pool);
 
   try {

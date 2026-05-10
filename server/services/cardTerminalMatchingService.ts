@@ -20,7 +20,7 @@ const AUTO_RECONCILE = (process.env.AUTO_RECONCILE_CARD_BATCHES ?? "false") === 
 
 // ── DB ───────────────────────────────────────────────────────────────────────
 
-const _matchingPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _matchingPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const _matchingDb = drizzle(_matchingPool);
 
 function makeDb() {

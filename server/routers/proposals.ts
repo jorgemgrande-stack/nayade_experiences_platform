@@ -18,7 +18,7 @@ import { getSystemSettingSync, getBusinessEmail } from "../config";
 import { logActivity } from "../db";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 async function sendEmail(args: { to: string; subject: string; html: string }): Promise<boolean> {

@@ -26,7 +26,7 @@ import { checkAndConfirmInstallmentPlan } from "./routers/crm";
 import { syncLeadUrlsToGHL } from "./ghl";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
-const _sharedPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _sharedPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const _db = drizzle(_sharedPool);
 
 const redsysRouter = express.Router();

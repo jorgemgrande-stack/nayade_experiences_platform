@@ -9,7 +9,7 @@ import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { finCashAccounts, finCashMovements } from "../../drizzle/schema";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 /** Devuelve el id de la cuenta de caja principal activa, o null si no existe. */

@@ -205,7 +205,7 @@ async function runMigrations() {
     const { drizzle } = await import("drizzle-orm/mysql2");
     const { migrate } = await import("drizzle-orm/mysql2/migrator");
     const { resolve } = await import("path");
-    const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+    const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
     const db = drizzle(pool);
     // En producción el binario está en dist/, las migraciones en drizzle/ (mismo nivel que package.json)
     const migrationsFolder = resolve(process.cwd(), "drizzle");
@@ -1462,7 +1462,7 @@ function startAbandonedCheckoutCleanup() {
       const { createVentaPerdidaLead, logActivity } = await import("../db");
 
       if (!_abandonedPool) {
-        _abandonedPool = mysql.default.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+        _abandonedPool = mysql.default.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
         _abandonedDb = drizzle(_abandonedPool);
       }
       const db = _abandonedDb;
@@ -1571,7 +1571,7 @@ function startInstallmentOverdueJob() {
       const { buildInstallmentReminderHtml } = await import("../emailTemplates");
 
       if (!_installmentPool) {
-        _installmentPool = mysql.default.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+        _installmentPool = mysql.default.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
         _installmentDb = drizzle(_installmentPool);
       }
       const db = _installmentDb;

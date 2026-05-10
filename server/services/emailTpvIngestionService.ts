@@ -36,7 +36,7 @@ let isRunning = false;
 
 // DB
 
-const _emailTpvPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _emailTpvPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const _emailTpvDb = drizzle(_emailTpvPool);
 
 function makeDb() {

@@ -20,7 +20,7 @@ import {
   tpvSalePayments,
 } from "../../drizzle/schema";
 
-const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(pool);
 
 const dailyControlProc = permissionProcedure("accounting.daily_control", ["admin", "controler"]);

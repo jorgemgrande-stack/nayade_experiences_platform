@@ -22,7 +22,7 @@ import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from ".
 import { ghlInboxEmitter } from "../ghlInboxEvents";
 import type { Response } from "express";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 const GHL_BASE_URL = process.env.GHL_BASE_URL ?? "https://services.leadconnectorhq.com";

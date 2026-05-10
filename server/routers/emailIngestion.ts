@@ -8,7 +8,7 @@ import { emailIngestionLogs } from "../../drizzle/schema";
 import { runEmailIngestion } from "../services/emailTpvIngestionService";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(pool);
 
 const adminProc = protectedProcedure.use(async ({ ctx, next }) => {

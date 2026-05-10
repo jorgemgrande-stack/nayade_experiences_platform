@@ -12,7 +12,7 @@ import {
   reservationOperational,
 } from "../../drizzle/schema";
 
-const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(pool);
 
 // ─── MONITORS CRUD ────────────────────────────────────────────────────────────

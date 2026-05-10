@@ -11,7 +11,7 @@ import mysql from "mysql2/promise";
 import { productTimeSlots, experiences } from "../../drizzle/schema";
 import { eq, and, asc } from "drizzle-orm";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────

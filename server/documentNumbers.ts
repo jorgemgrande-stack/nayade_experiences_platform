@@ -28,7 +28,7 @@ function getDb() {
     if (!process.env.DATABASE_URL) {
       throw new Error("[documentNumbers] DATABASE_URL is not defined");
     }
-    _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+    _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
     _db = drizzle(_pool);
   }
   return _db;

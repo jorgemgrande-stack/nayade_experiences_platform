@@ -8,7 +8,7 @@ import mysql from "mysql2/promise";
 import { sendViaAccountSmtp } from "../services/commercialEmailService";
 import { randomBytes } from "crypto";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 
 function parseJsonField(val: any): any {
   if (!val) return [];

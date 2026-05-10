@@ -17,7 +17,7 @@ import { eq } from "drizzle-orm";
 import { ghlWebhookLogs } from "../drizzle/schema";
 import { createLead } from "./db";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const _db = drizzle(_pool);
 
 // Eventos que generan un lead en la plataforma (incluye variantes de GHL)

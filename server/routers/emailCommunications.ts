@@ -19,7 +19,7 @@ import { eq, and, desc, asc, gte, lte, like, count, sql, inArray } from "drizzle
 import { sendEmail } from "../mailer";
 import { runEmailAutomationJob } from "../emailAutomationJob";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 const staff = protectedProcedure;

@@ -10,7 +10,7 @@ import { siteSettings } from "../drizzle/schema";
 import { getSystemSettingSync } from "./config";
 import { groupTaxBreakdown, totalTaxAmount, type TaxBreakdownLine } from "./taxUtils";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 export interface InvoiceHtmlParams {

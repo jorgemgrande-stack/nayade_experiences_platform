@@ -11,7 +11,7 @@ import { eq, desc, and, or, like, isNotNull, sql } from "drizzle-orm";
 import { ghlConversations, ghlMessages, ghlWebhookEvents, siteSettings } from "../../drizzle/schema";
 import { getGHLCredentials } from "../db";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 export const ghlInboxRouter = router({

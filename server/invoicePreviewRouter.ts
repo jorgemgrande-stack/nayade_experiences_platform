@@ -13,7 +13,7 @@ import { eq } from "drizzle-orm";
 import { invoices } from "../drizzle/schema";
 import { buildInvoiceHtml } from "./invoiceHtml";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 const invoicePreviewRouter = Router();

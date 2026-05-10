@@ -63,7 +63,7 @@ import { getSystemSettingSync, getBusinessEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 
 // DB helper — usa la misma pool que el resto del servidor
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 // Email helper — delega en el helper compartido mailer.ts

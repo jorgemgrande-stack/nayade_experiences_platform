@@ -21,7 +21,7 @@ import { createLead } from "./db";
 import { generateDocumentNumber } from "./documentNumbers";
 import { extractFromTranscript } from "./routers/vapiCalls";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const _db = drizzle(_pool);
 
 const VAPI_BASE_URL = "https://api.vapi.ai";

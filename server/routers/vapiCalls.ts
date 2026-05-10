@@ -11,7 +11,7 @@ import { eq, desc, and, sql, isNotNull } from "drizzle-orm";
 import { vapiCalls } from "../../drizzle/schema";
 import { createLead } from "../db";
 
-const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
 const VAPI_BASE_URL = "https://api.vapi.ai";
