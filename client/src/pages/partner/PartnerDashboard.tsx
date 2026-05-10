@@ -70,7 +70,7 @@ export default function PartnerDashboard() {
       </div>
 
       {/* Leads recientes */}
-      <div className="bg-white/[0.04] border border-white/[0.07] rounded-2xl overflow-hidden mb-6">
+      <div className="bg-white/[0.08] border border-white/[0.10] rounded-2xl overflow-hidden mb-6">
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
           <h2 className="font-semibold text-white/80 text-sm">Últimos leads enviados</h2>
           <Link href="/partner/leads/nuevo">
@@ -118,7 +118,7 @@ export default function PartnerDashboard() {
 
       {/* Reservas directas */}
       {partner?.canCreateReservations && (
-        <div className="bg-white/[0.04] border border-white/[0.07] rounded-2xl overflow-hidden">
+        <div className="bg-white/[0.08] border border-white/[0.10] rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
             <h2 className="font-semibold text-white/80 text-sm">Reservas directas</h2>
             <Link href="/partner/reservas/nueva">

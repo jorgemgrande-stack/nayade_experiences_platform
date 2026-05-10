@@ -116,7 +116,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
 
   const bgStyle = bgImage
     ? {
-        backgroundImage: `linear-gradient(rgba(8,14,28,0.78) 0%, rgba(8,14,28,0.82) 60%, rgba(8,14,28,0.92) 100%), url('${bgImage}')`,
+        backgroundImage: `linear-gradient(rgba(8,14,28,0.88) 0%, rgba(8,14,28,0.92) 60%, rgba(8,14,28,0.97) 100%), url('${bgImage}')`,
         backgroundSize: "cover",
         backgroundPosition: "center top",
         backgroundRepeat: "no-repeat",
