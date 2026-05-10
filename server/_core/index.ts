@@ -721,6 +721,81 @@ async function ensurePricingColumns() {
   }
 }
 
+async function ensureLeadSourceColumn() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+
+    // 1. Crear tabla crm_lead_sources si no existe
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS \`crm_lead_sources\` (
+        \`id\`          INT AUTO_INCREMENT PRIMARY KEY,
+        \`code\`        VARCHAR(50) NOT NULL,
+        \`name\`        VARCHAR(100) NOT NULL,
+        \`description\` TEXT,
+        \`color\`       VARCHAR(20),
+        \`icon\`        VARCHAR(50),
+        \`sort_order\`  INT DEFAULT 0,
+        \`is_active\`   BOOLEAN DEFAULT TRUE NOT NULL,
+        \`is_system\`   BOOLEAN DEFAULT FALSE NOT NULL,
+        \`created_at\`  TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        \`updated_at\`  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+        UNIQUE KEY \`crm_lead_sources_code_unique\` (\`code\`)
+      )
+    `);
+
+    // 2. Seed data (INSERT IGNORE — idempotente)
+    await conn.execute(`
+      INSERT IGNORE INTO \`crm_lead_sources\` (\`code\`, \`name\`, \`description\`, \`color\`, \`icon\`, \`sort_order\`, \`is_active\`, \`is_system\`) VALUES
+        ('LANDING_FORM',       'Formulario web',         'Lead enviado desde el formulario de presupuesto de la landing page', '#3B82F6', 'Globe',        10, 1, 1),
+        ('HOME_FORM',          'Formulario experiencia', 'Lead enviado desde la ficha de experiencia del sitio web',           '#8B5CF6', 'LayoutList',   20, 1, 1),
+        ('GHL_WHATSAPP',       'WhatsApp / GHL',         'Lead captado mediante WhatsApp gestionado por GoHighLevel',          '#22C55E', 'MessageCircle',30, 1, 1),
+        ('VAPI_CALL',          'Llamada IA (Vapi)',       'Lead generado automáticamente por el agente de voz Vapi',            '#F59E0B', 'Phone',        40, 1, 1),
+        ('CRM_MANUAL',         'Alta manual CRM',         'Lead creado directamente por un agente comercial desde el CRM',      '#6B7280', 'UserPlus',     50, 1, 1),
+        ('CHECKOUT_ABANDONED', 'Pago abandonado',         'Lead generado al detectar un carrito con pago fallido o abandonado', '#EF4444', 'ShoppingCart', 60, 1, 1),
+        ('PARTNERS',           'Portal de partners',      'Lead enviado desde el portal de partners o agencias',                '#14B8A6', 'Building2',    70, 1, 1),
+        ('PRESUPUESTO_DIRECTO','Presupuesto directo',     'Lead creado a partir de un presupuesto generado internamente',        '#A855F7', 'FileText',     80, 1, 1),
+        ('REFERIDO',           'Referido / boca a boca', 'Lead referido por un cliente o contacto existente',                  '#EC4899', 'Heart',        90, 1, 0),
+        ('REDES_SOCIALES',     'Redes sociales',          'Lead proveniente de Instagram, Facebook, LinkedIn u otras RRSS',     '#F97316', 'Share2',      100, 1, 0),
+        ('EMAIL_MARKETING',    'Email marketing',         'Lead captado a través de campañas de email marketing',               '#0EA5E9', 'Mail',        110, 1, 0),
+        ('EVENTO_PRESENCIAL',  'Evento presencial',       'Lead conocido en feria, evento o presentación presencial',           '#84CC16', 'Calendar',    120, 1, 0),
+        ('PUBLICIDAD',         'Publicidad (Ads)',         'Lead procedente de campañas de Google Ads, Meta Ads, etc.',          '#F43F5E', 'TrendingUp',  130, 1, 0),
+        ('OTRO',               'Otro',                    'Origen no clasificado en las categorías anteriores',                 '#9CA3AF', 'HelpCircle',  999, 1, 0)
+    `);
+
+    // 3. Añadir columna lead_source_id a leads si no existe
+    const [leadCols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leads' AND COLUMN_NAME = 'lead_source_id'`
+    ) as any[];
+    if (!(leadCols as any[]).length) {
+      await conn.execute("ALTER TABLE `leads` ADD COLUMN `lead_source_id` INT NULL");
+      console.log("[DB] ✅ leads.lead_source_id añadida");
+
+      // 4. Crear índice
+      await conn.execute("CREATE INDEX `idx_leads_lead_source_id` ON `leads` (`lead_source_id`)");
+      console.log("[DB] ✅ Índice idx_leads_lead_source_id creado");
+
+      // 5. Backfill — mapear source legacy → lead_source_id
+      await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'LANDING_FORM')       WHERE \`source\` IN ('landing_presupuesto','web')    AND \`lead_source_id\` IS NULL`);
+      await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'HOME_FORM')          WHERE \`source\` = 'web_experiencia'                 AND \`lead_source_id\` IS NULL`);
+      await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'GHL_WHATSAPP')       WHERE \`source\` = 'ghl_webhook'                     AND \`lead_source_id\` IS NULL`);
+      await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'VAPI_CALL')          WHERE \`source\` = 'vapi_llamada'                    AND \`lead_source_id\` IS NULL`);
+      await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'PARTNERS')           WHERE \`source\` = 'PARTNER'                         AND \`lead_source_id\` IS NULL`);
+      await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'PRESUPUESTO_DIRECTO')WHERE \`source\` = 'presupuesto_directo'              AND \`lead_source_id\` IS NULL`);
+      await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'CHECKOUT_ABANDONED') WHERE \`source\` = 'venta_perdida'                   AND \`lead_source_id\` IS NULL`);
+      await conn.execute(`UPDATE \`leads\` SET \`lead_source_id\` = (SELECT \`id\` FROM \`crm_lead_sources\` WHERE \`code\` = 'CRM_MANUAL')         WHERE \`lead_source_id\` IS NULL`);
+      console.log("[DB] ✅ Backfill lead_source_id completado");
+    } else {
+      console.log("[DB] leads.lead_source_id ya existe — nada que hacer");
+    }
+
+    await conn.end();
+  } catch (err: any) {
+    console.error("[DB] Error en ensureLeadSourceColumn:", err.message);
+  }
+}
+
 async function ensureExpenseEmailIngestionSchema() {
   try {
     const mysql = await import("mysql2/promise");
@@ -1589,6 +1664,7 @@ runMigrations()
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
   .then(() => ensureDiscountColumns())
+  .then(() => ensureLeadSourceColumn())
   .then(() => ensureExpenseEmailIngestionSchema())
   .then(() => fixBrokenInvoicePdfUrls())
   .then(() => wipeTestDataIfRequested())
