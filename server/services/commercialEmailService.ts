@@ -167,6 +167,26 @@ async function syncFolder(
       if (msg.uid) uids.push(msg.uid);
     }
 
+    // Purge: detectar mensajes que ya no existen en IMAP (borrados externamente)
+    const [dbRows]: any = await pool.execute(
+      `SELECT id, imap_uid FROM commercial_emails
+       WHERE account_id = ? AND folder = ? AND is_deleted = 0
+         AND imap_uid IS NOT NULL AND sent_at >= ?`,
+      [account.id, folderName, since],
+    );
+    const imapUidSet = new Set(uids);
+    const toDelete = (dbRows as any[]).filter(
+      (r: any) => r.imap_uid && !imapUidSet.has(Number(r.imap_uid)),
+    );
+    if (toDelete.length > 0) {
+      const ids = toDelete.map((r: any) => r.id);
+      await pool.execute(
+        `UPDATE commercial_emails SET is_deleted = 1, updated_at = NOW() WHERE id IN (${ids.map(() => "?").join(",")})`,
+        ids,
+      );
+      console.log(`[CommercialEmail] ${account.email} / ${folderName}: ${toDelete.length} emails marcados borrados (eliminados en IMAP)`);
+    }
+
     if (uids.length === 0) return 0;
 
     // Take the most recent N messages
