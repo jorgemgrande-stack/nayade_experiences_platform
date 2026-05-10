@@ -727,6 +727,7 @@ function LeadEditModal({
 }) {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.crm.leads.get.useQuery({ id: leadId });
+  const { data: leadSources } = trpc.crm.leadSources.list.useQuery();
 
   type ActivityLine = {
     id: string;
@@ -743,6 +744,7 @@ function LeadEditModal({
     selectedCategory: string; selectedProduct: string;
     message: string; priority: string; opportunityStatus: string;
     preferredDate: string; numberOfAdults: number; numberOfChildren: number;
+    leadSourceId: number | null;
   } | null>(null);
   const [activityLines, setActivityLines] = React.useState<ActivityLine[]>([]);
   const [activeLineIdx, setActiveLineIdx] = React.useState<number>(0);
@@ -765,6 +767,7 @@ function LeadEditModal({
         preferredDate: lead.preferredDate ? new Date(lead.preferredDate).toISOString().split("T")[0] : "",
         numberOfAdults: (lead as any).numberOfAdults ?? 2,
         numberOfChildren: (lead as any).numberOfChildren ?? 0,
+        leadSourceId: (lead as any).leadSourceId ?? null,
       });
       const existingActivities = (lead as any).activitiesJson as ActivityLine[] | null;
       if (existingActivities && existingActivities.length > 0) {
@@ -852,6 +855,7 @@ function LeadEditModal({
             details: {},
           }))
         : undefined,
+      leadSourceId: form.leadSourceId,
     });
   };
 
@@ -989,6 +993,27 @@ function LeadEditModal({
             </Select>
           </div>
         </div>
+
+        {/* Origen del lead */}
+        {leadSources && leadSources.length > 0 && (
+          <div>
+            <Label className="text-foreground/65 text-xs">Origen del lead</Label>
+            <Select
+              value={form.leadSourceId ? String(form.leadSourceId) : "none"}
+              onValueChange={v => setForm({ ...form, leadSourceId: v === "none" ? null : Number(v) })}
+            >
+              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
+                <SelectItem value="none" className="text-foreground/50 text-xs">Sin asignar</SelectItem>
+                {(leadSources as any[]).map((src: any) => (
+                  <SelectItem key={src.id} value={String(src.id)} className="text-xs">
+                    <span style={{ color: src.color ?? undefined }}>{src.name}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Notas */}
         <div>
@@ -5030,6 +5055,7 @@ export default function CRMDashboard() {
   const [showNewReservationModal, setShowNewReservationModal] = useState(false);
   // ─── Estado dropdown acciones reservas ────────────────────────────────────────────────────
   const [resChannelFilter, setResChannelFilter] = useState<string>("all");
+  const [leadSourceFilter, setLeadSourceFilter] = useState<number | "all">("all");
   const [resActionMenuId, setResActionMenuId] = useState<number | null>(null);
   const [viewResId, setViewResId] = useState<number | null>(() => {
     try {
@@ -5061,16 +5087,17 @@ export default function CRMDashboard() {
   const [resPage, setResPage] = useState(0);
 
   // Resetear página al cambiar filtros o búsqueda
-  useEffect(() => { setLeadsPage(0); }, [filterStatus, search]);
+  useEffect(() => { setLeadsPage(0); }, [filterStatus, search, leadSourceFilter]);
   useEffect(() => { setQuotesPage(0); }, [filterStatus, search]);
   useEffect(() => { setResPage(0); }, [filterStatus, resChannelFilter, search]);
 
   const leadsFilter = useMemo(() => ({
     opportunityStatus: filterStatus !== "all" && tab === "leads" ? (filterStatus as OpportunityStatus) : undefined,
     search: search || undefined,
+    leadSourceId: leadSourceFilter !== "all" ? (leadSourceFilter as number) : undefined,
     limit: PAGE_SIZE,
     offset: leadsPage * PAGE_SIZE,
-  }), [filterStatus, search, tab, leadsPage]);
+  }), [filterStatus, search, tab, leadsPage, leadSourceFilter]);
 
   const quotesFilter = useMemo(() => ({
     status: filterStatus !== "all" && tab === "quotes" ? (filterStatus as QuoteStatus) : undefined,
@@ -5087,6 +5114,7 @@ export default function CRMDashboard() {
     offset: resPage * PAGE_SIZE,
   }), [filterStatus, resChannelFilter, search, tab, resPage]);
 
+  const { data: leadSourcesData } = trpc.crm.leadSources.list.useQuery();
   const { data: leadsData, isLoading: leadsLoading } = trpc.crm.leads.list.useQuery(leadsFilter, { enabled: tab === "leads" });
   const { data: quotesData, isLoading: quotesLoading } = trpc.crm.quotes.list.useQuery(quotesFilter, { enabled: tab === "quotes" });
   const { data: resData, isLoading: resLoading } = trpc.crm.reservations.list.useQuery(resFilter, { enabled: tab === "reservations" });
@@ -6263,6 +6291,22 @@ export default function CRMDashboard() {
               </SelectContent>
             </Select>
           )}
+          {/* Filtro por origen — visible solo en el tab de leads */}
+          {tab === "leads" && leadSourcesData && leadSourcesData.length > 0 && (
+            <Select value={String(leadSourceFilter)} onValueChange={v => setLeadSourceFilter(v === "all" ? "all" : Number(v))}>
+              <SelectTrigger className="w-full sm:w-44 bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs h-9">
+                <SelectValue placeholder="Origen" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
+                <SelectItem value="all" className="text-foreground/70 text-xs">Todos los orígenes</SelectItem>
+                {leadSourcesData.map((src: any) => (
+                  <SelectItem key={src.id} value={String(src.id)} className="text-xs">
+                    <span style={{ color: src.color ?? undefined }}>{src.name}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {/* Botones de creación manual — visibles según el tab activo */}
           {tab === "leads" && (
             <Button
@@ -6329,15 +6373,16 @@ export default function CRMDashboard() {
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Cliente</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden md:table-cell">Producto</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden lg:table-cell">Fecha actividad</th>
+                    <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium hidden xl:table-cell">Origen</th>
                     <th className="text-left px-4 py-3 text-xs text-foreground/50 font-medium">Estado</th>
                     <th className="text-right px-4 py-3 text-xs text-foreground/50 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {leadsLoading ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+                    <tr><td colSpan={8} className="text-center py-12 text-foreground/40"><RefreshCw className="w-5 h-5 animate-spin mx-auto" /></td></tr>
                   ) : !leadsData?.rows?.length ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-foreground/40 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
+                    <tr><td colSpan={8} className="text-center py-12 text-foreground/40 text-sm">No hay leads {filterStatus !== "all" ? `con estado "${filterStatus}"` : ""}</td></tr>
                   ) : leadsData.rows.map((lead: any) => (
                     <tr key={lead.id} className={`border-t border-foreground/[0.08] hover:bg-foreground/[0.03] transition-colors ${selectedLeads.has(lead.id) ? "bg-blue-500/5" : !lead.seenAt ? "bg-blue-950/20" : ""}`}>
                       <td className="w-10 px-3 py-3">
@@ -6395,15 +6440,24 @@ export default function CRMDashboard() {
                       <td className="px-4 py-3 hidden lg:table-cell">
                         <div className="text-sm text-foreground/60">{lead.preferredDate ? new Date(lead.preferredDate).toLocaleDateString("es-ES") : "—"}</div>
                       </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        {lead.leadSource ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border"
+                            style={{
+                              color: lead.leadSource.color ?? "#9CA3AF",
+                              borderColor: `${lead.leadSource.color ?? "#9CA3AF"}40`,
+                              backgroundColor: `${lead.leadSource.color ?? "#9CA3AF"}15`,
+                            }}
+                          >
+                            {lead.leadSource.name}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-foreground/30">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
-                          <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
-                          {(lead as any).source === "venta_perdida" && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/15 text-red-400 border border-red-500/25 w-fit">
-                              Abandonada
-                            </span>
-                          )}
-                        </div>
+                        <OpportunityBadge status={lead.opportunityStatus as OpportunityStatus} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">

@@ -234,6 +234,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       company,
       message,
       source: "vapi_llamada",
+      leadSourceCode: "VAPI_CALL",
     });
 
     // 4b. Auto-crear cliente si no existe (para que aparezca en /admin/crm/clientes)

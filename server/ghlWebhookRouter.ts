@@ -178,6 +178,7 @@ ghlWebhookRouter.post("/api/ghl/webhook", express.json({ limit: "1mb" }), async 
       company,
       message,
       source: "ghl_webhook",
+      leadSourceCode: "GHL_WHATSAPP",
       selectedProduct: experienciaInteres || undefined,
       ghlContactId: contactId || undefined,
     });

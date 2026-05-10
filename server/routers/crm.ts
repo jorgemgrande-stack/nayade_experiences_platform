@@ -1,7 +1,7 @@
 ﻿/**
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
- */import { router, protectedProcedure, publicProcedure, staffProcedure } from "../_core/trpc";
+ */import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "../reav";
 import { TRPCError } from "@trpc/server";
@@ -34,6 +34,7 @@ import {
   cardTerminalOperations,
   ghlConversations,
   vapiCalls,
+  crmLeadSources,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
@@ -304,6 +305,7 @@ async function sendTransferConfirmationEmail(data: {
 // ─── CRM ROUTER ──────────────────────────────────────────────────────────────
 
 const staff = staffProcedure;
+const admin = adminProcedure;
 
 export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: number, userName: string) {
   const installments = await db.select().from(paymentInstallments)
@@ -577,6 +579,7 @@ export const crmRouter = router({
           priority: z.enum(["baja", "media", "alta"]).optional(),
           from: z.string().optional(),
           to: z.string().optional(),
+          leadSourceId: z.number().optional(),
           limit: z.number().default(50),
           offset: z.number().default(0),
         })
@@ -586,6 +589,7 @@ export const crmRouter = router({
         if (input.opportunityStatus) conditions.push(eq(leads.opportunityStatus, input.opportunityStatus));
         if (input.assignedTo) conditions.push(eq(leads.assignedTo, input.assignedTo));
         if (input.priority) conditions.push(eq(leads.priority, input.priority));
+        if (input.leadSourceId) conditions.push(eq(leads.leadSourceId, input.leadSourceId));
         if (input.search) {
           const s = `%${input.search}%`;
           conditions.push(
@@ -607,9 +611,20 @@ export const crmRouter = router({
         const where = conditions.length ? and(...conditions) : undefined;
         const [rows, [{ total }]] = await Promise.all([
           db
-            .select({ ...getTableColumns(leads), clientId: clients.id })
+            .select({
+              ...getTableColumns(leads),
+              clientId: clients.id,
+              leadSource: {
+                id: crmLeadSources.id,
+                code: crmLeadSources.code,
+                name: crmLeadSources.name,
+                color: crmLeadSources.color,
+                icon: crmLeadSources.icon,
+              },
+            })
             .from(leads)
             .leftJoin(clients, eq(clients.leadId, leads.id))
+            .leftJoin(crmLeadSources, eq(crmLeadSources.id, leads.leadSourceId))
             .where(where)
             .orderBy(desc(leads.createdAt))
             .limit(input.limit)
@@ -721,6 +736,7 @@ export const crmRouter = router({
             participants: z.number(),
             details: z.record(z.string(), z.union([z.string(), z.number()])),
           })).optional(),
+          leadSourceId: z.number().nullable().optional(),
         })
       )
       .mutation(async ({ input, ctx }) => {
@@ -1125,6 +1141,8 @@ export const crmRouter = router({
         const { source: _source, activitiesJson: _acts, ...leadInput } = input;
         const result = await createLead({
           ...leadInput,
+          source: "crm_manual",
+          leadSourceCode: "CRM_MANUAL",
         });
         // Si hay actividades, guardarlas en el lead
         if (input.activitiesJson && input.activitiesJson.length > 0) {
@@ -1212,6 +1230,66 @@ export const crmRouter = router({
         return { updated: input.ids.length };
       }),
   }),
+
+  // ─── LEAD SOURCES ────────────────────────────────────────────────────────────
+
+  leadSources: router({
+    list: staff.query(async () => {
+      return db
+        .select()
+        .from(crmLeadSources)
+        .where(eq(crmLeadSources.isActive, true))
+        .orderBy(crmLeadSources.sortOrder, crmLeadSources.name);
+    }),
+
+    listAll: admin.query(async () => {
+      return db
+        .select()
+        .from(crmLeadSources)
+        .orderBy(crmLeadSources.sortOrder, crmLeadSources.name);
+    }),
+
+    create: admin
+      .input(z.object({
+        code: z.string().min(1).max(50).regex(/^[A-Z0-9_]+$/, "Código solo mayúsculas, números y guión bajo"),
+        name: z.string().min(1).max(100),
+        description: z.string().optional(),
+        color: z.string().optional(),
+        icon: z.string().optional(),
+        sortOrder: z.number().default(0),
+      }))
+      .mutation(async ({ input }) => {
+        await db.insert(crmLeadSources).values({ ...input, isActive: true, isSystem: false });
+        return { success: true };
+      }),
+
+    update: admin
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(100).optional(),
+        description: z.string().optional(),
+        color: z.string().optional(),
+        icon: z.string().optional(),
+        sortOrder: z.number().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await db.update(crmLeadSources).set({ ...data, updatedAt: new Date() }).where(eq(crmLeadSources.id, id));
+        return { success: true };
+      }),
+
+    delete: admin
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const [src] = await db.select({ isSystem: crmLeadSources.isSystem }).from(crmLeadSources).where(eq(crmLeadSources.id, input.id));
+        if (!src) throw new TRPCError({ code: "NOT_FOUND" });
+        if (src.isSystem) throw new TRPCError({ code: "FORBIDDEN", message: "No se puede eliminar un origen de sistema" });
+        await db.delete(crmLeadSources).where(eq(crmLeadSources.id, input.id));
+        return { success: true };
+      }),
+  }),
+
   // ─── QUOTESES ────────────────────────────────────────────────────────────────
 
   quotes: router({

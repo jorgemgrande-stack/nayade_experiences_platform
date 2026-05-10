@@ -203,6 +203,7 @@ export const vapiCallsRouter = router({
         phone: call.phoneNumber ?? undefined,
         message: notes || "Lead creado desde llamada del Agente IA Vapi",
         source: "Agente IA Vapi",
+        leadSourceCode: "VAPI_CALL",
       });
 
       await db.update(vapiCalls)

@@ -204,6 +204,25 @@ export const experienceVariants = mysqlTable("experience_variants", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
+// ─── LEAD SOURCES CATALOG ────────────────────────────────────────────────────
+
+export const crmLeadSources = mysqlTable("crm_lead_sources", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 50 }).notNull().unique(),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  color: varchar("color", { length: 20 }),
+  icon: varchar("icon", { length: 50 }),
+  sortOrder: int("sort_order").default(0),
+  isActive: boolean("is_active").default(true).notNull(),
+  isSystem: boolean("is_system").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CrmLeadSource = typeof crmLeadSources.$inferSelect;
+export type InsertCrmLeadSource = typeof crmLeadSources.$inferInsert;
+
 // ─── LEADS & QUOTES ──────────────────────────────────────────────────────────
 
 export const leads = mysqlTable("leads", {
@@ -248,6 +267,7 @@ export const leads = mysqlTable("leads", {
     totalAmountCents: number;
     checkoutAt: string;
   } | null>(),
+  leadSourceId: int("lead_source_id"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

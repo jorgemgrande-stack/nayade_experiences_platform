@@ -23,6 +23,7 @@ import {
   reservationOperational,
   spaSlots,
   restaurantBookings,
+  crmLeadSources,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { createGHLContact, getGHLTagsFromSource, updateGHLContact, triggerGHLWorkflow } from "./ghl";
@@ -232,6 +233,7 @@ export async function createLead(data: {
   numberOfChildren?: number;
   budget?: string;
   source?: string;
+  leadSourceCode?: string;
   selectedCategory?: string;
   selectedProduct?: string;
   ghlContactId?: string;
@@ -245,6 +247,17 @@ export async function createLead(data: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  // Resolve leadSourceCode → leadSourceId
+  let leadSourceId: number | null = null;
+  if (data.leadSourceCode) {
+    const [src] = await db
+      .select({ id: crmLeadSources.id })
+      .from(crmLeadSources)
+      .where(eq(crmLeadSources.code, data.leadSourceCode))
+      .limit(1);
+    leadSourceId = src?.id ?? null;
+  }
 
   // 1. Insertar el lead
   const result = await db.insert(leads).values({
@@ -262,6 +275,7 @@ export async function createLead(data: {
     budget: data.budget ?? null,
     status: "nuevo",
     source: data.source ?? "web",
+    leadSourceId,
     selectedCategory: data.selectedCategory ?? null,
     selectedProduct: data.selectedProduct ?? null,
     ghlContactId: data.ghlContactId ?? null,
@@ -1079,6 +1093,12 @@ export async function createVentaPerdidaLead(reservationGroup: Array<{
     .limit(1);
   if (existing.length > 0) return;
 
+  const [checkoutSrc] = await db
+    .select({ id: crmLeadSources.id })
+    .from(crmLeadSources)
+    .where(eq(crmLeadSources.code, "CHECKOUT_ABANDONED"))
+    .limit(1);
+
   const totalCents = reservationGroup.reduce((s, r) => s + (r.amountTotal ?? 0), 0);
   const items = reservationGroup.map(r => ({
     productId: r.productId,
@@ -1098,6 +1118,7 @@ export async function createVentaPerdidaLead(reservationGroup: Array<{
     phone: first.customerPhone ?? null,
     selectedProduct: items.length === 1 ? items[0].productName : `${items.length} productos`,
     budget: String(totalCents / 100) as any,
+    leadSourceId: checkoutSrc?.id ?? null,
     status: "nuevo",
     opportunityStatus: "perdida",
     source: "venta_perdida",

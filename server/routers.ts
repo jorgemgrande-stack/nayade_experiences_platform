@@ -311,6 +311,7 @@ export const appRouter = router({
         return createLead({
           ...input,
           source: input.source ?? "web_experiencia",
+          leadSourceCode: "HOME_FORM",
         });
       }),
 
@@ -351,6 +352,7 @@ export const appRouter = router({
           selectedProduct: input.selectedProduct,
           activitiesJson: input.activitiesJson ?? null,
           source: "landing_presupuesto",
+          leadSourceCode: "LANDING_FORM",
         });
 
         // Enviar emails (fire-and-forget: no bloquea la respuesta al cliente)

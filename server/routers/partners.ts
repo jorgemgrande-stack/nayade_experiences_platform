@@ -375,6 +375,7 @@ export const partnersRouter = router({
         numberOfPersons: input.numberOfAdults + (input.numberOfChildren ?? 0),
         message: input.comments,
         source: "PARTNER",
+        leadSourceCode: "PARTNERS",
         selectedCategory: input.selectedCategory,
         selectedProduct: input.selectedProduct,
         activitiesJson: input.activitiesJson,
