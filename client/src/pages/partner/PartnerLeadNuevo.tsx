@@ -87,7 +87,7 @@ export default function PartnerLeadNuevo() {
           <h2 className="text-2xl font-semibold text-gray-800 mb-2">¡Lead enviado!</h2>
           <p className="text-gray-500 mb-6">El equipo de Nayade Experiences se pondrá en contacto con el cliente.</p>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => { setSubmitted(false); setForm({ name:"",email:"",phone:"",preferredDate:"",adults:"1",children:"0",comments:"" }); setSelectedActivities([]); }}>
+            <Button variant="outline" onClick={() => { setSubmitted(false); setForm({ name:"",email:"",phone:"",preferredDate:"",preferredTime:"",adults:"1",children:"0",comments:"" }); setSelectedActivities([]); }}>
               Enviar otro
             </Button>
             <Button className="bg-orange-500 hover:bg-orange-600 text-white" onClick={() => navigate("/partner/dashboard")}>

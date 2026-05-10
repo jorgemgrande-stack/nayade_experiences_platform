@@ -122,7 +122,7 @@ export default function PartnerReservaNueva() {
             La reserva está confirmada y el equipo operativo ya la tiene disponible.
           </p>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => { setSubmitted(false); setSelectedProductId(null); setForm({ customerName:"",customerEmail:"",customerPhone:"",bookingDate:"",people:"1",amountTotal:"0",notes:"" }); }}>
+            <Button variant="outline" onClick={() => { setSubmitted(false); setSelectedProductId(null); setForm({ customerName:"",customerEmail:"",customerPhone:"",bookingDate:"",selectedTime:"",people:"1",amountTotal:"0",notes:"" }); }}>
               Nueva reserva
             </Button>
             <Button className="bg-orange-500 hover:bg-orange-600 text-white" onClick={() => navigate("/partner/dashboard")}>
