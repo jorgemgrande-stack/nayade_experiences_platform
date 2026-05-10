@@ -822,7 +822,7 @@ async function ensureTicketingChannel() {
           'ONLINE_DIRECTO','ONLINE_ASISTIDO','VENTA_DELEGADA','TPV_FISICO',
           'PARTNER','TICKETING','MANUAL','API',
           'web','crm','telefono','email','otro','tpv','groupon'
-        ) NOT NULL DEFAULT 'ONLINE_DIRECTO'
+        ) DEFAULT 'ONLINE_DIRECTO'
       `);
       console.log("[DB] ✅ ENUM reservations.channel: valor TICKETING añadido");
     }
