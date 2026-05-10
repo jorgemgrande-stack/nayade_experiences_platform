@@ -134,7 +134,7 @@ export default function PartnerReservaNueva() {
   }
 
   return (
-    <PartnerLayout>
+    <PartnerLayout bgImage="/images/partner/bg-dashboard_3.png">
       <div className="max-w-2xl">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-white">Nueva reserva directa</h1>

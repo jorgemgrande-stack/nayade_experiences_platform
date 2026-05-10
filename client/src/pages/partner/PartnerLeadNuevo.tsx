@@ -99,7 +99,7 @@ export default function PartnerLeadNuevo() {
   }
 
   return (
-    <PartnerLayout>
+    <PartnerLayout bgImage="/images/partner/bg-dashboard_2.png">
       <div className="max-w-2xl">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-white">Nuevo lead</h1>
