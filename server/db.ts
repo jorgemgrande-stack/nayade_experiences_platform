@@ -234,6 +234,7 @@ export async function createLead(data: {
   budget?: string;
   source?: string;
   leadSourceCode?: string;
+  preferredTime?: string;
   selectedCategory?: string;
   selectedProduct?: string;
   ghlContactId?: string;
@@ -276,6 +277,7 @@ export async function createLead(data: {
     status: "nuevo",
     source: data.source ?? "web",
     leadSourceId,
+    preferredTime: data.preferredTime ?? null,
     selectedCategory: data.selectedCategory ?? null,
     selectedProduct: data.selectedProduct ?? null,
     ghlContactId: data.ghlContactId ?? null,

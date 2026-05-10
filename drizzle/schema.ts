@@ -268,6 +268,7 @@ export const leads = mysqlTable("leads", {
     checkoutAt: string;
   } | null>(),
   leadSourceId: int("lead_source_id"),
+  preferredTime: varchar("preferred_time", { length: 10 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

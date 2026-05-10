@@ -497,6 +497,12 @@ function LeadDetailModal({
               <span className="text-white font-medium">{new Date(lead.preferredDate).toLocaleDateString("es-ES")}</span>
             </div>
           )}
+          {(lead as any).preferredTime && (
+            <div className="flex justify-between text-sm">
+              <span className="text-foreground/60">Hora solicitada</span>
+              <span className="text-white font-medium">{(lead as any).preferredTime}</span>
+            </div>
+          )}
           {(lead.numberOfAdults || lead.numberOfPersons) && (
             <div className="flex justify-between text-sm">
               <span className="text-foreground/60">Personas</span>

@@ -16,7 +16,7 @@ export default function PartnerLeadNuevo() {
 
   const [form, setForm] = useState({
     name: "", email: "", phone: "",
-    preferredDate: "", adults: "1", children: "0", comments: "",
+    preferredDate: "", preferredTime: "", adults: "1", children: "0", comments: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -66,6 +66,7 @@ export default function PartnerLeadNuevo() {
       email: form.email.trim(),
       phone: form.phone.trim() || undefined,
       preferredDate: form.preferredDate || undefined,
+      preferredTime: form.preferredTime || undefined,
       numberOfAdults: parseInt(form.adults) || 1,
       numberOfChildren: parseInt(form.children) || 0,
       comments: form.comments.trim() || undefined,
@@ -133,11 +134,15 @@ export default function PartnerLeadNuevo() {
           <div className="bg-white/[0.07] rounded-xl border border-white/[0.10] p-6 space-y-4">
             <h2 className="font-medium text-white/50 text-[11px] uppercase tracking-wider">Detalles de la visita</h2>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="col-span-2 sm:col-span-1">
                 <Label className="text-sm text-white/60">Fecha aproximada <span className="text-red-400">*</span></Label>
                 <Input value={form.preferredDate} onChange={set("preferredDate")} type="date" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white" />
                 {errors.preferredDate && <p className="text-red-400 text-xs mt-1">{errors.preferredDate}</p>}
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <Label className="text-sm text-white/60">Hora solicitada</Label>
+                <Input value={form.preferredTime} onChange={set("preferredTime")} type="time" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white" />
               </div>
               <div>
                 <Label className="text-sm text-white/60">Adultos</Label>

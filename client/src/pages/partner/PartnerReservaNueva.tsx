@@ -21,7 +21,7 @@ export default function PartnerReservaNueva() {
 
   const [form, setForm] = useState({
     customerName: "", customerEmail: "", customerPhone: "",
-    bookingDate: "", people: "1",
+    bookingDate: "", selectedTime: "", people: "1",
     amountTotal: "0", notes: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -85,6 +85,7 @@ export default function PartnerReservaNueva() {
       productId: selectedProductId!,
       productName: selectedProductName,
       bookingDate: form.bookingDate,
+      selectedTime: form.selectedTime || undefined,
       people: parseInt(form.people) || 1,
       amountTotal: parseFloat(form.amountTotal) || 0,
       notes: form.notes.trim() || undefined,
@@ -211,13 +212,19 @@ export default function PartnerReservaNueva() {
           {/* Detalles del servicio */}
           <div className="bg-white/[0.07] rounded-xl border border-white/[0.10] p-6 space-y-4">
             <h2 className="font-medium text-white/50 text-[11px] uppercase tracking-wider">Detalles del servicio</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="col-span-2 sm:col-span-1">
                 <Label className="text-sm text-white/60 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5" /> Fecha <span className="text-red-400">*</span>
                 </Label>
                 <Input value={form.bookingDate} onChange={set("bookingDate")} type="date" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white" />
                 {errors.bookingDate && <p className="text-red-400 text-xs mt-1">{errors.bookingDate}</p>}
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <Label className="text-sm text-white/60 flex items-center gap-1.5">
+                  Hora solicitada
+                </Label>
+                <Input value={form.selectedTime} onChange={set("selectedTime")} type="time" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white" />
               </div>
               <div>
                 <Label className="text-sm text-white/60 flex items-center gap-1.5">

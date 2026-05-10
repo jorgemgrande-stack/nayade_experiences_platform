@@ -790,6 +790,16 @@ async function ensureLeadSourceColumn() {
       console.log("[DB] leads.lead_source_id ya existe — nada que hacer");
     }
 
+    // Añadir preferred_time si no existe
+    const [timeCols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leads' AND COLUMN_NAME = 'preferred_time'`
+    ) as any[];
+    if (!(timeCols as any[]).length) {
+      await conn.execute("ALTER TABLE `leads` ADD COLUMN `preferred_time` VARCHAR(10) NULL");
+      console.log("[DB] ✅ leads.preferred_time añadida");
+    }
+
     await conn.end();
   } catch (err: any) {
     console.error("[DB] Error en ensureLeadSourceColumn:", err.message);
