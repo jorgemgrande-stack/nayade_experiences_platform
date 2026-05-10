@@ -102,69 +102,68 @@ export default function PartnerLeadNuevo() {
     <PartnerLayout>
       <div className="max-w-2xl">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-800">Nuevo lead</h1>
-          <p className="text-gray-500 text-sm mt-1">Captura una oportunidad comercial para un huésped o cliente</p>
+          <h1 className="text-2xl font-semibold text-white">Nuevo lead</h1>
+          <p className="text-white/50 text-sm mt-1">Captura una oportunidad comercial para un huésped o cliente</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Datos del cliente */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
-            <h2 className="font-medium text-gray-700 text-sm uppercase tracking-wide">Datos del cliente</h2>
+          <div className="bg-white/[0.07] rounded-xl border border-white/[0.10] p-6 space-y-4">
+            <h2 className="font-medium text-white/50 text-[11px] uppercase tracking-wider">Datos del cliente</h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label className="text-sm text-gray-600">Nombre <span className="text-red-400">*</span></Label>
-                <Input value={form.name} onChange={set("name")} placeholder="Nombre completo" className="mt-1" />
-                {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+                <Label className="text-sm text-white/60">Nombre <span className="text-red-400">*</span></Label>
+                <Input value={form.name} onChange={set("name")} placeholder="Nombre completo" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white placeholder:text-white/25" />
+                {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
               </div>
               <div>
-                <Label className="text-sm text-gray-600">Email <span className="text-red-400">*</span></Label>
-                <Input value={form.email} onChange={set("email")} type="email" placeholder="cliente@email.com" className="mt-1" />
-                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+                <Label className="text-sm text-white/60">Email <span className="text-red-400">*</span></Label>
+                <Input value={form.email} onChange={set("email")} type="email" placeholder="cliente@email.com" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white placeholder:text-white/25" />
+                {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
               </div>
               <div>
-                <Label className="text-sm text-gray-600">Teléfono</Label>
-                <Input value={form.phone} onChange={set("phone")} placeholder="+34 600 000 000" className="mt-1" />
+                <Label className="text-sm text-white/60">Teléfono</Label>
+                <Input value={form.phone} onChange={set("phone")} placeholder="+34 600 000 000" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white placeholder:text-white/25" />
               </div>
             </div>
           </div>
 
           {/* Detalles de la visita */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
-            <h2 className="font-medium text-gray-700 text-sm uppercase tracking-wide">Detalles de la visita</h2>
+          <div className="bg-white/[0.07] rounded-xl border border-white/[0.10] p-6 space-y-4">
+            <h2 className="font-medium text-white/50 text-[11px] uppercase tracking-wider">Detalles de la visita</h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="sm:col-span-1">
-                <Label className="text-sm text-gray-600">Fecha aproximada <span className="text-red-400">*</span></Label>
-                <Input value={form.preferredDate} onChange={set("preferredDate")} type="date" className="mt-1" />
-                {errors.preferredDate && <p className="text-red-500 text-xs mt-1">{errors.preferredDate}</p>}
+                <Label className="text-sm text-white/60">Fecha aproximada <span className="text-red-400">*</span></Label>
+                <Input value={form.preferredDate} onChange={set("preferredDate")} type="date" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white" />
+                {errors.preferredDate && <p className="text-red-400 text-xs mt-1">{errors.preferredDate}</p>}
               </div>
               <div>
-                <Label className="text-sm text-gray-600">Adultos</Label>
-                <Input value={form.adults} onChange={set("adults")} type="number" min="1" max="100" className="mt-1" />
+                <Label className="text-sm text-white/60">Adultos</Label>
+                <Input value={form.adults} onChange={set("adults")} type="number" min="1" max="100" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white" />
               </div>
               <div>
-                <Label className="text-sm text-gray-600">Niños</Label>
-                <Input value={form.children} onChange={set("children")} type="number" min="0" max="50" className="mt-1" />
+                <Label className="text-sm text-white/60">Niños</Label>
+                <Input value={form.children} onChange={set("children")} type="number" min="0" max="50" className="mt-1 bg-white/[0.06] border-white/[0.12] text-white" />
               </div>
             </div>
           </div>
 
           {/* Selección de experiencias */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-4">
-            <h2 className="font-medium text-gray-700 text-sm uppercase tracking-wide">Experiencias de interés <span className="text-red-400">*</span></h2>
+          <div className="bg-white/[0.07] rounded-xl border border-white/[0.10] p-6 space-y-4">
+            <h2 className="font-medium text-white/50 text-[11px] uppercase tracking-wider">Experiencias de interés <span className="text-red-400">*</span></h2>
 
-            {/* Actividades ya añadidas */}
             {selectedActivities.length > 0 && (
               <div className="space-y-2">
                 {selectedActivities.map(a => (
-                  <div key={a.experienceId} className="flex items-center justify-between bg-orange-50 border border-orange-100 rounded-lg px-4 py-2.5">
+                  <div key={a.experienceId} className="flex items-center justify-between bg-orange-500/15 border border-orange-500/25 rounded-lg px-4 py-2.5">
                     <div>
-                      <span className="text-sm font-medium text-orange-800">{a.experienceTitle}</span>
-                      <span className="text-xs text-orange-500 ml-2">· {a.participants} persona{a.participants !== 1 ? "s" : ""}</span>
+                      <span className="text-sm font-medium text-orange-300">{a.experienceTitle}</span>
+                      <span className="text-xs text-orange-400/70 ml-2">· {a.participants} persona{a.participants !== 1 ? "s" : ""}</span>
                     </div>
                     <button type="button" onClick={() => setSelectedActivities(p => p.filter(x => x.experienceId !== a.experienceId))}
-                      className="text-orange-400 hover:text-orange-600">
+                      className="text-orange-400/60 hover:text-orange-300 transition-colors">
                       <X className="w-4 h-4" />
                     </button>
                   </div>
@@ -172,7 +171,6 @@ export default function PartnerLeadNuevo() {
               </div>
             )}
 
-            {/* Grid de experiencias */}
             {experiences && experiences.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {experiences.map((exp: any) => {
@@ -184,15 +182,15 @@ export default function PartnerLeadNuevo() {
                       onClick={() => openModal({ id: exp.id, title: exp.title, slug: exp.slug ?? "" })}
                       className={`text-left px-3 py-2.5 rounded-lg border text-sm transition-all ${
                         added
-                          ? "border-orange-300 bg-orange-50 text-orange-700"
-                          : "border-gray-200 hover:border-orange-200 hover:bg-orange-50/50 text-gray-600"
+                          ? "border-orange-400/60 bg-orange-500/15 text-orange-300"
+                          : "border-white/[0.12] hover:border-orange-400/40 hover:bg-orange-500/10 text-white/65"
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="truncate">{exp.title}</span>
                         {added
-                          ? <CheckCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0 ml-1" />
-                          : <Plus className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 ml-1" />
+                          ? <CheckCircle className="w-3.5 h-3.5 text-orange-400 flex-shrink-0 ml-1" />
+                          : <Plus className="w-3.5 h-3.5 text-white/30 flex-shrink-0 ml-1" />
                         }
                       </div>
                     </button>
@@ -200,21 +198,21 @@ export default function PartnerLeadNuevo() {
                 })}
               </div>
             ) : (
-              <div className="flex items-center gap-2 text-gray-400 text-sm">
+              <div className="flex items-center gap-2 text-white/30 text-sm">
                 <Loader2 className="w-4 h-4 animate-spin" /> Cargando experiencias…
               </div>
             )}
-            {errors.activities && <p className="text-red-500 text-xs">{errors.activities}</p>}
+            {errors.activities && <p className="text-red-400 text-xs">{errors.activities}</p>}
           </div>
 
           {/* Notas */}
-          <div className="bg-white rounded-xl border border-gray-100 p-6">
-            <Label className="text-sm text-gray-600">Notas adicionales</Label>
+          <div className="bg-white/[0.07] rounded-xl border border-white/[0.10] p-6">
+            <Label className="text-sm text-white/60">Notas adicionales</Label>
             <Textarea
               value={form.comments}
               onChange={set("comments")}
               placeholder="Preferencias del cliente, restricciones, contexto…"
-              className="mt-1 resize-none"
+              className="mt-1 resize-none bg-white/[0.06] border-white/[0.12] text-white placeholder:text-white/25"
               rows={3}
             />
           </div>
@@ -224,7 +222,7 @@ export default function PartnerLeadNuevo() {
               {createLead.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
               Enviar lead
             </Button>
-            <Button type="button" variant="ghost" onClick={() => navigate("/partner/dashboard")} className="text-gray-500">
+            <Button type="button" variant="ghost" onClick={() => navigate("/partner/dashboard")} className="text-white/40 hover:text-white/70">
               Cancelar
             </Button>
           </div>
