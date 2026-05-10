@@ -264,7 +264,7 @@ const calendarRouter = router({
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
         WHERE r.booking_date >= ? AND r.booking_date < DATE_ADD(?, INTERVAL 1 DAY)
-          AND r.status = 'paid'
+          AND r.status IN ('paid', 'pending_payment')
           AND r.status_reservation NOT IN ('ANULADA')
         ORDER BY r.booking_date ASC
       `, [fromDate, toDate]);
@@ -344,7 +344,7 @@ const dailyOrdersRouter = router({
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
         WHERE r.booking_date = ?
-          AND r.status = 'paid'
+          AND r.status IN ('paid', 'pending_payment')
           AND r.status_reservation NOT IN ('ANULADA')
         ORDER BY r.booking_date ASC
       `, [dateStr]);
@@ -455,7 +455,7 @@ const dailyOrdersRouter = router({
         FROM reservations r
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         WHERE r.booking_date = ?
-          AND r.status = 'paid'
+          AND r.status IN ('paid', 'pending_payment')
           AND r.status_reservation NOT IN ('ANULADA')
       `, [dateStr2]);
 
@@ -516,7 +516,7 @@ const activitiesRouter = router({
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
         WHERE r.booking_date = ?
-          AND r.status = 'paid'
+          AND r.status IN ('paid', 'pending_payment')
           AND r.status_reservation NOT IN ('ANULADA')
         ORDER BY r.booking_date ASC
       `, [actDateStr]);
