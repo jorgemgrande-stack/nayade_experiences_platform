@@ -13,7 +13,7 @@ import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems
 import { eq, desc, and, gte, lte, notInArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
-import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, postConfirmOperation, generateReservationNumber } from "../db";
+import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber } from "../db";
 import { reservations } from "../../drizzle/schema";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 3 });
@@ -445,7 +445,7 @@ export const partnersRouter = router({
         people: input.people,
         amountTotal: amountCents,
         amountPaid: 0,
-        status: "paid",
+        status: "pending_payment",
         statusReservation: "CONFIRMADA",
         statusPayment: "PENDIENTE",
         channel: "PARTNER",
@@ -466,22 +466,30 @@ export const partnersRouter = router({
 
       const reservationId = (result as any).insertId as number;
 
-      // Crear booking operativo + transacción contable (fire-and-forget, no bloquea)
-      postConfirmOperation({
-        reservationId,
-        productId: input.productId,
-        productName: input.productName,
-        serviceDate: input.bookingDate,
-        people: input.people,
-        amountCents,
-        customerName: input.customerName,
-        customerEmail: input.customerEmail,
-        customerPhone: input.customerPhone,
-        totalAmount: input.amountTotal,
-        paymentMethod: "otro",
-        saleChannel: "delegado",
-        sourceChannel: "otro",
-      }).catch((e: any) => console.error("[Partners] Error en postConfirmOperation:", e.message));
+      // Crear booking operativo + upsert cliente (fire-and-forget).
+      // NO se crea transacción contable aquí: el pago quedará pendiente hasta que
+      // la liquidación del partner se marque como cobrada.
+      Promise.all([
+        createBookingFromReservation({
+          reservationId,
+          productId: input.productId,
+          productName: input.productName,
+          bookingDate: input.bookingDate,
+          people: input.people,
+          amountCents,
+          customerName: input.customerName,
+          customerEmail: input.customerEmail,
+          customerPhone: input.customerPhone,
+          sourceChannel: "otro",
+        }),
+        upsertClientFromReservation({
+          name: input.customerName,
+          email: input.customerEmail,
+          phone: input.customerPhone ?? null,
+          source: "reserva_delegado",
+          leadId: null,
+        }),
+      ]).catch((e: any) => console.error("[Partners] Error en post-reserva:", e.message));
 
       return { reservationId, reservationNumber, merchantOrder };
     }),
