@@ -4041,6 +4041,7 @@ export const crmRouter = router({
     // ─── Auditoría: reservas pagadas sin factura o sin expediente REAV ──────
     auditOrphans: staff.query(async () => {
       // 1. Reservas pagadas sin factura asociada
+      // Excluir canal PARTNER: se facturan mediante liquidaciones agrupadas, nunca tienen factura individual
       const paidRes = await db
         .select({
           id: reservations.id,
@@ -4055,7 +4056,7 @@ export const crmRouter = router({
           productId: reservations.productId,
         })
         .from(reservations)
-        .where(eq(reservations.status, "paid"));
+        .where(and(eq(reservations.status, "paid"), ne(reservations.channel, "PARTNER")));
 
       const paidIds = paidRes.map(r => r.id);
       const paidQuoteIds = paidRes.map(r => r.quoteId).filter((q): q is number => q != null);
