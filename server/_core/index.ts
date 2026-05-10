@@ -806,6 +806,32 @@ async function ensureLeadSourceColumn() {
   }
 }
 
+async function ensureTicketingChannel() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+    // Verificar si 'TICKETING' ya está en el ENUM de reservations.channel
+    const [rows] = await conn.execute(
+      `SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations' AND COLUMN_NAME = 'channel'`
+    ) as any;
+    const colType: string = rows[0]?.COLUMN_TYPE ?? "";
+    if (!colType.includes("'TICKETING'")) {
+      await conn.execute(`
+        ALTER TABLE reservations MODIFY COLUMN channel ENUM(
+          'ONLINE_DIRECTO','ONLINE_ASISTIDO','VENTA_DELEGADA','TPV_FISICO',
+          'PARTNER','TICKETING','MANUAL','API',
+          'web','crm','telefono','email','otro','tpv','groupon'
+        ) NOT NULL DEFAULT 'ONLINE_DIRECTO'
+      `);
+      console.log("[DB] ✅ ENUM reservations.channel: valor TICKETING añadido");
+    }
+    await conn.end();
+  } catch (err: any) {
+    console.error("[DB] Error en ensureTicketingChannel:", err.message);
+  }
+}
+
 async function ensureExpenseEmailIngestionSchema() {
   try {
     const mysql = await import("mysql2/promise");
@@ -1675,6 +1701,7 @@ runMigrations()
   .then(() => ensureRefundColumns())
   .then(() => ensureDiscountColumns())
   .then(() => ensureLeadSourceColumn())
+  .then(() => ensureTicketingChannel())
   .then(() => ensureExpenseEmailIngestionSchema())
   .then(() => fixBrokenInvoicePdfUrls())
   .then(() => wipeTestDataIfRequested())

@@ -668,7 +668,7 @@ export const reservations = mysqlTable("reservations", {
   // Channel & metadata
   channel: mysqlEnum("channel", [
     "ONLINE_DIRECTO", "ONLINE_ASISTIDO", "VENTA_DELEGADA", "TPV_FISICO",
-    "PARTNER", "MANUAL", "API",
+    "PARTNER", "TICKETING", "MANUAL", "API",
     // legacy values kept for backward compat
     "web", "crm", "telefono", "email", "otro", "tpv", "groupon"
   ]).default("ONLINE_DIRECTO"),
