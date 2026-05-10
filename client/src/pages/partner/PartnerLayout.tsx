@@ -77,7 +77,7 @@ function AnnouncementsModal({ partnerId }: { partnerId: number }) {
 
 // ─── Layout principal ─────────────────────────────────────────────────────────
 
-export default function PartnerLayout({ children }: { children: React.ReactNode }) {
+export default function PartnerLayout({ children, bgImage }: { children: React.ReactNode; bgImage?: string }) {
   const { user, loading, logout } = useAuth();
   const [location, navigate] = useLocation();
 
@@ -99,11 +99,11 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   const role = (user as any).role as string;
   if (role !== "partner_admin" && role !== "partner_user") return null;
 
-  return <PartnerLayoutInner user={user} location={location} navigate={navigate} logout={logout}>{children}</PartnerLayoutInner>;
+  return <PartnerLayoutInner user={user} location={location} navigate={navigate} logout={logout} bgImage={bgImage}>{children}</PartnerLayoutInner>;
 }
 
-function PartnerLayoutInner({ user, location, navigate, logout, children }: {
-  user: any; location: string; navigate: any; logout: any; children: React.ReactNode;
+function PartnerLayoutInner({ user, location, navigate, logout, children, bgImage }: {
+  user: any; location: string; navigate: any; logout: any; children: React.ReactNode; bgImage?: string;
 }) {
   const { data: partner } = trpc.partners.getMyPartner.useQuery();
   const { data: publicSettings } = trpc.config.getPublicSettings.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
@@ -113,8 +113,18 @@ function PartnerLayoutInner({ user, location, navigate, logout, children }: {
   const userName = (user as any).name ?? (user as any).email ?? "Colaborador";
   const partnerName = partner?.name ?? "";
 
+  const bgStyle = bgImage
+    ? {
+        backgroundImage: `linear-gradient(rgba(8,14,28,0.78) 0%, rgba(8,14,28,0.82) 60%, rgba(8,14,28,0.92) 100%), url('${bgImage}')`,
+        backgroundSize: "cover",
+        backgroundPosition: "center top",
+        backgroundRepeat: "no-repeat",
+        backgroundAttachment: "scroll",
+      }
+    : undefined;
+
   return (
-    <div className="min-h-screen bg-[#080e1c] text-white">
+    <div className="min-h-screen bg-[#080e1c] text-white" style={bgStyle}>
       {/* Anuncios */}
       {partner?.id && <AnnouncementsModal partnerId={partner.id} />}
 

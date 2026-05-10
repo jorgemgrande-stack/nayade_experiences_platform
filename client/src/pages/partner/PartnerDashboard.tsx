@@ -40,7 +40,7 @@ export default function PartnerDashboard() {
   const firstName = (user as any)?.name?.split(" ")[0] ?? "colaborador";
 
   return (
-    <PartnerLayout>
+    <PartnerLayout bgImage="/images/partner/bg-dashboard_1.png">
       {/* Hero */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
