@@ -151,7 +151,7 @@ export default function LegoPackDetail() {
           {/* Banda de color de categoría en la parte inferior */}
           <div className={`absolute bottom-0 left-0 right-0 h-1.5 bg-gradient-to-r ${meta.gradient}`} />
         </div>
-        <div className="relative container max-w-6xl pt-8 pb-36">
+        <div className="relative container max-w-6xl pt-8 pb-12">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm text-white/70 mb-8 flex-wrap">
             <Link href="/" className="hover:text-white transition-colors">Inicio</Link>
@@ -181,7 +181,7 @@ export default function LegoPackDetail() {
       </section>
 
       {/* Contenido principal */}
-      <section className="relative -mt-20 pb-16 bg-slate-50">
+      <section className="relative mt-8 pb-16 bg-slate-50">
         <div className="container max-w-6xl grid lg:grid-cols-3 gap-8 items-start">
           {/* Columna izquierda */}
           <div className="lg:col-span-2 space-y-6">
