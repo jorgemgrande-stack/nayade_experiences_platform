@@ -12,7 +12,7 @@ import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon"
 import {
   Check, Clock, Users, Star, ShoppingCart,
   MessageCircle, Phone, Calendar, Info,
-  Sun, GraduationCap, Building2, Layers, Package,
+  Sun, GraduationCap, Building2, Layers, Package, ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,6 +51,12 @@ export default function LegoPackDetail() {
   const { data: pack, isLoading } = trpc.legoPacks.getBySlug.useQuery(
     { slug: slug ?? "" },
     { enabled: !!slug }
+  );
+
+  const catKeyForQuery = (category ?? "dia") as "dia" | "escolar" | "empresa" | "estancia";
+  const { data: relatedPacks } = trpc.legoPacks.listPublicByCategory.useQuery(
+    { category: catKeyForQuery },
+    { enabled: !!pack }
   );
 
   const catKey = category ?? pack?.category ?? "dia";
@@ -175,7 +181,7 @@ export default function LegoPackDetail() {
       </section>
 
       {/* Contenido principal */}
-      <section className="relative -mt-20 pb-16">
+      <section className="relative -mt-20 pb-16 bg-slate-50">
         <div className="container max-w-6xl grid lg:grid-cols-3 gap-8 items-start">
           {/* Columna izquierda */}
           <div className="lg:col-span-2 space-y-6">
@@ -491,11 +497,72 @@ export default function LegoPackDetail() {
       })()}
 
       {/* Reseñas de clientes */}
-      <section className="py-12 bg-muted border-t border-border">
+      <section className="py-12 bg-white border-t border-slate-100">
         <div className="container max-w-5xl">
           <ReviewSection entityType="pack" entityId={pack.id} theme="auto" />
         </div>
       </section>
+
+      {/* Más Lego Packs de la misma categoría */}
+      {(() => {
+        const others = (relatedPacks ?? [])
+          .filter((p: any) => p.id !== pack.id)
+          .slice(0, 3);
+        if (others.length === 0) return null;
+        return (
+          <section className="py-12 bg-slate-50 border-t border-slate-100">
+            <div className="container max-w-6xl">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-black text-slate-900">
+                  Más {meta.label}
+                </h2>
+                <Link href={meta.href} className={`text-sm font-semibold ${meta.text} hover:underline flex items-center gap-1`}>
+                  Ver todos <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+              <div className={`grid gap-5 ${others.length === 1 ? "grid-cols-1 max-w-sm" : others.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
+                {others.map((p: any) => {
+                  const cardImg = p.image1 || p.coverImageUrl;
+                  const minP = p.minPrice as number | null;
+                  return (
+                    <Link key={p.id} href={`/lego-packs/detalle/${p.slug}`}>
+                      <div className="group rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col h-full">
+                        <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
+                          {cardImg ? (
+                            <img src={cardImg} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                          ) : (
+                            <div className={`w-full h-full bg-gradient-to-br ${meta.gradient} flex items-center justify-center`}>
+                              <Layers className="w-12 h-12 text-white/40" />
+                            </div>
+                          )}
+                          {p.badge && (
+                            <div className="absolute top-3 left-3">
+                              <Badge className="bg-orange-500 text-white border-0 text-xs font-bold">{p.badge}</Badge>
+                            </div>
+                          )}
+                          {minP && minP > 0 && (
+                            <div className="absolute bottom-3 right-3">
+                              <span className="text-xs font-black px-2.5 py-1 rounded-full bg-orange-500 text-white shadow">
+                                Desde {minP.toFixed(0)}€
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-4 flex-1 flex flex-col justify-between">
+                          <p className="font-black text-slate-900 text-sm leading-snug group-hover:text-orange-600 transition-colors">{p.title}</p>
+                          {p.shortDescription && (
+                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">{p.shortDescription}</p>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        );
+      })()}
     </PublicLayout>
   );
 }
