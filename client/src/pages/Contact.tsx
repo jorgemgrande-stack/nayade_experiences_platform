@@ -11,12 +11,15 @@ import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
+import { trackEvent } from "@/lib/meta-pixel/client";
 
 export default function Contact() {
   const [submitted, setSubmitted] = useState(false);
   const [formData, setFormData] = useState({
     name: "", email: "", phone: "", subject: "", message: "",
   });
+  const hasConsent = useMarketingConsent();
 
   const submitLead = trpc.public.submitLead.useMutation({
     onSuccess: () => setSubmitted(true),
@@ -34,6 +37,12 @@ export default function Contact() {
       message: `Asunto: ${formData.subject}\n\n${formData.message}`,
       source: "web_contacto",
     });
+    if (hasConsent) {
+      trackEvent('Contact', { content_name: 'Contacto' }, {
+        email: formData.email,
+        phone: formData.phone || undefined,
+      }).catch(() => {});
+    }
   };
 
   const contactItems = [

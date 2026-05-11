@@ -4,17 +4,21 @@
  * de la reserva en backend. El pago se confirma ÚNICAMENTE por el endpoint
  * IPN /api/redsys/notification que valida la firma Redsys.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { CheckCircle, Clock, XCircle, ArrowRight, Phone, Mail, RefreshCw } from "lucide-react";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
+import { trackEvent } from "@/lib/meta-pixel/client";
 
 export default function ReservaOk() {
   const [merchantOrder, setMerchantOrder] = useState<string | null>(null);
   const { phone, phoneTel } = usePublicPhone();
   const [pollCount, setPollCount] = useState(0);
+  const hasConsent = useMarketingConsent();
+  const purchaseFired = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -45,6 +49,28 @@ export default function ReservaOk() {
 
     return () => clearTimeout(timer);
   }, [data?.status, pollCount, merchantOrder, refetch]);
+
+  // Purchase cliente — se dispara una sola vez cuando status === "paid"
+  useEffect(() => {
+    if (!hasConsent || !merchantOrder || data?.status !== "paid" || purchaseFired.current) return;
+    purchaseFired.current = true;
+    const paidCents = data.amountPaid ?? data.amountTotal;
+    const valueEur = paidCents ? paidCents / 100 : 0;
+    trackEvent(
+      'Purchase',
+      {
+        content_ids: [String(merchantOrder)],
+        content_name: data.productName,
+        content_type: 'product',
+        value: valueEur,
+        currency: 'EUR',
+        order_id: merchantOrder,
+        num_items: data.people ?? 1,
+      },
+      { email: data.customerEmail ?? undefined },
+      { eventId: `purchase_${merchantOrder}` }
+    ).catch(() => {});
+  }, [hasConsent, merchantOrder, data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!merchantOrder) {
     return (

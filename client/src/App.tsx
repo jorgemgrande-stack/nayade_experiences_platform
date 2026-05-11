@@ -6,6 +6,7 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import CookieBanner from "./components/CookieBanner";
+import { MetaPixelLoader } from "./components/MetaPixelLoader";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
@@ -345,6 +346,7 @@ function App() {
           <ScrollToTop />
           <Router />
           <CookieBanner />
+          <MetaPixelLoader />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

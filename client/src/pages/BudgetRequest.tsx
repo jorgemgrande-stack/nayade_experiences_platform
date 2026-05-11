@@ -14,6 +14,8 @@ import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
+import { trackEvent } from "@/lib/meta-pixel/client";
 import ActivityModal, { ActivityEntry, ModalState, getFamilyForSlug } from "@/components/ActivityModal";
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
@@ -86,6 +88,8 @@ export default function BudgetRequest() {
     return STATIC_PRODUCTS[selectedCategory] ?? [];
   }, [selectedCategory, legoPacksList, escolarPacksList, empresaPacksList]);
 
+  const hasConsent = useMarketingConsent();
+
   const submitBudget = trpc.public.submitBudget.useMutation({
     onSuccess: () => setSubmitted(true),
     onError: () => toast.error("Error al enviar. Por favor, inténtalo de nuevo."),
@@ -130,6 +134,12 @@ export default function BudgetRequest() {
       comments: formData.comments.trim() || undefined,
       honeypot: formData.honeypot || undefined,
     });
+    if (hasConsent) {
+      trackEvent('Contact', { content_name: 'Presupuesto' }, {
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
+      }).catch(() => {});
+    }
   };
 
   const handleCategorySelect = (cat: string) => {

@@ -13,6 +13,7 @@ import { createPasswordResetRouter } from "../passwordReset";
 import { createAuthGuardMiddleware } from "../authGuard";
 import uploadRouter from "../uploadRoutes";
 import redsysRouter from "../redsysRoutes";
+import { metaCapiRouter } from "../metaCapiRoute";
 import settlementExportRouter from "../settlementExportRoutes";
 import invoicePreviewRouter from "../invoicePreviewRouter";
 import { kbRouter } from "../kbRoute";
@@ -161,6 +162,8 @@ async function startServer() {
 
   // Redsys IPN notification endpoint
   app.use(redsysRouter);
+  // Meta Conversions API proxy (recibe eventos del cliente para envío server-side)
+  app.use(metaCapiRouter);
   // Settlement Excel export endpoint
   app.use(settlementExportRouter);
   // Invoice HTML on-demand preview (no storage required)

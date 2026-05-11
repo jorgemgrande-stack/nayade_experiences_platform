@@ -121,6 +121,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const newItem: CartItem = { ...item, cartItemId: generateId() };
     setItems(prev => [...prev, newItem]);
     setIsOpen(true); // Abrir el drawer al añadir
+    // AddToCart — consentimiento leído inline (useCallback no puede usar hooks)
+    try {
+      const raw = localStorage.getItem("nayade_cookie_consent");
+      if (raw && (JSON.parse(raw) as { marketing?: boolean })?.marketing === true) {
+        import("@/lib/meta-pixel/client").then(({ trackEvent }) => {
+          trackEvent("AddToCart", {
+            content_ids: [String(newItem.productId)],
+            content_name: newItem.productName,
+            content_type: "product",
+            value: newItem.estimatedTotal,
+            currency: "EUR",
+          }).catch(() => {});
+        });
+      }
+    } catch { /* localStorage bloqueado en modo privado */ }
   }, []);
 
   const removeItem = useCallback((cartItemId: string) => {

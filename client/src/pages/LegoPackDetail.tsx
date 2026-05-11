@@ -1,5 +1,7 @@
 ﻿import { useParams, Link } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
+import { trackEvent } from "@/lib/meta-pixel/client";
 import PublicLayout from "@/components/PublicLayout";
 import { ReviewSection } from "@/components/ReviewSection";
 import { trpc } from "@/lib/trpc";
@@ -47,6 +49,7 @@ export default function LegoPackDetail() {
   const [people, setPeople] = useState(1);
   const [selectedDate, setSelectedDate] = useState("");
   const { addItem, openCart } = useCart();
+  const hasConsent = useMarketingConsent();
 
   const { data: pack, isLoading } = trpc.legoPacks.getBySlug.useQuery(
     { slug: slug ?? "" },
@@ -106,6 +109,18 @@ export default function LegoPackDetail() {
 
   // Imagen principal
   const heroImage = pack?.coverImageUrl ?? (pack?.image1 ?? null);
+
+  // ViewContent: se dispara cuando el pack carga y hay consentimiento
+  useEffect(() => {
+    if (!hasConsent || !pack?.id) return;
+    trackEvent('ViewContent', {
+      content_ids: [String(pack.id)],
+      content_name: pack.title,
+      content_type: 'product',
+      value: basePrice,
+      currency: 'EUR',
+    }).catch(() => {});
+  }, [hasConsent, pack?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
     return (
