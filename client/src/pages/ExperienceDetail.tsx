@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useState, useEffect } from "react";
 import { Link, useParams } from "wouter";
 import {
   ChevronRight, Star, Clock, Users, MapPin, Shield, CheckCircle,
@@ -6,6 +6,8 @@ import {
   ShoppingCart, Tag, ChevronDown, AlarmClock,
 } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
+import { trackEvent } from "@/lib/meta-pixel/client";
 import { DiscountRibbon, getDiscountedPrice } from "@/components/DiscountRibbon";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +45,7 @@ export default function ExperienceDetail() {
   const [persons, setPersons] = useState(2);
   const [selectedDate, setSelectedDate] = useState("");
   const { addItem, openCart } = useCart();
+  const hasConsent = useMarketingConsent();
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", date: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(undefined);
@@ -71,6 +74,9 @@ export default function ExperienceDetail() {
     onSuccess: () => {
       toast.success("¡Solicitud enviada! Nos pondremos en contacto contigo pronto.");
       setShowBookingModal(false);
+      if (hasConsent) {
+        trackEvent('Contact', { content_name: 'Experiencia' }, { email: formData.email, phone: formData.phone }).catch(() => {});
+      }
       setFormData({ name: "", email: "", phone: "", date: "", message: "" });
     },
     onError: () => {
@@ -79,6 +85,18 @@ export default function ExperienceDetail() {
   });
 
   const exp = dbExp;
+
+  // ViewContent: se dispara cuando la experiencia carga y hay consentimiento
+  useEffect(() => {
+    if (!hasConsent || !exp?.id) return;
+    trackEvent('ViewContent', {
+      content_ids: [String(exp.id)],
+      content_name: exp.title,
+      content_type: 'product',
+      value: parseFloat(String(exp.basePrice ?? '0')),
+      currency: 'EUR',
+    }).catch(() => {});
+  }, [hasConsent, exp?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Precio efectivo: variante seleccionada > precio base
   const selectedVariant = variants.find(v => v.id === selectedVariantId);

@@ -25,6 +25,7 @@ function loadConsent(): ConsentState | null {
 
 function saveConsent(state: ConsentState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  window.dispatchEvent(new Event('cookieConsentChanged'));
 }
 
 export default function CookieBanner() {

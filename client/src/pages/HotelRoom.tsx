@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRoute, Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import PublicLayout from "@/components/PublicLayout";
@@ -15,6 +15,8 @@ import {
   Moon, Minus, Plus, Phone, Mail, User, X,
 } from "lucide-react";
 import { ReviewSection } from "@/components/ReviewSection";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
+import { trackEvent } from "@/lib/meta-pixel/client";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function todayStr() {
@@ -373,6 +375,19 @@ export default function HotelRoom() {
   const [calendarSelectMode, setCalendarSelectMode] = useState<"checkin" | "checkout">("checkin");
 
   const nights = calcNights(checkIn, checkOut);
+  const hasConsent = useMarketingConsent();
+
+  // ViewContent: se dispara cuando la habitación carga y hay consentimiento
+  useEffect(() => {
+    if (!hasConsent || !room?.id) return;
+    trackEvent('ViewContent', {
+      content_ids: [String(room.id)],
+      content_name: room.name,
+      content_type: 'hotel',
+      value: parseFloat(String(room.basePrice ?? '0')),
+      currency: 'EUR',
+    }).catch(() => {});
+  }, [hasConsent, room?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Get price for the selected check-in date from calendar
   const { data: calendarDays } = trpc.hotel.getRoomCalendar.useQuery(

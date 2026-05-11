@@ -6,6 +6,7 @@
  */
 import express from "express";
 import { validateRedsysNotification } from "./redsys";
+import { sendCapiEvent } from "./metaCapiRoute";
 import { updateReservationPayment, getReservationByMerchantOrder, getAllReservationsByMerchantOrder, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, createVentaPerdidaLead, getGHLCredentials } from "./db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "./reav";
 import { drizzle } from "drizzle-orm/mysql2";
@@ -143,6 +144,34 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         }
       } catch (vpErr: any) {
         console.error("[Redsys IPN] Error procesando pago fallido:", vpErr.message);
+      }
+    }
+
+    // ── Meta CAPI — Purchase server-side (deduplicado con el cliente por event_id) ──
+    if (result.isAuthorized && updatedReservation?.id) {
+      try {
+        const valueEur = (updatedReservation.amountTotal ?? 0) / 100;
+        await sendCapiEvent({
+          event_name: 'Purchase',
+          event_id: `purchase_${result.merchantOrder}`,
+          event_source_url: process.env.PUBLIC_SITE_URL || 'https://nayadeexperiences.es',
+          custom_data: {
+            content_ids: [String(updatedReservation.productId ?? updatedReservation.id)],
+            content_name: (updatedReservation as any).productName ?? undefined,
+            content_type: 'product',
+            value: valueEur,
+            currency: 'EUR',
+            order_id: result.merchantOrder,
+            num_items: (updatedReservation as any).people ?? 1,
+          },
+          user_data: {
+            email: updatedReservation.customerEmail ?? undefined,
+            phone: updatedReservation.customerPhone ?? undefined,
+            country: 'ES',
+          },
+        });
+      } catch (capiErr: any) {
+        console.error('[Meta CAPI] Failed to send Purchase from IPN:', capiErr.message);
       }
     }
 

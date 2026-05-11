@@ -4,10 +4,12 @@
  * Muestra todos los artículos del carrito, permite editar datos del cliente
  * y lanza el pago Redsys con un único formulario POST.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { useCart } from "@/contexts/CartContext";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
+import { trackEvent } from "@/lib/meta-pixel/client";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +34,8 @@ function formatDate(dateStr: string): string {
 export default function Checkout() {
   const { items, totalItems, totalEstimated, removeItem, clearCart } = useCart();
   const [, navigate] = useLocation();
+  const hasConsent = useMarketingConsent();
+  const initiateCheckoutFired = useRef(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -79,6 +83,18 @@ export default function Checkout() {
   async function handlePay() {
     setSubmitError(null);
     if (!validate()) return;
+
+    // InitiateCheckout — se dispara una sola vez cuando el usuario pulsa "Pagar"
+    if (hasConsent && !initiateCheckoutFired.current) {
+      initiateCheckoutFired.current = true;
+      trackEvent('InitiateCheckout', {
+        content_ids: items.map(i => String(i.productId)),
+        contents: items.map(i => ({ id: String(i.productId), quantity: i.people, item_price: i.pricePerPerson })),
+        num_items: items.length,
+        value: finalTotal,
+        currency: 'EUR',
+      }, { email: email.trim() }).catch(() => {});
+    }
 
     try {
       const result = await cartCheckout.mutateAsync({
