@@ -99,7 +99,7 @@ export default function LegoPackDetail() {
   const visibleLines = (pricing?.lines ?? []).filter((l) => l.isClientVisible);
 
   // Imagen principal
-  const heroImage = pack?.image1 ?? (pack?.gallery?.[0] ?? null);
+  const heroImage = pack?.coverImageUrl ?? (pack?.image1 ?? null);
 
   if (isLoading) {
     return (
