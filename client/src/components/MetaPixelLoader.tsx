@@ -12,6 +12,7 @@ export function MetaPixelLoader() {
   const hasConsent = useMarketingConsent();
 
   useEffect(() => {
+    console.log('[Meta Pixel] VITE_META_PIXEL_ID =', import.meta.env.VITE_META_PIXEL_ID, '| hasConsent =', hasConsent);
     if (!hasConsent) return;
     if (!PIXEL_ID) {
       if (import.meta.env.DEV) {
