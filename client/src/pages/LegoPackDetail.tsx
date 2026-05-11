@@ -109,7 +109,7 @@ export default function LegoPackDetail() {
 
   if (isLoading) {
     return (
-      <PublicLayout>
+      <PublicLayout forcePublicLight>
         <div className="container max-w-6xl py-12 grid lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-4">
             <Skeleton className="h-72 w-full rounded-2xl" />
@@ -125,7 +125,7 @@ export default function LegoPackDetail() {
 
   if (!pack) {
     return (
-      <PublicLayout>
+      <PublicLayout forcePublicLight>
         <div className="container py-20 text-center text-slate-500">
           <p className="text-lg">Lego Pack no encontrado.</p>
           <Link href="/lego-packs">
@@ -137,7 +137,7 @@ export default function LegoPackDetail() {
   }
 
   return (
-    <PublicLayout>
+    <PublicLayout forcePublicLight>
       {/* Hero — foto de fondo como en PackDetail */}
       <section className="relative text-white overflow-hidden" style={{ minHeight: '420px' }}>
         <div className="absolute inset-0">
