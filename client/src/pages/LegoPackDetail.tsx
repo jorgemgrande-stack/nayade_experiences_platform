@@ -481,7 +481,7 @@ export default function LegoPackDetail() {
                     key={i}
                     src={img}
                     alt={`${pack.title} ${i + 1}`}
-                    className="w-full aspect-video object-cover rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
+                    className="w-full aspect-square object-cover rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
                   />
                 ))}
               </div>
