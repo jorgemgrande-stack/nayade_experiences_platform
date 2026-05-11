@@ -462,24 +462,33 @@ export default function LegoPackDetail() {
         </div>
       </section>
 
-      {/* Galería adicional */}
-      {pack.gallery && (pack.gallery as string[]).length > 1 && (
-        <section className="py-10 bg-slate-50 border-t border-slate-100">
-          <div className="container max-w-6xl">
-            <h2 className="text-2xl font-black text-slate-900 mb-6">Galería</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {(pack.gallery as string[]).map((img: string, i: number) => (
-                <img
-                  key={i}
-                  src={img}
-                  alt={`${pack.title} ${i + 1}`}
-                  className="w-full aspect-square object-cover rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
-                />
-              ))}
+      {/* Galería adicional — image1..4 del gestor */}
+      {(() => {
+        const galleryImgs = [
+          (pack as any).image1,
+          (pack as any).image2,
+          (pack as any).image3,
+          (pack as any).image4,
+        ].filter((img): img is string => !!img);
+        if (galleryImgs.length === 0) return null;
+        return (
+          <section className="py-10 bg-slate-50 border-t border-slate-100">
+            <div className="container max-w-6xl">
+              <h2 className="text-2xl font-black text-slate-900 mb-6">Galería</h2>
+              <div className={`grid gap-3 ${galleryImgs.length === 1 ? "grid-cols-1 max-w-lg" : galleryImgs.length === 2 ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3"}`}>
+                {galleryImgs.map((img, i) => (
+                  <img
+                    key={i}
+                    src={img}
+                    alt={`${pack.title} ${i + 1}`}
+                    className="w-full aspect-video object-cover rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        );
+      })()}
 
       {/* Reseñas de clientes */}
       <section className="py-12 bg-muted border-t border-border">
