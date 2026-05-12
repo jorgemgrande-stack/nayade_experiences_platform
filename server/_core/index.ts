@@ -143,6 +143,18 @@ async function startServer() {
   app.use("/api/trpc/submitLead", leadRateLimit);
   app.use("/api/trpc/submitBudget", leadRateLimit);
 
+  // ── AUDIT: log ALL incoming requests to /api/redsys/* ────────────────────────
+  // Este middleware corre ANTES del rate-limiter para capturar si la petición llega.
+  app.use("/api/redsys", (req, _res, next) => {
+    const ts = new Date().toISOString();
+    const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip;
+    const bodyKeys = req.body ? Object.keys(req.body) : [];
+    console.log(
+      `[Redsys AUDIT] ${ts} | ${req.method} ${req.path} | IP=${ip} | CF-IP=${req.headers["cf-connecting-ip"] ?? "-"} | CT=${req.headers["content-type"] ?? "-"} | CL=${req.headers["content-length"] ?? "-"} | BodyKeys=[${bodyKeys.join(",")}]`
+    );
+    next();
+  });
+
   // Rate limiting en endpoints de pago Redsys (30 req/min por IP)
   app.use("/api/redsys/notification", redsysRateLimit);
   app.use("/api/redsys/restaurant-notification", redsysRateLimit);

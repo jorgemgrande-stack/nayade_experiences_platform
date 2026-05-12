@@ -36,17 +36,47 @@ const redsysRouter = express.Router();
  * POST /api/redsys/notification
  * Redsys envía: Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature
  */
+/**
+ * GET /api/redsys/health — Test de conectividad. Permite verificar desde Redsys AdminCanales
+ * o cualquier herramienta que el endpoint de notificación es accesible.
+ */
+redsysRouter.get("/api/redsys/health", (_req, res) => {
+  res.json({ ok: true, timestamp: new Date().toISOString(), service: "redsys-notification" });
+});
+
+/**
+ * POST /api/redsys/echo — Echo sin validación de firma para test de conectividad.
+ * Loguea el contenido completo del POST y responde "OK".
+ * Útil para configurar temporalmente en AdminCanales y verificar que Redsys puede llegar.
+ */
+redsysRouter.post("/api/redsys/echo", express.urlencoded({ extended: true }), (req, res) => {
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip;
+  console.log("[Redsys ECHO] POST recibido:", {
+    ip,
+    contentType: req.headers["content-type"],
+    bodyKeys: Object.keys(req.body ?? {}),
+    Ds_SignatureVersion: (req.body as any)?.Ds_SignatureVersion,
+    Ds_MerchantParameters: ((req.body as any)?.Ds_MerchantParameters as string | undefined)?.slice(0, 80),
+    Ds_Signature: ((req.body as any)?.Ds_Signature as string | undefined)?.slice(0, 20),
+  });
+  res.send("OK");
+});
+
 redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: true }), async (req, res) => {
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip;
   const { Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature } = req.body;
 
   console.log("[Redsys IPN] Notificación recibida:", {
+    ip,
+    contentType: req.headers["content-type"],
+    bodyKeys: Object.keys(req.body ?? {}),
     Ds_SignatureVersion,
-    Ds_MerchantParameters: Ds_MerchantParameters?.slice(0, 50) + "...",
+    Ds_MerchantParameters: Ds_MerchantParameters?.slice(0, 80) + "...",
     Ds_Signature: Ds_Signature?.slice(0, 20) + "...",
   });
 
   if (!Ds_SignatureVersion || !Ds_MerchantParameters || !Ds_Signature) {
-    console.error("[Redsys IPN] Parámetros faltantes en la notificación");
+    console.error("[Redsys IPN] Parámetros faltantes en la notificación — bodyKeys:", Object.keys(req.body ?? {}));
     return res.status(400).send("KO");
   }
 
