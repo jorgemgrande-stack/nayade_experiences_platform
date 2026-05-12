@@ -855,25 +855,45 @@ redsysRouter.get("/api/admin/diagnose-reservation/:reservationNumber", async (re
     const [invoice] = await _db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status })
       .from(invoices).where(eq(invoices.reservationId, resv.id)).limit(1);
 
-    let client: { id: number; name: string | null; email: string | null; ghlContactId: string | null } | null = null;
+    let client: { id: number; name: string; email: string; leadId: number | null } | null = null;
+    let ghlContactId: string | null = null;
     if (resv.customerEmail) {
       const [c] = await _db
-        .select({ id: clients.id, name: clients.name, email: clients.email, ghlContactId: (clients as any).ghlContactId })
+        .select({ id: clients.id, name: clients.name, email: clients.email, leadId: clients.leadId })
         .from(clients).where(eq(clients.email, resv.customerEmail)).limit(1);
       client = c ?? null;
+      // ghlContactId vive en leads, no en clients
+      if (c?.leadId) {
+        const [lead] = await _db
+          .select({ ghlContactId: leads.ghlContactId })
+          .from(leads).where(eq(leads.id, c.leadId)).limit(1);
+        ghlContactId = lead?.ghlContactId ?? null;
+      }
+      // También intentar buscar lead directo por email (por si no hay leadId en client)
+      if (!ghlContactId && resv.customerEmail) {
+        const [leadByEmail] = await _db
+          .select({ ghlContactId: leads.ghlContactId })
+          .from(leads).where(eq(leads.email, resv.customerEmail)).limit(1);
+        ghlContactId = leadByEmail?.ghlContactId ?? null;
+      }
     }
 
-    // Determinar si se envió a GHL
+    const channel = (resv as any).channel as string | null;
     const ghlSent = {
-      tagReservaConfirmada: !!client?.ghlContactId && resv.status === "paid",
-      reason: !client?.ghlContactId
-        ? "Sin ghlContactId en cliente — nunca se envió el tag reserva_confirmada"
-        : (resv as any).quoteId
-          ? "Presupuesto — GHL sync por ruta de presupuesto (syncLeadUrlsToGHL)"
-          : (resv as any).channel === "ONLINE_DIRECTO"
-            ? "ONLINE_DIRECTO — postConfirmOperation llamado sin ghlContactId → tag NO enviado"
-            : "Canal desconocido",
+      ghlContactId,
+      tagReservaConfirmadaEnviado: false,
+      reason: !ghlContactId
+        ? "Sin ghlContactId — el cliente no tiene lead vinculado a GHL. Tag reserva_confirmada NO enviado."
+        : resv.quoteId
+          ? "Reserva de presupuesto — GHL sync via syncLeadUrlsToGHL (quote path)"
+          : channel === "ONLINE_DIRECTO"
+            ? "BUG: ONLINE_DIRECTO — postConfirmOperation se llama sin ghlContactId → tag reserva_confirmada NO enviado aunque el cliente tenga GHL"
+            : `Canal '${channel}' — revisar si postConfirmOperation incluye ghlContactId`,
     };
+    // Para presupuestos paid, la URL de factura/presupuesto SÍ se sincroniza
+    if (resv.quoteId && resv.status === "paid" && ghlContactId) {
+      ghlSent.tagReservaConfirmadaEnviado = true;
+    }
 
     return res.json({
       reservationNumber,
@@ -893,7 +913,7 @@ redsysRouter.get("/api/admin/diagnose-reservation/:reservationNumber", async (re
       booking: booking ?? null,
       transaction: transaction ?? null,
       invoice: invoice ?? null,
-      client,
+      client: client ? { ...client, ghlContactId } : null,
       ghlSent,
     });
   } catch (e: any) {
