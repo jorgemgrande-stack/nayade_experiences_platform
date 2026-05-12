@@ -836,6 +836,72 @@ redsysRouter.get("/api/admin/diagnose-order/:merchantOrder", async (req, res) =>
 });
 
 /**
+ * GET /api/admin/diagnose-reservation/:reservationNumber?token=<RECOVERY_TOKEN>
+ * Busca una reserva por su reservationNumber (ej: RES-2026-0121) e incluye ghlContactId del cliente.
+ */
+redsysRouter.get("/api/admin/diagnose-reservation/:reservationNumber", async (req, res) => {
+  if (!requireRecoveryToken(req, res)) return;
+  const { reservationNumber } = req.params;
+  try {
+    const [resv] = await _db.select().from(reservations)
+      .where(eq((reservations as any).reservationNumber, reservationNumber))
+      .limit(1);
+    if (!resv) return res.status(404).json({ error: "Reserva no encontrada", reservationNumber });
+
+    const [booking] = await _db.select({ id: bookings.id, status: bookings.status, bookingNumber: bookings.bookingNumber })
+      .from(bookings).where(eq(bookings.reservationId, resv.id)).limit(1);
+    const [transaction] = await _db.select({ id: transactions.id, transactionNumber: transactions.transactionNumber })
+      .from(transactions).where(eq((transactions as any).reservationId, resv.id)).limit(1);
+    const [invoice] = await _db.select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status })
+      .from(invoices).where(eq(invoices.reservationId, resv.id)).limit(1);
+
+    let client: { id: number; name: string | null; email: string | null; ghlContactId: string | null } | null = null;
+    if (resv.customerEmail) {
+      const [c] = await _db
+        .select({ id: clients.id, name: clients.name, email: clients.email, ghlContactId: (clients as any).ghlContactId })
+        .from(clients).where(eq(clients.email, resv.customerEmail)).limit(1);
+      client = c ?? null;
+    }
+
+    // Determinar si se envió a GHL
+    const ghlSent = {
+      tagReservaConfirmada: !!client?.ghlContactId && resv.status === "paid",
+      reason: !client?.ghlContactId
+        ? "Sin ghlContactId en cliente — nunca se envió el tag reserva_confirmada"
+        : (resv as any).quoteId
+          ? "Presupuesto — GHL sync por ruta de presupuesto (syncLeadUrlsToGHL)"
+          : (resv as any).channel === "ONLINE_DIRECTO"
+            ? "ONLINE_DIRECTO — postConfirmOperation llamado sin ghlContactId → tag NO enviado"
+            : "Canal desconocido",
+    };
+
+    return res.json({
+      reservationNumber,
+      reservation: {
+        id: resv.id,
+        merchantOrder: resv.merchantOrder,
+        status: resv.status,
+        channel: (resv as any).channel,
+        quoteId: resv.quoteId,
+        productName: resv.productName,
+        customerName: resv.customerName,
+        customerEmail: resv.customerEmail,
+        amountPaid: resv.amountPaid,
+        amountTotal: resv.amountTotal,
+        paidAt: resv.paidAt,
+      },
+      booking: booking ?? null,
+      transaction: transaction ?? null,
+      invoice: invoice ?? null,
+      client,
+      ghlSent,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+/**
  * POST /api/admin/recover-order/:merchantOrder?token=<RECOVERY_TOKEN>
  * Re-ejecuta el downstream del IPN para una orden pagada cuyo downstream falló.
  * IDEMPOTENTE: no duplica bookings ni transacciones ya existentes.
