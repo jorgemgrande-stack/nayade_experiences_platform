@@ -994,6 +994,52 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
   }
 });
 
+/**
+ * POST /reserva/ok — Redsys redirige aquí tras el pago exitoso.
+ * Redsys envía un POST con Ds_MerchantParameters (base64 JSON) que contiene Ds_Order.
+ * Extraemos el order y hacemos redirect 303 al SPA con ?order= para que React lo procese.
+ * Esto resuelve el caso donde AdminCanales tiene una URL OK sin parámetros dinámicos.
+ */
+redsysRouter.post("/reserva/ok", express.urlencoded({ extended: true }), (req, res) => {
+  const { Ds_MerchantParameters } = req.body as Record<string, string | undefined>;
+  console.log("[Redsys Return OK] POST recibido, Ds_MerchantParameters presente:", !!Ds_MerchantParameters);
+  if (Ds_MerchantParameters) {
+    try {
+      const decoded = JSON.parse(Buffer.from(Ds_MerchantParameters, "base64").toString("utf-8")) as Record<string, string>;
+      const order = decoded.Ds_Order;
+      if (order) {
+        console.log("[Redsys Return OK] Redirigiendo a /reserva/ok?order=", order);
+        return res.redirect(303, `/reserva/ok?order=${encodeURIComponent(order)}`);
+      }
+    } catch (e) {
+      console.error("[Redsys Return OK] Error decodificando Ds_MerchantParameters:", e);
+    }
+  }
+  // Sin order extraíble — redirigir igualmente al SPA (mostrará "Enlace inválido")
+  return res.redirect(303, "/reserva/ok");
+});
+
+/**
+ * POST /reserva/error — Redsys redirige aquí tras el pago fallido o cancelado.
+ */
+redsysRouter.post("/reserva/error", express.urlencoded({ extended: true }), (req, res) => {
+  const { Ds_MerchantParameters } = req.body as Record<string, string | undefined>;
+  console.log("[Redsys Return KO] POST recibido, Ds_MerchantParameters presente:", !!Ds_MerchantParameters);
+  if (Ds_MerchantParameters) {
+    try {
+      const decoded = JSON.parse(Buffer.from(Ds_MerchantParameters, "base64").toString("utf-8")) as Record<string, string>;
+      const order = decoded.Ds_Order;
+      if (order) {
+        console.log("[Redsys Return KO] Redirigiendo a /reserva/error?order=", order);
+        return res.redirect(303, `/reserva/error?order=${encodeURIComponent(order)}`);
+      }
+    } catch (e) {
+      console.error("[Redsys Return KO] Error decodificando Ds_MerchantParameters:", e);
+    }
+  }
+  return res.redirect(303, "/reserva/error");
+});
+
 export default redsysRouter;
 
 
