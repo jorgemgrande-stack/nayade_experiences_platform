@@ -194,6 +194,8 @@ export function buildRedsysForm(params: RedsysPaymentParams): RedsysFormData {
     merchantCode,
     terminal,
     notifyUrl: params.notifyUrl,
+    okUrl: params.okUrl,
+    koUrl: params.koUrl,
     parametersPreview: merchantParamsBase64.slice(0, 60) + "...",
     signaturePreview: signature.slice(0, 20) + "...",
   });
