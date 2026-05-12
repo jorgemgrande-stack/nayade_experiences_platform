@@ -3,7 +3,7 @@
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */
 
-const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
+const SITE_URL = (process.env.APP_URL ?? 'https://www.nayadeexperiences.es').trim();
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";

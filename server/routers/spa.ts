@@ -1,6 +1,6 @@
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
 
-const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
+const SITE_URL = (process.env.APP_URL ?? 'https://www.nayadeexperiences.es').trim();
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {

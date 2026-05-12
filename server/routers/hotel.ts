@@ -14,7 +14,7 @@ import { createReservation } from "../db";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
-const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
+const SITE_URL = (process.env.APP_URL ?? 'https://www.nayadeexperiences.es').trim();
 
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]).use(async ({ ctx, next }) => {
   await assertModuleEnabled("hotel_module_enabled");

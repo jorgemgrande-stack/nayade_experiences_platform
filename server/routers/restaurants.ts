@@ -17,7 +17,7 @@ import {
 import { notifyOwner } from "../_core/notification";
 import { buildRedsysForm, generateMerchantOrder, getRedsysUrl } from "../redsys";
 
-const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
+const SITE_URL = (process.env.APP_URL ?? 'https://www.nayadeexperiences.es').trim();
 import { buildRestaurantPaymentLinkHtml, buildRestaurantConfirmHtml } from "../emailTemplates";
 import { sendManagedEmail } from "../emailManager";
 

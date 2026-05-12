@@ -1,6 +1,6 @@
 import { COOKIE_NAME } from "@shared/const";
 
-const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
+const SITE_URL = (process.env.APP_URL ?? 'https://www.nayadeexperiences.es').trim();
 import JSZip from "jszip";
 import {
   getActiveGalleryItems,
