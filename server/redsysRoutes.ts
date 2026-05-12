@@ -84,11 +84,12 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     }
 
     // Actualización atómica: solo procede si la reserva sigue en pending_payment.
-    // affectedRows === 0 significa IPN duplicada o ya procesada — responder OK sin downstream.
+    // affectedRows === 0 puede significar IPN duplicada O race condition con el
+    // abandoned-checkout job (que canceló la reserva mientras el cliente estaba en Redsys).
     const newStatus = result.isAuthorized ? "paid" : "failed";
     const redsysResponseJson = JSON.stringify(result.rawData);
 
-    const { affectedRows } = await updateReservationPayment(
+    let { affectedRows } = await updateReservationPayment(
       result.merchantOrder,
       newStatus,
       redsysResponseJson,
@@ -97,8 +98,32 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     );
 
     if (affectedRows === 0) {
-      console.log(`[Redsys IPN] IPN duplicada o ya procesada para ${result.merchantOrder} — respondiendo OK sin downstream`);
-      return res.send("OK");
+      if (result.isAuthorized) {
+        // Comprobar si es race condition: el abandoned-checkout job canceló la reserva
+        // mientras el cliente estaba en Redsys pagando (más de 10 min en el formulario).
+        const cancelledReservation = await getReservationByMerchantOrder(result.merchantOrder);
+        if (cancelledReservation?.status === "cancelled") {
+          const now = Date.now();
+          await _db.update(reservations).set({
+            status: "paid",
+            amountPaid: result.amount,
+            paidAt: now,
+            statusReservation: "CONFIRMADA",
+            statusPayment: "PAGADO",
+            redsysResponse: redsysResponseJson,
+            redsysDsResponse: result.responseCode,
+            updatedAt: now,
+          } as any).where(eq(reservations.merchantOrder, result.merchantOrder));
+          affectedRows = 1;
+          console.log(`[Redsys IPN] Race condition resuelta: reserva ${result.merchantOrder} fue cancelada por cleanup job pero Redsys confirmó el pago — restaurada a paid`);
+        } else {
+          console.log(`[Redsys IPN] IPN duplicada o ya procesada para ${result.merchantOrder} (estado: ${cancelledReservation?.status ?? "no encontrada"}) — respondiendo OK sin downstream`);
+          return res.send("OK");
+        }
+      } else {
+        console.log(`[Redsys IPN] Pago fallido IPN duplicada para ${result.merchantOrder} — respondiendo OK sin downstream`);
+        return res.send("OK");
+      }
     }
 
     console.log(`[Redsys IPN] Reserva ${result.merchantOrder} actualizada a: ${newStatus}`);

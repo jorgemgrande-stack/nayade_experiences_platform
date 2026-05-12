@@ -1450,7 +1450,7 @@ async function wipeTestDataIfRequested() {
 // Esto cubre el caso en que el cliente abandona el pago sin que Redsys envíe IPN.
 function startAbandonedCheckoutCleanup() {
   const CHECK_INTERVAL_MS        = 10 * 60 * 1000;  // 10 min
-  const STALE_DIRECT_MS          = 10 * 60 * 1000;  // Flujo 2: compra directa → Venta Perdida tras 10 min
+  const STALE_DIRECT_MS          = 90 * 60 * 1000;  // Flujo 2: compra directa → Venta Perdida tras 90 min (Redsys expira a los 30 min; 90 min garantiza que el IPN llegó)
   const STALE_QUOTE_MS           = 60 * 60 * 1000;  // Flujo 1: presupuesto → pago_fallido tras 60 min
 
   let _abandonedPool: any = null;
