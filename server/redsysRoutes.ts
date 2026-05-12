@@ -24,7 +24,7 @@ import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 import { generateDocumentNumber } from "./documentNumbers";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
-import { syncLeadUrlsToGHL } from "./ghl";
+import { syncLeadUrlsToGHL, createGHLContact, updateGHLContact, triggerGHLWorkflow } from "./ghl";
 
 // Pool de BD compartido para todo el módulo — evita crear/destruir conexiones por cada IPN
 const _sharedPool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
@@ -528,6 +528,51 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             console.error(`[Redsys IPN] Error al crear expediente REAV para reserva ${resv.id}:`, reavErr);
           }
         }
+      }
+    }
+
+    // ── GHL: crear/actualizar contacto para compras online directas ──────────
+    // Para reservas ONLINE_DIRECTO sin quoteId, el cliente puede no tener GHL todavía.
+    // Creamos/actualizamos el contacto y disparamos el workflow configurado en GHL_RESERVATION_WEBHOOK_URL.
+    if (result.isAuthorized) {
+      try {
+        const ghlCreds = await getGHLCredentials();
+        if (ghlCreds) {
+          const allOnlineReservations = await getAllReservationsByMerchantOrder(result.merchantOrder);
+          for (const resv of allOnlineReservations) {
+            if ((resv as any).channel !== "ONLINE_DIRECTO" || resv.quoteId) continue;
+            const ghlContactId = await createGHLContact({
+              name: resv.customerName ?? "Cliente",
+              email: resv.customerEmail ?? undefined,
+              phone: resv.customerPhone ?? undefined,
+              tags: ["reserva_confirmada", "compra_online"],
+            }, ghlCreds);
+            if (ghlContactId) {
+              console.log(`[Redsys IPN] GHL contacto upserted para ${resv.customerEmail}: ${ghlContactId}`);
+              const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+              if (webhookUrl) {
+                await triggerGHLWorkflow(webhookUrl, {
+                  contactId: ghlContactId,
+                  reservationId: resv.id,
+                  reservationNumber: (resv as any).reservationNumber,
+                  merchantOrder: resv.merchantOrder,
+                  productName: resv.productName,
+                  bookingDate: resv.bookingDate,
+                  people: resv.people,
+                  amountPaid: resv.amountPaid ?? resv.amountTotal,
+                  customerName: resv.customerName,
+                  customerEmail: resv.customerEmail,
+                  customerPhone: resv.customerPhone,
+                });
+                console.log(`[Redsys IPN] GHL workflow disparado para ${resv.merchantOrder}`);
+              }
+            }
+          }
+        } else {
+          console.log("[Redsys IPN] GHL no configurado — saltando integración GHL para compra online");
+        }
+      } catch (ghlErr: any) {
+        console.error("[Redsys IPN] Error en integración GHL online:", ghlErr.message);
       }
     }
 
