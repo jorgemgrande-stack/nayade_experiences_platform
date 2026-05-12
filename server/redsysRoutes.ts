@@ -11,7 +11,7 @@ import { updateReservationPayment, getReservationByMerchantOrder, getAllReservat
 import { calcularREAVSimple, validarConfiguracionREAV } from "./reav";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { quotes, leads, invoices, reservations, transactions, paymentInstallments } from "../drizzle/schema";
+import { quotes, leads, invoices, reservations, transactions, paymentInstallments, bookings, clients } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { sendReservationPaidNotifications, sendReservationFailedNotifications } from "./reservationEmails";
 import { getBookingByMerchantOrder, updateBooking, updateBookingPaymentAtomic, addBookingLog } from "./restaurantsDb";
@@ -646,6 +646,286 @@ redsysRouter.post("/api/redsys/restaurant-notification", express.urlencoded({ ex
   } catch (error) {
     console.error("[Redsys Restaurant IPN] Error:", error);
     return res.status(500).send("KO");
+  }
+});
+
+// ─── DIAGNÓSTICO Y RECUPERACIÓN ADMINISTRATIVA ────────────────────────────────
+
+function requireRecoveryToken(req: express.Request, res: express.Response): boolean {
+  const RECOVERY_TOKEN = process.env.RECOVERY_TOKEN;
+  if (!RECOVERY_TOKEN || req.query.token !== RECOVERY_TOKEN) {
+    res.status(401).json({ error: "Unauthorized — falta o el token es incorrecto" });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * GET /api/admin/diagnose-order/:merchantOrder?token=<RECOVERY_TOKEN>
+ * Devuelve el estado completo de una orden: reserva, booking, transacción, factura, cliente.
+ */
+redsysRouter.get("/api/admin/diagnose-order/:merchantOrder", async (req, res) => {
+  if (!requireRecoveryToken(req, res)) return;
+  const { merchantOrder } = req.params;
+
+  try {
+    const allReservations = await _db.select().from(reservations)
+      .where(eq(reservations.merchantOrder, merchantOrder));
+
+    const reservationDetails = await Promise.all(allReservations.map(async (resv) => {
+      const [booking] = await _db
+        .select({ id: bookings.id, status: bookings.status, bookingNumber: bookings.bookingNumber, createdAt: bookings.createdAt })
+        .from(bookings)
+        .where(eq(bookings.reservationId, resv.id))
+        .limit(1);
+
+      const [transaction] = await _db
+        .select({ id: transactions.id, transactionNumber: transactions.transactionNumber, amount: transactions.amount })
+        .from(transactions)
+        .where(eq((transactions as any).reservationId, resv.id))
+        .limit(1);
+
+      const [invoice] = await _db
+        .select({ id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status })
+        .from(invoices)
+        .where(eq(invoices.reservationId, resv.id))
+        .limit(1);
+
+      let client = null;
+      if (resv.customerEmail) {
+        const [c] = await _db
+          .select({ id: clients.id, name: clients.name, email: clients.email })
+          .from(clients)
+          .where(eq(clients.email, resv.customerEmail))
+          .limit(1);
+        client = c ?? null;
+      }
+
+      return {
+        reservation: {
+          id: resv.id,
+          merchantOrder: resv.merchantOrder,
+          status: resv.status,
+          statusReservation: resv.statusReservation,
+          statusPayment: resv.statusPayment,
+          productName: resv.productName,
+          productId: resv.productId,
+          customerName: resv.customerName,
+          customerEmail: resv.customerEmail,
+          amountTotal: resv.amountTotal,
+          amountPaid: resv.amountPaid,
+          paidAt: resv.paidAt,
+          quoteId: resv.quoteId,
+          quoteSource: resv.quoteSource,
+          invoiceId: resv.invoiceId,
+          invoiceNumber: resv.invoiceNumber,
+          bookingDate: resv.bookingDate,
+          people: resv.people,
+          channel: resv.channel,
+        },
+        booking: booking ?? null,
+        transaction: transaction ?? null,
+        invoice: invoice ?? null,
+        client,
+        missing: {
+          booking: !booking,
+          transaction: !transaction,
+          invoice: !invoice,
+          client: !client,
+        },
+      };
+    }));
+
+    const restaurantBooking = await getBookingByMerchantOrder(merchantOrder);
+
+    return res.json({
+      merchantOrder,
+      reservations: reservationDetails,
+      restaurantBooking: restaurantBooking ? {
+        id: (restaurantBooking as any).id,
+        locator: (restaurantBooking as any).locator,
+        paymentStatus: (restaurantBooking as any).paymentStatus,
+        status: (restaurantBooking as any).status,
+        guestName: (restaurantBooking as any).guestName,
+        guestEmail: (restaurantBooking as any).guestEmail,
+        depositAmount: (restaurantBooking as any).depositAmount,
+      } : null,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/admin/recover-order/:merchantOrder?token=<RECOVERY_TOKEN>
+ * Re-ejecuta el downstream del IPN para una orden pagada cuyo downstream falló.
+ * IDEMPOTENTE: no duplica bookings ni transacciones ya existentes.
+ */
+redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) => {
+  if (!requireRecoveryToken(req, res)) return;
+  const { merchantOrder } = req.params;
+
+  const log: string[] = [];
+
+  try {
+    const allReservations = await _db.select().from(reservations)
+      .where(eq(reservations.merchantOrder, merchantOrder));
+
+    if (allReservations.length === 0) {
+      return res.status(404).json({ error: `No se encontró ninguna reserva con merchantOrder=${merchantOrder}` });
+    }
+
+    const primary = allReservations[0];
+
+    if (primary.status !== "paid") {
+      return res.status(400).json({
+        error: `La reserva no está en estado paid. Estado actual: ${primary.status}`,
+        reservation: { id: primary.id, status: primary.status },
+      });
+    }
+
+    // 1. Upsert cliente en CRM
+    if (primary.customerName) {
+      await upsertClientFromReservation({
+        name: primary.customerName,
+        email: primary.customerEmail ?? null,
+        phone: primary.customerPhone ?? null,
+        source: "redsys",
+      });
+      log.push(`✅ Cliente procesado: ${primary.customerName} (${primary.customerEmail ?? "sin email"})`);
+    }
+
+    // 2. Flujo presupuesto (si aplica y no procesado aún)
+    const isPresupuesto = primary.quoteSource === "presupuesto" && !!primary.quoteId;
+    if (isPresupuesto) {
+      const [quote] = await _db.select().from(quotes).where(eq(quotes.id, primary.quoteId!));
+      if (!quote) {
+        log.push(`⚠️ Presupuesto quoteId=${primary.quoteId} no encontrado`);
+      } else if (quote.paidAt) {
+        log.push(`ℹ️ Presupuesto ${quote.quoteNumber} ya estaba marcado como pagado (paidAt=${quote.paidAt})`);
+      } else {
+        try {
+          const [lead] = await _db.select().from(leads).where(eq(leads.id, quote.leadId)).limit(1);
+          const now = new Date();
+          const invoiceNumber = await generateDocumentNumber("factura", "recovery:admin", "system");
+          const items = (quote.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[]) ?? [];
+          const total = Number(quote.total);
+          const subtotal = Number(quote.subtotal);
+          const bd = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
+          const taxAmount = totalTaxAmount(bd);
+          const taxRate = bd.length === 1 ? bd[0].rate : 21;
+          const mainProductId = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? primary.productId ?? 0;
+
+          const [invRes] = await _db.insert(invoices).values({
+            invoiceNumber,
+            quoteId: quote.id,
+            reservationId: primary.id,
+            clientName: lead?.name ?? primary.customerName,
+            clientEmail: lead?.email ?? primary.customerEmail ?? "",
+            clientPhone: lead?.phone ?? primary.customerPhone,
+            itemsJson: items as any,
+            subtotal: String(subtotal),
+            taxRate: String(taxRate),
+            taxAmount: String(taxAmount),
+            total: String(total),
+            status: "cobrada",
+            paymentMethod: "tarjeta_redsys",
+            issuedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const invoiceId = (invRes as { insertId: number }).insertId;
+
+          await _db.update(reservations).set({
+            invoiceId,
+            invoiceNumber,
+            updatedAt: Date.now(),
+          } as any).where(eq(reservations.id, primary.id));
+
+          await _db.update(quotes).set({
+            status: "aceptado",
+            paidAt: now,
+            redsysOrderId: merchantOrder,
+            invoiceNumber,
+            paymentLinkToken: null,
+            updatedAt: now,
+          }).where(eq(quotes.id, quote.id));
+
+          if (lead) {
+            await _db.update(leads).set({ opportunityStatus: "ganada", status: "convertido", updatedAt: now })
+              .where(eq(leads.id, lead.id));
+          }
+
+          log.push(`✅ Factura creada: ${invoiceNumber}`);
+          log.push(`✅ Presupuesto ${quote.quoteNumber} marcado aceptado/pagado`);
+
+          const clientEmail = lead?.email ?? primary.customerEmail;
+          if (clientEmail) {
+            const COPY_EMAIL = await getBusinessEmail("reservations");
+            const html = buildConfirmationHtml({
+              clientName: lead?.name ?? primary.customerName,
+              reservationRef: invoiceNumber,
+              quoteNumber: quote.quoteNumber,
+              quoteTitle: quote.title ?? `Presupuesto ${quote.quoteNumber}`,
+              items,
+              subtotal: String(subtotal),
+              taxAmount: String(taxAmount),
+              total: String(total),
+              bookingDate: primary.bookingDate ?? undefined,
+              selectedTime: primary.selectedTime ?? undefined,
+              contactEmail: COPY_EMAIL,
+              contactPhone: "+34 911 67 51 89",
+            });
+            await sendManagedEmail({
+              templateKey: "confirmation",
+              triggerEvent: "redsys_payment_confirmed_recovery",
+              recipientEmail: clientEmail,
+              subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
+              html,
+              relatedEntityType: "quote",
+              relatedEntityId: quote.id,
+              quoteId: quote.id,
+              extraCc: COPY_EMAIL,
+            });
+            log.push(`✅ Email de confirmación enviado a ${clientEmail}`);
+          }
+        } catch (e: any) {
+          log.push(`❌ Error en flujo presupuesto: ${e.message}`);
+        }
+      }
+    }
+
+    // 3. Booking operativo + transacción contable para CADA reserva (idempotente)
+    for (const resv of allReservations) {
+      try {
+        const amountEuros = ((resv.amountPaid ?? resv.amountTotal) ?? 0) / 100;
+        await postConfirmOperation({
+          reservationId: resv.id,
+          productId: resv.productId,
+          productName: resv.productName,
+          serviceDate: resv.bookingDate ?? new Date().toISOString().split("T")[0],
+          people: resv.people,
+          amountCents: resv.amountPaid ?? resv.amountTotal,
+          customerName: resv.customerName,
+          customerEmail: resv.customerEmail ?? "",
+          customerPhone: resv.customerPhone,
+          totalAmount: amountEuros,
+          paymentMethod: "tarjeta_redsys",
+          saleChannel: "online",
+          reservationRef: resv.merchantOrder,
+          description: `Recuperación downstream Redsys — ${resv.merchantOrder} — ${resv.productName}`,
+          quoteId: resv.quoteId ?? null,
+          sourceChannel: "redsys",
+        });
+        log.push(`✅ postConfirmOperation ejecutado para reserva ${resv.id} (${resv.productName})`);
+      } catch (e: any) {
+        log.push(`❌ postConfirmOperation falló para reserva ${resv.id}: ${e.message}`);
+      }
+    }
+
+    return res.json({ success: true, merchantOrder, log });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message, log });
   }
 });
 
