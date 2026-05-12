@@ -70,11 +70,19 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       return res.status(400).send("KO");
     }
 
+    // RESPONDER OK INMEDIATAMENTE tras validar la firma HMAC (sin esperar BD).
+    // Redsys modo Síncrono: timeout ~10s. Si MySQL está bajo presión (OOM kills),
+    // las queries pueden tardar y Redsys descartaría la notificación definitivamente.
+    // La firma HMAC ya garantiza autenticidad del pago — el resto va en background.
+    res.send("OK");
+
+    // ── Procesamiento en background (res ya enviado) ──────────────────────────
+
     // Verificar que la reserva existe — fetch ALL para manejar carritos multi-artículo
     const allCartReservations = await getAllReservationsByMerchantOrder(result.merchantOrder);
     if (allCartReservations.length === 0) {
       console.error("[Redsys IPN] Reserva no encontrada para merchantOrder:", result.merchantOrder);
-      return res.status(404).send("KO");
+      return; // Firma válida pero sin reserva → log y salir
     }
     const reservation = allCartReservations[0];
 
@@ -84,7 +92,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     const totalExpectedCents = allCartReservations.reduce((sum, r) => sum + (r.amountTotal ?? 0), 0);
     if (result.isAuthorized && result.amount > totalExpectedCents) {
       console.error(`[Redsys IPN] Importe excede total de reservas — máx esperado: ${totalExpectedCents}, recibido: ${result.amount} — merchantOrder: ${result.merchantOrder}`);
-      return res.status(400).send("KO");
+      return; // Anomalía registrada — ya respondimos OK, firma era válida
     }
     console.log(`[Redsys IPN] Importe validado — redsys: ${result.amount}, total reservas: ${totalExpectedCents}, artículos: ${allCartReservations.length}`);
 
@@ -122,12 +130,12 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           affectedRows = 1;
           console.log(`[Redsys IPN] Race condition resuelta: reserva ${result.merchantOrder} fue cancelada por cleanup job pero Redsys confirmó el pago — restaurada a paid`);
         } else {
-          console.log(`[Redsys IPN] IPN duplicada o ya procesada para ${result.merchantOrder} (estado: ${cancelledReservation?.status ?? "no encontrada"}) — respondiendo OK sin downstream`);
-          return res.send("OK");
+          console.log(`[Redsys IPN] IPN duplicada o ya procesada para ${result.merchantOrder} (estado: ${cancelledReservation?.status ?? "no encontrada"}) — sin downstream`);
+          return; // Ya respondimos OK — nada más que hacer
         }
       } else {
-        console.log(`[Redsys IPN] Pago fallido IPN duplicada para ${result.merchantOrder} — respondiendo OK sin downstream`);
-        return res.send("OK");
+        console.log(`[Redsys IPN] Pago fallido IPN duplicada para ${result.merchantOrder} — sin downstream`);
+        return; // Ya respondimos OK
       }
     }
 
@@ -147,10 +155,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       console.log(`[Redsys IPN] amountPaid distribuido proporcionalmente entre ${allCartReservations.length} reservas del carrito`);
     }
 
-    // Responder OK a Redsys inmediatamente antes de ejecutar downstream
-    res.send("OK");
-
-    // Procesar downstream en background — no bloquea la respuesta a Redsys
+    // Procesar downstream en background (res ya enviado al inicio del handler)
     const updatedReservation = await getReservationByMerchantOrder(result.merchantOrder);
 
     // ── Pago fallido ──────────────────────────────────────────────────────────
