@@ -1,4 +1,6 @@
 import { COOKIE_NAME } from "@shared/const";
+
+const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
 import JSZip from "jszip";
 import {
   getActiveGalleryItems,
@@ -1572,9 +1574,9 @@ export const appRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: pricingDesc,
-          notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
-          okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${SITE_URL}/api/redsys/notification`,
+          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
           holderName: input.customerName,
         });
 
@@ -1781,9 +1783,9 @@ export const appRouter = router({
           amount: finalAmountCents,
           merchantOrder,
           productDescription: description.slice(0, 125),
-          notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
-          okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${SITE_URL}/api/redsys/notification`,
+          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
           holderName: input.customerName,
         });
         return {

@@ -14,6 +14,8 @@ import { createReservation } from "../db";
 import { buildRedsysForm, generateMerchantOrder } from "../redsys";
 import { assertModuleEnabled } from "../_core/flagGuard";
 
+const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
+
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]).use(async ({ ctx, next }) => {
   await assertModuleEnabled("hotel_module_enabled");
   return next({ ctx });
@@ -386,9 +388,9 @@ export const hotelRouter = router({
         amount: amountCents,
         merchantOrder,
         productDescription: `Hotel Náyade: ${room.name} · ${nights} noche${nights > 1 ? 's' : ''} · ${input.adults} adulto${input.adults > 1 ? 's' : ''}`,
-        notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
-        okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
-        koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
+        notifyUrl: `${SITE_URL}/api/redsys/notification`,
+        okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
+        koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
         holderName: input.customerName,
       });
 

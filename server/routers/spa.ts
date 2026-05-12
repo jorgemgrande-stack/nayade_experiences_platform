@@ -1,4 +1,6 @@
 import { router, publicProcedure, protectedProcedure, permissionProcedure } from "../_core/trpc";
+
+const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -406,9 +408,9 @@ export const spaRouter = router({
         merchantOrder,
         productDescription: `SPA ${treatment.name} · ${input.date} ${input.time} · ${input.persons}p`,
         holderName: input.customerName,
-        notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
-        okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
-        koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
+        notifyUrl: `${SITE_URL}/api/redsys/notification`,
+        okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
+        koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
       });
 
       return { reservationId: reservation.id, merchantOrder, redsysForm };

@@ -16,6 +16,8 @@ import {
 } from "../restaurantsDb";
 import { notifyOwner } from "../_core/notification";
 import { buildRedsysForm, generateMerchantOrder, getRedsysUrl } from "../redsys";
+
+const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
 import { buildRestaurantPaymentLinkHtml, buildRestaurantConfirmHtml } from "../emailTemplates";
 import { sendManagedEmail } from "../emailManager";
 
@@ -360,9 +362,9 @@ export const restaurantsRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: `Depósito reserva ${restaurant.name} ${input.date} ${input.time}`,
-          notifyUrl: `${process.env.APP_URL}/api/redsys/restaurant-notification`,
-          okUrl: `${process.env.APP_URL}/restaurantes/reserva-ok?locator=${locator}`,
-          koUrl: `${process.env.APP_URL}/restaurantes/reserva-ko?locator=${locator}`,
+          notifyUrl: `${SITE_URL}/api/redsys/restaurant-notification`,
+          okUrl: `${SITE_URL}/restaurantes/reserva-ok?locator=${locator}`,
+          koUrl: `${SITE_URL}/restaurantes/reserva-ko?locator=${locator}`,
           holderName: input.guestName,
         });
         // Enviar email con link de pago

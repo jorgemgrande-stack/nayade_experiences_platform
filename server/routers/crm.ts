@@ -1,7 +1,11 @@
 ﻿/**
  * CRM Router — Nayade Experiences
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
- */import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
+ */
+
+const SITE_URL = process.env.APP_URL ?? 'https://www.nayadeexperiences.es';
+
+import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
 import { calcularREAVSimple, validarConfiguracionREAV } from "../reav";
 import { TRPCError } from "@trpc/server";
@@ -3159,9 +3163,9 @@ export const crmRouter = router({
               amount: amountCents,
               merchantOrder: existingReservation.merchantOrder,
               productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
-              notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
-              okUrl: `${process.env.APP_URL}/reserva/ok?order=${existingReservation.merchantOrder}`,
-              koUrl: `${process.env.APP_URL}/reserva/error?order=${existingReservation.merchantOrder}`,
+              notifyUrl: `${SITE_URL}/api/redsys/notification`,
+              okUrl: `${SITE_URL}/reserva/ok?order=${existingReservation.merchantOrder}`,
+              koUrl: `${SITE_URL}/reserva/error?order=${existingReservation.merchantOrder}`,
               holderName: customerName,
             });
             return {
@@ -3232,9 +3236,9 @@ export const crmRouter = router({
           amount: amountCents,
           merchantOrder,
           productDescription: `Presupuesto ${quote.quoteNumber} — ${quote.title}`,
-          notifyUrl: `${process.env.APP_URL}/api/redsys/notification`,
-          okUrl: `${process.env.APP_URL}/reserva/ok?order=${merchantOrder}`,
-          koUrl: `${process.env.APP_URL}/reserva/error?order=${merchantOrder}`,
+          notifyUrl: `${SITE_URL}/api/redsys/notification`,
+          okUrl: `${SITE_URL}/reserva/ok?order=${merchantOrder}`,
+          koUrl: `${SITE_URL}/reserva/error?order=${merchantOrder}`,
           holderName: customerName,
         });
 
