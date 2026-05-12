@@ -777,11 +777,27 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
 
     const primary = allReservations[0];
 
+    const force = req.query.force === "true";
+
     if (primary.status !== "paid") {
-      return res.status(400).json({
-        error: `La reserva no está en estado paid. Estado actual: ${primary.status}`,
-        reservation: { id: primary.id, status: primary.status },
-      });
+      if (!force) {
+        return res.status(400).json({
+          error: `La reserva no está en estado paid (actual: ${primary.status}). Usa ?force=true para forzar la recuperación de una reserva cancelada con pago confirmado externamente.`,
+          reservation: { id: primary.id, status: primary.status },
+        });
+      }
+      // force=true: el pago fue confirmado por Redsys pero el IPN llegó cuando la reserva ya
+      // estaba cancelada (race con el stale job). Corregir estado antes de recuperar downstream.
+      const now = Date.now();
+      await _db.update(reservations).set({
+        status: "paid",
+        amountPaid: primary.amountTotal,
+        paidAt: now,
+        statusReservation: "CONFIRMADA",
+        statusPayment: "PAGADO",
+        updatedAt: now,
+      } as any).where(eq(reservations.id, primary.id));
+      log.push(`⚠️ Reserva ${primary.id} forzada a estado paid (estaba ${primary.status}). amountPaid=${primary.amountTotal}`);
     }
 
     // 1. Upsert cliente en CRM
