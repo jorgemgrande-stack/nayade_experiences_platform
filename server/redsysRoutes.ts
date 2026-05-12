@@ -70,18 +70,23 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
       return res.status(400).send("KO");
     }
 
-    // Verificar que la reserva existe
-    const reservation = await getReservationByMerchantOrder(result.merchantOrder);
-    if (!reservation) {
+    // Verificar que la reserva existe — fetch ALL para manejar carritos multi-artículo
+    const allCartReservations = await getAllReservationsByMerchantOrder(result.merchantOrder);
+    if (allCartReservations.length === 0) {
       console.error("[Redsys IPN] Reserva no encontrada para merchantOrder:", result.merchantOrder);
       return res.status(404).send("KO");
     }
+    const reservation = allCartReservations[0];
 
-    // Validar importe: previene que Redsys confirme un pago con importe manipulado
-    if (result.isAuthorized && result.amount !== reservation.amountTotal) {
-      console.error(`[Redsys IPN] Importe no coincide — esperado: ${reservation.amountTotal}, recibido: ${result.amount} — merchantOrder: ${result.merchantOrder}`);
+    // Validar importe: el total Redsys no puede SUPERAR la suma de todas las reservas del carrito.
+    // Permite que sea MENOR (descuentos con código promo). La firma HMAC ya garantiza autenticidad.
+    // BUG FIX: antes se comparaba solo con la primera reserva → KO en multi-artículo y descuentos.
+    const totalExpectedCents = allCartReservations.reduce((sum, r) => sum + (r.amountTotal ?? 0), 0);
+    if (result.isAuthorized && result.amount > totalExpectedCents) {
+      console.error(`[Redsys IPN] Importe excede total de reservas — máx esperado: ${totalExpectedCents}, recibido: ${result.amount} — merchantOrder: ${result.merchantOrder}`);
       return res.status(400).send("KO");
     }
+    console.log(`[Redsys IPN] Importe validado — redsys: ${result.amount}, total reservas: ${totalExpectedCents}, artículos: ${allCartReservations.length}`);
 
     // Actualización atómica: solo procede si la reserva sigue en pending_payment.
     // affectedRows === 0 puede significar IPN duplicada O race condition con el
@@ -127,6 +132,20 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     }
 
     console.log(`[Redsys IPN] Reserva ${result.merchantOrder} actualizada a: ${newStatus}`);
+
+    // Para carritos multi-artículo: distribuir amountPaid proporcionalmente por reserva.
+    // updateReservationPayment graba el importe total en todas las reservas → incorrecto.
+    if (result.isAuthorized && affectedRows > 0 && allCartReservations.length > 1) {
+      for (const resv of allCartReservations) {
+        const proportionalPaid = totalExpectedCents > 0
+          ? Math.round(result.amount * (resv.amountTotal ?? 0) / totalExpectedCents)
+          : (resv.amountTotal ?? 0);
+        await _db.update(reservations)
+          .set({ amountPaid: proportionalPaid } as any)
+          .where(eq(reservations.id, resv.id));
+      }
+      console.log(`[Redsys IPN] amountPaid distribuido proporcionalmente entre ${allCartReservations.length} reservas del carrito`);
+    }
 
     // Responder OK a Redsys inmediatamente antes de ejecutar downstream
     res.send("OK");
@@ -290,7 +309,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               clientName: lead?.name ?? updatedReservation.customerName,
               clientEmail: lead?.email ?? updatedReservation.customerEmail,
               clientPhone: lead?.phone ?? updatedReservation.customerPhone,
-              itemsJson: items,
+              itemsJson: items as any,
               subtotal: String(subtotal),
               taxRate: String(taxRateRedsys),
               taxAmount: String(taxAmount),
