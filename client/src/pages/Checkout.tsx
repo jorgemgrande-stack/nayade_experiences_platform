@@ -71,6 +71,20 @@ export default function Checkout() {
     }
   }, [items.length, cartCheckout.isPending, navigate]);
 
+  // InitiateCheckout — page mount, una sola vez
+  useEffect(() => {
+    if (!hasConsent || items.length === 0 || initiateCheckoutFired.current) return;
+    initiateCheckoutFired.current = true;
+    trackEvent('InitiateCheckout', {
+      content_ids: items.map(i => String(i.productId)),
+      contents: items.map(i => ({ id: String(i.productId), quantity: i.people, item_price: i.pricePerPerson })),
+      num_items: items.length,
+      value: finalTotal,
+      currency: 'EUR',
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasConsent]);
+
   function validate(): boolean {
     const errs: Record<string, string> = {};
     if (!name.trim() || name.trim().length < 2) errs.name = "Introduce tu nombre completo.";
@@ -83,18 +97,6 @@ export default function Checkout() {
   async function handlePay() {
     setSubmitError(null);
     if (!validate()) return;
-
-    // InitiateCheckout — se dispara una sola vez cuando el usuario pulsa "Pagar"
-    if (hasConsent && !initiateCheckoutFired.current) {
-      initiateCheckoutFired.current = true;
-      trackEvent('InitiateCheckout', {
-        content_ids: items.map(i => String(i.productId)),
-        contents: items.map(i => ({ id: String(i.productId), quantity: i.people, item_price: i.pricePerPerson })),
-        num_items: items.length,
-        value: finalTotal,
-        currency: 'EUR',
-      }, { email: email.trim() }).catch(() => {});
-    }
 
     try {
       const result = await cartCheckout.mutateAsync({
