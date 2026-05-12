@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 import { useMarketingConsent } from '@/hooks/useMarketingConsent';
 
-const PIXEL_ID = import.meta.env.VITE_META_PIXEL_ID as string | undefined;
+// El pixel ID es público (visible en el HTML de cualquier web que lo use).
+// Usamos la env var como primaria y el valor real como fallback para que
+// nunca falle por una variable ausente en el build de Railway.
+const PIXEL_ID = (import.meta.env.VITE_META_PIXEL_ID as string | undefined) || '1542400900841433';
 
 /**
  * Carga fbevents.js y dispara PageView solo cuando hay consentimiento de marketing.
@@ -12,14 +15,7 @@ export function MetaPixelLoader() {
   const hasConsent = useMarketingConsent();
 
   useEffect(() => {
-    console.log('[Meta Pixel] VITE_META_PIXEL_ID =', import.meta.env.VITE_META_PIXEL_ID, '| hasConsent =', hasConsent);
     if (!hasConsent) return;
-    if (!PIXEL_ID) {
-      if (import.meta.env.DEV) {
-        console.warn('[Meta Pixel] VITE_META_PIXEL_ID no está definido');
-      }
-      return;
-    }
     if (typeof window === 'undefined') return;
     if (window.fbq) return; // ya cargado
 
