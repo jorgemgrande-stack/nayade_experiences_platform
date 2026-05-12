@@ -46,6 +46,8 @@ export interface CapiUserData {
   country?: string;
   fbp?: string;
   fbc?: string;
+  /** ID único de la compra para matching offline — se hashea SHA-256 antes de enviarlo */
+  external_id?: string;
 }
 
 interface CapiEventArgs {
@@ -63,7 +65,7 @@ interface CAPIRequestBody {
   event_id: string;
   event_source_url?: string;
   custom_data?: Record<string, unknown>;
-  user_data?: CapiUserData;
+  user_data?: CapiUserData; // incluye external_id opcional
 }
 
 // ─── Helper reutilizable ──────────────────────────────────────────────────────
@@ -93,6 +95,7 @@ export async function sendCapiEvent(args: CapiEventArgs): Promise<{ ok: boolean;
     client_user_agent: args.client_user_agent,
     fbp: u.fbp,
     fbc: u.fbc,
+    external_id: u.external_id ? [hashPII(u.external_id)] : undefined,
   };
 
   // Eliminar claves undefined

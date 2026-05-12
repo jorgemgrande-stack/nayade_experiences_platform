@@ -10,6 +10,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { useCart } from "@/contexts/CartContext";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
+import { getFbp, getFbc } from "@/lib/meta-pixel/cookies";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
@@ -112,6 +113,9 @@ export default function Checkout() {
         customerPhone: phone.trim() || undefined,
         origin: window.location.origin,
         discountCodeId: promoData?.id,
+        // Meta CAPI attribution — solo si el usuario aceptó marketing consent
+        fbp: hasConsent ? getFbp() : undefined,
+        fbc: hasConsent ? getFbc() : undefined,
       });
 
       // AddPaymentInfo — el backend confirmó la sesión Redsys, el usuario va

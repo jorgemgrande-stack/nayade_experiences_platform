@@ -5,6 +5,8 @@
  */
 import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
+import { useMarketingConsent } from "@/hooks/useMarketingConsent";
+import { getFbp, getFbc } from "@/lib/meta-pixel/cookies";
 
 interface Extra {
   name: string;
@@ -42,6 +44,7 @@ const STEPS: { id: Step; label: string }[] = [
 ];
 
 export default function BookingModal({ isOpen, onClose, product, extras = [] }: BookingModalProps) {
+  const hasConsent = useMarketingConsent();
   const [step, setStep] = useState<Step>("datetime");
   const [bookingDate, setBookingDate] = useState("");
   const [people, setPeople] = useState(product.minPersons ?? 1);
@@ -126,6 +129,9 @@ export default function BookingModal({ isOpen, onClose, product, extras = [] }: 
         // Time slots (optional, retrocompatible)
         selectedTimeSlotId: selectedTimeSlotId ?? undefined,
         selectedTime: selectedTime || undefined,
+        // Meta CAPI attribution — solo si el usuario aceptó marketing consent
+        fbp: hasConsent ? getFbp() : undefined,
+        fbc: hasConsent ? getFbc() : undefined,
       });
 
       // Construir y enviar el formulario Redsys automáticamente

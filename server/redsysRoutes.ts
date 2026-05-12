@@ -230,25 +230,41 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     if (result.isAuthorized && updatedReservation?.id) {
       try {
         const valueEur = (updatedReservation.amountTotal ?? 0) / 100;
+        const resv = updatedReservation as any;
+        // Separar nombre en firstName/lastName para mejor EMQ
+        const nameParts = (updatedReservation.customerName ?? "").trim().split(/\s+/);
+        const firstName = nameParts[0] ?? undefined;
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : undefined;
         await sendCapiEvent({
           event_name: 'Purchase',
           event_id: `purchase_${result.merchantOrder}`,
           event_source_url: process.env.PUBLIC_SITE_URL || 'https://nayadeexperiences.es',
           custom_data: {
             content_ids: [String(updatedReservation.productId ?? updatedReservation.id)],
-            content_name: (updatedReservation as any).productName ?? undefined,
+            content_name: resv.productName ?? undefined,
             content_type: 'product',
             value: valueEur,
             currency: 'EUR',
             order_id: result.merchantOrder,
-            num_items: (updatedReservation as any).people ?? 1,
+            num_items: resv.people ?? 1,
           },
+          // IP y UA del usuario original (capturados al crear la reserva, no los de Redsys)
+          client_ip: resv.clientIpAddress ?? undefined,
+          client_user_agent: resv.clientUserAgent ?? undefined,
           user_data: {
             email: updatedReservation.customerEmail ?? undefined,
             phone: updatedReservation.customerPhone ?? undefined,
+            firstName,
+            lastName,
             country: 'ES',
+            // fbp/fbc persistidos al crear la reserva (con consent del usuario)
+            fbp: resv.fbp ?? undefined,
+            fbc: resv.fbc ?? undefined,
+            // external_id = merchantOrder hasheado → permite matching y conversiones offline
+            external_id: result.merchantOrder,
           },
         });
+        console.log(`[Meta CAPI] Purchase enviado para ${result.merchantOrder} — fbp=${!!resv.fbp} fbc=${!!resv.fbc} ip=${!!resv.clientIpAddress}`);
       } catch (capiErr: any) {
         console.error('[Meta CAPI] Failed to send Purchase from IPN:', capiErr.message);
       }

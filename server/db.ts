@@ -1036,6 +1036,11 @@ export async function createReservation(data: {
   pricingType?: "per_person" | "per_unit";
   unitCapacity?: number;
   unitsBooked?: number;
+  // Meta CAPI attribution (optional — requieren marketing consent)
+  fbp?: string;
+  fbc?: string;
+  clientIpAddress?: string;
+  clientUserAgent?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1069,6 +1074,11 @@ export async function createReservation(data: {
     pricingType: data.pricingType ?? null,
     unitCapacity: data.unitCapacity ?? null,
     unitsBooked: data.unitsBooked ?? null,
+    // Meta CAPI attribution
+    fbp: data.fbp ?? null,
+    fbc: data.fbc ?? null,
+    clientIpAddress: data.clientIpAddress ?? null,
+    clientUserAgent: data.clientUserAgent ?? null,
   });
   return { id: Number(result[0].insertId), merchantOrder: data.merchantOrder, reservationNumber };
 }

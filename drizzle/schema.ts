@@ -714,6 +714,11 @@ export const reservations = mysqlTable("reservations", {
   // Partner
   partnerId: int("partner_id"),
   partnerUserId: int("partner_user_id"),
+  // Meta CAPI attribution — capturados al crear la reserva para enriquecer Purchase server-side
+  fbp: varchar("fbp", { length: 255 }),
+  fbc: varchar("fbc", { length: 255 }),
+  clientIpAddress: varchar("client_ip_address", { length: 45 }),
+  clientUserAgent: varchar("client_user_agent", { length: 500 }),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────

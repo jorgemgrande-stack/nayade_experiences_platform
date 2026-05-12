@@ -15,6 +15,8 @@ export interface UserData {
   city?: string;
   postalCode?: string;
   country?: string;
+  /** ID único de la compra para matching offline (se hashea SHA-256 en servidor) */
+  external_id?: string;
 }
 
 export function generateEventId(): string {

@@ -67,7 +67,11 @@ export default function ReservaOk() {
         order_id: merchantOrder,
         num_items: data.people ?? 1,
       },
-      { email: data.customerEmail ?? undefined },
+      {
+        email: data.customerEmail ?? undefined,
+        // external_id = merchantOrder → permite deduplicación y matching offline en Meta
+        external_id: merchantOrder,
+      },
       { eventId: `purchase_${merchantOrder}` }
     ).catch(() => {});
   }, [hasConsent, merchantOrder, data?.status]); // eslint-disable-line react-hooks/exhaustive-deps

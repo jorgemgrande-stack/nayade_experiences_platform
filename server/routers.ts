@@ -1495,8 +1495,11 @@ export const appRouter = router({
         // Time slots (optional, retrocompatible)
         selectedTimeSlotId: z.number().int().optional().nullable(),
         selectedTime: z.string().max(10).optional().nullable(),
+        // Meta CAPI attribution (solo si el cliente aceptó marketing consent)
+        fbp: z.string().max(255).optional(),
+        fbc: z.string().max(255).optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         // 1. Obtener el producto y validar que existe y tiene precio
         const { getExperienceById, getVariantsByExperience } = await import("./db");
         const product = await getExperienceById(input.productId);
@@ -1545,6 +1548,8 @@ export const appRouter = router({
 
         // 4. Crear la pre-reserva en BD con estado pending_payment
         const extrasJson = JSON.stringify(input.extras);
+        const clientIpAddress = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
+        const clientUserAgent = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
         await createReservation({
           productId: input.productId,
           productName: product.title,
@@ -1564,6 +1569,11 @@ export const appRouter = router({
           pricingType,
           unitCapacity: unitCapacity ?? undefined,
           unitsBooked: unitsBooked || undefined,
+          // Meta CAPI attribution
+          fbp: input.fbp ?? undefined,
+          fbc: input.fbc ?? undefined,
+          clientIpAddress,
+          clientUserAgent,
         });
 
         // 5. Construir el formulario Redsys
@@ -1653,8 +1663,11 @@ export const appRouter = router({
         origin: z.string().url(),
         discountCodeId: z.number().optional(),
         // discountPercent ya no se acepta del cliente — se consulta en BD por discountCodeId
+        // Meta CAPI attribution (solo si el cliente aceptó marketing consent)
+        fbp: z.string().max(255).optional(),
+        fbc: z.string().max(255).optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const { getExperienceById: getExpById, getVariantsByExperience: getVariants } = await import("./db");
         // 1. Calcular el importe total de todos los artículos en backend
         let totalAmountCents = 0;
@@ -1737,6 +1750,8 @@ export const appRouter = router({
         // 2. Generar un merchantOrder único para todo el carrito
         const merchantOrder = generateMerchantOrder();
         // 3. Crear una reserva por cada artículo, todas con el mismo merchantOrder
+        const cartClientIp = ((ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()) ?? ctx.req.socket?.remoteAddress ?? undefined;
+        const cartClientUa = (ctx.req.headers["user-agent"] as string | undefined) ?? undefined;
         for (const item of itemsWithPrices) {
           await createReservation({
             ...item,
@@ -1748,6 +1763,11 @@ export const appRouter = router({
             pricingType: item.pricingType,
             unitCapacity: item.unitCapacity,
             unitsBooked: item.unitsBooked,
+            // Meta CAPI attribution
+            fbp: input.fbp ?? undefined,
+            fbc: input.fbc ?? undefined,
+            clientIpAddress: cartClientIp,
+            clientUserAgent: cartClientUa,
           });
         }
         // 3b. Aplicar descuento por código si se proporcionó — validar SIEMPRE en servidor
