@@ -112,6 +112,18 @@ export default function Checkout() {
         discountCodeId: promoData?.id,
       });
 
+      // AddPaymentInfo — el backend confirmó la sesión Redsys, el usuario va
+      // a introducir su tarjeta. Se dispara ANTES de clearCart para tener items.
+      if (hasConsent) {
+        await trackEvent('AddPaymentInfo', {
+          content_ids: items.map(i => String(i.productId)),
+          contents: items.map(i => ({ id: String(i.productId), quantity: i.people, item_price: i.pricePerPerson })),
+          num_items: items.length,
+          value: finalTotal,
+          currency: 'EUR',
+        }, { email: email.trim() });
+      }
+
       // Vaciar carrito antes de redirigir
       clearCart();
 

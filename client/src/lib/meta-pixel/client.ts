@@ -40,10 +40,13 @@ export async function trackEvent(
   }
 
   // 2. CAPI servidor — mismo event_id para deduplicación
+  // keepalive: true garantiza que la petición llega aunque la página navegue
+  // justo después (ej: InitiateCheckout → redirect a Redsys).
   try {
     await fetch('/api/meta-capi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      keepalive: true,
       body: JSON.stringify({
         event_name: eventName,
         event_id: eventId,
