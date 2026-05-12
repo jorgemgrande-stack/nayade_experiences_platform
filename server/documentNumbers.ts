@@ -22,6 +22,7 @@ import { documentCounters, documentNumberLogs } from "../drizzle/schema";
 // Esto evita crash en arranque si DATABASE_URL aún no está disponible.
 let _pool: ReturnType<typeof mysql.createPool> | null = null;
 let _db: ReturnType<typeof drizzle> | null = null;
+let _tablesReady = false;
 
 function getDb() {
   if (!_db) {
@@ -32,6 +33,38 @@ function getDb() {
     _db = drizzle(_pool);
   }
   return _db;
+}
+
+// Crea las tablas si no existen — idempotente, corre una sola vez por proceso.
+// Protege contra entornos donde las migraciones no se han aplicado (ej: Railway
+// con schema parcial).
+async function ensureTables(db: ReturnType<typeof drizzle>): Promise<void> {
+  if (_tablesReady) return;
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS \`document_counters\` (
+      \`id\`             int         AUTO_INCREMENT NOT NULL,
+      \`document_type\`  varchar(32) NOT NULL,
+      \`year\`           int         NOT NULL,
+      \`current_number\` int         NOT NULL DEFAULT 0,
+      \`prefix\`         varchar(16) NOT NULL,
+      \`updated_at\`     timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT \`document_counters_id\` PRIMARY KEY(\`id\`)
+    )
+  `);
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS \`document_number_logs\` (
+      \`id\`              int         AUTO_INCREMENT NOT NULL,
+      \`document_type\`   varchar(32) NOT NULL,
+      \`document_number\` varchar(64) NOT NULL,
+      \`year\`            int         NOT NULL,
+      \`sequence\`        int         NOT NULL,
+      \`generated_at\`    timestamp   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      \`generated_by\`    varchar(64),
+      \`context\`         varchar(128),
+      CONSTRAINT \`document_number_logs_id\` PRIMARY KEY(\`id\`)
+    )
+  `);
+  _tablesReady = true;
 }
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -79,6 +112,8 @@ export async function generateDocumentNumber(
 ): Promise<string> {
   const db = getDb();
   const year = new Date().getFullYear();
+
+  await ensureTables(db!);
 
   // Paso 1: Incrementar el contador de forma atómica usando UPDATE + SELECT
   // Primero intentamos incrementar el registro existente
