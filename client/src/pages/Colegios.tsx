@@ -14,7 +14,8 @@ import { trpc } from "@/lib/trpc";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
-import { trackEvent } from "@/lib/meta-pixel/client";
+import { generateEventId } from "@/lib/meta-pixel/client";
+import { getFbp, getFbc } from "@/lib/meta-pixel/cookies";
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
 const HERO_BG =
@@ -218,6 +219,10 @@ export default function Colegios() {
     const childrenCount = parseInt(formData.childrenCount) || 1;
     const monitorsCount = parseInt(formData.monitorsCount) || 0;
 
+    // Generar event_id antes de la llamada — se comparte con el pixel y con CAPI server-side
+    const eventId = generateEventId();
+    const eventSourceUrl = typeof window !== "undefined" ? window.location.href : undefined;
+
     await submitLead.mutateAsync({
       name: formData.name.trim(),
       email: formData.email.trim(),
@@ -231,26 +236,21 @@ export default function Colegios() {
       experienceType: formData.experienceType || undefined,
       comments: formData.comments.trim() || undefined,
       honeypot: formData.honeypot || undefined,
+      eventId,
+      eventSourceUrl,
+      fbp: getFbp(),
+      fbc: getFbc(),
     });
 
-    if (hasConsent) {
-      const pricePerPerson: Record<string, number> = {
-        "Pack Náutico Escolar": 25,
-        "Pack Aventura Escolar": 20,
-        "Campamento Residencial": 80,
-        "Día de Convivencia": 18,
-        "Programa personalizado": 30,
-      };
-      const unitPrice = pricePerPerson[formData.experienceType] ?? 22;
-      trackEvent("Lead", {
-        content_name: "colegios",
-        content_category: formData.groupType || "Grupo escolar",
-        value: (childrenCount + monitorsCount) * unitPrice,
+    // Pixel cliente — mismo eventId que CAPI server-side para deduplicación en Meta
+    if (hasConsent && typeof window !== "undefined" && typeof window.fbq === "function") {
+      window.fbq("track", "Lead", {
+        content_name: "Colegios y Campamentos",
+        content_category: "B2B Escolar",
+        content_ids: ["landing_colegios"],
+        value: 26.00,
         currency: "EUR",
-      }, {
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-      }).catch(() => {});
+      }, { eventID: eventId });
     }
   };
 

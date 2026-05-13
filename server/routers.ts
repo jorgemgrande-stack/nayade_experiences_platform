@@ -124,6 +124,7 @@ import {
 } from "./redsys";
 import { sendInviteEmail } from "./inviteEmail";
 import { testGHLConnection } from "./ghl";
+import { sendCapiEvent } from "./metaCapiRoute";
 import { sendEmail } from "./mailer";
 import { sendManagedEmail } from "./emailManager";
 import {
@@ -414,8 +415,13 @@ export const appRouter = router({
         experienceType: z.string().optional(),
         comments: z.string().optional(),
         honeypot: z.string().optional(),
+        // Meta Pixel deduplication
+        eventId: z.string().optional(),
+        eventSourceUrl: z.string().optional(),
+        fbp: z.string().optional(),
+        fbc: z.string().optional(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         if (input.honeypot) return { success: true };
 
         const lead = await createLead({
@@ -489,6 +495,36 @@ export const appRouter = router({
           relatedEntityId: lead.id,
           leadId: lead.id,
         }).catch(err => console.error("[submitColegiosLead] Email al usuario fallido:", err));
+
+        // Meta CAPI server-side — deduplicación garantizada por eventId compartido con el pixel cliente
+        const clientIp =
+          (ctx.req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() ||
+          (ctx.req.headers["x-real-ip"] as string | undefined) ||
+          ctx.req.socket.remoteAddress ||
+          undefined;
+        const userAgent = ctx.req.headers["user-agent"] as string | undefined;
+        const capiEventId = input.eventId ?? `colegios_${lead.id}_${Date.now()}`;
+
+        sendCapiEvent({
+          event_name: "Lead",
+          event_id: capiEventId,
+          event_source_url: input.eventSourceUrl,
+          custom_data: {
+            content_name: "Colegios y Campamentos",
+            content_category: "B2B Escolar",
+            content_ids: ["landing_colegios"],
+            value: 26.00,
+            currency: "EUR",
+          },
+          user_data: {
+            email: input.email,
+            phone: input.phone,
+            fbp: input.fbp,
+            fbc: input.fbc,
+          },
+          client_ip: clientIp,
+          client_user_agent: userAgent,
+        }).catch(err => console.error("[submitColegiosLead] CAPI event failed:", err));
 
         return { success: true, leadId: lead.id };
       }),
