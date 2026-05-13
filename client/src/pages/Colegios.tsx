@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import {
   CheckCircle, Phone, Users, Send, ChevronDown, ChevronUp,
@@ -143,6 +143,73 @@ const FAQS = [
     a: "Por supuesto. Podemos organizar una visita guiada para el equipo docente o los coordinadores del grupo. Contáctanos y lo preparamos.",
   },
 ];
+
+// ─── Custom dark select (evita el dropdown blanco nativo del SO) ──────────────
+function DarkSelect({
+  value, onChange, options, placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full h-10 flex items-center justify-between gap-2 px-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+        style={{
+          background: "rgba(255,255,255,0.07)",
+          border: "1px solid rgba(255,255,255,0.10)",
+          color: value ? "white" : "rgba(255,255,255,0.25)",
+        }}
+      >
+        <span className="truncate">{value || placeholder}</span>
+        <ChevronDown className="w-3.5 h-3.5 flex-shrink-0 opacity-50" />
+      </button>
+
+      {open && (
+        <div
+          className="absolute z-50 left-0 right-0 mt-1 rounded-xl overflow-hidden shadow-2xl"
+          style={{
+            background: "rgba(15,23,42,0.97)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            backdropFilter: "blur(20px)",
+          }}
+        >
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => { onChange(opt); setOpen(false); }}
+              className="w-full text-left px-3 py-2.5 text-sm transition-colors"
+              style={{
+                color: opt === value ? "#fbbf24" : "rgba(255,255,255,0.75)",
+                background: opt === value ? "rgba(251,191,36,0.10)" : "transparent",
+              }}
+              onMouseEnter={(e) => { if (opt !== value) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = opt === value ? "rgba(251,191,36,0.10)" : "transparent"; }}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── FAQ item ─────────────────────────────────────────────────────────────────
 function FaqItem({ q, a }: { q: string; a: string }) {
@@ -428,25 +495,21 @@ export default function Colegios() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-white/50 text-xs mb-1.5 block">Tipo de grupo</Label>
-                        <select
+                        <DarkSelect
                           value={formData.groupType}
-                          onChange={(e) => set("groupType", e.target.value)}
-                          className="w-full h-10 bg-white/[0.07] border border-white/10 text-white rounded-xl px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                        >
-                          <option value="" className="bg-neutral-900">Selecciona...</option>
-                          {GROUP_TYPES.map((g) => <option key={g} value={g} className="bg-neutral-900">{g}</option>)}
-                        </select>
+                          onChange={(v) => set("groupType", v)}
+                          options={GROUP_TYPES}
+                          placeholder="Selecciona..."
+                        />
                       </div>
                       <div>
                         <Label className="text-white/50 text-xs mb-1.5 block">Rango de edad</Label>
-                        <select
+                        <DarkSelect
                           value={formData.ageRange}
-                          onChange={(e) => set("ageRange", e.target.value)}
-                          className="w-full h-10 bg-white/[0.07] border border-white/10 text-white rounded-xl px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                        >
-                          <option value="" className="bg-neutral-900">Selecciona...</option>
-                          {AGE_RANGES.map((r) => <option key={r} value={r} className="bg-neutral-900">{r}</option>)}
-                        </select>
+                          onChange={(v) => set("ageRange", v)}
+                          options={AGE_RANGES}
+                          placeholder="Selecciona..."
+                        />
                       </div>
                     </div>
 
@@ -479,14 +542,12 @@ export default function Colegios() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-white/50 text-xs mb-1.5 block">Tipo de programa</Label>
-                        <select
+                        <DarkSelect
                           value={formData.experienceType}
-                          onChange={(e) => set("experienceType", e.target.value)}
-                          className="w-full h-10 bg-white/[0.07] border border-white/10 text-white rounded-xl px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-                        >
-                          <option value="" className="bg-neutral-900">Selecciona...</option>
-                          {EXPERIENCE_TYPES.map((t) => <option key={t} value={t} className="bg-neutral-900">{t}</option>)}
-                        </select>
+                          onChange={(v) => set("experienceType", v)}
+                          options={EXPERIENCE_TYPES}
+                          placeholder="Selecciona..."
+                        />
                       </div>
                       <div>
                         <Label className="text-white/50 text-xs mb-1.5 block">Fecha preferida</Label>
