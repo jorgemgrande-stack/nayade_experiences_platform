@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import {
   Calendar, List, Settings, Users, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, Clock, Loader2, Phone, Mail, RefreshCw,
-  AlertCircle, Edit, Trash2, MessageSquare, Plus, CreditCard, Ban,
+  AlertCircle, Edit, Trash2, MessageSquare, Plus, CreditCard, Ban, Images,
 } from "lucide-react";
+import ImageUploader from "@/components/ImageUploader";
 
 type ViewMode = "list" | "calendar" | "config";
 type StatusFilter = "all" | "pending" | "confirmed" | "cancelled" | "no_show";
@@ -878,6 +879,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
     longDesc: restaurant.longDesc ?? "",
     cuisine: restaurant.cuisine ?? "",
     heroImage: restaurant.heroImage ?? "",
+    galleryImages: (restaurant.galleryImages as string[]) ?? [],
     menuUrl: restaurant.menuUrl ?? "",
     phone: restaurant.phone ?? "",
     email: restaurant.email ?? "",
@@ -989,11 +991,40 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
               <input value={ficha.location} onChange={e => setFicha(f => ({ ...f, location: e.target.value }))} className={inputCls} placeholder="Ctra. de Los Ángeles, s/n, El Espinar, Segovia" />
             </div>
             <div className="col-span-2">
-              <label className={labelCls}>URL imagen principal (hero)</label>
-              <input value={ficha.heroImage} onChange={e => setFicha(f => ({ ...f, heroImage: e.target.value }))} className={inputCls} placeholder="https://cdn.../imagen.jpg" />
-              {ficha.heroImage && (
-                <img src={ficha.heroImage} alt="Hero" className="mt-2 w-full h-28 object-cover rounded-xl border border-border/40" onError={e => ((e.currentTarget as HTMLImageElement).style.display = "none")} />
-              )}
+              <label className={labelCls}>Imagen principal (hero)</label>
+              <ImageUploader
+                value={ficha.heroImage}
+                onChange={(url) => setFicha(f => ({ ...f, heroImage: url }))}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Galería de imágenes</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {ficha.galleryImages.map((url, idx) => (
+                  <div key={idx} className="relative group aspect-video rounded-xl overflow-hidden border border-border/40">
+                    <img src={url} alt={`Galería ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setFicha(f => ({ ...f, galleryImages: f.galleryImages.filter((_, i) => i !== idx) }))}
+                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Eliminar imagen"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                <div className="aspect-video">
+                  <ImageUploader
+                    value=""
+                    onChange={(url) => { if (url) setFicha(f => ({ ...f, galleryImages: [...f.galleryImages, url] })); }}
+                    label=""
+                    className="h-full"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground font-display mt-2 flex items-center gap-1">
+                <Images className="w-3.5 h-3.5" /> Añade hasta las imágenes que necesites. Haz hover sobre una imagen para eliminarla.
+              </p>
             </div>
             <div className="col-span-2">
               <label className={labelCls}>URL menú (PDF o enlace)</label>
