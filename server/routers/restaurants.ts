@@ -637,6 +637,7 @@ export const restaurantsRouter = router({
     .input(z.object({
       restaurantId: z.number(),
       // Ficha pública
+      slug: z.string().min(2).max(128).optional(),
       name: z.string().optional(),
       shortDesc: z.string().optional(),
       longDesc: z.string().optional(),

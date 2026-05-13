@@ -1097,6 +1097,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
 
   // Estado ficha pública
   const [ficha, setFicha] = useState({
+    slug: restaurant.slug ?? "",
     name: restaurant.name ?? "",
     shortDesc: restaurant.shortDesc ?? "",
     longDesc: restaurant.longDesc ?? "",
@@ -1110,6 +1111,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
     badge: restaurant.badge ?? "",
     isActive: restaurant.isActive ?? true,
   });
+  const [slugManual, setSlugManual] = useState(true);
 
   // Estado configuración operativa
   const [operativa, setOperativa] = useState({
@@ -1183,7 +1185,43 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className={labelCls}>Nombre del restaurante *</label>
-              <input value={ficha.name} onChange={e => setFicha(f => ({ ...f, name: e.target.value }))} className={inputCls} placeholder="El Galeón" />
+              <input
+                value={ficha.name}
+                onChange={e => {
+                  const name = e.target.value;
+                  setFicha(f => ({
+                    ...f,
+                    name,
+                    slug: slugManual ? f.slug : slugify(name),
+                  }));
+                }}
+                className={inputCls}
+                placeholder="El Galeón"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className={labelCls}>Slug (URL pública)</label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground font-mono shrink-0">/restaurantes/</span>
+                <input
+                  value={ficha.slug}
+                  onChange={e => { setSlugManual(true); setFicha(f => ({ ...f, slug: e.target.value })); }}
+                  className={inputCls + " font-mono"}
+                  placeholder="el-galeon"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground font-display mt-1">
+                URL completa: <span className="font-mono">nayadeexperiences.es/restaurantes/{ficha.slug || "…"}</span>
+                {slugManual && (
+                  <button
+                    type="button"
+                    onClick={() => { setSlugManual(false); setFicha(f => ({ ...f, slug: slugify(f.name) })); }}
+                    className="ml-2 text-accent hover:underline"
+                  >
+                    regenerar desde nombre
+                  </button>
+                )}
+              </p>
             </div>
             <div>
               <label className={labelCls}>Badge / Etiqueta</label>
