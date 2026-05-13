@@ -334,6 +334,7 @@ export function getGHLTagsFromSource(source: string): string[] {
   const tagMap: Record<string, string[]> = {
     web_experiencia: ["Lead Web", "Experiencia"],
     landing_presupuesto: ["Lead Web", "Presupuesto"],
+    landing_colegios: ["Lead Web", "Colegios", "Escolar"],
     web_contacto: ["Lead Web", "Formulario Contacto"],
     tpv: ["Lead TPV", "Venta Presencial"],
     reserva_online: ["Lead Web", "Reserva Online"],

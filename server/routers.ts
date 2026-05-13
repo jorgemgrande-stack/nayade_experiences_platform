@@ -400,6 +400,99 @@ export const appRouter = router({
         return { success: true, leadId: lead.id };
       }),
 
+    submitColegiosLead: publicProcedure
+      .input(z.object({
+        name: z.string().min(2),
+        email: z.string().email(),
+        phone: z.string().min(6),
+        organizationName: z.string().min(2),
+        preferredDate: z.string().optional(),
+        monitorsCount: z.number().int().min(0).default(0),
+        childrenCount: z.number().int().min(1).default(1),
+        ageRange: z.string().optional(),
+        groupType: z.string().optional(),
+        experienceType: z.string().optional(),
+        comments: z.string().optional(),
+        honeypot: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        if (input.honeypot) return { success: true };
+
+        const lead = await createLead({
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          company: input.organizationName,
+          message: input.comments,
+          preferredDate: input.preferredDate,
+          numberOfAdults: input.monitorsCount,
+          numberOfChildren: input.childrenCount,
+          numberOfPersons: input.monitorsCount + input.childrenCount,
+          selectedCategory: "Colegios y Campamentos",
+          selectedProduct: input.experienceType ?? "Sin especificar",
+          source: "landing_colegios",
+          leadSourceCode: "LANDING_COLEGIOS",
+        });
+
+        const adminEmail = process.env.ADMIN_EMAIL ?? await getBusinessEmail('reservations');
+        const msgLines = [
+          `Organización: ${input.organizationName}`,
+          `Tipo de grupo: ${input.groupType ?? "—"}`,
+          `Rango de edad: ${input.ageRange ?? "—"}`,
+          `Niños/jóvenes: ${input.childrenCount}`,
+          `Monitores/adultos: ${input.monitorsCount}`,
+          `Tipo de experiencia: ${input.experienceType ?? "—"}`,
+          input.preferredDate ? `Fecha preferida: ${input.preferredDate}` : null,
+          input.comments ? `Comentarios: ${input.comments}` : null,
+        ].filter(Boolean).join("\n");
+
+        sendManagedEmail({
+          templateKey: "budget_request_admin",
+          triggerEvent: "lead_submitted",
+          recipientEmail: adminEmail,
+          subject: `⚠️ Lead Colegios — ${input.name} (${input.organizationName})`,
+          html: buildBudgetRequestAdminHtml({
+            name: input.name,
+            email: input.email,
+            phone: input.phone,
+            arrivalDate: input.preferredDate ?? "Sin especificar",
+            adults: input.monitorsCount,
+            children: input.childrenCount,
+            selectedCategory: "Colegios y Campamentos",
+            selectedProduct: input.experienceType ?? "Sin especificar",
+            comments: msgLines,
+            submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
+          }),
+          relatedEntityType: "lead",
+          relatedEntityId: lead.id,
+          leadId: lead.id,
+        }).catch(err => console.error("[submitColegiosLead] Email al admin fallido:", err));
+
+        sendManagedEmail({
+          templateKey: "budget_request_user",
+          triggerEvent: "lead_submitted",
+          recipientEmail: input.email,
+          subject: "Solicitud recibida — Náyade Experiences",
+          html: buildBudgetRequestUserHtml({
+            name: input.name,
+            email: input.email,
+            phone: input.phone,
+            arrivalDate: input.preferredDate ?? "Sin especificar",
+            adults: input.monitorsCount,
+            children: input.childrenCount,
+            selectedCategory: "Colegios y Campamentos",
+            selectedProduct: input.experienceType ?? "Sin especificar",
+            comments: input.comments ?? "",
+            submittedAt: new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" }),
+          }),
+          relatedEntityType: "lead",
+          relatedEntityId: lead.id,
+          leadId: lead.id,
+        }).catch(err => console.error("[submitColegiosLead] Email al usuario fallido:", err));
+
+        return { success: true, leadId: lead.id };
+      }),
+
     getPublicPage: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(async ({ input }) => {

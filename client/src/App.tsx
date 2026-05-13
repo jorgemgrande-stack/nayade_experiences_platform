@@ -15,6 +15,7 @@ import Experiences from "./pages/Experiences";
 import ExperienceDetail from "./pages/ExperienceDetail";
 import Gallery from "./pages/Gallery";
 import BudgetRequest from "./pages/BudgetRequest";
+import Colegios from "./pages/Colegios";
 import CanjearCupon from "./pages/CanjearCupon";
 import VerificarBono from "./pages/VerificarBono";
 import Contact from "./pages/Contact";
@@ -166,6 +167,7 @@ function Router() {
       <Route path="/experiencias/:slug" component={ExperienceDetail} />
       <Route path="/galeria" component={Gallery} />
       <Route path="/presupuesto" component={BudgetRequest} />
+      <Route path="/colegios" component={Colegios} />
       <Route path="/canjear-cupon" component={CanjearCupon} />
       <Route path="/verificar-bono" component={VerificarBono} />
       <Route path="/solicitar-anulacion">{() => <Suspense fallback={<AdminLoadingFallback />}><SolicitarAnulacion /></Suspense>}</Route>
