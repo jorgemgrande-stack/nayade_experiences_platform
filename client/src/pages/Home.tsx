@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import {
   Waves, MapPin, Star, Clock, Users, ChevronRight, ChevronLeft,
   ArrowRight, Phone, Mail, Anchor, Wind, Zap, Heart, Shield, Calendar,
-  Send, Sparkles, Plus, X, CheckCircle, Minus, ShoppingCart as ShoppingCartIcon
+  Send, Sparkles, Plus, X, CheckCircle, Minus, ShoppingCart as ShoppingCartIcon,
+  GraduationCap,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import PublicLayout from "@/components/PublicLayout";
@@ -1459,7 +1460,120 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════
-          10. CTA FINAL — foto impactante del lago + overlay fuerte
+          10. COLEGIOS, AMPAs Y CAMPAMENTOS — módulo de captación B2B escolar
+          ══════════════════════════════════════════════════════════════════ */}
+      <section className="relative py-20 overflow-hidden">
+        <div className="absolute inset-0">
+          <img src={CDN.canoa} alt="" className="w-full h-full object-cover scale-105" style={{ objectPosition: "center 55%" }} />
+          <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(6,24,16,0.94) 0%, rgba(6,36,24,0.90) 50%, rgba(6,24,16,0.94) 100%)" }} />
+          <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        </div>
+
+        <div className="relative z-10 container">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+
+            {/* ── Columna izquierda ──────────────────────────────────────── */}
+            <div>
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-emerald-400/40 bg-emerald-500/10 text-emerald-300 text-xs font-display font-bold uppercase tracking-widest mb-6">
+                <GraduationCap className="w-3.5 h-3.5" />
+                Colegios · AMPAs · Campamentos
+              </div>
+
+              <h2 className="text-4xl md:text-5xl font-heading font-bold text-white leading-tight mb-5">
+                Experiencias que<br />
+                <span className="text-emerald-400">marcan para siempre</span>
+              </h2>
+
+              <p className="text-white/70 text-lg leading-relaxed mb-8 max-w-lg">
+                Diseñamos programas educativos y de aventura para grupos escolares
+                en el Lago de Bolarque. Seguridad certificada, monitores titulados
+                y actividades adaptadas a cada edad.
+              </p>
+
+              <div className="space-y-4 mb-8">
+                {[
+                  { step: "01", title: "Cuéntanos tu grupo", desc: "Rellena el formulario online con número de alumnos, edades y fecha preferida.", color: "text-emerald-400", border: "border-emerald-400/30", bg: "bg-emerald-500/10" },
+                  { step: "02", title: "Recibís propuesta en 24h", desc: "Nuestro equipo prepara un programa personalizado y os lo envía por email.", color: "text-sky-400", border: "border-sky-400/30", bg: "bg-sky-500/10" },
+                  { step: "03", title: "¡A vivir la aventura!", desc: "Venid en la fecha acordada y disfrutad de una jornada inolvidable en el lago.", color: "text-amber-400", border: "border-amber-400/30", bg: "bg-amber-500/10" },
+                ].map((item) => (
+                  <div key={item.step} className={`flex items-start gap-4 p-4 rounded-2xl border ${item.border} ${item.bg}`}>
+                    <div className={`text-2xl font-heading font-black ${item.color} leading-none flex-shrink-0 w-10`}>{item.step}</div>
+                    <div>
+                      <div className="font-display font-bold text-white text-sm mb-0.5">{item.title}</div>
+                      <div className="text-white/55 text-sm leading-relaxed">{item.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-white/40 text-xs font-display uppercase tracking-wider">Programas disponibles:</span>
+                {["Pack Náutico", "Pack Aventura", "Campamento", "Día Convivencia"].map((p) => (
+                  <span key={p} className="px-3 py-1 rounded-full bg-white/8 border border-white/15 text-white/70 text-xs font-display font-medium">{p}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Columna derecha: tarjeta CTA ───────────────────────────── */}
+            <div className="flex justify-center lg:justify-end">
+              <div className="w-full max-w-sm">
+                <div className="relative rounded-3xl overflow-hidden border border-white/15 shadow-2xl" style={{ background: "rgba(255,255,255,0.06)", backdropFilter: "blur(20px)" }}>
+                  <div className="h-1.5 w-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" />
+
+                  <div className="p-8">
+                    <div className="flex justify-center mb-6">
+                      <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, rgba(16,185,129,0.25) 0%, rgba(6,182,212,0.20) 100%)", border: "1.5px solid rgba(16,185,129,0.35)" }}>
+                        <GraduationCap className="w-9 h-9 text-emerald-400" />
+                      </div>
+                    </div>
+
+                    <h3 className="text-2xl font-heading font-bold text-white text-center mb-2">
+                      Excursión Escolar
+                    </h3>
+                    <p className="text-white/55 text-sm text-center leading-relaxed mb-8">
+                      Presupuesto personalizado sin compromiso.<br />Respuesta garantizada en menos de 24h.
+                    </p>
+
+                    <div className="space-y-3 mb-8">
+                      {[
+                        "Monitores titulados y seguro incluido",
+                        "Grupos de 20 a 300 participantes",
+                        "Actividades adaptadas por edades",
+                        "Coordinador dedicado desde el primer contacto",
+                      ].map((b) => (
+                        <div key={b} className="flex items-start gap-3">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 text-xs font-bold flex-shrink-0 mt-0.5">✓</span>
+                          <span className="text-white/70 text-sm leading-relaxed">{b}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <Link href="/colegios">
+                      <button className="w-full py-4 rounded-2xl font-display font-bold text-white text-base transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg" style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", boxShadow: "0 8px 24px rgba(16,185,129,0.35)" }}>
+                        Solicitar Programa Escolar
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 ml-2 inline-block"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                      </button>
+                    </Link>
+
+                    <p className="text-center mt-4 text-white/35 text-xs">
+                      ¿Dudas? Llámanos al{" "}
+                      <a href={phoneTel} className="text-emerald-400 hover:text-emerald-300 transition-colors">{phone}</a>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center justify-center gap-2 text-white/35 text-xs">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 text-emerald-400"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  Instalaciones homologadas · Monitores certificados
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          11. CTA FINAL — foto impactante del lago + overlay fuerte
              (cierre potente, llamada a la acción)
           ══════════════════════════════════════════════════════════════════ */}
       <section className="relative py-28 overflow-hidden">

@@ -128,6 +128,79 @@ export default function LegoPacksList() {
         </div>
       </section>
 
+      {/* ── Banner colegios — sólo visible en la categoría escolar ─────────── */}
+      {validCategory === "escolar" && (
+        <section className="relative overflow-hidden">
+          <div className="absolute inset-0">
+            <img
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/canoa-lago_b18c5886.jpg"
+              alt=""
+              className="w-full h-full object-cover"
+              style={{ objectPosition: "center 60%" }}
+            />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(4,20,12,0.95) 0%, rgba(6,36,24,0.88) 60%, rgba(4,20,12,0.80) 100%)" }} />
+          </div>
+
+          <div className="relative z-10 container py-12 sm:py-16">
+            <div className="flex flex-col lg:flex-row items-center gap-8 lg:gap-14">
+
+              {/* Info */}
+              <div className="flex-1">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-400/40 bg-emerald-500/10 text-emerald-300 text-xs font-bold uppercase tracking-widest mb-4">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  Programa Escolar Personalizado
+                </div>
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-white leading-tight mb-3">
+                  ¿Buscas algo a medida<br />
+                  <span className="text-emerald-400">para tu grupo?</span>
+                </h2>
+                <p className="text-white/65 text-base sm:text-lg leading-relaxed max-w-xl mb-6">
+                  Los Lego Packs son perfectos para reservas individuales. Para grupos escolares de
+                  más de 20 alumnos diseñamos un programa completo con actividades, monitores y
+                  logística adaptada a vuestra fecha y edad.
+                </p>
+
+                <div className="flex flex-wrap gap-3 mb-6">
+                  {[
+                    "De 20 a 300 participantes",
+                    "Monitores titulados incluidos",
+                    "Seguro de accidentes",
+                    "Respuesta en 24h",
+                  ].map((f) => (
+                    <span key={f} className="inline-flex items-center gap-1.5 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-400/25 rounded-full px-3 py-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* CTA card */}
+              <div className="w-full lg:w-80 xl:w-96 flex-shrink-0">
+                <div className="rounded-3xl overflow-hidden border border-white/15 shadow-2xl" style={{ background: "rgba(255,255,255,0.07)", backdropFilter: "blur(20px)" }}>
+                  <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" />
+                  <div className="p-7">
+                    <h3 className="text-xl font-heading font-bold text-white mb-1">Excursión Escolar</h3>
+                    <p className="text-white/50 text-sm mb-6">
+                      Presupuesto gratuito · Sin compromiso · &lt;24h de respuesta
+                    </p>
+                    <Link href="/colegios">
+                      <button className="w-full py-3.5 rounded-2xl font-display font-bold text-white text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-lg mb-3" style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", boxShadow: "0 8px 24px rgba(16,185,129,0.30)" }}>
+                        Solicitar Programa Escolar →
+                      </button>
+                    </Link>
+                    <p className="text-center text-white/35 text-xs">
+                      También puedes llamarnos para consultar
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ── Barra de filtros sticky ───────────────────────────────────────────── */}
       <section className="sticky top-20 z-30 bg-white/95 backdrop-blur-md border-b border-border/50 shadow-sm">
         <div className="container py-3">
