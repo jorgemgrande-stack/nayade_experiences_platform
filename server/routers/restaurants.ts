@@ -5,7 +5,7 @@ import { sendEmail } from "../mailer";
 import { TRPCError } from "@trpc/server";
 import {
   getAllRestaurants, getRestaurantBySlug, getRestaurantById,
-  createRestaurant, updateRestaurant,
+  createRestaurant, updateRestaurant, deleteRestaurant,
   getShiftsByRestaurant, getAllShiftsByRestaurant, createShift, updateShift, deleteShift,
   getClosuresByRestaurant, createClosure, deleteClosure,
   getAvailability,
@@ -578,6 +578,14 @@ export const restaurantsRouter = router({
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
       const { id, ...data } = input;
       return updateRestaurant(id, data as any);
+    }),
+
+  /** Eliminar restaurante y todos sus datos (solo admin global) */
+  adminDeleteRestaurant: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return deleteRestaurant(input.id);
     }),
 
   /** Asignar staff adminrest a un restaurante (solo admin global) */

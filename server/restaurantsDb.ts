@@ -58,6 +58,22 @@ export async function createRestaurant(data: InsertRestaurant) {
   return result;
 }
 
+export async function deleteRestaurant(id: number) {
+  const db = await getDb();
+  // Borrar en orden FK: logs → reservas → cierres → turnos → staff → restaurante
+  const bookingRows = await db.select({ id: restaurantBookings.id })
+    .from(restaurantBookings).where(eq(restaurantBookings.restaurantId, id));
+  for (const b of bookingRows) {
+    await db.delete(restaurantBookingLogs).where(eq(restaurantBookingLogs.bookingId, b.id));
+  }
+  await db.delete(restaurantBookings).where(eq(restaurantBookings.restaurantId, id));
+  await db.delete(restaurantClosures).where(eq(restaurantClosures.restaurantId, id));
+  await db.delete(restaurantShifts).where(eq(restaurantShifts.restaurantId, id));
+  await db.delete(restaurantStaff).where(eq(restaurantStaff.restaurantId, id));
+  await db.delete(restaurants).where(eq(restaurants.id, id));
+  return { ok: true };
+}
+
 export async function updateRestaurant(id: number, data: Partial<InsertRestaurant>) {
   const db = await getDb();
   return db.update(restaurants).set(data).where(eq(restaurants.id, id));

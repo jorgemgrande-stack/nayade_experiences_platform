@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Calendar, List, Settings, Users, ChevronLeft, ChevronRight,
   CheckCircle, XCircle, Clock, Loader2, Phone, Mail, RefreshCw,
-  AlertCircle, Edit, Trash2, MessageSquare, Plus, CreditCard, Ban, Images,
+  AlertCircle, Edit, Trash2, MessageSquare, Plus, CreditCard, Ban, Images, OctagonX,
 } from "lucide-react";
 import ImageUploader from "@/components/ImageUploader";
 
@@ -395,6 +395,104 @@ function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCre
   );
 }
 
+function DeleteRestaurantModal({
+  restaurants,
+  onClose,
+  onDeleted,
+}: {
+  restaurants: { id: number; name: string; cuisine: string | null }[];
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [confirmed, setConfirmed] = useState("");
+  const utils = trpc.useUtils();
+
+  const selected = restaurants.find(r => r.id === selectedId);
+
+  const deleteMutation = trpc.restaurants.adminDeleteRestaurant.useMutation({
+    onSuccess: () => {
+      utils.restaurants.adminGetAll.invalidate();
+      onDeleted();
+    },
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedId || confirmed !== selected?.name) return;
+    deleteMutation.mutate({ id: selectedId });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl border border-red-500/40 p-6 w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <OctagonX className="w-5 h-5 text-red-500" />
+            <h3 className="font-heading font-bold text-foreground text-lg">Eliminar restaurante</h3>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-muted transition-colors">
+            <XCircle className="w-5 h-5 text-muted-foreground" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs font-display text-muted-foreground mb-1 block">Selecciona el restaurante a eliminar</label>
+            <select
+              value={selectedId ?? ""}
+              onChange={e => { setSelectedId(Number(e.target.value) || null); setConfirmed(""); }}
+              className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-red-500/50"
+            >
+              <option value="">— Seleccionar —</option>
+              {restaurants.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {selected && (
+            <>
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 text-sm font-display text-red-700 dark:text-red-300 space-y-1">
+                <p className="font-semibold">⚠ Esta acción es irreversible</p>
+                <p>Se eliminarán permanentemente <strong>todas las reservas, turnos, cierres y datos</strong> de <strong>{selected.name}</strong>.</p>
+              </div>
+              <div>
+                <label className="text-xs font-display text-muted-foreground mb-1 block">
+                  Escribe <strong className="text-foreground">{selected.name}</strong> para confirmar
+                </label>
+                <input
+                  value={confirmed}
+                  onChange={e => setConfirmed(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                  placeholder={selected.name}
+                  autoComplete="off"
+                />
+              </div>
+            </>
+          )}
+
+          {deleteMutation.isError && (
+            <p className="text-sm text-red-600 font-display">{deleteMutation.error.message}</p>
+          )}
+
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="outline" onClick={onClose} className="rounded-full font-display">Cancelar</Button>
+            <Button
+              type="submit"
+              disabled={deleteMutation.isPending || !selectedId || confirmed !== selected?.name}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-full font-display font-semibold"
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Eliminar definitivamente
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function RestaurantsManager() {
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<number | null>(null);
@@ -407,6 +505,7 @@ export default function RestaurantsManager() {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showNewBooking, setShowNewBooking] = useState(false);
   const [showNewRestaurant, setShowNewRestaurant] = useState(false);
+  const [showDeleteRestaurant, setShowDeleteRestaurant] = useState(false);
   const [successLocator, setSuccessLocator] = useState<string | null>(null);
 
   // Data
@@ -459,12 +558,23 @@ export default function RestaurantsManager() {
       <div className="p-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-heading font-bold text-foreground">Gestión de Restaurantes</h1>
-          <Button
-            onClick={() => setShowNewRestaurant(true)}
-            className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" /> Nuevo restaurante
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setShowNewRestaurant(true)}
+              className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Nuevo restaurante
+            </Button>
+            {restaurants && restaurants.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteRestaurant(true)}
+                className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full font-display font-semibold flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" /> Eliminar
+              </Button>
+            )}
+          </div>
         </div>
         <p className="text-muted-foreground font-display mb-8">Selecciona un restaurante para gestionar sus reservas.</p>
         {!restaurants || restaurants.length === 0 ? (
@@ -506,6 +616,13 @@ export default function RestaurantsManager() {
           <NewRestaurantModal
             onClose={() => setShowNewRestaurant(false)}
             onCreated={() => setShowNewRestaurant(false)}
+          />
+        )}
+        {showDeleteRestaurant && restaurants && (
+          <DeleteRestaurantModal
+            restaurants={restaurants}
+            onClose={() => setShowDeleteRestaurant(false)}
+            onDeleted={() => setShowDeleteRestaurant(false)}
           />
         )}
       </div>
