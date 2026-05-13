@@ -147,25 +147,28 @@ export default function LegoPacksList() {
             </svg>
           </div>
 
-          <section className="relative overflow-hidden bg-[#F8FAFC]">
-            {/* Decoración de fondo sutil */}
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-0 right-0 w-96 h-96 rounded-full opacity-[0.04]" style={{ background: "radial-gradient(circle, #10b981 0%, transparent 70%)", transform: "translate(30%, -30%)" }} />
-              <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full opacity-[0.04]" style={{ background: "radial-gradient(circle, #059669 0%, transparent 70%)", transform: "translate(-30%, 30%)" }} />
+          <section className="relative overflow-hidden" style={{ background: "#F8FAFC" }}>
+            {/* Decoración radial sutil */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              <div className="absolute top-0 right-0 w-96 h-96 rounded-full" style={{ background: "radial-gradient(circle, rgba(16,185,129,0.06) 0%, transparent 70%)", transform: "translate(30%, -30%)" }} />
+              <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full" style={{ background: "radial-gradient(circle, rgba(5,150,105,0.05) 0%, transparent 70%)", transform: "translate(-30%, 30%)" }} />
             </div>
 
-            <div className="relative z-10 container py-14 sm:py-18">
+            <div className="relative z-10 container py-14 lg:py-20">
               <div className="flex flex-col lg:flex-row items-center gap-10 lg:gap-16">
 
                 {/* Info */}
                 <div className="flex-1">
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-700 text-xs font-bold uppercase tracking-widest mb-5">
+                  <div
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest mb-5"
+                    style={{ background: "#ECFDF5", border: "1.5px solid #6EE7B7", color: "#065F46" }}
+                  >
                     <GraduationCap className="w-3.5 h-3.5" />
                     Programa Escolar Personalizado
                   </div>
                   <h2 className="text-2xl sm:text-3xl md:text-4xl font-heading font-bold leading-tight mb-4" style={{ color: "#0F172A" }}>
                     ¿Buscas algo a medida<br />
-                    <span style={{ color: "#10B981" }}>para tu grupo?</span>
+                    <span style={{ color: "#059669" }}>para tu grupo?</span>
                   </h2>
                   <p className="text-base sm:text-lg leading-relaxed max-w-xl mb-7" style={{ color: "#475569" }}>
                     Los Lego Packs son perfectos para reservas individuales. Para grupos escolares de
@@ -180,7 +183,11 @@ export default function LegoPacksList() {
                       "Seguro de accidentes",
                       "Respuesta en 24h",
                     ].map((f) => (
-                      <span key={f} className="inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-3 py-1.5" style={{ color: "#065F46", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
+                      <span
+                        key={f}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-3 py-1.5"
+                        style={{ color: "#065F46", background: "#ECFDF5", border: "1px solid #A7F3D0" }}
+                      >
                         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#10B981" }} />
                         {f}
                       </span>
@@ -190,15 +197,27 @@ export default function LegoPacksList() {
 
                 {/* CTA card */}
                 <div className="w-full lg:w-80 xl:w-96 flex-shrink-0">
-                  <div className="rounded-3xl overflow-hidden bg-white" style={{ boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05), 0 20px 48px -8px rgba(16,185,129,0.12), 0 0 0 1px rgba(0,0,0,0.05)" }}>
-                    <div className="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" />
+                  <div
+                    className="rounded-3xl overflow-hidden"
+                    style={{
+                      background: "#FFFFFF",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 16px 40px rgba(16,185,129,0.14), 0 0 0 1px rgba(0,0,0,0.04)",
+                    }}
+                  >
+                    <div style={{ height: 6, background: "linear-gradient(90deg, #10b981, #34d399, #10b981)" }} />
                     <div className="p-7">
-                      <h3 className="text-xl font-heading font-bold mb-1" style={{ color: "#0F172A" }}>Excursión Escolar</h3>
+                      <h3 className="text-xl font-heading font-bold mb-1.5" style={{ color: "#0F172A" }}>Excursión Escolar</h3>
                       <p className="text-sm mb-6" style={{ color: "#64748B" }}>
                         Presupuesto gratuito · Sin compromiso · &lt;24h de respuesta
                       </p>
                       <Link href="/colegios">
-                        <button className="w-full py-3.5 rounded-2xl font-display font-bold text-white text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] mb-3" style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", boxShadow: "0 8px 24px rgba(16,185,129,0.30)" }}>
+                        <button
+                          className="w-full py-3.5 rounded-2xl font-display font-bold text-white text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98] mb-3"
+                          style={{
+                            background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                            boxShadow: "0 6px 20px rgba(16,185,129,0.35)",
+                          }}
+                        >
                           Solicitar Programa Escolar →
                         </button>
                       </Link>
