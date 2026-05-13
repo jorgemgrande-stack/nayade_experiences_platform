@@ -2,9 +2,15 @@ import { eq, and, gte, lte, like, or, desc, asc, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 
+let _db: ReturnType<typeof drizzle> | null = null;
+
 async function getDb() {
-  const conn = await mysql.createConnection(process.env.DATABASE_URL!);
-  return drizzle(conn);
+  if (!_db && process.env.DATABASE_URL) {
+    const pool = mysql.createPool({ uri: process.env.DATABASE_URL, connectionLimit: 10 });
+    _db = drizzle(pool);
+  }
+  if (!_db) throw new Error("DATABASE_URL not configured");
+  return _db;
 }
 import {
   restaurants, restaurantShifts, restaurantClosures,
@@ -256,8 +262,8 @@ export async function getBookings(filters: BookingFilters = {}) {
     ));
   }
   const offset = (page - 1) * limit;
-  const query = db.select().from(restaurantBookings);
-  if (conditions.length) query.where(and(...conditions));
+  let query = db.select().from(restaurantBookings);
+  if (conditions.length) query = query.where(and(...conditions)) as typeof query;
   return query.orderBy(desc(restaurantBookings.date), asc(restaurantBookings.time))
     .limit(limit).offset(offset);
 }
