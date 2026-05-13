@@ -302,6 +302,99 @@ function NewBookingModal({
   );
 }
 
+function slugify(text: string): string {
+  return text.toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim().replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [cuisine, setCuisine] = useState("");
+  const [slugManual, setSlugManual] = useState(false);
+  const utils = trpc.useUtils();
+
+  const createMutation = trpc.restaurants.adminCreate.useMutation({
+    onSuccess: () => {
+      utils.restaurants.adminGetAll.invalidate();
+      onCreated();
+    },
+  });
+
+  function handleNameChange(val: string) {
+    setName(val);
+    if (!slugManual) setSlug(slugify(val));
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !slug.trim()) return;
+    createMutation.mutate({ name: name.trim(), slug: slug.trim(), cuisine: cuisine.trim() || undefined });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-card rounded-2xl border border-border/40 p-6 w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-heading font-bold text-foreground text-lg">Nuevo restaurante</h3>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-muted transition-colors">
+            <XCircle className="w-5 h-5 text-muted-foreground" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-xs font-display text-muted-foreground mb-1 block">Nombre *</label>
+            <input
+              required
+              value={name}
+              onChange={e => handleNameChange(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+              placeholder="El Galeón"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-display text-muted-foreground mb-1 block">Slug (URL) *</label>
+            <input
+              required
+              value={slug}
+              onChange={e => { setSlug(e.target.value); setSlugManual(true); }}
+              className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-accent/50"
+              placeholder="el-galeon"
+            />
+            <p className="text-xs text-muted-foreground font-display mt-1">URL pública: /restaurantes/{slug || "…"}</p>
+          </div>
+          <div>
+            <label className="text-xs font-display text-muted-foreground mb-1 block">Tipo de cocina</label>
+            <input
+              value={cuisine}
+              onChange={e => setCuisine(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-border/60 bg-background text-foreground text-sm font-display focus:outline-none focus:ring-2 focus:ring-accent/50"
+              placeholder="Mediterránea, Arrocera…"
+            />
+          </div>
+          {createMutation.isError && (
+            <p className="text-sm text-red-600 font-display">{createMutation.error.message}</p>
+          )}
+          <div className="flex gap-3 justify-end pt-2">
+            <Button type="button" variant="outline" onClick={onClose} className="rounded-full font-display">Cancelar</Button>
+            <Button
+              type="submit"
+              disabled={createMutation.isPending || !name.trim() || !slug.trim()}
+              className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold"
+            >
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Crear restaurante
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function RestaurantsManager() {
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<number | null>(null);
@@ -313,6 +406,7 @@ export default function RestaurantsManager() {
   const [noteText, setNoteText] = useState("");
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showNewBooking, setShowNewBooking] = useState(false);
+  const [showNewRestaurant, setShowNewRestaurant] = useState(false);
   const [successLocator, setSuccessLocator] = useState<string | null>(null);
 
   // Data
@@ -363,16 +457,22 @@ export default function RestaurantsManager() {
   if (!selectedRestaurantId) return (
     <AdminLayout>
       <div className="p-6 max-w-4xl mx-auto">
-        <h1 className="text-2xl font-heading font-bold text-foreground mb-2">Gestión de Restaurantes</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-heading font-bold text-foreground">Gestión de Restaurantes</h1>
+          <Button
+            onClick={() => setShowNewRestaurant(true)}
+            className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Nuevo restaurante
+          </Button>
+        </div>
         <p className="text-muted-foreground font-display mb-8">Selecciona un restaurante para gestionar sus reservas.</p>
         {!restaurants || restaurants.length === 0 ? (
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-2xl p-6 flex gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-amber-800 dark:text-amber-300">No hay restaurantes configurados</p>
-              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                Ejecuta <code className="bg-amber-100 dark:bg-amber-800 px-1 rounded">node scripts/seed-restaurants.mjs</code> para cargar los 4 restaurantes de Náyade.
-              </p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">Crea el primero con el botón de arriba.</p>
             </div>
           </div>
         ) : (
@@ -401,6 +501,12 @@ export default function RestaurantsManager() {
               </button>
             ))}
           </div>
+        )}
+        {showNewRestaurant && (
+          <NewRestaurantModal
+            onClose={() => setShowNewRestaurant(false)}
+            onCreated={() => setShowNewRestaurant(false)}
+          />
         )}
       </div>
     </AdminLayout>
