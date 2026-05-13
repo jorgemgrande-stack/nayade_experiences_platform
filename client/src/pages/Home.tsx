@@ -1386,11 +1386,28 @@ export default function Home() {
               </div>
 
               {/* Plataformas aceptadas */}
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3 mb-8">
                 <span className="text-white/40 text-xs font-display uppercase tracking-wider">Aceptamos cupones de:</span>
                 {["Groupon", "Wonderbox", "El Corte Inglés", "LetsBonus", "Smartbox"].map((p) => (
                   <span key={p} className="px-3 py-1 rounded-full bg-white/8 border border-white/15 text-white/70 text-xs font-display font-medium">{p}</span>
                 ))}
+              </div>
+
+              {/* Testimonio */}
+              <div className="rounded-2xl border border-white/10 p-5" style={{ background: "rgba(255,255,255,0.05)", backdropFilter: "blur(8px)" }}>
+                <div className="flex gap-0.5 mb-3">
+                  {[1,2,3,4,5].map((s) => <Star key={s} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />)}
+                </div>
+                <p className="text-white/75 text-sm leading-relaxed italic mb-4">
+                  "Una experiencia increíble para toda la familia. Los niños no paraban de hablar del Blob Jump durante semanas. El hotel es precioso y el personal muy atento."
+                </p>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-orange-500/20 border border-orange-400/30 flex items-center justify-center text-orange-300 font-bold text-xs flex-shrink-0">M</div>
+                  <div>
+                    <div className="text-white/80 font-display font-semibold text-xs">María G.</div>
+                    <div className="text-white/40 text-xs">Familia · Madrid</div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1506,11 +1523,28 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3 mb-8">
                 <span className="text-white/40 text-xs font-display uppercase tracking-wider">Programas disponibles:</span>
                 {["Pack Náutico", "Pack Aventura", "Campamento", "Día Convivencia"].map((p) => (
                   <span key={p} className="px-3 py-1 rounded-full bg-white/8 border border-white/15 text-white/70 text-xs font-display font-medium">{p}</span>
                 ))}
+              </div>
+
+              {/* Testimonio */}
+              <div className="rounded-2xl border border-white/10 p-5" style={{ background: "rgba(255,255,255,0.05)", backdropFilter: "blur(8px)" }}>
+                <div className="flex gap-0.5 mb-3">
+                  {[1,2,3,4,5].map((s) => <Star key={s} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />)}
+                </div>
+                <p className="text-white/75 text-sm leading-relaxed italic mb-4">
+                  "Organizamos la excursión de fin de curso con 110 alumnos de secundaria. La organización fue impecable, los monitores fantásticos y los niños alucinaron con el Blob Jump y las canoas. Repetiremos el año que viene."
+                </p>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300 font-bold text-xs flex-shrink-0">A</div>
+                  <div>
+                    <div className="text-white/80 font-display font-semibold text-xs">Ana R.</div>
+                    <div className="text-white/40 text-xs">Profesora · Colegio Retiro, Madrid</div>
+                  </div>
+                </div>
               </div>
             </div>
 
