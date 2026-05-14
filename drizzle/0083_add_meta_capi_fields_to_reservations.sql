@@ -394,21 +394,4 @@ ALTER TABLE `reservations` MODIFY COLUMN `paymentMethod` enum('redsys','transfer
 ALTER TABLE `reservations` MODIFY COLUMN `channel` enum('ONLINE_DIRECTO','ONLINE_ASISTIDO','VENTA_DELEGADA','TPV_FISICO','PARTNER','TICKETING','MANUAL','API','web','crm','telefono','email','otro','tpv','groupon') DEFAULT 'ONLINE_DIRECTO';--> statement-breakpoint
 ALTER TABLE `reviews` MODIFY COLUMN `entityType` enum('hotel','spa','experience','pack','restaurant') NOT NULL;--> statement-breakpoint
 ALTER TABLE `transactions` MODIFY COLUMN `paymentMethod` enum('tarjeta','transferencia','efectivo','link_pago','otro','tarjeta_fisica','tarjeta_redsys') DEFAULT 'tarjeta';--> statement-breakpoint
-ALTER TABLE `users` MODIFY COLUMN `role` enum('user','admin','monitor','agente','adminrest','controler','partner_admin','partner_user') NOT NULL DEFAULT 'user';--> statement-breakpoint
-ALTER TABLE `cancellation_requests` ADD COLUMN IF NOT EXISTS `ghl_contact_id` varchar(128);--> statement-breakpoint
-ALTER TABLE `coupon_redemptions` ADD COLUMN IF NOT EXISTS `ghlContactId` varchar(128);--> statement-breakpoint
-ALTER TABLE `invoices` ADD COLUMN IF NOT EXISTS `partnerId` int;--> statement-breakpoint
-ALTER TABLE `invoices` ADD COLUMN IF NOT EXISTS `partnerBillingBatchId` int;--> statement-breakpoint
-ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `partnerId` int;--> statement-breakpoint
-ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `partnerUserId` int;--> statement-breakpoint
-ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `lead_source_id` int;--> statement-breakpoint
-ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `preferred_time` varchar(10);--> statement-breakpoint
-ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `partner_id` int;--> statement-breakpoint
-ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `partner_user_id` int;--> statement-breakpoint
-ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `fbp` varchar(255);--> statement-breakpoint
-ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `fbc` varchar(255);--> statement-breakpoint
-ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `client_ip_address` varchar(45);--> statement-breakpoint
-ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `client_user_agent` varchar(500);--> statement-breakpoint
-ALTER TABLE `tpv_sale_items` ADD COLUMN IF NOT EXISTS `is_manual` boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE `tpv_sale_items` ADD COLUMN IF NOT EXISTS `concept_text` varchar(500);--> statement-breakpoint
-ALTER TABLE `users` ADD COLUMN IF NOT EXISTS `partnerId` int;
+ALTER TABLE `users` MODIFY COLUMN `role` enum('user','admin','monitor','agente','adminrest','controler','partner_admin','partner_user') NOT NULL DEFAULT 'user';
