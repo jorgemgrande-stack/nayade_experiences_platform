@@ -566,7 +566,7 @@ export const ticketingRouter = router({
         children: input.children,
         comments: input.comments ?? null,
         notes: input.notes ?? null,
-        statusOperational: "recibido",
+        statusOperational: "pendiente",
         statusFinancial: "pendiente_canjear",
         duplicateFlag: dupCheck.softDuplicate,
         duplicateNotes: dupCheck.notes || null,

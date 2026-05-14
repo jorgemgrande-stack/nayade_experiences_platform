@@ -265,6 +265,13 @@ async function ensureCriticalSeeds() {
       ["+34 911 67 51 89", "+34 930 34 77 91"]
     );
 
+    // Cupones creados manualmente por admin que quedaron con statusOperational="recibido" en lugar de "pendiente"
+    await conn.execute(
+      `UPDATE coupon_redemptions
+       SET statusOperational = 'pendiente'
+       WHERE originSource = 'admin_manual_entry' AND statusOperational = 'recibido'`
+    );
+
     // Corrección de email en HTML de plantillas de email almacenado en BD
     await conn.execute(
       `UPDATE email_templates
