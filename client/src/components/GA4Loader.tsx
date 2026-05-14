@@ -1,14 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useMarketingConsent } from '@/hooks/useMarketingConsent';
-import { initGA4, trackPageView } from '@/lib/ga4/client';
+import { initGA4, updateGA4Consent, trackPageView } from '@/lib/ga4/client';
 
 /**
- * Carga gtag.js y gestiona el tracking de GA4.
- * Dos efectos separados:
- *  1. init — carga el script y registra GA4 UNA sola vez cuando hay consent.
- *  2. page_view — se dispara en cada cambio de ruta (SPA) y en la carga inicial,
+ * Gestiona el ciclo de vida de GA4 con Consent Mode v2 (EEA/RGPD).
+ *
+ * Tres efectos separados:
+ *  1. init — carga gtag.js SIEMPRE al montar (con consent denied por defecto).
+ *     Consent Mode v2 requiere que el stub esté registrado antes de cualquier
+ *     evento para poder procesar el consent('update') posterior.
+ *  2. consent update — cuando el usuario acepta cookies llama consent('update',
+ *     {all: granted}) que desbloquea los hits retenidos.
+ *  3. page_view — se dispara en cada cambio de ruta SOLO con consent,
  *     deduplicado por URL para evitar doble-fire en re-renders.
+ *
  * Montar UNA sola vez en el árbol React (App.tsx).
  */
 export function GA4Loader() {
@@ -16,13 +22,19 @@ export function GA4Loader() {
   const [location] = useLocation();
   const lastTrackedUrl = useRef<string | null>(null);
 
-  // ── Efecto 1: inicializar GA4 una sola vez ────────────────────────────────
+  // ── Efecto 1: cargar gtag.js siempre al montar ────────────────────────────
+  // NO detrás de consent: Consent Mode v2 necesita el stub cargado para
+  // poder procesar consent('update') cuando el usuario acepte.
   useEffect(() => {
-    if (!hasConsent) return;
     initGA4();
+  }, []);
+
+  // ── Efecto 2: actualizar consent cuando el usuario acepta ─────────────────
+  useEffect(() => {
+    updateGA4Consent(hasConsent === true);
   }, [hasConsent]);
 
-  // ── Efecto 2: page_view en cada navegación (incluye carga inicial) ─────────
+  // ── Efecto 3: page_view en cada navegación (incluye carga inicial) ─────────
   useEffect(() => {
     if (!hasConsent) return;
     if (typeof window === 'undefined' || typeof window.gtag !== 'function') return;
