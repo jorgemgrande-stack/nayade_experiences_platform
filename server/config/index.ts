@@ -92,10 +92,10 @@ export function getSystemSettingSync(key: string, fallback = ""): string {
 // Generic fallbacks — deployment-specific values must be set in system_settings.
 
 const EMAIL_FALLBACKS: Record<string, string> = {
-  reservations:  "contacto@tuempresa.com",
+  reservations:  "reservas@nayadeexperiences.es",
   admin_alerts:  "admin@tuempresa.com",
   accounting:    "admin@tuempresa.com",
-  cancellations: "contacto@tuempresa.com",
+  cancellations: "reservas@nayadeexperiences.es",
   tpv_ingestion: "admin@tuempresa.com",
 };
 

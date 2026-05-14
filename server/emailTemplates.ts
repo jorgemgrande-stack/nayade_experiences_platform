@@ -20,7 +20,7 @@
 import { getSystemSettingSync } from "./config";
 
 // ─── Dynamic brand helpers (read from config cache at call time) ──────────────
-const getContactEmail = () => getSystemSettingSync("email_reservations", "contacto@tuempresa.com");
+const getContactEmail = () => getSystemSettingSync("email_reservations", "reservas@nayadeexperiences.es");
 
 // ─── Constantes de marca ──────────────────────────────────────────────────────
 // URLs kept as fallback literals; actual values read from system_settings cache
@@ -163,8 +163,8 @@ function emailFooter(): string {
           </tr></table>
           <!-- Datos de contacto -->
           <p style="color:#6b5c3e;font-size:13px;margin:0 0 6px;font-family:Arial,sans-serif;line-height:1.8;">
-            ${SVG.phone}&nbsp;<a href="tel:${getSystemSettingSync('brand_support_phone', '').replace(/\s/g,'')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('brand_support_phone', '')}</a>
-            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:${getSystemSettingSync('email_reservations', 'contacto@tuempresa.com')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('email_reservations', 'contacto@tuempresa.com')}</a>
+            ${SVG.phone}&nbsp;<a href="tel:${getSystemSettingSync('brand_support_phone', '+34 911 67 51 89').replace(/\s/g,'')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('brand_support_phone', '+34 911 67 51 89')}</a>
+            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:${getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es')}</a>
           </p>
           <p style="color:#8b7355;font-size:12px;margin:0 0 12px;font-family:Arial,sans-serif;">
             ${SVG.map}&nbsp;${getSystemSettingSync('brand_location', '')}
@@ -972,8 +972,8 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
   const quoteRefRow = d.quoteNumber
     ? `<br/><span style="color:#9ca3af;font-size:12px;">Presupuesto original: <strong>${d.quoteNumber}</strong></span>`
     : "";
-  const contactPhone = d.contactPhone ?? getSystemSettingSync('brand_support_phone', '');
-  const contactEmail = d.contactEmail ?? getSystemSettingSync('email_reservations', 'contacto@tuempresa.com');
+  const contactPhone = d.contactPhone ?? getSystemSettingSync('brand_support_phone', '+34 911 67 51 89');
+  const contactEmail = d.contactEmail ?? getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es');
 
   const installmentBlock = d.installmentPlan?.installments?.length
     ? (() => {
@@ -1187,7 +1187,7 @@ export function buildQuotePdfHtml(d: QuotePdfData): string {
     <!-- Footer -->
     <div style="padding:16px 40px;border-top:2px solid #1a3a6b;text-align:center;color:#9ca3af;font-size:11px;line-height:1.8;">
       <p style="margin:0;">Gracias por confiar en ${getSystemSettingSync('brand_name', '')}${getSystemSettingSync('brand_domain', '') ? ` &middot; www.${getSystemSettingSync('brand_domain', '')}` : ''}</p>
-      <p style="margin:0;">${getSystemSettingSync('brand_support_phone', '') ? `${getSystemSettingSync('brand_support_phone', '')} &nbsp;&middot;&nbsp; ` : ''}${getContactEmail()}${getSystemSettingSync('brand_location', '') ? ` &nbsp;&middot;&nbsp; ${getSystemSettingSync('brand_location', '')}` : ''}</p>
+      <p style="margin:0;">${getSystemSettingSync('brand_support_phone', '+34 911 67 51 89') ? `${getSystemSettingSync('brand_support_phone', '+34 911 67 51 89')} &nbsp;&middot;&nbsp; ` : ''}${getContactEmail()}${getSystemSettingSync('brand_location', '') ? ` &nbsp;&middot;&nbsp; ${getSystemSettingSync('brand_location', '')}` : ''}</p>
     </div>
   </div>
 </body>
@@ -2415,7 +2415,7 @@ function buildCommercialReminderHtml(
           <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
             ¿Tienes alguna duda o quieres ajustar algo? Escríbenos a
             <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
-            o llámanos — también por WhatsApp.
+            o llámanos al <a href="tel:+34911675189" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 911 67 51 89</a> — también por WhatsApp.
           </p>
         </td></tr>
       </table>

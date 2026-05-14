@@ -34,7 +34,7 @@ import { getSystemSettingSync } from "../config";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-const getCopyEmail = () => getSystemSettingSync("email_reservations", "contacto@tuempresa.com");
+const getCopyEmail = () => getSystemSettingSync("email_reservations", "reservas@nayadeexperiences.es");
 
 // ─── PROVEEDORES FIJOS ────────────────────────────────────────────────────────
 export const FIXED_PROVIDERS = [
