@@ -258,7 +258,10 @@ export default function Colegios() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const submitLead = trpc.public.submitColegiosLead.useMutation({
-    onSuccess: () => setSubmitted(true),
+    onSuccess: () => {
+      trackLeadFormSubmit('colegios_presupuesto');
+      setSubmitted(true);
+    },
     onError: () => toast.error("Error al enviar. Por favor, inténtalo de nuevo."),
   });
 
@@ -320,7 +323,6 @@ export default function Colegios() {
         currency: "EUR",
       }, { eventID: eventId });
     }
-    trackLeadFormSubmit('colegios_presupuesto');
   };
 
   // ─── Pantalla de éxito ────────────────────────────────────────────────────

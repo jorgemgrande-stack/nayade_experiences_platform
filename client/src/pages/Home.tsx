@@ -458,7 +458,10 @@ export default function Home() {
   }, [heroCategory, heroExperiencesList, heroLegoPacksList, heroEscolarPacksList, heroEmpresaPacksList]);
 
   const submitHeroBudget = trpc.public.submitBudget.useMutation({
-    onSuccess: () => setHeroFormSubmitted(true),
+    onSuccess: () => {
+      trackLeadFormSubmit('propuesta_home');
+      setHeroFormSubmitted(true);
+    },
     onError: () => toast.error("Error al enviar. Por favor, inténtalo de nuevo."),
   });
 
@@ -497,7 +500,6 @@ export default function Home() {
       honeypot: heroForm.honeypot || undefined,
       activitiesJson,
     });
-    trackLeadFormSubmit('propuesta_home');
   };
 
   const svgIcons: Record<string, React.ReactNode> = {

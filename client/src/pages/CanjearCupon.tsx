@@ -288,10 +288,10 @@ export default function CanjearCupon() {
 
   const createSubmission = trpc.ticketing.createSubmission.useMutation({
     onSuccess: (data) => {
+      trackEvent('redeem_coupon', { coupon_code: coupons.map((c) => c.couponCode.trim().toUpperCase()).join(',') });
       setSubmissionResult({ totalAccepted: data.totalAccepted, totalRejected: data.totalRejected });
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
-      trackEvent('redeem_coupon', { coupon_code: coupons.map((c) => c.couponCode.trim().toUpperCase()).join(',') });
     },
     onError: (err) => {
       if (err.message.includes("duplicado") || err.message.includes("registrado")) {
