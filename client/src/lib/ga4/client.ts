@@ -8,34 +8,40 @@ declare global {
 const MEASUREMENT_ID =
   (import.meta.env.VITE_GA4_MEASUREMENT_ID as string | undefined) || 'G-8E7HXCGN3P';
 
+let ga4Configured = false;
+
 export function initGA4(): void {
   if (typeof window === 'undefined') return;
-  if (window.gtag) return; // ya inicializado
+  if (ga4Configured) return;
+  ga4Configured = true;
 
-  window.dataLayer = window.dataLayer ?? [];
-  window.gtag = function (...args: unknown[]) {
-    window.dataLayer!.push(args);
-  };
-
-  // Consent Mode v2: declarar ANTES de js/config para EEA compliance (RGPD).
-  // Sin esto gtag.js retiene todos los eventos en EEA y consent('update') no los desbloquea.
-  window.gtag('consent', 'default', {
-    analytics_storage: 'denied',
-    ad_storage: 'denied',
-    ad_user_data: 'denied',
-    ad_personalization: 'denied',
-  });
+  // Si el HTML no inyectó el stub (entorno de desarrollo sin index.html), lo creamos aquí.
+  if (!window.gtag) {
+    window.dataLayer = window.dataLayer ?? [];
+    window.gtag = function (...args: unknown[]) {
+      window.dataLayer!.push(args);
+    };
+    window.gtag('consent', 'default', {
+      analytics_storage: 'denied',
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+    });
+  }
 
   window.gtag('js', new Date());
   window.gtag('config', MEASUREMENT_ID, {
     anonymize_ip: true,
-    send_page_view: false, // page views se disparan manualmente en GA4Loader
+    send_page_view: false,
   });
 
-  const script = document.createElement('script');
-  script.async = true;
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${MEASUREMENT_ID}`;
-  document.head.appendChild(script);
+  // Sólo añade el script si no viene ya del HTML.
+  if (!document.querySelector(`script[src*="gtag/js?id=${MEASUREMENT_ID}"]`)) {
+    const script = document.createElement('script');
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${MEASUREMENT_ID}`;
+    document.head.appendChild(script);
+  }
 }
 
 export function updateGA4Consent(granted: boolean): void {
