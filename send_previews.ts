@@ -187,7 +187,7 @@ const templates: TemplateDef[] = [
       total: "171,00",
       invoiceUrl: `${PORTAL}/facturas/demo.pdf`,
       bookingDate: "sábado, 5 de abril de 2026 a las 10:00",
-      contactPhone: "+34 930 34 77 91",
+      contactPhone: "+34 911 67 51 89",
       contactEmail: "reservas@nayadeexperiences.es",
     }),
   },

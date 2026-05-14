@@ -258,6 +258,12 @@ async function ensureCriticalSeeds() {
        WHERE \`key\` = 'brand_phone' AND (value IS NULL OR value = '' OR value = ?)`,
       ["+34 911 67 51 89", "+34 930 34 77 91"]
     );
+    await conn.execute(
+      `UPDATE system_settings
+       SET value = ?
+       WHERE \`key\` = 'brand_support_phone' AND (value IS NULL OR value = '' OR value = ?)`,
+      ["+34 911 67 51 89", "+34 930 34 77 91"]
+    );
 
     // Refactor fiscal: migrar general_21 → general en todas las tablas afectadas.
     // Desactivamos strict mode para esta sesión: MySQL lanza WARN_DATA_TRUNCATED

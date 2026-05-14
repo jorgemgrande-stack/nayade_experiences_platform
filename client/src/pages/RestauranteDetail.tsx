@@ -189,9 +189,9 @@ export default function RestauranteDetail() {
                 )}
 
                 {/* Teléfono */}
-                <a href={`tel:${restaurant.phone || "+34930347791"}`}>
+                <a href={`tel:${restaurant.phone || "+34911675189"}`}>
                   <Button variant="outline" className="w-full font-display font-semibold rounded-full py-3 text-base border-primary/30 text-primary hover:bg-primary/5">
-                    <Phone className="w-4 h-4 mr-2" /> {restaurant.phone || "+34 930 34 77 91"}
+                    <Phone className="w-4 h-4 mr-2" /> {restaurant.phone || "+34 911 67 51 89"}
                   </Button>
                 </a>
 

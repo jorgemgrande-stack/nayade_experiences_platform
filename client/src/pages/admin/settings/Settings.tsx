@@ -272,7 +272,7 @@ export default function Settings() {
 
   const [business, setBusiness] = useState({
     businessName: "Náyade Experiences",
-    businessPhone: "+34 930 34 77 91",
+    businessPhone: "+34 911 67 51 89",
     businessEmail: "reservas@nayadeexperiences.es",
     businessAddress: "Los Ángeles de San Rafael, Segovia",
     businessDescription: "El destino de aventuras del lago. Actividades náuticas, hotel y spa en el embalse de Los Ángeles de San Rafael, a 45 min de Madrid.",
@@ -438,7 +438,7 @@ export default function Settings() {
                     <Input value={business.businessName} onChange={e => setBusiness(p => ({ ...p, businessName: e.target.value }))} />
                   </Field>
                   <Field label="Teléfono">
-                    <Input value={business.businessPhone} onChange={e => setBusiness(p => ({ ...p, businessPhone: e.target.value }))} placeholder="+34 930 34 77 91" />
+                    <Input value={business.businessPhone} onChange={e => setBusiness(p => ({ ...p, businessPhone: e.target.value }))} placeholder="+34 911 67 51 89" />
                   </Field>
                   <Field label="Email de contacto">
                     <Input type="email" value={business.businessEmail} onChange={e => setBusiness(p => ({ ...p, businessEmail: e.target.value }))} />
