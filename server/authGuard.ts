@@ -129,6 +129,10 @@ const PUBLIC_TRPC_ROUTES = new Set([
   // ── Ticketing (formularios públicos de incidencias/solicitudes) ─────────
   "ticketing.listActiveProducts",
   "ticketing.createSubmission",
+  "ticketing.uploadCouponAttachment",
+
+  // ── Leads públicos adicionales ────────────────────────────────────────────
+  "public.submitColegiosLead",
 
   // ── Cancelaciones (solicitud pública de cancelación) ─────────────────────
   "cancellations.createRequest",
