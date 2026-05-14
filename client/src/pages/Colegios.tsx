@@ -36,7 +36,7 @@ const BENEFITS = [
   {
     icon: Waves,
     title: "Entorno natural único",
-    desc: "El Lago de Bolarque como escenario: deportes acuáticos, senderismo, orientación y mucho más.",
+    desc: "El embalse de Los Ángeles de San Rafael como escenario: deportes acuáticos, senderismo, orientación y mucho más.",
   },
   {
     icon: Users,
@@ -392,7 +392,7 @@ export default function Colegios() {
 
               <p className="text-lg md:text-xl text-white/70 font-light mb-8 leading-relaxed max-w-md">
                 Programas educativos y de aventura para grupos escolares en el entorno natural
-                del Lago de Bolarque. Seguridad, aprendizaje y diversión en un solo lugar.
+                del embalse de Los Ángeles de San Rafael en Segovia. Seguridad, aprendizaje y diversión en un solo lugar.
               </p>
 
               <div className="flex flex-wrap gap-2 mb-8">
