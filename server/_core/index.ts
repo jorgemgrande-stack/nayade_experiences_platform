@@ -265,6 +265,19 @@ async function ensureCriticalSeeds() {
       ["+34 911 67 51 89", "+34 930 34 77 91"]
     );
 
+    // Corrección de email en HTML de plantillas de email almacenado en BD
+    await conn.execute(
+      `UPDATE email_templates
+       SET body_html = REPLACE(body_html, 'contacto@tuempresa.com', 'reservas@nayadeexperiences.es')
+       WHERE body_html LIKE '%contacto@tuempresa.com%'`
+    );
+    // Corrección del teléfono antiguo en HTML de plantillas de email
+    await conn.execute(
+      `UPDATE email_templates
+       SET body_html = REPLACE(REPLACE(body_html, '+34930347791', '+34911675189'), '+34 930 34 77 91', '+34 911 67 51 89')
+       WHERE body_html LIKE '%930%'`
+    );
+
     // Refactor fiscal: migrar general_21 → general en todas las tablas afectadas.
     // Desactivamos strict mode para esta sesión: MySQL lanza WARN_DATA_TRUNCATED
     // (errno 1265) en modo estricto al comparar ENUM con un valor que ya no existe.

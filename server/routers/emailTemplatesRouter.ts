@@ -429,7 +429,10 @@ export const emailTemplatesRouter = router({
       await ensureTemplatesSeeded();
       const [row] = await db.select().from(emailTemplates).where(eq(emailTemplates.id, input.id)).limit(1);
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: `Plantilla '${input.id}' no encontrada` });
-      return { id: row.id, name: row.name, subject: row.subject, html: row.bodyHtml };
+      // Las plantillas de sistema siempre se renderizan desde código para reflejar cambios de branding
+      const systemTpl = !row.isCustom ? SYSTEM_TEMPLATES.find(t => t.id === input.id) : undefined;
+      const html = systemTpl ? systemTpl.buildHtml() : row.bodyHtml;
+      return { id: row.id, name: row.name, subject: row.subject, html };
     }),
 
   // ── Guardar cambios en una plantilla ─────────────────────────────────────
