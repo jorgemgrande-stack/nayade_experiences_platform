@@ -7,6 +7,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import CookieBanner from "./components/CookieBanner";
 import { MetaPixelLoader } from "./components/MetaPixelLoader";
+import { GA4Loader } from "./components/GA4Loader";
 import { ThemeProvider } from "./contexts/ThemeContext";
 
 // ── PUBLIC PAGES (carga inmediata — visibles sin autenticación) ──────────────
@@ -349,6 +350,7 @@ function App() {
           <Router />
           <CookieBanner />
           <MetaPixelLoader />
+          <GA4Loader />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
