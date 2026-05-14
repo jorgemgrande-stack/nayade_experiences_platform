@@ -464,45 +464,59 @@ export const ticketingRouter = router({
       }
 
       if (validResults.length > 0) {
-        // GHL — fire and forget
         const acceptedIds = results.filter(r => r.accepted && r.redemptionId).map(r => r.redemptionId!);
-        setImmediate(async () => {
+        try {
+          // GHL — fire and forget
+          setImmediate(async () => {
+            try {
+              const creds = await getGHLCredentials();
+              if (!creds) return;
+              const ghlId = await createGHLContact({ name: input.customerName, email: input.email, phone: input.phone }, creds);
+              if (ghlId) {
+                if (acceptedIds.length > 0) await db.update(couponRedemptions).set({ ghlContactId: ghlId }).where(inArray(couponRedemptions.id, acceptedIds));
+                await updateGHLContact(ghlId, { tags: ["cupon_recibido"] }, creds);
+              }
+            } catch { /* silent */ }
+          });
+
+          // Email confirmación cliente
           try {
-            const creds = await getGHLCredentials();
-            if (!creds) return;
-            const ghlId = await createGHLContact({ name: input.customerName, email: input.email, phone: input.phone }, creds);
-            if (ghlId) {
-              if (acceptedIds.length > 0) await db.update(couponRedemptions).set({ ghlContactId: ghlId }).where(inArray(couponRedemptions.id, acceptedIds));
-              await updateGHLContact(ghlId, { tags: ["cupon_recibido"] }, creds);
+            const confirmHtml = buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate });
+            sendManagedEmail({
+              templateKey: "coupon_received",
+              triggerEvent: "coupon_received",
+              recipientEmail: input.email,
+              subject: `Hemos recibido tu solicitud de canje — ${input.provider}`,
+              html: confirmHtml,
+              relatedEntityType: "coupon_redemption",
+              relatedEntityId: acceptedIds[0],
+            }).catch(e => console.error("[createSubmission] Error enviando email confirmación:", e));
+          } catch (e) {
+            console.error("[createSubmission] Error construyendo email confirmación:", e);
+          }
+
+          // Alerta interna
+          try {
+            const [cfg] = await db.select().from(couponEmailConfig).limit(1);
+            if (!cfg || cfg.autoSendInternalAlert) {
+              const alertEmail = cfg?.internalAlertEmail ?? getCopyEmail();
+              const alertHtml = buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate });
+              sendManagedEmail({
+                templateKey: "coupon_internal_alert",
+                triggerEvent: "coupon_internal_alert",
+                recipientEmail: alertEmail,
+                subject: `[Ticketing] Nuevo envío: ${validResults.length} cupón${validResults.length > 1 ? "es" : ""} — ${input.customerName}`,
+                html: alertHtml,
+                relatedEntityType: "coupon_redemption",
+                relatedEntityId: acceptedIds[0],
+                forceCustomer: true,
+              }).catch(e => console.error("[createSubmission] Error enviando alerta interna:", e));
             }
-          } catch { /* silent */ }
-        });
-
-        // Email confirmación cliente
-        sendManagedEmail({
-          templateKey: "coupon_received",
-          triggerEvent: "coupon_received",
-          recipientEmail: input.email,
-          subject: `Hemos recibido tu solicitud de canje — ${input.provider}`,
-          html: buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate }),
-          relatedEntityType: "coupon_redemption",
-          relatedEntityId: acceptedIds[0],
-        }).catch(console.error);
-
-        // Alerta interna
-        const [cfg] = await db.select().from(couponEmailConfig).limit(1);
-        if (!cfg || cfg.autoSendInternalAlert) {
-          const alertEmail = cfg?.internalAlertEmail ?? getCopyEmail();
-          sendManagedEmail({
-            templateKey: "coupon_internal_alert",
-            triggerEvent: "coupon_internal_alert",
-            recipientEmail: alertEmail,
-            subject: `[Ticketing] Nuevo envío: ${validResults.length} cupón${validResults.length > 1 ? "es" : ""} — ${input.customerName}`,
-            html: buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate }),
-            relatedEntityType: "coupon_redemption",
-            relatedEntityId: acceptedIds[0],
-            forceCustomer: true,
-          }).catch(console.error);
+          } catch (e) {
+            console.error("[createSubmission] Error en alerta interna:", e);
+          }
+        } catch (e) {
+          console.error("[createSubmission] Error en bloque post-insert (emails/CRM):", e);
         }
       }
 
