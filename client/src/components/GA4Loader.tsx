@@ -30,8 +30,11 @@ export function GA4Loader() {
   }, []);
 
   // ── Efecto 2: actualizar consent cuando el usuario acepta ─────────────────
+  // consent('default', denied) en initGA4() ya cubre el estado inicial,
+  // así que solo disparamos un update explícito cuando hay consent positivo.
   useEffect(() => {
-    updateGA4Consent(hasConsent === true);
+    if (!hasConsent) return;
+    updateGA4Consent(true);
   }, [hasConsent]);
 
   // ── Efecto 3: page_view en cada navegación (incluye carga inicial) ─────────

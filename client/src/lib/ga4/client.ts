@@ -24,7 +24,6 @@ export function initGA4(): void {
     ad_storage: 'denied',
     ad_user_data: 'denied',
     ad_personalization: 'denied',
-    wait_for_update: 500,
   });
 
   window.gtag('js', new Date());
