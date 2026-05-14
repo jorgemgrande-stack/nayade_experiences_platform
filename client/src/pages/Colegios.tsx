@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { generateEventId } from "@/lib/meta-pixel/client";
 import { getFbp, getFbc } from "@/lib/meta-pixel/cookies";
+import { trackLeadFormSubmit, trackCTAClick } from "@/lib/ga4";
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
 const HERO_BG =
@@ -319,6 +320,7 @@ export default function Colegios() {
         currency: "EUR",
       }, { eventID: eventId });
     }
+    trackLeadFormSubmit('colegios_presupuesto');
   };
 
   // ─── Pantalla de éxito ────────────────────────────────────────────────────
@@ -713,7 +715,7 @@ export default function Colegios() {
                 Presupuesto personalizado sin compromiso en menos de 24 horas.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="#" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+                <a href="#" onClick={(e) => { e.preventDefault(); trackCTAClick('solicitar_presupuesto', 'colegios_hero'); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
                   <Button className="bg-amber-500 hover:bg-amber-400 text-white rounded-xl px-10 py-4 text-base font-bold shadow-lg shadow-amber-500/30 w-full sm:w-auto">
                     Solicitar presupuesto
                     <ArrowRight className="w-5 h-5 ml-2" />

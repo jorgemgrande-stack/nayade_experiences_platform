@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { trackCTAClick } from "@/lib/ga4";
 
 // ─── Tipos para multi-actividad ───────────────────────────────────────────────
 interface HeroActivityEntry {
@@ -535,14 +536,14 @@ export default function Home() {
             <p className="text-base md:text-lg text-white/65 mb-8 max-w-lg leading-relaxed">{slide.desc}</p>
             <div className="flex flex-wrap gap-3 mb-8">
               {slide.reserveUrl && (
-                <Link href={slide.reserveUrl}>
+                <Link href={slide.reserveUrl} onClick={() => trackCTAClick('reservar_ahora', 'home_hero')}>
                   <Button size="lg" className="bg-orange-500 hover:bg-orange-600 text-white font-display font-semibold rounded-full px-8 text-base shadow-lg">
                     Reservar Ahora <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
               )}
               {slide.cta && slide.ctaLink && (
-                <Link href={slide.ctaLink}>
+                <Link href={slide.ctaLink} onClick={() => trackCTAClick(slide.cta.toLowerCase().replace(/\s+/g, '_'), 'home_hero')}>
                   <Button size="lg" className={slide.reserveUrl ? "border-white/50 text-white hover:bg-white/15 font-display font-semibold rounded-full px-8 text-base bg-transparent border" : "bg-orange-500 hover:bg-orange-600 text-white font-display font-semibold rounded-full px-8 text-base shadow-lg"}>
                     {slide.cta} <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>

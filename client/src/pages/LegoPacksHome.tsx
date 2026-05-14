@@ -3,6 +3,7 @@ import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Sun, GraduationCap, Building2, Check, Star, Layers } from "lucide-react";
+import { trackCTAClick } from "@/lib/ga4";
 
 const CATEGORIES = [
   {
@@ -194,7 +195,7 @@ export default function LegoPacksHome() {
                     </div>
 
                     <div className="mt-auto">
-                      <Link href={cat.href}>
+                      <Link href={cat.href} onClick={() => trackCTAClick(`lego_categoria_${cat.key}`, 'lego_home')}>
                         <Button
                           className={`w-full bg-gradient-to-r ${cat.gradient} text-white hover:opacity-90 font-bold`}
                         >
@@ -252,7 +253,7 @@ export default function LegoPacksHome() {
             Cuéntanos qué buscas y te preparamos un presupuesto personalizado
             sin compromiso.
           </p>
-          <Link href="/presupuesto">
+          <Link href="/presupuesto" onClick={() => trackCTAClick('solicitar_presupuesto_personalizado', 'lego_home_cta')}>
             <Button
               size="lg"
               className="bg-white text-indigo-600 hover:bg-indigo-50 font-bold px-8"

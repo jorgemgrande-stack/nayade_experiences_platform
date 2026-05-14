@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
+import { trackCTAClick } from "@/lib/ga4";
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -212,6 +213,7 @@ export default function LegoPacksList() {
                       </p>
                       <Link href="/colegios">
                         <button
+                          onClick={() => trackCTAClick('solicitar_programa_escolar', 'lego_escolar_banner')}
                           className="w-full py-3.5 rounded-2xl font-display font-bold text-white text-sm transition-all duration-200 hover:opacity-90 active:scale-[0.98] mb-3"
                           style={{
                             background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
