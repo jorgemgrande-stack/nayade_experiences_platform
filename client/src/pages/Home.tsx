@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { trackCTAClick } from "@/lib/ga4";
+import { trackCTAClick, trackLeadFormSubmit } from "@/lib/ga4";
 
 // ─── Tipos para multi-actividad ───────────────────────────────────────────────
 interface HeroActivityEntry {
@@ -497,6 +497,7 @@ export default function Home() {
       honeypot: heroForm.honeypot || undefined,
       activitiesJson,
     });
+    trackLeadFormSubmit('propuesta_home');
   };
 
   const svgIcons: Record<string, React.ReactNode> = {

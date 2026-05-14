@@ -13,6 +13,7 @@ import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
+import { trackLeadFormSubmit } from "@/lib/ga4";
 
 export default function Contact() {
   const [submitted, setSubmitted] = useState(false);
@@ -43,6 +44,7 @@ export default function Contact() {
         phone: formData.phone || undefined,
       }).catch(() => {});
     }
+    trackLeadFormSubmit('contacto');
   };
 
   const contactItems = [

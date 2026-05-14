@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import PublicLayout from "@/components/PublicLayout";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { trackEvent } from "@/lib/ga4";
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
 const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads/1774088145054-jpwq7l.png";
@@ -290,6 +291,7 @@ export default function CanjearCupon() {
       setSubmissionResult({ totalAccepted: data.totalAccepted, totalRejected: data.totalRejected });
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
+      trackEvent('redeem_coupon', { coupon_code: coupons.map((c) => c.couponCode.trim().toUpperCase()).join(',') });
     },
     onError: (err) => {
       if (err.message.includes("duplicado") || err.message.includes("registrado")) {

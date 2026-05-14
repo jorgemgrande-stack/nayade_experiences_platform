@@ -16,6 +16,7 @@ import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { toast } from "sonner";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
+import { trackLeadFormSubmit } from "@/lib/ga4";
 import ActivityModal, { ActivityEntry, ModalState, getFamilyForSlug } from "@/components/ActivityModal";
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
@@ -140,6 +141,7 @@ export default function BudgetRequest() {
         phone: formData.phone.trim(),
       }).catch(() => {});
     }
+    trackLeadFormSubmit('presupuesto');
   };
 
   const handleCategorySelect = (cat: string) => {
