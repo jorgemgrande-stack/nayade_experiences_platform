@@ -37,6 +37,7 @@ export function GA4Loader() {
   // ── Efecto 3: page_view en cada navegación (incluye carga inicial) ─────────
   useEffect(() => {
     if (!hasConsent) return;
+    if (location.startsWith('/admin')) return;
     if (typeof window === 'undefined' || typeof window.gtag !== 'function') return;
     if (lastTrackedUrl.current === location) return;
     lastTrackedUrl.current = location;
