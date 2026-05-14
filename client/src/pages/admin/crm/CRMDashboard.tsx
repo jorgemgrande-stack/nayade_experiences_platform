@@ -79,6 +79,7 @@ import {
   ChevronUp,
   BellOff,
   Bell,
+  UserPlus,
 } from "lucide-react";
 
 // ─── TYPES ───────────────────────────────────────────────────────────────────
@@ -1301,6 +1302,36 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
   const [notes, setNotes] = useState("");
   const [sendEmailConfirm, setSendEmailConfirm] = useState(true);
 
+  // ── Crear nuevo cliente inline ──────────────────────────────────────────────
+  const [showCreateClient, setShowCreateClient] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
+  const [newClientEmail, setNewClientEmail] = useState("");
+  const [newClientPhone, setNewClientPhone] = useState("");
+  const [newClientCompany, setNewClientCompany] = useState("");
+
+  const createClientMutation = trpc.crm.clients.create.useMutation({
+    onSuccess: () => {
+      setCustomerName(newClientName.trim());
+      setCustomerEmail(newClientEmail.trim());
+      setCustomerPhone(newClientPhone.trim());
+      setClientSearch("");
+      setShowClientSugg(false);
+      setShowCreateClient(false);
+      toast.success("Cliente creado y seleccionado");
+    },
+    onError: (e) => toast.error("Error al crear cliente: " + e.message),
+  });
+
+  const handleCreateClient = () => {
+    if (!newClientName.trim() || !newClientEmail.trim()) { toast.error("Nombre y email son obligatorios"); return; }
+    createClientMutation.mutate({
+      name: newClientName.trim(),
+      email: newClientEmail.trim(),
+      phone: newClientPhone.trim() || undefined,
+      company: newClientCompany.trim() || undefined,
+    });
+  };
+
   const { data: clientSuggestionsRaw } = trpc.crm.clients.list.useQuery(
     { search: clientSearch, limit: 6 },
     { enabled: clientSearch.length >= 2 }
@@ -1357,38 +1388,109 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
         {/* Cliente */}
         <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
           <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Cliente</p>
-          <div className="relative">
-            <Label className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
-            <Input
-              value={customerName || clientSearch}
-              onChange={e => { setClientSearch(e.target.value); setCustomerName(""); setShowClientSugg(true); }}
-              onFocus={() => setShowClientSugg(true)}
-              placeholder="Buscar cliente existente o escribir nuevo..."
-              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
-            />
-            {showClientSugg && clientSuggestions.length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
-                {clientSuggestions.map((c) => (
-                  <button key={c.id} type="button" className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-sm text-white"
-                    onClick={() => { setCustomerName(c.name); setCustomerEmail(c.email ?? ""); setCustomerPhone(c.phone ?? ""); setClientSearch(""); setShowClientSugg(false); }}>
-                    <span className="font-medium">{c.name}</span>
-                    <span className="text-foreground/50 ml-2 text-xs">{c.email}</span>
-                  </button>
-                ))}
+
+          {/* Búsqueda de cliente existente — se oculta cuando hay cliente seleccionado o se está creando */}
+          {!customerName && !showCreateClient && (
+            <div className="relative">
+              <Label className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
+              <Input
+                value={clientSearch}
+                onChange={e => { setClientSearch(e.target.value); setShowClientSugg(true); }}
+                onFocus={() => setShowClientSugg(true)}
+                placeholder="Buscar cliente existente o escribir nuevo..."
+                className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
+              />
+              {showClientSugg && clientSuggestions.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-40 overflow-y-auto">
+                  {clientSuggestions.map((c) => (
+                    <button key={c.id} type="button" className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-sm text-white"
+                      onClick={() => { setCustomerName(c.name); setCustomerEmail(c.email ?? ""); setCustomerPhone(c.phone ?? ""); setClientSearch(""); setShowClientSugg(false); }}>
+                      <span className="font-medium">{c.name}</span>
+                      <span className="text-foreground/50 ml-2 text-xs">{c.email}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {/* Botón crear nuevo cliente — aparece cuando hay texto pero no hay sugerencias seleccionadas */}
+              {clientSearch.length >= 1 && !showCreateClient && (
+                <button
+                  type="button"
+                  onClick={() => { setNewClientName(clientSearch); setNewClientEmail(""); setNewClientPhone(""); setNewClientCompany(""); setShowClientSugg(false); setShowCreateClient(true); }}
+                  className="mt-2 w-full flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 border border-dashed border-emerald-500/40 hover:border-emerald-500/70 rounded-lg px-3 py-2 transition-colors"
+                >
+                  <UserPlus className="w-4 h-4 shrink-0" />
+                  Crear nuevo cliente "{clientSearch}"
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Cliente seleccionado — mostrar resumen con opción de cambiar */}
+          {customerName && !showCreateClient && (
+            <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-500/25 rounded-lg px-3 py-2">
+              <div>
+                <p className="text-sm font-medium text-emerald-300">{customerName}</p>
+                {customerEmail && <p className="text-xs text-foreground/50">{customerEmail}</p>}
               </div>
-            )}
-            {customerName && <p className="text-xs text-emerald-400 mt-1">✓ {customerName}</p>}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-foreground/60 mb-1 block">Email *</Label>
-              <Input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+              <button type="button" onClick={() => { setCustomerName(""); setCustomerEmail(""); setCustomerPhone(""); setClientSearch(""); }} className="text-xs text-foreground/40 hover:text-foreground/70 underline underline-offset-2">
+                Cambiar
+              </button>
             </div>
-            <div>
-              <Label className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
-              <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+          )}
+
+          {/* Formulario inline de nuevo cliente */}
+          {showCreateClient && (
+            <div className="bg-emerald-950/30 border border-emerald-500/25 rounded-lg p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5" /> Nuevo Cliente
+                </p>
+                <button type="button" onClick={() => setShowCreateClient(false)} className="text-foreground/40 hover:text-foreground/70">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <Label className="text-xs text-foreground/60 mb-1 block">Nombre completo *</Label>
+                  <Input value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Nombre completo" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-xs text-foreground/60 mb-1 block">Email *</Label>
+                  <Input type="email" value={newClientEmail} onChange={e => setNewClientEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+                  <Input value={newClientPhone} onChange={e => setNewClientPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs text-foreground/60 mb-1 block">Empresa</Label>
+                  <Input value={newClientCompany} onChange={e => setNewClientCompany(e.target.value)} placeholder="Opcional" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25 h-8 text-sm" />
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleCreateClient}
+                disabled={createClientMutation.isPending || !newClientName.trim() || !newClientEmail.trim()}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8"
+              >
+                {createClientMutation.isPending ? "Creando..." : "✓ Crear y usar este cliente"}
+              </Button>
             </div>
-          </div>
+          )}
+
+          {/* Campos email/teléfono — visibles cuando hay cliente seleccionado */}
+          {customerName && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs text-foreground/60 mb-1 block">Email *</Label>
+                <Input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder="cliente@email.com" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+              </div>
+              <div>
+                <Label className="text-xs text-foreground/60 mb-1 block">Teléfono</Label>
+                <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="+34 600 000 000" className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25" />
+              </div>
+            </div>
+          )}
         </div>
         {/* Producto */}
         <div className="bg-foreground/[0.03] border border-foreground/[0.10] rounded-xl p-4 space-y-3">
