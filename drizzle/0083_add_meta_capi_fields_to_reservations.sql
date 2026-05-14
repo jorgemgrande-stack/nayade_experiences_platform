@@ -1,4 +1,4 @@
-CREATE TABLE `commercial_communications` (
+CREATE TABLE IF NOT EXISTS `commercial_communications` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`quoteId` int NOT NULL,
 	`customerEmail` varchar(320),
@@ -17,7 +17,7 @@ CREATE TABLE `commercial_communications` (
 	CONSTRAINT `commercial_communications_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `commercial_emails` (
+CREATE TABLE IF NOT EXISTS `commercial_emails` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`account_id` int NOT NULL,
 	`message_id` varchar(512) NOT NULL,
@@ -50,7 +50,7 @@ CREATE TABLE `commercial_emails` (
 	CONSTRAINT `commercial_emails_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `commercial_followup_rules` (
+CREATE TABLE IF NOT EXISTS `commercial_followup_rules` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`name` varchar(200) NOT NULL,
 	`isActive` boolean NOT NULL DEFAULT true,
@@ -67,7 +67,7 @@ CREATE TABLE `commercial_followup_rules` (
 	CONSTRAINT `commercial_followup_rules_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `commercial_followup_settings` (
+CREATE TABLE IF NOT EXISTS `commercial_followup_settings` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`enabled` boolean NOT NULL DEFAULT true,
 	`maxTotalRemindersPerQuote` int NOT NULL DEFAULT 3,
@@ -82,7 +82,7 @@ CREATE TABLE `commercial_followup_settings` (
 	CONSTRAINT `commercial_followup_settings_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `crm_lead_sources` (
+CREATE TABLE IF NOT EXISTS `crm_lead_sources` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`code` varchar(50) NOT NULL,
 	`name` varchar(100) NOT NULL,
@@ -98,7 +98,7 @@ CREATE TABLE `crm_lead_sources` (
 	CONSTRAINT `crm_lead_sources_code_unique` UNIQUE(`code`)
 );
 --> statement-breakpoint
-CREATE TABLE `customer_email_prefs` (
+CREATE TABLE IF NOT EXISTS `customer_email_prefs` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`email` varchar(320) NOT NULL,
 	`automationsPaused` boolean NOT NULL DEFAULT false,
@@ -111,7 +111,7 @@ CREATE TABLE `customer_email_prefs` (
 	CONSTRAINT `customer_email_prefs_email_unique` UNIQUE(`email`)
 );
 --> statement-breakpoint
-CREATE TABLE `email_accounts` (
+CREATE TABLE IF NOT EXISTS `email_accounts` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`name` varchar(100) NOT NULL,
 	`email` varchar(320) NOT NULL,
@@ -143,7 +143,7 @@ CREATE TABLE `email_accounts` (
 	CONSTRAINT `email_accounts_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `email_automation_rules` (
+CREATE TABLE IF NOT EXISTS `email_automation_rules` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`templateKey` varchar(128) NOT NULL,
 	`name` varchar(256) NOT NULL,
@@ -164,7 +164,7 @@ CREATE TABLE `email_automation_rules` (
 	CONSTRAINT `email_automation_rules_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `email_comm_log` (
+CREATE TABLE IF NOT EXISTS `email_comm_log` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`leadId` int,
 	`quoteId` int,
@@ -188,7 +188,7 @@ CREATE TABLE `email_comm_log` (
 	CONSTRAINT `email_comm_log_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `email_scheduled_jobs` (
+CREATE TABLE IF NOT EXISTS `email_scheduled_jobs` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`relatedEntityType` varchar(64) NOT NULL,
 	`relatedEntityId` int NOT NULL,
@@ -208,7 +208,7 @@ CREATE TABLE `email_scheduled_jobs` (
 	CONSTRAINT `email_scheduled_jobs_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `email_template_configs` (
+CREATE TABLE IF NOT EXISTS `email_template_configs` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`key` varchar(128) NOT NULL,
 	`category` varchar(64),
@@ -225,7 +225,7 @@ CREATE TABLE `email_template_configs` (
 	CONSTRAINT `email_template_configs_key_unique` UNIQUE(`key`)
 );
 --> statement-breakpoint
-CREATE TABLE `ghl_conversations` (
+CREATE TABLE IF NOT EXISTS `ghl_conversations` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`ghlConversationId` varchar(64) NOT NULL,
 	`ghlContactId` varchar(64),
@@ -249,7 +249,7 @@ CREATE TABLE `ghl_conversations` (
 	CONSTRAINT `ghl_conversations_ghlConversationId_unique` UNIQUE(`ghlConversationId`)
 );
 --> statement-breakpoint
-CREATE TABLE `ghl_messages` (
+CREATE TABLE IF NOT EXISTS `ghl_messages` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`ghlMessageId` varchar(64) NOT NULL,
 	`ghlConversationId` varchar(64) NOT NULL,
@@ -266,7 +266,7 @@ CREATE TABLE `ghl_messages` (
 	CONSTRAINT `ghl_messages_ghlMessageId_unique` UNIQUE(`ghlMessageId`)
 );
 --> statement-breakpoint
-CREATE TABLE `ghl_webhook_events` (
+CREATE TABLE IF NOT EXISTS `ghl_webhook_events` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`eventId` varchar(128),
 	`eventType` varchar(128) NOT NULL,
@@ -281,7 +281,7 @@ CREATE TABLE `ghl_webhook_events` (
 	CONSTRAINT `ghl_webhook_events_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `partner_billing_batch_items` (
+CREATE TABLE IF NOT EXISTS `partner_billing_batch_items` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`batchId` int NOT NULL,
 	`reservationId` int NOT NULL,
@@ -291,7 +291,7 @@ CREATE TABLE `partner_billing_batch_items` (
 	CONSTRAINT `partner_billing_batch_items_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `partner_billing_batches` (
+CREATE TABLE IF NOT EXISTS `partner_billing_batches` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`batchNumber` varchar(32) NOT NULL,
 	`partnerId` int NOT NULL,
@@ -309,7 +309,7 @@ CREATE TABLE `partner_billing_batches` (
 	CONSTRAINT `partner_billing_batches_batchNumber_unique` UNIQUE(`batchNumber`)
 );
 --> statement-breakpoint
-CREATE TABLE `partners` (
+CREATE TABLE IF NOT EXISTS `partners` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`name` varchar(256) NOT NULL,
 	`slug` varchar(128) NOT NULL,
@@ -341,7 +341,7 @@ CREATE TABLE `partners` (
 	CONSTRAINT `partners_slug_unique` UNIQUE(`slug`)
 );
 --> statement-breakpoint
-CREATE TABLE `quote_commercial_tracking` (
+CREATE TABLE IF NOT EXISTS `quote_commercial_tracking` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`quoteId` int NOT NULL,
 	`commercialStatus` enum('pending_followup','reminder_1_sent','reminder_2_sent','reminder_3_sent','interested','paused','lost','converted','discarded') NOT NULL DEFAULT 'pending_followup',
@@ -361,7 +361,7 @@ CREATE TABLE `quote_commercial_tracking` (
 	CONSTRAINT `quote_commercial_tracking_quoteId_unique` UNIQUE(`quoteId`)
 );
 --> statement-breakpoint
-CREATE TABLE `vapi_calls` (
+CREATE TABLE IF NOT EXISTS `vapi_calls` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`vapiCallId` varchar(128) NOT NULL,
 	`assistantId` varchar(128),
@@ -395,20 +395,20 @@ ALTER TABLE `reservations` MODIFY COLUMN `channel` enum('ONLINE_DIRECTO','ONLINE
 ALTER TABLE `reviews` MODIFY COLUMN `entityType` enum('hotel','spa','experience','pack','restaurant') NOT NULL;--> statement-breakpoint
 ALTER TABLE `transactions` MODIFY COLUMN `paymentMethod` enum('tarjeta','transferencia','efectivo','link_pago','otro','tarjeta_fisica','tarjeta_redsys') DEFAULT 'tarjeta';--> statement-breakpoint
 ALTER TABLE `users` MODIFY COLUMN `role` enum('user','admin','monitor','agente','adminrest','controler','partner_admin','partner_user') NOT NULL DEFAULT 'user';--> statement-breakpoint
-ALTER TABLE `cancellation_requests` ADD `ghl_contact_id` varchar(128);--> statement-breakpoint
-ALTER TABLE `coupon_redemptions` ADD `ghlContactId` varchar(128);--> statement-breakpoint
-ALTER TABLE `invoices` ADD `partnerId` int;--> statement-breakpoint
-ALTER TABLE `invoices` ADD `partnerBillingBatchId` int;--> statement-breakpoint
-ALTER TABLE `leads` ADD `partnerId` int;--> statement-breakpoint
-ALTER TABLE `leads` ADD `partnerUserId` int;--> statement-breakpoint
-ALTER TABLE `leads` ADD `lead_source_id` int;--> statement-breakpoint
-ALTER TABLE `leads` ADD `preferred_time` varchar(10);--> statement-breakpoint
-ALTER TABLE `reservations` ADD `partner_id` int;--> statement-breakpoint
-ALTER TABLE `reservations` ADD `partner_user_id` int;--> statement-breakpoint
-ALTER TABLE `reservations` ADD `fbp` varchar(255);--> statement-breakpoint
-ALTER TABLE `reservations` ADD `fbc` varchar(255);--> statement-breakpoint
-ALTER TABLE `reservations` ADD `client_ip_address` varchar(45);--> statement-breakpoint
-ALTER TABLE `reservations` ADD `client_user_agent` varchar(500);--> statement-breakpoint
-ALTER TABLE `tpv_sale_items` ADD `is_manual` boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE `tpv_sale_items` ADD `concept_text` varchar(500);--> statement-breakpoint
-ALTER TABLE `users` ADD `partnerId` int;
+ALTER TABLE `cancellation_requests` ADD COLUMN IF NOT EXISTS `ghl_contact_id` varchar(128);--> statement-breakpoint
+ALTER TABLE `coupon_redemptions` ADD COLUMN IF NOT EXISTS `ghlContactId` varchar(128);--> statement-breakpoint
+ALTER TABLE `invoices` ADD COLUMN IF NOT EXISTS `partnerId` int;--> statement-breakpoint
+ALTER TABLE `invoices` ADD COLUMN IF NOT EXISTS `partnerBillingBatchId` int;--> statement-breakpoint
+ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `partnerId` int;--> statement-breakpoint
+ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `partnerUserId` int;--> statement-breakpoint
+ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `lead_source_id` int;--> statement-breakpoint
+ALTER TABLE `leads` ADD COLUMN IF NOT EXISTS `preferred_time` varchar(10);--> statement-breakpoint
+ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `partner_id` int;--> statement-breakpoint
+ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `partner_user_id` int;--> statement-breakpoint
+ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `fbp` varchar(255);--> statement-breakpoint
+ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `fbc` varchar(255);--> statement-breakpoint
+ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `client_ip_address` varchar(45);--> statement-breakpoint
+ALTER TABLE `reservations` ADD COLUMN IF NOT EXISTS `client_user_agent` varchar(500);--> statement-breakpoint
+ALTER TABLE `tpv_sale_items` ADD COLUMN IF NOT EXISTS `is_manual` boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `tpv_sale_items` ADD COLUMN IF NOT EXISTS `concept_text` varchar(500);--> statement-breakpoint
+ALTER TABLE `users` ADD COLUMN IF NOT EXISTS `partnerId` int;
