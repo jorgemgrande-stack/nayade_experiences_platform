@@ -20,6 +20,7 @@ import { kbRouter } from "../kbRoute";
 import ghlWebhookRouter from "../ghlWebhookRouter";
 import ghlInboxRouter from "../routes/ghlInboxRouter";
 import vapiWebhookRouter from "../vapiWebhookRouter";
+import { sitemapRouter } from "../sitemapRouter";
 import { startQuoteReminderJob } from "../quoteReminderJob";
 import { startCommercialFollowupJob } from "../commercialFollowupJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
@@ -195,6 +196,8 @@ async function startServer() {
       createContext: USE_LOCAL_AUTH ? createLocalContext : createContext,
     })
   );
+  // Sitemap dinámico (debe ir ANTES de serveStatic para que Express lo intercepte)
+  app.use(sitemapRouter);
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);
