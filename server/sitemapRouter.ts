@@ -8,7 +8,7 @@
 import { Router } from "express";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, notLike } from "drizzle-orm";
 import {
   experiences,
   legoPacks,
@@ -16,7 +16,6 @@ import {
   roomTypes,
   spaTreatments,
   locations,
-  staticPages,
 } from "../drizzle/schema";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
@@ -77,12 +76,16 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
       roomRows,
       spaRows,
       locationRows,
-      pageRows,
     ] = await Promise.all([
       db
         .select({ slug: experiences.slug, updatedAt: experiences.updatedAt })
         .from(experiences)
-        .where(and(eq(experiences.isActive, true), eq(experiences.isPublished, true))),
+        .where(and(
+          eq(experiences.isActive, true),
+          eq(experiences.isPublished, true),
+          notLike(experiences.slug, "%-copia-%"),
+          notLike(experiences.slug, "%-"),
+        )),
 
       db
         .select({ slug: legoPacks.slug, updatedAt: legoPacks.updatedAt })
@@ -113,11 +116,6 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
         .select({ slug: locations.slug, updatedAt: locations.updatedAt })
         .from(locations)
         .where(eq(locations.isActive, true)),
-
-      db
-        .select({ slug: staticPages.slug, updatedAt: staticPages.updatedAt })
-        .from(staticPages)
-        .where(eq(staticPages.isPublished, true)),
     ]);
 
     const entries: string[] = [];
@@ -127,7 +125,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
       entries.push(urlEntry(u.path, undefined, u.changefreq, u.priority));
     }
 
-    // /experiencias/:slug
+    // /experiencias/:slug (slugs malformados ya excluidos en la query)
     for (const r of expRows) {
       entries.push(urlEntry(`/experiencias/${r.slug}`, formatDate(r.updatedAt)));
     }
@@ -142,10 +140,9 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
       entries.push(urlEntry(`/lego-packs/detalle/${r.slug}`, formatDate(r.updatedAt)));
     }
 
-    // /restaurantes/:slug  +  /restaurantes/:slug/reservar
+    // /restaurantes/:slug  (omitimos /reservar — formulario de acción, no indexable)
     for (const r of restaurantRows) {
       entries.push(urlEntry(`/restaurantes/${r.slug}`, formatDate(r.updatedAt)));
-      entries.push(urlEntry(`/restaurantes/${r.slug}/reservar`, formatDate(r.updatedAt)));
     }
 
     // /hotel/:slug
@@ -163,10 +160,7 @@ sitemapRouter.get("/sitemap.xml", async (_req, res) => {
       entries.push(urlEntry(`/ubicaciones/${r.slug}`, formatDate(r.updatedAt)));
     }
 
-    // /pagina/:slug
-    for (const r of pageRows) {
-      entries.push(urlEntry(`/pagina/${r.slug}`, formatDate(r.updatedAt)));
-    }
+    // /pagina/* excluido — contenido duplicado de rutas canónicas
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
