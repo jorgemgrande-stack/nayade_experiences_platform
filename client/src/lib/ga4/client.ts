@@ -31,7 +31,6 @@ export function initGA4(): void {
   window.gtag('config', MEASUREMENT_ID, {
     anonymize_ip: true,
     send_page_view: false, // page views se disparan manualmente en GA4Loader
-    debug_mode: true,      // TODO: quitar tras validar en DebugView
   });
 
   const script = document.createElement('script');
