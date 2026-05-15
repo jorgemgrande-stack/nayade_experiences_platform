@@ -4064,7 +4064,7 @@ export const crmRouter = router({
         .where(and(
           eq(reservations.status, "paid"),
           ne(reservations.channel, "PARTNER"),
-          eq(reservations.invoiceExempt, false),
+          sql`(COALESCE(\`invoice_exempt\`, 0) = 0)`,
         ));
 
       const paidIds = paidRes.map(r => r.id);
@@ -4155,9 +4155,9 @@ export const crmRouter = router({
     setInvoiceExempt: staff
       .input(z.object({ reservationId: z.number(), exempt: z.boolean() }))
       .mutation(async ({ input }) => {
-        await db.update(reservations)
-          .set({ invoiceExempt: input.exempt } as any)
-          .where(eq(reservations.id, input.reservationId));
+        await db.execute(
+          sql`UPDATE \`reservations\` SET \`invoice_exempt\` = ${input.exempt ? 1 : 0} WHERE \`id\` = ${input.reservationId}`
+        );
         return { ok: true };
       }),
 
