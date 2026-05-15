@@ -5502,17 +5502,21 @@ export const crmRouter = router({
       address: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ input }) => {
-      const [result] = await db.insert(clients).values({
-        name: input.name,
-        email: input.email,
-        phone: input.phone ?? "",
-        company: input.company ?? "",
-        nif: input.nif ?? "",
-        address: input.address,
-        notes: input.notes,
-        source: "manual",
-      });
-      return { id: (result as any).insertId };
+      try {
+        const [result] = await db.execute(sql`
+          INSERT INTO \`clients\` (\`name\`, \`email\`, \`phone\`, \`company\`, \`nif\`, \`source\`)
+          VALUES (${input.name}, ${input.email}, ${input.phone ?? ""}, ${input.company ?? ""}, ${input.nif ?? ""}, 'manual')
+        `);
+        return { id: (result as any).insertId };
+      } catch (e: any) {
+        if (e?.code === "ER_DUP_ENTRY") {
+          throw new TRPCError({ code: "CONFLICT", message: "Ya existe un cliente con ese email" });
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: e?.sqlMessage ?? e?.message ?? "Error al crear cliente",
+        });
+      }
     }),
     update: staff.input(z.object({
       id: z.number(),
