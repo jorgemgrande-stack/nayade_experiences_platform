@@ -553,7 +553,7 @@ const activitiesRouter = router({
 
   // Confirm client arrival directly from the card
   confirmArrival: adminProcedure
-    .input(z.object({ reservationId: z.number() }))
+    .input(z.object({ reservationId: z.number(), arrivalTime: z.string().optional() }))
     .mutation(async ({ input, ctx }) => {
       const existing = await db.select().from(reservationOperational)
         .where(and(
@@ -562,7 +562,11 @@ const activitiesRouter = router({
         ));
       if (existing.length > 0) {
         await db.update(reservationOperational)
-          .set({ clientConfirmed: true, clientConfirmedAt: new Date(), clientConfirmedBy: ctx.user.id, updatedBy: ctx.user.id })
+          .set({
+            clientConfirmed: true, clientConfirmedAt: new Date(),
+            clientConfirmedBy: ctx.user.id, updatedBy: ctx.user.id,
+            ...(input.arrivalTime ? { arrivalTime: input.arrivalTime } : {}),
+          })
           .where(eq(reservationOperational.id, existing[0].id));
       } else {
         await db.insert(reservationOperational).values({
@@ -572,6 +576,7 @@ const activitiesRouter = router({
           clientConfirmedAt: new Date(),
           clientConfirmedBy: ctx.user.id,
           updatedBy: ctx.user.id,
+          ...(input.arrivalTime ? { arrivalTime: input.arrivalTime } : {}),
         });
       }
       return { ok: true };

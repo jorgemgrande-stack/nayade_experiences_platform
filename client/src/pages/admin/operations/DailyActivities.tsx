@@ -147,6 +147,7 @@ export default function DailyActivities() {
   const [editArrivalTime, setEditArrivalTime] = useState<string>("");
   const [editOpNotes, setEditOpNotes] = useState<string>("");
   const [cancelTarget, setCancelTarget] = useState<{ id: number; title: string } | null>(null);
+  const [confirmArrivalTarget, setConfirmArrivalTarget] = useState<{ reservationId: number; time: string } | null>(null);
   const [opFilter, setOpFilter] = useState<FilterType>("all");
 
   const dateStr = formatDate(currentDate);
@@ -457,7 +458,10 @@ export default function DailyActivities() {
                       <div className="shrink-0 flex flex-col gap-1.5 items-end">
                         {!res.clientConfirmed && (
                           <Button size="sm"
-                            onClick={() => confirmArrivalMutation.mutate({ reservationId: res.id })}
+                            onClick={() => setConfirmArrivalTarget({
+                              reservationId: res.id,
+                              time: new Date().toTimeString().slice(0, 5),
+                            })}
                             disabled={confirmArrivalMutation.isPending}
                             className="bg-emerald-600/80 hover:bg-emerald-600 text-white text-xs gap-1 h-7">
                             <CheckCircle2 className="w-3.5 h-3.5" />Confirmar llegada
@@ -627,6 +631,46 @@ export default function DailyActivities() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Modal confirmar llegada con hora ──────────────────────────────── */}
+      <Dialog open={!!confirmArrivalTarget} onOpenChange={() => setConfirmArrivalTarget(null)}>
+        <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              Confirmar llegada
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-slate-400">Introduce la hora de llegada del cliente.</p>
+            <Input
+              type="time"
+              value={confirmArrivalTarget?.time ?? ""}
+              onChange={(e) => setConfirmArrivalTarget((prev) => prev ? { ...prev, time: e.target.value } : prev)}
+              className="bg-slate-800 border-slate-600 text-white"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={() => setConfirmArrivalTarget(null)}
+              className="border-slate-600 text-slate-300 hover:bg-slate-700">
+              Cancelar
+            </Button>
+            <Button size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={confirmArrivalMutation.isPending}
+              onClick={() => {
+                if (!confirmArrivalTarget) return;
+                confirmArrivalMutation.mutate({
+                  reservationId: confirmArrivalTarget.reservationId,
+                  arrivalTime: confirmArrivalTarget.time || undefined,
+                });
+                setConfirmArrivalTarget(null);
+              }}>
+              Confirmar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
