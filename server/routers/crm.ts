@@ -4046,7 +4046,9 @@ export const crmRouter = router({
     auditOrphans: staff.query(async () => {
       // 1. Reservas pagadas sin factura asociada
       // Excluir canal PARTNER: se facturan mediante liquidaciones agrupadas, nunca tienen factura individual
-      const paidRes = await db
+      // Intentamos filtrar las exentas (columna invoice_exempt, añadida por migración 0091).
+      // Si la columna aún no existe en MySQL (migración pendiente), reintentamos sin el filtro.
+      const baseSelect = db
         .select({
           id: reservations.id,
           reservationNumber: reservations.reservationNumber,
@@ -4060,12 +4062,17 @@ export const crmRouter = router({
           productId: reservations.productId,
           paymentMethod: reservations.paymentMethod,
         })
-        .from(reservations)
-        .where(and(
-          eq(reservations.status, "paid"),
-          ne(reservations.channel, "PARTNER"),
-          sql`(COALESCE(\`invoice_exempt\`, 0) = 0)`,
-        ));
+        .from(reservations);
+
+      const baseWhere = and(eq(reservations.status, "paid"), ne(reservations.channel, "PARTNER"));
+
+      let paidRes: Awaited<typeof baseSelect>;
+      try {
+        paidRes = await baseSelect.where(and(baseWhere, sql`(COALESCE(\`invoice_exempt\`, 0) = 0)`));
+      } catch {
+        // Columna invoice_exempt no existe aún — mostramos todo sin filtrar exentas
+        paidRes = await baseSelect.where(baseWhere);
+      }
 
       const paidIds = paidRes.map(r => r.id);
       const paidQuoteIds = paidRes.map(r => r.quoteId).filter((q): q is number => q != null);
