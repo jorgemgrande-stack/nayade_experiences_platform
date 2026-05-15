@@ -4758,6 +4758,8 @@ export const crmRouter = router({
                   customerName: input.customerName,
                   customerEmail: input.customerEmail,
                   customerPhone: input.customerPhone ?? null,
+                  invoiceUrl: pdfUrl ?? null,
+                  invoiceNumber,
                   source: "reserva_admin",
                 });
               }
