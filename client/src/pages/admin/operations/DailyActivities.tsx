@@ -69,8 +69,10 @@ type FilterType = "all" | "sin_monitor" | "sin_hora" | "incidencia" | "completa"
 function parseExtras(extrasJson: string | null | undefined): any[] {
   try { return extrasJson ? JSON.parse(extrasJson) : []; } catch { return []; }
 }
-function parseActivitiesOp(json: string | null | undefined): Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean }> {
-  try { return json ? JSON.parse(json) : []; } catch { return []; }
+function parseActivitiesOp(json: any): Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean }> {
+  if (!json) return [];
+  if (Array.isArray(json)) return json; // MySQL2 puede devolver JSON ya parseado
+  try { return JSON.parse(json) || []; } catch { return []; }
 }
 function getActivityOp(index: number, activitiesOpJson: any[], res: any) {
   const override = activitiesOpJson.find((a: any) => a.index === index);
