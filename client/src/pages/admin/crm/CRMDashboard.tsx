@@ -1290,6 +1290,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
   const [productSearch, setProductSearch] = useState("");
   const [productId, setProductId] = useState<number | null>(null);
   const [productName, setProductName] = useState("");
+  const [productPricingType, setProductPricingType] = useState<"per_person" | "per_unit">("per_person");
   const [showProductSugg, setShowProductSugg] = useState(false);
 
   const [bookingDate, setBookingDate] = useState("");
@@ -1338,10 +1339,13 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
   );
   const clientSuggestions = clientSuggestionsRaw?.items ?? [];
 
-  const { data: productSuggestions } = trpc.crm.products.search.useQuery(
-    { q: productSearch, limit: 8 },
-    { enabled: productSearch.length >= 2 }
-  );
+  const { data: allProductsRaw } = trpc.crm.products.search.useQuery({ q: "", limit: 100 });
+  const productSuggestions = useMemo(() => {
+    if (!allProductsRaw) return [];
+    if (!productSearch.trim()) return allProductsRaw as any[];
+    const q = productSearch.toLowerCase();
+    return (allProductsRaw as any[]).filter((p: any) => p.title.toLowerCase().includes(q));
+  }, [allProductsRaw, productSearch]);
 
   const createManual = trpc.crm.reservations.createManual.useMutation({
     onSuccess: (data) => {
@@ -1497,30 +1501,67 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
           <p className="text-xs font-semibold text-foreground/60 uppercase tracking-wider">Producto / Servicio</p>
           <div className="relative">
             <Label className="text-xs text-foreground/60 mb-1 block">Experiencia o pack *</Label>
-            <Input
-              value={productName || productSearch}
-              onChange={e => { setProductSearch(e.target.value); setProductId(null); setProductName(""); setShowProductSugg(true); }}
-              onFocus={() => setShowProductSugg(true)}
-              placeholder="Buscar producto..."
-              className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
-            />
-            {showProductSugg && productSuggestions && (productSuggestions as any[]).length > 0 && (
-              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                {(productSuggestions as any[]).map((p: any) => (
-                  <button key={`${p.productType}-${p.id}`} type="button" className="w-full text-left px-3 py-2 hover:bg-foreground/[0.07] text-sm text-white flex items-center gap-2"
-                    onClick={() => {
-                      setProductId(p.id); setProductName(p.title);
-                      if (p.basePrice && Number(p.basePrice) > 0) { const base = Number(p.basePrice) * people; setAmountTotal(base.toFixed(2)); setAmountPaid(base.toFixed(2)); }
-                      setProductSearch(""); setShowProductSugg(false);
-                    }}>
-                    <span className="text-foreground/50 text-xs">{p.productType === "experience" ? "🏊" : "📦"}</span>
-                    <span>{p.title}</span>
-                    {p.basePrice && Number(p.basePrice) > 0 && <span className="ml-auto text-foreground/50 text-xs">{Number(p.basePrice).toFixed(2)}€/pers</span>}
-                  </button>
-                ))}
+            {productName ? (
+              <div className="flex items-center justify-between bg-emerald-950/40 border border-emerald-500/25 rounded-lg px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium text-emerald-300">{productName}</p>
+                  <p className="text-xs text-foreground/50 mt-0.5">
+                    {productPricingType === "per_person" ? "precio por persona" : "precio por unidad"}
+                  </p>
+                </div>
+                <button type="button" onClick={() => { setProductId(null); setProductName(""); setProductSearch(""); setProductPricingType("per_person"); setAmountTotal(""); setAmountPaid(""); }} className="text-xs text-foreground/40 hover:text-foreground/70 underline underline-offset-2">
+                  Cambiar
+                </button>
               </div>
+            ) : (
+              <>
+                <Input
+                  value={productSearch}
+                  onChange={e => { setProductSearch(e.target.value); setShowProductSugg(true); }}
+                  onFocus={() => setShowProductSugg(true)}
+                  onBlur={() => setTimeout(() => setShowProductSugg(false), 150)}
+                  placeholder="Buscar producto o actividad..."
+                  className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-white/25"
+                />
+                {showProductSugg && productSuggestions.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                    {productSuggestions.map((p: any) => {
+                      const base = Number(p.basePrice ?? 0);
+                      const pricing = p.pricingType ?? "per_person";
+                      const priceLabel = base > 0
+                        ? `${base.toFixed(2)}€${pricing === "per_person" ? "/pers" : "/ud"}`
+                        : null;
+                      return (
+                        <button key={`${p.productType}-${p.id}`} type="button"
+                          className="w-full text-left px-3 py-2.5 hover:bg-foreground/[0.07] text-sm text-white flex items-center gap-2.5 border-b border-foreground/[0.05] last:border-0"
+                          onMouseDown={e => e.preventDefault()}
+                          onClick={() => {
+                            setProductId(p.id);
+                            setProductName(p.title);
+                            setProductPricingType(pricing);
+                            if (base > 0) {
+                              const total = pricing === "per_person" ? base * people : base;
+                              setAmountTotal(total.toFixed(2));
+                              setAmountPaid(total.toFixed(2));
+                            }
+                            setProductSearch("");
+                            setShowProductSugg(false);
+                          }}>
+                          <span className="text-base leading-none">{p.productType === "experience" ? "🏊" : "📦"}</span>
+                          <span className="flex-1 truncate">{p.title}</span>
+                          {priceLabel && <span className="text-foreground/50 text-xs shrink-0">{priceLabel}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {showProductSugg && productSearch.length > 0 && productSuggestions.length === 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#0d1526] border border-foreground/[0.15] rounded-lg shadow-xl px-3 py-3 text-sm text-foreground/40">
+                    Sin resultados para "{productSearch}"
+                  </div>
+                )}
+              </>
             )}
-            {productName && <p className="text-xs text-emerald-400 mt-1">✓ {productName}</p>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

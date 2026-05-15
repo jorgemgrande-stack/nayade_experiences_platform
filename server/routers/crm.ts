@@ -5777,6 +5777,7 @@ export const crmRouter = router({
               id: experiences.id,
               title: experiences.title,
               basePrice: experiences.basePrice,
+              pricingType: experiences.pricingType,
               image: experiences.image1,
               coverImage: experiences.coverImageUrl,
               fiscalRegime: experiences.fiscalRegime,
