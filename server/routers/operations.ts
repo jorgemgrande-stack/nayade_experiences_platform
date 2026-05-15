@@ -635,6 +635,7 @@ const activitiesRouter = router({
       monitorId: z.number().nullable().optional(),
       arrivalTime: z.string().optional(),
       opNotes: z.string().optional(),
+      consolidated: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const existing = await db.select().from(reservationOperational)
@@ -644,7 +645,7 @@ const activitiesRouter = router({
         ));
 
       const row = existing[0];
-      const current: Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string }> =
+      const current: Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean }> =
         (row?.activitiesOpJson as any) || [];
 
       const idx = current.findIndex(a => a.index === input.activityIndex);
@@ -652,6 +653,7 @@ const activitiesRouter = router({
       if (input.monitorId !== undefined) updated.monitorId = input.monitorId;
       if (input.arrivalTime !== undefined) updated.arrivalTime = input.arrivalTime;
       if (input.opNotes !== undefined) updated.opNotes = input.opNotes;
+      if (input.consolidated !== undefined) updated.consolidated = input.consolidated;
 
       const newJson = idx >= 0
         ? current.map((a, i) => i === idx ? updated : a)

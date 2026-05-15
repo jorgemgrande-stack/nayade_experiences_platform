@@ -69,22 +69,23 @@ type FilterType = "all" | "sin_monitor" | "sin_hora" | "incidencia" | "completa"
 function parseExtras(extrasJson: string | null | undefined): any[] {
   try { return extrasJson ? JSON.parse(extrasJson) : []; } catch { return []; }
 }
-function parseActivitiesOp(json: string | null | undefined): Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string }> {
+function parseActivitiesOp(json: string | null | undefined): Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean }> {
   try { return json ? JSON.parse(json) : []; } catch { return []; }
 }
 function getActivityOp(index: number, activitiesOpJson: any[], res: any) {
   const override = activitiesOpJson.find((a: any) => a.index === index);
   return {
-    monitorId:   override?.monitorId   !== undefined ? override.monitorId   : (res.monitorId   ?? null),
-    arrivalTime: override?.arrivalTime !== undefined ? override.arrivalTime : (res.arrivalTime ?? null),
-    opNotes:     override?.opNotes     !== undefined ? override.opNotes     : (res.opNotes     ?? null),
-    isInherited: !override,
+    monitorId:    override?.monitorId   !== undefined ? override.monitorId   : (res.monitorId   ?? null),
+    arrivalTime:  override?.arrivalTime !== undefined ? override.arrivalTime : (res.arrivalTime ?? null),
+    opNotes:      override?.opNotes     !== undefined ? override.opNotes     : (res.opNotes     ?? null),
+    consolidated: override?.consolidated === true,
+    isInherited:  !override,
   };
 }
 
 // ─── Componente de actividad interna (sub-item) ────────────────────────────────
 function ActivitySubItem({
-  index, title, pax, op, monitors, onEdit,
+  index, title, pax, op, monitors, onEdit, onConsolidate,
 }: {
   index: number;
   title: string;
@@ -92,16 +93,27 @@ function ActivitySubItem({
   op: ReturnType<typeof getActivityOp>;
   monitors: any[];
   onEdit: () => void;
+  onConsolidate: () => void;
 }) {
   const monitorName = op.monitorId ? monitors.find(m => m.id === op.monitorId)?.fullName || `Monitor #${op.monitorId}` : null;
   return (
-    <div className="flex items-start justify-between gap-3 bg-slate-900/60 rounded-lg p-3 border border-slate-700/50">
+    <div className={cn(
+      "flex items-start justify-between gap-3 rounded-lg p-3 border",
+      op.consolidated
+        ? "bg-emerald-950/30 border-emerald-700/40"
+        : "bg-slate-900/60 border-slate-700/50",
+    )}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-medium text-white/90 truncate">{title}</p>
           <span className="text-[10px] text-slate-500">{pax} pax</span>
           {op.isInherited && (
             <Badge className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/30">Heredado</Badge>
+          )}
+          {op.consolidated && (
+            <Badge className="text-[9px] bg-emerald-500/15 text-emerald-400 border-emerald-500/40 flex items-center gap-0.5">
+              <CheckCheck className="w-2.5 h-2.5" />Consolidada
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-3 mt-1.5 flex-wrap text-[11px]">
@@ -121,10 +133,19 @@ function ActivitySubItem({
           )}
         </div>
       </div>
-      <Button size="sm" variant="outline" onClick={onEdit}
-        className="shrink-0 border-slate-600 text-slate-400 hover:bg-slate-700 text-[10px] h-7 px-2 gap-1">
-        <ClipboardList className="w-3 h-3" /> Editar
-      </Button>
+      <div className="shrink-0 flex flex-col gap-1">
+        <Button size="sm" variant="outline" onClick={onConsolidate}
+          className={cn("text-[10px] h-7 px-2 gap-1", op.consolidated
+            ? "border-slate-600 text-slate-400 hover:bg-slate-700"
+            : "border-emerald-600/50 text-emerald-400 hover:bg-emerald-500/10")}>
+          <CheckCheck className="w-3 h-3" />
+          {op.consolidated ? "Desmarcar" : "Consolidar"}
+        </Button>
+        <Button size="sm" variant="outline" onClick={onEdit}
+          className="border-slate-600 text-slate-400 hover:bg-slate-700 text-[10px] h-7 px-2 gap-1">
+          <ClipboardList className="w-3 h-3" /> Editar
+        </Button>
+      </div>
     </div>
   );
 }
@@ -148,6 +169,7 @@ export default function DailyActivities() {
   const [editOpNotes, setEditOpNotes] = useState<string>("");
   const [cancelTarget, setCancelTarget] = useState<{ id: number; title: string } | null>(null);
   const [confirmArrivalTarget, setConfirmArrivalTarget] = useState<{ reservationId: number; time: string } | null>(null);
+  const [consolidateTarget, setConsolidateTarget] = useState<{ reservationId: number; activityIndex: number; title: string; currentValue: boolean } | null>(null);
   const [opFilter, setOpFilter] = useState<FilterType>("all");
 
   const dateStr = formatDate(currentDate);
@@ -213,7 +235,7 @@ export default function DailyActivities() {
   }
 
   function openEditReservation(res: any) {
-    const op = { monitorId: res.monitorId ?? null, arrivalTime: res.arrivalTime ?? null, opNotes: res.opNotes ?? null, isInherited: false };
+    const op = { monitorId: res.monitorId ?? null, arrivalTime: res.arrivalTime ?? null, opNotes: res.opNotes ?? null, consolidated: false, isInherited: false };
     setEditTarget({ reservationId: res.id, activityIndex: -1, title: `${res.clientName} — ${res.activityTitle}`, current: op });
     setEditMonitorId(res.monitorId ? String(res.monitorId) : "none");
     setEditArrivalTime(res.arrivalTime || "");
@@ -363,6 +385,8 @@ export default function DailyActivities() {
               const isExpanded = expandedIds.has(res.id);
               const totalActivities = 1 + extras.length;
               const isSoon = res.arrivalTime && isWithin2Hours(res.arrivalTime, dateStr);
+              const consolidatedCount = Array.from({ length: totalActivities }, (_, i) => i)
+                .filter(i => getActivityOp(i, activitiesOpJson, res).consolidated).length;
 
               return (
                 <div key={res.id} className={cn(
@@ -439,6 +463,15 @@ export default function DailyActivities() {
                                 <AlertTriangle className="w-3 h-3" />Sin confirmar
                               </span>
                             )}
+                            <span className={cn("flex items-center gap-1 text-xs px-2 py-0.5 rounded border",
+                              consolidatedCount === totalActivities
+                                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                                : consolidatedCount > 0
+                                  ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
+                                  : "text-slate-500 bg-slate-800/60 border-slate-700")}>
+                              <CheckCheck className="w-3 h-3" />
+                              {consolidatedCount}/{totalActivities} consolidada{totalActivities !== 1 ? "s" : ""}
+                            </span>
                             {res.merchantOrder && (
                               <span className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
                                 <Hash className="w-3 h-3" />{res.merchantOrder}
@@ -509,6 +542,7 @@ export default function DailyActivities() {
                         op={getActivityOp(0, activitiesOpJson, res)}
                         monitors={monitors}
                         onEdit={() => openEditActivity(res, 0, res.activityTitle || "Actividad principal")}
+                        onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: 0, title: res.activityTitle || "Actividad principal", currentValue: getActivityOp(0, activitiesOpJson, res).consolidated })}
                       />
                       {/* Actividades extras */}
                       {extras.map((ex: any, i: number) => (
@@ -520,6 +554,7 @@ export default function DailyActivities() {
                           op={getActivityOp(i + 1, activitiesOpJson, res)}
                           monitors={monitors}
                           onEdit={() => openEditActivity(res, i + 1, ex.experienceTitle || ex.name || `Actividad ${i + 2}`)}
+                          onConsolidate={() => { const t = ex.experienceTitle || ex.name || `Actividad ${i + 2}`; setConsolidateTarget({ reservationId: res.id, activityIndex: i + 1, title: t, currentValue: getActivityOp(i + 1, activitiesOpJson, res).consolidated }); }}
                         />
                       ))}
                     </div>
@@ -534,6 +569,7 @@ export default function DailyActivities() {
                         op={getActivityOp(0, activitiesOpJson, res)}
                         monitors={monitors}
                         onEdit={() => openEditActivity(res, 0, res.activityTitle || "Actividad principal")}
+                        onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: 0, title: res.activityTitle || "Actividad principal", currentValue: getActivityOp(0, activitiesOpJson, res).consolidated })}
                       />
                     </div>
                   )}
@@ -631,6 +667,47 @@ export default function DailyActivities() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Modal consolidar / desmarcar actividad ───────────────────────── */}
+      <Dialog open={!!consolidateTarget} onOpenChange={() => setConsolidateTarget(null)}>
+        <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <CheckCheck className="w-4 h-4 text-emerald-400" />
+              {consolidateTarget?.currentValue ? "Desmarcar actividad" : "Consolidar actividad"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <p className="text-sm text-slate-400">
+              {consolidateTarget?.currentValue
+                ? <>¿Desmarcar <strong className="text-white">{consolidateTarget.title}</strong> como consolidada?</>
+                : <>¿Marcar <strong className="text-white">{consolidateTarget?.title}</strong> como consolidada?</>}
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={() => setConsolidateTarget(null)}
+              className="border-slate-600 text-slate-300 hover:bg-slate-700">
+              Cancelar
+            </Button>
+            <Button size="sm"
+              disabled={updateActivityOpMutation.isPending}
+              className={consolidateTarget?.currentValue
+                ? "bg-slate-600 hover:bg-slate-700 text-white"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"}
+              onClick={() => {
+                if (!consolidateTarget) return;
+                updateActivityOpMutation.mutate({
+                  reservationId: consolidateTarget.reservationId,
+                  activityIndex: consolidateTarget.activityIndex,
+                  consolidated: !consolidateTarget.currentValue,
+                });
+                setConsolidateTarget(null);
+              }}>
+              {consolidateTarget?.currentValue ? "Desmarcar" : "Consolidar"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Modal confirmar llegada con hora ──────────────────────────────── */}
       <Dialog open={!!confirmArrivalTarget} onOpenChange={() => setConfirmArrivalTarget(null)}>
