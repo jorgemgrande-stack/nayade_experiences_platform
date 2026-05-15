@@ -4724,49 +4724,42 @@ export const crmRouter = router({
           }
         }
 
-        // 10. GHL: crear/actualizar contacto y disparar workflow
+        // 10. GHL: crear/actualizar contacto y disparar workflow siempre
         try {
           const ghlCreds = await getGHLCredentials();
           if (ghlCreds) {
-            // Si el cliente ya tiene un lead con ghlContactId → solo sincronizar URLs, no disrumpir funnel
+            // Reutilizar ghlContactId del lead existente, o crear contacto nuevo
             const [existingLead] = await db
               .select({ ghlContactId: leads.ghlContactId })
               .from(leads)
               .where(eq(leads.email, input.customerEmail))
               .limit(1);
 
-            if (existingLead?.ghlContactId) {
-              syncLeadUrlsToGHL({
-                ghlContactId: existingLead.ghlContactId,
-                invoiceUrl: pdfUrl ?? undefined,
-                invoiceNumber,
-              });
-            } else {
-              // Cliente nuevo → crear contacto y disparar workflow completo
-              const ghlContactId = await createGHLContact({
+            const ghlContactId = existingLead?.ghlContactId
+              ?? await createGHLContact({
                 name: input.customerName,
-                email: input.customerEmail ?? undefined,
+                email: input.customerEmail,
                 phone: input.customerPhone ?? undefined,
                 tags: ["reserva_confirmada", "reserva_admin"],
               }, ghlCreds);
-              if (ghlContactId) {
-                const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
-                if (webhookUrl) {
-                  await triggerGHLWorkflow(webhookUrl, {
-                    contactId: ghlContactId,
-                    reservationId,
-                    reservationNumber: reservationNumberManual,
-                    merchantOrder,
-                    productName: input.productName,
-                    bookingDate: input.bookingDate,
-                    people: input.people,
-                    amountPaid: Math.round(input.amountPaid * 100),
-                    customerName: input.customerName,
-                    customerEmail: input.customerEmail,
-                    customerPhone: input.customerPhone ?? null,
-                    source: "reserva_admin",
-                  });
-                }
+
+            if (ghlContactId) {
+              const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+              if (webhookUrl) {
+                await triggerGHLWorkflow(webhookUrl, {
+                  contactId: ghlContactId,
+                  reservationId,
+                  reservationNumber: reservationNumberManual,
+                  merchantOrder,
+                  productName: input.productName,
+                  bookingDate: input.bookingDate,
+                  people: input.people,
+                  amountPaid: Math.round(input.amountPaid * 100),
+                  customerName: input.customerName,
+                  customerEmail: input.customerEmail,
+                  customerPhone: input.customerPhone ?? null,
+                  source: "reserva_admin",
+                });
               }
             }
           }
