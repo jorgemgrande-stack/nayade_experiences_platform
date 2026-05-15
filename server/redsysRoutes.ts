@@ -544,6 +544,57 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             console.error(`[Redsys IPN] Error al crear expediente REAV para reserva ${resv.id}:`, reavErr);
           }
         }
+
+        // ── Factura automática para compras directas web (ONLINE_DIRECTO, sin quoteId) ──
+        if (!resv.quoteId) {
+          try {
+            const productForInv = await getExpById(resv.productId);
+            const totalEur = (resv.amountPaid ?? resv.amountTotal) / 100;
+            const productTaxRate = productForInv ? parseFloat(String((productForInv as any).taxRate ?? "21")) : 21;
+            const isReavProduct = productForInv && (productForInv as any).fiscalRegime === "reav";
+            const effectiveTaxRate = isReavProduct ? 0 : productTaxRate;
+            const subtotal = effectiveTaxRate > 0 ? totalEur / (1 + effectiveTaxRate / 100) : totalEur;
+            const taxAmount = totalEur - subtotal;
+
+            const peopleLabel = (resv.people ?? 0) > 1 ? ` (${resv.people} personas)` : "";
+            const invoiceNumber = await generateDocumentNumber("factura", "redsys:online", "system");
+            const now = new Date();
+
+            const [invResult] = await _db.insert(invoices).values({
+              invoiceNumber,
+              reservationId: resv.id,
+              clientName: resv.customerName ?? "Cliente",
+              clientEmail: resv.customerEmail ?? "",
+              clientPhone: resv.customerPhone ?? null,
+              itemsJson: [{
+                description: `${resv.productName}${peopleLabel}`,
+                quantity: 1,
+                unitPrice: parseFloat(totalEur.toFixed(2)),
+                total: parseFloat(totalEur.toFixed(2)),
+                fiscalRegime: isReavProduct ? "reav" : "general",
+                taxRate: effectiveTaxRate,
+              }] as any,
+              subtotal: subtotal.toFixed(2),
+              taxRate: effectiveTaxRate.toFixed(2),
+              taxAmount: taxAmount.toFixed(2),
+              total: totalEur.toFixed(2),
+              status: "cobrada",
+              paymentMethod: "tarjeta_redsys",
+              issuedAt: now,
+              createdAt: now,
+              updatedAt: now,
+            });
+            const invoiceId = (invResult as { insertId: number }).insertId;
+
+            await _db.update(reservations)
+              .set({ invoiceId, invoiceNumber, updatedAt: Date.now() } as any)
+              .where(eq(reservations.id, resv.id));
+
+            console.log(`[Redsys IPN] Factura ${invoiceNumber} creada para reserva directa ${resv.id} (${resv.productName})`);
+          } catch (invoiceErr) {
+            console.error(`[Redsys IPN] Error al crear factura para reserva directa ${resv.id}:`, invoiceErr);
+          }
+        }
       }
     }
 
