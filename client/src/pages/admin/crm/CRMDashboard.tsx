@@ -5290,8 +5290,12 @@ export default function CRMDashboard() {
   const { data: voucherCounters } = trpc.cancellations.getVoucherCounters.useQuery(undefined, {
     refetchInterval: 60000,
   });
-  const { data: auditData } = trpc.crm.reservations.auditOrphans.useQuery(undefined, {
+  const auditQuery = trpc.crm.reservations.auditOrphans.useQuery(undefined, {
     refetchInterval: 120000,
+  });
+  const { data: auditData } = auditQuery;
+  const setInvoiceExempt = trpc.crm.reservations.setInvoiceExempt.useMutation({
+    onSuccess: () => auditQuery.refetch(),
   });
   const { data: tpvPaymentAlerts } = trpc.cardTerminalBatches.getCrmPaymentAlerts.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
@@ -6272,18 +6276,26 @@ export default function CRMDashboard() {
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {cashItems.map((r: any) => (
-                          <button
-                            key={r.id}
-                            onClick={() => setGenInvoiceResId(r.id)}
-                            className="inline-flex items-center gap-1.5 text-[11px] bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 rounded px-2 py-1 transition-colors cursor-pointer"
-                            title="Generar factura manual para esta reserva en efectivo"
-                          >
-                            <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
-                            <span className="text-blue-300/60">·</span>
-                            <span>{r.customerName}</span>
-                            {r.amountEur > 0 && <span className="text-blue-300/70">{fmtAmount(r.amountEur)}</span>}
-                            <FilePlus className="w-3 h-3 text-blue-400 ml-0.5" />
-                          </button>
+                          <span key={r.id} className="inline-flex items-center text-[11px] bg-blue-900/40 text-blue-200 rounded overflow-hidden">
+                            <button
+                              onClick={() => setGenInvoiceResId(r.id)}
+                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-blue-800/60 transition-colors cursor-pointer"
+                              title="Generar factura manual para esta reserva en efectivo"
+                            >
+                              <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
+                              <span className="text-blue-300/60">·</span>
+                              <span>{r.customerName}</span>
+                              {r.amountEur > 0 && <span className="text-blue-300/70">{fmtAmount(r.amountEur)}</span>}
+                              <FilePlus className="w-3 h-3 text-blue-400 ml-0.5" />
+                            </button>
+                            <button
+                              onClick={() => setInvoiceExempt.mutate({ reservationId: r.id, exempt: true })}
+                              className="px-1.5 py-1 hover:bg-blue-700/60 text-blue-400 hover:text-blue-200 transition-colors border-l border-blue-700/40"
+                              title="Ignorar — marcar como no requiere factura"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
                         ))}
                       </div>
                     </div>
@@ -6295,18 +6307,26 @@ export default function CRMDashboard() {
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {otherItems.map((r: any) => (
-                          <button
-                            key={r.id}
-                            onClick={() => setGenInvoiceResId(r.id)}
-                            className="inline-flex items-center gap-1.5 text-[11px] bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 rounded px-2 py-1 transition-colors cursor-pointer"
-                            title="Generar factura para esta reserva"
-                          >
-                            <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
-                            <span className="text-amber-300/60">·</span>
-                            <span>{r.customerName}</span>
-                            {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur)}</span>}
-                            <FilePlus className="w-3 h-3 text-amber-400 ml-0.5" />
-                          </button>
+                          <span key={r.id} className="inline-flex items-center text-[11px] bg-amber-900/40 text-amber-200 rounded overflow-hidden">
+                            <button
+                              onClick={() => setGenInvoiceResId(r.id)}
+                              className="inline-flex items-center gap-1.5 px-2 py-1 hover:bg-amber-800/60 transition-colors cursor-pointer"
+                              title="Generar factura para esta reserva"
+                            >
+                              <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
+                              <span className="text-amber-300/60">·</span>
+                              <span>{r.customerName}</span>
+                              {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur)}</span>}
+                              <FilePlus className="w-3 h-3 text-amber-400 ml-0.5" />
+                            </button>
+                            <button
+                              onClick={() => setInvoiceExempt.mutate({ reservationId: r.id, exempt: true })}
+                              className="px-1.5 py-1 hover:bg-amber-700/60 text-amber-400 hover:text-amber-200 transition-colors border-l border-amber-700/40"
+                              title="Ignorar — marcar como no requiere factura"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
                         ))}
                       </div>
                     </div>

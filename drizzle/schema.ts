@@ -719,6 +719,8 @@ export const reservations = mysqlTable("reservations", {
   fbc: varchar("fbc", { length: 255 }),
   clientIpAddress: varchar("client_ip_address", { length: 45 }),
   clientUserAgent: varchar("client_user_agent", { length: 500 }),
+  // Audit: marcar como exenta de factura (ignorar en panel de auditoría)
+  invoiceExempt: boolean("invoice_exempt").default(false).notNull(),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────

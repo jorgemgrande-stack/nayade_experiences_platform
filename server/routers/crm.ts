@@ -4061,7 +4061,11 @@ export const crmRouter = router({
           paymentMethod: reservations.paymentMethod,
         })
         .from(reservations)
-        .where(and(eq(reservations.status, "paid"), ne(reservations.channel, "PARTNER")));
+        .where(and(
+          eq(reservations.status, "paid"),
+          ne(reservations.channel, "PARTNER"),
+          eq(reservations.invoiceExempt, false),
+        ));
 
       const paidIds = paidRes.map(r => r.id);
       const paidQuoteIds = paidRes.map(r => r.quoteId).filter((q): q is number => q != null);
@@ -4147,6 +4151,15 @@ export const crmRouter = router({
         sinReavCount: sinReav.length,
       };
     }),
+
+    setInvoiceExempt: staff
+      .input(z.object({ reservationId: z.number(), exempt: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await db.update(reservations)
+          .set({ invoiceExempt: input.exempt } as any)
+          .where(eq(reservations.id, input.reservationId));
+        return { ok: true };
+      }),
 
     get: staff
       .input(z.object({ id: z.number() }))
