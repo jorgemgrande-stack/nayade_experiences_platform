@@ -62,7 +62,7 @@ import {
   buildBudgetRequestAdminHtml,
 } from "../emailTemplates";
 import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
-import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource } from "../ghl";
+import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource, triggerGHLWorkflow } from "../ghl";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
 
@@ -4724,7 +4724,57 @@ export const crmRouter = router({
           }
         }
 
-        // 10. Registrar actividad
+        // 10. GHL: crear/actualizar contacto y disparar workflow
+        try {
+          const ghlCreds = await getGHLCredentials();
+          if (ghlCreds) {
+            // Si el cliente ya tiene un lead con ghlContactId → solo sincronizar URLs, no disrumpir funnel
+            const [existingLead] = await db
+              .select({ ghlContactId: leads.ghlContactId })
+              .from(leads)
+              .where(eq(leads.email, input.customerEmail))
+              .limit(1);
+
+            if (existingLead?.ghlContactId) {
+              syncLeadUrlsToGHL({
+                ghlContactId: existingLead.ghlContactId,
+                invoiceUrl: pdfUrl ?? undefined,
+                invoiceNumber,
+              });
+            } else {
+              // Cliente nuevo → crear contacto y disparar workflow completo
+              const ghlContactId = await createGHLContact({
+                name: input.customerName,
+                email: input.customerEmail ?? undefined,
+                phone: input.customerPhone ?? undefined,
+                tags: ["reserva_confirmada", "reserva_admin"],
+              }, ghlCreds);
+              if (ghlContactId) {
+                const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+                if (webhookUrl) {
+                  await triggerGHLWorkflow(webhookUrl, {
+                    contactId: ghlContactId,
+                    reservationId,
+                    reservationNumber: reservationNumberManual,
+                    merchantOrder,
+                    productName: input.productName,
+                    bookingDate: input.bookingDate,
+                    people: input.people,
+                    amountPaid: Math.round(input.amountPaid * 100),
+                    customerName: input.customerName,
+                    customerEmail: input.customerEmail,
+                    customerPhone: input.customerPhone ?? null,
+                    source: "reserva_admin",
+                  });
+                }
+              }
+            }
+          }
+        } catch (ghlErr: any) {
+          console.error("[createManual] Error en integración GHL:", ghlErr.message);
+        }
+
+        // 11. Registrar actividad
         await logActivity(
           "reservation",
           reservationId,
