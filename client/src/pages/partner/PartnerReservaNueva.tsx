@@ -70,7 +70,7 @@ export default function PartnerReservaNueva() {
     if (!form.customerEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customerEmail)) e.customerEmail = "Email no válido";
     if (!selectedProductId) e.product = "Selecciona una experiencia";
     if (!form.bookingDate) e.bookingDate = "Selecciona la fecha de la actividad";
-    if (!form.amountTotal || parseFloat(form.amountTotal) < 0) e.amountTotal = "Introduce el importe";
+    if (!form.amountTotal || parseFloat(form.amountTotal) <= 0) e.amountTotal = "El importe debe ser mayor que 0";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
