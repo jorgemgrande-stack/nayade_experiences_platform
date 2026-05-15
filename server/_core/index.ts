@@ -230,9 +230,10 @@ async function runMigrations() {
     await migrate(db, { migrationsFolder });
     await pool.end();
     console.log("[DB] Migraciones aplicadas correctamente");
-  } catch (err) {
-    console.error("[DB] Error al aplicar migraciones:", err);
-    // No abortamos el arranque — si la BD ya está al día, el error es esperado
+  } catch (err: any) {
+    console.error("[DB] Error al aplicar migraciones (código:", err?.code, "):", err?.message ?? err);
+    // No abortamos el arranque — si la BD ya está al día, el error es esperado.
+    // Las migraciones usarán IF NOT EXISTS para ser idempotentes.
   }
 }
 
