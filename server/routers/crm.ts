@@ -4058,6 +4058,7 @@ export const crmRouter = router({
           quoteId: reservations.quoteId,
           invoiceId: reservations.invoiceId,
           productId: reservations.productId,
+          paymentMethod: reservations.paymentMethod,
         })
         .from(reservations)
         .where(and(eq(reservations.status, "paid"), ne(reservations.channel, "PARTNER")));
@@ -4096,6 +4097,7 @@ export const crmRouter = router({
         productName: r.productName,
         amountEur: (r.amountTotal ?? 0) / 100,
         createdAt: r.createdAt,
+        paymentMethod: r.paymentMethod ?? null,
       }));
 
       // 2. Reservas pagadas vinculadas a producto REAV sin expediente REAV

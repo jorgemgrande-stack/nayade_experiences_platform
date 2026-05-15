@@ -6260,29 +6260,60 @@ export default function CRMDashboard() {
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               Auditoría — se detectaron incidencias en reservas pagadas
             </div>
-            {auditData.sinFacturaCount > 0 && (
-              <div>
-                <p className="text-xs text-amber-300/80 font-medium mb-1">
-                  {auditData.sinFacturaCount} reserva{auditData.sinFacturaCount !== 1 ? "s" : ""} pagada{auditData.sinFacturaCount !== 1 ? "s" : ""} sin factura asociada:
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {auditData.sinFactura.map(r => (
-                    <button
-                      key={r.id}
-                      onClick={() => setGenInvoiceResId(r.id)}
-                      className="inline-flex items-center gap-1.5 text-[11px] bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 rounded px-2 py-1 transition-colors cursor-pointer"
-                      title="Generar factura para esta reserva"
-                    >
-                      <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
-                      <span className="text-amber-300/60">·</span>
-                      <span>{r.customerName}</span>
-                      {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur)}</span>}
-                      <FilePlus className="w-3 h-3 text-amber-400 ml-0.5" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {auditData.sinFacturaCount > 0 && (() => {
+              const cashItems = auditData.sinFactura.filter((r: any) => r.paymentMethod === "efectivo");
+              const otherItems = auditData.sinFactura.filter((r: any) => r.paymentMethod !== "efectivo");
+              return (
+                <>
+                  {cashItems.length > 0 && (
+                    <div>
+                      <p className="text-xs text-blue-300/80 font-medium mb-1">
+                        {cashItems.length} reserva{cashItems.length !== 1 ? "s" : ""} cobrada{cashItems.length !== 1 ? "s" : ""} en efectivo — requieren factura manual:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {cashItems.map((r: any) => (
+                          <button
+                            key={r.id}
+                            onClick={() => setGenInvoiceResId(r.id)}
+                            className="inline-flex items-center gap-1.5 text-[11px] bg-blue-900/40 hover:bg-blue-800/60 text-blue-200 rounded px-2 py-1 transition-colors cursor-pointer"
+                            title="Generar factura manual para esta reserva en efectivo"
+                          >
+                            <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
+                            <span className="text-blue-300/60">·</span>
+                            <span>{r.customerName}</span>
+                            {r.amountEur > 0 && <span className="text-blue-300/70">{fmtAmount(r.amountEur)}</span>}
+                            <FilePlus className="w-3 h-3 text-blue-400 ml-0.5" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {otherItems.length > 0 && (
+                    <div>
+                      <p className="text-xs text-amber-300/80 font-medium mb-1">
+                        {otherItems.length} reserva{otherItems.length !== 1 ? "s" : ""} pagada{otherItems.length !== 1 ? "s" : ""} sin factura asociada:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {otherItems.map((r: any) => (
+                          <button
+                            key={r.id}
+                            onClick={() => setGenInvoiceResId(r.id)}
+                            className="inline-flex items-center gap-1.5 text-[11px] bg-amber-900/40 hover:bg-amber-800/60 text-amber-200 rounded px-2 py-1 transition-colors cursor-pointer"
+                            title="Generar factura para esta reserva"
+                          >
+                            <span className="font-mono font-bold">{r.reservationNumber ?? `#${r.id}`}</span>
+                            <span className="text-amber-300/60">·</span>
+                            <span>{r.customerName}</span>
+                            {r.amountEur > 0 && <span className="text-amber-300/70">{fmtAmount(r.amountEur)}</span>}
+                            <FilePlus className="w-3 h-3 text-amber-400 ml-0.5" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             {auditData.sinReavCount > 0 && (
               <div>
                 <p className="text-xs text-amber-300/80 font-medium mb-1">

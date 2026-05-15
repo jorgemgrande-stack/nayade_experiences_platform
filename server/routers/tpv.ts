@@ -1013,51 +1013,51 @@ export const tpvRouter = router({
         }
       }
 
-      // ── 8c. Generar factura automática ────────────────────────────────────────
-      try {
-        const invoiceNumber = await generateDocumentNumber("factura", "tpv:createSale", "system");
-        const invoicePayMethod =
-          primaryPaymentMethod === "cash" ? "efectivo" :
-          primaryPaymentMethod === "card" ? "tarjeta_fisica" : "otro";
+      // ── 8c. Generar factura automática (solo pagos con tarjeta — efectivo requiere factura manual) ──
+      if (primaryPaymentMethod !== "cash") {
+        try {
+          const invoiceNumber = await generateDocumentNumber("factura", "tpv:createSale", "system");
+          const invoicePayMethod = primaryPaymentMethod === "card" ? "tarjeta_fisica" : "otro";
 
-        const invoiceItems = input.items.map((item, idx) => ({
-          description: item.productName,
-          quantity:    item.quantity,
-          unitPrice:   item.unitPrice,
-          total:       linesFiscal[idx]?.lineSubtotal ?? item.unitPrice * item.quantity,
-          fiscalRegime: linesFiscal[idx]?.fiscalRegime ?? "reav",
-          taxRate:     linesFiscal[idx]?.taxRate ?? 0,
-          productId:   item.productId,
-        }));
+          const invoiceItems = input.items.map((item, idx) => ({
+            description: item.productName,
+            quantity:    item.quantity,
+            unitPrice:   item.unitPrice,
+            total:       linesFiscal[idx]?.lineSubtotal ?? item.unitPrice * item.quantity,
+            fiscalRegime: linesFiscal[idx]?.fiscalRegime ?? "reav",
+            taxRate:     linesFiscal[idx]?.taxRate ?? 0,
+            productId:   item.productId,
+          }));
 
-        const now = new Date();
-        const [invResult] = await db.insert(invoices).values({
-          invoiceNumber,
-          reservationId:  reservationId ?? undefined,
-          clientName:     input.customerName || "Cliente TPV",
-          clientEmail:    input.customerEmail || "",
-          clientPhone:    input.customerPhone || null,
-          itemsJson:      invoiceItems,
-          subtotal:       String(subtotal.toFixed(2)),
-          taxRate:        String(effectiveTaxRatePct.toFixed(2)),
-          taxAmount:      String(totalTaxAmount.toFixed(2)),
-          total:          String(total.toFixed(2)),
-          status:         "cobrada",
-          paymentMethod:  invoicePayMethod,
-          issuedAt:       now,
-          createdAt:      now,
-          updatedAt:      now,
-        } as any);
-        const invoiceId = (invResult as any).insertId as number;
+          const now = new Date();
+          const [invResult] = await db.insert(invoices).values({
+            invoiceNumber,
+            reservationId:  reservationId ?? undefined,
+            clientName:     input.customerName || "Cliente TPV",
+            clientEmail:    input.customerEmail || "",
+            clientPhone:    input.customerPhone || null,
+            itemsJson:      invoiceItems,
+            subtotal:       String(subtotal.toFixed(2)),
+            taxRate:        String(effectiveTaxRatePct.toFixed(2)),
+            taxAmount:      String(totalTaxAmount.toFixed(2)),
+            total:          String(total.toFixed(2)),
+            status:         "cobrada",
+            paymentMethod:  invoicePayMethod,
+            issuedAt:       now,
+            createdAt:      now,
+            updatedAt:      now,
+          } as any);
+          const invoiceId = (invResult as any).insertId as number;
 
-        await db.update(tpvSales).set({ invoiceId } as any).where(eq(tpvSales.id, saleId));
-        if (reservationId) {
-          await db.update(reservations)
-            .set({ invoiceId, invoiceNumber } as any)
-            .where(eq(reservations.id, reservationId));
+          await db.update(tpvSales).set({ invoiceId } as any).where(eq(tpvSales.id, saleId));
+          if (reservationId) {
+            await db.update(reservations)
+              .set({ invoiceId, invoiceNumber } as any)
+              .where(eq(reservations.id, reservationId));
+          }
+        } catch (e) {
+          console.error("[TPV] Error generando factura:", e);
         }
-      } catch (e) {
-        console.error("[TPV] Error generando factura:", e);
       }
 
       // ── 9. Email de confirmación (cliente si hay email + siempre a reservas@) ─
