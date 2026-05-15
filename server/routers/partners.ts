@@ -13,8 +13,9 @@ import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems
 import { eq, desc, and, gte, lte, notInArray, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
-import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber } from "../db";
+import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber, getGHLCredentials } from "../db";
 import { reservations } from "../../drizzle/schema";
+import { createGHLContact, triggerGHLWorkflow } from "../ghl";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
@@ -490,6 +491,49 @@ export const partnersRouter = router({
           leadId: null,
         }),
       ]).catch((e: any) => console.error("[Partners] Error en post-reserva:", e.message));
+
+      // GHL: reutilizar contacto existente o crear nuevo, siempre disparar workflow
+      try {
+        const ghlCreds = await getGHLCredentials();
+        if (ghlCreds) {
+          const [existingLead] = await db
+            .select({ ghlContactId: leads.ghlContactId })
+            .from(leads)
+            .where(eq(leads.email, input.customerEmail))
+            .limit(1);
+
+          const ghlContactId = existingLead?.ghlContactId
+            ?? await createGHLContact({
+              name: input.customerName,
+              email: input.customerEmail,
+              phone: input.customerPhone ?? undefined,
+              tags: ["reserva_confirmada", "reserva_partner"],
+            }, ghlCreds);
+
+          if (ghlContactId) {
+            const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+            if (webhookUrl) {
+              await triggerGHLWorkflow(webhookUrl, {
+                contactId: ghlContactId,
+                reservationId,
+                reservationNumber,
+                merchantOrder,
+                productName: input.productName,
+                bookingDate: input.bookingDate,
+                people: input.people,
+                amountPaid: amountCents,
+                customerName: input.customerName,
+                customerEmail: input.customerEmail,
+                customerPhone: input.customerPhone ?? null,
+                source: "reserva_partner",
+                partnerName: partner.name,
+              });
+            }
+          }
+        }
+      } catch (ghlErr: any) {
+        console.error("[Partners] Error en integración GHL:", ghlErr.message);
+      }
 
       return { reservationId, reservationNumber, merchantOrder };
     }),
