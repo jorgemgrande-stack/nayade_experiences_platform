@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Pencil, Trash2, Search, Filter, Upload, FileText, X, Euro,
   TrendingDown, Calendar, ChevronDown, Banknote, LinkIcon,
-  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock,
+  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock, ExternalLink, Eye,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -98,6 +98,9 @@ export default function ExpensesManager() {
   const [form, setForm] = useState<ExpenseForm>(emptyForm);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  type ExistingFile = { id: number; filePath: string; fileName: string | null; mimeType: string | null };
+  const [existingFiles, setExistingFiles] = useState<ExistingFile[]>([]);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   // Email ingestion state
   const [emailLogsOpen, setEmailLogsOpen] = useState(false);
@@ -166,6 +169,15 @@ export default function ExpensesManager() {
   const deleteFileMut = trpc.financial.expenses.deleteFile.useMutation({
     onSuccess: () => { utils.financial.expenses.list.invalidate(); },
   });
+
+  async function handleDeleteFile(fileId: number) {
+    await deleteFileMut.mutateAsync({ fileId });
+    setExistingFiles((prev) => prev.filter((f) => f.id !== fileId));
+  }
+
+  function isImage(mimeType: string | null) {
+    return !!mimeType?.startsWith("image/");
+  }
 
   const createCatMut = trpc.financial.categories.create.useMutation({
     onSuccess: (res) => {
@@ -237,6 +249,7 @@ export default function ExpensesManager() {
     setEditingId(null);
     setForm(emptyForm);
     setPendingFiles([]);
+    setExistingFiles([]);
     setDialogOpen(true);
   }
 
@@ -254,6 +267,7 @@ export default function ExpensesManager() {
       notes: e.notes ?? "",
     });
     setPendingFiles([]);
+    setExistingFiles((e.files ?? []) as ExistingFile[]);
     setDialogOpen(true);
   }
 
@@ -659,9 +673,14 @@ export default function ExpensesManager() {
                       </td>
                       <td className="p-3 text-center">
                         {e.files.length > 0 ? (
-                          <span className="flex items-center justify-center gap-1 text-blue-600">
-                            <FileText className="w-3 h-3" /> {e.files.length}
-                          </span>
+                          <button
+                            className="flex items-center justify-center gap-1 text-blue-400 hover:text-blue-300 transition-colors mx-auto"
+                            onClick={() => openEdit(e)}
+                            title="Ver adjuntos"
+                          >
+                            <FileText className="w-3 h-3" />
+                            <span className="text-xs font-medium">{e.files.length}</span>
+                          </button>
                         ) : "—"}
                       </td>
                       <td className="p-3 text-center sticky right-0 bg-background border-l">
@@ -799,7 +818,52 @@ export default function ExpensesManager() {
               />
             </div>
 
-            {/* File attachments */}
+            {/* Adjuntos guardados */}
+            {existingFiles.length > 0 && (
+              <div>
+                <Label className="mb-2 block">Adjuntos guardados</Label>
+                <div className="space-y-1.5">
+                  {existingFiles.map((f) => (
+                    <div key={f.id} className="flex items-center gap-2 bg-muted/30 border rounded px-2 py-1.5">
+                      {isImage(f.mimeType) ? (
+                        <button
+                          type="button"
+                          className="shrink-0 w-8 h-8 rounded overflow-hidden border border-border hover:opacity-80 transition-opacity"
+                          onClick={() => setLightboxUrl(f.filePath)}
+                          title="Ver imagen"
+                        >
+                          <img src={f.filePath} alt={f.fileName ?? ""} className="w-full h-full object-cover" />
+                        </button>
+                      ) : (
+                        <FileText className="w-4 h-4 shrink-0 text-blue-400" />
+                      )}
+                      <span className="text-sm flex-1 truncate text-foreground/80" title={f.fileName ?? f.filePath}>
+                        {f.fileName ?? f.filePath.split("/").pop() ?? "Archivo"}
+                      </span>
+                      <a
+                        href={f.filePath}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 p-1 rounded hover:bg-blue-500/10 text-blue-400 hover:text-blue-300 transition-colors"
+                        title="Abrir en nueva pestaña"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <button
+                        type="button"
+                        className="shrink-0 p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors"
+                        onClick={() => handleDeleteFile(f.id)}
+                        title="Eliminar adjunto"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Nuevos adjuntos */}
             <div>
               <Label>Adjuntos (facturas, tickets...)</Label>
               <div
@@ -1112,6 +1176,36 @@ export default function ExpensesManager() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Lightbox para imágenes */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <a
+            href={lightboxUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute top-4 right-16 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            onClick={(e) => e.stopPropagation()}
+            title="Abrir original"
+          >
+            <ExternalLink className="w-5 h-5" />
+          </a>
+          <img
+            src={lightboxUrl}
+            alt="Adjunto"
+            className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </AdminLayout>
   );
 }
