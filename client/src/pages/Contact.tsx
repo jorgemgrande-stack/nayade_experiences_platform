@@ -23,7 +23,7 @@ export default function Contact() {
   const hasConsent = useMarketingConsent();
 
   const submitLead = trpc.public.submitLead.useMutation({
-    onSuccess: () => setSubmitted(true),
+    onSuccess: () => { trackLeadFormSubmit('contacto'); setSubmitted(true); },
     onError: () => toast.error("Error al enviar el mensaje. Inténtalo de nuevo."),
   });
 
@@ -44,7 +44,6 @@ export default function Contact() {
         phone: formData.phone || undefined,
       }).catch(() => {});
     }
-    trackLeadFormSubmit('contacto');
   };
 
   const contactItems = [

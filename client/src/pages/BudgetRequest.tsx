@@ -92,7 +92,7 @@ export default function BudgetRequest() {
   const hasConsent = useMarketingConsent();
 
   const submitBudget = trpc.public.submitBudget.useMutation({
-    onSuccess: () => setSubmitted(true),
+    onSuccess: () => { trackLeadFormSubmit('presupuesto'); setSubmitted(true); },
     onError: () => toast.error("Error al enviar. Por favor, inténtalo de nuevo."),
   });
 
@@ -141,7 +141,6 @@ export default function BudgetRequest() {
         phone: formData.phone.trim(),
       }).catch(() => {});
     }
-    trackLeadFormSubmit('presupuesto');
   };
 
   const handleCategorySelect = (cat: string) => {
