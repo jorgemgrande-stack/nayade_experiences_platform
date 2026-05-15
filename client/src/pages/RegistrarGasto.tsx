@@ -1,16 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { CheckCircle2, Upload, AlertCircle, Loader2, X } from "lucide-react";
+import { CheckCircle2, Upload, AlertCircle, Loader2, X, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -25,6 +16,14 @@ const ALLOWED_MIME = new Set([
   "application/pdf",
 ]);
 const MAX_BYTES = 10 * 1024 * 1024;
+
+// Estilo base para inputs nativos — fuerza tema oscuro en iOS y Android
+const inputStyle: React.CSSProperties = {
+  colorScheme: "dark",
+  backgroundColor: "#0f172a",
+  color: "#e2e8f0",
+  WebkitTextFillColor: "#e2e8f0",
+};
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -49,19 +48,15 @@ function NoDisponible() {
 
 // ─── Componente principal ──────────────────────────────────────────────────────
 export default function RegistrarGasto() {
-  // Inyectar meta noindex (no accesible sin token; igualmente no indexable)
   useEffect(() => {
     const meta = document.createElement("meta");
     meta.name = "robots";
     meta.content = "noindex, nofollow";
     document.head.appendChild(meta);
-    return () => {
-      document.head.removeChild(meta);
-    };
+    return () => { document.head.removeChild(meta); };
   }, []);
 
   if (!token) return <NoDisponible />;
-
   return <GastoForm token={token} />;
 }
 
@@ -86,7 +81,6 @@ function GastoForm({ token }: { token: string }) {
     setFileError("");
     const f = e.target.files?.[0];
     if (!f) { setFile(null); return; }
-
     const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
     if (!ALLOWED_EXTS.includes(ext) || !ALLOWED_MIME.has(f.type)) {
       setFileError("Formato no permitido. Usa JPG, PNG, WEBP o PDF.");
@@ -139,7 +133,6 @@ function GastoForm({ token }: { token: string }) {
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  // Token inválido según el servidor
   if (catsError?.data?.code === "NOT_FOUND") return <NoDisponible />;
 
   // ── Éxito ──
@@ -173,6 +166,7 @@ function GastoForm({ token }: { token: string }) {
   return (
     <div className="min-h-screen bg-[#0a0a0f] flex items-start justify-center px-4 py-10">
       <div className="w-full max-w-sm space-y-6">
+
         {/* Header */}
         <div className="text-center space-y-1">
           <p className="text-[#e8b86d] text-xs font-medium tracking-widest uppercase">
@@ -193,22 +187,26 @@ function GastoForm({ token }: { token: string }) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+
           {/* Importe */}
           <div className="space-y-1.5">
-            <label className="text-slate-300 text-sm font-medium">
+            <label className="block text-slate-300 text-sm font-medium">
               Importe <span className="text-red-400">*</span>
             </label>
             <div className="relative">
-              <Input
+              <input
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 min="0.01"
                 placeholder="0,00"
                 value={amount}
                 onChange={e => setAmount(e.target.value)}
                 required
-                className="bg-slate-900 border-slate-700 text-white pr-10 placeholder:text-slate-600
-                  focus:border-[#e8b86d] focus:ring-[#e8b86d]/20"
+                style={inputStyle}
+                className="w-full rounded-md border border-slate-700 px-3 py-2.5 pr-10 text-sm
+                  outline-none focus:border-[#e8b86d] placeholder-slate-600
+                  [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">
                 €
@@ -216,9 +214,9 @@ function GastoForm({ token }: { token: string }) {
             </div>
           </div>
 
-          {/* Categoría */}
+          {/* Categoría — select nativo para máxima compatibilidad móvil */}
           <div className="space-y-1.5">
-            <label className="text-slate-300 text-sm font-medium">
+            <label className="block text-slate-300 text-sm font-medium">
               Categoría <span className="text-red-400">*</span>
             </label>
             {catsLoading ? (
@@ -227,63 +225,69 @@ function GastoForm({ token }: { token: string }) {
                 Cargando categorías…
               </div>
             ) : (
-              <Select value={categoryId} onValueChange={setCategoryId} required>
-                <SelectTrigger className="bg-slate-900 border-slate-700 text-white focus:border-[#e8b86d]">
-                  <SelectValue placeholder="Selecciona una categoría" />
-                </SelectTrigger>
-                <SelectContent className="bg-slate-900 border-slate-700">
+              <div className="relative">
+                <select
+                  value={categoryId}
+                  onChange={e => setCategoryId(e.target.value)}
+                  required
+                  style={{ ...inputStyle, appearance: "none", WebkitAppearance: "none" }}
+                  className="w-full rounded-md border border-slate-700 px-3 py-2.5 pr-9 text-sm
+                    outline-none focus:border-[#e8b86d]"
+                >
+                  <option value="" disabled style={{ backgroundColor: "#0f172a", color: "#94a3b8" }}>
+                    Selecciona una categoría
+                  </option>
                   {(categories ?? []).map(cat => (
-                    <SelectItem
+                    <option
                       key={cat.id}
                       value={String(cat.id)}
-                      className="text-white focus:bg-slate-800"
+                      style={{ backgroundColor: "#0f172a", color: "#e2e8f0" }}
                     >
                       {cat.name}
-                    </SelectItem>
+                    </option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
             )}
           </div>
 
           {/* Notas */}
           <div className="space-y-1.5">
-            <label className="text-slate-300 text-sm font-medium">
-              Notas
-            </label>
-            <Textarea
+            <label className="block text-slate-300 text-sm font-medium">Notas</label>
+            <textarea
               placeholder="Concepto, motivo, proveedor u otras observaciones…"
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={3}
               maxLength={2000}
-              className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-600
-                focus:border-[#e8b86d] focus:ring-[#e8b86d]/20 resize-none"
+              style={inputStyle}
+              className="w-full rounded-md border border-slate-700 px-3 py-2.5 text-sm
+                outline-none focus:border-[#e8b86d] placeholder-slate-600 resize-none"
             />
           </div>
 
           {/* Adjunto */}
           <div className="space-y-1.5">
-            <label className="text-slate-300 text-sm font-medium">Adjuntar archivo</label>
+            <label className="block text-slate-300 text-sm font-medium">Adjuntar archivo</label>
             {file ? (
-              <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-md px-3 py-2">
+              <div
+                className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2"
+                style={{ backgroundColor: "#0f172a" }}
+              >
                 <Upload className="w-4 h-4 text-slate-400 shrink-0" />
                 <span className="text-white text-sm truncate flex-1">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={removeFile}
-                  className="text-slate-400 hover:text-white transition-colors"
-                >
+                <button type="button" onClick={removeFile} className="text-slate-400 hover:text-white transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <label
                 className={cn(
-                  "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed",
-                  "border-slate-700 hover:border-slate-500 transition-colors cursor-pointer py-6 px-4",
-                  "bg-slate-900/50",
+                  "flex flex-col items-center justify-center gap-2 rounded-lg",
+                  "border-2 border-dashed border-slate-700 cursor-pointer py-6 px-4",
                 )}
+                style={{ backgroundColor: "rgba(15,23,42,0.5)" }}
               >
                 <Upload className="w-6 h-6 text-slate-500" />
                 <span className="text-slate-400 text-sm text-center">
