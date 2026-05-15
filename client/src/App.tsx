@@ -19,6 +19,7 @@ import BudgetRequest from "./pages/BudgetRequest";
 import Colegios from "./pages/Colegios";
 import CanjearCupon from "./pages/CanjearCupon";
 import VerificarBono from "./pages/VerificarBono";
+import RegistrarGasto from "./pages/RegistrarGasto";
 import Contact from "./pages/Contact";
 import Locations from "./pages/Locations";
 import LegoPacksHome from "./pages/LegoPacksHome";
@@ -171,6 +172,7 @@ function Router() {
       <Route path="/colegios" component={Colegios} />
       <Route path="/canjear-cupon" component={CanjearCupon} />
       <Route path="/verificar-bono" component={VerificarBono} />
+      <Route path="/registrar-gasto" component={RegistrarGasto} />
       <Route path="/solicitar-anulacion">{() => <Suspense fallback={<AdminLoadingFallback />}><SolicitarAnulacion /></Suspense>}</Route>
       <Route path="/presupuesto/:token" component={QuoteAcceptance} />
       <Route path="/propuesta/:token" component={ProposalView} />
