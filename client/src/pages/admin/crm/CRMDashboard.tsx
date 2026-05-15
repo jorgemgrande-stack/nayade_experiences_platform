@@ -4788,6 +4788,12 @@ function ReservationDetailModal({
                 <span className="text-foreground/60">Fecha de actividad</span>
                 <span className="text-white font-medium">{res.bookingDate || "—"}</span>
               </div>
+              {res.selectedTime && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-foreground/60">Hora solicitada</span>
+                  <span className="text-white font-medium">{res.selectedTime}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-foreground/60">Personas</span>
                 <span className="text-white font-medium">{res.people} pax</span>
