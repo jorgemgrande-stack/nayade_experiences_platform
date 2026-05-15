@@ -5509,12 +5509,13 @@ export const crmRouter = router({
         `);
         return { id: (result as any).insertId };
       } catch (e: any) {
-        if (e?.code === "ER_DUP_ENTRY") {
+        const cause = e?.cause ?? e;
+        if (cause?.code === "ER_DUP_ENTRY") {
           throw new TRPCError({ code: "CONFLICT", message: "Ya existe un cliente con ese email" });
         }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e?.sqlMessage ?? e?.message ?? "Error al crear cliente",
+          message: cause?.sqlMessage ?? cause?.message ?? e?.message ?? "Error al crear cliente",
         });
       }
     }),
