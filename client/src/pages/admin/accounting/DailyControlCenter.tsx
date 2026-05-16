@@ -3,12 +3,14 @@ import {
   Euro, Users, Zap, TrendingUp, TrendingDown, Clock, CheckCircle, XCircle,
   AlertTriangle, Info, RefreshCw, ChevronLeft, ChevronRight, CreditCard,
   Banknote, ShoppingCart, BarChart3, Activity, Filter, Search, Shield,
-  ArrowUpRight, ArrowDownRight, Minus,
+  ArrowUpRight, ArrowDownRight, Minus, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import {
   PieChart, Pie, Cell, Tooltip as ReTooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -177,6 +179,17 @@ export default function DailyControlCenter() {
     { date },
     { staleTime: 2 * 60 * 1000, refetchOnWindowFocus: false },
   );
+
+  // ── Modal de anular operación ───────────────────────────────────────────
+  const [cancelOp, setCancelOp] = useState<{ type: "tpv" | "reservation"; id: number; ref: string; customer: string; total: number } | null>(null);
+  const cancelMut = trpc.dailyControl.cancelOperation.useMutation({
+    onSuccess: () => {
+      toast.success("Operación anulada");
+      setCancelOp(null);
+      refetch();
+    },
+    onError: (e) => toast.error("Error al anular: " + e.message),
+  });
 
   const d = data as DailyControlData | undefined;
 
@@ -533,6 +546,7 @@ export default function DailyControlCenter() {
                     <th className="text-right px-3 py-2.5 font-semibold text-muted-foreground">Pendiente</th>
                     <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Estado</th>
                     <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Venta</th>
+                    <th className="text-right px-3 py-2.5 font-semibold text-muted-foreground w-[60px]">Acc.</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
@@ -575,6 +589,26 @@ export default function DailyControlCenter() {
                       </td>
                       <td className="px-3 py-2.5 text-[10px] text-muted-foreground whitespace-nowrap">
                         {fmtTs(Number(op.saleDate))}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {op.status !== "cancelled" && op.status !== "refunded" && op.status !== "failed" ? (
+                          <button
+                            type="button"
+                            onClick={() => setCancelOp({
+                              type: op.type as "tpv" | "reservation",
+                              id: op.id,
+                              ref: op.ref,
+                              customer: op.customer,
+                              total: op.totalEur,
+                            })}
+                            className="text-muted-foreground hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
+                            title="Anular operación"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <span className="text-muted-foreground/30 text-[10px]">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -796,6 +830,46 @@ export default function DailyControlCenter() {
           </div>
         </section>
       )}
+
+      {/* ── Modal: anular operación ───────────────────────────────────────── */}
+      <Dialog open={!!cancelOp} onOpenChange={(o) => !o && setCancelOp(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" /> Anular operación
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              ¿Seguro que quieres anular esta operación? Desaparecerá del Control
+              Diario y de las métricas de cobros, pero quedará registrada en la
+              base de datos como anulada (no se borra físicamente).
+            </DialogDescription>
+          </DialogHeader>
+          {cancelOp && (
+            <div className="bg-muted/40 rounded-lg p-3 text-sm space-y-1">
+              <p><span className="text-muted-foreground">Referencia:</span> <span className="font-mono font-semibold">{cancelOp.ref}</span></p>
+              <p><span className="text-muted-foreground">Cliente:</span> <span className="font-medium">{cancelOp.customer || "—"}</span></p>
+              <p><span className="text-muted-foreground">Importe:</span> <span className="font-semibold text-orange-600">{fmtEur(cancelOp.total)}</span></p>
+              <p className="text-xs text-muted-foreground pt-1">
+                {cancelOp.type === "tpv"
+                  ? "Cascade: venta TPV + reserva asociada + transacción contable."
+                  : "Cascade: reserva + venta TPV vinculada + transacción contable."}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelOp(null)} disabled={cancelMut.isPending}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => cancelOp && cancelMut.mutate({ type: cancelOp.type, id: cancelOp.id })}
+              disabled={cancelMut.isPending}
+            >
+              {cancelMut.isPending ? "Anulando..." : "Sí, anular"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

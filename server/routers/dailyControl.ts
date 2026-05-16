@@ -18,6 +18,7 @@ import {
   tpvSales,
   tpvSaleItems,
   tpvSalePayments,
+  transactions,
 } from "../../drizzle/schema";
 
 const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
@@ -565,6 +566,67 @@ export const dailyControlRouter = router({
     .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida") }))
     .query(async ({ input }) => {
       return getDailyControlCenter(input.date);
+    }),
+
+  /**
+   * Anula una operación (TPV o reserva) y propaga el estado a todas las
+   * entidades vinculadas. Soft delete — no borra filas, solo marca como
+   * 'cancelled'. El Control Diario filtra status='paid' / status NOT cancelled,
+   * así que la operación desaparece visualmente sin perder trazabilidad.
+   */
+  cancelOperation: dailyControlProc
+    .input(z.object({
+      type: z.enum(["tpv", "reservation"]),
+      id: z.number().int().positive(),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.type === "tpv") {
+        const [sale] = await db.select({ reservationId: tpvSales.reservationId })
+          .from(tpvSales)
+          .where(eq(tpvSales.id, input.id))
+          .limit(1);
+        if (!sale) throw new TRPCError({ code: "NOT_FOUND", message: "Venta TPV no encontrada" });
+
+        // Marcar venta TPV como cancelled
+        await db.update(tpvSales)
+          .set({ status: "cancelled" })
+          .where(eq(tpvSales.id, input.id));
+
+        // Marcar transacción contable vinculada como reembolsada
+        await db.update(transactions)
+          .set({ status: "reembolsado", operationStatus: "reembolsada" })
+          .where(eq(transactions.tpvSaleId, input.id));
+
+        // Si tiene reserva auto-generada, también anularla
+        if (sale.reservationId) {
+          await db.update(reservations)
+            .set({ status: "cancelled", statusReservation: "ANULADA" })
+            .where(eq(reservations.id, sale.reservationId));
+        }
+      } else {
+        const [res] = await db.select({ id: reservations.id })
+          .from(reservations)
+          .where(eq(reservations.id, input.id))
+          .limit(1);
+        if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+
+        // Marcar reserva como cancelled
+        await db.update(reservations)
+          .set({ status: "cancelled", statusReservation: "ANULADA" })
+          .where(eq(reservations.id, input.id));
+
+        // Cascade a venta TPV vinculada
+        await db.update(tpvSales)
+          .set({ status: "cancelled" })
+          .where(eq(tpvSales.reservationId, input.id));
+
+        // Cascade a transacciones contables (mantener status='completado' si
+        // no hay devolución explícita — esto es solo "ocultar del control diario")
+        await db.update(transactions)
+          .set({ operationStatus: "anulada" })
+          .where(eq(transactions.reservationId, input.id));
+      }
+      return { ok: true };
     }),
 });
 
