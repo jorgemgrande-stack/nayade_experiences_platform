@@ -234,11 +234,18 @@ export const tpvRouter = router({
         throw new TRPCError({ code: "CONFLICT", message: "La sesión ya está cerrada" });
       }
 
-      // Calculate totals from payments
+      // Calculate totals from payments — solo ventas confirmadas como 'paid'.
+      // Excluye 'cancelled' (anuladas por admin desde CRM, ventas de prueba, etc.)
+      // y 'pending' (rollback de createSale). Asume "anulación administrativa" —
+      // si en el futuro hay devoluciones físicas reales, deberá registrarse como
+      // movimiento de caja separado.
       const salesRows = await db
         .select()
         .from(tpvSales)
-        .where(eq(tpvSales.sessionId, input.sessionId));
+        .where(and(
+          eq(tpvSales.sessionId, input.sessionId),
+          eq(tpvSales.status, "paid"),
+        ));
       const saleIds = salesRows.map((s) => s.id);
 
       let totalCash = 0, totalCard = 0, totalBizum = 0, totalMixed = 0;
@@ -444,7 +451,11 @@ export const tpvRouter = router({
       const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, input.sessionId));
       if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Sesión no encontrada" });
 
-      const sales = await db.select().from(tpvSales).where(eq(tpvSales.sessionId, input.sessionId));
+      // Solo ventas 'paid' — alineado con closeSession y dailyControl.
+      const sales = await db.select().from(tpvSales).where(and(
+        eq(tpvSales.sessionId, input.sessionId),
+        eq(tpvSales.status, "paid"),
+      ));
       const movements = await db.select().from(cashMovements).where(eq(cashMovements.sessionId, input.sessionId));
 
       const totalSales = sales.reduce((acc, s) => acc + parseFloat(String(s.total)), 0);
@@ -1206,13 +1217,17 @@ export const tpvRouter = router({
       const registers = await db.select().from(cashRegisters);
       const registerMap = Object.fromEntries(registers.map(r => [r.id, r.name]));
 
-      // Aggregate sales per session in one batch query
+      // Aggregate sales per session in one batch query — solo 'paid'
+      // (mismo criterio que cierre de caja para que cuadre con el histórico real).
       const sessionIds = sessions.map(s => s.id);
       const salesRows = sessionIds.length > 0
         ? await db
             .select({ sessionId: tpvSales.sessionId, total: tpvSales.total })
             .from(tpvSales)
-            .where(inArray(tpvSales.sessionId, sessionIds))
+            .where(and(
+              inArray(tpvSales.sessionId, sessionIds),
+              eq(tpvSales.status, "paid"),
+            ))
         : [];
 
       const salesBySession = new Map<number, { count: number; total: number }>();
