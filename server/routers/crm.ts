@@ -4529,6 +4529,10 @@ export const crmRouter = router({
         const [res] = await db.select({ id: reservations.id, status: reservations.status }).from(reservations).where(eq(reservations.id, input.id));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         if (res.status === "paid") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se puede eliminar una reserva pagada. Cancélala primero desde Editar." });
+        // Cascada: marcar venta TPV vinculada como cancelled antes de borrar
+        // la reserva. Sin esto, el tpvSales quedaba huérfano apuntando a una
+        // reserva inexistente y seguía contando en el Control Diario.
+        await db.update(tpvSales).set({ status: "cancelled" }).where(eq(tpvSales.reservationId, input.id));
         await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "reservation"), eq(crmActivityLog.entityId, input.id)));
         await db.delete(reservations).where(eq(reservations.id, input.id));
         return { ok: true };
@@ -4541,6 +4545,8 @@ export const crmRouter = router({
         const deletable = rows.filter(r => r.status !== "paid").map(r => r.id);
         const skipped = input.ids.length - deletable.length;
         if (deletable.length > 0) {
+          // Cascada: marcar ventas TPV vinculadas como cancelled antes de borrar
+          await db.update(tpvSales).set({ status: "cancelled" }).where(inArray(tpvSales.reservationId, deletable));
           for (const id of deletable) {
             await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "reservation"), eq(crmActivityLog.entityId, id)));
           }
