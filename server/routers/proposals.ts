@@ -13,6 +13,8 @@ import { eq, desc, and, gte, lte, inArray, like, or, count } from "drizzle-orm";
 import { sendEmail as sharedSendEmail } from "../mailer";
 import { sendManagedEmail } from "../emailManager";
 import { generateDocumentNumber } from "../documentNumbers";
+import { getGHLCredentials } from "../db";
+import { syncLeadUrlsToGHL, createGHLContact } from "../ghl";
 import { buildProposalHtml } from "../emailTemplates";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
 import { logActivity } from "../db";
@@ -327,6 +329,42 @@ export const proposalsRouter = router({
         status: "enviado",
         sentAt: new Date(),
       }).where(eq(proposals.id, input.id));
+
+      // GHL: sincronizar URL pública de la propuesta como presupuesto_url
+      // El workflow de WhatsApp lee {{contact.presupuesto_url}} de los custom fields.
+      if (lead.email) {
+        try {
+          const ghlCreds = await getGHLCredentials();
+          if (ghlCreds) {
+            const ghlContactId = lead.ghlContactId
+              ?? await createGHLContact({
+                name: lead.name,
+                email: lead.email,
+                phone: lead.phone ?? undefined,
+                tags: ["Lead Directo", "Propuesta IA"],
+              }, ghlCreds);
+
+            if (ghlContactId) {
+              // Persistir contactId si no existía
+              if (!lead.ghlContactId) {
+                await db.update(leads)
+                  .set({ ghlContactId, updatedAt: new Date() } as any)
+                  .where(eq(leads.id, proposal.leadId));
+              }
+              syncLeadUrlsToGHL({
+                ghlContactId,
+                quoteUrl: publicUrl,
+                quoteNumber: proposal.proposalNumber,
+                email: lead.email,
+                phone: lead.phone ?? undefined,
+                credentials: ghlCreds,
+              });
+            }
+          }
+        } catch (ghlErr: any) {
+          console.error("[proposals.send] Error en integración GHL:", ghlErr.message);
+        }
+      }
 
       await logActivity("lead", proposal.leadId, "proposal_sent", agentId, String(agentId), { proposalNumber: proposal.proposalNumber, to: lead.email, emailSent });
 

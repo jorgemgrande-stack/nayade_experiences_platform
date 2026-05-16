@@ -7,7 +7,8 @@ import { sendEmail } from "../mailer";
 import { sendManagedEmail } from "../emailManager";
 import { getBusinessEmail, getFeatureFlag, getSystemSetting } from "../config";
 import { madridDateKey } from "../utils/timezone";
-import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity } from "../db";
+import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity, getGHLCredentials } from "../db";
+import { createGHLContact, triggerGHLWorkflow } from "../ghl";
 import { createCashMovementIfNotExists, getDefaultCashAccountId } from "./cashRegisterHelper";
 import { calcularREAVSimple } from "../reav";
 import {
@@ -33,6 +34,7 @@ import {
   expenseCategories,
   costCenters,
   invoices,
+  leads,
 } from "../../drizzle/schema";
 import { eq, and, desc, sql, gte, lte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -1095,6 +1097,50 @@ export const tpvRouter = router({
           paymentMethod: input.payments.map(p => p.method).join("+"),
         }
       ).catch(() => {});
+
+      // ── 9b. GHL: contacto + workflow para ventas TPV con email del cliente ─────
+      // Solo si hay email — sin email no podemos identificar al contacto en GHL.
+      if (input.customerEmail) {
+        try {
+          const ghlCreds = await getGHLCredentials();
+          if (ghlCreds) {
+            const [existingLead] = await db
+              .select({ ghlContactId: leads.ghlContactId })
+              .from(leads)
+              .where(eq(leads.email, input.customerEmail))
+              .limit(1);
+
+            const ghlContactId = existingLead?.ghlContactId
+              ?? await createGHLContact({
+                name: input.customerName || "Cliente TPV",
+                email: input.customerEmail,
+                phone: input.customerPhone ?? undefined,
+                tags: ["reserva_confirmada", "venta_tpv"],
+              }, ghlCreds);
+
+            if (ghlContactId) {
+              const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+              if (webhookUrl) {
+                await triggerGHLWorkflow(webhookUrl, {
+                  contactId: ghlContactId,
+                  reservationId: reservationId ?? null,
+                  ticketNumber,
+                  productName: mainItem?.productName ?? input.items.map(i => i.productName).join(", "),
+                  bookingDate: input.serviceDate ?? mainItemForDate?.eventDate ?? new Date().toISOString().slice(0, 10),
+                  people: mainItem?.participants ?? 1,
+                  amountPaid: Math.round(total * 100),
+                  customerName: input.customerName || "Cliente TPV",
+                  customerEmail: input.customerEmail,
+                  customerPhone: input.customerPhone ?? null,
+                  source: "venta_tpv",
+                });
+              }
+            }
+          }
+        } catch (ghlErr: any) {
+          console.error("[TPV] Error en integración GHL:", ghlErr.message);
+        }
+      }
 
       // ── 10. Devolver venta completa ───────────────────────────────────────────────────────────
       const [sale] = await db.select().from(tpvSales).where(eq(tpvSales.id, saleId));

@@ -340,6 +340,8 @@ export function getGHLTagsFromSource(source: string): string[] {
     reserva_online: ["Lead Web", "Reserva Online"],
     cupon: ["Lead Web", "Cupón"],
     presupuesto_directo: ["Lead Directo", "Presupuesto"],
+    crm_manual: ["Lead Directo", "CRM Manual"],
+    propuesta_ia: ["Lead Directo", "Propuesta IA"],
   };
   return tagMap[source] ?? ["Lead Web"];
 }
