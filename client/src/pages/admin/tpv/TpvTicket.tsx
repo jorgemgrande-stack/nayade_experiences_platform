@@ -142,13 +142,14 @@ function printThermalTicket80mm(innerHtml: string, ticketNumber: string) {
       padding: 0;
     }
     body {
-      /* Box completo a 80mm con padding asimétrico: el margen izquierdo
-         de la TM-T20II no imprime los primeros ~6-8mm del papel, así que
-         empujamos el contenido a la derecha. Resultado: contenido ~64mm
-         centrado dentro de la zona realmente imprimible. */
-      width: 80mm;
-      padding: 0 4mm 0 10mm;
-      margin: 0;
+      /* La TM-T20II + driver Windows tiene una zona izquierda no imprimible
+         más amplia de lo habitual (~12-14mm). Empujamos el contenido a la
+         derecha con margin-left para que toda la columna quede dentro de la
+         zona imprimible real. Resultado: contenido de 58mm en el rango
+         [14mm, 72mm] de los 80mm del papel. */
+      width: 58mm;
+      margin: 0 0 0 14mm;
+      padding: 0;
     }
     .center { text-align: center; }
     .bold   { font-weight: 700; }
