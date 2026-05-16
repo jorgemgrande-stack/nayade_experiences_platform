@@ -16,7 +16,7 @@ import { sendEmail } from "../mailer";
 import { buildReservationConfirmHtml } from "../emailTemplates";
 import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber, getGHLCredentials } from "../db";
 import { reservations } from "../../drizzle/schema";
-import { createGHLContact, triggerGHLWorkflow } from "../ghl";
+import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
@@ -545,6 +545,19 @@ export const partnersRouter = router({
             }, ghlCreds);
 
           if (ghlContactId) {
+            // Sincronizar presupuesto_url al contacto (WhatsApp lee {{contact.presupuesto_url}})
+            const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
+              .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+            if (resForUrl?.publicToken) {
+              const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+              syncLeadUrlsToGHL({
+                ghlContactId,
+                quoteUrl: `${base}/presupuesto/${resForUrl.publicToken}`,
+                email: input.customerEmail,
+                phone: input.customerPhone ?? undefined,
+                credentials: ghlCreds,
+              });
+            }
             const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
             if (webhookUrl) {
               await triggerGHLWorkflow(webhookUrl, {

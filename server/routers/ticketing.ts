@@ -27,7 +27,7 @@ import { storagePut } from "../storage";
 import { invokeLLM } from "../_core/llm";
 import { buildReservationConfirmHtml, buildCouponRedemptionReceivedHtml, buildCouponPostponedHtml, buildCouponInternalAlertHtml } from "../emailTemplates";
 import { postConfirmOperation, logActivity, generateReservationNumber, getGHLCredentials } from "../db";
-import { createGHLContact, updateGHLContact } from "../ghl";
+import { createGHLContact, updateGHLContact, syncLeadUrlsToGHL, triggerGHLWorkflow } from "../ghl";
 import { assertModuleEnabled } from "../_core/flagGuard";
 import { getSystemSettingSync } from "../config";
 
@@ -935,10 +935,49 @@ export const ticketingRouter = router({
           if (!creds) return;
           let ghlId = item.ghlContactId ?? null;
           if (!ghlId) {
-            ghlId = await createGHLContact({ name: item.customerName, email: item.email, phone: item.phone ?? undefined }, creds);
+            ghlId = await createGHLContact({
+              name: item.customerName,
+              email: item.email,
+              phone: item.phone ?? undefined,
+              tags: ["reserva_confirmada", "cupon_canjeado"],
+            }, creds);
             if (ghlId) await db.update(couponRedemptions).set({ ghlContactId: ghlId }).where(eq(couponRedemptions.id, input.id));
           }
-          if (ghlId) await updateGHLContact(ghlId, { tags: ["cupon_convertido"] }, creds);
+          if (!ghlId) return;
+
+          // Tag siempre — independiente de si el contacto ya existía
+          await updateGHLContact(ghlId, { tags: ["cupon_convertido"] }, creds);
+
+          // Sincronizar presupuesto_url al contacto (WhatsApp lee {{contact.presupuesto_url}})
+          if (reservationUrl) {
+            syncLeadUrlsToGHL({
+              ghlContactId: ghlId,
+              quoteUrl: reservationUrl,
+              email: item.email,
+              phone: item.phone ?? undefined,
+              credentials: creds,
+            });
+          }
+
+          // Disparar workflow de reserva
+          const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
+          if (webhookUrl) {
+            await triggerGHLWorkflow(webhookUrl, {
+              contactId: ghlId,
+              reservationId,
+              reservationNumber: merchantOrder,
+              productName: resolvedProductName,
+              bookingDate: input.reservationDate ?? null,
+              people: input.participants,
+              amountPaid: Math.round(parseFloat(resolvedPvpPrice) * input.participants * 100),
+              customerName: item.customerName,
+              customerEmail: item.email,
+              customerPhone: item.phone ?? null,
+              source: "cupon",
+              couponProvider: item.provider ?? null,
+              couponCode: item.couponCode,
+            });
+          }
         } catch { /* silent */ }
       });
 

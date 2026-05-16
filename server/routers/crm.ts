@@ -4855,11 +4855,20 @@ export const crmRouter = router({
             if (ghlContactId) {
               // 1. Actualizar campos personalizados del contacto en GHL
               //    para que el workflow pueda usarlos en plantillas (WhatsApp, email, etc.)
-              if (pdfUrl) {
+              // Sincronizar invoice + presupuesto_url (publicToken) en el contacto.
+              // El workflow WhatsApp lee {{contact.presupuesto_url}} para el botón.
+              const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
+                .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+              const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+              const publicReservationUrl = resForUrl?.publicToken
+                ? `${baseUrl}/presupuesto/${resForUrl.publicToken}`
+                : undefined;
+              if (pdfUrl || publicReservationUrl) {
                 syncLeadUrlsToGHL({
                   ghlContactId,
-                  invoiceUrl: pdfUrl,
-                  invoiceNumber,
+                  invoiceUrl: pdfUrl ?? undefined,
+                  invoiceNumber: pdfUrl ? invoiceNumber : undefined,
+                  quoteUrl: publicReservationUrl,
                   email: input.customerEmail,
                   phone: input.customerPhone ?? undefined,
                   credentials: ghlCreds,

@@ -617,6 +617,19 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             }, ghlCreds);
             if (ghlContactId) {
               console.log(`[Redsys IPN] GHL contacto upserted para ${resv.customerEmail}: ${ghlContactId}`);
+              // Sincronizar presupuesto_url (público) en el contacto para que el
+              // workflow WhatsApp pueda usar {{contact.presupuesto_url}}.
+              const publicToken = (resv as any).publicToken;
+              if (publicToken) {
+                const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+                syncLeadUrlsToGHL({
+                  ghlContactId,
+                  quoteUrl: `${base}/presupuesto/${publicToken}`,
+                  email: resv.customerEmail ?? undefined,
+                  phone: resv.customerPhone ?? undefined,
+                  credentials: ghlCreds,
+                });
+              }
               const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
               if (webhookUrl) {
                 await triggerGHLWorkflow(webhookUrl, {

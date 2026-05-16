@@ -8,7 +8,7 @@ import { sendManagedEmail } from "../emailManager";
 import { getBusinessEmail, getFeatureFlag, getSystemSetting } from "../config";
 import { madridDateKey } from "../utils/timezone";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity, getGHLCredentials } from "../db";
-import { createGHLContact, triggerGHLWorkflow } from "../ghl";
+import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 import { createCashMovementIfNotExists, getDefaultCashAccountId } from "./cashRegisterHelper";
 import { calcularREAVSimple } from "../reav";
 import {
@@ -1157,6 +1157,22 @@ export const tpvRouter = router({
               }, ghlCreds);
 
             if (ghlContactId) {
+              // Sincronizar presupuesto_url al contacto (WhatsApp lee este campo).
+              // Solo si la venta creó reserva (cuando hay producto principal).
+              if (reservationId) {
+                const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
+                  .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+                if (resForUrl?.publicToken) {
+                  const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+                  syncLeadUrlsToGHL({
+                    ghlContactId,
+                    quoteUrl: `${base}/presupuesto/${resForUrl.publicToken}`,
+                    email: input.customerEmail,
+                    phone: input.customerPhone ?? undefined,
+                    credentials: ghlCreds,
+                  });
+                }
+              }
               const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
               if (webhookUrl) {
                 await triggerGHLWorkflow(webhookUrl, {
