@@ -710,6 +710,11 @@ export const tpvRouter = router({
       const sellerUserId = (ctx as any).user?.id ?? null;
 
       // ── 3. Insertar venta con datos fiscales ─────────────────────────────────
+      // Bug #2 audit: insertamos con status='pending'. Solo cambia a 'paid' al
+      // final del flujo, cuando TODOS los pasos posteriores (líneas, pagos,
+      // reserva, factura, transacción contable, REAV) han completado sin error.
+      // Si algo falla, la fila queda 'pending' y el Control Diario la filtra
+      // automáticamente (NOT IN ('cancelled','refunded') — pending no aparece).
       const mainItemForDate = input.items[0]; // usado para serviceDate fallback
       const [saleResult] = await db.insert(tpvSales).values({
         ticketNumber,
@@ -722,11 +727,10 @@ export const tpvRouter = router({
         discountReason: input.discountReason,
         discountCodeId: input.discountCodeId ?? null,
         total: String(total.toFixed(2)),
-        status: "paid",
+        status: "pending",
         notes: input.notes,
         serviceDate: input.serviceDate ?? mainItemForDate?.eventDate ?? new Date().toISOString().slice(0, 10),
         createdAt: Date.now(),
-        paidAt: Date.now(),
         taxBase:        String(totalTaxBase.toFixed(2)),
         taxAmount:      String(totalTaxAmount.toFixed(2)),
         taxRate:        String(effectiveTaxRatePct.toFixed(2)),
@@ -1066,6 +1070,18 @@ export const tpvRouter = router({
           console.error("[TPV] Error generando factura:", e);
         }
       }
+
+      // ── 8b. CONFIRMAR venta TPV como pagada ──────────────────────────────────
+      // Punto de no retorno: si llegamos aquí los pasos críticos (líneas, pagos,
+      // reserva, transacción contable, REAV, factura) han completado. Marcamos la
+      // venta como 'paid' con paidAt. Si CUALQUIERA de los pasos anteriores hubiera
+      // lanzado una excepción no capturada, llegaríamos aquí y la fila se quedaría
+      // como 'pending' — invisible para el Control Diario hasta que se revise
+      // manualmente. Los pasos siguientes (email, GHL, logActivity) son
+      // fire-and-forget — su fallo no debe afectar el estado de la venta.
+      await db.update(tpvSales)
+        .set({ status: "paid", paidAt: Date.now() } as any)
+        .where(eq(tpvSales.id, saleId));
 
       // ── 9. Email de confirmación (cliente si hay email + siempre a reservas@) ─
       try {

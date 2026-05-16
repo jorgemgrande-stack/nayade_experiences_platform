@@ -123,7 +123,7 @@ export async function getDailyControlCenter(date: string) {
     }).from(tpvSales).where(
       and(
         eq(tpvSales.serviceDate, date),
-        sql`${tpvSales.status} NOT IN ('cancelled','refunded')`
+        sql`${tpvSales.status} = 'paid'`
       )
     ),
 
@@ -171,7 +171,7 @@ export async function getDailyControlCenter(date: string) {
       .where(
         and(
           eq(tpvSales.serviceDate, date),
-          sql`${tpvSales.status} NOT IN ('cancelled','refunded')`
+          sql`${tpvSales.status} = 'paid'`
         )
       )
       .groupBy(tpvSaleItems.productName)
@@ -234,7 +234,7 @@ export async function getDailyControlCenter(date: string) {
         and(
           eq(tpvSales.serviceDate, date),
           eq(tpvSalePayments.status, "completed"),
-          sql`${tpvSales.status} NOT IN ('cancelled','refunded')`
+          sql`${tpvSales.status} = 'paid'`
         )
       )
       .groupBy(tpvSalePayments.method),
@@ -282,7 +282,7 @@ export async function getDailyControlCenter(date: string) {
     }).from(tpvSales).where(
       and(
         eq(tpvSales.serviceDate, yesterday),
-        sql`${tpvSales.status} NOT IN ('cancelled','refunded')`
+        sql`${tpvSales.status} = 'paid'`
       )
     ),
 
