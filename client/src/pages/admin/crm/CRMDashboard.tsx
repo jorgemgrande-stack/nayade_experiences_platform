@@ -7168,7 +7168,7 @@ export default function CRMDashboard() {
                         )}
                       </td>
                       {/* Importe */}
-                      <td className="px-4 py-3 text-right whitespace-nowrap align-middle min-w-[110px]">
+                      <td className="pl-4 pr-6 py-3 text-right whitespace-nowrap align-top w-[120px]">
                         <div className="flex flex-col items-end leading-tight">
                           <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
                           {res.amountPaid !== res.amountTotal && (
@@ -7176,7 +7176,7 @@ export default function CRMDashboard() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-right w-[180px] whitespace-nowrap">
+                      <td className="px-2 py-3 text-right w-[210px] whitespace-nowrap align-top">
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver detalles */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-sky-300 h-7 w-7 p-0"
