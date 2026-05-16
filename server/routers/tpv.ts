@@ -745,11 +745,6 @@ export const tpvRouter = router({
       const saleId = (saleResult as any).insertId as number;
 
       // ── 4. Insertar líneas con fiscalidad ───────────────────────────────────
-      // Workaround: las columnas is_manual y concept_text del schema Drizzle
-      // no se crearon correctamente en producción (problema de migración).
-      // Excluyendo esos campos del INSERT, Drizzle omite las columnas y la
-      // venta se completa. Cuando la migración esté confirmada se pueden
-      // re-añadir las dos líneas comentadas.
       for (let i = 0; i < input.items.length; i++) {
         const item = input.items[i];
         const lf   = linesFiscal[i];
@@ -773,8 +768,8 @@ export const tpvRouter = router({
           reavCost:   String(lf.reavCost.toFixed(2)),
           reavMargin: String(lf.reavMargin.toFixed(2)),
           reavTax:    String(lf.reavTax.toFixed(2)),
-          // isManual:   item.isManual ? 1 : 0,           // pendiente de migración
-          // conceptText: item.conceptText ?? null,        // pendiente de migración
+          isManual:   item.isManual ? 1 : 0,
+          conceptText: item.conceptText ?? null,
         } as any);
       }
 
