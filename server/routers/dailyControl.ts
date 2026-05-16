@@ -12,14 +12,17 @@ import { router, permissionProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import {
   reservations,
   tpvSales,
   tpvSaleItems,
   tpvSalePayments,
   transactions,
+  invoices,
+  cashMovements,
 } from "../../drizzle/schema";
+import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 
 const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(pool);
@@ -559,6 +562,249 @@ export async function getDailyControlCenter(date: string) {
   };
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// CASH FLOW DEL DÍA — qué pasó en términos económicos HOY (filtrado por fecha
+// de la transacción, no de la actividad). Complementa getDailyControlCenter
+// que filtra por bookingDate/serviceDate (actividad operativa del día).
+// ═════════════════════════════════════════════════════════════════════════════
+
+export type CashEvent = {
+  ts: number;                  // epoch ms
+  kind: "cobro_reserva" | "cobro_tpv" | "devolucion" | "anulacion" | "factura" | "caja_in" | "caja_out";
+  reference: string;
+  customerName: string | null;
+  productName?: string | null;
+  amountEur: number;           // positivo = entrada, negativo = salida
+  channel?: string | null;
+  status?: string | null;
+};
+
+export async function getCashFlowDay(date: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Formato de fecha inválido (YYYY-MM-DD)" });
+  }
+
+  // Rango UTC equivalente al día completo en Madrid (gestiona DST automáticamente)
+  const start = madridStartOfDayUtc(date);
+  const end = madridEndOfDayUtc(date);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  // bigint timestamps (paidAt, createdAt) — comparamos en ms
+  // Date timestamps (processedAt, issuedAt) — comparamos con Date objects
+
+  const [
+    cobrosReservas,       // 0  reservations con paidAt = hoy
+    cobrosTpv,            // 1  tpvSales con paidAt = hoy
+    devoluciones,         // 2  transactions reembolso processedAt = hoy
+    anulaciones,          // 3  reservations updated hoy con status=cancelled
+    facturasEmitidas,     // 4  invoices issuedAt = hoy
+    movimientosCaja,      // 5  cashMovements createdAt = hoy
+  ] = await Promise.all([
+    // 0 — Cobros reservas
+    db.select({
+      id: reservations.id,
+      reservationNumber: reservations.reservationNumber,
+      customerName: reservations.customerName,
+      productName: reservations.productName,
+      amountPaid: reservations.amountPaid,
+      channel: reservations.channel,
+      paidAt: reservations.paidAt,
+    }).from(reservations).where(
+      and(
+        gte(reservations.paidAt, startMs),
+        lt(reservations.paidAt, endMs),
+        sql`${reservations.status} = 'paid'`,
+      )
+    ),
+
+    // 1 — Cobros TPV
+    db.select({
+      id: tpvSales.id,
+      ticketNumber: tpvSales.ticketNumber,
+      customerName: tpvSales.customerName,
+      total: tpvSales.total,
+      paidAt: tpvSales.paidAt,
+    }).from(tpvSales).where(
+      and(
+        gte(tpvSales.paidAt, startMs),
+        lt(tpvSales.paidAt, endMs),
+        sql`${tpvSales.status} = 'paid'`,
+      )
+    ),
+
+    // 2 — Devoluciones (reembolsos)
+    db.select({
+      id: transactions.id,
+      transactionNumber: transactions.transactionNumber,
+      clientName: transactions.clientName,
+      productName: transactions.productName,
+      amount: transactions.amount,
+      processedAt: transactions.processedAt,
+    }).from(transactions).where(
+      and(
+        eq(transactions.type, "reembolso"),
+        gte(transactions.processedAt, start),
+        lt(transactions.processedAt, end),
+      )
+    ),
+
+    // 3 — Anulaciones hoy (reservas actualizadas a cancelled hoy)
+    db.select({
+      id: reservations.id,
+      reservationNumber: reservations.reservationNumber,
+      customerName: reservations.customerName,
+      productName: reservations.productName,
+      amountTotal: reservations.amountTotal,
+      channel: reservations.channel,
+      updatedAt: reservations.updatedAt,
+    }).from(reservations).where(
+      and(
+        gte(reservations.updatedAt, startMs),
+        lt(reservations.updatedAt, endMs),
+        eq(reservations.status, "cancelled"),
+      )
+    ),
+
+    // 4 — Facturas emitidas hoy
+    db.select({
+      id: invoices.id,
+      invoiceNumber: invoices.invoiceNumber,
+      clientName: invoices.clientName,
+      total: invoices.total,
+      issuedAt: invoices.issuedAt,
+    }).from(invoices).where(
+      and(
+        gte(invoices.issuedAt, start),
+        lt(invoices.issuedAt, end),
+      )
+    ),
+
+    // 5 — Movimientos manuales caja
+    db.select({
+      id: cashMovements.id,
+      type: cashMovements.type,
+      amount: cashMovements.amount,
+      reason: cashMovements.reason,
+      cashierName: cashMovements.cashierName,
+      createdAt: cashMovements.createdAt,
+    }).from(cashMovements).where(
+      and(
+        gte(cashMovements.createdAt, startMs),
+        lt(cashMovements.createdAt, endMs),
+      )
+    ),
+  ]);
+
+  // Unificar todos los eventos en un solo array ordenado por hora desc
+  const events: CashEvent[] = [];
+
+  for (const r of cobrosReservas) {
+    events.push({
+      ts: Number(r.paidAt ?? 0),
+      kind: "cobro_reserva",
+      reference: r.reservationNumber ?? `#${r.id}`,
+      customerName: r.customerName ?? null,
+      productName: r.productName,
+      amountEur: (r.amountPaid ?? 0) / 100,
+      channel: r.channel ?? null,
+      status: "paid",
+    });
+  }
+  for (const t of cobrosTpv) {
+    events.push({
+      ts: Number(t.paidAt ?? 0),
+      kind: "cobro_tpv",
+      reference: t.ticketNumber,
+      customerName: t.customerName ?? null,
+      productName: null,
+      amountEur: parseFloat(String(t.total ?? 0)),
+      channel: "TPV",
+      status: "paid",
+    });
+  }
+  for (const d of devoluciones) {
+    const amt = parseFloat(String(d.amount ?? 0));
+    events.push({
+      ts: d.processedAt ? new Date(d.processedAt).getTime() : 0,
+      kind: "devolucion",
+      reference: d.transactionNumber,
+      customerName: d.clientName ?? null,
+      productName: d.productName,
+      amountEur: amt < 0 ? amt : -Math.abs(amt),  // forzar negativo
+      channel: null,
+      status: "reembolsado",
+    });
+  }
+  for (const a of anulaciones) {
+    events.push({
+      ts: Number(a.updatedAt ?? 0),
+      kind: "anulacion",
+      reference: a.reservationNumber ?? `#${a.id}`,
+      customerName: a.customerName ?? null,
+      productName: a.productName,
+      amountEur: 0,  // anulación sin importe — el reembolso (si lo hay) sale en otra fila
+      channel: a.channel ?? null,
+      status: "cancelled",
+    });
+  }
+  for (const inv of facturasEmitidas) {
+    events.push({
+      ts: inv.issuedAt ? new Date(inv.issuedAt).getTime() : 0,
+      kind: "factura",
+      reference: inv.invoiceNumber,
+      customerName: inv.clientName ?? null,
+      productName: null,
+      amountEur: parseFloat(String(inv.total ?? 0)),
+      channel: null,
+      status: "emitida",
+    });
+  }
+  for (const m of movimientosCaja) {
+    const amt = parseFloat(String(m.amount ?? 0));
+    events.push({
+      ts: Number(m.createdAt ?? 0),
+      kind: m.type === "in" ? "caja_in" : "caja_out",
+      reference: m.reason,
+      customerName: m.cashierName ?? null,
+      productName: null,
+      amountEur: m.type === "in" ? amt : -Math.abs(amt),
+      channel: "Caja",
+      status: null,
+    });
+  }
+
+  events.sort((a, b) => b.ts - a.ts);
+
+  // KPIs
+  const cobrosTotal =
+    cobrosReservas.reduce((s, r) => s + (r.amountPaid ?? 0) / 100, 0) +
+    cobrosTpv.reduce((s, t) => s + parseFloat(String(t.total ?? 0)), 0);
+
+  const devolucionesTotal = devoluciones.reduce(
+    (s, d) => s + Math.abs(parseFloat(String(d.amount ?? 0))), 0
+  );
+
+  const facturadoTotal = facturasEmitidas.reduce(
+    (s, inv) => s + parseFloat(String(inv.total ?? 0)), 0
+  );
+
+  return {
+    kpis: {
+      cobrosEur: cobrosTotal,
+      devolucionesEur: devolucionesTotal,
+      netoEur: cobrosTotal - devolucionesTotal,
+      facturadoEur: facturadoTotal,
+      operacionesCount: events.length,
+      facturasCount: facturasEmitidas.length,
+      anulacionesCount: anulaciones.length,
+    },
+    events,
+  };
+}
+
+export type CashFlowDayData = Awaited<ReturnType<typeof getCashFlowDay>>;
+
 // ─── tRPC router ─────────────────────────────────────────────────────────────
 
 export const dailyControlRouter = router({
@@ -566,6 +812,12 @@ export const dailyControlRouter = router({
     .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida") }))
     .query(async ({ input }) => {
       return getDailyControlCenter(input.date);
+    }),
+
+  getCashFlow: dailyControlProc
+    .input(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida") }))
+    .query(async ({ input }) => {
+      return getCashFlowDay(input.date);
     }),
 
   /**

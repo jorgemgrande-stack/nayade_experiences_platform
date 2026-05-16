@@ -180,6 +180,13 @@ export default function DailyControlCenter() {
     { staleTime: 2 * 60 * 1000, refetchOnWindowFocus: false },
   );
 
+  // Actividad económica del día — filtrada por fecha de transacción (no de actividad)
+  const { data: cashFlow } = trpc.dailyControl.getCashFlow.useQuery(
+    { date },
+    { staleTime: 2 * 60 * 1000, refetchOnWindowFocus: false },
+  );
+  const [cashFilter, setCashFilter] = useState<string>("all");
+
   // ── Modal de anular operación ───────────────────────────────────────────
   const [cancelOp, setCancelOp] = useState<{ type: "tpv" | "reservation"; id: number; ref: string; customer: string; total: number } | null>(null);
   const cancelMut = trpc.dailyControl.cancelOperation.useMutation({
@@ -612,6 +619,137 @@ export default function DailyControlCenter() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Actividad económica del día (cash flow real, no de actividad) ─── */}
+      <section className="mb-8">
+        <SectionHeader icon={Euro} title="Actividad económica del día" color="green" />
+        <p className="text-xs text-muted-foreground -mt-3 mb-4">
+          Movimientos contables registrados hoy — filtrado por fecha de la transacción,
+          no por la fecha de la actividad. Aparece independientemente de cuándo sea la experiencia reservada.
+        </p>
+
+        {/* KPIs cash flow */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+          <div className="bg-card rounded-2xl border border-border/50 p-5">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center mb-3">
+              <TrendingUp className="w-5 h-5 text-emerald-600" />
+            </div>
+            <p className="text-2xl font-bold tracking-tight text-foreground">{fmtEur(cashFlow?.kpis.cobrosEur ?? 0)}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Cobros del día</p>
+          </div>
+          <div className="bg-card rounded-2xl border border-border/50 p-5">
+            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center mb-3">
+              <TrendingDown className="w-5 h-5 text-red-600" />
+            </div>
+            <p className="text-2xl font-bold tracking-tight text-foreground">{fmtEur(cashFlow?.kpis.devolucionesEur ?? 0)}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Devoluciones</p>
+          </div>
+          <div className="bg-card rounded-2xl border border-border/50 p-5">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center mb-3">
+              <Euro className="w-5 h-5 text-blue-600" />
+            </div>
+            <p className={cn("text-2xl font-bold tracking-tight", (cashFlow?.kpis.netoEur ?? 0) >= 0 ? "text-foreground" : "text-red-600")}>
+              {fmtEur(cashFlow?.kpis.netoEur ?? 0)}
+            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">Neto del día</p>
+          </div>
+          <div className="bg-card rounded-2xl border border-border/50 p-5">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center mb-3">
+              <Activity className="w-5 h-5 text-purple-600" />
+            </div>
+            <p className="text-2xl font-bold tracking-tight text-foreground">{cashFlow?.kpis.operacionesCount ?? 0}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Transacciones</p>
+            <p className="text-xs text-muted-foreground/70 mt-0.5">
+              {cashFlow?.kpis.facturasCount ?? 0} facturas · {cashFlow?.kpis.anulacionesCount ?? 0} anulaciones
+            </p>
+          </div>
+        </div>
+
+        {/* Filtros + Tabla de eventos */}
+        <div className="flex items-center gap-2 mb-3">
+          <Select value={cashFilter} onValueChange={setCashFilter}>
+            <SelectTrigger className="w-44 h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los tipos</SelectItem>
+              <SelectItem value="cobro_reserva">Cobros reservas</SelectItem>
+              <SelectItem value="cobro_tpv">Cobros TPV</SelectItem>
+              <SelectItem value="devolucion">Devoluciones</SelectItem>
+              <SelectItem value="anulacion">Anulaciones</SelectItem>
+              <SelectItem value="factura">Facturas emitidas</SelectItem>
+              <SelectItem value="caja_in">Entradas manuales caja</SelectItem>
+              <SelectItem value="caja_out">Salidas manuales caja</SelectItem>
+            </SelectContent>
+          </Select>
+          <Badge variant="outline" className="text-xs h-8 px-3">
+            {(cashFlow?.events ?? []).filter(e => cashFilter === "all" || e.kind === cashFilter).length} eventos
+          </Badge>
+        </div>
+
+        <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+          {!cashFlow || cashFlow.events.length === 0 ? (
+            <EmptyState message="Sin transacciones registradas en el día seleccionado" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[800px]">
+                <thead>
+                  <tr className="bg-muted/50 border-b border-border/50 text-xs">
+                    <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Hora</th>
+                    <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Tipo</th>
+                    <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Referencia</th>
+                    <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Cliente / Detalle</th>
+                    <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Producto</th>
+                    <th className="text-right px-3 py-2.5 font-semibold text-muted-foreground">Importe</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/30">
+                  {cashFlow.events
+                    .filter(e => cashFilter === "all" || e.kind === cashFilter)
+                    .map((e, i) => {
+                      const kindMap: Record<string, [string, string]> = {
+                        cobro_reserva: ["Cobro reserva",   "bg-emerald-100 text-emerald-700"],
+                        cobro_tpv:     ["Cobro TPV",       "bg-emerald-100 text-emerald-700"],
+                        devolucion:    ["Devolución",      "bg-red-100 text-red-700"],
+                        anulacion:     ["Anulación",       "bg-amber-100 text-amber-700"],
+                        factura:       ["Factura emitida", "bg-blue-100 text-blue-700"],
+                        caja_in:       ["Entrada caja",    "bg-emerald-100 text-emerald-700"],
+                        caja_out:      ["Salida caja",     "bg-red-100 text-red-700"],
+                      };
+                      const [kindLabel, kindCls] = kindMap[e.kind] ?? [e.kind, "bg-gray-100 text-gray-600"];
+                      const isNegative = e.amountEur < 0;
+                      const isZero = e.amountEur === 0;
+                      return (
+                        <tr key={`${e.kind}-${i}`} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-3 py-2.5 text-[11px] text-muted-foreground whitespace-nowrap">
+                            {new Date(e.ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded-full", kindCls)}>{kindLabel}</span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <span className="font-mono text-xs text-foreground">{e.reference}</span>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <p className="text-xs text-foreground">{e.customerName ?? "—"}</p>
+                            {e.channel && <p className="text-[10px] text-muted-foreground">{e.channel}</p>}
+                          </td>
+                          <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[160px] truncate">{e.productName ?? "—"}</td>
+                          <td className={cn(
+                            "px-3 py-2.5 text-right font-semibold text-xs whitespace-nowrap",
+                            isZero ? "text-muted-foreground" : isNegative ? "text-red-600" : "text-emerald-600",
+                          )}>
+                            {isZero ? "—" : (isNegative ? "" : "+") + fmtEur(e.amountEur)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
