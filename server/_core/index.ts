@@ -1439,7 +1439,9 @@ async function ensureReservationPublicToken() {
     ) as any[];
 
     if (trgs.length === 0) {
-      await conn.execute(
+      // conn.query (no .execute) — CREATE TRIGGER no se soporta en
+      // prepared statements de mysql2.
+      await conn.query(
         `CREATE TRIGGER \`reservations_set_public_token\`
          BEFORE INSERT ON \`reservations\`
          FOR EACH ROW
