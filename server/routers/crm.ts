@@ -4162,6 +4162,15 @@ export const crmRouter = router({
     setInvoiceExempt: staff
       .input(z.object({ reservationId: z.number(), exempt: z.boolean() }))
       .mutation(async ({ input }) => {
+        // Asegurar que la columna existe antes de actualizar.
+        // La migración 0091 puede no haber aplicado en algunos entornos.
+        try {
+          await db.execute(
+            sql`ALTER TABLE \`reservations\` ADD COLUMN \`invoice_exempt\` tinyint(1) NOT NULL DEFAULT 0`
+          );
+        } catch {
+          // Columna ya existe — ignorar
+        }
         await db.execute(
           sql`UPDATE \`reservations\` SET \`invoice_exempt\` = ${input.exempt ? 1 : 0} WHERE \`id\` = ${input.reservationId}`
         );

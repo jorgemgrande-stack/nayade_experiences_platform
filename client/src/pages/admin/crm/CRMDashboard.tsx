@@ -5336,7 +5336,11 @@ export default function CRMDashboard() {
   });
   const { data: auditData } = auditQuery;
   const setInvoiceExempt = trpc.crm.reservations.setInvoiceExempt.useMutation({
-    onSuccess: () => auditQuery.refetch(),
+    onSuccess: () => {
+      toast.success("Aviso ignorado");
+      auditQuery.refetch();
+    },
+    onError: (e) => toast.error("Error al ignorar aviso: " + e.message),
   });
   const { data: tpvPaymentAlerts } = trpc.cardTerminalBatches.getCrmPaymentAlerts.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
