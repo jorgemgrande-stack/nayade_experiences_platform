@@ -7164,10 +7164,10 @@ export default function CRMDashboard() {
                         )}
                       </td>
                       {/* Importe */}
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
                         <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
                         {res.amountPaid !== res.amountTotal && (
-                          <div className="text-xs text-foreground/40">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</div>
+                          <div className="text-xs text-foreground/40 whitespace-nowrap">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</div>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right w-[180px] whitespace-nowrap">
