@@ -142,8 +142,9 @@ function printThermalTicket80mm(innerHtml: string, ticketNumber: string) {
       padding: 0;
     }
     body {
-      width: 80mm;
-      padding: 3mm 3mm 0 3mm;
+      width: 72mm;
+      padding: 0 2mm;
+      margin: 0 auto;
     }
     .center { text-align: center; }
     .bold   { font-weight: 700; }
