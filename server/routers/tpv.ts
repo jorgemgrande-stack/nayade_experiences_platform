@@ -741,32 +741,46 @@ export const tpvRouter = router({
       const saleId = (saleResult as any).insertId as number;
 
       // ── 4. Insertar líneas con fiscalidad ───────────────────────────────────
+      // SQL raw para esquivar cualquier discrepancia entre el schema Drizzle
+      // y el estado real de la BD en producción (las columnas is_manual y
+      // concept_text se añadieron tarde y han dado problemas con las
+      // migraciones — esto las maneja de forma defensiva).
       for (let i = 0; i < input.items.length; i++) {
         const item = input.items[i];
         const lf   = linesFiscal[i];
-        await db.insert(tpvSaleItems).values({
-          saleId,
-          productType: item.productType,
-          productId: item.productId,
-          productName: item.productName,
-          quantity: item.quantity,
-          unitPrice: String(item.unitPrice.toFixed(2)),
-          discountPercent: String(item.discountPercent.toFixed(2)),
-          subtotal: String(lf.lineSubtotal.toFixed(2)),
-          eventDate: item.eventDate,
-          eventTime: item.eventTime,
-          participants: item.participants,
-          notes: item.notes,
-          fiscalRegime: lf.fiscalRegime,
-          taxBase:    String(lf.taxBase.toFixed(2)),
-          taxAmount:  String(lf.taxAmount.toFixed(2)),
-          taxRate:    String(lf.taxRate.toFixed(2)),
-          reavCost:   String(lf.reavCost.toFixed(2)),
-          reavMargin: String(lf.reavMargin.toFixed(2)),
-          reavTax:    String(lf.reavTax.toFixed(2)),
-          isManual:   item.isManual ? 1 : 0,
-          conceptText: item.conceptText ?? null,
-        } as any);
+        await db.execute(sql`
+          INSERT INTO \`tpv_sale_items\` (
+            \`saleId\`, \`productType_tsi\`, \`productId\`, \`productName\`,
+            \`quantity\`, \`unitPrice\`, \`discountPercent_tsi\`, \`subtotal_tsi\`,
+            \`eventDate\`, \`eventTime\`, \`participants\`, \`notes_tsi\`,
+            \`fiscalRegime_tsi\`, \`taxBase_tsi\`, \`taxAmount_tsi\`, \`taxRate_tsi\`,
+            \`reavCost_tsi\`, \`reavMargin_tsi\`, \`reavTax_tsi\`
+          ) VALUES (
+            ${saleId}, ${item.productType}, ${item.productId}, ${item.productName},
+            ${item.quantity}, ${item.unitPrice.toFixed(2)}, ${item.discountPercent.toFixed(2)}, ${lf.lineSubtotal.toFixed(2)},
+            ${item.eventDate ?? null}, ${item.eventTime ?? null}, ${item.participants ?? 1}, ${item.notes ?? null},
+            ${lf.fiscalRegime}, ${lf.taxBase.toFixed(2)}, ${lf.taxAmount.toFixed(2)}, ${lf.taxRate.toFixed(2)},
+            ${lf.reavCost.toFixed(2)}, ${lf.reavMargin.toFixed(2)}, ${lf.reavTax.toFixed(2)}
+          )
+        `);
+        // Intentar actualizar is_manual / concept_text si las columnas existen.
+        // Si no existen (migración pendiente), el catch evita romper la venta.
+        if (item.isManual || item.conceptText) {
+          try {
+            const lastIdRow = await db.execute(sql`SELECT LAST_INSERT_ID() AS id`);
+            const lastId = (lastIdRow[0] as any)?.[0]?.id;
+            if (lastId) {
+              await db.execute(sql`
+                UPDATE \`tpv_sale_items\`
+                SET \`is_manual\` = ${item.isManual ? 1 : 0},
+                    \`concept_text\` = ${item.conceptText ?? null}
+                WHERE \`id\` = ${lastId}
+              `);
+            }
+          } catch (e: any) {
+            console.warn("[TPV] No se pudo persistir is_manual/concept_text (columnas pendientes de migración):", e?.message);
+          }
+        }
       }
 
       // ── 5. Insertar pagos ────────────────────────────────────────────────────
