@@ -145,6 +145,27 @@ async function propagateCancellation(params: {
         .set({ status: "cancelled" })
         .where(eq(tpvSales.reservationId, reservationId));
 
+      // ── Marcar transacciones de ingreso originales como reversadas ───────
+      // Bug #3 del audit: el ingreso original seguía con status='completado'
+      // mientras se creaba una nueva transacción de reembolso, dejando ambos
+      // movimientos sueltos en el libro contable sin relación visible.
+      //
+      // - Si hay devolución real → status='reembolsado' + operationStatus='reembolsada'
+      // - Si solo se anula sin devolución (bono o ninguna) → mantener status='completado'
+      //   (el dinero se quedó) pero operationStatus='anulada' para que la operativa
+      //   refleje que la reserva ya no existe.
+      const hasRefund = compensationType === "devolucion" && refundAmount != null && refundAmount > 0;
+      await tx.update(transactions)
+        .set(hasRefund
+          ? { status: "reembolsado" as const, operationStatus: "reembolsada" as const }
+          : { operationStatus: "anulada" as const }
+        )
+        .where(and(
+          eq(transactions.reservationId, reservationId),
+          eq(transactions.type, "ingreso"),
+          eq(transactions.status, "completado")
+        ));
+
       // ── Actualizar estado operativo ──────────────────────────────────────
       await tx.update(reservationOperational)
         .set({ opStatus: "anulado", updatedBy: adminUserId })
