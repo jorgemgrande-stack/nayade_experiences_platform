@@ -189,6 +189,7 @@ async function sendConfirmationEmail(data: {
   items: { description: string; quantity: number; unitPrice: number; total: number }[];
   total: string;
   invoiceUrl?: string | null;
+  reservationUrl?: string;
   bookingDate?: string | null;
   selectedTime?: string | null;
   installmentPlan?: {
@@ -208,6 +209,7 @@ async function sendConfirmationEmail(data: {
     items: data.items,
     total: data.total,
     invoiceUrl: data.invoiceUrl ?? undefined,
+    reservationUrl: data.reservationUrl,
     bookingDate: data.bookingDate ?? undefined,
     selectedTime: data.selectedTime ?? undefined,
     installmentPlan: data.installmentPlan,
@@ -281,6 +283,7 @@ async function sendTransferConfirmationEmail(data: {
   taxAmount: string;
   total: string;
   invoiceUrl?: string | null;
+  reservationUrl?: string;
   confirmedBy?: string;
   confirmedAt?: Date;
 }) {
@@ -295,6 +298,7 @@ async function sendTransferConfirmationEmail(data: {
     taxAmount: data.taxAmount,
     total: data.total,
     invoiceUrl: data.invoiceUrl ?? undefined,
+    reservationUrl: data.reservationUrl,
     confirmedBy: data.confirmedBy,
     confirmedAt: data.confirmedAt,
   });
@@ -4407,6 +4411,8 @@ export const crmRouter = router({
         const [res] = await db.select().from(reservations).where(eq(reservations.id, input.id));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         const isTransfer = res.paymentMethod === "transferencia";
+        const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+        const reservationUrl = (res as any).publicToken ? `${base}/presupuesto/${(res as any).publicToken}` : undefined;
         let html: string;
         let subject: string;
         if (isTransfer) {
@@ -4426,6 +4432,7 @@ export const crmRouter = router({
             taxAmount: "0.00",
             total: amountEur.toFixed(2),
             invoiceUrl: null,
+            reservationUrl,
           });
           subject = `🏦 Confirmación de reserva — ${res.productName} · Náyade Experiences`;
         } else {
@@ -4443,6 +4450,7 @@ export const crmRouter = router({
             bookingDate: res.bookingDate,
             contactEmail: await getBusinessEmail('reservations'),
             contactPhone: "+34 911 67 51 89",
+            reservationUrl,
           });
           subject = `✅ Confirmación de reserva — ${res.productName} · Náyade Experiences`;
         }
@@ -4799,6 +4807,11 @@ export const crmRouter = router({
         // 9. Email de confirmación al cliente
         if (input.sendConfirmationEmail && input.customerEmail) {
           try {
+            // Recuperar publicToken de la reserva recién creada (lo genera MySQL por DEFAULT)
+            const [resRow] = await db.select({ publicToken: reservations.publicToken })
+              .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+            const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+            const reservationUrl = resRow?.publicToken ? `${base}/presupuesto/${resRow.publicToken}` : undefined;
             const html = buildConfirmationHtml({
               clientName: input.customerName,
               reservationRef: merchantOrder,
@@ -4808,6 +4821,7 @@ export const crmRouter = router({
               bookingDate: input.bookingDate,
               contactEmail: await getBusinessEmail('reservations'),
               contactPhone: "+34 911 67 51 89",
+              reservationUrl,
             });
             await sendEmail({
               to: input.customerEmail,

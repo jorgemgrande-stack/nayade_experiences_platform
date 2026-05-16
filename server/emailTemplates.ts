@@ -316,6 +316,7 @@ export interface ReservationConfirmData {
   people: number;
   amount: string;
   extras?: string;
+  reservationUrl?: string;  // URL pública /presupuesto/{publicToken} — botón "Ver tu reserva"
 }
 
 export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
@@ -353,6 +354,15 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
         </td></tr>
       </table>
     </td></tr>
+    ${d.reservationUrl ? `<tr><td style="padding:8px 32px 24px;text-align:center;">
+        <a href="${d.reservationUrl}"
+           style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:16px;font-weight:800;padding:16px 44px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
+          &#128203;&nbsp;&nbsp;Ver tu reserva
+        </a>
+        <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
+          Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
+        </p>
+      </td></tr>` : ""}
     ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto!")}
     <tr><td style="padding:0 32px 28px;">
       <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
@@ -908,8 +918,9 @@ export interface ConfirmationEmailData {
   subtotal?: string;
   taxAmount?: string;
   total: string;
-  invoiceUrl?: string;
-  quoteUrl?: string;        // URL pública /presupuesto/:token para "Visualiza tu reserva"
+  invoiceUrl?: string;      // legacy — ya no se renderiza botón propio
+  quoteUrl?: string;        // legacy — fallback si reservationUrl no se pasa
+  reservationUrl?: string;  // URL pública /presupuesto/{publicToken} — botón "Ver tu reserva"
   bookingDate?: string;     // fecha del evento si aplica
   selectedTime?: string;     // horario seleccionado (time slot) - opcional
   contactPhone?: string;
@@ -936,26 +947,25 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     )
     .join("");
 
-  const invoiceButtonBlock = d.invoiceUrl
-    ? `<tr><td style="padding:0 32px 12px;text-align:center;">
-        <a href="${d.invoiceUrl}"
-           style="display:inline-block;background:#f0f4f8;color:${BRAND_BLUE};border:1px solid #dce4f0;font-size:14px;font-weight:600;padding:12px 28px;border-radius:50px;text-decoration:none;font-family:Arial,sans-serif;">
-          &#128196; Descargar Factura
+  // Botón único "Ver tu reserva" — punto de entrada al portal del cliente.
+  // Prioriza reservationUrl (nuevo, todos los canales) y cae a quoteUrl (legacy).
+  // La página destino ya muestra "Descargar factura" cuando está disponible,
+  // así que no necesitamos un botón aparte para la factura.
+  const publicUrl = d.reservationUrl ?? d.quoteUrl;
+  const reservationButtonBlock = publicUrl
+    ? `<tr><td style="padding:0 32px 24px;text-align:center;">
+        <a href="${publicUrl}"
+           style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:16px;font-weight:800;padding:16px 44px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
+          &#128203;&nbsp;&nbsp;Ver tu reserva
         </a>
-      </td></tr>`
-    : "";
-
-  const quoteUrlBlock = d.quoteUrl
-    ? `<tr><td style="padding:0 32px 20px;text-align:center;">
-        <a href="${d.quoteUrl}"
-           style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:15px;font-weight:700;padding:15px 36px;border-radius:50px;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:0.3px;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
-          &#128203; Visualiza tu reserva
-        </a>
-        <p style="color:#9ca3af;font-size:11px;margin:8px 0 0;font-family:Arial,sans-serif;">
-          Consulta el detalle completo de tu reserva en cualquier momento
+        <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
+          Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
         </p>
       </td></tr>`
     : "";
+  // Mantengo invoiceButtonBlock vacío para retrocompat de variable name en el body
+  const invoiceButtonBlock = "";
+  const quoteUrlBlock = reservationButtonBlock;
 
   const subtotalRow = d.subtotal
     ? `<tr><td style="padding:6px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">Subtotal</td><td style="padding:6px 0;text-align:right;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${Number(d.subtotal).toFixed(2)} &euro;</td></tr>`
@@ -1210,7 +1220,8 @@ export interface TransferConfirmationEmailData {
   subtotal: string;
   taxAmount: string;
   total: string;
-  invoiceUrl?: string | null;  // URL del PDF de factura en S3
+  invoiceUrl?: string | null;  // legacy — ya no se renderiza botón propio
+  reservationUrl?: string;     // URL pública /presupuesto/{publicToken} — botón "Ver tu reserva"
   confirmedBy?: string;        // Nombre del agente que validó
   confirmedAt?: Date;
 }
@@ -1231,12 +1242,18 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
     )
     .join("");
 
-  const invoiceButtonBlock = d.invoiceUrl
-    ? `<tr><td style="padding:0 32px 12px;text-align:center;">
-        <a href="${d.invoiceUrl}"
-           style="display:inline-block;background:#f0f4f8;color:${BRAND_BLUE};border:1px solid #dce4f0;font-size:14px;font-weight:600;padding:12px 28px;border-radius:50px;text-decoration:none;font-family:Arial,sans-serif;">
-          &#128196; Descargar Factura
+  // Botón único "Ver tu reserva" — punto de entrada al portal del cliente.
+  // Reemplaza el botón antiguo de "Descargar Factura". La página destino ya
+  // ofrece descarga de factura cuando está disponible.
+  const invoiceButtonBlock = d.reservationUrl
+    ? `<tr><td style="padding:0 32px 24px;text-align:center;">
+        <a href="${d.reservationUrl}"
+           style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:16px;font-weight:800;padding:16px 44px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
+          &#128203;&nbsp;&nbsp;Ver tu reserva
         </a>
+        <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
+          Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
+        </p>
       </td></tr>`
     : "";
 

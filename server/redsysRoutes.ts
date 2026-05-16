@@ -400,9 +400,10 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const COPY_EMAIL  = await getBusinessEmail('reservations');
             if (clientEmail) {
               try {
-                const quoteUrl = quote.paymentLinkToken
-                  ? `${process.env.APP_URL ?? "https://www.nayadeexperiences.es"}/presupuesto/${quote.paymentLinkToken}`
-                  : undefined;
+                const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+                // Preferir el token de la reserva (todos los canales), fallback al token del presupuesto.
+                const tokenForUrl = (updatedReservation as any).publicToken ?? quote.paymentLinkToken;
+                const reservationUrl = tokenForUrl ? `${base}/presupuesto/${tokenForUrl}` : undefined;
                 const html = buildConfirmationHtml({
                   clientName,
                   reservationRef: invoiceNumber,
@@ -416,7 +417,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   selectedTime: (updatedReservation as any).selectedTime ?? undefined,
                   contactEmail: COPY_EMAIL,
                   contactPhone: "+34 911 67 51 89",
-                  quoteUrl,
+                  reservationUrl,
                 });
                 await sendManagedEmail({
                   templateKey: "confirmation",
@@ -661,6 +662,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           customerPhone: updatedReservation.customerPhone,
           extrasJson: updatedReservation.extrasJson,
           status: newStatus,
+          publicToken: (updatedReservation as any).publicToken ?? null,
         }).catch(err => console.error("[Redsys IPN] Error en notificaciones:", err));
       } else {
         sendReservationFailedNotifications({
@@ -1155,6 +1157,9 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           const clientEmail = lead?.email ?? primary.customerEmail;
           if (clientEmail) {
             const COPY_EMAIL = await getBusinessEmail("reservations");
+            const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+            const tokenForUrl = (primary as any).publicToken ?? quote.paymentLinkToken;
+            const reservationUrl = tokenForUrl ? `${base}/presupuesto/${tokenForUrl}` : undefined;
             const html = buildConfirmationHtml({
               clientName: lead?.name ?? primary.customerName,
               reservationRef: invoiceNumber,
@@ -1168,6 +1173,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
               selectedTime: primary.selectedTime ?? undefined,
               contactEmail: COPY_EMAIL,
               contactPhone: "+34 911 67 51 89",
+              reservationUrl,
             });
             await sendManagedEmail({
               templateKey: "confirmation",

@@ -24,6 +24,13 @@ export interface ReservationEmailData {
   customerPhone?: string | null;
   extrasJson?: string | null;
   status: string;
+  publicToken?: string | null;  // Para construir botón "Ver tu reserva"
+}
+
+function reservationPublicUrl(publicToken?: string | null): string | undefined {
+  if (!publicToken) return undefined;
+  const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+  return `${base}/presupuesto/${publicToken}`;
 }
 
 function formatAmount(cents: number | null | undefined): string {
@@ -105,6 +112,7 @@ export async function sendReservationPaidNotifications(
     people: reservation.people,
     amount,
     extras,
+    reservationUrl: reservationPublicUrl(reservation.publicToken),
   });
 
   try {
