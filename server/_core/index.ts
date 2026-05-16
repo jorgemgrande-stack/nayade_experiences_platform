@@ -1393,6 +1393,67 @@ async function ensureExpenseEmailIngestionSchema() {
   }
 }
 
+/**
+ * Asegura que reservations.public_token exista en BD + un trigger que auto-genere
+ * el token en cada INSERT futuro. Necesario porque la migración 0094 usaba
+ * `DEFAULT (SHA2(...))` que la versión MySQL de Railway no aceptaba y fallaba
+ * silenciosamente. Esta función se ejecuta al arrancar — autocommit garantizado.
+ */
+async function ensureReservationPublicToken() {
+  try {
+    const mysql = await import("mysql2/promise");
+    const conn = await mysql.default.createConnection(process.env.DATABASE_URL!);
+
+    // 1. Columna
+    const [cols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'reservations'
+       AND COLUMN_NAME = 'public_token'`
+    ) as any[];
+
+    if (cols.length === 0) {
+      await conn.execute(
+        `ALTER TABLE \`reservations\` ADD COLUMN \`public_token\` VARCHAR(128) DEFAULT NULL`
+      );
+      console.log("[DB] ✅ reservations.public_token añadida");
+    }
+
+    // 2. Backfill tokens en reservas existentes
+    const [missingRes] = await conn.execute(
+      `SELECT COUNT(*) AS cnt FROM \`reservations\` WHERE \`public_token\` IS NULL`
+    ) as any[];
+    const missing = missingRes[0]?.cnt ?? 0;
+    if (missing > 0) {
+      await conn.execute(
+        `UPDATE \`reservations\`
+         SET \`public_token\` = SHA2(CONCAT(UUID(), UUID(), RAND(), id), 256)
+         WHERE \`public_token\` IS NULL`
+      );
+      console.log(`[DB] ✅ reservations.public_token backfilled (${missing} filas)`);
+    }
+
+    // 3. Trigger BEFORE INSERT — auto-generar token si no se pasa explícitamente
+    const [trgs] = await conn.execute(
+      `SELECT TRIGGER_NAME FROM INFORMATION_SCHEMA.TRIGGERS
+       WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = 'reservations_set_public_token'`
+    ) as any[];
+
+    if (trgs.length === 0) {
+      await conn.execute(
+        `CREATE TRIGGER \`reservations_set_public_token\`
+         BEFORE INSERT ON \`reservations\`
+         FOR EACH ROW
+         SET NEW.public_token = COALESCE(NEW.public_token, SHA2(CONCAT(UUID(), UUID(), RAND()), 256))`
+      );
+      console.log("[DB] ✅ trigger reservations_set_public_token creado");
+    }
+
+    await conn.end();
+  } catch (err: any) {
+    console.error("[DB] Error en ensureReservationPublicToken:", err.message);
+  }
+}
+
 async function ensureRefundColumns() {
   try {
     const mysql = await import("mysql2/promise");
@@ -1789,6 +1850,7 @@ runMigrations()
   .then(() => migrateSiteSettingsToSystemSettings())
   .then(() => ensurePricingColumns())
   .then(() => ensureRefundColumns())
+  .then(() => ensureReservationPublicToken())
   .then(() => ensureDiscountColumns())
   .then(() => ensureLeadSourceColumn())
   .then(() => ensureTicketingChannel())
