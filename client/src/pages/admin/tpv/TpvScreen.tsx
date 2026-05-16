@@ -348,7 +348,10 @@ export default function TpvScreen() {
         unitPrice: item.unitPrice,
         discountPercent: item.discountPercent,
         eventDate: item.eventDate,
-        eventTime: item.eventTime ?? (item.selectedTimeSlotLabel ? item.selectedTimeSlotLabel : undefined),
+        // eventTime debe ser SOLO la hora (HH:MM) — la columna BD es varchar(10).
+        // El nombre del slot (selectedTimeSlotLabel, ej. "Salida Colectiva") va en
+        // notes, NUNCA en eventTime, porque excede los 10 chars y rompe el INSERT.
+        eventTime: item.eventTime ?? item.selectedTime ?? undefined,
         participants: item.participants,
         notes: [
           item.variantName ? `Variante: ${item.variantName}` : null,
@@ -1157,7 +1160,11 @@ function TpvTimeSlotsModal({
       return;
     }
     const slot = timeSlots.find(s => s.id === selectedSlotId);
-    onConfirm(selectedSlotId, slot?.label ?? "", slotType === "flexible" ? selectedTime : undefined);
+    // Para slots "fixed", la hora real está en slot.startTime (ej. "12:00").
+    // Para slots "flexible", la hora la introduce el usuario (selectedTime).
+    // selectedTime se usa luego como `eventTime` (varchar(10) — HH:MM, no el label).
+    const slotTime = slotType === "flexible" ? selectedTime : (slot?.startTime ?? undefined);
+    onConfirm(selectedSlotId, slot?.label ?? "", slotTime);
   };
 
   return (
