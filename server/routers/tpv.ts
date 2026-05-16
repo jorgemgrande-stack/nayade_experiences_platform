@@ -1091,6 +1091,16 @@ export const tpvRouter = router({
 
       // ── 9. Email de confirmación (cliente si hay email + siempre a reservas@) ─
       try {
+        // Recuperar publicToken de la reserva auto-generada para el botón "Ver tu reserva"
+        let reservationUrl: string | undefined;
+        if (reservationId) {
+          const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
+            .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+          if (resForUrl?.publicToken) {
+            const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+            reservationUrl = `${baseUrl}/presupuesto/${resForUrl.publicToken}`;
+          }
+        }
         const emailHtml = buildReservationConfirmHtml({
           merchantOrder: ticketNumber,
           productName: mainItem?.productName ?? input.items.map(i => i.productName).join(", "),
@@ -1098,6 +1108,7 @@ export const tpvRouter = router({
           date: new Date().toLocaleDateString("es-ES"),
           people: mainItem?.participants ?? 1,
           amount: `${total.toFixed(2)} €`,
+          reservationUrl,
         });
         const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
         const saleNotifyEmail = await getBusinessEmail('reservations');

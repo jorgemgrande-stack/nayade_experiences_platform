@@ -13,6 +13,7 @@ import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems
 import { eq, desc, and, gte, lte, notInArray, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
+import { buildReservationConfirmHtml } from "../emailTemplates";
 import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber, getGHLCredentials } from "../db";
 import { reservations } from "../../drizzle/schema";
 import { createGHLContact, triggerGHLWorkflow } from "../ghl";
@@ -491,6 +492,39 @@ export const partnersRouter = router({
           leadId: null,
         }),
       ]).catch((e: any) => console.error("[Partners] Error en post-reserva:", e.message));
+
+      // Email de confirmación al cliente (solo si proporcionó email).
+      // Fire-and-forget: si falla el email, la reserva sigue su curso.
+      if (input.customerEmail) {
+        try {
+          const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
+            .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+          const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+          const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
+          const bookingDateFormatted = (() => {
+            try {
+              return new Date(input.bookingDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+            } catch { return input.bookingDate; }
+          })();
+          const html = buildReservationConfirmHtml({
+            merchantOrder: reservationNumber,
+            productName: input.productName,
+            customerName: input.customerName,
+            date: bookingDateFormatted,
+            people: input.people,
+            amount: `${input.amountTotal.toFixed(2).replace(".", ",")} €`,
+            extras: `Reserva delegada por ${partner.name}`,
+            reservationUrl,
+          });
+          sendEmail({
+            to: input.customerEmail,
+            subject: `✅ Reserva confirmada — ${input.productName} · Náyade Experiences`,
+            html,
+          }).catch((e: any) => console.error("[Partners] Error enviando email cliente:", e?.message));
+        } catch (emailErr: any) {
+          console.error("[Partners] Error preparando email cliente:", emailErr?.message);
+        }
+      }
 
       // GHL: reutilizar contacto existente o crear nuevo, siempre disparar workflow
       try {

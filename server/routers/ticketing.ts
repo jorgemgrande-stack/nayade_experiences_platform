@@ -865,6 +865,11 @@ export const ticketingRouter = router({
         ? new Date(input.reservationDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
         : "Por confirmar";
       const totalAmount = (parseFloat(resolvedPvpPrice) * input.participants).toFixed(2).replace(".", ",");
+      // Recuperar publicToken de la reserva recién creada para el botón "Ver tu reserva"
+      const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
+        .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+      const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+      const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
       const confirmHtml = buildReservationConfirmHtml({
         merchantOrder,
         productName: resolvedProductName,
@@ -873,6 +878,7 @@ export const ticketingRouter = router({
         people: input.participants,
         amount: `${totalAmount} €`,
         extras: `Cupón ${item.provider ?? ""} — Código: ${item.couponCode}`,
+        reservationUrl,
       });
       sendEmail({
         to: item.email,
