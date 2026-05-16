@@ -20,6 +20,7 @@ import {
   discountCodes,
   invoices,
   quotes,
+  tpvSales,
   type CancellationRequest,
 } from "../../drizzle/schema";
 import { eq, desc, and, like, or, sql, lt, inArray } from "drizzle-orm";
@@ -136,6 +137,13 @@ async function propagateCancellation(params: {
           statusReservation: "ANULADA",
         })
         .where(eq(reservations.id, reservationId));
+
+      // ── Cancelar venta TPV vinculada (si la reserva nació de un TPV) ─────
+      // Sin esto, la venta TPV mantenía status="paid" e inflaba el control diario.
+      // Bug #1 del audit: orphan TPV sales after reservation cancellation.
+      await tx.update(tpvSales)
+        .set({ status: "cancelled" })
+        .where(eq(tpvSales.reservationId, reservationId));
 
       // ── Actualizar estado operativo ──────────────────────────────────────
       await tx.update(reservationOperational)
