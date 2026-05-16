@@ -7164,11 +7164,13 @@ export default function CRMDashboard() {
                         )}
                       </td>
                       {/* Importe */}
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
-                        {res.amountPaid !== res.amountTotal && (
-                          <div className="text-xs text-foreground/40 whitespace-nowrap">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</div>
-                        )}
+                      <td className="px-4 py-3 text-right whitespace-nowrap align-middle min-w-[110px]">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
+                          {res.amountPaid !== res.amountTotal && (
+                            <span className="text-xs text-foreground/40 whitespace-nowrap">{((res.amountTotal ?? 0) / 100).toFixed(2)} € total</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right w-[180px] whitespace-nowrap">
                         <div className="flex items-center justify-end gap-0.5">
