@@ -293,10 +293,13 @@ function detailsCard(rows: string, cardTitle?: string): string {
 
 // ─── COMPONENTE 6: Bloque emocional (texto inspiracional) ─────────────────────
 function emotionalBlock(text: string): string {
+  // Fallback Outlook: bgcolor + background-color sólido ANTES del linear-gradient.
+  // Outlook no renderiza linear-gradient — sin fallback, el fondo se queda blanco
+  // y el texto blanco queda invisible.
   return `<tr><td style="padding:0 32px 16px;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,${BRAND_BLUE},${BRAND_MID_BLUE});border-radius:10px;">
+    <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BRAND_MID_BLUE}" style="background-color:${BRAND_MID_BLUE};background:linear-gradient(135deg,${BRAND_BLUE},${BRAND_MID_BLUE});border-radius:10px;">
       <tr><td style="padding:20px 24px;text-align:center;">
-        <p style="color:rgba(255,255,255,0.9);font-size:14px;font-family:Georgia,'Times New Roman',serif;font-style:italic;line-height:1.7;margin:0;">${text}</p>
+        <p style="color:#ffffff;font-size:14px;font-family:Georgia,'Times New Roman',serif;font-style:italic;line-height:1.7;margin:0;">${text}</p>
       </td></tr>
     </table>
   </td></tr>`;
@@ -333,9 +336,9 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       ${d.extras && d.extras !== "Ninguno" ? detailRow(SVG.tag, "Extras", d.extras) : ""}
     `)}
     <tr><td style="padding:0 32px 12px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,${BRAND_BLUE},${BRAND_MID_BLUE});border-radius:10px;">
+      <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BRAND_MID_BLUE}" style="background-color:${BRAND_MID_BLUE};background:linear-gradient(135deg,${BRAND_BLUE},${BRAND_MID_BLUE});border-radius:10px;">
         <tr>
-          <td style="padding:14px 20px;color:rgba(255,255,255,0.7);font-size:13px;font-family:Arial,sans-serif;">Total pagado</td>
+          <td style="padding:14px 20px;color:#ffffff;font-size:13px;font-family:Arial,sans-serif;">Total pagado</td>
           <td align="right" style="padding:14px 20px;color:#ffffff;font-size:26px;font-weight:900;font-family:Georgia,serif;">${d.amount}</td>
         </tr>
       </table>

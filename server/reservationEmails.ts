@@ -26,8 +26,10 @@ export interface ReservationEmailData {
   status: string;
 }
 
-function formatAmount(cents: number): string {
-  return (cents / 100).toFixed(2).replace(".", ",") + " €";
+function formatAmount(cents: number | null | undefined): string {
+  // Resiliente a null/undefined/NaN — devuelve "0,00 €" en vez de "NaN €".
+  const n = typeof cents === "number" && Number.isFinite(cents) ? cents : 0;
+  return (n / 100).toFixed(2).replace(".", ",") + " €";
 }
 
 function formatDate(dateStr: string): string {
