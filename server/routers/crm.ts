@@ -2948,7 +2948,87 @@ export const crmRouter = router({
           .from(quotes)
           .where(eq(quotes.paymentLinkToken, input.token))
           .limit(1);
-        if (!quote) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado o enlace inválido" });
+
+        // Si no es un token de quote, probar tabla reservations (Fase 2 del
+        // plan "Ver tu reserva" — los emails de confirmación de cualquier
+        // canal apuntan a esta URL, incluyendo reservas sin presupuesto).
+        if (!quote) {
+          const [reservation] = await db
+            .select()
+            .from(reservations)
+            .where(eq(reservations.publicToken, input.token))
+            .limit(1);
+          if (!reservation) throw new TRPCError({ code: "NOT_FOUND", message: "Presupuesto no encontrado o enlace inválido" });
+
+          // Buscar factura asociada (por reservationId o por invoiceId guardado en la reserva)
+          let invoicePdfUrl: string | null = null;
+          let invoiceNumber: string | null = reservation.invoiceNumber ?? null;
+          if (reservation.invoiceId) {
+            const [inv] = await db.select({ pdfUrl: invoices.pdfUrl, invoiceNumber: invoices.invoiceNumber })
+              .from(invoices).where(eq(invoices.id, reservation.invoiceId)).limit(1);
+            if (inv) {
+              invoicePdfUrl = inv.pdfUrl ?? null;
+              invoiceNumber = inv.invoiceNumber ?? invoiceNumber;
+            }
+          }
+
+          // Construir items desde extrasJson si existe, o un único item con el productName
+          let items: { description: string; quantity: number; unitPrice: number; total: number }[] = [];
+          try {
+            const extras = reservation.extrasJson ? JSON.parse(String(reservation.extrasJson)) : null;
+            if (Array.isArray(extras) && extras.length > 0) {
+              items = extras.map((e: any) => ({
+                description: e.productName ?? e.name ?? reservation.productName,
+                quantity: e.quantity ?? 1,
+                unitPrice: parseFloat(String(e.unitPrice ?? 0)),
+                total: parseFloat(String(e.unitPrice ?? 0)) * (e.quantity ?? 1),
+              }));
+            }
+          } catch { /* extrasJson inválido — usar fallback */ }
+          if (items.length === 0) {
+            const amountEur = (reservation.amountTotal ?? 0) / 100;
+            items = [{
+              description: reservation.productName,
+              quantity: reservation.people ?? 1,
+              unitPrice: amountEur / (reservation.people || 1),
+              total: amountEur,
+            }];
+          }
+
+          const totalEur = ((reservation.amountTotal ?? 0) / 100).toFixed(2);
+          const isPaid = reservation.status === "paid";
+          const isCancelled = reservation.status === "cancelled";
+
+          return {
+            id: -reservation.id, // negativo para indicar que es reserva, no quote
+            quoteNumber: reservation.reservationNumber ?? `RES-${reservation.id}`,
+            title: `Reserva ${reservation.productName}`,
+            items,
+            subtotal: totalEur,
+            discount: "0",
+            tax: "0",
+            total: totalEur,
+            currency: "EUR",
+            validUntil: null,
+            status: isCancelled ? "rechazado" : (isPaid ? "pago_completado" : "enviado"),
+            notes: reservation.notes ?? null,
+            conditions: null,
+            isExpired: false,
+            isPaid,
+            isRejected: isCancelled,
+            clientName: reservation.customerName ?? "",
+            clientEmail: reservation.customerEmail ?? "",
+            clientPhone: reservation.customerPhone ?? "",
+            invoicePdfUrl,
+            invoiceNumber,
+            installmentPlan: null,
+            // Marcador para que el frontend sepa que NO es un quote
+            sourceType: "reservation" as const,
+            bookingDate: reservation.bookingDate ?? null,
+            selectedTime: reservation.selectedTime ?? null,
+            people: reservation.people ?? null,
+          };
+        }
 
         // Marcar como visualizado si llega por primera vez (solo desde "enviado")
         // Si ya está en pago_fallido o estados posteriores, no se degrada el estado
