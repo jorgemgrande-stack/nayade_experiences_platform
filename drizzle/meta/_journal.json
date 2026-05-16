@@ -610,6 +610,13 @@
       "when": 1747440000000,
       "tag": "0092_tpv_manual_items",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "5",
+      "when": 1747443600000,
+      "tag": "0093_tpv_concept_text_fix",
+      "breakpoints": true
     }
   ]
 }
