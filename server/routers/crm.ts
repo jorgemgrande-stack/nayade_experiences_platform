@@ -4744,6 +4744,20 @@ export const crmRouter = router({
               }, ghlCreds);
 
             if (ghlContactId) {
+              // 1. Actualizar campos personalizados del contacto en GHL
+              //    para que el workflow pueda usarlos en plantillas (WhatsApp, email, etc.)
+              if (pdfUrl) {
+                syncLeadUrlsToGHL({
+                  ghlContactId,
+                  invoiceUrl: pdfUrl,
+                  invoiceNumber,
+                  email: input.customerEmail,
+                  phone: input.customerPhone ?? undefined,
+                  credentials: ghlCreds,
+                });
+              }
+
+              // 2. Disparar el workflow
               const webhookUrl = process.env.GHL_RESERVATION_WEBHOOK_URL;
               if (webhookUrl) {
                 await triggerGHLWorkflow(webhookUrl, {
