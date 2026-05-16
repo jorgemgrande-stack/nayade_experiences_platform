@@ -719,6 +719,10 @@ export const reservations = mysqlTable("reservations", {
   fbc: varchar("fbc", { length: 255 }),
   clientIpAddress: varchar("client_ip_address", { length: 45 }),
   clientUserAgent: varchar("client_user_agent", { length: 500 }),
+  // Token público para que el cliente acceda a su reserva sin login.
+  // URL: https://www.nayadeexperiences.es/presupuesto/{publicToken}
+  // Se genera automáticamente al crear cada reserva (todos los canales).
+  publicToken: varchar("public_token", { length: 128 }).unique(),
 });
 
 // ─── PRODUCT TIME SLOTS ────────────────────────────────────────────────────────
