@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import CancellationDetailModal from "./CancellationDetailModal";
+import ReservationTicket from "./ReservationTicket";
 import { ProposalLeadButton } from "./ProposalsManager";
 import { CatalogConceptSelector, type CatalogProduct } from "@/components/CatalogConceptSelector";
 import {
@@ -55,6 +56,7 @@ import {
   Banknote,
   Pencil,
   FileDown,
+  Printer,
   Sparkles,
   Receipt,
   CreditCard,
@@ -5222,6 +5224,7 @@ export default function CRMDashboard() {
   const [editResId, setEditResId] = useState<number | null>(null);
   const [editResData, setEditResData] = useState<any>(null);
   const [deleteResId, setDeleteResId] = useState<number | null>(null);
+  const [printTicketRes, setPrintTicketRes] = useState<any>(null);
   const [editResStatus, setEditResStatus] = useState<string>("");
   const [editResNotes, setEditResNotes] = useState<string>("");
   const [editResStatusReservation, setEditResStatusReservation] = useState<string>("");
@@ -7176,7 +7179,7 @@ export default function CRMDashboard() {
                           )}
                         </div>
                       </td>
-                      <td className="px-2 py-3 text-right w-[210px] whitespace-nowrap align-top">
+                      <td className="px-2 py-3 text-right w-[240px] whitespace-nowrap align-top">
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver detalles */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-sky-300 h-7 w-7 p-0"
@@ -7210,6 +7213,12 @@ export default function CRMDashboard() {
                             {resendResMutation.isPending
                               ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                               : <Send className="w-3.5 h-3.5" />}
+                          </Button>
+                          {/* Imprimir ticket térmico */}
+                          <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-orange-300 h-7 w-7 p-0"
+                            onClick={() => setPrintTicketRes(res)}
+                            title="Imprimir ticket (80mm)">
+                            <Printer className="w-3.5 h-3.5" />
                           </Button>
                           {/* Descargar PDF factura */}
                           <Button size="sm" variant="ghost"
@@ -7937,6 +7946,13 @@ export default function CRMDashboard() {
           <NewReservationModal onClose={() => setShowNewReservationModal(false)} />
         )}
       </Dialog>
+
+      {/* Imprimir ticket térmico de reserva (80mm) */}
+      <ReservationTicket
+        open={!!printTicketRes}
+        reservation={printTicketRes}
+        onClose={() => setPrintTicketRes(null)}
+      />
 
       <Dialog open={selectedLeadId !== null} onOpenChange={(o) => !o && setSelectedLeadId(null)}>
         {selectedLeadId !== null && (
