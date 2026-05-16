@@ -142,13 +142,13 @@ function printThermalTicket80mm(innerHtml: string, ticketNumber: string) {
       padding: 0;
     }
     body {
-      /* La TM-T20II + driver Windows tiene una zona izquierda no imprimible
-         más amplia de lo habitual (~12-14mm). Empujamos el contenido a la
-         derecha con margin-left para que toda la columna quede dentro de la
-         zona imprimible real. Resultado: contenido de 58mm en el rango
-         [14mm, 72mm] de los 80mm del papel. */
-      width: 58mm;
-      margin: 0 0 0 14mm;
+      /* El driver/papel está desplazado hacia la derecha: con margin-left
+         de 14mm el contenido se salía por la derecha. Anclamos el contenido
+         al borde izquierdo del papel (margin: 0) y reducimos el width para
+         que el lado derecho tampoco se corte. Resultado: contenido de 60mm
+         empezando desde el borde físico izquierdo del papel. */
+      width: 60mm;
+      margin: 0;
       padding: 0;
     }
     .center { text-align: center; }
