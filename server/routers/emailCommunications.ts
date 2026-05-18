@@ -153,6 +153,12 @@ export const emailCommunicationsRouter = router({
       allowedSendEnd: z.string().regex(/^\d{2}:\d{2}$/).default("21:00"),
       stopIfConverted: z.boolean().default(true),
       stopIfPaid: z.boolean().default(true),
+      // Campos comerciales (Fase 2)
+      onlyIfNotViewed: z.boolean().default(false),
+      allowIfViewedButUnpaid: z.boolean().default(true),
+      maxCumulativeSendsPerEntity: z.number().int().min(1).max(20).nullable().optional(),
+      stopAfterDays: z.number().int().min(1).max(365).nullable().optional(),
+      respectCommercialPause: z.boolean().default(false),
       emailSubject: z.string().max(512).optional(),
       emailBody: z.string().optional(),
     }))
@@ -177,6 +183,12 @@ export const emailCommunicationsRouter = router({
       allowedSendEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
       stopIfConverted: z.boolean().optional(),
       stopIfPaid: z.boolean().optional(),
+      // Campos comerciales (Fase 2)
+      onlyIfNotViewed: z.boolean().optional(),
+      allowIfViewedButUnpaid: z.boolean().optional(),
+      maxCumulativeSendsPerEntity: z.number().int().min(1).max(20).nullable().optional(),
+      stopAfterDays: z.number().int().min(1).max(365).nullable().optional(),
+      respectCommercialPause: z.boolean().optional(),
       emailSubject: z.string().max(512).nullable().optional(),
       emailBody: z.string().nullable().optional(),
     }))

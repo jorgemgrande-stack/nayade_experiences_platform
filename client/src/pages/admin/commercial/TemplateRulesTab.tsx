@@ -39,6 +39,12 @@ type AutomationRule = {
   allowedSendEnd: string;
   stopIfConverted: boolean;
   stopIfPaid: boolean;
+  // Campos comerciales (Fase 2)
+  onlyIfNotViewed: boolean;
+  allowIfViewedButUnpaid: boolean;
+  maxCumulativeSendsPerEntity: number | null;
+  stopAfterDays: number | null;
+  respectCommercialPause: boolean;
   emailSubject: string | null;
   emailBody: string | null;
 };
@@ -97,6 +103,19 @@ function RuleCard({
             +{rule.delayHours}h desde {rule.calculateFrom === "trigger_time" ? "trigger" : rule.calculateFrom}
             {" · "}{rule.allowedSendStart}–{rule.allowedSendEnd}
             {" · "}max {rule.maxSendsPerEntity}x
+            {rule.maxCumulativeSendsPerEntity != null && ` · tope ${rule.maxCumulativeSendsPerEntity} total`}
+            {rule.stopAfterDays != null && ` · ${rule.stopAfterDays}d ventana`}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {rule.respectCommercialPause && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-900/30 border border-purple-700/50 text-purple-300">comercial</span>
+            )}
+            {rule.onlyIfNotViewed && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-900/30 border border-blue-700/50 text-blue-300">solo no vistos</span>
+            )}
+            {!rule.allowIfViewedButUnpaid && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-900/30 border border-amber-700/50 text-amber-300">no enviar si visto</span>
+            )}
           </div>
           {rule.emailSubject && (
             <div className="mt-1 text-xs text-gray-400 truncate">Asunto: {rule.emailSubject}</div>
@@ -156,6 +175,55 @@ function RuleCard({
               <Toggle value={form.stopIfConverted} onChange={v => setForm(f => ({ ...f, stopIfConverted: v }))} label="Parar si ya hay reserva" />
               <Toggle value={form.stopIfPaid} onChange={v => setForm(f => ({ ...f, stopIfPaid: v }))} label="Parar si ya está pagado" />
               <Toggle value={form.isActive} onChange={v => setForm(f => ({ ...f, isActive: v }))} label="Regla activa" />
+            </div>
+
+            {/* Bloque comercial (Fase 2 — solo aplica si respectCommercialPause=true) */}
+            <div className="space-y-3 border border-purple-900/40 bg-purple-950/10 rounded p-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-medium text-purple-300">Comportamiento comercial</div>
+                <span className="text-[10px] text-purple-400/70 italic">aplica solo si está activado</span>
+              </div>
+              <Toggle
+                value={form.respectCommercialPause}
+                onChange={v => setForm(f => ({ ...f, respectCommercialPause: v }))}
+                label="Respetar pausa y estado comercial del presupuesto"
+              />
+              {form.respectCommercialPause && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Tope total recordatorios</Label>
+                      <Input
+                        type="number" min={1} max={20}
+                        value={form.maxCumulativeSendsPerEntity ?? ""}
+                        onChange={e => setForm(f => ({ ...f, maxCumulativeSendsPerEntity: e.target.value === "" ? null : +e.target.value }))}
+                        placeholder="ilimitado"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Ventana máxima (días)</Label>
+                      <Input
+                        type="number" min={1} max={365}
+                        value={form.stopAfterDays ?? ""}
+                        onChange={e => setForm(f => ({ ...f, stopAfterDays: e.target.value === "" ? null : +e.target.value }))}
+                        placeholder="sin límite"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <Toggle
+                    value={form.onlyIfNotViewed}
+                    onChange={v => setForm(f => ({ ...f, onlyIfNotViewed: v }))}
+                    label="Solo enviar si NO ha sido visto"
+                  />
+                  <Toggle
+                    value={form.allowIfViewedButUnpaid}
+                    onChange={v => setForm(f => ({ ...f, allowIfViewedButUnpaid: v }))}
+                    label="Enviar aunque esté visto (si no está pagado)"
+                  />
+                </>
+              )}
             </div>
             <div className="col-span-2 rounded-md bg-blue-950/40 border border-blue-800/40 px-3 py-2 text-xs text-blue-300">
               El contenido del email se lee automáticamente desde <strong>/admin/plantillas-email</strong>. Los campos de abajo son opcionales: solo rellena si quieres sobrescribir el asunto o usar un cuerpo distinto al de la plantilla.
@@ -226,6 +294,12 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
     allowedSendEnd: "21:00",
     stopIfConverted: true,
     stopIfPaid: true,
+    // Campos comerciales (Fase 2)
+    onlyIfNotViewed: false,
+    allowIfViewedButUnpaid: true,
+    maxCumulativeSendsPerEntity: null as number | null,
+    stopAfterDays: null as number | null,
+    respectCommercialPause: false,
     emailSubject: "",
     emailBody: "",
   });
@@ -233,7 +307,10 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
   const resetRuleForm = () => setRuleForm({
     name: "", delayHours: 24, calculateFrom: "trigger_time",
     maxSendsPerEntity: 1, allowedSendStart: "09:00", allowedSendEnd: "21:00",
-    stopIfConverted: true, stopIfPaid: true, emailSubject: "", emailBody: "",
+    stopIfConverted: true, stopIfPaid: true,
+    onlyIfNotViewed: false, allowIfViewedButUnpaid: true,
+    maxCumulativeSendsPerEntity: null, stopAfterDays: null, respectCommercialPause: false,
+    emailSubject: "", emailBody: "",
   });
 
   const [localActive, setLocalActive] = useState(config.isActive);
@@ -391,6 +468,52 @@ function TemplateCard({ config }: { config: TemplateConfig }) {
                 <Input value={ruleForm.allowedSendEnd} onChange={e => setRuleForm(f => ({ ...f, allowedSendEnd: e.target.value }))} className="h-8 text-xs font-mono" />
               </div>
             </div>
+            {/* Bloque comercial (Fase 2) */}
+            <div className="space-y-3 border border-purple-900/40 bg-purple-950/10 rounded p-3">
+              <div className="text-xs font-medium text-purple-300">Comportamiento comercial</div>
+              <Toggle
+                value={ruleForm.respectCommercialPause}
+                onChange={v => setRuleForm(f => ({ ...f, respectCommercialPause: v }))}
+                label="Respetar pausa y estado comercial del presupuesto"
+              />
+              {ruleForm.respectCommercialPause && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Tope total recordatorios</Label>
+                      <Input
+                        type="number" min={1} max={20}
+                        value={ruleForm.maxCumulativeSendsPerEntity ?? ""}
+                        onChange={e => setRuleForm(f => ({ ...f, maxCumulativeSendsPerEntity: e.target.value === "" ? null : +e.target.value }))}
+                        placeholder="ilimitado"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Ventana máxima (días)</Label>
+                      <Input
+                        type="number" min={1} max={365}
+                        value={ruleForm.stopAfterDays ?? ""}
+                        onChange={e => setRuleForm(f => ({ ...f, stopAfterDays: e.target.value === "" ? null : +e.target.value }))}
+                        placeholder="sin límite"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <Toggle
+                    value={ruleForm.onlyIfNotViewed}
+                    onChange={v => setRuleForm(f => ({ ...f, onlyIfNotViewed: v }))}
+                    label="Solo enviar si NO ha sido visto"
+                  />
+                  <Toggle
+                    value={ruleForm.allowIfViewedButUnpaid}
+                    onChange={v => setRuleForm(f => ({ ...f, allowIfViewedButUnpaid: v }))}
+                    label="Enviar aunque esté visto (si no está pagado)"
+                  />
+                </>
+              )}
+            </div>
+
             <div className="col-span-2 rounded-md bg-blue-950/40 border border-blue-800/40 px-3 py-2 text-xs text-blue-300">
               El contenido del email se lee automáticamente desde <strong>/admin/plantillas-email</strong>. Los campos de abajo son opcionales: solo rellena si quieres sobrescribir el asunto o usar un cuerpo distinto al de la plantilla.
             </div>
