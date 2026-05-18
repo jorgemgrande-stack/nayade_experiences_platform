@@ -6978,7 +6978,7 @@ export default function CRMDashboard() {
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1140px] table-fixed">
+              <table className="w-full min-w-[1210px] table-fixed">
                 <colgroup>
                   <col style={{width:"40px"}} />
                   <col style={{width:"145px"}} />
@@ -6990,7 +6990,7 @@ export default function CRMDashboard() {
                   <col style={{width:"95px"}} className="hidden lg:table-column" />
                   <col style={{width:"105px"}} className="hidden lg:table-column" />
                   <col style={{width:"130px"}} />
-                  <col style={{width:"190px"}} />
+                  <col style={{width:"260px"}} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
@@ -7179,7 +7179,7 @@ export default function CRMDashboard() {
                           )}
                         </div>
                       </td>
-                      <td className="px-2 py-3 text-right w-[240px] whitespace-nowrap align-top">
+                      <td className="px-2 py-3 text-right whitespace-nowrap align-top">
                         <div className="flex items-center justify-end gap-0.5">
                           {/* Ver detalles */}
                           <Button size="sm" variant="ghost" className="text-foreground/50 hover:text-sky-300 h-7 w-7 p-0"
