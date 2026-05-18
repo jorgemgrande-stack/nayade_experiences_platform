@@ -6978,7 +6978,7 @@ export default function CRMDashboard() {
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] table-fixed">
+              <table className="w-full min-w-[1140px] table-fixed">
                 <colgroup>
                   <col style={{width:"40px"}} />
                   <col style={{width:"145px"}} />
@@ -6989,7 +6989,7 @@ export default function CRMDashboard() {
                   <col style={{width:"95px"}} className="hidden xl:table-column" />
                   <col style={{width:"95px"}} className="hidden lg:table-column" />
                   <col style={{width:"105px"}} className="hidden lg:table-column" />
-                  <col style={{width:"90px"}} />
+                  <col style={{width:"130px"}} />
                   <col style={{width:"190px"}} />
                 </colgroup>
                 <thead>
@@ -7171,7 +7171,7 @@ export default function CRMDashboard() {
                         )}
                       </td>
                       {/* Importe */}
-                      <td className="pl-4 pr-6 py-3 text-right whitespace-nowrap align-top w-[120px]">
+                      <td className="px-4 py-3 text-right whitespace-nowrap align-top">
                         <div className="flex flex-col items-end leading-tight">
                           <span className="text-sm font-bold text-orange-400">{((res.amountPaid ?? 0) / 100).toFixed(2)} €</span>
                           {res.amountPaid !== res.amountTotal && (
