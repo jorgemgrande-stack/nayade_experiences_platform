@@ -2853,38 +2853,8 @@ export const rbacRoles = mysqlTable("rbac_roles", {
 export type RbacRole = typeof rbacRoles.$inferSelect;
 
 // ─── MÓDULO ATENCIÓN COMERCIAL ────────────────────────────────────────────────
-
-export const commercialFollowupSettings = mysqlTable("commercial_followup_settings", {
-  id: int("id").autoincrement().primaryKey(),
-  enabled: boolean("enabled").notNull().default(true),
-  maxTotalRemindersPerQuote: int("maxTotalRemindersPerQuote").notNull().default(3),
-  maxEmailsPerRun: int("maxEmailsPerRun").notNull().default(50),
-  allowedSendStart: varchar("allowedSendStart", { length: 5 }).notNull().default("09:00"),
-  allowedSendEnd: varchar("allowedSendEnd", { length: 5 }).notNull().default("21:00"),
-  timezone: varchar("timezone", { length: 50 }).notNull().default("Europe/Madrid"),
-  stopAfterDays: int("stopAfterDays").notNull().default(30),
-  internalCcEmail: varchar("internalCcEmail", { length: 320 }),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-export type CommercialFollowupSettings = typeof commercialFollowupSettings.$inferSelect;
-
-export const commercialFollowupRules = mysqlTable("commercial_followup_rules", {
-  id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 200 }).notNull(),
-  isActive: boolean("isActive").notNull().default(true),
-  delayHours: int("delayHours").notNull().default(24),
-  triggerFrom: mysqlEnum("triggerFrom", ["quote_sent_at", "last_reminder_at"]).notNull().default("quote_sent_at"),
-  onlyIfNotViewed: boolean("onlyIfNotViewed").notNull().default(false),
-  allowIfViewedButUnpaid: boolean("allowIfViewedButUnpaid").notNull().default(true),
-  maxSendsPerQuoteForThisRule: int("maxSendsPerQuoteForThisRule").notNull().default(1),
-  emailSubject: varchar("emailSubject", { length: 500 }).notNull(),
-  emailBody: text("emailBody").notNull(),
-  sortOrder: int("sortOrder").notNull().default(0),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-export type CommercialFollowupRule = typeof commercialFollowupRules.$inferSelect;
+// commercial_followup_settings y commercial_followup_rules eliminadas en Fase 5.
+// La configuración global y las reglas viven ahora en email_automation_rules.
 
 export const quoteCommercialTracking = mysqlTable("quote_commercial_tracking", {
   id: int("id").autoincrement().primaryKey(),
@@ -2908,27 +2878,8 @@ export const quoteCommercialTracking = mysqlTable("quote_commercial_tracking", {
 });
 export type QuoteCommercialTracking = typeof quoteCommercialTracking.$inferSelect;
 
-export const commercialCommunications = mysqlTable("commercial_communications", {
-  id: int("id").autoincrement().primaryKey(),
-  quoteId: int("quoteId").notNull(),
-  customerEmail: varchar("customerEmail", { length: 320 }),
-  customerPhone: varchar("customerPhone", { length: 32 }),
-  type: mysqlEnum("type", [
-    "quote_sent", "automatic_reminder", "manual_reminder", "payment_link_sent",
-    "internal_note", "phone_call", "whatsapp", "lost_reason",
-  ]).notNull(),
-  channel: mysqlEnum("channel", ["email", "phone", "whatsapp", "internal"]).notNull().default("email"),
-  subject: varchar("subject", { length: 500 }),
-  bodySnapshot: text("bodySnapshot"),
-  ruleId: int("ruleId"),
-  status: mysqlEnum("status", ["sent", "failed", "skipped"]).notNull().default("sent"),
-  errorMessage: text("errorMessage"),
-  sentByUserId: int("sentByUserId"),
-  sentAt: timestamp("sentAt").defaultNow().notNull(),
-  metadata: json("metadata"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-export type CommercialCommunication = typeof commercialCommunications.$inferSelect;
+// commercial_communications eliminada en Fase 5. Su contenido se migró a
+// email_comm_log (emails) y quote_internal_notes (notas) por la migración 0098.
 
 // ─── VAPI CALLS ───────────────────────────────────────────────────────────────
 

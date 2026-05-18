@@ -14,8 +14,9 @@
  * 7. Registrar en email_comm_log.
  * 8. Marcar job como sent/skipped/failed.
  *
- * Este job convive con los crons legacy (quoteReminderJob, etc.).
- * Solo procesa jobs creados explícitamente en email_scheduled_jobs.
+ * Único cron de recordatorios desde Fase 5 (quoteReminderJob y commercialFollowupJob eliminados).
+ * Procesa jobs creados explícitamente en email_scheduled_jobs y auto-programa
+ * los recordatorios comerciales (commercial_reminder_*) basándose en quote.sentAt.
  * emailManager.ts bloquea el auto-scheduling para templates con cobertura legacy.
  */
 
@@ -85,8 +86,8 @@ export interface AutomationJobResult {
 
 /**
  * Auto-programar jobs para reglas comerciales (respectCommercialPause=true).
- * Reemplaza el escaneo que hacía commercialFollowupJob: encuentra los quotes
- * que cumplen los criterios de delayHours y crea un job pendiente en email_scheduled_jobs.
+ * Encuentra los quotes que cumplen los criterios de delayHours de cada regla
+ * y crea un job pendiente en email_scheduled_jobs.
  * Los checks finos (paused, terminal, viewed, etc.) se aplican al procesarlo.
  */
 async function scheduleCommercialReminders(): Promise<number> {
@@ -455,7 +456,6 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
         log("info", "Email automático enviado", { jobId: job.id, to: job.recipientEmail, rule: rule.name, subject: finalSubject, contentSource: template ? "email_templates" : "rule_body" });
 
         // Si la regla es commercial-aware, sincronizar tracking comercial + campos legacy en quotes.
-        // Esto sustituye al cron commercialFollowupJob, que se apagará en Fase 3.
         if (rule.respectCommercialPause && entityType === "quote" && entityId) {
           try {
             const now = new Date();

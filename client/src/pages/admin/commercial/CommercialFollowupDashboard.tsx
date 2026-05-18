@@ -30,7 +30,7 @@ import PendingJobsTab from "./PendingJobsTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "dashboard" | "open" | "history" | "settings" | "mapa" | "automatizaciones" | "auditoria" | "plantillas" | "cola";
+type Tab = "dashboard" | "open" | "history" | "mapa" | "automatizaciones" | "auditoria" | "plantillas" | "cola";
 
 const COMMERCIAL_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pending_followup: { label: "Pendiente",       color: "text-slate-300",   bg: "bg-slate-500/15",   border: "border-slate-500/30" },
@@ -183,7 +183,8 @@ export default function CommercialFollowupDashboard() {
       const t = new URLSearchParams(searchStr).get("tab");
       // Redirige tab=rules (eliminada en Fase 4) a plantillas, donde viven las reglas ahora
       if (t === "rules") return "plantillas";
-      if (t === "dashboard" || t === "open" || t === "history" || t === "settings" ||
+      if (t === "settings") return "plantillas"; // pestaña eliminada en Fase 5
+      if (t === "dashboard" || t === "open" || t === "history" ||
           t === "mapa" || t === "plantillas" || t === "cola" ||
           t === "automatizaciones" || t === "auditoria") return t as Tab;
     } catch {}
@@ -242,9 +243,6 @@ export default function CommercialFollowupDashboard() {
   const { data: historyData, isLoading: histLoading } =
     trpc.commercialFollowup.listCommunications.useQuery({ limit: 200, offset: 0 }, { enabled: tab === "history" });
 
-  const { data: settings, refetch: refetchSettings } =
-    trpc.commercialFollowup.getSettings.useQuery(undefined, { enabled: tab === "settings" });
-
   // ─── Mutations ────────────────────────────────────────────────────────────
 
   const sendManualReminder = trpc.commercialFollowup.sendManualReminder.useMutation({
@@ -272,14 +270,9 @@ export default function CommercialFollowupDashboard() {
     onError: (e) => toast.error(e.message),
   });
 
-  // CRUD de reglas eliminado en Fase 4. Las reglas comerciales viven ahora
-  // en email_automation_rules y se gestionan desde la pestaña "Plantillas".
-  });
-
-  const updateSettings = trpc.commercialFollowup.updateSettings.useMutation({
-    onSuccess: () => { toast.success("Configuración guardada"); refetchSettings(); },
-    onError: (e) => toast.error(e.message),
-  });
+  // CRUD de reglas y settings eliminado en Fases 4-5. Toda la configuración
+  // de recordatorios vive en email_automation_rules y se gestiona desde la
+  // pestaña "Plantillas".
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -298,7 +291,6 @@ export default function CommercialFollowupDashboard() {
     { id: "dashboard", label: "Panel", icon: BarChart3 },
     { id: "open", label: "Presupuestos abiertos", icon: List },
     { id: "history", label: "Historial", icon: History },
-    { id: "settings", label: "Configuración", icon: Settings },
     { id: "mapa", label: "Mapa de emails", icon: Map },
     { id: "plantillas", label: "Plantillas", icon: Settings },
     { id: "cola", label: "Cola de envíos", icon: Bell },
@@ -308,24 +300,7 @@ export default function CommercialFollowupDashboard() {
 
   const kpis = dashboard?.kpis;
 
-  // ─── Settings form local state ────────────────────────────────────────────
-  const [sEnabled, setSEnabled] = useState<boolean | null>(null);
-  const [sMax, setSMax] = useState<number | null>(null);
-  const [sStart, setSStart] = useState<string | null>(null);
-  const [sEnd, setSEnd] = useState<string | null>(null);
-  const [sDays, setSDays] = useState<number | null>(null);
-  const [sCc, setSCc] = useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (settings) {
-      setSEnabled(settings.enabled);
-      setSMax(settings.maxTotalRemindersPerQuote);
-      setSStart(settings.allowedSendStart);
-      setSEnd(settings.allowedSendEnd);
-      setSDays(settings.stopAfterDays);
-      setSCc(settings.internalCcEmail ?? "");
-    }
-  }, [settings]);
+  // Pestaña "Configuración" + sus settings locales eliminados en Fase 5.
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -702,73 +677,10 @@ export default function CommercialFollowupDashboard() {
         {/* ── TAB: AUDITORÍA ───────────────────────────────────────────────── */}
         {tab === "auditoria" && <EmailAuditTab />}
 
-        {/* ── TAB: SETTINGS ───────────────────────────────────────────────── */}
-        {tab === "settings" && settings && (
-          <div className="max-w-xl space-y-6">
-            <div className="rounded-xl border border-foreground/[0.08] bg-background p-5 space-y-4">
-              <h3 className="text-sm font-semibold text-foreground/80">Configuración global</h3>
-
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-foreground/70">Sistema de recordatorios activado</Label>
-                <button onClick={() => setSEnabled(v => !v)}
-                  className={`w-10 h-5 rounded-full transition-colors ${sEnabled ?? settings.enabled ? "bg-emerald-500" : "bg-foreground/20"}`}>
-                  <span className={`block w-4 h-4 bg-white rounded-full shadow transition-transform mx-0.5 ${sEnabled ?? settings.enabled ? "translate-x-5" : "translate-x-0"}`} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-xs text-foreground/60">Máx. recordatorios por presupuesto</Label>
-                  <Input type="number" min={1} max={20} value={sMax ?? settings.maxTotalRemindersPerQuote}
-                    onChange={e => setSMax(Number(e.target.value))} className="h-8 text-xs" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-foreground/60">Días máximos de seguimiento</Label>
-                  <Input type="number" min={1} max={365} value={sDays ?? settings.stopAfterDays}
-                    onChange={e => setSDays(Number(e.target.value))} className="h-8 text-xs" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-foreground/60">Hora inicio envío (HH:MM)</Label>
-                  <Input value={sStart ?? settings.allowedSendStart}
-                    onChange={e => setSStart(e.target.value)} className="h-8 text-xs font-mono" placeholder="09:00" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-foreground/60">Hora fin envío (HH:MM)</Label>
-                  <Input value={sEnd ?? settings.allowedSendEnd}
-                    onChange={e => setSEnd(e.target.value)} className="h-8 text-xs font-mono" placeholder="21:00" />
-                </div>
-                <div className="col-span-2 space-y-1">
-                  <Label className="text-xs text-foreground/60">CC interno (email)</Label>
-                  <Input type="email" value={sCc ?? settings.internalCcEmail ?? ""}
-                    onChange={e => setSCc(e.target.value)} className="h-8 text-xs" placeholder="reservas@nayadeexperiences.es" />
-                </div>
-              </div>
-
-              <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white text-xs"
-                disabled={updateSettings.isPending}
-                onClick={() => updateSettings.mutate({
-                  enabled: sEnabled ?? settings.enabled,
-                  maxTotalRemindersPerQuote: sMax ?? settings.maxTotalRemindersPerQuote,
-                  allowedSendStart: sStart ?? settings.allowedSendStart,
-                  allowedSendEnd: sEnd ?? settings.allowedSendEnd,
-                  stopAfterDays: sDays ?? settings.stopAfterDays,
-                  internalCcEmail: sCc || undefined,
-                })}>
-                {updateSettings.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1 animate-spin" /> : null}
-                Guardar configuración
-              </Button>
-
-              <div className="pt-2 border-t border-foreground/[0.08] space-y-1">
-                <p className="text-[10px] text-foreground/40">
-                  <strong className="text-foreground/60">Feature flag:</strong> <code>commercial_followup_job_enabled</code> — activa/desactiva el cron desde el panel de configuración del sistema.
-                </p>
-                <p className="text-[10px] text-foreground/40">
-                  Zona horaria: <strong className="text-foreground/60">Europe/Madrid</strong>. El cron corre cada hora en punto.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Pestaña "Configuración" eliminada en Fase 5.
+            La configuración global vivía en commercial_followup_settings; ahora
+            cada regla en email_automation_rules tiene sus propios horarios,
+            límites y stopAfterDays. Se gestiona desde la pestaña "Plantillas". */}
       </div>
 
       {/* ── Modal: Recordatorio manual ─────────────────────────────────────── */}

@@ -21,8 +21,6 @@ import ghlWebhookRouter from "../ghlWebhookRouter";
 import ghlInboxRouter from "../routes/ghlInboxRouter";
 import vapiWebhookRouter from "../vapiWebhookRouter";
 import { sitemapRouter } from "../sitemapRouter";
-import { startQuoteReminderJob } from "../quoteReminderJob";
-import { startCommercialFollowupJob } from "../commercialFollowupJob";
 import { startCancellationStaleJob } from "../cancellationStaleJob";
 import { startEmailAutomationJob } from "../emailAutomationJob";
 import { startEmailIngestionJob } from "../services/emailTpvIngestionService";
@@ -1001,18 +999,8 @@ async function ensureExpenseEmailIngestionSchema() {
       ]
     );
 
-    // Feature flag — cron de seguimiento comercial de presupuestos (commercial_followup_rules)
-    // No estaba en ninguna migración ni en código; sin este INSERT el job nunca arranca.
-    await conn.execute(
-      `INSERT IGNORE INTO feature_flags (\`key\`, \`name\`, description, module, enabled, default_enabled, risk_level)
-       VALUES (?, ?, ?, ?, 1, 1, 'medium')`,
-      [
-        "commercial_followup_job_enabled",
-        "Cron seguimiento comercial",
-        "Envía recordatorios automáticos de presupuestos según las reglas configuradas en Atención Comercial.",
-        "crm",
-      ]
-    );
+    // El feature flag commercial_followup_job_enabled se eliminó en Fase 5
+    // junto con commercialFollowupJob. emailAutomationJob lo sustituye.
 
     // Feature flag — job de revinculación de datáfono (no estaba en ninguna migración)
     await conn.execute(
@@ -1294,9 +1282,10 @@ async function ensureExpenseEmailIngestionSchema() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
-    // Limpiar reglas de budget_request_user sembradas anteriormente (Opción B — simplificación):
-    // commercialFollowupJob cubre todo el seguimiento comercial; emailAutomationJob queda
-    // reservado para plantillas sin cron propio (ej: post-reserva, post-pago).
+    // Limpiar reglas de budget_request_user sembradas anteriormente: en su día se
+    // crearon como copia de las reglas comerciales, pero el seguimiento de quotes
+    // ahora vive enteramente en email_automation_rules con templateKey
+    // commercial_reminder_1/2/3, no en budget_request_user.
     await conn.execute(
       `DELETE FROM email_automation_rules
        WHERE templateKey = 'budget_request_user'
@@ -1861,8 +1850,9 @@ runMigrations()
   .then(() => wipeTestDataIfRequested())
   .then(() => seedExperiencesIfEmpty())
   .then(() => startServer())
-  .then(() => conditionallyStartJob("quote_reminder_job_enabled",          startQuoteReminderJob,         "Quote Reminder"))
-  .then(() => conditionallyStartJob("commercial_followup_job_enabled",     startCommercialFollowupJob,    "Commercial Followup"))
+  // quoteReminderJob y commercialFollowupJob borrados en Fase 5.
+  // Toda la lógica de recordatorios la gestiona ahora emailAutomationJob
+  // (auto-scheduling + procesamiento de email_scheduled_jobs).
   .then(() => conditionallyStartJob("abandoned_checkout_cleanup_enabled",  startAbandonedCheckoutCleanup, "Abandoned Checkout"))
   .then(() => conditionallyStartJob("installment_overdue_job_enabled",     startInstallmentOverdueJob,    "Installment Overdue"))
   .then(() => conditionallyStartJob("cancellation_stale_job_enabled",      startCancellationStaleJob,     "Cancellation Stale"))

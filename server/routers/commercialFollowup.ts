@@ -10,10 +10,7 @@ import mysql from "mysql2/promise";
 import {
   quotes,
   leads,
-  commercialFollowupSettings,
-  commercialFollowupRules,
   quoteCommercialTracking,
-  commercialCommunications,
   quoteInternalNotes,
   emailCommLog,
   emailScheduledJobs,
@@ -145,14 +142,16 @@ export const commercialFollowupRouter = router({
       }).length,
     };
 
-    // Reminders sent today
+    // Reminders sent today — desde email_comm_log (todos los emails automáticos a presupuestos)
     const remToday = await db
       .select({ cnt: count() })
-      .from(commercialCommunications)
+      .from(emailCommLog)
       .where(
         and(
-          eq(commercialCommunications.type, "automatic_reminder"),
-          gte(commercialCommunications.sentAt, todayStart),
+          eq(emailCommLog.relatedEntityType, "quote"),
+          eq(emailCommLog.isAutomatic, true),
+          eq(emailCommLog.status, "sent"),
+          gte(emailCommLog.createdAt, todayStart),
         )
       );
     kpis.sentToday = Number(remToday[0]?.cnt ?? 0);
@@ -307,14 +306,57 @@ export const commercialFollowupRouter = router({
     .query(async ({ input }) => {
       const tracking = await getOrCreateTracking(input.quoteId);
 
-      const comms = await db
-        .select()
-        .from(commercialCommunications)
-        .where(eq(commercialCommunications.quoteId, input.quoteId))
-        .orderBy(desc(commercialCommunications.sentAt))
-        .limit(50);
+      // Comunicaciones desde email_comm_log (emails) + quote_internal_notes (notas)
+      const [emails, notes] = await Promise.all([
+        db.select({
+          id: emailCommLog.id,
+          quoteId: emailCommLog.quoteId,
+          customerEmail: emailCommLog.recipientEmail,
+          type: sql<string>`CASE WHEN ${emailCommLog.isAutomatic} = 1 THEN 'automatic_reminder' ELSE 'manual_reminder' END`,
+          channel: emailCommLog.channel,
+          subject: emailCommLog.subject,
+          ruleId: emailCommLog.ruleId,
+          status: emailCommLog.status,
+          errorMessage: emailCommLog.errorMessage,
+          sentByUserId: emailCommLog.sentByUserId,
+          sentAt: emailCommLog.createdAt,
+          templateKey: emailCommLog.templateKey,
+        })
+          .from(emailCommLog)
+          .where(and(
+            eq(emailCommLog.relatedEntityType, "quote"),
+            eq(emailCommLog.quoteId, input.quoteId),
+          ))
+          .orderBy(desc(emailCommLog.createdAt))
+          .limit(50),
+        db.select({
+          id: quoteInternalNotes.id,
+          quoteId: quoteInternalNotes.quoteId,
+          customerEmail: sql<string | null>`NULL`,
+          type: sql<string>`'internal_note'`,
+          channel: quoteInternalNotes.channel,
+          subject: sql<string>`'Nota interna'`,
+          body: quoteInternalNotes.body,
+          ruleId: sql<number | null>`NULL`,
+          status: sql<string>`'sent'`,
+          errorMessage: sql<string | null>`NULL`,
+          sentByUserId: quoteInternalNotes.authorUserId,
+          sentAt: quoteInternalNotes.createdAt,
+          templateKey: sql<string | null>`NULL`,
+        })
+          .from(quoteInternalNotes)
+          .where(eq(quoteInternalNotes.quoteId, input.quoteId))
+          .orderBy(desc(quoteInternalNotes.createdAt))
+          .limit(50),
+      ]);
 
-      return { tracking, communications: comms };
+      const communications = [...emails, ...notes].sort((a, b) => {
+        const ta = a.sentAt ? new Date(a.sentAt as any).getTime() : 0;
+        const tb = b.sentAt ? new Date(b.sentAt as any).getTime() : 0;
+        return tb - ta;
+      });
+
+      return { tracking, communications };
     }),
 
   // ─── Actualizar estado comercial ─────────────────────────────────────────
@@ -344,17 +386,13 @@ export const commercialFollowupRouter = router({
         .set(updateData)
         .where(eq(quoteCommercialTracking.quoteId, input.quoteId));
 
-      // Log communication if marking as lost
+      // Registrar el motivo de pérdida como nota interna (Fase 5)
       if (input.status === "lost" && input.lostReason) {
-        await db.insert(commercialCommunications).values({
+        await db.insert(quoteInternalNotes).values({
           quoteId: input.quoteId,
-          type: "lost_reason",
           channel: "internal",
-          subject: "Marcado como perdido",
-          bodySnapshot: input.lostReason,
-          status: "sent",
-          sentByUserId: (ctx.user as any).id,
-          sentAt: new Date(),
+          body: `[Marcado como perdido] ${input.lostReason}`,
+          authorUserId: (ctx.user as any).id,
         });
       }
 
@@ -415,9 +453,20 @@ export const commercialFollowupRouter = router({
       const tracking = await getOrCreateTracking(input.quoteId);
       const newCount = (tracking.reminderCount ?? 0) + 1;
 
-      // Cargar settings para conocer maxTotalRemindersPerQuote
-      const [settings] = await db.select().from(commercialFollowupSettings).limit(1);
-      const maxReminders = settings?.maxTotalRemindersPerQuote ?? 3;
+      // El tope cumulativo lo definen ahora las reglas en email_automation_rules
+      // (maxCumulativeSendsPerEntity). Para el manual usamos el mayor de las
+      // reglas comerciales activas, con fallback a 3.
+      const cumulativeCaps = await db
+        .select({ cap: emailAutomationRules.maxCumulativeSendsPerEntity })
+        .from(emailAutomationRules)
+        .where(and(
+          eq(emailAutomationRules.isActive, true),
+          eq(emailAutomationRules.respectCommercialPause, true),
+        ));
+      const maxReminders = Math.max(
+        3,
+        ...cumulativeCaps.map(c => c.cap ?? 0).filter(n => n > 0),
+      );
 
       const emailData: CommercialReminderEmailData = {
         clientName: quote.clientName ?? "Cliente",
@@ -597,44 +646,12 @@ export const commercialFollowupRouter = router({
         .orderBy(desc(quoteInternalNotes.createdAt))
         .limit(fetchLimit);
 
-      // ── 3. Histórico antiguo desde commercial_communications ─────────────
-      //   Solo emails (las notas ya migradas en 0097, evitamos duplicar).
-      const histConditions: any[] = [
-        sql`${commercialCommunications.type} IN ('automatic_reminder', 'manual_reminder')`,
-      ];
-      if (input.quoteId) histConditions.push(eq(commercialCommunications.quoteId, input.quoteId));
-      if (input.type) histConditions.push(eq(commercialCommunications.type, input.type as any));
-      if (dateFrom) histConditions.push(gte(commercialCommunications.sentAt, dateFrom));
-      if (dateTo) histConditions.push(lte(commercialCommunications.sentAt, dateTo));
-
-      const includeHist = !input.type || ["automatic_reminder", "manual_reminder"].includes(input.type);
-      const histRows = !includeHist ? [] : await db.select({
-        id: commercialCommunications.id,
-        quoteId: commercialCommunications.quoteId,
-        customerEmail: commercialCommunications.customerEmail,
-        type: commercialCommunications.type,
-        channel: commercialCommunications.channel,
-        subject: commercialCommunications.subject,
-        body: commercialCommunications.bodySnapshot,
-        ruleId: commercialCommunications.ruleId,
-        status: commercialCommunications.status,
-        errorMessage: commercialCommunications.errorMessage,
-        sentByUserId: commercialCommunications.sentByUserId,
-        sentAt: commercialCommunications.sentAt,
-        templateKey: sql<string | null>`NULL`,
-        source: sql<string>`'commercial_communications'`,
-        quoteNumber: quotes.quoteNumber,
-        clientName: leads.name,
-      })
-        .from(commercialCommunications)
-        .leftJoin(quotes, eq(quotes.id, commercialCommunications.quoteId))
-        .leftJoin(leads, eq(leads.id, quotes.leadId))
-        .where(and(...histConditions))
-        .orderBy(desc(commercialCommunications.sentAt))
-        .limit(fetchLimit);
+      // En Fase 5 commercial_communications fue borrada; sus emails y notas se
+      // migraron a email_comm_log y quote_internal_notes respectivamente, así
+      // que con las 2 fuentes anteriores cubrimos todo el histórico.
 
       // ── Merge, ordenar y paginar en memoria ──────────────────────────────
-      const merged = [...emailRows, ...noteRows, ...histRows].sort((a, b) => {
+      const merged = [...emailRows, ...noteRows].sort((a, b) => {
         const ta = a.sentAt ? new Date(a.sentAt as any).getTime() : 0;
         const tb = b.sentAt ? new Date(b.sentAt as any).getTime() : 0;
         return tb - ta;
@@ -646,85 +663,10 @@ export const commercialFollowupRouter = router({
       return { rows, total };
     }),
 
-  // ─── Reglas de recordatorio ───────────────────────────────────────────────
-
-  listRules: staff.query(async () => {
-    return db.select().from(commercialFollowupRules).orderBy(asc(commercialFollowupRules.sortOrder));
-  }),
-
-  createRule: staff
-    .input(z.object({
-      name: z.string().min(1).max(200),
-      isActive: z.boolean().default(true),
-      delayHours: z.number().min(1).max(8760),
-      triggerFrom: z.enum(["quote_sent_at", "last_reminder_at"]).default("quote_sent_at"),
-      onlyIfNotViewed: z.boolean().default(false),
-      allowIfViewedButUnpaid: z.boolean().default(true),
-      maxSendsPerQuoteForThisRule: z.number().min(1).max(10).default(1),
-      emailSubject: z.string().min(1).max(500),
-      emailBody: z.string().min(1),
-      sortOrder: z.number().default(0),
-    }))
-    .mutation(async ({ input }) => {
-      const [result] = await db.insert(commercialFollowupRules).values(input);
-      return { id: (result as any).insertId };
-    }),
-
-  updateRule: staff
-    .input(z.object({
-      id: z.number(),
-      name: z.string().min(1).max(200).optional(),
-      isActive: z.boolean().optional(),
-      delayHours: z.number().min(1).max(8760).optional(),
-      triggerFrom: z.enum(["quote_sent_at", "last_reminder_at"]).optional(),
-      onlyIfNotViewed: z.boolean().optional(),
-      allowIfViewedButUnpaid: z.boolean().optional(),
-      maxSendsPerQuoteForThisRule: z.number().min(1).max(10).optional(),
-      emailSubject: z.string().min(1).max(500).optional(),
-      emailBody: z.string().min(1).optional(),
-      sortOrder: z.number().optional(),
-    }))
-    .mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      await db.update(commercialFollowupRules)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(commercialFollowupRules.id, id));
-      return { ok: true };
-    }),
-
-  deleteRule: staff
-    .input(z.object({ id: z.number() }))
-    .mutation(async ({ input }) => {
-      await db.delete(commercialFollowupRules).where(eq(commercialFollowupRules.id, input.id));
-      return { ok: true };
-    }),
-
-  // ─── Configuración global ─────────────────────────────────────────────────
-
-  getSettings: staff.query(async () => {
-    const [settings] = await db.select().from(commercialFollowupSettings).limit(1);
-    if (settings) return settings;
-    // Create default settings if missing
-    await db.insert(commercialFollowupSettings).values({ id: 1, enabled: true });
-    const [created] = await db.select().from(commercialFollowupSettings).limit(1);
-    return created!;
-  }),
-
-  updateSettings: staff
-    .input(z.object({
-      enabled: z.boolean().optional(),
-      maxTotalRemindersPerQuote: z.number().min(1).max(20).optional(),
-      maxEmailsPerRun: z.number().min(1).max(500).optional(),
-      allowedSendStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-      allowedSendEnd: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-      timezone: z.string().optional(),
-      stopAfterDays: z.number().min(1).max(365).optional(),
-      internalCcEmail: z.string().email().optional().nullable(),
-    }))
-    .mutation(async ({ input }) => {
-      await db.update(commercialFollowupSettings)
-        .set({ ...input, updatedAt: new Date() })
-        .where(eq(commercialFollowupSettings.id, 1));
-      return { ok: true };
-    }),
+  // Endpoints listRules/createRule/updateRule/deleteRule eliminados en Fase 5:
+  // las reglas comerciales se gestionan ahora en email_automation_rules vía el
+  // router emailTemplatesRouter / la UI de "Plantillas".
+  //
+  // getSettings/updateSettings también eliminados: la configuración global
+  // (horario, máximos, etc.) vive en cada regla de email_automation_rules.
 });

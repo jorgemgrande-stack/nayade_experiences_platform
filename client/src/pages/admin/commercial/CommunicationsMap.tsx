@@ -76,12 +76,12 @@ const CATALOG: CategoryEntry[] = [
         hasReminders: true,
         reminderCount: 2,
         status: "active",
-        notes: "También usado en quoteReminderJob como recordatorio",
+        notes: "Envío manual; los recordatorios automáticos los hacen commercial_reminder_1/2/3 vía emailAutomationJob.",
       },
       {
         key: "commercial_reminder_1",
         name: "Recordatorio comercial #1",
-        trigger: "commercialFollowupJob — regla configurada",
+        trigger: "emailAutomationJob — regla configurada",
         function: "buildCommercialReminder1Html",
         sendToCustomer: true,
         sendToAdmin: false,
@@ -91,7 +91,7 @@ const CATALOG: CategoryEntry[] = [
       {
         key: "commercial_reminder_2",
         name: "Recordatorio comercial #2",
-        trigger: "commercialFollowupJob — regla configurada",
+        trigger: "emailAutomationJob — regla configurada",
         function: "buildCommercialReminder2Html",
         sendToCustomer: true,
         sendToAdmin: false,
@@ -101,7 +101,7 @@ const CATALOG: CategoryEntry[] = [
       {
         key: "commercial_reminder_3",
         name: "Recordatorio comercial #3 (último aviso)",
-        trigger: "commercialFollowupJob — regla configurada",
+        trigger: "emailAutomationJob — regla configurada",
         function: "buildCommercialReminder3Html",
         sendToCustomer: true,
         sendToAdmin: false,

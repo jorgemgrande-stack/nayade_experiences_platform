@@ -28,11 +28,13 @@ import { getSystemSettingSync } from "./config";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-// Templates con cron legacy propio — no programar jobs automáticos para evitar duplicados.
-// - "quote": gestionado por quoteReminderJob (48h, reminderCount).
-// - "commercial_reminder_1/2/3": gestionado por commercialFollowupJob (reglas configurables)
-//   y por el botón manual de sendManualReminder. Si no se excluyeran aquí, cada envío
-//   manual programaría jobs automáticos extra a través de email_automation_rules.
+// Templates excluidos del auto-scheduling de sendManagedEmail.
+// - "quote": el envío del presupuesto en sí. No queremos que enviar un quote
+//   genere jobs para él mismo; sus recordatorios los programa emailAutomationJob
+//   mediante scheduleCommercialReminders() basándose en quote.sentAt.
+// - "commercial_reminder_1/2/3": los recordatorios. Cuando el operador envía
+//   uno manualmente, no queremos que sendManagedEmail programe otro automático
+//   para esa misma combinación quote+regla; el cron ya lo gestiona.
 const LEGACY_CRON_TEMPLATES = new Set([
   "quote",
   "commercial_reminder_1",
