@@ -130,8 +130,8 @@ async function scheduleCommercialReminders(): Promise<number> {
     for (const c of candidates) {
       if (!c.clientEmail) continue;
 
-      // ¿Ya existe un job para esta combinación quote+rule+template? (cualquier status)
-      const existing = await db
+      // ¿Ya existe un job pendiente o procesado para esta combinación quote+rule+template?
+      const existingJob = await db
         .select({ id: emailScheduledJobs.id })
         .from(emailScheduledJobs)
         .where(and(
@@ -142,7 +142,23 @@ async function scheduleCommercialReminders(): Promise<number> {
         ))
         .limit(1);
 
-      if (existing.length > 0) continue;
+      if (existingJob.length > 0) continue;
+
+      // ¿Se envió alguna vez esta plantilla a este quote? (incluye migración legacy)
+      // email_comm_log es la fuente de verdad de envíos reales; cubre tanto los
+      // hechos vía cola centralizada como los migrados desde commercial_communications.
+      const alreadyLogged = await db
+        .select({ id: emailCommLog.id })
+        .from(emailCommLog)
+        .where(and(
+          eq(emailCommLog.relatedEntityType, "quote"),
+          eq(emailCommLog.relatedEntityId, c.id),
+          eq(emailCommLog.templateKey, rule.templateKey),
+          eq(emailCommLog.status, "sent"),
+        ))
+        .limit(1);
+
+      if (alreadyLogged.length > 0) continue;
 
       try {
         await db.insert(emailScheduledJobs).values({
@@ -401,16 +417,17 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
         }
       }
 
-      // Verificar maxSendsPerEntity — contar envíos anteriores de esta regla sobre la misma entidad
+      // Verificar maxSendsPerEntity — usamos email_comm_log como fuente de verdad
+      // porque incluye los envíos hechos por la cola centralizada Y los legacy
+      // migrados desde commercial_communications en la migración 0098.
       const [{ alreadySent }] = await db
         .select({ alreadySent: count() })
-        .from(emailScheduledJobs)
+        .from(emailCommLog)
         .where(and(
-          eq(emailScheduledJobs.relatedEntityType, entityType),
-          eq(emailScheduledJobs.relatedEntityId, entityId),
-          eq(emailScheduledJobs.templateKey, job.templateKey),
-          eq(emailScheduledJobs.ruleId, job.ruleId),
-          eq(emailScheduledJobs.status, "sent"),
+          eq(emailCommLog.relatedEntityType, entityType),
+          eq(emailCommLog.relatedEntityId, entityId),
+          eq(emailCommLog.templateKey, job.templateKey),
+          eq(emailCommLog.status, "sent"),
         ));
 
       if ((alreadySent as number) >= rule.maxSendsPerEntity) {
