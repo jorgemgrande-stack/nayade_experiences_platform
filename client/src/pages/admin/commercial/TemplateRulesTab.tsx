@@ -496,11 +496,6 @@ export default function TemplateRulesTab() {
         </select>
       </div>
 
-      {/* Info */}
-      <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-3 text-xs text-blue-300">
-        <strong>Modo híbrido:</strong> Los emails legacy siguen enviándose igual que antes. Los toggles aquí controlan el comportamiento cuando usas <code className="font-mono text-blue-200">sendManagedEmail()</code> en el backend. Las reglas de automatización aplican solo a los jobs de la cola centralizada.
-      </div>
-
       {/* Template groups */}
       <div className="space-y-6">
         {byCategory.map(({ cat, items }) => (

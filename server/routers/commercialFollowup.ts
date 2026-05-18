@@ -14,6 +14,10 @@ import {
   commercialFollowupRules,
   quoteCommercialTracking,
   commercialCommunications,
+  quoteInternalNotes,
+  emailCommLog,
+  emailScheduledJobs,
+  emailAutomationRules,
 } from "../../drizzle/schema";
 import {
   eq, desc, asc, and, or, gte, lte, like, isNull, isNotNull, count, sql,
@@ -217,7 +221,7 @@ export const commercialFollowupRouter = router({
       if (input.dateFrom) conditions.push(gte(quotes.sentAt, new Date(input.dateFrom)));
       if (input.dateTo) conditions.push(lte(quotes.sentAt, new Date(input.dateTo)));
 
-      const [rows, [{ total }]] = await Promise.all([
+      const [baseRows, [{ total }]] = await Promise.all([
         db.select({
           id: quotes.id,
           quoteNumber: quotes.quoteNumber,
@@ -253,6 +257,45 @@ export const commercialFollowupRouter = router({
           .leftJoin(quoteCommercialTracking, eq(quoteCommercialTracking.quoteId, quotes.id))
           .where(and(...conditions)),
       ]);
+
+      // Próximo envío programado por quote (Fase 4D): consultamos email_scheduled_jobs
+      const quoteIds = baseRows.map(r => r.id);
+      const nextJobsByQuote = new Map<number, { scheduledFor: Date; templateKey: string; ruleName: string | null }>();
+
+      if (quoteIds.length) {
+        const nextJobs = await db
+          .select({
+            quoteId: emailScheduledJobs.relatedEntityId,
+            scheduledFor: emailScheduledJobs.scheduledFor,
+            templateKey: emailScheduledJobs.templateKey,
+            ruleName: emailAutomationRules.name,
+          })
+          .from(emailScheduledJobs)
+          .leftJoin(emailAutomationRules, eq(emailAutomationRules.id, emailScheduledJobs.ruleId))
+          .where(and(
+            eq(emailScheduledJobs.relatedEntityType, "quote"),
+            eq(emailScheduledJobs.status, "pending"),
+            sql`${emailScheduledJobs.relatedEntityId} IN (${sql.join(quoteIds.map(i => sql`${i}`), sql`, `)})`,
+          ))
+          .orderBy(asc(emailScheduledJobs.scheduledFor));
+
+        for (const j of nextJobs) {
+          if (!nextJobsByQuote.has(j.quoteId)) {
+            nextJobsByQuote.set(j.quoteId, {
+              scheduledFor: j.scheduledFor as Date,
+              templateKey: j.templateKey,
+              ruleName: j.ruleName ?? null,
+            });
+          }
+        }
+      }
+
+      const rows = baseRows.map(r => ({
+        ...r,
+        nextScheduledAt: nextJobsByQuote.get(r.id)?.scheduledFor ?? null,
+        nextScheduledRule: nextJobsByQuote.get(r.id)?.ruleName ?? null,
+        nextScheduledTemplate: nextJobsByQuote.get(r.id)?.templateKey ?? null,
+      }));
 
       return { rows, total };
     }),
@@ -390,6 +433,9 @@ export const commercialFollowupRouter = router({
       const html = pickReminderTemplate(newCount, emailData);
 
       const templateKey = `commercial_reminder_${Math.min(newCount, 3)}` as "commercial_reminder_1" | "commercial_reminder_2" | "commercial_reminder_3";
+      // sendManagedEmail registra el envío en email_comm_log con isAutomatic=false
+      // (manual). No duplicamos en commercial_communications: esa tabla ya solo
+      // sirve como red de seguridad histórica hasta Fase 5.
       const result = await sendManagedEmail({
         templateKey,
         triggerEvent: "manual_reminder_sent",
@@ -402,18 +448,6 @@ export const commercialFollowupRouter = router({
         sentByUserId: (ctx.user as any).id,
       });
       const sent = result.sent;
-
-      await db.insert(commercialCommunications).values({
-        quoteId: input.quoteId,
-        customerEmail: quote.clientEmail,
-        type: "manual_reminder",
-        channel: "email",
-        subject,
-        bodySnapshot: input.customBody ?? `Recordatorio manual #${newCount}`,
-        status: sent ? "sent" : "failed",
-        sentByUserId: (ctx.user as any).id,
-        sentAt: new Date(),
-      });
 
       if (sent) {
         // Si llegamos al máximo permitido, pausamos los recordatorios.
@@ -462,15 +496,11 @@ export const commercialFollowupRouter = router({
     .mutation(async ({ input, ctx }) => {
       await ensureTracking(input.quoteId);
 
-      await db.insert(commercialCommunications).values({
+      await db.insert(quoteInternalNotes).values({
         quoteId: input.quoteId,
-        type: "internal_note",
         channel: input.channel,
-        subject: "Nota interna",
-        bodySnapshot: input.note,
-        status: "sent",
-        sentByUserId: (ctx.user as any).id,
-        sentAt: new Date(),
+        body: input.note,
+        authorUserId: (ctx.user as any).id,
       });
 
       await db.update(quoteCommercialTracking)
@@ -496,39 +526,122 @@ export const commercialFollowupRouter = router({
       offset: z.number().default(0),
     }))
     .query(async ({ input }) => {
-      const conditions: any[] = [];
-      if (input.quoteId) conditions.push(eq(commercialCommunications.quoteId, input.quoteId));
-      if (input.type) conditions.push(eq(commercialCommunications.type, input.type as any));
-      if (input.dateFrom) conditions.push(gte(commercialCommunications.sentAt, new Date(input.dateFrom)));
-      if (input.dateTo) conditions.push(lte(commercialCommunications.sentAt, new Date(input.dateTo)));
+      // Tras Fase 3-4: los emails nuevos van a email_comm_log y las notas a
+      // quote_internal_notes. commercial_communications se mantiene como red
+      // de seguridad para histórico (envíos previos a Fase 3) hasta Fase 5.
+      const dateFrom = input.dateFrom ? new Date(input.dateFrom) : null;
+      const dateTo = input.dateTo ? new Date(input.dateTo) : null;
+      const fetchLimit = Math.min(input.limit + input.offset + 50, 1000);
 
-      const [rows, [{ total }]] = await Promise.all([
-        db.select({
-          id: commercialCommunications.id,
-          quoteId: commercialCommunications.quoteId,
-          customerEmail: commercialCommunications.customerEmail,
-          type: commercialCommunications.type,
-          channel: commercialCommunications.channel,
-          subject: commercialCommunications.subject,
-          ruleId: commercialCommunications.ruleId,
-          status: commercialCommunications.status,
-          errorMessage: commercialCommunications.errorMessage,
-          sentByUserId: commercialCommunications.sentByUserId,
-          sentAt: commercialCommunications.sentAt,
-          quoteNumber: quotes.quoteNumber,
-          clientName: leads.name,
-        })
-          .from(commercialCommunications)
-          .leftJoin(quotes, eq(quotes.id, commercialCommunications.quoteId))
-          .leftJoin(leads, eq(leads.id, quotes.leadId))
-          .where(conditions.length ? and(...conditions) : undefined)
-          .orderBy(desc(commercialCommunications.sentAt))
-          .limit(input.limit)
-          .offset(input.offset),
-        db.select({ total: count() })
-          .from(commercialCommunications)
-          .where(conditions.length ? and(...conditions) : undefined),
-      ]);
+      // ── 1. Emails desde email_comm_log (Fase 3+) ─────────────────────────
+      const emailConditions: any[] = [eq(emailCommLog.relatedEntityType, "quote")];
+      if (input.quoteId) emailConditions.push(eq(emailCommLog.quoteId, input.quoteId));
+      if (dateFrom) emailConditions.push(gte(emailCommLog.createdAt, dateFrom));
+      if (dateTo) emailConditions.push(lte(emailCommLog.createdAt, dateTo));
+
+      const includeEmails = !input.type || ["automatic_reminder", "manual_reminder"].includes(input.type);
+      const emailRows = !includeEmails ? [] : await db.select({
+        id: emailCommLog.id,
+        quoteId: emailCommLog.quoteId,
+        customerEmail: emailCommLog.recipientEmail,
+        type: sql<string>`CASE WHEN ${emailCommLog.isAutomatic} = 1 THEN 'automatic_reminder' ELSE 'manual_reminder' END`,
+        channel: emailCommLog.channel,
+        subject: emailCommLog.subject,
+        body: sql<string | null>`NULL`,
+        ruleId: emailCommLog.ruleId,
+        status: emailCommLog.status,
+        errorMessage: emailCommLog.errorMessage,
+        sentByUserId: emailCommLog.sentByUserId,
+        sentAt: emailCommLog.createdAt,
+        templateKey: emailCommLog.templateKey,
+        source: sql<string>`'email_comm_log'`,
+        quoteNumber: quotes.quoteNumber,
+        clientName: leads.name,
+      })
+        .from(emailCommLog)
+        .leftJoin(quotes, eq(quotes.id, emailCommLog.quoteId))
+        .leftJoin(leads, eq(leads.id, quotes.leadId))
+        .where(and(...emailConditions))
+        .orderBy(desc(emailCommLog.createdAt))
+        .limit(fetchLimit);
+
+      // ── 2. Notas desde quote_internal_notes (Fase 4+) ────────────────────
+      const noteConditions: any[] = [];
+      if (input.quoteId) noteConditions.push(eq(quoteInternalNotes.quoteId, input.quoteId));
+      if (dateFrom) noteConditions.push(gte(quoteInternalNotes.createdAt, dateFrom));
+      if (dateTo) noteConditions.push(lte(quoteInternalNotes.createdAt, dateTo));
+
+      const includeNotes = !input.type || input.type === "internal_note";
+      const noteRows = !includeNotes ? [] : await db.select({
+        id: quoteInternalNotes.id,
+        quoteId: quoteInternalNotes.quoteId,
+        customerEmail: sql<string | null>`NULL`,
+        type: sql<string>`'internal_note'`,
+        channel: quoteInternalNotes.channel,
+        subject: sql<string>`'Nota interna'`,
+        body: quoteInternalNotes.body,
+        ruleId: sql<number | null>`NULL`,
+        status: sql<string>`'sent'`,
+        errorMessage: sql<string | null>`NULL`,
+        sentByUserId: quoteInternalNotes.authorUserId,
+        sentAt: quoteInternalNotes.createdAt,
+        templateKey: sql<string | null>`NULL`,
+        source: sql<string>`'quote_internal_notes'`,
+        quoteNumber: quotes.quoteNumber,
+        clientName: leads.name,
+      })
+        .from(quoteInternalNotes)
+        .leftJoin(quotes, eq(quotes.id, quoteInternalNotes.quoteId))
+        .leftJoin(leads, eq(leads.id, quotes.leadId))
+        .where(noteConditions.length ? and(...noteConditions) : undefined)
+        .orderBy(desc(quoteInternalNotes.createdAt))
+        .limit(fetchLimit);
+
+      // ── 3. Histórico antiguo desde commercial_communications ─────────────
+      //   Solo emails (las notas ya migradas en 0097, evitamos duplicar).
+      const histConditions: any[] = [
+        sql`${commercialCommunications.type} IN ('automatic_reminder', 'manual_reminder')`,
+      ];
+      if (input.quoteId) histConditions.push(eq(commercialCommunications.quoteId, input.quoteId));
+      if (input.type) histConditions.push(eq(commercialCommunications.type, input.type as any));
+      if (dateFrom) histConditions.push(gte(commercialCommunications.sentAt, dateFrom));
+      if (dateTo) histConditions.push(lte(commercialCommunications.sentAt, dateTo));
+
+      const includeHist = !input.type || ["automatic_reminder", "manual_reminder"].includes(input.type);
+      const histRows = !includeHist ? [] : await db.select({
+        id: commercialCommunications.id,
+        quoteId: commercialCommunications.quoteId,
+        customerEmail: commercialCommunications.customerEmail,
+        type: commercialCommunications.type,
+        channel: commercialCommunications.channel,
+        subject: commercialCommunications.subject,
+        body: commercialCommunications.bodySnapshot,
+        ruleId: commercialCommunications.ruleId,
+        status: commercialCommunications.status,
+        errorMessage: commercialCommunications.errorMessage,
+        sentByUserId: commercialCommunications.sentByUserId,
+        sentAt: commercialCommunications.sentAt,
+        templateKey: sql<string | null>`NULL`,
+        source: sql<string>`'commercial_communications'`,
+        quoteNumber: quotes.quoteNumber,
+        clientName: leads.name,
+      })
+        .from(commercialCommunications)
+        .leftJoin(quotes, eq(quotes.id, commercialCommunications.quoteId))
+        .leftJoin(leads, eq(leads.id, quotes.leadId))
+        .where(and(...histConditions))
+        .orderBy(desc(commercialCommunications.sentAt))
+        .limit(fetchLimit);
+
+      // ── Merge, ordenar y paginar en memoria ──────────────────────────────
+      const merged = [...emailRows, ...noteRows, ...histRows].sort((a, b) => {
+        const ta = a.sentAt ? new Date(a.sentAt as any).getTime() : 0;
+        const tb = b.sentAt ? new Date(b.sentAt as any).getTime() : 0;
+        return tb - ta;
+      });
+
+      const total = merged.length;
+      const rows = merged.slice(input.offset, input.offset + input.limit);
 
       return { rows, total };
     }),

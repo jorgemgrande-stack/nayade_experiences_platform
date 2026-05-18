@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import {
   BarChart3, Eye, EyeOff, Send, Pause, Play, XCircle, CheckCircle2,
   MessageSquare, Phone, MessageCircle, StickyNote, Settings, List,
-  History, ChevronRight, RefreshCw, Pencil, Trash2, Plus, TrendingUp,
+  History, ChevronRight, RefreshCw, TrendingUp,
   Users, Clock, AlertTriangle, Ban, Target, ArrowRight,
   Bot, Bell, BellOff, Volume2, VolumeX, Mail, MailOpen, SendHorizonal,
   Map, Zap, ClipboardCheck,
@@ -30,7 +30,7 @@ import PendingJobsTab from "./PendingJobsTab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "dashboard" | "open" | "rules" | "history" | "settings" | "mapa" | "automatizaciones" | "auditoria" | "plantillas" | "cola";
+type Tab = "dashboard" | "open" | "history" | "settings" | "mapa" | "automatizaciones" | "auditoria" | "plantillas" | "cola";
 
 const COMMERCIAL_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pending_followup: { label: "Pendiente",       color: "text-slate-300",   bg: "bg-slate-500/15",   border: "border-slate-500/30" },
@@ -122,6 +122,18 @@ function QuoteActionRow({ quote, onAction }: {
       <td className="px-3 py-2.5 hidden xl:table-cell">
         <span className="text-xs text-foreground/50">{quote.trackingReminderCount ?? quote.reminderCount ?? 0}</span>
       </td>
+      <td className="px-3 py-2.5 hidden xl:table-cell">
+        {quote.nextScheduledAt ? (
+          <div>
+            <div className="text-[10px] text-foreground/70">{fmtDateTime(quote.nextScheduledAt)}</div>
+            {quote.nextScheduledRule && (
+              <div className="text-[10px] text-foreground/40 truncate max-w-[120px]">{quote.nextScheduledRule}</div>
+            )}
+          </div>
+        ) : (
+          <span className="text-[10px] text-foreground/30">—</span>
+        )}
+      </td>
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-0.5 justify-end">
           {quote.paymentLinkUrl && (
@@ -169,7 +181,11 @@ export default function CommercialFollowupDashboard() {
   const tabFromUrl = (): Tab => {
     try {
       const t = new URLSearchParams(searchStr).get("tab");
-      if (t === "dashboard" || t === "open" || t === "rules" || t === "history" || t === "settings") return t;
+      // Redirige tab=rules (eliminada en Fase 4) a plantillas, donde viven las reglas ahora
+      if (t === "rules") return "plantillas";
+      if (t === "dashboard" || t === "open" || t === "history" || t === "settings" ||
+          t === "mapa" || t === "plantillas" || t === "cola" ||
+          t === "automatizaciones" || t === "auditoria") return t as Tab;
     } catch {}
     return "dashboard";
   };
@@ -181,8 +197,6 @@ export default function CommercialFollowupDashboard() {
   const [noteQuote, setNoteQuote] = useState<any>(null);
   const [lostQuote, setLostQuote] = useState<any>(null);
   const [pauseQuote, setPauseQuote] = useState<any>(null);
-  const [editRule, setEditRule] = useState<any>(null);
-  const [showNewRule, setShowNewRule] = useState(false);
 
   const [remindSubject, setRemindSubject] = useState("");
   const [remindBody, setRemindBody] = useState("");
@@ -195,14 +209,6 @@ export default function CommercialFollowupDashboard() {
   const [openSearch, setOpenSearch] = useState("");
   const [openStatus, setOpenStatus] = useState("all");
   const [openViewed, setOpenViewed] = useState<"all" | "yes" | "no">("all");
-
-  // ── Rule form ────────────────────────────────────────────────────────────
-  const [ruleForm, setRuleForm] = useState({
-    name: "", isActive: true, delayHours: 24,
-    triggerFrom: "quote_sent_at" as "quote_sent_at" | "last_reminder_at",
-    onlyIfNotViewed: false, allowIfViewedButUnpaid: true,
-    maxSendsPerQuoteForThisRule: 1, emailSubject: "", emailBody: "", sortOrder: 0,
-  });
 
   // ─── Notif settings (localStorage) ───────────────────────────────────────
   const [popupDisabled, setPopupDisabledState] = useState(() => localStorage.getItem(NOTIF_POPUP_KEY) === "true");
@@ -232,9 +238,6 @@ export default function CommercialFollowupDashboard() {
       { search: openSearch || undefined, commercialStatus: openStatus === "all" ? undefined : openStatus || undefined, viewed: openViewed, limit: 100, offset: 0 },
       { enabled: tab === "open" }
     );
-
-  const { data: rules, refetch: refetchRules } =
-    trpc.commercialFollowup.listRules.useQuery(undefined, { enabled: tab === "rules" });
 
   const { data: historyData, isLoading: histLoading } =
     trpc.commercialFollowup.listCommunications.useQuery({ limit: 200, offset: 0 }, { enabled: tab === "history" });
@@ -269,19 +272,8 @@ export default function CommercialFollowupDashboard() {
     onError: (e) => toast.error(e.message),
   });
 
-  const createRule = trpc.commercialFollowup.createRule.useMutation({
-    onSuccess: () => { toast.success("Regla creada"); setShowNewRule(false); refetchRules(); resetRuleForm(); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const updateRule = trpc.commercialFollowup.updateRule.useMutation({
-    onSuccess: () => { toast.success("Regla actualizada"); setEditRule(null); refetchRules(); },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const deleteRule = trpc.commercialFollowup.deleteRule.useMutation({
-    onSuccess: () => { toast.success("Regla eliminada"); refetchRules(); },
-    onError: (e) => toast.error(e.message),
+  // CRUD de reglas eliminado en Fase 4. Las reglas comerciales viven ahora
+  // en email_automation_rules y se gestionan desde la pestaña "Plantillas".
   });
 
   const updateSettings = trpc.commercialFollowup.updateSettings.useMutation({
@@ -300,31 +292,15 @@ export default function CommercialFollowupDashboard() {
     if (action === "interested") updateStatus.mutate({ quoteId: quote.id, status: "interested" });
   }
 
-  function resetRuleForm() {
-    setRuleForm({ name: "", isActive: true, delayHours: 24, triggerFrom: "quote_sent_at", onlyIfNotViewed: false, allowIfViewedButUnpaid: true, maxSendsPerQuoteForThisRule: 1, emailSubject: "", emailBody: "", sortOrder: 0 });
-  }
-
-  function openEditRule(rule: any) {
-    setEditRule(rule);
-    setRuleForm({
-      name: rule.name, isActive: rule.isActive, delayHours: rule.delayHours,
-      triggerFrom: rule.triggerFrom, onlyIfNotViewed: rule.onlyIfNotViewed,
-      allowIfViewedButUnpaid: rule.allowIfViewedButUnpaid,
-      maxSendsPerQuoteForThisRule: rule.maxSendsPerQuoteForThisRule,
-      emailSubject: rule.emailSubject, emailBody: rule.emailBody, sortOrder: rule.sortOrder,
-    });
-  }
-
   // ─── Tab Navigation ───────────────────────────────────────────────────────
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: "dashboard", label: "Panel", icon: BarChart3 },
     { id: "open", label: "Presupuestos abiertos", icon: List },
-    { id: "rules", label: "Reglas", icon: Settings },
     { id: "history", label: "Historial", icon: History },
     { id: "settings", label: "Configuración", icon: Settings },
     { id: "mapa", label: "Mapa de emails", icon: Map },
-    { id: "plantillas", label: "Plantillas y reglas", icon: Settings },
+    { id: "plantillas", label: "Plantillas", icon: Settings },
     { id: "cola", label: "Cola de envíos", icon: Bell },
     { id: "automatizaciones", label: "Automatizaciones", icon: Zap },
     { id: "auditoria", label: "Auditoría", icon: ClipboardCheck },
@@ -554,12 +530,13 @@ export default function CommercialFollowupDashboard() {
                           <th className="px-3 py-2 text-left font-medium">Estado</th>
                           <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">Visto</th>
                           <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">Recs.</th>
+                          <th className="px-3 py-2 text-left font-medium hidden xl:table-cell">Próximo envío</th>
                           <th className="px-3 py-2 text-right font-medium">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(dashboard?.attentionList ?? []).length === 0 && (
-                          <tr><td colSpan={8} className="px-3 py-8 text-center text-foreground/30">Sin presupuestos pendientes</td></tr>
+                          <tr><td colSpan={9} className="px-3 py-8 text-center text-foreground/30">Sin presupuestos pendientes</td></tr>
                         )}
                         {(dashboard?.attentionList ?? []).map(q => (
                           <QuoteActionRow key={q.id} quote={q} onAction={handleAction} />
@@ -626,7 +603,7 @@ export default function CommercialFollowupDashboard() {
                     </thead>
                     <tbody>
                       {(openData?.rows ?? []).length === 0 && (
-                        <tr><td colSpan={8} className="px-3 py-8 text-center text-foreground/30">Sin resultados</td></tr>
+                        <tr><td colSpan={9} className="px-3 py-8 text-center text-foreground/30">Sin resultados</td></tr>
                       )}
                       {(openData?.rows ?? []).map(q => (
                         <QuoteActionRow key={q.id} quote={q} onAction={handleAction} />
@@ -640,62 +617,9 @@ export default function CommercialFollowupDashboard() {
         )}
 
         {/* ── TAB: RULES ──────────────────────────────────────────────────── */}
-        {tab === "rules" && (
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button size="sm" onClick={() => { setShowNewRule(true); resetRuleForm(); }}
-                className="bg-orange-500 hover:bg-orange-600 text-white text-xs h-8">
-                <Plus className="w-3.5 h-3.5 mr-1" /> Nueva regla
-              </Button>
-            </div>
-            <div className="space-y-3">
-              {(rules ?? []).map(rule => (
-                <div key={rule.id} className={`rounded-xl border p-4 ${rule.isActive ? "border-foreground/[0.08] bg-background" : "border-foreground/[0.04] bg-foreground/[0.02] opacity-60"}`}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={`w-2 h-2 rounded-full ${rule.isActive ? "bg-emerald-400" : "bg-zinc-500"}`} />
-                        <span className="font-semibold text-sm text-foreground/80">{rule.name}</span>
-                        <span className="text-[10px] text-foreground/40 bg-foreground/[0.06] px-1.5 py-0.5 rounded">
-                          {rule.triggerFrom === "quote_sent_at" ? "desde envío" : "desde último recordatorio"} · {rule.delayHours}h
-                        </span>
-                      </div>
-                      <div className="text-xs text-foreground/50 mb-2">
-                        Asunto: <span className="text-foreground/70 font-medium">{rule.emailSubject}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-[10px] text-foreground/40">
-                        {rule.onlyIfNotViewed && <span className="bg-foreground/[0.06] px-1.5 py-0.5 rounded">Solo no vistos</span>}
-                        {rule.allowIfViewedButUnpaid && <span className="bg-foreground/[0.06] px-1.5 py-0.5 rounded">Vistos sin pagar: sí</span>}
-                        <span className="bg-foreground/[0.06] px-1.5 py-0.5 rounded">Máx. {rule.maxSendsPerQuoteForThisRule}x por presupuesto</span>
-                        <span className="bg-foreground/[0.06] px-1.5 py-0.5 rounded">Orden: {rule.sortOrder}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => updateRule.mutate({ id: rule.id, isActive: !rule.isActive })}
-                        className={`p-1.5 rounded-lg hover:bg-foreground/[0.08] transition-colors ${rule.isActive ? "text-emerald-400" : "text-zinc-500"}`}
-                        title={rule.isActive ? "Desactivar" : "Activar"}>
-                        {rule.isActive ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-                      </button>
-                      <button onClick={() => openEditRule(rule)}
-                        className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-sky-400 transition-colors">
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => { if (confirm("¿Eliminar esta regla?")) deleteRule.mutate({ id: rule.id }); }}
-                        className="p-1.5 rounded-lg hover:bg-foreground/[0.08] text-foreground/40 hover:text-red-400 transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {!rules?.length && (
-                <div className="text-center py-12 text-foreground/30 text-sm">
-                  Sin reglas configuradas. Crea la primera regla.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Pestaña "Reglas" (commercial_followup_rules) eliminada en Fase 4.
+            Las reglas ahora viven en email_automation_rules y se gestionan
+            desde la pestaña "Plantillas". */}
 
         {/* ── TAB: HISTORY ────────────────────────────────────────────────── */}
         {tab === "history" && (
@@ -984,90 +908,8 @@ export default function CommercialFollowupDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Modal: Crear / Editar regla ───────────────────────────────────── */}
-      <Dialog open={showNewRule || !!editRule} onOpenChange={() => { setShowNewRule(false); setEditRule(null); }}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editRule ? "Editar regla" : "Nueva regla de recordatorio"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label className="text-xs">Nombre de la regla</Label>
-              <Input value={ruleForm.name} onChange={e => setRuleForm(f => ({ ...f, name: e.target.value }))} className="text-xs h-8" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs">Horas de retraso</Label>
-                <Input type="number" min={1} value={ruleForm.delayHours}
-                  onChange={e => setRuleForm(f => ({ ...f, delayHours: Number(e.target.value) }))} className="text-xs h-8" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Disparar desde</Label>
-                <Select value={ruleForm.triggerFrom} onValueChange={v => setRuleForm(f => ({ ...f, triggerFrom: v as any }))}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="quote_sent_at">Envío del presupuesto</SelectItem>
-                    <SelectItem value="last_reminder_at">Último recordatorio</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Máx. envíos por presupuesto para esta regla</Label>
-                <Input type="number" min={1} max={10} value={ruleForm.maxSendsPerQuoteForThisRule}
-                  onChange={e => setRuleForm(f => ({ ...f, maxSendsPerQuoteForThisRule: Number(e.target.value) }))} className="text-xs h-8" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Orden de ejecución</Label>
-                <Input type="number" min={0} value={ruleForm.sortOrder}
-                  onChange={e => setRuleForm(f => ({ ...f, sortOrder: Number(e.target.value) }))} className="text-xs h-8" />
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 text-xs text-foreground/70 cursor-pointer">
-                <input type="checkbox" checked={ruleForm.onlyIfNotViewed}
-                  onChange={e => setRuleForm(f => ({ ...f, onlyIfNotViewed: e.target.checked }))} />
-                Solo si no ha sido visto
-              </label>
-              <label className="flex items-center gap-2 text-xs text-foreground/70 cursor-pointer">
-                <input type="checkbox" checked={ruleForm.allowIfViewedButUnpaid}
-                  onChange={e => setRuleForm(f => ({ ...f, allowIfViewedButUnpaid: e.target.checked }))} />
-                Enviar aunque esté visto (si no pagado)
-              </label>
-              <label className="flex items-center gap-2 text-xs text-foreground/70 cursor-pointer">
-                <input type="checkbox" checked={ruleForm.isActive}
-                  onChange={e => setRuleForm(f => ({ ...f, isActive: e.target.checked }))} />
-                Activa
-              </label>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Asunto del email</Label>
-              <Input value={ruleForm.emailSubject}
-                onChange={e => setRuleForm(f => ({ ...f, emailSubject: e.target.value }))} className="text-xs h-8"
-                placeholder="Usa {{clientName}} y {{quoteNumber}}" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Cuerpo del email</Label>
-              <Textarea value={ruleForm.emailBody}
-                onChange={e => setRuleForm(f => ({ ...f, emailBody: e.target.value }))} rows={5} className="text-xs"
-                placeholder="Usa {{clientName}} y {{quoteNumber}}" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => { setShowNewRule(false); setEditRule(null); }}>Cancelar</Button>
-            <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white"
-              disabled={createRule.isPending || updateRule.isPending || !ruleForm.name || !ruleForm.emailSubject || !ruleForm.emailBody}
-              onClick={() => {
-                if (editRule) {
-                  updateRule.mutate({ id: editRule.id, ...ruleForm });
-                } else {
-                  createRule.mutate(ruleForm);
-                }
-              }}>
-              {editRule ? "Guardar cambios" : "Crear regla"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Modal de Crear/Editar regla eliminado en Fase 4.
+          Las reglas comerciales se gestionan ahora en la pestaña "Plantillas". */}
     </AdminLayout>
   );
 }
