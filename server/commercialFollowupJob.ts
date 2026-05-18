@@ -167,8 +167,19 @@ export async function runCommercialFollowupJob(): Promise<void> {
       // Viewed but unpaid — check rule's allowIfViewedButUnpaid
       if (q.viewedAt && !rule.allowIfViewedButUnpaid) continue;
 
-      // Anti-duplicate: insert with unique key quoteId+ruleId+type
-      // If already sent for this rule, INSERT IGNORE will skip it
+      // Anti-duplicate: comprobar ANTES de enviar si ya existe una comunicación
+      // para esta combinación (quoteId, ruleId, type). Evita reenvíos cada hora.
+      const existing = await db.execute(sql`
+        SELECT id FROM commercial_communications
+        WHERE quoteId = ${q.id} AND ruleId = ${rule.id} AND type = 'automatic_reminder'
+        LIMIT 1
+      `);
+      const existingRows = Array.isArray(existing) ? (existing[0] as any[]) : ((existing as any).rows ?? []);
+      if (existingRows && existingRows.length > 0) {
+        log("info", "Ya existe comunicación para esta regla — saltando", { quoteId: q.id, ruleId: rule.id });
+        continue;
+      }
+
       const newCount = trackCount + 1;
       const emailData: CommercialReminderEmailData = {
         clientName: q.clientName ?? "Cliente",
@@ -199,10 +210,10 @@ export async function runCommercialFollowupJob(): Promise<void> {
         log("error", "Error enviando email", { quoteId: q.id, error: err.message });
       }
 
-      // Record communication — INSERT IGNORE because of UNIQUE KEY uq_comm_quote_rule
+      // Registrar comunicación (siempre, sent o failed) — sin INSERT IGNORE: ya verificamos antes
       try {
         await db.execute(sql`
-          INSERT IGNORE INTO commercial_communications
+          INSERT INTO commercial_communications
             (quoteId, customerEmail, type, channel, subject, bodySnapshot, ruleId, status, errorMessage, sentAt, createdAt)
           VALUES
             (${q.id}, ${q.clientEmail}, 'automatic_reminder', 'email', ${subject},
@@ -210,15 +221,23 @@ export async function runCommercialFollowupJob(): Promise<void> {
              ${sent ? "sent" : "failed"}, NULL, NOW(), NOW())
         `);
       } catch (err: any) {
-        log("warn", "No se pudo registrar comunicación (posible duplicado)", { quoteId: q.id, ruleId: rule.id });
-        continue; // already sent for this rule
+        log("error", "No se pudo registrar comunicación", { quoteId: q.id, ruleId: rule.id, error: err.message });
+        continue;
       }
 
       if (sent) {
         totalSent++;
         await ensureTracking(q.id);
 
-        const newStatus = newCount === 1 ? "reminder_1_sent" : newCount === 2 ? "reminder_2_sent" : "reminder_3_sent";
+        // Si llegamos al máximo permitido, pausamos los recordatorios.
+        // commercialStatus es ENUM (sin "max_reached"); usamos "paused" + reminderPaused=true
+        // para que el cron skipee este quote en futuras iteraciones.
+        const reachedMax = newCount >= settings.maxTotalRemindersPerQuote;
+        const newStatus = reachedMax
+          ? "paused"
+          : newCount === 1 ? "reminder_1_sent"
+          : newCount === 2 ? "reminder_2_sent"
+          : "reminder_3_sent";
 
         await db.update(quoteCommercialTracking)
           .set({
@@ -227,6 +246,8 @@ export async function runCommercialFollowupJob(): Promise<void> {
             lastContactAt: new Date(),
             lastContactChannel: "email",
             commercialStatus: newStatus as any,
+            reminderPaused: reachedMax ? true : undefined as any,
+            reminderPausedReason: reachedMax ? "max_reminders_reached" : undefined as any,
             updatedAt: new Date(),
           })
           .where(eq(quoteCommercialTracking.quoteId, q.id));
@@ -240,7 +261,7 @@ export async function runCommercialFollowupJob(): Promise<void> {
           } as any)
           .where(eq(quotes.id, q.id));
 
-        log("info", "Recordatorio enviado", { quoteId: q.id, quoteNumber: q.quoteNumber, ruleId: rule.id, reminderCount: newCount });
+        log("info", "Recordatorio enviado", { quoteId: q.id, quoteNumber: q.quoteNumber, ruleId: rule.id, reminderCount: newCount, reachedMax });
       }
     }
 

@@ -372,6 +372,10 @@ export const commercialFollowupRouter = router({
       const tracking = await getOrCreateTracking(input.quoteId);
       const newCount = (tracking.reminderCount ?? 0) + 1;
 
+      // Cargar settings para conocer maxTotalRemindersPerQuote
+      const [settings] = await db.select().from(commercialFollowupSettings).limit(1);
+      const maxReminders = settings?.maxTotalRemindersPerQuote ?? 3;
+
       const emailData: CommercialReminderEmailData = {
         clientName: quote.clientName ?? "Cliente",
         quoteNumber: quote.quoteNumber,
@@ -412,7 +416,15 @@ export const commercialFollowupRouter = router({
       });
 
       if (sent) {
-        const newStatus = newCount === 1 ? "reminder_1_sent" : newCount === 2 ? "reminder_2_sent" : "reminder_3_sent";
+        // Si llegamos al máximo permitido, pausamos los recordatorios.
+        // commercialStatus es ENUM (sin "max_reached"); usamos "paused" + reminderPaused=true.
+        const reachedMax = newCount >= maxReminders;
+        const newStatus = reachedMax
+          ? "paused"
+          : newCount === 1 ? "reminder_1_sent"
+          : newCount === 2 ? "reminder_2_sent"
+          : "reminder_3_sent";
+
         await db.update(quoteCommercialTracking)
           .set({
             reminderCount: newCount,
@@ -420,9 +432,20 @@ export const commercialFollowupRouter = router({
             lastContactAt: new Date(),
             lastContactChannel: "email",
             commercialStatus: newStatus as any,
+            reminderPaused: reachedMax ? true : undefined as any,
+            reminderPausedReason: reachedMax ? "max_reminders_reached" : undefined as any,
             updatedAt: new Date(),
           })
           .where(eq(quoteCommercialTracking.quoteId, input.quoteId));
+
+        // Sincronizar campos legacy en quotes (antes solo lo hacía el cron)
+        await db.update(quotes)
+          .set({
+            reminderCount: newCount,
+            lastReminderAt: new Date(),
+            updatedAt: new Date(),
+          } as any)
+          .where(eq(quotes.id, input.quoteId));
       }
 
       return { ok: sent };

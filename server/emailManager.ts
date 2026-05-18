@@ -29,8 +29,16 @@ const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit
 const db = drizzle(_pool);
 
 // Templates con cron legacy propio — no programar jobs automáticos para evitar duplicados.
-// quoteReminderJob gestiona sus propios recordatorios con lógica propia (reminderCount, 48h).
-const LEGACY_CRON_TEMPLATES = new Set(["quote"]);
+// - "quote": gestionado por quoteReminderJob (48h, reminderCount).
+// - "commercial_reminder_1/2/3": gestionado por commercialFollowupJob (reglas configurables)
+//   y por el botón manual de sendManualReminder. Si no se excluyeran aquí, cada envío
+//   manual programaría jobs automáticos extra a través de email_automation_rules.
+const LEGACY_CRON_TEMPLATES = new Set([
+  "quote",
+  "commercial_reminder_1",
+  "commercial_reminder_2",
+  "commercial_reminder_3",
+]);
 
 // ─── Tipos públicos ───────────────────────────────────────────────────────────
 
