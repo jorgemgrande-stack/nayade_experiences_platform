@@ -36,6 +36,18 @@ import {
 } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
 import { getFeatureFlag } from "./config";
+import {
+  buildCommercialReminder1Html,
+  buildCommercialReminder2Html,
+  buildCommercialReminder3Html,
+  type CommercialReminderEmailData,
+} from "./emailTemplates";
+
+const COMMERCIAL_TEMPLATE_BUILDERS: Record<string, (d: CommercialReminderEmailData) => string> = {
+  commercial_reminder_1: buildCommercialReminder1Html,
+  commercial_reminder_2: buildCommercialReminder2Html,
+  commercial_reminder_3: buildCommercialReminder3Html,
+};
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
@@ -71,6 +83,88 @@ export interface AutomationJobResult {
   failed: number;
 }
 
+/**
+ * Auto-programar jobs para reglas comerciales (respectCommercialPause=true).
+ * Reemplaza el escaneo que hacía commercialFollowupJob: encuentra los quotes
+ * que cumplen los criterios de delayHours y crea un job pendiente en email_scheduled_jobs.
+ * Los checks finos (paused, terminal, viewed, etc.) se aplican al procesarlo.
+ */
+async function scheduleCommercialReminders(): Promise<number> {
+  const rules = await db
+    .select()
+    .from(emailAutomationRules)
+    .where(and(
+      eq(emailAutomationRules.isActive, true),
+      eq(emailAutomationRules.respectCommercialPause, true),
+    ));
+
+  if (!rules.length) return 0;
+
+  const now = new Date();
+  let scheduled = 0;
+
+  for (const rule of rules) {
+    const triggerBefore = new Date(now.getTime() - rule.delayHours * 3600 * 1000);
+    const stopBefore = rule.stopAfterDays != null
+      ? new Date(now.getTime() - rule.stopAfterDays * 86400 * 1000)
+      : new Date(0);
+
+    // Candidatos: quotes enviados que cumplen el delay de esta regla y no son demasiado antiguos.
+    // El email del lead se usa como recipient.
+    const candidates = await db
+      .select({
+        id: quotes.id,
+        clientEmail: leads.email,
+      })
+      .from(quotes)
+      .leftJoin(leads, eq(leads.id, quotes.leadId))
+      .where(and(
+        eq(quotes.status, "enviado"),
+        isNull(quotes.paidAt),
+        lte(quotes.sentAt, triggerBefore),
+        sql`${quotes.sentAt} >= ${stopBefore}`,
+      ))
+      .limit(200);
+
+    for (const c of candidates) {
+      if (!c.clientEmail) continue;
+
+      // ¿Ya existe un job para esta combinación quote+rule+template? (cualquier status)
+      const existing = await db
+        .select({ id: emailScheduledJobs.id })
+        .from(emailScheduledJobs)
+        .where(and(
+          eq(emailScheduledJobs.relatedEntityType, "quote"),
+          eq(emailScheduledJobs.relatedEntityId, c.id),
+          eq(emailScheduledJobs.ruleId, rule.id),
+          eq(emailScheduledJobs.templateKey, rule.templateKey),
+        ))
+        .limit(1);
+
+      if (existing.length > 0) continue;
+
+      try {
+        await db.insert(emailScheduledJobs).values({
+          relatedEntityType: "quote",
+          relatedEntityId: c.id,
+          templateKey: rule.templateKey,
+          ruleId: rule.id,
+          recipientEmail: c.clientEmail,
+          scheduledFor: now,
+          status: "pending",
+          metadataJson: { autoScheduled: true, source: "commercial_scan" },
+        });
+        scheduled++;
+      } catch (err: any) {
+        log("warn", "No se pudo programar job comercial", { quoteId: c.id, ruleId: rule.id, error: err?.message });
+      }
+    }
+  }
+
+  if (scheduled > 0) log("info", `Programados ${scheduled} jobs comerciales`);
+  return scheduled;
+}
+
 export async function runEmailAutomationJob(forceRun = false): Promise<AutomationJobResult> {
   // Feature flag (omitir si se fuerza la ejecución manual)
   if (!forceRun) {
@@ -82,6 +176,9 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
   }
 
   const now = new Date();
+
+  // Auto-programar reminders comerciales antes de procesar
+  await scheduleCommercialReminders();
 
   // Buscar jobs pendientes cuyo scheduledFor ya ha llegado
   const jobs = await db
@@ -181,23 +278,40 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
       const entityType = job.relatedEntityType;
       const entityId = job.relatedEntityId;
 
+      // Datos para renderizar templates comerciales con builders dinámicos
+      let commercialEmailData: CommercialReminderEmailData | null = null;
+
       if (entityType === "quote" && entityId) {
         const [q] = await db
           .select({
+            quoteNumber: quotes.quoteNumber,
+            title: quotes.title,
+            total: quotes.total,
+            paymentLinkUrl: quotes.paymentLinkUrl,
             status: quotes.status,
             paidAt: quotes.paidAt,
             sentAt: quotes.sentAt,
             viewedAt: quotes.viewedAt,
+            clientName: leads.name,
             trackingReminderCount: quoteCommercialTracking.reminderCount,
             trackingPaused: quoteCommercialTracking.reminderPaused,
             commercialStatus: quoteCommercialTracking.commercialStatus,
           })
           .from(quotes)
+          .leftJoin(leads, eq(leads.id, quotes.leadId))
           .leftJoin(quoteCommercialTracking, eq(quoteCommercialTracking.quoteId, quotes.id))
           .where(eq(quotes.id, entityId))
           .limit(1);
 
         if (q) {
+          commercialEmailData = {
+            clientName: q.clientName ?? "Cliente",
+            quoteNumber: q.quoteNumber,
+            quoteTitle: q.title,
+            total: q.total,
+            paymentLinkUrl: q.paymentLinkUrl,
+          };
+
           if (rule.stopIfPaid && (q.paidAt !== null || (PAID_STATUSES as readonly string[]).includes(q.status))) {
             skipReason = "entity_paid";
             await finalize(job.id, "skipped", { skipReason });
@@ -305,14 +419,21 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
         continue;
       }
 
-      // Resolver contenido: template de email_templates tiene prioridad sobre rule.emailBody.
-      // rule.emailSubject puede sobrescribir el asunto del template.
+      // Resolver contenido. Para templates comerciales (commercial_reminder_X)
+      // renderizamos con el builder usando datos reales del quote — el bodyHtml
+      // seedeado en email_templates tiene datos de ejemplo hardcodeados.
+      // Para el resto, prioridad: email_templates.bodyHtml > rule.emailBody.
+      const commercialBuilder = COMMERCIAL_TEMPLATE_BUILDERS[job.templateKey];
+      const useCommercialBuilder = commercialBuilder && commercialEmailData;
+
       const resolvedSubject = rule.emailSubject ?? template?.subject ?? null;
-      const resolvedHtml = template?.bodyHtml
-        ? template.bodyHtml
-        : rule.emailBody
-          ? `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">${rule.emailBody}</div>`
-          : null;
+      const resolvedHtml = useCommercialBuilder
+        ? commercialBuilder!(commercialEmailData!)
+        : template?.bodyHtml
+          ? template.bodyHtml
+          : rule.emailBody
+            ? `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">${rule.emailBody}</div>`
+            : null;
 
       if (!resolvedSubject || !resolvedHtml || !job.recipientEmail) {
         skipReason = "missing_content";
