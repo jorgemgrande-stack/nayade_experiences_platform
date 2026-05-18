@@ -32,6 +32,7 @@ import {
   quotes,
   leads,
   emailTemplates,
+  quoteCommercialTracking,
 } from "../drizzle/schema";
 import { sendEmail } from "./mailer";
 import { getFeatureFlag } from "./config";
@@ -176,14 +177,23 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
         }
       }
 
-      // Verificar estado de la entidad (stopIfPaid / stopIfConverted)
+      // Verificar estado de la entidad (stopIfPaid / stopIfConverted) + checks comerciales
       const entityType = job.relatedEntityType;
       const entityId = job.relatedEntityId;
 
       if (entityType === "quote" && entityId) {
         const [q] = await db
-          .select({ status: quotes.status, paidAt: quotes.paidAt })
+          .select({
+            status: quotes.status,
+            paidAt: quotes.paidAt,
+            sentAt: quotes.sentAt,
+            viewedAt: quotes.viewedAt,
+            trackingReminderCount: quoteCommercialTracking.reminderCount,
+            trackingPaused: quoteCommercialTracking.reminderPaused,
+            commercialStatus: quoteCommercialTracking.commercialStatus,
+          })
           .from(quotes)
+          .leftJoin(quoteCommercialTracking, eq(quoteCommercialTracking.quoteId, quotes.id))
           .where(eq(quotes.id, entityId))
           .limit(1);
 
@@ -201,6 +211,61 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
             skipped++;
             log("info", `Job ${job.id} saltado — presupuesto convertido en reserva`, { entityId });
             continue;
+          }
+
+          // Checks comerciales (Fase 2): solo si la regla está marcada como commercial-aware
+          if (rule.respectCommercialPause) {
+            if (q.trackingPaused) {
+              skipReason = "commercial_paused";
+              await finalize(job.id, "skipped", { skipReason });
+              skipped++;
+              log("info", `Job ${job.id} saltado — recordatorios pausados`, { entityId });
+              continue;
+            }
+            const cst = q.commercialStatus;
+            if (cst && ["lost", "converted", "discarded"].includes(cst)) {
+              skipReason = "commercial_terminal";
+              await finalize(job.id, "skipped", { skipReason });
+              skipped++;
+              log("info", `Job ${job.id} saltado — estado comercial terminal`, { entityId, commercialStatus: cst });
+              continue;
+            }
+            if (rule.maxCumulativeSendsPerEntity != null) {
+              const cum = q.trackingReminderCount ?? 0;
+              if (cum >= rule.maxCumulativeSendsPerEntity) {
+                skipReason = "max_cumulative_reached";
+                await finalize(job.id, "skipped", { skipReason });
+                skipped++;
+                log("info", `Job ${job.id} saltado — máx. cumulativo alcanzado`, { entityId, cum });
+                continue;
+              }
+            }
+          }
+
+          // Filtros por estado de visualización
+          if (rule.onlyIfNotViewed && q.viewedAt) {
+            skipReason = "already_viewed";
+            await finalize(job.id, "skipped", { skipReason });
+            skipped++;
+            continue;
+          }
+          if (q.viewedAt && !rule.allowIfViewedButUnpaid) {
+            skipReason = "viewed_unpaid_not_allowed";
+            await finalize(job.id, "skipped", { skipReason });
+            skipped++;
+            continue;
+          }
+
+          // Ventana máxima desde el envío del presupuesto
+          if (rule.stopAfterDays != null && q.sentAt) {
+            const ageDays = (Date.now() - new Date(q.sentAt).getTime()) / 86400000;
+            if (ageDays > rule.stopAfterDays) {
+              skipReason = "too_old";
+              await finalize(job.id, "skipped", { skipReason });
+              skipped++;
+              log("info", `Job ${job.id} saltado — presupuesto demasiado antiguo`, { entityId, ageDays });
+              continue;
+            }
           }
         }
       }
@@ -267,6 +332,58 @@ export async function runEmailAutomationJob(forceRun = false): Promise<Automatio
       if (ok) {
         sent++;
         log("info", "Email automático enviado", { jobId: job.id, to: job.recipientEmail, rule: rule.name, subject: finalSubject, contentSource: template ? "email_templates" : "rule_body" });
+
+        // Si la regla es commercial-aware, sincronizar tracking comercial + campos legacy en quotes.
+        // Esto sustituye al cron commercialFollowupJob, que se apagará en Fase 3.
+        if (rule.respectCommercialPause && entityType === "quote" && entityId) {
+          try {
+            const now = new Date();
+            // Garantizar la fila de tracking
+            await db.insert(quoteCommercialTracking)
+              .values({ quoteId: entityId })
+              .onDuplicateKeyUpdate({ set: { quoteId: entityId } });
+
+            const [track] = await db
+              .select({ reminderCount: quoteCommercialTracking.reminderCount })
+              .from(quoteCommercialTracking)
+              .where(eq(quoteCommercialTracking.quoteId, entityId))
+              .limit(1);
+
+            const newCount = (track?.reminderCount ?? 0) + 1;
+            const cap = rule.maxCumulativeSendsPerEntity ?? null;
+            const reachedMax = cap != null && newCount >= cap;
+            const newStatus = reachedMax
+              ? "paused"
+              : newCount === 1 ? "reminder_1_sent"
+              : newCount === 2 ? "reminder_2_sent"
+              : "reminder_3_sent";
+
+            await db.update(quoteCommercialTracking)
+              .set({
+                reminderCount: newCount,
+                lastReminderAt: now,
+                lastContactAt: now,
+                lastContactChannel: "email",
+                commercialStatus: newStatus as any,
+                reminderPaused: reachedMax ? true : undefined as any,
+                reminderPausedReason: reachedMax ? "max_reminders_reached" : undefined as any,
+                updatedAt: now,
+              })
+              .where(eq(quoteCommercialTracking.quoteId, entityId));
+
+            // Sincronizar campos legacy en quotes para que la UI antigua y los reportes
+            // sigan viendo coherente reminderCount/lastReminderAt.
+            await db.update(quotes)
+              .set({
+                reminderCount: newCount,
+                lastReminderAt: now,
+                updatedAt: now,
+              } as any)
+              .where(eq(quotes.id, entityId));
+          } catch (trackErr: any) {
+            log("warn", "No se pudo sincronizar tracking comercial", { jobId: job.id, entityId, error: trackErr?.message });
+          }
+        }
       } else {
         failed++;
         errorMessage = "sendEmail returned false";

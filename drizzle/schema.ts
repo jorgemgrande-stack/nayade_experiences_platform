@@ -3067,6 +3067,12 @@ export const emailAutomationRules = mysqlTable("email_automation_rules", {
   allowedSendEnd:     varchar("allowedSendEnd", { length: 5 }).notNull().default("21:00"),
   stopIfConverted:    boolean("stopIfConverted").notNull().default(true),
   stopIfPaid:         boolean("stopIfPaid").notNull().default(true),
+  // Añadidos en Fase 2 para cubrir lo que hoy hace commercial_followup_rules.
+  onlyIfNotViewed:             boolean("onlyIfNotViewed").notNull().default(false),
+  allowIfViewedButUnpaid:      boolean("allowIfViewedButUnpaid").notNull().default(true),
+  maxCumulativeSendsPerEntity: int("maxCumulativeSendsPerEntity"),
+  stopAfterDays:               int("stopAfterDays"),
+  respectCommercialPause:      boolean("respectCommercialPause").notNull().default(false),
   emailSubject:       varchar("emailSubject", { length: 512 }),
   emailBody:          text("emailBody"),
   createdAt:          timestamp("createdAt").defaultNow().notNull(),
@@ -3074,6 +3080,20 @@ export const emailAutomationRules = mysqlTable("email_automation_rules", {
 });
 export type EmailAutomationRule = typeof emailAutomationRules.$inferSelect;
 export type InsertEmailAutomationRule = typeof emailAutomationRules.$inferInsert;
+
+/** Notas internas no-email asociadas a un presupuesto.
+ *  Reemplaza las filas type='internal_note' de commercial_communications.
+ *  Introducida en Fase 2; las filas existentes se migrarán en Fase 3. */
+export const quoteInternalNotes = mysqlTable("quote_internal_notes", {
+  id:           int("id").autoincrement().primaryKey(),
+  quoteId:      int("quoteId").notNull(),
+  channel:      mysqlEnum("channel", ["email", "phone", "whatsapp", "internal"]).notNull().default("internal"),
+  body:         text("body").notNull(),
+  authorUserId: int("authorUserId"),
+  createdAt:    timestamp("createdAt").defaultNow().notNull(),
+});
+export type QuoteInternalNote = typeof quoteInternalNotes.$inferSelect;
+export type InsertQuoteInternalNote = typeof quoteInternalNotes.$inferInsert;
 
 /** Log global de todos los emails salientes */
 export const emailCommLog = mysqlTable("email_comm_log", {
