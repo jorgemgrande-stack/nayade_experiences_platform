@@ -29,12 +29,14 @@ import {
   hrIrpfLedger,
   hrSsLedger,
   hrSettings,
+  hrBonus,
   expenses,
   expenseCategories,
   costCenters,
 } from "../../drizzle/schema";
 import { sendEmail } from "../mailer";
 import { getUserByInviteToken, setUserPassword } from "../db";
+import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 
 // Permisos: lecturas RRHH accesibles para admin (con fallback a rol legacy).
 const hrViewProc = permissionProcedure("hr.view", ["admin"]);
@@ -371,6 +373,29 @@ const portalRouter = router({
       .where(eq(employeeDocuments.monitorId, employee.id))
       .orderBy(desc(employeeDocuments.createdAt));
     return docs;
+  }),
+
+  /**
+   * Bonus del empleado actual (Fase 6) — solo los pagados, agrupados por mes.
+   * No expone notas administrativas internas.
+   */
+  myBonuses: employeeProcedure.query(async ({ ctx }) => {
+    const employee = await resolveCurrentEmployee(ctx.user.id);
+    return await db
+      .select({
+        id: hrBonus.id,
+        type: hrBonus.type,
+        amount: hrBonus.amount,
+        concept: hrBonus.concept,
+        paidAt: hrBonus.paidAt,
+        paymentMethod: hrBonus.paymentMethod,
+      })
+      .from(hrBonus)
+      .where(and(
+        eq(hrBonus.employeeId, employee.id),
+        eq(hrBonus.status, "pagado"),
+      ))
+      .orderBy(desc(hrBonus.paidAt));
   }),
 
   /**
@@ -1439,6 +1464,348 @@ const settingsRouter = router({
     }),
 });
 
+// ─── BONUS E INCENTIVOS (Fase 6) ────────────────────────────────────────────
+
+const BONUS_TYPES = ["bonus", "comision", "prima", "gratificacion", "anticipo", "ajuste"] as const;
+const bonusTypeEnum = z.enum(BONUS_TYPES);
+
+/**
+ * Upsert de entry en hr_irpf_ledger para un bonus con retención IRPF.
+ * Se llama al marcar el bonus como pagado para que el periodo coincida con
+ * la fecha de pago (no la fecha de creación).
+ */
+async function upsertIrpfLedgerForBonus(bonus: {
+  id: number; employeeId: number; paidAt: Date | null; amount: string | number; irpfAmount: string | number;
+}) {
+  const retained = Number(bonus.irpfAmount);
+  if (retained <= 0) {
+    // Si en algún momento se quita el IRPF, limpia el ledger.
+    await db.delete(hrIrpfLedger).where(eq(hrIrpfLedger.bonusId, bonus.id));
+    return;
+  }
+  if (!bonus.paidAt) return;
+  const period = `${bonus.paidAt.getFullYear()}-${String(bonus.paidAt.getMonth() + 1).padStart(2, "0")}`;
+  const taxable = Number(bonus.amount);
+
+  const [existing] = await db.select().from(hrIrpfLedger).where(eq(hrIrpfLedger.bonusId, bonus.id)).limit(1);
+  if (existing) {
+    await db.update(hrIrpfLedger).set({
+      period,
+      taxableBase: String(taxable),
+      retainedAmount: String(retained),
+    } as any).where(eq(hrIrpfLedger.id, existing.id));
+  } else {
+    await db.insert(hrIrpfLedger).values({
+      period,
+      employeeId: bonus.employeeId,
+      taxableBase: String(taxable),
+      retainedAmount: String(retained),
+      bonusId: bonus.id,
+    } as any);
+  }
+}
+
+const bonusInput = z.object({
+  employeeId: z.number().int(),
+  type: bonusTypeEnum.default("bonus"),
+  amount: z.number().min(0),
+  irpfAmount: z.number().min(0).default(0),
+  concept: z.string().min(1).max(256),
+  notes: z.string().optional(),
+});
+
+const bonusRouter = router({
+  list: hrViewProc
+    .input(z.object({
+      employeeId: z.number().optional(),
+      status: z.enum(["pendiente", "pagado", "anulado"]).optional(),
+      type: bonusTypeEnum.optional(),
+      period: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+      fiscalStatus: fiscalStatusEnum.optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      if (input?.employeeId) conditions.push(eq(hrBonus.employeeId, input.employeeId));
+      if (input?.status) conditions.push(eq(hrBonus.status, input.status));
+      if (input?.type) conditions.push(eq(hrBonus.type, input.type));
+      if (input?.fiscalStatus) conditions.push(eq(hrBonus.fiscalStatus, input.fiscalStatus));
+      if (input?.period) {
+        // Filtra por mes de paid_at, o por createdAt si no se ha pagado
+        const [y, m] = input.period.split("-").map(Number);
+        const start = new Date(y, m - 1, 1);
+        const end = new Date(y, m, 1);
+        conditions.push(sql`(
+          (${hrBonus.paidAt} IS NOT NULL AND ${hrBonus.paidAt} >= ${start} AND ${hrBonus.paidAt} < ${end})
+          OR (${hrBonus.paidAt} IS NULL AND ${hrBonus.createdAt} >= ${start} AND ${hrBonus.createdAt} < ${end})
+        )`);
+      }
+
+      const rows = await db.select({
+        id: hrBonus.id,
+        employeeId: hrBonus.employeeId,
+        employeeName: employees.fullName,
+        type: hrBonus.type,
+        amount: hrBonus.amount,
+        irpfAmount: hrBonus.irpfAmount,
+        concept: hrBonus.concept,
+        notes: hrBonus.notes,
+        paidAt: hrBonus.paidAt,
+        paymentMethod: hrBonus.paymentMethod,
+        expenseId: hrBonus.expenseId,
+        status: hrBonus.status,
+        fiscalStatus: hrBonus.fiscalStatus,
+        createdAt: hrBonus.createdAt,
+      })
+        .from(hrBonus)
+        .leftJoin(employees, eq(employees.id, hrBonus.employeeId))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(hrBonus.createdAt));
+      return rows;
+    }),
+
+  get: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const [row] = await db.select().from(hrBonus).where(eq(hrBonus.id, input.id));
+      if (!row) throw new TRPCError({ code: "NOT_FOUND" });
+      return row;
+    }),
+
+  /**
+   * Crear bonus pendiente (sin pagar todavía).
+   */
+  create: hrViewProc
+    .input(bonusInput)
+    .mutation(async ({ input, ctx }) => {
+      const [result] = await db.insert(hrBonus).values({
+        employeeId: input.employeeId,
+        type: input.type,
+        amount: String(input.amount),
+        irpfAmount: String(input.irpfAmount),
+        concept: input.concept,
+        notes: input.notes,
+        status: "pendiente",
+        createdBy: ctx.user.id,
+      } as any);
+      return { ok: true, id: (result as { insertId: number }).insertId };
+    }),
+
+  /**
+   * Editar bonus. Solo permitido si status == 'pendiente'.
+   */
+  update: hrViewProc
+    .input(z.object({
+      id: z.number(),
+      type: bonusTypeEnum.optional(),
+      amount: z.number().min(0).optional(),
+      irpfAmount: z.number().min(0).optional(),
+      concept: z.string().min(1).max(256).optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [existing] = await db.select().from(hrBonus).where(eq(hrBonus.id, input.id));
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (existing.status !== "pendiente") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se pueden editar bonus pendientes. Anula y crea uno nuevo si es necesario." });
+      }
+      const patch: any = {};
+      if (input.type !== undefined) patch.type = input.type;
+      if (input.amount !== undefined) patch.amount = String(input.amount);
+      if (input.irpfAmount !== undefined) patch.irpfAmount = String(input.irpfAmount);
+      if (input.concept !== undefined) patch.concept = input.concept;
+      if (input.notes !== undefined) patch.notes = input.notes;
+      if (Object.keys(patch).length === 0) return { ok: true, noChanges: true };
+      await db.update(hrBonus).set(patch).where(eq(hrBonus.id, input.id));
+      return { ok: true };
+    }),
+
+  /**
+   * Borrar bonus. Solo permitido si status == 'pendiente'. Para bonus pagados
+   * usar 'cancel' (que conserva trazabilidad).
+   */
+  delete: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [existing] = await db.select().from(hrBonus).where(eq(hrBonus.id, input.id));
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (existing.status !== "pendiente") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se pueden borrar bonus pendientes. Para los pagados usa 'Anular'." });
+      }
+      await db.delete(hrBonus).where(eq(hrBonus.id, input.id));
+      return { ok: true };
+    }),
+
+  /**
+   * Anular bonus pagado — preserva fila + expense + cash_movement por
+   * auditoría. Cambia status a 'anulado'.
+   */
+  cancel: hrViewProc
+    .input(z.object({ id: z.number(), reason: z.string().optional() }))
+    .mutation(async ({ input }) => {
+      const [existing] = await db.select().from(hrBonus).where(eq(hrBonus.id, input.id));
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (existing.status === "anulado") return { ok: true, alreadyCancelled: true };
+      await db.update(hrBonus).set({
+        status: "anulado",
+        notes: input.reason
+          ? `${existing.notes ?? ""}\n[Anulado] ${input.reason}`.trim()
+          : existing.notes,
+      } as any).where(eq(hrBonus.id, input.id));
+      return { ok: true };
+    }),
+
+  /**
+   * Marcar como pagado. Punto crítico de integración con Contabilidad y Caja.
+   *
+   *   payment_method=cash     → crea expense paymentMethod=cash
+   *                             + cash_movement (vía helper idempotente)
+   *   payment_method=transfer → crea expense paymentMethod=transfer
+   *   payment_method=payroll  → NO crea expense (se incluye en payslip)
+   *
+   * Idempotente: si ya está pagado, error explícito. Re-llamar no duplica.
+   */
+  markPaid: hrViewProc
+    .input(z.object({
+      id: z.number(),
+      paymentMethod: z.enum(["cash", "transfer", "payroll"]),
+      paidAt: z.string().optional(), // ISO; default = ahora
+      includedInPayslipId: z.number().optional(), // solo si payment_method=payroll
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [bonus] = await db.select().from(hrBonus).where(eq(hrBonus.id, input.id));
+      if (!bonus) throw new TRPCError({ code: "NOT_FOUND" });
+      if (bonus.status === "pagado") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Este bonus ya está pagado." });
+      }
+      if (bonus.status === "anulado") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede pagar un bonus anulado." });
+      }
+
+      const paidAt = input.paidAt ? new Date(input.paidAt) : new Date();
+      const [emp] = await db.select({ fullName: employees.fullName })
+        .from(employees).where(eq(employees.id, bonus.employeeId)).limit(1);
+      const empName = emp?.fullName ?? `Empleado #${bonus.employeeId}`;
+
+      let expenseId: number | null = null;
+      let cashMovementCreated = false;
+
+      if (input.paymentMethod === "cash" || input.paymentMethod === "transfer") {
+        // 1. Crear expense
+        const costCenterId = await findOrCreateCostCenter("Personal / RRHH");
+        const categoryId = await findOrCreateExpenseCategory("Bonus e Incentivos");
+
+        const expenseDate = `${paidAt.getFullYear()}-${String(paidAt.getMonth() + 1).padStart(2, "0")}-${String(paidAt.getDate()).padStart(2, "0")}`;
+        const concept = `${bonus.type.charAt(0).toUpperCase()}${bonus.type.slice(1)} — ${empName} · ${bonus.concept}`;
+
+        const [r] = await db.insert(expenses).values({
+          date: expenseDate,
+          concept,
+          amount: bonus.amount,
+          categoryId,
+          costCenterId,
+          paymentMethod: input.paymentMethod,
+          status: "pending",
+          source: "hr_bonus",
+          notes: bonus.notes,
+          createdBy: ctx.user.id,
+        } as any);
+        expenseId = (r as { insertId: number }).insertId;
+
+        // 2. Si es cash, disparar cash_movement vía helper idempotente.
+        //    El expense es la fuente de verdad: relatedEntityType='expense'.
+        if (input.paymentMethod === "cash") {
+          try {
+            const cashAccountId = await getDefaultCashAccountId();
+            if (cashAccountId) {
+              const result = await createCashMovementIfNotExists({
+                accountId: cashAccountId,
+                date: expenseDate,
+                type: "expense",
+                amount: Number(bonus.amount),
+                concept: `Pago en efectivo — ${concept}`,
+                relatedEntityType: "expense",
+                relatedEntityId: expenseId,
+                createdBy: ctx.user.id,
+              });
+              cashMovementCreated = result.created;
+            }
+          } catch (e) {
+            console.warn("[hr.bonus.markPaid] cash_movement no creado:", e);
+            // No bloqueamos el flujo; el expense queda creado y el cash
+            // movement se puede crear manualmente desde el módulo Caja.
+          }
+        }
+      }
+      // Nota: si paymentMethod=payroll, no se crea expense aquí. El admin
+      // debe incluir el importe manualmente en grossSalary del payslip al
+      // que apunte includedInPayslipId. En fases futuras esto puede
+      // automatizarse en hr.payslips.upsert.
+
+      // 3. Actualizar el bonus
+      await db.update(hrBonus).set({
+        status: "pagado",
+        paidAt,
+        paymentMethod: input.paymentMethod,
+        expenseId,
+        includedInPayslipId: input.paymentMethod === "payroll" ? (input.includedInPayslipId ?? null) : null,
+      } as any).where(eq(hrBonus.id, input.id));
+
+      // 4. Ledger IRPF si hay retención
+      const [updated] = await db.select().from(hrBonus).where(eq(hrBonus.id, input.id));
+      if (updated) await upsertIrpfLedgerForBonus(updated);
+
+      return {
+        ok: true,
+        expenseId,
+        cashMovementCreated,
+        paymentMethod: input.paymentMethod,
+      };
+    }),
+
+  /**
+   * Resumen agregado del mes/año para HRDashboard.
+   */
+  summary: hrViewProc
+    .input(z.object({ period: z.string().regex(/^\d{4}-\d{2}$/).optional() }).optional())
+    .query(async ({ input }) => {
+      const now = new Date();
+      const period = input?.period ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const [y, m] = period.split("-").map(Number);
+      const monthStart = new Date(y, m - 1, 1);
+      const monthEnd = new Date(y, m, 1);
+      const yearStart = new Date(y, 0, 1);
+      const yearEnd = new Date(y + 1, 0, 1);
+
+      const monthRows = await db.select().from(hrBonus)
+        .where(and(
+          gte(hrBonus.paidAt, monthStart),
+          lte(hrBonus.paidAt, monthEnd),
+          ne(hrBonus.status, "anulado"),
+        ));
+      const yearRows = await db.select().from(hrBonus)
+        .where(and(
+          gte(hrBonus.paidAt, yearStart),
+          lte(hrBonus.paidAt, yearEnd),
+          ne(hrBonus.status, "anulado"),
+        ));
+      const pendingRows = await db.select({ id: hrBonus.id, amount: hrBonus.amount })
+        .from(hrBonus).where(eq(hrBonus.status, "pendiente"));
+
+      const sum = (rs: { amount: string | number }[]) => rs.reduce((s, r) => s + Number(r.amount), 0);
+      const cashRows = monthRows.filter(r => r.paymentMethod === "cash");
+
+      return {
+        period,
+        totalMonth: parseFloat(sum(monthRows).toFixed(2)),
+        cashMonth: parseFloat(sum(cashRows).toFixed(2)),
+        totalYear: parseFloat(sum(yearRows).toFixed(2)),
+        pendingCount: pendingRows.length,
+        pendingAmount: parseFloat(sum(pendingRows).toFixed(2)),
+        monthCount: monthRows.length,
+      };
+    }),
+});
+
 export const hrRouter = router({
   employees: employeesRouter,
   portal: portalRouter,
@@ -1448,4 +1815,5 @@ export const hrRouter = router({
   batches: batchesRouter,
   fiscal: fiscalRouter,
   settings: settingsRouter,
+  bonus: bonusRouter,
 });

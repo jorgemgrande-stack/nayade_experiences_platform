@@ -4,7 +4,7 @@
  * Sólo lectura. Lista las nóminas del empleado autenticado en estados
  * 'registrada' y 'pagada'. No expone la SS empresa estimada (coste interno).
  */
-import { Banknote, FileText, ExternalLink, Loader2, AlertCircle } from "lucide-react";
+import { Banknote, FileText, ExternalLink, Loader2, AlertCircle, TrendingUp, Wallet } from "lucide-react";
 import EmployeeLayout from "./EmployeeLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -22,9 +22,23 @@ const STATUS_CLASS: Record<string, string> = {
   registrada: "bg-blue-500/15 text-blue-300 border-blue-500/30",
   pagada: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
 };
+const BONUS_TYPE_LABEL: Record<string, string> = {
+  bonus: "Bonus",
+  comision: "Comisión",
+  prima: "Prima",
+  gratificacion: "Gratificación",
+  anticipo: "Anticipo",
+  ajuste: "Ajuste",
+};
+const METHOD_LABEL: Record<string, string> = {
+  cash: "Efectivo",
+  transfer: "Transferencia",
+  payroll: "En nómina",
+};
 
 export default function MyPayslips() {
   const { data, isLoading } = trpc.hr.portal.myPayslips.useQuery();
+  const { data: bonuses } = trpc.hr.portal.myBonuses.useQuery();
 
   return (
     <EmployeeLayout>
@@ -93,9 +107,52 @@ export default function MyPayslips() {
           </div>
         )}
 
+        {/* Bonus e Incentivos (Fase 6) */}
+        {bonuses && bonuses.length > 0 && (
+          <div className="pt-2">
+            <h2 className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-3 flex items-center gap-2">
+              <TrendingUp className="w-3.5 h-3.5" /> Bonus e incentivos cobrados
+            </h2>
+            <div className="rounded-xl border border-white/[0.08] overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-white/[0.04] border-b border-white/[0.08]">
+                  <tr className="text-left text-[10px] uppercase tracking-widest text-white/50">
+                    <th className="px-4 py-3">Fecha</th>
+                    <th className="px-4 py-3">Tipo</th>
+                    <th className="px-4 py-3">Concepto</th>
+                    <th className="px-4 py-3">Pago</th>
+                    <th className="px-4 py-3 text-right">Importe</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bonuses.map(b => (
+                    <tr key={b.id} className="border-b border-white/[0.05]">
+                      <td className="px-4 py-3 text-white/70 text-xs">
+                        {b.paidAt ? new Date(b.paidAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        <span className="px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">
+                          {BONUS_TYPE_LABEL[b.type] ?? b.type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-white/80 text-xs max-w-xs truncate">{b.concept}</td>
+                      <td className="px-4 py-3 text-xs text-white/60">
+                        {b.paymentMethod === "cash" && <span className="inline-flex items-center gap-1"><Wallet className="w-3 h-3" />{METHOD_LABEL.cash}</span>}
+                        {b.paymentMethod === "transfer" && <span className="inline-flex items-center gap-1"><Banknote className="w-3 h-3" />{METHOD_LABEL.transfer}</span>}
+                        {b.paymentMethod === "payroll" && <span>{METHOD_LABEL.payroll}</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-orange-300 font-semibold">{fmtEur(b.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-xs text-white/50 flex gap-2">
           <AlertCircle className="w-4 h-4 text-white/40 shrink-0 mt-0.5" />
-          Si echas en falta alguna nómina o detectas un error, contacta con Recursos Humanos.
+          Si echas en falta alguna nómina o bonus, contacta con Recursos Humanos.
         </div>
       </div>
     </EmployeeLayout>

@@ -121,6 +121,7 @@ const navItems = [
       { label: "Fichajes", href: "/admin/personal/fichajes" },
       { label: "Nóminas", href: "/admin/personal/nominas" },
       { label: "Remesas", href: "/admin/personal/remesas" },
+      { label: "Bonus", href: "/admin/personal/bonus" },
       { label: "Configuración", href: "/admin/personal/configuracion" },
     ],
   },

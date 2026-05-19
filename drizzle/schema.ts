@@ -3344,6 +3344,33 @@ export const hrSsLedger = mysqlTable("hr_ss_ledger", {
 });
 export type HrSsLedgerRow = typeof hrSsLedger.$inferSelect;
 
+// hr_bonus: bonus e incentivos (Fase 6). Pagos adicionales a la nómina.
+// payment_method:
+//   cash     → expense + cash_movement (vía helper, anti-duplicidad)
+//   transfer → expense (sin cash_movement)
+//   payroll  → sin expense propio (se incluye en la nómina de included_in_payslip_id)
+export const hrBonus = mysqlTable("hr_bonus", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employee_id").notNull(),
+  type: mysqlEnum("type", ["bonus", "comision", "prima", "gratificacion", "anticipo", "ajuste"]).notNull().default("bonus"),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  irpfAmount: decimal("irpf_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  concept: varchar("concept", { length: 256 }).notNull(),
+  notes: text("notes"),
+  paidAt: timestamp("paid_at"),
+  paymentMethod: mysqlEnum("payment_method", ["cash", "transfer", "payroll"]),
+  expenseId: int("expense_id"),
+  cashMovementId: int("cash_movement_id"),
+  includedInPayslipId: int("included_in_payslip_id"),
+  status: mysqlEnum("status", ["pendiente", "pagado", "anulado"]).notNull().default("pendiente"),
+  fiscalStatus: mysqlEnum("fiscal_status", ["pendiente", "revisado", "exportado", "presentado"]).notNull().default("pendiente"),
+  createdBy: int("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrBonus = typeof hrBonus.$inferSelect;
+export type InsertHrBonus = typeof hrBonus.$inferInsert;
+
 // hr_settings: singleton (id=1) con configuración global del módulo.
 export const hrSettings = mysqlTable("hr_settings", {
   id: int("id").primaryKey().default(1),

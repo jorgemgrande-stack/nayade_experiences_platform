@@ -81,6 +81,8 @@ const PayslipsManager = lazy(() => import("./pages/admin/hr/PayslipsManager"));
 const PayrollBatchesManager = lazy(() => import("./pages/admin/hr/PayrollBatchesManager"));
 const BatchDetail = lazy(() => import("./pages/admin/hr/BatchDetail"));
 const HRSettings = lazy(() => import("./pages/admin/hr/HRSettings"));
+// Fase 6 RRHH — Bonus
+const BonusManager = lazy(() => import("./pages/admin/hr/BonusManager"));
 // Portal del Empleado (Fase 3 RRHH)
 const EmployeePortal = lazy(() => import("./pages/employee/EmployeePortal"));
 const MyProfile = lazy(() => import("./pages/employee/MyProfile"));
@@ -285,6 +287,7 @@ function Router() {
       <Route path="/admin/personal/nominas">{() => <Suspense fallback={<AdminLoadingFallback />}><PayslipsManager /></Suspense>}</Route>
       <Route path="/admin/personal/remesas">{() => <Suspense fallback={<AdminLoadingFallback />}><PayrollBatchesManager /></Suspense>}</Route>
       <Route path="/admin/personal/remesas/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><BatchDetail /></Suspense>}</Route>
+      <Route path="/admin/personal/bonus">{() => <Suspense fallback={<AdminLoadingFallback />}><BonusManager /></Suspense>}</Route>
       <Route path="/admin/personal/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><HRSettings /></Suspense>}</Route>
 
       {/* Portal del Empleado (Fase 3) */}

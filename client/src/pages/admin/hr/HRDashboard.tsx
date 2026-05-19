@@ -15,6 +15,11 @@ import AdminLayout from "@/components/AdminLayout";
 import { KpiCard } from "@/components/KpiCard";
 import { trpc } from "@/lib/trpc";
 
+function fmtBonusPending(amount: number | null | undefined): string {
+  if (!amount) return "Ninguno pendiente";
+  return `${Math.round(amount)} € pendientes`;
+}
+
 function PendingKpi({ label, icon: Icon, hint }: { label: string; icon: React.ElementType; hint: string }) {
   return (
     <div className="group relative flex flex-col justify-between p-4 rounded-xl border border-dashed border-foreground/[0.12] bg-foreground/[0.02] h-full">
@@ -36,6 +41,7 @@ export default function HRDashboard() {
   const { data: counters, isLoading } = trpc.hr.employees.counters.useQuery();
   const { data: timeSummary } = trpc.hr.timeClock.summary.useQuery();
   const { data: fiscalSummary } = trpc.hr.fiscal.summary.useQuery();
+  const { data: bonusSummary } = trpc.hr.bonus.summary.useQuery();
 
   const total = counters?.total ?? 0;
   const active = counters?.active ?? 0;
@@ -180,6 +186,48 @@ export default function HRDashboard() {
               icon={TrendingUp}
               color="emerald"
               subLabel="Bruto + SS empresa estimada"
+            />
+          </div>
+        </div>
+
+        {/* Sección 3b: Bonus e Incentivos (Fase 6) */}
+        <div className="px-4 sm:px-6 py-5 border-t border-foreground/[0.05]">
+          <h2 className="text-[11px] font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
+            <TrendingUp className="w-3.5 h-3.5" /> Bonus e incentivos · {bonusSummary?.period ?? "–"}
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <KpiCard
+              label="Pagados el mes"
+              value={Math.round(bonusSummary?.totalMonth ?? 0)}
+              suffix=" €"
+              icon={TrendingUp}
+              color="emerald"
+              subLabel={`${bonusSummary?.monthCount ?? 0} bonus`}
+              href="/admin/personal/bonus"
+            />
+            <KpiCard
+              label="En efectivo"
+              value={Math.round(bonusSummary?.cashMonth ?? 0)}
+              suffix=" €"
+              icon={Euro}
+              color="amber"
+              subLabel="Salida de caja del mes"
+            />
+            <KpiCard
+              label="Pendientes de pagar"
+              value={bonusSummary?.pendingCount ?? 0}
+              icon={AlertCircle}
+              color={bonusSummary && bonusSummary.pendingCount > 0 ? "rose" : "blue"}
+              subLabel={fmtBonusPending(bonusSummary?.pendingAmount)}
+              href="/admin/personal/bonus?status=pendiente"
+            />
+            <KpiCard
+              label="Total año"
+              value={Math.round(bonusSummary?.totalYear ?? 0)}
+              suffix=" €"
+              icon={TrendingUp}
+              color="violet"
+              subLabel="Acumulado anual"
             />
           </div>
         </div>
