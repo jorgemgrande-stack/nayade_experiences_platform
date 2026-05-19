@@ -119,6 +119,9 @@ const navItems = [
       { label: "Dashboard", href: "/admin/personal" },
       { label: "Empleados", href: "/admin/personal/empleados" },
       { label: "Fichajes", href: "/admin/personal/fichajes" },
+      { label: "Nóminas", href: "/admin/personal/nominas" },
+      { label: "Remesas", href: "/admin/personal/remesas" },
+      { label: "Configuración", href: "/admin/personal/configuracion" },
     ],
   },
   {

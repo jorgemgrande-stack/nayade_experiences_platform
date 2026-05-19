@@ -35,6 +35,7 @@ function PendingKpi({ label, icon: Icon, hint }: { label: string; icon: React.El
 export default function HRDashboard() {
   const { data: counters, isLoading } = trpc.hr.employees.counters.useQuery();
   const { data: timeSummary } = trpc.hr.timeClock.summary.useQuery();
+  const { data: fiscalSummary } = trpc.hr.fiscal.summary.useQuery();
 
   const total = counters?.total ?? 0;
   const active = counters?.active ?? 0;
@@ -138,13 +139,48 @@ export default function HRDashboard() {
         {/* Sección 3: Coste laboral */}
         <div className="px-4 sm:px-6 py-5 border-t border-foreground/[0.05]">
           <h2 className="text-[11px] font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
-            <Euro className="w-3.5 h-3.5" /> Coste laboral
+            <Euro className="w-3.5 h-3.5" /> Coste laboral · {fiscalSummary?.period ?? "–"}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <PendingKpi label="Nóminas del mes" icon={FileText} hint="Disponible en Fase 5" />
-            <PendingKpi label="Bonus e incentivos" icon={TrendingUp} hint="Disponible en Fase 6" />
-            <PendingKpi label="Seg. Social estimada" icon={Banknote} hint="Disponible en Fase 5" />
-            <PendingKpi label="IRPF retenido" icon={Receipt} hint="Disponible en Fase 7" />
+            <KpiCard
+              label="Nóminas del mes"
+              value={Math.round(fiscalSummary?.totalGross ?? 0)}
+              suffix=" €"
+              icon={FileText}
+              color="orange"
+              subLabel={`${fiscalSummary?.payslipCount ?? 0} nóminas · Bruto total`}
+              href="/admin/personal/nominas"
+            />
+            <KpiCard
+              label="Seg. Social estimada"
+              value={Math.round(fiscalSummary?.totalSsCompanyEstimated ?? 0)}
+              suffix=" €"
+              icon={Banknote}
+              color="violet"
+              subLabel={
+                fiscalSummary?.totalSsCompanyReal != null
+                  ? `Real: ${fiscalSummary.totalSsCompanyReal.toFixed(0)} €`
+                  : "Pendiente ajuste TGSS"
+              }
+              href="/admin/personal/remesas"
+            />
+            <KpiCard
+              label="IRPF retenido"
+              value={Math.round(fiscalSummary?.totalIrpf ?? 0)}
+              suffix=" €"
+              icon={Receipt}
+              color="blue"
+              subLabel="Suma del mes"
+              href="/admin/personal/nominas"
+            />
+            <KpiCard
+              label="Coste anual acumulado"
+              value={Math.round(fiscalSummary?.yearTotalCost ?? 0)}
+              suffix=" €"
+              icon={TrendingUp}
+              color="emerald"
+              subLabel="Bruto + SS empresa estimada"
+            />
           </div>
         </div>
 

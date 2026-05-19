@@ -76,11 +76,17 @@ const HRDashboard = lazy(() => import("./pages/admin/hr/HRDashboard"));
 const EmployeesList = lazy(() => import("./pages/admin/hr/EmployeesList"));
 const EmployeeDetail = lazy(() => import("./pages/admin/hr/EmployeeDetail"));
 const TimeClockManager = lazy(() => import("./pages/admin/hr/TimeClockManager"));
+// Fase 5 RRHH — Nóminas y Remesas
+const PayslipsManager = lazy(() => import("./pages/admin/hr/PayslipsManager"));
+const PayrollBatchesManager = lazy(() => import("./pages/admin/hr/PayrollBatchesManager"));
+const BatchDetail = lazy(() => import("./pages/admin/hr/BatchDetail"));
+const HRSettings = lazy(() => import("./pages/admin/hr/HRSettings"));
 // Portal del Empleado (Fase 3 RRHH)
 const EmployeePortal = lazy(() => import("./pages/employee/EmployeePortal"));
 const MyProfile = lazy(() => import("./pages/employee/MyProfile"));
 const MyDocuments = lazy(() => import("./pages/employee/MyDocuments"));
 const MyTimeClock = lazy(() => import("./pages/employee/MyTimeClock"));
+const MyPayslips = lazy(() => import("./pages/employee/MyPayslips"));
 const ActivarEmpleado = lazy(() => import("./pages/employee/ActivarEmpleado"));
 
 // Accounting
@@ -275,11 +281,17 @@ function Router() {
       <Route path="/admin/personal/empleados">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeesList /></Suspense>}</Route>
       <Route path="/admin/personal/empleados/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeeDetail /></Suspense>}</Route>
       <Route path="/admin/personal/fichajes">{() => <Suspense fallback={<AdminLoadingFallback />}><TimeClockManager /></Suspense>}</Route>
+      {/* Fase 5: Nóminas y remesas */}
+      <Route path="/admin/personal/nominas">{() => <Suspense fallback={<AdminLoadingFallback />}><PayslipsManager /></Suspense>}</Route>
+      <Route path="/admin/personal/remesas">{() => <Suspense fallback={<AdminLoadingFallback />}><PayrollBatchesManager /></Suspense>}</Route>
+      <Route path="/admin/personal/remesas/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><BatchDetail /></Suspense>}</Route>
+      <Route path="/admin/personal/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><HRSettings /></Suspense>}</Route>
 
       {/* Portal del Empleado (Fase 3) */}
       <Route path="/empleado">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeePortal /></Suspense>}</Route>
       <Route path="/empleado/fichar">{() => <Suspense fallback={<AdminLoadingFallback />}><MyTimeClock /></Suspense>}</Route>
       <Route path="/empleado/perfil">{() => <Suspense fallback={<AdminLoadingFallback />}><MyProfile /></Suspense>}</Route>
+      <Route path="/empleado/nominas">{() => <Suspense fallback={<AdminLoadingFallback />}><MyPayslips /></Suspense>}</Route>
       <Route path="/empleado/documentos">{() => <Suspense fallback={<AdminLoadingFallback />}><MyDocuments /></Suspense>}</Route>
       <Route path="/empleado/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivarEmpleado /></Suspense>}</Route>
 

@@ -24,6 +24,14 @@ import {
   hrTimeClock,
   hrScheduleTemplates,
   hrScheduleExceptions,
+  hrPayslips,
+  hrPayrollBatches,
+  hrIrpfLedger,
+  hrSsLedger,
+  hrSettings,
+  expenses,
+  expenseCategories,
+  costCenters,
 } from "../../drizzle/schema";
 import { sendEmail } from "../mailer";
 import { getUserByInviteToken, setUserPassword } from "../db";
@@ -363,6 +371,36 @@ const portalRouter = router({
       .where(eq(employeeDocuments.monitorId, employee.id))
       .orderBy(desc(employeeDocuments.createdAt));
     return docs;
+  }),
+
+  /**
+   * Nóminas del empleado actual (Fase 5).
+   * Solo se exponen las que están en estado 'registrada' o 'pagada' —
+   * los borradores administrativos no son visibles para el empleado.
+   * No se expone ssCompanyEstimated (concepto puramente interno de coste).
+   */
+  myPayslips: employeeProcedure.query(async ({ ctx }) => {
+    const employee = await resolveCurrentEmployee(ctx.user.id);
+    const rows = await db
+      .select({
+        id: hrPayslips.id,
+        period: hrPayslips.period,
+        grossSalary: hrPayslips.grossSalary,
+        irpfAmount: hrPayslips.irpfAmount,
+        ssEmployee: hrPayslips.ssEmployee,
+        netSalary: hrPayslips.netSalary,
+        pdfUrl: hrPayslips.pdfUrl,
+        status: hrPayslips.status,
+        createdAt: hrPayslips.createdAt,
+      })
+      .from(hrPayslips)
+      .where(and(
+        eq(hrPayslips.employeeId, employee.id),
+        ne(hrPayslips.status, "borrador"),
+        ne(hrPayslips.status, "anulada"),
+      ))
+      .orderBy(desc(hrPayslips.period));
+    return rows;
   }),
 });
 
@@ -716,9 +754,698 @@ const scheduleRouter = router({
   }),
 });
 
+// ─── NÓMINAS Y REMESAS (Fase 5) ─────────────────────────────────────────────
+
+const FISCAL_STATUSES = ["pendiente", "revisado", "exportado", "presentado"] as const;
+const fiscalStatusEnum = z.enum(FISCAL_STATUSES);
+
+/**
+ * Devuelve la configuración global de RRHH. Si no existe la fila singleton
+ * (improbable porque la migración la crea), la genera con defaults.
+ */
+async function getOrCreateHrSettings() {
+  const [row] = await db.select().from(hrSettings).where(eq(hrSettings.id, 1)).limit(1);
+  if (row) return row;
+  await db.insert(hrSettings).values({ id: 1 } as any).onDuplicateKeyUpdate({ set: { id: 1 } });
+  const [r2] = await db.select().from(hrSettings).where(eq(hrSettings.id, 1)).limit(1);
+  return r2!;
+}
+
+/**
+ * findOrCreate por nombre de categoría. Mantiene categorías propias del
+ * módulo de RRHH cuando se cierra una remesa.
+ */
+async function findOrCreateExpenseCategory(name: string): Promise<number> {
+  const [existing] = await db.select({ id: expenseCategories.id })
+    .from(expenseCategories).where(eq(expenseCategories.name, name)).limit(1);
+  if (existing) return existing.id;
+  const [result] = await db.insert(expenseCategories).values({
+    name,
+    description: "Categoría auto-creada desde el módulo Personal/RRHH",
+    active: true,
+  } as any);
+  return (result as { insertId: number }).insertId;
+}
+
+async function findOrCreateCostCenter(name: string): Promise<number> {
+  const [existing] = await db.select({ id: costCenters.id })
+    .from(costCenters).where(eq(costCenters.name, name)).limit(1);
+  if (existing) return existing.id;
+  const [result] = await db.insert(costCenters).values({
+    name,
+    description: "Centro de coste auto-creado desde Personal/RRHH",
+    active: true,
+  } as any);
+  return (result as { insertId: number }).insertId;
+}
+
+// ─── PAYSLIPS (nóminas individuales) ──
+
+const payslipInput = z.object({
+  employeeId: z.number().int(),
+  period: z.string().regex(/^\d{4}-\d{2}$/, "Periodo debe ser YYYY-MM"),
+  grossSalary: z.number().min(0),
+  irpfAmount: z.number().min(0).default(0),
+  ssEmployee: z.number().min(0).default(0),
+  notes: z.string().optional(),
+});
+
+async function upsertIrpfLedgerForPayslip(payslip: { id: number; employeeId: number; period: string; grossSalary: string | number; irpfAmount: string | number }) {
+  const taxable = Number(payslip.grossSalary);
+  const retained = Number(payslip.irpfAmount);
+  // Buscar entry previa para esta nómina
+  const [existing] = await db.select().from(hrIrpfLedger)
+    .where(eq(hrIrpfLedger.payslipId, payslip.id))
+    .limit(1);
+  if (existing) {
+    await db.update(hrIrpfLedger).set({
+      taxableBase: String(taxable),
+      retainedAmount: String(retained),
+    } as any).where(eq(hrIrpfLedger.id, existing.id));
+  } else if (retained > 0 || taxable > 0) {
+    await db.insert(hrIrpfLedger).values({
+      period: payslip.period,
+      employeeId: payslip.employeeId,
+      taxableBase: String(taxable),
+      retainedAmount: String(retained),
+      payslipId: payslip.id,
+    } as any);
+  }
+}
+
+const payslipsRouter = router({
+  list: hrViewProc
+    .input(z.object({
+      period: z.string().optional(),
+      employeeId: z.number().optional(),
+      batchId: z.number().optional(),
+      status: z.enum(["borrador", "registrada", "pagada", "anulada"]).optional(),
+      fiscalStatus: fiscalStatusEnum.optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      if (input?.period) conditions.push(eq(hrPayslips.period, input.period));
+      if (input?.employeeId) conditions.push(eq(hrPayslips.employeeId, input.employeeId));
+      if (input?.batchId) conditions.push(eq(hrPayslips.batchId, input.batchId));
+      if (input?.status) conditions.push(eq(hrPayslips.status, input.status));
+      if (input?.fiscalStatus) conditions.push(eq(hrPayslips.fiscalStatus, input.fiscalStatus));
+
+      const rows = await db.select({
+        id: hrPayslips.id,
+        employeeId: hrPayslips.employeeId,
+        employeeName: employees.fullName,
+        period: hrPayslips.period,
+        grossSalary: hrPayslips.grossSalary,
+        irpfAmount: hrPayslips.irpfAmount,
+        ssEmployee: hrPayslips.ssEmployee,
+        netSalary: hrPayslips.netSalary,
+        ssCompanyEstimated: hrPayslips.ssCompanyEstimated,
+        batchId: hrPayslips.batchId,
+        pdfUrl: hrPayslips.pdfUrl,
+        status: hrPayslips.status,
+        fiscalStatus: hrPayslips.fiscalStatus,
+        createdAt: hrPayslips.createdAt,
+        updatedAt: hrPayslips.updatedAt,
+      })
+        .from(hrPayslips)
+        .leftJoin(employees, eq(employees.id, hrPayslips.employeeId))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(hrPayslips.period), asc(employees.fullName));
+      return rows;
+    }),
+
+  get: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const [row] = await db.select().from(hrPayslips).where(eq(hrPayslips.id, input.id));
+      if (!row) throw new TRPCError({ code: "NOT_FOUND" });
+      return row;
+    }),
+
+  /**
+   * Crea o actualiza una nómina por (employeeId, period). Calcula netSalary
+   * y ssCompanyEstimated automáticamente con el porcentaje configurado.
+   * Inserta/actualiza también la entry en hr_irpf_ledger.
+   */
+  upsert: hrViewProc
+    .input(payslipInput)
+    .mutation(async ({ input, ctx }) => {
+      const settings = await getOrCreateHrSettings();
+      const ssPct = Number(settings.ssCompanyPercent);
+      const ssCompanyEst = parseFloat((input.grossSalary * ssPct / 100).toFixed(2));
+      const net = parseFloat((input.grossSalary - input.irpfAmount - input.ssEmployee).toFixed(2));
+
+      const [existing] = await db.select().from(hrPayslips)
+        .where(and(eq(hrPayslips.employeeId, input.employeeId), eq(hrPayslips.period, input.period)))
+        .limit(1);
+
+      let payslipId: number;
+      if (existing) {
+        if (existing.batchId) {
+          // Si la nómina ya está en una remesa cerrada, no permitir edición
+          const [batch] = await db.select({ status: hrPayrollBatches.status })
+            .from(hrPayrollBatches).where(eq(hrPayrollBatches.id, existing.batchId)).limit(1);
+          if (batch && batch.status !== "open") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "No se puede editar una nómina cuya remesa ya está cerrada. Crea una remesa de ajuste.",
+            });
+          }
+        }
+        await db.update(hrPayslips).set({
+          grossSalary: String(input.grossSalary),
+          irpfAmount: String(input.irpfAmount),
+          ssEmployee: String(input.ssEmployee),
+          netSalary: String(net),
+          ssCompanyEstimated: String(ssCompanyEst),
+          notes: input.notes,
+        } as any).where(eq(hrPayslips.id, existing.id));
+        payslipId = existing.id;
+      } else {
+        const [result] = await db.insert(hrPayslips).values({
+          employeeId: input.employeeId,
+          period: input.period,
+          grossSalary: String(input.grossSalary),
+          irpfAmount: String(input.irpfAmount),
+          ssEmployee: String(input.ssEmployee),
+          netSalary: String(net),
+          ssCompanyEstimated: String(ssCompanyEst),
+          status: "registrada",
+          notes: input.notes,
+          createdBy: ctx.user.id,
+        } as any);
+        payslipId = (result as { insertId: number }).insertId;
+      }
+
+      const [payslip] = await db.select().from(hrPayslips).where(eq(hrPayslips.id, payslipId));
+      await upsertIrpfLedgerForPayslip(payslip!);
+      return { ok: true, id: payslipId };
+    }),
+
+  delete: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [existing] = await db.select().from(hrPayslips).where(eq(hrPayslips.id, input.id));
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (existing.batchId) {
+        const [batch] = await db.select({ status: hrPayrollBatches.status })
+          .from(hrPayrollBatches).where(eq(hrPayrollBatches.id, existing.batchId)).limit(1);
+        if (batch && batch.status !== "open") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No se puede borrar una nómina de una remesa cerrada." });
+        }
+      }
+      await db.delete(hrIrpfLedger).where(eq(hrIrpfLedger.payslipId, input.id));
+      await db.delete(hrPayslips).where(eq(hrPayslips.id, input.id));
+      return { ok: true };
+    }),
+
+  /**
+   * Adjuntar URL del PDF de la nómina (subida vía storage S3 desde el cliente).
+   */
+  attachPdf: hrViewProc
+    .input(z.object({
+      id: z.number(),
+      pdfUrl: z.string().url(),
+      pdfKey: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      await db.update(hrPayslips).set({
+        pdfUrl: input.pdfUrl,
+        pdfKey: input.pdfKey,
+      } as any).where(eq(hrPayslips.id, input.id));
+      return { ok: true };
+    }),
+
+  /**
+   * Carga masiva: array de { employeeId | dni, period, gross, irpf, ssEmployee }.
+   * Devuelve report con ok/errores por fila.
+   */
+  bulkUpload: hrViewProc
+    .input(z.object({
+      period: z.string().regex(/^\d{4}-\d{2}$/),
+      rows: z.array(z.object({
+        employeeId: z.number().optional(),
+        dni: z.string().optional(),
+        grossSalary: z.number().min(0),
+        irpfAmount: z.number().min(0).default(0),
+        ssEmployee: z.number().min(0).default(0),
+        notes: z.string().optional(),
+      })).min(1).max(500),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const settings = await getOrCreateHrSettings();
+      const ssPct = Number(settings.ssCompanyPercent);
+      const report: Array<{ row: number; ok: boolean; employeeId?: number; error?: string }> = [];
+
+      for (let i = 0; i < input.rows.length; i++) {
+        const row = input.rows[i];
+        let empId = row.employeeId;
+        try {
+          if (!empId && row.dni) {
+            const [found] = await db.select({ id: employees.id })
+              .from(employees).where(eq(employees.dni, row.dni)).limit(1);
+            if (!found) {
+              report.push({ row: i + 1, ok: false, error: `Empleado con DNI ${row.dni} no encontrado` });
+              continue;
+            }
+            empId = found.id;
+          }
+          if (!empId) {
+            report.push({ row: i + 1, ok: false, error: "Falta employeeId o dni" });
+            continue;
+          }
+
+          const ssCompanyEst = parseFloat((row.grossSalary * ssPct / 100).toFixed(2));
+          const net = parseFloat((row.grossSalary - row.irpfAmount - row.ssEmployee).toFixed(2));
+
+          const [existing] = await db.select({ id: hrPayslips.id, batchId: hrPayslips.batchId })
+            .from(hrPayslips)
+            .where(and(eq(hrPayslips.employeeId, empId), eq(hrPayslips.period, input.period)))
+            .limit(1);
+
+          if (existing?.batchId) {
+            const [batch] = await db.select({ status: hrPayrollBatches.status })
+              .from(hrPayrollBatches).where(eq(hrPayrollBatches.id, existing.batchId)).limit(1);
+            if (batch && batch.status !== "open") {
+              report.push({ row: i + 1, ok: false, employeeId: empId, error: "Nómina en remesa cerrada — usar remesa de ajuste" });
+              continue;
+            }
+          }
+
+          let payslipId: number;
+          if (existing) {
+            await db.update(hrPayslips).set({
+              grossSalary: String(row.grossSalary),
+              irpfAmount: String(row.irpfAmount),
+              ssEmployee: String(row.ssEmployee),
+              netSalary: String(net),
+              ssCompanyEstimated: String(ssCompanyEst),
+              notes: row.notes,
+            } as any).where(eq(hrPayslips.id, existing.id));
+            payslipId = existing.id;
+          } else {
+            const [r] = await db.insert(hrPayslips).values({
+              employeeId: empId,
+              period: input.period,
+              grossSalary: String(row.grossSalary),
+              irpfAmount: String(row.irpfAmount),
+              ssEmployee: String(row.ssEmployee),
+              netSalary: String(net),
+              ssCompanyEstimated: String(ssCompanyEst),
+              status: "registrada",
+              notes: row.notes,
+              createdBy: ctx.user.id,
+            } as any);
+            payslipId = (r as { insertId: number }).insertId;
+          }
+
+          const [payslip] = await db.select().from(hrPayslips).where(eq(hrPayslips.id, payslipId));
+          await upsertIrpfLedgerForPayslip(payslip!);
+          report.push({ row: i + 1, ok: true, employeeId: empId });
+        } catch (e: any) {
+          report.push({ row: i + 1, ok: false, employeeId: empId, error: e.message });
+        }
+      }
+
+      const okCount = report.filter(r => r.ok).length;
+      const errorCount = report.length - okCount;
+      return { ok: errorCount === 0, okCount, errorCount, report };
+    }),
+});
+
+// ─── BATCHES (remesas mensuales) ──
+
+const batchesRouter = router({
+  list: hrViewProc.query(async () => {
+    return await db.select().from(hrPayrollBatches).orderBy(desc(hrPayrollBatches.period));
+  }),
+
+  get: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const [batch] = await db.select().from(hrPayrollBatches).where(eq(hrPayrollBatches.id, input.id));
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND" });
+      const payslips = await db.select({
+        id: hrPayslips.id,
+        employeeId: hrPayslips.employeeId,
+        employeeName: employees.fullName,
+        grossSalary: hrPayslips.grossSalary,
+        irpfAmount: hrPayslips.irpfAmount,
+        ssEmployee: hrPayslips.ssEmployee,
+        netSalary: hrPayslips.netSalary,
+        ssCompanyEstimated: hrPayslips.ssCompanyEstimated,
+        status: hrPayslips.status,
+        pdfUrl: hrPayslips.pdfUrl,
+      })
+        .from(hrPayslips)
+        .leftJoin(employees, eq(employees.id, hrPayslips.employeeId))
+        .where(eq(hrPayslips.batchId, batch.id))
+        .orderBy(asc(employees.fullName));
+      return { ...batch, payslips };
+    }),
+
+  /**
+   * Abre la remesa de un periodo. Idempotente: si ya existe, devuelve la
+   * existente. No cambia el status de las nóminas (se vinculan al cerrar).
+   */
+  openMonth: hrViewProc
+    .input(z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) }))
+    .mutation(async ({ input, ctx }) => {
+      const [existing] = await db.select().from(hrPayrollBatches)
+        .where(eq(hrPayrollBatches.period, input.period))
+        .limit(1);
+      if (existing) {
+        return { ok: true, id: existing.id, alreadyExists: true, status: existing.status };
+      }
+      const [result] = await db.insert(hrPayrollBatches).values({
+        period: input.period,
+        status: "open",
+        createdBy: ctx.user.id,
+      } as any);
+      return { ok: true, id: (result as { insertId: number }).insertId, alreadyExists: false, status: "open" };
+    }),
+
+  /**
+   * Cierra la remesa del periodo:
+   *  1. Recalcula totales sumando todas las nóminas del periodo.
+   *  2. Vincula las nóminas al batch (batchId).
+   *  3. Genera 3 gastos automáticos (Nóminas oficiales, Retenciones IRPF,
+   *     Seguridad Social empresa) en expenses, categorías auto-creadas.
+   *  4. Inserta entry en hr_ss_ledger con la estimación inicial.
+   *  5. Marca status='closed'.
+   *
+   * Idempotencia: si el batch ya está closed/exported, error explícito.
+   */
+  closeMonth: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const [batch] = await db.select().from(hrPayrollBatches).where(eq(hrPayrollBatches.id, input.id));
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND" });
+      if (batch.status !== "open") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `La remesa ya está ${batch.status}` });
+      }
+
+      // 1. Recoger nóminas del periodo no vinculadas o vinculadas al mismo batch
+      const periodPayslips = await db.select().from(hrPayslips)
+        .where(eq(hrPayslips.period, batch.period));
+      if (periodPayslips.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No hay nóminas en este periodo. Añade nóminas antes de cerrar." });
+      }
+
+      // 2. Vincular las que no tengan batch aún
+      for (const p of periodPayslips) {
+        if (!p.batchId) {
+          await db.update(hrPayslips).set({ batchId: batch.id } as any).where(eq(hrPayslips.id, p.id));
+        }
+      }
+
+      // 3. Calcular totales
+      const totalGross = periodPayslips.reduce((s, p) => s + Number(p.grossSalary), 0);
+      const totalIrpf = periodPayslips.reduce((s, p) => s + Number(p.irpfAmount), 0);
+      const totalSsEmp = periodPayslips.reduce((s, p) => s + Number(p.ssEmployee), 0);
+      const totalNet = periodPayslips.reduce((s, p) => s + Number(p.netSalary), 0);
+      const totalSsCompEst = periodPayslips.reduce((s, p) => s + Number(p.ssCompanyEstimated), 0);
+
+      // 4. Auto-crear categoría y centro de coste si no existen
+      const costCenterId = await findOrCreateCostCenter("Personal / RRHH");
+      const catNominas = await findOrCreateExpenseCategory("Nóminas oficiales");
+      const catIrpf = await findOrCreateExpenseCategory("Retenciones IRPF");
+      const catSs = await findOrCreateExpenseCategory("Seguridad Social empresa");
+
+      // 5. Crear 3 expenses
+      const expenseDate = `${batch.period}-15`; // mid-month como fecha de imputación
+      const createdExpenseIds: number[] = [];
+
+      const expensesToCreate = [
+        { categoryId: catNominas, concept: `Nóminas oficiales — ${batch.period}`, amount: totalNet },
+        { categoryId: catIrpf, concept: `Retenciones IRPF — ${batch.period}`, amount: totalIrpf },
+        { categoryId: catSs, concept: `Seguridad Social empresa (estimada) — ${batch.period}`, amount: totalSsCompEst },
+      ];
+      for (const e of expensesToCreate) {
+        if (e.amount <= 0) continue;
+        const [r] = await db.insert(expenses).values({
+          date: expenseDate,
+          concept: e.concept,
+          amount: String(e.amount.toFixed(2)),
+          categoryId: e.categoryId,
+          costCenterId,
+          paymentMethod: "transfer",
+          status: "pending",
+          source: "hr_payroll_batch",
+          createdBy: ctx.user.id,
+        } as any);
+        createdExpenseIds.push((r as { insertId: number }).insertId);
+      }
+
+      // 6. Insertar/actualizar hr_ss_ledger del periodo
+      const [existingSs] = await db.select().from(hrSsLedger).where(eq(hrSsLedger.period, batch.period)).limit(1);
+      if (existingSs) {
+        await db.update(hrSsLedger).set({
+          estimatedAmount: String(totalSsCompEst),
+          batchId: batch.id,
+        } as any).where(eq(hrSsLedger.id, existingSs.id));
+      } else {
+        await db.insert(hrSsLedger).values({
+          period: batch.period,
+          estimatedAmount: String(totalSsCompEst),
+          batchId: batch.id,
+        } as any);
+      }
+
+      // 7. Marcar status closed + guardar totales y expense ids
+      await db.update(hrPayrollBatches).set({
+        status: "closed",
+        totalGross: String(totalGross),
+        totalIrpf: String(totalIrpf),
+        totalSsEmployee: String(totalSsEmp),
+        totalNet: String(totalNet),
+        totalSsCompanyEstimated: String(totalSsCompEst),
+        expenseIdsJson: JSON.stringify(createdExpenseIds),
+        closedAt: new Date(),
+        closedBy: ctx.user.id,
+      } as any).where(eq(hrPayrollBatches.id, batch.id));
+
+      return {
+        ok: true,
+        payslipsLinked: periodPayslips.length,
+        totalGross, totalIrpf, totalSsEmp, totalNet, totalSsCompEst,
+        expensesCreated: createdExpenseIds,
+      };
+    }),
+
+  /**
+   * Cuando llega el cargo real de la TGSS: ajusta hr_ss_ledger y registra
+   * un expense de ajuste si hay diferencia positiva.
+   */
+  adjustSsReal: hrViewProc
+    .input(z.object({
+      batchId: z.number(),
+      realAmount: z.number().min(0),
+      realChargedAt: z.string().optional(),
+      bankMovementId: z.number().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [batch] = await db.select().from(hrPayrollBatches).where(eq(hrPayrollBatches.id, input.batchId));
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await db.update(hrPayrollBatches).set({
+        totalSsCompanyReal: String(input.realAmount),
+      } as any).where(eq(hrPayrollBatches.id, batch.id));
+
+      await db.update(hrSsLedger).set({
+        realAmount: String(input.realAmount),
+        realChargedAt: input.realChargedAt ? new Date(input.realChargedAt) : new Date(),
+        bankMovementId: input.bankMovementId ?? null,
+      } as any).where(eq(hrSsLedger.period, batch.period));
+
+      // Si hay diferencia, crear gasto de ajuste
+      const estimated = Number(batch.totalSsCompanyEstimated);
+      const diff = input.realAmount - estimated;
+      let adjustmentExpenseId: number | null = null;
+      if (Math.abs(diff) >= 0.01) {
+        const costCenterId = await findOrCreateCostCenter("Personal / RRHH");
+        const cat = await findOrCreateExpenseCategory("Seguridad Social empresa — ajuste");
+        const [r] = await db.insert(expenses).values({
+          date: `${batch.period}-15`,
+          concept: `Ajuste SS empresa real vs estimada — ${batch.period} (${diff >= 0 ? "+" : ""}${diff.toFixed(2)} €)`,
+          amount: String(Math.abs(diff).toFixed(2)),
+          categoryId: cat,
+          costCenterId,
+          paymentMethod: "transfer",
+          status: "pending",
+          source: "hr_ss_adjustment",
+          notes: diff < 0 ? "Devolución (importe negativo conceptual)" : null,
+          createdBy: ctx.user.id,
+        } as any);
+        adjustmentExpenseId = (r as { insertId: number }).insertId;
+      }
+
+      return { ok: true, difference: parseFloat(diff.toFixed(2)), adjustmentExpenseId };
+    }),
+
+  /**
+   * Marca el batch como exportado (señal para Gestoría).
+   */
+  markExported: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.update(hrPayrollBatches).set({
+        status: "exported",
+        fiscalStatus: "exportado",
+      } as any).where(eq(hrPayrollBatches.id, input.id));
+      // También propagamos a las nóminas del batch
+      await db.update(hrPayslips).set({
+        fiscalStatus: "exportado",
+      } as any).where(eq(hrPayslips.batchId, input.id));
+      // Y a las entries del ledger correspondientes
+      const [batch] = await db.select().from(hrPayrollBatches).where(eq(hrPayrollBatches.id, input.id));
+      if (batch) {
+        await db.update(hrIrpfLedger).set({ fiscalStatus: "exportado" } as any)
+          .where(eq(hrIrpfLedger.period, batch.period));
+        await db.update(hrSsLedger).set({ fiscalStatus: "exportado" } as any)
+          .where(eq(hrSsLedger.period, batch.period));
+      }
+      return { ok: true };
+    }),
+});
+
+// ─── FISCAL LEDGERS ──
+
+const fiscalRouter = router({
+  irpfLedger: hrViewProc
+    .input(z.object({
+      period: z.string().optional(),
+      employeeId: z.number().optional(),
+      fiscalStatus: fiscalStatusEnum.optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      if (input?.period) conditions.push(eq(hrIrpfLedger.period, input.period));
+      if (input?.employeeId) conditions.push(eq(hrIrpfLedger.employeeId, input.employeeId));
+      if (input?.fiscalStatus) conditions.push(eq(hrIrpfLedger.fiscalStatus, input.fiscalStatus));
+      return await db.select({
+        id: hrIrpfLedger.id,
+        period: hrIrpfLedger.period,
+        employeeId: hrIrpfLedger.employeeId,
+        employeeName: employees.fullName,
+        taxableBase: hrIrpfLedger.taxableBase,
+        retainedAmount: hrIrpfLedger.retainedAmount,
+        payslipId: hrIrpfLedger.payslipId,
+        bonusId: hrIrpfLedger.bonusId,
+        fiscalStatus: hrIrpfLedger.fiscalStatus,
+        createdAt: hrIrpfLedger.createdAt,
+      })
+        .from(hrIrpfLedger)
+        .leftJoin(employees, eq(employees.id, hrIrpfLedger.employeeId))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(hrIrpfLedger.period));
+    }),
+
+  ssLedger: hrViewProc
+    .input(z.object({ fiscalStatus: fiscalStatusEnum.optional() }).optional())
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      if (input?.fiscalStatus) conditions.push(eq(hrSsLedger.fiscalStatus, input.fiscalStatus));
+      return await db.select().from(hrSsLedger)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(hrSsLedger.period));
+    }),
+
+  markIrpfStatus: hrViewProc
+    .input(z.object({ ids: z.array(z.number()).min(1), status: fiscalStatusEnum }))
+    .mutation(async ({ input }) => {
+      let updated = 0;
+      for (const id of input.ids) {
+        await db.update(hrIrpfLedger).set({ fiscalStatus: input.status } as any).where(eq(hrIrpfLedger.id, id));
+        updated++;
+      }
+      return { ok: true, updated };
+    }),
+
+  markSsStatus: hrViewProc
+    .input(z.object({ ids: z.array(z.number()).min(1), status: fiscalStatusEnum }))
+    .mutation(async ({ input }) => {
+      let updated = 0;
+      for (const id of input.ids) {
+        await db.update(hrSsLedger).set({ fiscalStatus: input.status } as any).where(eq(hrSsLedger.id, id));
+        updated++;
+      }
+      return { ok: true, updated };
+    }),
+
+  /**
+   * Resumen del periodo: totales para alimentar HRDashboard sección
+   * "Coste laboral".
+   */
+  summary: hrViewProc
+    .input(z.object({ period: z.string().regex(/^\d{4}-\d{2}$/).optional() }).optional())
+    .query(async ({ input }) => {
+      const now = new Date();
+      const defaultPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const period = input?.period ?? defaultPeriod;
+
+      const monthPayslips = await db.select().from(hrPayslips).where(eq(hrPayslips.period, period));
+      const totalGross = monthPayslips.reduce((s, p) => s + Number(p.grossSalary), 0);
+      const totalIrpf = monthPayslips.reduce((s, p) => s + Number(p.irpfAmount), 0);
+      const totalSsEst = monthPayslips.reduce((s, p) => s + Number(p.ssCompanyEstimated), 0);
+      const totalNet = monthPayslips.reduce((s, p) => s + Number(p.netSalary), 0);
+
+      // Acumulado anual
+      const year = period.slice(0, 4);
+      const yearPayslips = await db.select().from(hrPayslips)
+        .where(sql`${hrPayslips.period} LIKE ${year + "-%"}`);
+      const yearTotalCost = yearPayslips.reduce((s, p) =>
+        s + Number(p.grossSalary) + Number(p.ssCompanyEstimated), 0);
+
+      const [ssReal] = await db.select().from(hrSsLedger).where(eq(hrSsLedger.period, period)).limit(1);
+      const ssRealAmount = ssReal?.realAmount ? Number(ssReal.realAmount) : null;
+
+      return {
+        period,
+        payslipCount: monthPayslips.length,
+        totalGross: parseFloat(totalGross.toFixed(2)),
+        totalIrpf: parseFloat(totalIrpf.toFixed(2)),
+        totalSsCompanyEstimated: parseFloat(totalSsEst.toFixed(2)),
+        totalSsCompanyReal: ssRealAmount,
+        totalNet: parseFloat(totalNet.toFixed(2)),
+        totalCost: parseFloat((totalGross + totalSsEst).toFixed(2)),
+        yearTotalCost: parseFloat(yearTotalCost.toFixed(2)),
+      };
+    }),
+});
+
+// ─── SETTINGS ──
+
+const settingsRouter = router({
+  get: hrViewProc.query(async () => await getOrCreateHrSettings()),
+
+  update: hrViewProc
+    .input(z.object({
+      ssCompanyPercent: z.number().min(0).max(100).optional(),
+      defaultHolidayDays: z.number().int().min(0).max(60).optional(),
+      defaultWeeklyHours: z.number().min(0).max(80).optional(),
+      irpfDefaultPercent: z.number().min(0).max(60).nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      await getOrCreateHrSettings(); // garantiza que existe
+      const patch: any = {};
+      if (input.ssCompanyPercent !== undefined) patch.ssCompanyPercent = String(input.ssCompanyPercent);
+      if (input.defaultHolidayDays !== undefined) patch.defaultHolidayDays = input.defaultHolidayDays;
+      if (input.defaultWeeklyHours !== undefined) patch.defaultWeeklyHours = String(input.defaultWeeklyHours);
+      if (input.irpfDefaultPercent !== undefined) patch.irpfDefaultPercent = input.irpfDefaultPercent === null ? null : String(input.irpfDefaultPercent);
+      if (Object.keys(patch).length === 0) return { ok: true, noChanges: true };
+      await db.update(hrSettings).set(patch).where(eq(hrSettings.id, 1));
+      return { ok: true };
+    }),
+});
+
 export const hrRouter = router({
   employees: employeesRouter,
   portal: portalRouter,
   timeClock: timeClockRouter,
   schedule: scheduleRouter,
+  payslips: payslipsRouter,
+  batches: batchesRouter,
+  fiscal: fiscalRouter,
+  settings: settingsRouter,
 });

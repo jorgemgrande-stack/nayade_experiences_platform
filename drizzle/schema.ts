@@ -3262,3 +3262,96 @@ export const hrScheduleExceptions = mysqlTable("hr_schedule_exceptions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type HrScheduleException = typeof hrScheduleExceptions.$inferSelect;
+
+// ─── HR — NÓMINAS Y REMESAS (Fase 5) ────────────────────────────────────────
+// hr_payslips: nómina oficial mensual (la que firma la gestoría).
+// UNIQUE (employeeId, period) impone una sola nómina por mes y empleado.
+export const hrPayslips = mysqlTable("hr_payslips", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employee_id").notNull(),
+  period: varchar("period", { length: 7 }).notNull(), // "YYYY-MM"
+  grossSalary: decimal("gross_salary", { precision: 12, scale: 2 }).notNull().default("0"),
+  irpfAmount: decimal("irpf_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  ssEmployee: decimal("ss_employee", { precision: 12, scale: 2 }).notNull().default("0"),
+  netSalary: decimal("net_salary", { precision: 12, scale: 2 }).notNull().default("0"),
+  ssCompanyEstimated: decimal("ss_company_estimated", { precision: 12, scale: 2 }).notNull().default("0"),
+  ssCompanyReal: decimal("ss_company_real", { precision: 12, scale: 2 }),
+  batchId: int("batch_id"),
+  pdfUrl: text("pdf_url"),
+  pdfKey: varchar("pdf_key", { length: 512 }),
+  notes: text("notes"),
+  status: mysqlEnum("status", ["borrador", "registrada", "pagada", "anulada"]).notNull().default("borrador"),
+  fiscalStatus: mysqlEnum("fiscal_status", ["pendiente", "revisado", "exportado", "presentado"]).notNull().default("pendiente"),
+  createdBy: int("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrPayslip = typeof hrPayslips.$inferSelect;
+export type InsertHrPayslip = typeof hrPayslips.$inferInsert;
+
+// hr_payroll_batches: remesa mensual. Una fila por periodo (UNIQUE).
+export const hrPayrollBatches = mysqlTable("hr_payroll_batches", {
+  id: int("id").autoincrement().primaryKey(),
+  period: varchar("period", { length: 7 }).notNull(),
+  status: mysqlEnum("status", ["open", "closed", "exported"]).notNull().default("open"),
+  fiscalStatus: mysqlEnum("fiscal_status", ["pendiente", "revisado", "exportado", "presentado"]).notNull().default("pendiente"),
+  totalGross: decimal("total_gross", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalIrpf: decimal("total_irpf", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalSsEmployee: decimal("total_ss_employee", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalNet: decimal("total_net", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalSsCompanyEstimated: decimal("total_ss_company_estimated", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalSsCompanyReal: decimal("total_ss_company_real", { precision: 12, scale: 2 }),
+  expenseIdsJson: text("expense_ids_json"),
+  notes: text("notes"),
+  closedAt: timestamp("closed_at"),
+  closedBy: int("closed_by"),
+  createdBy: int("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrPayrollBatch = typeof hrPayrollBatches.$inferSelect;
+
+// hr_irpf_ledger: una fila por nómina o bonus con retención IRPF.
+// Alimentará el modelo 111 trimestral y el 190 anual (Gestoría).
+export const hrIrpfLedger = mysqlTable("hr_irpf_ledger", {
+  id: int("id").autoincrement().primaryKey(),
+  period: varchar("period", { length: 7 }).notNull(),
+  employeeId: int("employee_id").notNull(),
+  taxableBase: decimal("taxable_base", { precision: 12, scale: 2 }).notNull().default("0"),
+  retainedAmount: decimal("retained_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  payslipId: int("payslip_id"),
+  bonusId: int("bonus_id"),
+  fiscalStatus: mysqlEnum("fiscal_status", ["pendiente", "revisado", "exportado", "presentado"]).notNull().default("pendiente"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type HrIrpfLedgerRow = typeof hrIrpfLedger.$inferSelect;
+
+// hr_ss_ledger: una fila por periodo (UNIQUE). Estimación al cerrar batch,
+// real cuando llega el cargo TGSS.
+export const hrSsLedger = mysqlTable("hr_ss_ledger", {
+  id: int("id").autoincrement().primaryKey(),
+  period: varchar("period", { length: 7 }).notNull(),
+  estimatedAmount: decimal("estimated_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  realAmount: decimal("real_amount", { precision: 12, scale: 2 }),
+  realChargedAt: timestamp("real_charged_at"),
+  bankMovementId: int("bank_movement_id"),
+  batchId: int("batch_id"),
+  fiscalStatus: mysqlEnum("fiscal_status", ["pendiente", "revisado", "exportado", "presentado"]).notNull().default("pendiente"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrSsLedgerRow = typeof hrSsLedger.$inferSelect;
+
+// hr_settings: singleton (id=1) con configuración global del módulo.
+export const hrSettings = mysqlTable("hr_settings", {
+  id: int("id").primaryKey().default(1),
+  ssCompanyPercent: decimal("ss_company_percent", { precision: 5, scale: 2 }).notNull().default("31"),
+  defaultHolidayDays: int("default_holiday_days").notNull().default(22),
+  defaultWeeklyHours: decimal("default_weekly_hours", { precision: 5, scale: 2 }).notNull().default("40"),
+  irpfDefaultPercent: decimal("irpf_default_percent", { precision: 5, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrSettings = typeof hrSettings.$inferSelect;

@@ -722,6 +722,34 @@
       "when": 1779224789206,
       "tag": "0104_hr_schedule_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "5",
+      "when": 1779224790206,
+      "tag": "0105_hr_payslips",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "5",
+      "when": 1779224791206,
+      "tag": "0106_hr_payroll_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "5",
+      "when": 1779224792206,
+      "tag": "0107_hr_fiscal_ledgers",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "5",
+      "when": 1779224793206,
+      "tag": "0108_hr_settings",
+      "breakpoints": true
     }
   ]
 }
