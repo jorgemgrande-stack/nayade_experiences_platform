@@ -374,6 +374,7 @@ export const quotes = mysqlTable("quotes", {
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
   currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
   validUntil: timestamp("validUntil"),
+  activityDate: varchar("activity_date", { length: 20 }),
   status: mysqlEnum("status", [
     "borrador",
     "enviado",

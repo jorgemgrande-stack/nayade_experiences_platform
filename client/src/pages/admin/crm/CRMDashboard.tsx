@@ -1656,6 +1656,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
     d.setDate(d.getDate() + 15);
     return d.toISOString().split("T")[0];
   });
+  const [activityDate, setActivityDate] = useState("");
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
   const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]>([{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }]);
@@ -1768,6 +1769,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       taxRate: effectiveTaxRateD,
       total,
       validUntil,
+      activityDate: activityDate || null,
       notes: promoData ? `Código ${promoData.code} (-${promoData.discountPercent}%)${notes ? "\n" + notes : ""}` : notes || undefined,
       conditions,
       sendNow: andSend,
@@ -1864,11 +1866,16 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* ── Asunto y fechas ── */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-3">
             <Label className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" />
+          </div>
+          <div>
+            <Label className="text-foreground/65 text-xs">Fecha de actividad</Label>
+            <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)}
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">Válido hasta</Label>
@@ -2129,6 +2136,7 @@ function QuoteBuilderModal({
     d.setDate(d.getDate() + 15);
     return d.toISOString().split("T")[0];
   });
+  const [activityDate, setActivityDate] = useState("");
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
   const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]>([
@@ -2136,6 +2144,16 @@ function QuoteBuilderModal({
   ]);
   const [sendAfterCreate, setSendAfterCreate] = useState(false);
   const [autoFilled, setAutoFilled] = useState(false);
+
+  // Prellenar fecha de actividad desde lead.preferredDate
+  const leadQuery = trpc.crm.leads.get.useQuery({ id: leadId });
+  useEffect(() => {
+    const pd = leadQuery.data?.lead?.preferredDate;
+    if (pd && !activityDate) {
+      setActivityDate(new Date(pd).toISOString().split("T")[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadQuery.data?.lead?.preferredDate]);
   // Plan de pago fraccionado (draft local — se guarda tras recibir quoteId)
   const [showPlanSection, setShowPlanSection] = useState(false);
   type DraftInst = { installmentNumber: number; amountCents: number; _amountStr?: string; dueDate: string; isRequiredForConfirmation: boolean; notes: string };
@@ -2247,6 +2265,7 @@ function QuoteBuilderModal({
       taxRate,
       total,
       validUntil,
+      activityDate: activityDate || null,
       notes,
       conditions,
     });
@@ -2281,8 +2300,8 @@ function QuoteBuilderModal({
       </div>
 
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-3">
             <Label className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
             <Input
               value={title}
@@ -2290,6 +2309,18 @@ function QuoteBuilderModal({
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 mt-1"
             />
             <p className="text-foreground/40 text-xs mt-1">Generado automáticamente. Puedes editarlo.</p>
+          </div>
+          <div>
+            <Label className="text-foreground/65 text-xs">Fecha de actividad</Label>
+            <Input
+              type="date"
+              value={activityDate}
+              onChange={(e) => setActivityDate(e.target.value)}
+              className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"
+            />
+            {leadQuery.data?.lead?.preferredDate && (
+              <p className="text-foreground/40 text-xs mt-1">Prerellenada desde el formulario del cliente.</p>
+            )}
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">Válido hasta</Label>
@@ -2722,6 +2753,7 @@ function QuoteEditModal({
   const [notes, setNotes] = useState("");
   const [taxRate, setTaxRate] = useState(21);
   const [validUntil, setValidUntil] = useState("");
+  const [activityDate, setActivityDate] = useState("");
   const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]>([]);
   const [discount, setDiscount] = useState(0);
   const [initialized, setInitialized] = useState(false);
@@ -2756,6 +2788,7 @@ function QuoteEditModal({
     setNotes(q.notes ?? "");
     setTaxRate(q.tax ? parseFloat(String(q.tax)) : 21);
     setValidUntil(q.validUntil ? new Date(q.validUntil).toISOString().split("T")[0] : "");
+    setActivityDate((q as any).activityDate ? String((q as any).activityDate).slice(0, 10) : "");
     const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
     setItems(rawItems.length > 0 ? rawItems : [{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }]);
     setDiscount(Number(q.discount ?? 0));
@@ -2837,10 +2870,14 @@ function QuoteEditModal({
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-3">
             <Label className="text-foreground/65 text-xs">Título *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
+          </div>
+          <div>
+            <Label className="text-foreground/65 text-xs">Fecha de actividad</Label>
+            <Input type="date" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
           <div>
             <Label className="text-foreground/65 text-xs">Válido hasta</Label>
@@ -3018,7 +3055,7 @@ function QuoteEditModal({
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button
           size="sm"
-          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal, discount, taxRate: effectiveTaxRateE, total, validUntil })}
+          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal, discount, taxRate: effectiveTaxRateE, total, validUntil, activityDate: activityDate || null })}
           disabled={updateQuote.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
