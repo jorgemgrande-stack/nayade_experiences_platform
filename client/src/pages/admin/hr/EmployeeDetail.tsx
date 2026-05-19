@@ -15,11 +15,15 @@ import { Link, useParams } from "wouter";
 import {
   ArrowLeft, User, FileText, Briefcase, Banknote, Mail, Phone,
   MapPin, Calendar, AlertCircle, CreditCard, Building2, Clock,
-  Receipt, Settings, ExternalLink,
+  Receipt, Settings, ExternalLink, KeyRound, Send, Copy, CheckCircle2,
+  XCircle, ShieldOff,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 type TabKey = "datos" | "contrato" | "documentos" | "nominas";
 
@@ -83,10 +87,53 @@ export default function EmployeeDetail() {
   const employeeId = Number(params.id);
   const [tab, setTab] = useState<TabKey>("datos");
 
+  const utils = trpc.useUtils();
   const { data: employee, isLoading } = trpc.hr.employees.get.useQuery(
     { id: employeeId },
     { enabled: !isNaN(employeeId) },
   );
+
+  // ── Estado del modal "Crear acceso al Portal" ────────────────────────────
+  const [portalModalOpen, setPortalModalOpen] = useState(false);
+  const [sendEmailNow, setSendEmailNow] = useState(true);
+  const [inviteResult, setInviteResult] = useState<{ inviteUrl: string; emailSent: boolean } | null>(null);
+  const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
+
+  const createPortal = trpc.hr.employees.createPortalAccess.useMutation({
+    onSuccess: (data) => {
+      setInviteResult({ inviteUrl: data.inviteUrl, emailSent: data.emailSent });
+      if (data.emailRequested && !data.emailSent) {
+        toast.warning("Acceso creado, pero el email no se pudo enviar. Copia el enlace manualmente.");
+      } else if (data.emailSent) {
+        toast.success(`Email de invitación enviado`);
+      } else {
+        toast.success("Acceso al portal creado");
+      }
+      utils.hr.employees.get.invalidate({ id: employeeId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const revokePortal = trpc.hr.employees.revokePortalAccess.useMutation({
+    onSuccess: () => {
+      toast.success("Acceso al portal revocado");
+      setRevokeConfirmOpen(false);
+      utils.hr.employees.get.invalidate({ id: employeeId });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const copyInviteUrl = () => {
+    if (!inviteResult) return;
+    navigator.clipboard.writeText(inviteResult.inviteUrl);
+    toast.success("Enlace copiado al portapapeles");
+  };
+
+  const closeModalReset = () => {
+    setPortalModalOpen(false);
+    setInviteResult(null);
+    setSendEmailNow(true);
+  };
 
   if (isLoading) {
     return (
@@ -182,6 +229,86 @@ export default function EmployeeDetail() {
                   <Field label="Teléfono" value={employee.emergencyPhone} icon={Phone} />
                 </div>
               </div>
+
+              {/* ── Acceso al Portal del Empleado ── */}
+              <div className="sm:col-span-2 lg:col-span-3 mt-2 pt-4 border-t border-foreground/[0.05]">
+                <h3 className="text-[10px] font-semibold uppercase tracking-widest text-foreground/40 mb-3 flex items-center gap-1.5">
+                  <KeyRound className="w-3 h-3" /> Acceso al Portal del Empleado
+                </h3>
+                {!employee.portalAccess && (
+                  <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-foreground/[0.08] bg-foreground/[0.03]">
+                    <div className="text-xs text-foreground/70">
+                      Este empleado <strong>no tiene acceso</strong> al portal todavía. Al crearlo, se generará un
+                      enlace de activación válido durante 7 días.
+                      {!employee.email && (
+                        <p className="text-amber-400 mt-1">⚠ Necesita un email para poder crear el acceso.</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => setPortalModalOpen(true)}
+                      disabled={!employee.email}
+                      className="bg-orange-600 hover:bg-orange-700 text-white shrink-0"
+                    >
+                      <KeyRound className="w-3.5 h-3.5 mr-1.5" />
+                      Crear acceso al Portal
+                    </Button>
+                  </div>
+                )}
+                {employee.portalAccess && employee.portalAccess.inviteAccepted && (
+                  <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
+                    <div className="text-xs">
+                      <p className="text-emerald-300 font-semibold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Portal activo
+                      </p>
+                      <p className="text-foreground/60 mt-1">
+                        Email de acceso: <strong>{employee.portalAccess.email}</strong>
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setRevokeConfirmOpen(true)}
+                      className="border-rose-500/40 text-rose-400 hover:bg-rose-500/10 shrink-0"
+                    >
+                      <ShieldOff className="w-3.5 h-3.5 mr-1.5" />
+                      Revocar acceso
+                    </Button>
+                  </div>
+                )}
+                {employee.portalAccess && employee.portalAccess.invitePending && (
+                  <div className="flex items-start justify-between gap-4 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                    <div className="text-xs">
+                      <p className="text-amber-300 font-semibold flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" /> Invitación pendiente de aceptar
+                      </p>
+                      <p className="text-foreground/60 mt-1">
+                        Email enviado a <strong>{employee.portalAccess.email}</strong>. Si el empleado lo perdió,
+                        puedes reemitir un enlace nuevo.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setPortalModalOpen(true)}
+                        className="border-orange-500/40 text-orange-300 hover:bg-orange-500/10"
+                      >
+                        <Send className="w-3.5 h-3.5 mr-1.5" />
+                        Reemitir enlace
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setRevokeConfirmOpen(true)}
+                        className="text-rose-400 hover:bg-rose-500/10"
+                      >
+                        Revocar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -264,6 +391,118 @@ export default function EmployeeDetail() {
               )}
             </div>
           )}
+
+          {/* Modal: Crear acceso al Portal */}
+          <Dialog open={portalModalOpen} onOpenChange={(o) => { if (!o) closeModalReset(); }}>
+            <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-white flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-orange-400" />
+                  {inviteResult ? "Acceso al Portal creado" : "Crear acceso al Portal del Empleado"}
+                </DialogTitle>
+              </DialogHeader>
+
+              {!inviteResult && (
+                <div className="space-y-4 py-2">
+                  <p className="text-sm text-foreground/70">
+                    Se creará un usuario con rol <code className="text-orange-300">employee</code> vinculado a{" "}
+                    <strong>{employee.fullName}</strong>. Se generará un enlace de activación válido durante 7 días.
+                  </p>
+                  <div className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.03] p-3 text-xs">
+                    <p className="text-foreground/50 mb-1">Email del empleado:</p>
+                    <p className="font-mono text-foreground/90">{employee.email}</p>
+                  </div>
+                  <label className="flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:bg-foreground/[0.04]">
+                    <input
+                      type="checkbox"
+                      checked={sendEmailNow}
+                      onChange={(e) => setSendEmailNow(e.target.checked)}
+                      className="mt-0.5 accent-orange-500"
+                    />
+                    <div className="text-sm">
+                      <p className="text-foreground/90 font-medium">Enviar credenciales por email</p>
+                      <p className="text-foreground/50 text-xs">
+                        Si lo desmarcas, podrás copiar el enlace manualmente desde esta pantalla.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {inviteResult && (
+                <div className="space-y-3 py-2">
+                  <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {inviteResult.emailSent
+                      ? "Email de invitación enviado correctamente."
+                      : "Acceso creado. Email no enviado — comparte este enlace manualmente:"}
+                  </div>
+                  <div className="rounded-lg border border-foreground/[0.12] bg-foreground/[0.05] p-3 break-all text-xs font-mono text-foreground/80 select-all">
+                    {inviteResult.inviteUrl}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={copyInviteUrl}
+                    className="w-full border-orange-500/40 text-orange-300 hover:bg-orange-500/10"
+                  >
+                    <Copy className="w-3.5 h-3.5 mr-1.5" />
+                    Copiar enlace
+                  </Button>
+                  <p className="text-foreground/40 text-xs">
+                    El enlace caduca en 7 días. Si caduca, puedes reemitir uno nuevo desde la ficha del empleado.
+                  </p>
+                </div>
+              )}
+
+              <DialogFooter>
+                {!inviteResult ? (
+                  <>
+                    <Button variant="ghost" onClick={() => setPortalModalOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={() => createPortal.mutate({ employeeId, sendEmailNow })}
+                      disabled={createPortal.isPending}
+                      className="bg-orange-600 hover:bg-orange-700 text-white"
+                    >
+                      {createPortal.isPending ? "Creando…" : "Crear acceso"}
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={closeModalReset} className="bg-orange-600 hover:bg-orange-700 text-white">
+                    Cerrar
+                  </Button>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Modal: Confirmar revocación */}
+          <Dialog open={revokeConfirmOpen} onOpenChange={setRevokeConfirmOpen}>
+            <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-white flex items-center gap-2">
+                  <XCircle className="w-5 h-5 text-rose-400" />
+                  Revocar acceso al Portal
+                </DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-foreground/70 py-2">
+                El empleado <strong>{employee.fullName}</strong> perderá el acceso al portal de inmediato. Su usuario
+                queda inactivo pero no se elimina (puedes restaurar el acceso emitiendo una nueva invitación).
+              </p>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setRevokeConfirmOpen(false)}>Cancelar</Button>
+                <Button
+                  onClick={() => revokePortal.mutate({ employeeId })}
+                  disabled={revokePortal.isPending}
+                  className="bg-rose-600 hover:bg-rose-700 text-white"
+                >
+                  {revokePortal.isPending ? "Revocando…" : "Sí, revocar acceso"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {tab === "nominas" && (
             <div>

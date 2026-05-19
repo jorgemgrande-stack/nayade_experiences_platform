@@ -75,6 +75,11 @@ const MonitorsManager = lazy(() => import("./pages/admin/operations/MonitorsMana
 const HRDashboard = lazy(() => import("./pages/admin/hr/HRDashboard"));
 const EmployeesList = lazy(() => import("./pages/admin/hr/EmployeesList"));
 const EmployeeDetail = lazy(() => import("./pages/admin/hr/EmployeeDetail"));
+// Portal del Empleado (Fase 3 RRHH)
+const EmployeePortal = lazy(() => import("./pages/employee/EmployeePortal"));
+const MyProfile = lazy(() => import("./pages/employee/MyProfile"));
+const MyDocuments = lazy(() => import("./pages/employee/MyDocuments"));
+const ActivarEmpleado = lazy(() => import("./pages/employee/ActivarEmpleado"));
 
 // Accounting
 const AccountingDashboard = lazy(() => import("./pages/admin/accounting/AccountingDashboard"));
@@ -267,6 +272,12 @@ function Router() {
       <Route path="/admin/personal">{() => <Suspense fallback={<AdminLoadingFallback />}><HRDashboard /></Suspense>}</Route>
       <Route path="/admin/personal/empleados">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeesList /></Suspense>}</Route>
       <Route path="/admin/personal/empleados/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeeDetail /></Suspense>}</Route>
+
+      {/* Portal del Empleado (Fase 3) */}
+      <Route path="/empleado">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeePortal /></Suspense>}</Route>
+      <Route path="/empleado/perfil">{() => <Suspense fallback={<AdminLoadingFallback />}><MyProfile /></Suspense>}</Route>
+      <Route path="/empleado/documentos">{() => <Suspense fallback={<AdminLoadingFallback />}><MyDocuments /></Suspense>}</Route>
+      <Route path="/empleado/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivarEmpleado /></Suspense>}</Route>
 
       {/* Accounting */}
       <Route path="/admin/contabilidad/control-diario">{() => <Suspense fallback={<AdminLoadingFallback />}><DailyControlCenter /></Suspense>}</Route>

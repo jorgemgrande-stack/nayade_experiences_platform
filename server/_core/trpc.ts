@@ -187,3 +187,24 @@ export const adminrestProcedure = t.procedure.use(
     });
   }),
 );
+
+/**
+ * employeeProcedure: acceso Portal del Empleado.
+ * Solo permite roles 'employee' (nuevo en Fase 3 RRHH) y 'monitor' (legacy).
+ * No comprueba aún la vinculación con la tabla monitors — eso lo hace
+ * cada endpoint que necesite resolver el employeeId del usuario actual,
+ * usando `monitors.user_id = ctx.user.id`.
+ */
+export const employeeProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+    if (!ctx.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    }
+    const allowed = ["employee", "monitor"].includes(ctx.user.role as string);
+    if (!allowed) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al portal del empleado" });
+    }
+    return next({ ctx: { ...ctx, user: ctx.user } });
+  }),
+);

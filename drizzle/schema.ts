@@ -21,7 +21,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest", "controler", "partner_admin", "partner_user"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest", "controler", "partner_admin", "partner_user", "employee"]).default("user").notNull(),
   partnerId: int("partnerId"),
   phone: varchar("phone", { length: 32 }),
   avatarUrl: text("avatarUrl"),
