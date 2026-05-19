@@ -687,6 +687,20 @@
       "when": 1779224784206,
       "tag": "0099_fix_tpv_operations_duplicates",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "5",
+      "when": 1779224785206,
+      "tag": "0100_hr_employees_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "5",
+      "when": 1779224786206,
+      "tag": "0101_hr_documents_enum_extend",
+      "breakpoints": true
     }
   ]
 }

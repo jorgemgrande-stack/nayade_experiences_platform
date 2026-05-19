@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  date,
   decimal,
   int,
   json,
@@ -2310,7 +2311,11 @@ export const pdfTemplates = mysqlTable("pdf_templates", {
 export type PdfTemplate = typeof pdfTemplates.$inferSelect;
 export type InsertPdfTemplate = typeof pdfTemplates.$inferInsert;
 
-// ─── MONITORS (Personal Operativo) ───────────────────────────────────────────
+// ─── MONITORS / EMPLEADOS ────────────────────────────────────────────────────
+// Tabla física: `monitors`. En código nuevo se accede como `employees` (alias
+// más abajo) — siguiendo el plan de Fase 1 del módulo Personal/RRHH:
+// reutilizamos la tabla sin renombrar para preservar FKs como
+// reservation_operational.monitor_id.
 export const monitors = mysqlTable("monitors", {
   id: int("id").autoincrement().primaryKey(),
   // Datos personales
@@ -2339,24 +2344,55 @@ export const monitors = mysqlTable("monitors", {
   notes: text("notes"),
   // Vínculo con usuario del sistema (opcional)
   userId: int("user_id"),
+  // ─── Fase 1 RRHH (migración 0100): datos de empleado ──
+  position: varchar("position", { length: 64 }),
+  department: varchar("department", { length: 64 }),
+  weeklyHours: decimal("weekly_hours", { precision: 5, scale: 2 }),
+  holidayDaysYear: int("holiday_days_year").default(22),
+  nss: varchar("nss", { length: 20 }),
+  irpfPercent: decimal("irpf_percent", { precision: 5, scale: 2 }),
+  costCenterId: int("cost_center_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 export type Monitor = typeof monitors.$inferSelect;
 export type InsertMonitor = typeof monitors.$inferInsert;
 
-// ─── MONITOR DOCUMENTS ───────────────────────────────────────────────────────
+// Alias conceptual para el código nuevo de RRHH. Apunta a la misma tabla MySQL.
+export const employees = monitors;
+export type Employee = Monitor;
+export type InsertEmployee = InsertMonitor;
+
+// ─── MONITOR DOCUMENTS / EMPLOYEE DOCUMENTS ──────────────────────────────────
 export const monitorDocuments = mysqlTable("monitor_documents", {
   id: int("id").autoincrement().primaryKey(),
   monitorId: int("monitor_id").notNull(),
-  type: mysqlEnum("type", ["dni", "contrato", "certificado", "otro"]).notNull().default("otro"),
+  type: mysqlEnum("type", [
+    "dni",
+    "contrato",
+    "certificado",
+    // Ampliado por migración 0101 (Fase 1 RRHH)
+    "prl",
+    "formacion",
+    "nomina_pdf",
+    "baja_medica",
+    "finiquito",
+    "otro",
+  ]).notNull().default("otro"),
   name: varchar("name", { length: 255 }).notNull(),
   fileUrl: text("file_url").notNull(),
   fileKey: varchar("file_key", { length: 512 }).notNull(),
   uploadedBy: int("uploaded_by"),
+  // ─── Fase 1 RRHH (migración 0101) ──
+  expiresAt: date("expires_at"),
+  signedByEmployeeAt: timestamp("signed_by_employee_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type MonitorDocument = typeof monitorDocuments.$inferSelect;
+
+// Alias conceptual para RRHH.
+export const employeeDocuments = monitorDocuments;
+export type EmployeeDocument = MonitorDocument;
 
 // ─── MONITOR PAYROLL (Nóminas) ───────────────────────────────────────────────
 export const monitorPayroll = mysqlTable("monitor_payroll", {
