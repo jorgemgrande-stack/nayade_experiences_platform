@@ -12,7 +12,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import {
-  LayoutDashboard, User, FileText, LogOut, Loader2, Phone,
+  LayoutDashboard, User, FileText, LogOut, Loader2, Phone, Clock,
 } from "lucide-react";
 
 const LOGO_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
@@ -91,6 +91,9 @@ function EmployeeLayoutInner({ user, location, navigate, logout, children }: {
           <nav className="flex items-center gap-1 pb-0 -mb-px overflow-x-auto">
             <NavTab href="/empleado" active={location === "/empleado"} icon={<LayoutDashboard className="w-3.5 h-3.5" />}>
               Inicio
+            </NavTab>
+            <NavTab href="/empleado/fichar" active={location.startsWith("/empleado/fichar")} icon={<Clock className="w-3.5 h-3.5" />}>
+              Fichar
             </NavTab>
             <NavTab href="/empleado/perfil" active={location.startsWith("/empleado/perfil")} icon={<User className="w-3.5 h-3.5" />}>
               Mi perfil

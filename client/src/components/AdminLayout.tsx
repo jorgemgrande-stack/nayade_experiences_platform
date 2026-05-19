@@ -118,6 +118,7 @@ const navItems = [
     children: [
       { label: "Dashboard", href: "/admin/personal" },
       { label: "Empleados", href: "/admin/personal/empleados" },
+      { label: "Fichajes", href: "/admin/personal/fichajes" },
     ],
   },
   {

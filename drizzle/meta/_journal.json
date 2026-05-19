@@ -708,6 +708,20 @@
       "when": 1779224787206,
       "tag": "0102_users_role_employee",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "5",
+      "when": 1779224788206,
+      "tag": "0103_hr_time_clock",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "5",
+      "when": 1779224789206,
+      "tag": "0104_hr_schedule_templates",
+      "breakpoints": true
     }
   ]
 }

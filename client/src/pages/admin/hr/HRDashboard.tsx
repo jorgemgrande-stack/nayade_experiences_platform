@@ -34,6 +34,7 @@ function PendingKpi({ label, icon: Icon, hint }: { label: string; icon: React.El
 
 export default function HRDashboard() {
   const { data: counters, isLoading } = trpc.hr.employees.counters.useQuery();
+  const { data: timeSummary } = trpc.hr.timeClock.summary.useQuery();
 
   const total = counters?.total ?? 0;
   const active = counters?.active ?? 0;
@@ -101,10 +102,36 @@ export default function HRDashboard() {
             <Clock className="w-3.5 h-3.5" /> Tiempos y vacaciones
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <PendingKpi label="Trabajando ahora" icon={UserCheck} hint="Disponible en Fase 4" />
-            <PendingKpi label="Horas del mes" icon={Clock} hint="Disponible en Fase 4" />
+            <KpiCard
+              label="Trabajando ahora"
+              value={timeSummary?.workingNowCount ?? 0}
+              icon={UserCheck}
+              color="emerald"
+              subLabel={
+                timeSummary && timeSummary.workingNowCount > 0
+                  ? timeSummary.workingNow.slice(0, 3).map(w => w.employeeName).filter(Boolean).join(", ")
+                  : "Nadie fichado ahora"
+              }
+              href="/admin/personal/fichajes"
+            />
+            <KpiCard
+              label="Horas del mes"
+              value={Math.round(timeSummary?.hoursMonth ?? 0)}
+              suffix=" h"
+              icon={Clock}
+              color="blue"
+              subLabel="Acumulado en curso"
+              href="/admin/personal/fichajes"
+            />
+            <KpiCard
+              label="Fichajes incompletos"
+              value={timeSummary?.incompleteCount ?? 0}
+              icon={AlertCircle}
+              color={timeSummary && timeSummary.incompleteCount > 0 ? "rose" : "violet"}
+              subLabel="Requieren corrección"
+              href="/admin/personal/fichajes?status=incomplete"
+            />
             <PendingKpi label="Solicitudes pendientes" icon={CalendarOff} hint="Disponible en Fase 8" />
-            <PendingKpi label="Vacaciones aprobadas" icon={CalendarOff} hint="Disponible en Fase 8" />
           </div>
         </div>
 

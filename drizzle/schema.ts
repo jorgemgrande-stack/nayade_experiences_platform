@@ -3214,3 +3214,51 @@ export const partnerBillingBatchItems = mysqlTable("partner_billing_batch_items"
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type PartnerBillingBatchItem = typeof partnerBillingBatchItems.$inferSelect;
+
+// ─── HR — REGISTRO HORARIO (Fase 4) ──────────────────────────────────────────
+// Tabla física: hr_time_clock. Cada fila es un par entrada/salida del empleado.
+// employeeId apunta a monitors.id (la tabla aliasada como `employees`).
+export const hrTimeClock = mysqlTable("hr_time_clock", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employee_id").notNull(),
+  clockInAt: timestamp("clock_in_at").notNull(),
+  clockOutAt: timestamp("clock_out_at"),
+  source: mysqlEnum("source", ["portal", "admin", "tablet", "external"]).notNull().default("portal"),
+  metaJson: text("meta_json"),
+  status: mysqlEnum("status", ["open", "closed", "incomplete", "edited", "cancelled"]).notNull().default("open"),
+  notes: text("notes"),
+  createdBy: int("created_by"),
+  updatedBy: int("updated_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrTimeClockRow = typeof hrTimeClock.$inferSelect;
+export type InsertHrTimeClock = typeof hrTimeClock.$inferInsert;
+
+// ─── HR — CALENDARIO LABORAL TEÓRICO (Fase 4) ────────────────────────────────
+// Tramos semanales recurrentes por empleado. weekday: 0=Dom … 6=Sáb (JS Date).
+// start_time / end_time son strings "HH:MM" en hora local de España.
+export const hrScheduleTemplates = mysqlTable("hr_schedule_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employee_id").notNull(),
+  weekday: int("weekday").notNull(), // 0-6 (tinyint en MySQL)
+  startTime: varchar("start_time", { length: 5 }).notNull(),
+  endTime: varchar("end_time", { length: 5 }).notNull(),
+  validFrom: date("valid_from", { mode: "string" }),
+  validUntil: date("valid_until", { mode: "string" }),
+  notes: varchar("notes", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrScheduleTemplate = typeof hrScheduleTemplates.$inferSelect;
+
+// Excepciones al calendario teórico. employeeId null = festivo global.
+export const hrScheduleExceptions = mysqlTable("hr_schedule_exceptions", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employee_id"),
+  date: date("date", { mode: "string" }).notNull(),
+  type: mysqlEnum("type", ["festivo", "vacaciones", "baja", "permiso", "otro"]).notNull().default("festivo"),
+  notes: varchar("notes", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type HrScheduleException = typeof hrScheduleExceptions.$inferSelect;

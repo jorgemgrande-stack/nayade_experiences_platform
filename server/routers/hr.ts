@@ -14,13 +14,16 @@ import { router, permissionProcedure, publicProcedure, employeeProcedure } from 
 import { TRPCError } from "@trpc/server";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc, asc, and, gte, lte, isNull, ne, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import {
   employees,
   employeeDocuments,
   monitorPayroll,
   users,
+  hrTimeClock,
+  hrScheduleTemplates,
+  hrScheduleExceptions,
 } from "../../drizzle/schema";
 import { sendEmail } from "../mailer";
 import { getUserByInviteToken, setUserPassword } from "../db";
@@ -363,7 +366,359 @@ const portalRouter = router({
   }),
 });
 
+// ─── REGISTRO HORARIO (Fase 4) ──────────────────────────────────────────────
+
+/**
+ * Calcula horas teóricas para una fecha y empleado a partir de los tramos
+ * recurrentes en hr_schedule_templates. Tiene en cuenta excepciones (festivos,
+ * vacaciones, etc.) en hr_schedule_exceptions. Devuelve horas decimales.
+ *
+ * Si el empleado no tiene calendario teórico cargado, devuelve null.
+ */
+async function theoreticalHoursForDate(employeeId: number, dateYmd: string): Promise<number | null> {
+  // Excepción global o personal anula el día entero
+  const [excepts] = await Promise.all([
+    db.select().from(hrScheduleExceptions)
+      .where(and(
+        eq(hrScheduleExceptions.date, dateYmd),
+        // Aceptamos global (employeeId NULL) o personal del empleado
+      )),
+  ]);
+  const applicable = excepts.filter(e => e.employeeId == null || e.employeeId === employeeId);
+  if (applicable.length > 0) return 0;
+
+  const weekday = new Date(`${dateYmd}T12:00:00`).getDay();
+  const tramos = await db.select().from(hrScheduleTemplates)
+    .where(and(
+      eq(hrScheduleTemplates.employeeId, employeeId),
+      eq(hrScheduleTemplates.weekday, weekday),
+    ));
+  const valid = tramos.filter(t => {
+    if (t.validFrom && t.validFrom > dateYmd) return false;
+    if (t.validUntil && t.validUntil < dateYmd) return false;
+    return true;
+  });
+  if (valid.length === 0) return null;
+
+  let total = 0;
+  for (const t of valid) {
+    const [h1, m1] = t.startTime.split(":").map(Number);
+    const [h2, m2] = t.endTime.split(":").map(Number);
+    total += ((h2 * 60 + m2) - (h1 * 60 + m1)) / 60;
+  }
+  return total;
+}
+
+/**
+ * Diferencia en horas entre dos timestamps. clockOut nulo => 0.
+ */
+function workedHours(row: { clockInAt: Date | null; clockOutAt: Date | null }): number {
+  if (!row.clockInAt || !row.clockOutAt) return 0;
+  const ms = row.clockOutAt.getTime() - row.clockInAt.getTime();
+  if (ms <= 0) return 0;
+  return ms / (1000 * 60 * 60);
+}
+
+function ymd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+const timeClockRouter = router({
+  /**
+   * EMPLEADO: fichar entrada. Si el empleado ya tiene un fichaje 'open',
+   * devuelve ese mismo (idempotente — evita duplicados al doble-clic).
+   */
+  clockIn: employeeProcedure
+    .input(z.object({ notes: z.string().optional() }).optional())
+    .mutation(async ({ ctx, input }) => {
+      const employee = await resolveCurrentEmployee(ctx.user.id);
+
+      const [openExisting] = await db.select().from(hrTimeClock)
+        .where(and(
+          eq(hrTimeClock.employeeId, employee.id),
+          eq(hrTimeClock.status, "open"),
+        ))
+        .orderBy(desc(hrTimeClock.clockInAt))
+        .limit(1);
+      if (openExisting) {
+        return { ok: true, id: openExisting.id, alreadyOpen: true, clockInAt: openExisting.clockInAt };
+      }
+
+      const now = new Date();
+      const [result] = await db.insert(hrTimeClock).values({
+        employeeId: employee.id,
+        clockInAt: now,
+        source: "portal",
+        status: "open",
+        notes: input?.notes,
+      } as any);
+      const id = (result as { insertId: number }).insertId;
+      return { ok: true, id, alreadyOpen: false, clockInAt: now };
+    }),
+
+  /**
+   * EMPLEADO: fichar salida. Cierra el fichaje 'open' más reciente.
+   * Si no hay ninguno abierto, error explícito.
+   */
+  clockOut: employeeProcedure
+    .input(z.object({ notes: z.string().optional() }).optional())
+    .mutation(async ({ ctx, input }) => {
+      const employee = await resolveCurrentEmployee(ctx.user.id);
+
+      const [open] = await db.select().from(hrTimeClock)
+        .where(and(
+          eq(hrTimeClock.employeeId, employee.id),
+          eq(hrTimeClock.status, "open"),
+        ))
+        .orderBy(desc(hrTimeClock.clockInAt))
+        .limit(1);
+      if (!open) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No tienes ningún fichaje abierto. Ficha entrada primero.",
+        });
+      }
+
+      const now = new Date();
+      await db.update(hrTimeClock)
+        .set({
+          clockOutAt: now,
+          status: "closed",
+          notes: input?.notes ?? open.notes,
+        } as any)
+        .where(eq(hrTimeClock.id, open.id));
+
+      const minutes = Math.round((now.getTime() - open.clockInAt.getTime()) / (1000 * 60));
+      return { ok: true, id: open.id, clockOutAt: now, durationMinutes: minutes };
+    }),
+
+  /**
+   * EMPLEADO: fichaje abierto actual (si existe) — para mostrar el botón
+   * correcto en el portal.
+   */
+  myCurrent: employeeProcedure.query(async ({ ctx }) => {
+    const employee = await resolveCurrentEmployee(ctx.user.id);
+    const [open] = await db.select().from(hrTimeClock)
+      .where(and(
+        eq(hrTimeClock.employeeId, employee.id),
+        eq(hrTimeClock.status, "open"),
+      ))
+      .orderBy(desc(hrTimeClock.clockInAt))
+      .limit(1);
+    return open ?? null;
+  }),
+
+  /**
+   * EMPLEADO: últimos N fichajes del propio empleado.
+   */
+  myList: employeeProcedure
+    .input(z.object({ limit: z.number().min(1).max(200).default(30) }).optional())
+    .query(async ({ ctx, input }) => {
+      const employee = await resolveCurrentEmployee(ctx.user.id);
+      const rows = await db.select().from(hrTimeClock)
+        .where(eq(hrTimeClock.employeeId, employee.id))
+        .orderBy(desc(hrTimeClock.clockInAt))
+        .limit(input?.limit ?? 30);
+      return rows.map(r => ({
+        ...r,
+        durationMinutes: r.clockInAt && r.clockOutAt
+          ? Math.round((r.clockOutAt.getTime() - r.clockInAt.getTime()) / (1000 * 60))
+          : null,
+      }));
+    }),
+
+  /**
+   * ADMIN: listado global con filtros opcionales.
+   */
+  list: hrViewProc
+    .input(z.object({
+      employeeId: z.number().optional(),
+      dateFrom: z.string().optional(), // YYYY-MM-DD
+      dateTo: z.string().optional(),
+      status: z.enum(["open", "closed", "incomplete", "edited", "cancelled"]).optional(),
+      limit: z.number().min(1).max(500).default(100),
+    }))
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      if (input.employeeId) conditions.push(eq(hrTimeClock.employeeId, input.employeeId));
+      if (input.status) conditions.push(eq(hrTimeClock.status, input.status));
+      if (input.dateFrom) conditions.push(gte(hrTimeClock.clockInAt, new Date(`${input.dateFrom}T00:00:00`)));
+      if (input.dateTo) conditions.push(lte(hrTimeClock.clockInAt, new Date(`${input.dateTo}T23:59:59`)));
+
+      const rows = await db.select({
+        id: hrTimeClock.id,
+        employeeId: hrTimeClock.employeeId,
+        employeeName: employees.fullName,
+        clockInAt: hrTimeClock.clockInAt,
+        clockOutAt: hrTimeClock.clockOutAt,
+        source: hrTimeClock.source,
+        status: hrTimeClock.status,
+        notes: hrTimeClock.notes,
+        createdBy: hrTimeClock.createdBy,
+        updatedBy: hrTimeClock.updatedBy,
+        createdAt: hrTimeClock.createdAt,
+        updatedAt: hrTimeClock.updatedAt,
+      })
+        .from(hrTimeClock)
+        .leftJoin(employees, eq(employees.id, hrTimeClock.employeeId))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(hrTimeClock.clockInAt))
+        .limit(input.limit);
+
+      return rows.map(r => ({
+        ...r,
+        durationMinutes: r.clockInAt && r.clockOutAt
+          ? Math.round((r.clockOutAt.getTime() - r.clockInAt.getTime()) / (1000 * 60))
+          : null,
+      }));
+    }),
+
+  /**
+   * ADMIN: KPIs agregados para HRDashboard.
+   */
+  summary: hrViewProc.query(async () => {
+    const now = new Date();
+    const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [workingNow, todayRows, monthRows, incomplete] = await Promise.all([
+      db.select({ id: hrTimeClock.id, employeeId: hrTimeClock.employeeId, employeeName: employees.fullName, clockInAt: hrTimeClock.clockInAt })
+        .from(hrTimeClock)
+        .leftJoin(employees, eq(employees.id, hrTimeClock.employeeId))
+        .where(eq(hrTimeClock.status, "open")),
+      db.select({ clockInAt: hrTimeClock.clockInAt, clockOutAt: hrTimeClock.clockOutAt })
+        .from(hrTimeClock)
+        .where(and(
+          gte(hrTimeClock.clockInAt, startOfDay),
+          ne(hrTimeClock.status, "cancelled"),
+        )),
+      db.select({ clockInAt: hrTimeClock.clockInAt, clockOutAt: hrTimeClock.clockOutAt })
+        .from(hrTimeClock)
+        .where(and(
+          gte(hrTimeClock.clockInAt, startOfMonth),
+          ne(hrTimeClock.status, "cancelled"),
+        )),
+      db.select({ id: hrTimeClock.id })
+        .from(hrTimeClock)
+        .where(eq(hrTimeClock.status, "incomplete")),
+    ]);
+
+    const hoursToday = todayRows.reduce((s, r) => s + workedHours(r as any), 0);
+    const hoursMonth = monthRows.reduce((s, r) => s + workedHours(r as any), 0);
+
+    return {
+      workingNow: workingNow.map(w => ({
+        id: w.id,
+        employeeId: w.employeeId,
+        employeeName: w.employeeName,
+        clockInAt: w.clockInAt,
+      })),
+      workingNowCount: workingNow.length,
+      hoursToday: parseFloat(hoursToday.toFixed(2)),
+      hoursMonth: parseFloat(hoursMonth.toFixed(2)),
+      incompleteCount: incomplete.length,
+    };
+  }),
+
+  /**
+   * ADMIN: corrección de fichaje. Cualquier cambio queda registrado vía
+   * updated_by y el status pasa a 'edited' para auditoría.
+   */
+  adminCorrect: hrViewProc
+    .input(z.object({
+      id: z.number(),
+      clockInAt: z.string().optional(),  // ISO datetime
+      clockOutAt: z.string().nullable().optional(),
+      status: z.enum(["open", "closed", "incomplete", "edited", "cancelled"]).optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const [existing] = await db.select().from(hrTimeClock)
+        .where(eq(hrTimeClock.id, input.id));
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const patch: any = { updatedBy: ctx.user.id };
+      if (input.clockInAt !== undefined) patch.clockInAt = new Date(input.clockInAt);
+      if (input.clockOutAt !== undefined) patch.clockOutAt = input.clockOutAt ? new Date(input.clockOutAt) : null;
+      if (input.notes !== undefined) patch.notes = input.notes;
+      // Si admin no fuerza un status explícito, marcar como 'edited' (audit trail)
+      patch.status = input.status ?? "edited";
+
+      await db.update(hrTimeClock).set(patch).where(eq(hrTimeClock.id, input.id));
+      return { ok: true };
+    }),
+
+  /**
+   * ADMIN: crear fichaje manualmente (p.ej. el empleado olvidó fichar).
+   */
+  adminCreate: hrViewProc
+    .input(z.object({
+      employeeId: z.number(),
+      clockInAt: z.string(),
+      clockOutAt: z.string().nullable().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const clockOut = input.clockOutAt ? new Date(input.clockOutAt) : null;
+      const [result] = await db.insert(hrTimeClock).values({
+        employeeId: input.employeeId,
+        clockInAt: new Date(input.clockInAt),
+        clockOutAt: clockOut,
+        source: "admin",
+        status: clockOut ? "edited" : "open",
+        notes: input.notes,
+        createdBy: ctx.user.id,
+        updatedBy: ctx.user.id,
+      } as any);
+      return { ok: true, id: (result as { insertId: number }).insertId };
+    }),
+});
+
+// ─── CALENDARIO TEÓRICO (Fase 4 — soporte, sin UI propia todavía) ───────────
+
+const scheduleRouter = router({
+  listForEmployee: hrViewProc
+    .input(z.object({ employeeId: z.number() }))
+    .query(async ({ input }) => {
+      const tramos = await db.select().from(hrScheduleTemplates)
+        .where(eq(hrScheduleTemplates.employeeId, input.employeeId))
+        .orderBy(asc(hrScheduleTemplates.weekday), asc(hrScheduleTemplates.startTime));
+      return tramos;
+    }),
+
+  listExceptions: hrViewProc
+    .input(z.object({
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+      employeeId: z.number().optional(),
+    }))
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      if (input.dateFrom) conditions.push(gte(hrScheduleExceptions.date, input.dateFrom));
+      if (input.dateTo) conditions.push(lte(hrScheduleExceptions.date, input.dateTo));
+      if (input.employeeId !== undefined) {
+        // Devuelve excepciones globales (employeeId IS NULL) y personales del empleado
+        conditions.push(sql`(${hrScheduleExceptions.employeeId} IS NULL OR ${hrScheduleExceptions.employeeId} = ${input.employeeId})`);
+      }
+      return await db.select().from(hrScheduleExceptions)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(asc(hrScheduleExceptions.date));
+    }),
+
+  myTheoreticalToday: employeeProcedure.query(async ({ ctx }) => {
+    const employee = await resolveCurrentEmployee(ctx.user.id);
+    const today = ymd(new Date());
+    const h = await theoreticalHoursForDate(employee.id, today);
+    return { date: today, hours: h };
+  }),
+});
+
 export const hrRouter = router({
   employees: employeesRouter,
   portal: portalRouter,
+  timeClock: timeClockRouter,
+  schedule: scheduleRouter,
 });

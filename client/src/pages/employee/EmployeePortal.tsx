@@ -6,7 +6,7 @@
  * en fases posteriores (Fase 4, Fase 5, Fase 8).
  */
 import { Link } from "wouter";
-import { User, FileText, Clock, CalendarOff, Banknote, ArrowRight } from "lucide-react";
+import { User, FileText, Clock, CalendarOff, Banknote, ArrowRight, Play, CheckCircle2 } from "lucide-react";
 import EmployeeLayout from "./EmployeeLayout";
 import { trpc } from "@/lib/trpc";
 
@@ -22,11 +22,18 @@ function ComingSoonCard({ icon: Icon, title, hint }: { icon: React.ElementType; 
   );
 }
 
+function fmtTime(d: Date | string | null | undefined) {
+  if (!d) return "—";
+  return new Date(d).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function EmployeePortal() {
   const { data: me, isLoading } = trpc.hr.portal.me.useQuery();
   const { data: docs } = trpc.hr.portal.myDocuments.useQuery();
+  const { data: current } = trpc.hr.timeClock.myCurrent.useQuery();
 
   const firstName = me?.fullName?.split(" ")[0] ?? "Empleado";
+  const isClockedIn = !!current;
 
   return (
     <EmployeeLayout>
@@ -40,6 +47,37 @@ export default function EmployeePortal() {
             Bienvenido a tu Portal del Empleado de Náyade Experiences.
           </p>
         </div>
+
+        {/* Card fichaje destacada */}
+        <Link
+          href="/empleado/fichar"
+          className={`block rounded-xl border p-4 transition-all ${
+            isClockedIn
+              ? "border-emerald-500/30 bg-emerald-500/[0.08] hover:bg-emerald-500/[0.12]"
+              : "border-orange-500/30 bg-orange-500/[0.06] hover:bg-orange-500/[0.10]"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg border flex items-center justify-center ${
+                isClockedIn ? "bg-emerald-500/20 border-emerald-500/40" : "bg-orange-500/20 border-orange-500/40"
+              }`}>
+                {isClockedIn ? <CheckCircle2 className="w-5 h-5 text-emerald-300" /> : <Play className="w-5 h-5 text-orange-300" />}
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  {isClockedIn ? "Trabajando ahora" : "Fichar entrada"}
+                </h3>
+                <p className="text-xs text-white/60">
+                  {isClockedIn
+                    ? <>Desde las <strong>{fmtTime(current!.clockInAt)}</strong> · pulsa para fichar salida</>
+                    : "Registra tu entrada en el portal"}
+                </p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-white/40" />
+          </div>
+        </Link>
 
         {/* Accesos rápidos */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -85,8 +123,7 @@ export default function EmployeePortal() {
         {/* Próximamente */}
         <div className="pt-2">
           <h2 className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-3">Próximamente</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <ComingSoonCard icon={Clock} title="Fichaje" hint="Disponible en Fase 4. Podrás fichar entrada y salida desde aquí." />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ComingSoonCard icon={CalendarOff} title="Vacaciones" hint="Disponible en Fase 8. Solicitud y consulta de vacaciones y permisos." />
             <ComingSoonCard icon={Banknote} title="Mis nóminas" hint="Disponible en Fase 5. Descarga de PDFs y consulta de plan de pagos." />
           </div>
