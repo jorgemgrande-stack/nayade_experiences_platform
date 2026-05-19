@@ -18,7 +18,7 @@
 
 -- ── 1. Reasignar referencias en card_terminal_batch_operations ──────────────
 UPDATE card_terminal_batch_operations bo
-JOIN card_terminal_operations o ON o.id = bo.cardTerminalOperationId
+JOIN card_terminal_operations o ON o.id = bo.card_terminal_operation_id
 JOIN (
   SELECT
     operation_number,
@@ -34,8 +34,8 @@ JOIN (
   GROUP BY operation_number
   HAVING COUNT(*) > 1
 ) w ON w.operation_number = o.operation_number
-SET bo.cardTerminalOperationId = w.winner_id
-WHERE bo.cardTerminalOperationId <> w.winner_id;
+SET bo.card_terminal_operation_id = w.winner_id
+WHERE bo.card_terminal_operation_id <> w.winner_id;
 --> statement-breakpoint
 
 -- ── 2. Borrar filas perdedoras de card_terminal_operations ──────────────────
