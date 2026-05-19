@@ -6,6 +6,7 @@ import {
   Bell, Search, User, BedDouble, Sparkles, UtensilsCrossed, AlertCircle,
   UserPlus, FileCheck, ChevronRight, Receipt, Truck, Monitor, Tag, Ticket,
   Sun, Moon, ExternalLink, Target, MessageCircle, Bot, Mail, Building2,
+  Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -103,8 +104,20 @@ const navItems = [
     children: [
       { label: "Calendario", href: "/admin/operaciones/calendario" },
       { label: "Actividades del Día", href: "/admin/operaciones/actividades" },
+      // "Monitores" redirige a /admin/personal/empleados (Fase 2 RRHH).
+      // La UI clásica sigue accesible en /admin/operaciones/monitores-legacy.
       { label: "Monitores", href: "/admin/operaciones/monitores" },
       { label: "Reseñas", href: "/admin/operaciones/resenas" },
+    ],
+  },
+  {
+    label: "Personal",
+    href: "/admin/personal",
+    icon: Briefcase,
+    roles: ["admin"],
+    children: [
+      { label: "Dashboard", href: "/admin/personal" },
+      { label: "Empleados", href: "/admin/personal/empleados" },
     ],
   },
   {

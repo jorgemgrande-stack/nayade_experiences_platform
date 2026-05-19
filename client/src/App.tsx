@@ -72,6 +72,9 @@ const CalendarView = lazy(() => import("./pages/admin/operations/CalendarView"))
 const BookingsList = lazy(() => import("./pages/admin/operations/BookingsList"));
 const DailyActivities = lazy(() => import("./pages/admin/operations/DailyActivities"));
 const MonitorsManager = lazy(() => import("./pages/admin/operations/MonitorsManager"));
+const HRDashboard = lazy(() => import("./pages/admin/hr/HRDashboard"));
+const EmployeesList = lazy(() => import("./pages/admin/hr/EmployeesList"));
+const EmployeeDetail = lazy(() => import("./pages/admin/hr/EmployeeDetail"));
 
 // Accounting
 const AccountingDashboard = lazy(() => import("./pages/admin/accounting/AccountingDashboard"));
@@ -253,8 +256,17 @@ function Router() {
       <Route path="/admin/operaciones/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><CalendarView /></Suspense>}</Route>
       <Route path="/admin/operaciones/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><BookingsList /></Suspense>}</Route>
       <Route path="/admin/operaciones/actividades">{() => <Suspense fallback={<AdminLoadingFallback />}><DailyActivities /></Suspense>}</Route>
-      <Route path="/admin/operaciones/monitores">{() => <Suspense fallback={<AdminLoadingFallback />}><MonitorsManager /></Suspense>}</Route>
+      {/* Fase 2 RRHH: la ruta clásica redirige a la nueva UI. La UI clásica
+          sigue accesible vía /admin/operaciones/monitores-legacy para que se
+          pueda verificar lado a lado durante la transición. */}
+      <Route path="/admin/operaciones/monitores">{() => { window.location.replace("/admin/personal/empleados"); return null; }}</Route>
+      <Route path="/admin/operaciones/monitores-legacy">{() => <Suspense fallback={<AdminLoadingFallback />}><MonitorsManager /></Suspense>}</Route>
       <Route path="/admin/operaciones/reservas-redsys">{() => { window.location.replace("/admin/crm?tab=reservations"); return null; }}</Route>
+
+      {/* Personal / RRHH (Fase 2) */}
+      <Route path="/admin/personal">{() => <Suspense fallback={<AdminLoadingFallback />}><HRDashboard /></Suspense>}</Route>
+      <Route path="/admin/personal/empleados">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeesList /></Suspense>}</Route>
+      <Route path="/admin/personal/empleados/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><EmployeeDetail /></Suspense>}</Route>
 
       {/* Accounting */}
       <Route path="/admin/contabilidad/control-diario">{() => <Suspense fallback={<AdminLoadingFallback />}><DailyControlCenter /></Suspense>}</Route>
