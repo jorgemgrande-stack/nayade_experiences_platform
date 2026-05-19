@@ -3590,13 +3590,13 @@ export const crmRouter = router({
         const todayStr = now.toISOString().split("T")[0];
         const futureStr = future.toISOString().split("T")[0];
 
-        // Mostrar cuotas de presupuestos activos (enviados, en proceso o aceptados).
-        // Excluye borradores y rechazados — incluye planes donde aún no se ha pagado ninguna cuota.
+        // Solo se incluyen cuotas de presupuestos que ya tienen una reserva
+        // creada (existe compromiso real de pago). Un presupuesto sin reserva
+        // — aunque tenga plan fraccionado — no genera aviso de incidencia.
         const conditions = [
           ne(paymentInstallments.status, "paid"),
           ne(paymentInstallments.status, "cancelled"),
-          ne(quotes.status, "borrador"),
-          ne(quotes.status, "rechazado"),
+          ne(reservations.status, "cancelled"),
         ];
         if (input.status === "overdue") {
           conditions.push(lte(paymentInstallments.dueDate, todayStr));
@@ -3629,6 +3629,7 @@ export const crmRouter = router({
           })
           .from(paymentInstallments)
           .innerJoin(quotes, eq(quotes.id, paymentInstallments.quoteId))
+          .innerJoin(reservations, eq(reservations.quoteId, quotes.id))
           .where(and(...conditions))
           .orderBy(paymentInstallments.dueDate)
           .limit(50);
