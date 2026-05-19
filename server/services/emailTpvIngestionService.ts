@@ -90,19 +90,20 @@ function normalizeStr(s: string | null | undefined): string {
 }
 
 function makeDuplicateKey(
-  commerceCode: string | null,
+  _commerceCode: string | null,
   terminalCode: string | null,
   operationNumber: string,
-  amount: number,
-  dt: Date
+  _amount: number,
+  _dt: Date
 ): string {
-  const dtStr = dt.toISOString().slice(0, 16);
+  // Solo terminal + operationNumber: son los únicos campos estables entre
+  // fuentes distintas (ticket individual vs resumen diario). En el resumen,
+  // la hora suele quedar a 00:00 y el commerceCode puede faltar; usarlos en
+  // la clave provocaba que el mismo número de operación se insertase dos veces.
+  // Comercia garantiza que operation_number es único por terminal.
   return [
-    normalizeStr(commerceCode),
     normalizeStr(terminalCode),
     normalizeStr(operationNumber),
-    amount.toFixed(2),
-    dtStr,
   ].join("|");
 }
 
