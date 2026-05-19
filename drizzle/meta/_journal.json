@@ -624,6 +624,69 @@
       "when": 1747526400000,
       "tag": "0094_reservation_public_token",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "5",
+      "when": 1779224776206,
+      "tag": "0082_commercial_followup",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "5",
+      "when": 1779224777206,
+      "tag": "0083_ghl_inbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "5",
+      "when": 1779224778206,
+      "tag": "0084_vapi_calls",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "5",
+      "when": 1779224779206,
+      "tag": "0087_commercial_emails_attachments_meta",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "5",
+      "when": 1779224780206,
+      "tag": "0088_partners_module",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "5",
+      "when": 1779224781206,
+      "tag": "0095_phase1_consolidation_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "5",
+      "when": 1779224782206,
+      "tag": "0096_phase2_email_automation_commercial",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "5",
+      "when": 1779224783206,
+      "tag": "0097_phase3_switchover",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "5",
+      "when": 1779224784206,
+      "tag": "0099_fix_tpv_operations_duplicates",
+      "breakpoints": true
     }
   ]
 }
