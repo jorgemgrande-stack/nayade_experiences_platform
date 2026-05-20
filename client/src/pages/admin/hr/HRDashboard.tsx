@@ -42,6 +42,8 @@ export default function HRDashboard() {
   const { data: timeSummary } = trpc.hr.timeClock.summary.useQuery();
   const { data: fiscalSummary } = trpc.hr.fiscal.summary.useQuery();
   const { data: bonusSummary } = trpc.hr.bonus.summary.useQuery();
+  const { data: quarterSummary } = trpc.hr.fiscal.quarterSummary.useQuery({ year: new Date().getFullYear() });
+  const { data: laborExpenses } = trpc.hr.fiscal.laborExpensesSummary.useQuery();
 
   const total = counters?.total ?? 0;
   const active = counters?.active ?? 0;
@@ -232,16 +234,53 @@ export default function HRDashboard() {
           </div>
         </div>
 
-        {/* Sección 4: Alertas */}
+        {/* Sección 4: Control fiscal y alertas */}
         <div className="px-4 sm:px-6 py-5 border-t border-foreground/[0.05]">
           <h2 className="text-[11px] font-bold uppercase tracking-widest text-foreground/50 mb-3 flex items-center gap-2">
-            <AlertCircle className="w-3.5 h-3.5" /> Alertas
+            <Receipt className="w-3.5 h-3.5" /> Control fiscal
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <PendingKpi label="Contratos próximos a vencer" icon={AlertCircle} hint="Disponible en Fase 2.1" />
-            <PendingKpi label="Fichajes incompletos" icon={Clock} hint="Disponible en Fase 4" />
-            <PendingKpi label="Docs próximos a vencer" icon={FileText} hint="Disponible en Fase 2.1" />
-            <PendingKpi label="Gastos pendientes" icon={Euro} hint="Disponible en Fase 7" />
+            <KpiCard
+              label="IRPF retenido (año)"
+              value={Math.round(quarterSummary?.yearIrpfRetained ?? 0)}
+              suffix=" €"
+              icon={Receipt}
+              color="blue"
+              subLabel="Acumulado del ejercicio"
+              href="/admin/personal/fiscal"
+            />
+            <KpiCard
+              label="SS empresa (año)"
+              value={Math.round(quarterSummary?.yearSsEstimated ?? 0)}
+              suffix=" €"
+              icon={Banknote}
+              color="violet"
+              subLabel="Estimada acumulada"
+              href="/admin/personal/fiscal"
+            />
+            <KpiCard
+              label="Gastos laborales pendientes"
+              value={laborExpenses?.pendingCount ?? 0}
+              icon={Euro}
+              color={laborExpenses && laborExpenses.pendingCount > 0 ? "rose" : "emerald"}
+              subLabel={
+                laborExpenses && laborExpenses.pendingAmount > 0
+                  ? `${Math.round(laborExpenses.pendingAmount)} € por conciliar`
+                  : "Todo conciliado"
+              }
+              href="/admin/contabilidad/gastos"
+            />
+            <KpiCard
+              label="Gastos laborales pagados"
+              value={laborExpenses?.paidCount ?? 0}
+              icon={Euro}
+              color="emerald"
+              subLabel={
+                laborExpenses
+                  ? `${Math.round(laborExpenses.paidAmount)} € registrados`
+                  : "—"
+              }
+            />
           </div>
         </div>
 

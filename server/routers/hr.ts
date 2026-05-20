@@ -14,7 +14,7 @@ import { router, permissionProcedure, publicProcedure, employeeProcedure } from 
 import { TRPCError } from "@trpc/server";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
-import { eq, desc, asc, and, gte, lte, isNull, ne, sql } from "drizzle-orm";
+import { eq, desc, asc, and, gte, lte, isNull, ne, sql, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import {
   employees,
@@ -1397,6 +1397,84 @@ const fiscalRouter = router({
       }
       return { ok: true, updated };
     }),
+
+  /**
+   * Resumen trimestral del año (Fase 7 — preparación Gestoría).
+   * Agrupa IRPF retenido y SS por trimestre natural. Pensado para
+   * alimentar el Modelo 111 (IRPF trimestral) y el control de TC1/TC2.
+   */
+  quarterSummary: hrViewProc
+    .input(z.object({ year: z.number().int().min(2020).max(2100) }))
+    .query(async ({ input }) => {
+      const yearPrefix = `${input.year}-`;
+      const irpfRows = await db.select().from(hrIrpfLedger)
+        .where(sql`${hrIrpfLedger.period} LIKE ${yearPrefix + "%"}`);
+      const ssRows = await db.select().from(hrSsLedger)
+        .where(sql`${hrSsLedger.period} LIKE ${yearPrefix + "%"}`);
+
+      const quarterOf = (period: string) => {
+        const m = Number(period.slice(5, 7));
+        return Math.ceil(m / 3); // 1-4
+      };
+
+      const quarters = [1, 2, 3, 4].map(q => {
+        const irpfQ = irpfRows.filter(r => quarterOf(r.period) === q);
+        const ssQ = ssRows.filter(r => quarterOf(r.period) === q);
+        const statusBreakdown = (rows: { fiscalStatus: string }[]) => ({
+          pendiente: rows.filter(r => r.fiscalStatus === "pendiente").length,
+          revisado: rows.filter(r => r.fiscalStatus === "revisado").length,
+          exportado: rows.filter(r => r.fiscalStatus === "exportado").length,
+          presentado: rows.filter(r => r.fiscalStatus === "presentado").length,
+        });
+        return {
+          quarter: q,
+          label: `T${q}`,
+          irpfRetained: parseFloat(irpfQ.reduce((s, r) => s + Number(r.retainedAmount), 0).toFixed(2)),
+          irpfTaxableBase: parseFloat(irpfQ.reduce((s, r) => s + Number(r.taxableBase), 0).toFixed(2)),
+          irpfCount: irpfQ.length,
+          irpfStatus: statusBreakdown(irpfQ),
+          ssEstimated: parseFloat(ssQ.reduce((s, r) => s + Number(r.estimatedAmount), 0).toFixed(2)),
+          ssReal: parseFloat(ssQ.reduce((s, r) => s + Number(r.realAmount ?? 0), 0).toFixed(2)),
+          ssCount: ssQ.length,
+          ssStatus: statusBreakdown(ssQ),
+        };
+      });
+
+      return {
+        year: input.year,
+        quarters,
+        yearIrpfRetained: parseFloat(irpfRows.reduce((s, r) => s + Number(r.retainedAmount), 0).toFixed(2)),
+        yearSsEstimated: parseFloat(ssRows.reduce((s, r) => s + Number(r.estimatedAmount), 0).toFixed(2)),
+        yearSsReal: parseFloat(ssRows.reduce((s, r) => s + Number(r.realAmount ?? 0), 0).toFixed(2)),
+      };
+    }),
+
+  /**
+   * Gastos laborales pendientes / pagados (Fase 7).
+   * Filtra expenses con source en hr_payroll_batch / hr_bonus / hr_ss_adjustment.
+   * Alimenta los KPIs de la sección Alertas del dashboard.
+   */
+  laborExpensesSummary: hrViewProc.query(async () => {
+    const rows = await db.select({
+      id: expenses.id,
+      amount: expenses.amount,
+      status: expenses.status,
+      source: expenses.source,
+    })
+      .from(expenses)
+      .where(inArray(expenses.source, ["hr_payroll_batch", "hr_bonus", "hr_ss_adjustment"]));
+
+    const pending = rows.filter(r => r.status === "pending");
+    const paid = rows.filter(r => r.status !== "pending");
+    const sum = (rs: { amount: string | number }[]) => rs.reduce((s, r) => s + Number(r.amount), 0);
+
+    return {
+      pendingCount: pending.length,
+      pendingAmount: parseFloat(sum(pending).toFixed(2)),
+      paidCount: paid.length,
+      paidAmount: parseFloat(sum(paid).toFixed(2)),
+    };
+  }),
 
   /**
    * Resumen del periodo: totales para alimentar HRDashboard sección
