@@ -230,6 +230,97 @@ export function lines111(r: Labor111): { concept: string; base: string; rate: st
   ];
 }
 
+// ─── IMPUESTO DE SOCIEDADES — Modelos 200 y 202 (Fase 4) ─────────────────────
+
+export type Corporate = {
+  year: number;
+  income: number;
+  expenses: number;
+  result: number;
+  taxRate: number;
+  quota: number;
+  installments: { period: "1P" | "2P" | "3P"; cumulativeBase: number; payment: number }[];
+};
+
+/**
+ * Cuenta de resultados acumulada del ejercicio hasta un mes (inclusive).
+ * Ingresos = base de facturas emitidas no anuladas (abonos restan).
+ * Gastos = base imponible de los gastos (coste neto deducible).
+ * Es una estimación: no contempla amortizaciones formales ni ajustes
+ * extracontables, que aplica la gestoría.
+ */
+async function plUpToMonth(year: number, monthInclusive: number): Promise<{ income: number; expenses: number }> {
+  const start = new Date(year, 0, 1);
+  const endExcl = new Date(year, monthInclusive, 1);
+  const startStr = `${year}-01-01`;
+  const lastDay = new Date(year, monthInclusive, 0).getDate();
+  const endStr = `${year}-${String(monthInclusive).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  const invRows = await db
+    .select({ subtotal: invoices.subtotal, invoiceType: invoices.invoiceType })
+    .from(invoices)
+    .where(and(gte(invoices.issuedAt, start), lt(invoices.issuedAt, endExcl), ne(invoices.status, "anulada")));
+  const income = round2(invRows.reduce(
+    (s, r) => s + (r.invoiceType === "abono" ? -1 : 1) * Number(r.subtotal ?? 0), 0));
+
+  const expRows = await db
+    .select({ taxBase: expenses.taxBase, amount: expenses.amount })
+    .from(expenses)
+    .where(or(
+      and(gte(expenses.accrualDate, startStr), lte(expenses.accrualDate, endStr)),
+      and(isNull(expenses.accrualDate), gte(expenses.date, startStr), lte(expenses.date, endStr)),
+    ));
+  const exp = round2(expRows.reduce(
+    (s, r) => s + (r.taxBase != null ? Number(r.taxBase) : Number(r.amount ?? 0)), 0));
+
+  return { income, expenses: exp };
+}
+
+/**
+ * Estima el Impuesto de Sociedades (Modelo 200) y los pagos fraccionados
+ * (Modelo 202, modalidad base). Coeficiente del 202 = 5/7 del tipo, redondeado
+ * por defecto (17 % para el tipo general del 25 %).
+ */
+export async function computeCorporate(year: number, taxRate: number): Promise<Corporate> {
+  const annual = await plUpToMonth(year, 12);
+  const result = round2(annual.income - annual.expenses);
+  const quota = result > 0 ? round2((result * taxRate) / 100) : 0;
+
+  const coef = Math.floor((taxRate * 5) / 7) / 100;
+  const [pl3, pl9, pl11] = await Promise.all([
+    plUpToMonth(year, 3), plUpToMonth(year, 9), plUpToMonth(year, 11),
+  ]);
+  const b3 = round2(pl3.income - pl3.expenses);
+  const b9 = round2(pl9.income - pl9.expenses);
+  const b11 = round2(pl11.income - pl11.expenses);
+  const p1 = Math.max(0, round2(b3 * coef));
+  const p2 = Math.max(0, round2(b9 * coef - p1));
+  const p3 = Math.max(0, round2(b11 * coef - p1 - p2));
+
+  return {
+    year,
+    income: annual.income,
+    expenses: annual.expenses,
+    result,
+    taxRate,
+    quota,
+    installments: [
+      { period: "1P", cumulativeBase: b3, payment: p1 },
+      { period: "2P", cumulativeBase: b9, payment: p2 },
+      { period: "3P", cumulativeBase: b11, payment: p3 },
+    ],
+  };
+}
+
+/** Líneas de desglose (tax_obligation_lines) del Modelo 200. */
+export function lines200(c: Corporate): { concept: string; base: string; rate: string | null; amount: string; sourceType: string }[] {
+  return [
+    { concept: "Ingresos devengados", base: String(c.income), rate: null, amount: String(c.income), sourceType: "invoices" },
+    { concept: "Gastos deducibles", base: String(c.expenses), rate: null, amount: String(-c.expenses), sourceType: "expenses" },
+    { concept: "Cuota Impuesto de Sociedades estimada", base: String(c.result), rate: String(c.taxRate), amount: String(c.quota), sourceType: "calc" },
+  ];
+}
+
 /** Líneas de desglose (tax_obligation_lines) de un resultado 303. */
 export function lines303(r: Vat303): { concept: string; base: string; rate: string | null; amount: string; sourceType: string }[] {
   const out: { concept: string; base: string; rate: string | null; amount: string; sourceType: string }[] = [];

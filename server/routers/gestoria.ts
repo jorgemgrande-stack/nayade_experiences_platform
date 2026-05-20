@@ -21,6 +21,7 @@ import {
 import {
   compute303, compute390, lines303, type Vat303,
   compute111, compute190, lines111, type Labor111,
+  computeCorporate, lines200,
 } from "../gestoriaTax";
 
 /** Línea de desglose para persistir en tax_obligation_lines. */
@@ -350,6 +351,47 @@ export const gestoriaRouter = router({
         await persistObligationEstimate(obs, "190", `${year}`, annualResult, annualLines);
 
         return { ok: true, quarters, annualResult };
+      }),
+  }),
+
+  // ─── Impuesto de Sociedades (Modelos 200 y 202) ────────────────────────────
+  corporate: router({
+    /** Estimación del Impuesto de Sociedades y los pagos fraccionados. */
+    preview: gestoriaView
+      .input(z.object({ year: z.number().int() }))
+      .query(async ({ input }) => {
+        const [settings] = await db.select().from(taxSettings).where(eq(taxSettings.id, 1));
+        const rate = Number(settings?.corporateTaxRate ?? 25);
+        return computeCorporate(input.year, rate);
+      }),
+
+    /**
+     * Recalcula el Impuesto de Sociedades del ejercicio y vuelca la estimación
+     * a las obligaciones 200 (cuota anual) y 202 (×3 pagos fraccionados).
+     */
+    recalculate: gestoriaManage
+      .input(z.object({ year: z.number().int() }))
+      .mutation(async ({ input }) => {
+        const year = input.year;
+        const [settings] = await db.select().from(taxSettings).where(eq(taxSettings.id, 1));
+        const rate = Number(settings?.corporateTaxRate ?? 25);
+        const c = await computeCorporate(year, rate);
+
+        await ensureYearObligations(year);
+        const obs = await db.select().from(taxObligations).where(eq(taxObligations.year, year));
+
+        await persistObligationEstimate(obs, "200", `${year}`, c.quota, lines200(c));
+        for (const inst of c.installments) {
+          await persistObligationEstimate(obs, "202", `${year}-${inst.period}`, inst.payment, [{
+            concept: `Pago fraccionado ${inst.period} (modalidad base)`,
+            base: String(inst.cumulativeBase),
+            rate: null,
+            amount: String(inst.payment),
+            sourceType: "calc",
+          }]);
+        }
+
+        return { ok: true, corporate: c };
       }),
   }),
 });

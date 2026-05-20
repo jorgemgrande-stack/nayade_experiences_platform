@@ -90,6 +90,7 @@ const GestoriaCalendario = lazy(() => import("./pages/admin/gestoria/GestoriaCal
 const GestoriaConfiguracion = lazy(() => import("./pages/admin/gestoria/GestoriaConfiguracion"));
 const GestoriaIVA = lazy(() => import("./pages/admin/gestoria/GestoriaIVA"));
 const GestoriaLaboral = lazy(() => import("./pages/admin/gestoria/GestoriaLaboral"));
+const GestoriaSociedades = lazy(() => import("./pages/admin/gestoria/GestoriaSociedades"));
 // Fase 8 RRHH — Vacaciones
 const LeaveManager = lazy(() => import("./pages/admin/hr/LeaveManager"));
 const MyLeaves = lazy(() => import("./pages/employee/MyLeaves"));
@@ -335,6 +336,7 @@ function Router() {
       <Route path="/admin/gestoria">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaDashboard /></Suspense>}</Route>
       <Route path="/admin/gestoria/iva">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaIVA /></Suspense>}</Route>
       <Route path="/admin/gestoria/laboral">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaLaboral /></Suspense>}</Route>
+      <Route path="/admin/gestoria/sociedades">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaSociedades /></Suspense>}</Route>
       <Route path="/admin/gestoria/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaCalendario /></Suspense>}</Route>
       <Route path="/admin/gestoria/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaConfiguracion /></Suspense>}</Route>
 
