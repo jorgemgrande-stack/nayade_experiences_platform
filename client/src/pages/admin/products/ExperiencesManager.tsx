@@ -39,7 +39,7 @@ type ExpForm = {
   difficulty: string; isFeatured: boolean; isActive: boolean; isPublished: boolean; isPresentialSale: boolean;
   includes: string[]; excludes: string[];
   discountPercent: string; discountExpiresAt: string;
-  fiscalRegime: string; productType: string;
+  fiscalRegime: string; taxRate: string; productType: string;
   providerPercent: string; agencyMarginPercent: string;
   supplierId: string;
   supplierCommissionPercent: string;
@@ -58,7 +58,7 @@ const emptyForm: ExpForm = {
   difficulty: "facil", isFeatured: false, isActive: true, isPublished: true, isPresentialSale: false,
   includes: [], excludes: [],
   discountPercent: "", discountExpiresAt: "",
-  fiscalRegime: "general", productType: "actividad",
+  fiscalRegime: "general", taxRate: "21", productType: "actividad",
   providerPercent: "", agencyMarginPercent: "",
   supplierId: "", supplierCommissionPercent: "",
   supplierCostType: "comision_sobre_venta", settlementFrequency: "mensual",
@@ -217,6 +217,7 @@ export default function ExperiencesManager() {
         ? new Date(exp.discountExpiresAt as string | number | Date).toISOString().slice(0, 10)
         : "",
       fiscalRegime: String(exp.fiscalRegime ?? "general"),
+      taxRate: exp.taxRate != null ? String(exp.taxRate) : "21",
       productType: String(exp.productType ?? "actividad"),
       providerPercent: exp.providerPercent != null ? String(exp.providerPercent) : "",
       agencyMarginPercent: exp.agencyMarginPercent != null ? String(exp.agencyMarginPercent) : "",
@@ -263,6 +264,7 @@ export default function ExperiencesManager() {
       discountPercent: form.discountPercent ? form.discountPercent : undefined,
       discountExpiresAt: form.discountExpiresAt ? form.discountExpiresAt : undefined,
       fiscalRegime: form.fiscalRegime as "general" | "reav",
+      taxRate: form.fiscalRegime === "reav" ? "0" : form.taxRate,
       productType: form.productType,
       providerPercent: form.providerPercent ? form.providerPercent : undefined,
       agencyMarginPercent: form.agencyMarginPercent ? form.agencyMarginPercent : undefined,
@@ -651,15 +653,22 @@ export default function ExperiencesManager() {
                 </Label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-xs text-muted-foreground">Régimen</Label>
+                    <Label className="text-xs text-muted-foreground">Régimen fiscal</Label>
                     <select
                       className="w-full mt-1 border rounded-lg px-3 py-2 text-sm bg-background text-foreground"
-                      value={form.fiscalRegime}
-                      onChange={(e) => setForm({ ...form, fiscalRegime: e.target.value })}
+                      value={form.fiscalRegime === "reav" ? "reav" : (form.taxRate === "10" ? "iva10" : "iva21")}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "reav") setForm({ ...form, fiscalRegime: "reav", taxRate: "0" });
+                        else if (v === "iva10") setForm({ ...form, fiscalRegime: "general", taxRate: "10" });
+                        else setForm({ ...form, fiscalRegime: "general", taxRate: "21" });
+                      }}
                     >
-                      <option value="general">Régimen General (IVA)</option>
+                      <option value="iva21">IVA 21%</option>
+                      <option value="iva10">IVA 10%</option>
                       <option value="reav">REAV — Régimen Especial Agencias de Viaje</option>
                     </select>
+                    <p className="text-[10px] text-muted-foreground mt-1">El PVP se entiende como precio final con impuestos incluidos.</p>
                   </div>
                   <div>
                     <Label className="text-xs text-muted-foreground">Tipo de producto</Label>

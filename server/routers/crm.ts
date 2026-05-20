@@ -315,6 +315,47 @@ async function sendTransferConfirmationEmail(data: {
 const staff = staffProcedure;
 const admin = adminProcedure;
 
+/**
+ * El producto es la fuente de verdad fiscal. Para cada línea de presupuesto con
+ * `productId`, sobreescribe `fiscalRegime`/`taxRate` con los valores reales del
+ * producto en BD, impidiendo que el cliente fuerce un régimen distinto al del
+ * catálogo. Las líneas manuales (sin `productId`) se devuelven intactas.
+ *
+ * El `productId` de una línea CRM puede referir a una experiencia, un pack o un
+ * legoPack. Los legoPacks no tienen modelo fiscal propio → siempre general 21%.
+ * Si un mismo `productId` existe en más de una tabla la línea es ambigua (no se
+ * sabe a qué producto refiere) y se respeta el valor del cliente.
+ */
+async function sanitizeQuoteItemsFiscal<
+  T extends { productId?: number; fiscalRegime?: "reav" | "general"; taxRate?: number }
+>(items: T[]): Promise<T[]> {
+  const productIds = Array.from(new Set(items.filter(i => i.productId != null).map(i => i.productId!)));
+  if (productIds.length === 0) return items;
+  const [exps, pks, legos] = await Promise.all([
+    db.select({ id: experiences.id, fiscalRegime: experiences.fiscalRegime, taxRate: experiences.taxRate })
+      .from(experiences).where(inArray(experiences.id, productIds)),
+    db.select({ id: packs.id, fiscalRegime: packs.fiscalRegime, taxRate: packs.taxRate })
+      .from(packs).where(inArray(packs.id, productIds)),
+    db.select({ id: legoPacks.id }).from(legoPacks).where(inArray(legoPacks.id, productIds)),
+  ]);
+  const expById = new Map(exps.map(e => [e.id, e]));
+  const pkById = new Map(pks.map(p => [p.id, p]));
+  const legoIds = new Set(legos.map(l => l.id));
+  return items.map(it => {
+    if (it.productId == null) return it;
+    const inExp = expById.get(it.productId);
+    const inPk = pkById.get(it.productId);
+    const inLego = legoIds.has(it.productId);
+    // Coincidencia en más de una tabla → ambiguo → respetar valor del cliente.
+    if ([inExp, inPk, inLego].filter(Boolean).length > 1) return it;
+    if (inLego) return { ...it, fiscalRegime: "general", taxRate: 21 };
+    const prod = inExp ?? inPk;
+    if (!prod) return it;
+    const fr = prod.fiscalRegime === "reav" ? "reav" : "general";
+    return { ...it, fiscalRegime: fr, taxRate: fr === "reav" ? 0 : Number(prod.taxRate ?? 21) };
+  });
+}
+
 export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: number, userName: string) {
   const installments = await db.select().from(paymentInstallments)
     .where(eq(paymentInstallments.quoteId, quoteId));
@@ -818,8 +859,10 @@ export const crmRouter = router({
         if (!lead) throw new TRPCError({ code: "NOT_FOUND", message: "Lead no encontrado" });
 
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
+        // Producto = fuente de verdad fiscal: revalidar régimen/IVA de cada línea contra BD.
+        const items = await sanitizeQuoteItemsFiscal(input.items);
         // Precios ya incluyen IVA: extraer cuota con groupTaxBreakdown
-        const breakdown = groupTaxBreakdown(input.items.filter(i => i.fiscalRegime !== "reav"));
+        const breakdown = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
         const taxAmount = totalTaxAmount(breakdown);
 
         const [result] = await db.insert(quotes).values({
@@ -828,7 +871,7 @@ export const crmRouter = router({
           agentId: ctx.user.id,
           title: input.title,
           description: input.description,
-          items: input.items,
+          items,
           subtotal: String(input.subtotal),
           discount: String(input.discount),
           tax: String(taxAmount),
@@ -1472,19 +1515,23 @@ export const crmRouter = router({
         })
       )
       .mutation(async ({ input, ctx }) => {
-        const { id, taxRate, ...rest } = input;
+        // `taxRate` global se ignora: la fiscalidad la define cada línea (producto = fuente de verdad).
+        const { id, taxRate: _ignoredGlobalTaxRate, ...rest } = input;
         const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
         if (rest.title !== undefined) updateData.title = rest.title;
         if (rest.description !== undefined) updateData.description = rest.description;
-        if (rest.items !== undefined) updateData.items = rest.items;
+        if (rest.items !== undefined) {
+          // Producto = fuente de verdad fiscal: revalidar régimen/IVA contra BD.
+          const sanitized = await sanitizeQuoteItemsFiscal(rest.items);
+          updateData.items = sanitized;
+          // IVA recalculado por línea (PVP con IVA incluido); nunca un IVA global.
+          const breakdown = groupTaxBreakdown(sanitized.filter(i => i.fiscalRegime !== "reav"));
+          updateData.tax = String(totalTaxAmount(breakdown));
+        }
         if (rest.subtotal !== undefined) updateData.subtotal = String(rest.subtotal);
         if (rest.discount !== undefined) updateData.discount = String(rest.discount);
         if (rest.total !== undefined) updateData.total = String(rest.total);
-        if (taxRate !== undefined && rest.subtotal !== undefined) {
-          const taxAmount = (rest.subtotal - (rest.discount ?? 0)) * (taxRate / 100);
-          updateData.tax = String(taxAmount);
-        }
         if (rest.validUntil) updateData.validUntil = new Date(rest.validUntil);
         if (rest.activityDate !== undefined) updateData.activityDate = rest.activityDate || null;
         if (rest.notes !== undefined) updateData.notes = rest.notes;
@@ -2852,7 +2899,10 @@ export const crmRouter = router({
 
         // 3. Crear el presupuesto
         const quoteNumber = await generateQuoteNumber("crm:createQuote", String(ctx.user.id));
-        const taxAmount = (input.subtotal - input.discount) * (input.taxRate / 100);
+        // Producto = fuente de verdad fiscal: revalidar régimen/IVA de cada línea contra BD.
+        const items = await sanitizeQuoteItemsFiscal(input.items);
+        // IVA por línea (PVP con IVA incluido); nunca un IVA global de la operación.
+        const taxAmount = totalTaxAmount(groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav")));
 
         const [quoteResult] = await db.insert(quotes).values({
           quoteNumber,
@@ -2860,7 +2910,7 @@ export const crmRouter = router({
           agentId: ctx.user.id,
           title: input.title,
           description: input.description,
-          items: input.items,
+          items,
           subtotal: String(input.subtotal),
           discount: String(input.discount),
           tax: String(taxAmount),
@@ -2898,7 +2948,7 @@ export const crmRouter = router({
             title: input.title,
             clientName: input.clientName,
             clientEmail: input.clientEmail,
-            items: input.items,
+            items,
             subtotal: String(input.subtotal),
             discount: String(input.discount),
             tax: String(taxAmount),

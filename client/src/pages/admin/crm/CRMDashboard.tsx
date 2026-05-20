@@ -1068,6 +1068,58 @@ function ProductSearchInput({
   );
 }
 
+/**
+ * Celda de régimen fiscal de una línea de presupuesto.
+ * Regla de negocio: el régimen es la fuente de verdad del PRODUCTO.
+ *  - Línea con productId → el régimen se MUESTRA, no se edita (badge).
+ *  - Línea manual (sin productId) → selector editable con 3 opciones.
+ * El PVP se entiende siempre como precio final con impuestos incluidos.
+ */
+type QuoteLineItem = {
+  description: string; quantity: number; unitPrice: number; total: number;
+  fiscalRegime?: "reav" | "general"; taxRate?: number; productId?: number;
+};
+function regimeLabel(item: { fiscalRegime?: string; taxRate?: number }): string {
+  if (item.fiscalRegime === "reav") return "REAV";
+  return (item as any).taxRate === 10 ? "IVA 10%" : "IVA 21%";
+}
+function RegimeCell({ item, onChange }: {
+  item: QuoteLineItem;
+  onChange: (fiscalRegime: "reav" | "general", taxRate: number) => void;
+}) {
+  const isProduct = item.productId != null;
+  const isReav = item.fiscalRegime === "reav";
+  if (isProduct) {
+    return (
+      <div className="col-span-2 flex items-center justify-center"
+        title="Régimen fiscal heredado del producto — no editable">
+        <span className={`text-[10px] font-semibold px-2 py-1 rounded-md border whitespace-nowrap ${
+          isReav ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                 : "bg-foreground/[0.06] text-foreground/70 border-foreground/[0.12]"}`}>
+          {regimeLabel(item)}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <select
+      className="col-span-2 bg-foreground/[0.05] border border-orange-500/30 text-white text-xs rounded-md px-1 py-1.5 h-9"
+      title="Línea manual — el régimen fiscal se elige aquí"
+      value={isReav ? "reav" : ((item as any).taxRate === 10 ? "general_10" : "general")}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v === "reav") onChange("reav", 0);
+        else if (v === "general_10") onChange("general", 10);
+        else onChange("general", 21);
+      }}
+    >
+      <option value="general" className="bg-[#0d1526]">IVA 21% · manual</option>
+      <option value="general_10" className="bg-[#0d1526]">IVA 10% · manual</option>
+      <option value="reav" className="bg-[#0d1526]">REAV · manual</option>
+    </select>
+  );
+}
+
 // ─── DIRECT QUOTE MODAL (sin lead previo) ───────────────────────────────────
 
 // ─── NEW LEAD MODAL (creación manual de lead por admin) ──────────────────────
@@ -1866,8 +1918,8 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* ── Asunto y fechas ── */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
             <Label className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1 text-sm" />
@@ -1881,17 +1933,6 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
             <Label className="text-foreground/65 text-xs">Válido hasta</Label>
             <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
-          </div>
-          <div>
-            <Label className="text-foreground/65 text-xs">IVA (%)</Label>
-            <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="0" className="text-white">0% (exento)</SelectItem>
-                <SelectItem value="10" className="text-white">10%</SelectItem>
-                <SelectItem value="21" className="text-white">21%</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -1926,20 +1967,15 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
                         const unitPrice = Number(p.basePrice);
                         const fr = p.fiscalRegime === "reav" ? "reav" : "general";
                         const tr = Number(p.taxRate ?? 21);
-                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr, taxRate: tr };
+                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr, taxRate: tr, productId: p.id };
                       }));
                     }}
                   />
                 </div>
-                <select
-                  className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
-                  value={item.fiscalRegime === "reav" ? "reav" : (item as any).taxRate === 10 ? "general_10" : "general"}
-                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: (e.target.value === "reav" ? "reav" : "general"), taxRate: (e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21) } : it))}
-                >
-                  <option value="general" className="bg-[#0d1526]">IVA 21%</option>
-                  <option value="general_10" className="bg-[#0d1526]">IVA 10%</option>
-                  <option value="reav" className="bg-[#0d1526]">REAV</option>
-                </select>
+                <RegimeCell
+                  item={item as QuoteLineItem}
+                  onChange={(fr, tr) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: fr, taxRate: tr } : it))}
+                />
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
@@ -2300,8 +2336,8 @@ function QuoteBuilderModal({
       </div>
 
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
             <Label className="text-foreground/65 text-xs">Asunto del presupuesto *</Label>
             <Input
               value={title}
@@ -2330,19 +2366,6 @@ function QuoteBuilderModal({
               onChange={(e) => setValidUntil(e.target.value)}
               className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"
             />
-          </div>
-          <div>
-            <Label className="text-foreground/65 text-xs">IVA (%)</Label>
-            <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="0" className="text-white">0% (exento)</SelectItem>
-                <SelectItem value="10" className="text-white">10%</SelectItem>
-                <SelectItem value="21" className="text-white">21%</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -2383,20 +2406,15 @@ function QuoteBuilderModal({
                         const unitPrice = Number(p.basePrice);
                         const fr = p.fiscalRegime === "reav" ? "reav" : "general";
                         const tr = Number(p.taxRate ?? 21);
-                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr, taxRate: tr };
+                        return { ...it, description: p.title, unitPrice, total: unitPrice * it.quantity, fiscalRegime: fr, taxRate: tr, productId: p.id };
                       }));
                     }}
                   />
                 </div>
-                <select
-                  className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
-                  value={item.fiscalRegime === "reav" ? "reav" : (item as any).taxRate === 10 ? "general_10" : "general"}
-                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: (e.target.value === "reav" ? "reav" : "general"), taxRate: (e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21) } : it))}
-                >
-                  <option value="general" className="bg-[#0d1526]">IVA 21%</option>
-                  <option value="general_10" className="bg-[#0d1526]">IVA 10%</option>
-                  <option value="reav" className="bg-[#0d1526]">REAV</option>
-                </select>
+                <RegimeCell
+                  item={item as QuoteLineItem}
+                  onChange={(fr, tr) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: fr, taxRate: tr } : it))}
+                />
                 <Input
                   className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center"
                   type="number"
@@ -2838,6 +2856,7 @@ function QuoteEditModal({
         fiscalRegime,
         taxRate: product.taxRate ? Number(product.taxRate) : 21,
         total: qty * unitPrice,
+        productId: product.id,
       };
     }));
   };
@@ -2870,8 +2889,8 @@ function QuoteEditModal({
         </DialogTitle>
       </DialogHeader>
       <div className="space-y-4">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="col-span-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
             <Label className="text-foreground/65 text-xs">Título *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
           </div>
@@ -2882,17 +2901,6 @@ function QuoteEditModal({
           <div>
             <Label className="text-foreground/65 text-xs">Válido hasta</Label>
             <Input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1" />
-          </div>
-          <div>
-            <Label className="text-foreground/65 text-xs">IVA (%)</Label>
-            <Select value={String(taxRate)} onValueChange={(v) => setTaxRate(Number(v))}>
-              <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white mt-1"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                <SelectItem value="0" className="text-white">0% (exento)</SelectItem>
-                <SelectItem value="10" className="text-white">10%</SelectItem>
-                <SelectItem value="21" className="text-white">21%</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
         <div>
@@ -2923,15 +2931,10 @@ function QuoteEditModal({
                   inputClassName="bg-foreground/[0.05] border-foreground/[0.12] text-white placeholder:text-foreground/40 text-sm pr-8"
                   showBadge={false}
                 />
-                <select
-                  className="col-span-2 bg-foreground/[0.05] border border-foreground/[0.12] text-white text-xs rounded-md px-1 py-1.5 h-9"
-                  value={item.fiscalRegime === "reav" ? "reav" : (item as any).taxRate === 10 ? "general_10" : "general"}
-                  onChange={(e) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: (e.target.value === "reav" ? "reav" : "general"), taxRate: (e.target.value === "general_10" ? 10 : e.target.value === "reav" ? 0 : 21) } : it))}
-                >
-                  <option value="general" className="bg-[#0d1526]">IVA 21%</option>
-                  <option value="general_10" className="bg-[#0d1526]">IVA 10%</option>
-                  <option value="reav" className="bg-[#0d1526]">REAV</option>
-                </select>
+                <RegimeCell
+                  item={item as QuoteLineItem}
+                  onChange={(fr, tr) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, fiscalRegime: fr, taxRate: tr } : it))}
+                />
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-center" type="number" min={1}
                   value={item.quantity} onChange={(e) => updateItem(idx, "quantity", Number(e.target.value))} />
                 <Input className="col-span-2 bg-foreground/[0.05] border-foreground/[0.12] text-white text-sm text-right" type="number" min={0} step={0.01}
