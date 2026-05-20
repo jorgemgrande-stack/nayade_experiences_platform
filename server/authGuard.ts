@@ -142,6 +142,11 @@ const PUBLIC_TRPC_ROUTES = new Set([
   "reservations.cartCheckout",
   "reservations.getStatus",
   "reservations.getByLocator",
+
+  // ── Activación de cuentas por token (páginas públicas, el usuario aún
+  //    no tiene sesión: /empleado/activar y /partner/activar) ───────────────
+  "hr.portal.activate",
+  "partners.activateInvite",
 ]);
 
 // ─── Parsear el nombre del procedimiento desde la URL de tRPC ─────────────────
