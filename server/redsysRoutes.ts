@@ -661,8 +661,13 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
     // Las reservas de presupuesto ya reciben el email de confirmación de presupuesto arriba.
     const isQuoteReservation = updatedReservation?.quoteSource === "presupuesto" && !!updatedReservation?.quoteId;
     if (updatedReservation) {
-      if (result.isAuthorized && !isQuoteReservation) {
-        sendReservationPaidNotifications({
+      if (result.isAuthorized) {
+        // Pago AUTORIZADO: enviar el email de "reserva pagada" SOLO para reservas
+        // directas. Las de presupuesto ya recibieron su email de confirmación
+        // más arriba. Clave: con un pago autorizado NUNCA se entra en el bloque
+        // `else` de fallo — antes una reserva de presupuesto pagada caía ahí y
+        // recibía por error el email de "Pago no completado".
+        if (!isQuoteReservation) sendReservationPaidNotifications({
           id: updatedReservation.id,
           merchantOrder: updatedReservation.merchantOrder,
           productName: updatedReservation.productName,
@@ -678,6 +683,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
           publicToken: (updatedReservation as any).publicToken ?? null,
         }).catch(err => console.error("[Redsys IPN] Error en notificaciones:", err));
       } else {
+        // Pago NO autorizado (result.isAuthorized === false): email de pago
+        // fallido. Aplica tanto a reservas directas como de presupuesto.
         sendReservationFailedNotifications({
           id: updatedReservation.id,
           merchantOrder: updatedReservation.merchantOrder,
