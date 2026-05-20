@@ -1,23 +1,31 @@
 /**
- * EmployeesList — Listado de empleados (Fase 2 RRHH).
+ * EmployeesList — Listado de empleados (Fase 10 RRHH).
  *
- * Consume hr.employees.list. Las operaciones de creación/edición/borrado
- * siguen disponibles en el módulo clásico (operations.monitors.*) accesible
- * vía /admin/operaciones/monitores-legacy.
+ * Consume hr.employees.list. El alta de empleados se hace aquí mismo
+ * (modal "Nuevo empleado"); la edición completa, en la ficha del empleado.
+ * El módulo es 100% autónomo — sin dependencia de la versión clásica.
  */
 import { useState, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
-  Search, Users, UserCheck, UserX, Briefcase, Eye, Settings,
+  Search, Users, UserCheck, UserX, Briefcase, Eye, Plus,
   Mail, Phone, Building2,
 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+const INPUT_CLS = "bg-foreground/[0.05] border-foreground/[0.12] text-white mt-0.5";
+
 export default function EmployeesList() {
+  const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
@@ -25,6 +33,28 @@ export default function EmployeesList() {
   const { data: employees, isLoading } = trpc.hr.employees.list.useQuery({
     isActive: statusFilter === "all" ? undefined : statusFilter === "active",
     search: search || undefined,
+  });
+
+  // ── Alta de empleado ──
+  const [createOpen, setCreateOpen] = useState(false);
+  const [nFullName, setNFullName] = useState("");
+  const [nDni, setNDni] = useState("");
+  const [nEmail, setNEmail] = useState("");
+  const [nPhone, setNPhone] = useState("");
+  const [nPosition, setNPosition] = useState("");
+  const [nDepartment, setNDepartment] = useState("");
+  const [nContractType, setNContractType] = useState("temporal");
+
+  const createEmployee = trpc.hr.employees.create.useMutation({
+    onSuccess: (data) => {
+      toast.success("Empleado creado");
+      setCreateOpen(false);
+      setNFullName(""); setNDni(""); setNEmail(""); setNPhone("");
+      setNPosition(""); setNDepartment(""); setNContractType("temporal");
+      utils.hr.employees.list.invalidate();
+      navigate(`/admin/personal/empleados/${data.id}`);
+    },
+    onError: (e) => toast.error(e.message),
   });
 
   // Departamentos únicos para el filtro
@@ -63,14 +93,10 @@ export default function EmployeesList() {
                 Plantilla de Náyade Experiences — datos personales, contrato y documentos
               </p>
             </div>
-            <Link
-              href="/admin/operaciones/monitores-legacy"
-              className="text-xs px-3 py-2 rounded-lg bg-foreground/[0.05] border border-foreground/[0.12] text-foreground/70 hover:bg-foreground/[0.08] transition-colors flex items-center gap-1.5"
-              title="Versión clásica del módulo (creación/edición completa, nóminas, documentos)"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              Versión clásica
-            </Link>
+            <Button onClick={() => setCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700 text-white">
+              <Plus className="w-4 h-4 mr-1.5" />
+              Nuevo empleado
+            </Button>
           </div>
 
           {/* Mini-counters */}
@@ -216,6 +242,84 @@ export default function EmployeesList() {
             </div>
           )}
         </div>
+
+        {/* Modal: nuevo empleado */}
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <Plus className="w-5 h-5 text-orange-400" /> Nuevo empleado
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2 text-sm">
+              <p className="text-xs text-foreground/50">
+                Crea la ficha con los datos esenciales. El resto (contrato, documentos, acceso al portal)
+                se completa después en la ficha del empleado.
+              </p>
+              <div>
+                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Nombre completo *</Label>
+                <Input value={nFullName} onChange={e => setNFullName(e.target.value)} className={INPUT_CLS} placeholder="Nombre y apellidos" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">DNI / NIE</Label>
+                  <Input value={nDni} onChange={e => setNDni(e.target.value)} className={INPUT_CLS} />
+                </div>
+                <div>
+                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Teléfono</Label>
+                  <Input value={nPhone} onChange={e => setNPhone(e.target.value)} className={INPUT_CLS} />
+                </div>
+              </div>
+              <div>
+                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Email</Label>
+                <Input type="email" value={nEmail} onChange={e => setNEmail(e.target.value)} className={INPUT_CLS}
+                  placeholder="Necesario para dar acceso al portal" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Puesto</Label>
+                  <Input value={nPosition} onChange={e => setNPosition(e.target.value)} className={INPUT_CLS} />
+                </div>
+                <div>
+                  <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Departamento</Label>
+                  <Input value={nDepartment} onChange={e => setNDepartment(e.target.value)} className={INPUT_CLS} />
+                </div>
+              </div>
+              <div>
+                <Label className="text-foreground/50 text-[10px] uppercase tracking-wider">Tipo de contrato</Label>
+                <Select value={nContractType} onValueChange={setNContractType}>
+                  <SelectTrigger className={INPUT_CLS}><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
+                    {["indefinido", "temporal", "autonomo", "practicas", "otro"].map(t => (
+                      <SelectItem key={t} value={t} className="text-white capitalize">{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+              <Button
+                onClick={() => {
+                  if (nFullName.trim().length < 2) { toast.error("Indica el nombre del empleado"); return; }
+                  createEmployee.mutate({
+                    fullName: nFullName.trim(),
+                    dni: nDni || undefined,
+                    email: nEmail || "",
+                    phone: nPhone || undefined,
+                    position: nPosition || undefined,
+                    department: nDepartment || undefined,
+                    contractType: nContractType as any,
+                  });
+                }}
+                disabled={createEmployee.isPending}
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+              >
+                {createEmployee.isPending ? "Creando…" : "Crear empleado"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminLayout>
   );

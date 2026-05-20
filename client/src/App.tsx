@@ -71,7 +71,6 @@ const LegoPacksManager = lazy(() => import("./pages/admin/products/LegoPacksMana
 const CalendarView = lazy(() => import("./pages/admin/operations/CalendarView"));
 const BookingsList = lazy(() => import("./pages/admin/operations/BookingsList"));
 const DailyActivities = lazy(() => import("./pages/admin/operations/DailyActivities"));
-const MonitorsManager = lazy(() => import("./pages/admin/operations/MonitorsManager"));
 const HRDashboard = lazy(() => import("./pages/admin/hr/HRDashboard"));
 const EmployeesList = lazy(() => import("./pages/admin/hr/EmployeesList"));
 const EmployeeDetail = lazy(() => import("./pages/admin/hr/EmployeeDetail"));
@@ -276,11 +275,9 @@ function Router() {
       <Route path="/admin/operaciones/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><CalendarView /></Suspense>}</Route>
       <Route path="/admin/operaciones/reservas">{() => <Suspense fallback={<AdminLoadingFallback />}><BookingsList /></Suspense>}</Route>
       <Route path="/admin/operaciones/actividades">{() => <Suspense fallback={<AdminLoadingFallback />}><DailyActivities /></Suspense>}</Route>
-      {/* Fase 2 RRHH: la ruta clásica redirige a la nueva UI. La UI clásica
-          sigue accesible vía /admin/operaciones/monitores-legacy para que se
-          pueda verificar lado a lado durante la transición. */}
+      {/* La gestión de empleados vive 100% en /admin/personal (Fase 10).
+          La ruta histórica de Monitores redirige al módulo nuevo. */}
       <Route path="/admin/operaciones/monitores">{() => { window.location.replace("/admin/personal/empleados"); return null; }}</Route>
-      <Route path="/admin/operaciones/monitores-legacy">{() => <Suspense fallback={<AdminLoadingFallback />}><MonitorsManager /></Suspense>}</Route>
       <Route path="/admin/operaciones/reservas-redsys">{() => { window.location.replace("/admin/crm?tab=reservations"); return null; }}</Route>
 
       {/* Personal / RRHH (Fase 2) */}

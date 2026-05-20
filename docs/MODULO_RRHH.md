@@ -16,9 +16,15 @@ export const employees = monitors;          // mismo objeto, alias semántico
 export const employeeDocuments = monitorDocuments;
 ```
 
-El código nuevo del módulo usa `employees`. La UI clásica de monitores sigue
-accesible en `/admin/operaciones/monitores-legacy`; la ruta antigua
-`/admin/operaciones/monitores` redirige a `/admin/personal/empleados`.
+El código nuevo del módulo usa `employees`. Toda la gestión (alta, edición,
+documentos, foto, eliminación) se hace en `/admin/personal/*` — el módulo es
+100% autónomo (Fase 10). La ruta histórica `/admin/operaciones/monitores`
+redirige a `/admin/personal/empleados`. El router `operations.monitors`
+conserva solo `list`/`get` (lecturas que usan Calendario y Actividades).
+
+> **Migración de fotos y documentos:** la subida de archivos usa los
+> endpoints REST `/api/upload/monitor-photo` y `/api/upload/monitor-doc`
+> (devuelven `{ url, key }`). Son genéricos y se mantienen.
 
 ---
 
@@ -48,7 +54,7 @@ accesible en `/admin/operaciones/monitores-legacy`; la ruta antigua
 
 Router `hr` con sub-routers:
 
-- **`hr.employees`** — list, get, counters, createPortalAccess, revokePortalAccess
+- **`hr.employees`** — list, get, counters, create, update, delete, addDocument, deleteDocument, createPortalAccess, revokePortalAccess
 - **`hr.portal`** — activate (público), me, myDocuments, myPayslips, myBonuses (rol employee)
 - **`hr.timeClock`** — clockIn, clockOut, myCurrent, myList, list, summary, adminCorrect, adminCreate
 - **`hr.schedule`** — listForEmployee, listExceptions, myTheoreticalToday

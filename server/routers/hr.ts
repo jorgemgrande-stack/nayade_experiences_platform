@@ -147,6 +147,171 @@ const employeesRouter = router({
     };
   }),
 
+  // ─── CRUD de empleado (Fase 10: migrado desde operations.monitors) ──
+
+  /** Crear empleado. */
+  create: hrViewProc
+    .input(z.object({
+      fullName: z.string().min(2),
+      dni: z.string().optional(),
+      phone: z.string().optional(),
+      email: z.string().email().optional().or(z.literal("")),
+      address: z.string().optional(),
+      birthDate: z.string().optional(),
+      emergencyName: z.string().optional(),
+      emergencyRelation: z.string().optional(),
+      emergencyPhone: z.string().optional(),
+      iban: z.string().optional(),
+      ibanHolder: z.string().optional(),
+      contractType: z.enum(["indefinido", "temporal", "autonomo", "practicas", "otro"]).optional(),
+      contractStart: z.string().optional(),
+      contractEnd: z.string().optional(),
+      contractConditions: z.string().optional(),
+      position: z.string().optional(),
+      department: z.string().optional(),
+      weeklyHours: z.number().optional(),
+      nss: z.string().optional(),
+      irpfPercent: z.number().optional(),
+      notes: z.string().optional(),
+      isActive: z.boolean().default(true),
+      photoUrl: z.string().optional(),
+      photoKey: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [result] = await db.insert(employees).values({
+        fullName: input.fullName,
+        dni: input.dni,
+        phone: input.phone,
+        email: input.email || undefined,
+        address: input.address,
+        birthDate: input.birthDate ? new Date(input.birthDate) : undefined,
+        emergencyName: input.emergencyName,
+        emergencyRelation: input.emergencyRelation,
+        emergencyPhone: input.emergencyPhone,
+        iban: input.iban,
+        ibanHolder: input.ibanHolder,
+        contractType: input.contractType,
+        contractStart: input.contractStart ? new Date(input.contractStart) : undefined,
+        contractEnd: input.contractEnd ? new Date(input.contractEnd) : undefined,
+        contractConditions: input.contractConditions,
+        position: input.position,
+        department: input.department,
+        weeklyHours: input.weeklyHours != null ? String(input.weeklyHours) : undefined,
+        nss: input.nss,
+        irpfPercent: input.irpfPercent != null ? String(input.irpfPercent) : undefined,
+        notes: input.notes,
+        isActive: input.isActive,
+        photoUrl: input.photoUrl,
+        photoKey: input.photoKey,
+      } as any);
+      return { ok: true, id: (result as { insertId: number }).insertId };
+    }),
+
+  /** Actualizar datos del empleado. */
+  update: hrViewProc
+    .input(z.object({
+      id: z.number(),
+      fullName: z.string().min(2).optional(),
+      dni: z.string().optional(),
+      phone: z.string().optional(),
+      email: z.string().optional(),
+      address: z.string().optional(),
+      birthDate: z.string().nullable().optional(),
+      emergencyName: z.string().optional(),
+      emergencyRelation: z.string().optional(),
+      emergencyPhone: z.string().optional(),
+      iban: z.string().optional(),
+      ibanHolder: z.string().optional(),
+      contractType: z.enum(["indefinido", "temporal", "autonomo", "practicas", "otro"]).optional(),
+      contractStart: z.string().nullable().optional(),
+      contractEnd: z.string().nullable().optional(),
+      contractConditions: z.string().optional(),
+      position: z.string().optional(),
+      department: z.string().optional(),
+      weeklyHours: z.number().nullable().optional(),
+      holidayDaysYear: z.number().nullable().optional(),
+      nss: z.string().optional(),
+      irpfPercent: z.number().nullable().optional(),
+      costCenterId: z.number().nullable().optional(),
+      notes: z.string().optional(),
+      isActive: z.boolean().optional(),
+      photoUrl: z.string().optional(),
+      photoKey: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id } = input;
+      const patch: Record<string, unknown> = { updatedAt: new Date() };
+      const setStr = (k: string, v: string | undefined) => { if (v !== undefined) patch[k] = v; };
+      setStr("fullName", input.fullName);
+      setStr("dni", input.dni);
+      setStr("phone", input.phone);
+      if (input.email !== undefined) patch.email = input.email || null;
+      setStr("address", input.address);
+      setStr("emergencyName", input.emergencyName);
+      setStr("emergencyRelation", input.emergencyRelation);
+      setStr("emergencyPhone", input.emergencyPhone);
+      setStr("iban", input.iban);
+      setStr("ibanHolder", input.ibanHolder);
+      setStr("contractType", input.contractType);
+      setStr("contractConditions", input.contractConditions);
+      setStr("position", input.position);
+      setStr("department", input.department);
+      setStr("nss", input.nss);
+      setStr("notes", input.notes);
+      setStr("photoUrl", input.photoUrl);
+      setStr("photoKey", input.photoKey);
+      if (input.isActive !== undefined) patch.isActive = input.isActive;
+      if (input.birthDate !== undefined) patch.birthDate = input.birthDate ? new Date(input.birthDate) : null;
+      if (input.contractStart !== undefined) patch.contractStart = input.contractStart ? new Date(input.contractStart) : null;
+      if (input.contractEnd !== undefined) patch.contractEnd = input.contractEnd ? new Date(input.contractEnd) : null;
+      if (input.weeklyHours !== undefined) patch.weeklyHours = input.weeklyHours == null ? null : String(input.weeklyHours);
+      if (input.irpfPercent !== undefined) patch.irpfPercent = input.irpfPercent == null ? null : String(input.irpfPercent);
+      if (input.holidayDaysYear !== undefined) patch.holidayDaysYear = input.holidayDaysYear;
+      if (input.costCenterId !== undefined) patch.costCenterId = input.costCenterId;
+
+      await db.update(employees).set(patch).where(eq(employees.id, id));
+      return { ok: true };
+    }),
+
+  /** Eliminar empleado. */
+  delete: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(employees).where(eq(employees.id, input.id));
+      return { ok: true };
+    }),
+
+  /** Adjuntar documento al empleado. */
+  addDocument: hrViewProc
+    .input(z.object({
+      employeeId: z.number(),
+      type: z.enum(["dni", "contrato", "certificado", "prl", "formacion", "nomina_pdf", "baja_medica", "finiquito", "otro"]),
+      name: z.string().min(1),
+      fileUrl: z.string(),
+      fileKey: z.string(),
+      expiresAt: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await db.insert(employeeDocuments).values({
+        monitorId: input.employeeId,
+        type: input.type,
+        name: input.name,
+        fileUrl: input.fileUrl,
+        fileKey: input.fileKey,
+        expiresAt: input.expiresAt || null,
+        uploadedBy: ctx.user.id,
+      } as any);
+      return { ok: true };
+    }),
+
+  /** Eliminar documento. */
+  deleteDocument: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await db.delete(employeeDocuments).where(eq(employeeDocuments.id, input.id));
+      return { ok: true };
+    }),
+
   /**
    * Crear acceso al Portal del Empleado.
    * Patrón clonado de partners.inviteUser: token + expiry 7 días, envío

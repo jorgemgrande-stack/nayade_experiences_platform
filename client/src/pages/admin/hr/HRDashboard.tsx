@@ -310,17 +310,6 @@ export default function HRDashboard() {
           </div>
         </div>
 
-        {/* Footer info */}
-        <div className="px-4 sm:px-6 py-4 border-t border-foreground/[0.05]">
-          <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 text-xs text-foreground/70">
-            <strong className="text-orange-300">Fase 2 RRHH activa.</strong> Este dashboard se irá completando con
-            datos reales conforme se publiquen las fases posteriores (Portal del Empleado, Fichajes, Nóminas, Bonus,
-            Vacaciones, Gestoría). La versión clásica del módulo "Monitores" sigue disponible en{" "}
-            <Link href="/admin/operaciones/monitores-legacy" className="text-orange-300 underline hover:text-orange-200">
-              Operaciones → Monitores (clásica)
-            </Link>.
-          </div>
-        </div>
       </div>
     </AdminLayout>
   );

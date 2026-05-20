@@ -104,9 +104,7 @@ const navItems = [
     children: [
       { label: "Calendario", href: "/admin/operaciones/calendario" },
       { label: "Actividades del Día", href: "/admin/operaciones/actividades" },
-      // "Monitores" redirige a /admin/personal/empleados (Fase 2 RRHH).
-      // La UI clásica sigue accesible en /admin/operaciones/monitores-legacy.
-      { label: "Monitores", href: "/admin/operaciones/monitores" },
+      // La gestión de personal se trasladó a la sección "Personal" (módulo RRHH).
       { label: "Reseñas", href: "/admin/operaciones/resenas" },
     ],
   },
