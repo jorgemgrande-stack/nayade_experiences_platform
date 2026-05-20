@@ -147,6 +147,7 @@ const PUBLIC_TRPC_ROUTES = new Set([
   //    no tiene sesión: /empleado/activar y /partner/activar) ───────────────
   "hr.portal.activate",
   "partners.activateInvite",
+  "gestoria.portal.activate",
 ]);
 
 // ─── Parsear el nombre del procedimiento desde la URL de tRPC ─────────────────

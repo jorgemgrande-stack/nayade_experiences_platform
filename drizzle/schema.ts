@@ -21,7 +21,7 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest", "controler", "partner_admin", "partner_user", "employee"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest", "controler", "partner_admin", "partner_user", "employee", "gestoria"]).default("user").notNull(),
   partnerId: int("partnerId"),
   phone: varchar("phone", { length: 32 }),
   avatarUrl: text("avatarUrl"),
@@ -3513,3 +3513,20 @@ export const taxSettings = mysqlTable("tax_settings", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 export type TaxSettings = typeof taxSettings.$inferSelect;
+
+// Expedientes ZIP generados para la gestoría (Fase 5).
+export const taxDossiers = mysqlTable("tax_dossiers", {
+  id: int("id").autoincrement().primaryKey(),
+  year: int("year").notNull(),
+  scope: mysqlEnum("scope", ["iva", "laboral", "sociedades", "global"]).notNull().default("global"),
+  periodKey: varchar("period_key", { length: 16 }).notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  fileUrl: text("file_url"),
+  fileKey: varchar("file_key", { length: 512 }),
+  fileSize: int("file_size"),
+  fileCount: int("file_count"),
+  generatedBy: int("generated_by"),
+  sentToGestoriaAt: timestamp("sent_to_gestoria_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type TaxDossier = typeof taxDossiers.$inferSelect;

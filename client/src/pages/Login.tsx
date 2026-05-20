@@ -24,6 +24,7 @@ import { Link } from "wouter";
 function homeForRole(role: string | undefined): string {
   if (role === "partner_admin" || role === "partner_user") return "/partner/dashboard";
   if (role === "employee") return "/empleado";
+  if (role === "gestoria") return "/gestoria";
   return "/admin";
 }
 

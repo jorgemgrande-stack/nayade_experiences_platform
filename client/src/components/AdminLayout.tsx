@@ -164,6 +164,7 @@ const navItems = [
       { label: "Tributación IVA", href: "/admin/gestoria/iva" },
       { label: "Obligaciones Laborales", href: "/admin/gestoria/laboral" },
       { label: "Impuesto Sociedades", href: "/admin/gestoria/sociedades" },
+      { label: "Expedientes", href: "/admin/gestoria/expedientes" },
       { label: "Calendario Fiscal", href: "/admin/gestoria/calendario" },
       { label: "Configuración", href: "/admin/gestoria/configuracion" },
     ],

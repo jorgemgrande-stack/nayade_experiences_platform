@@ -778,6 +778,13 @@
       "when": 1779224797206,
       "tag": "0112_tax_core",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "5",
+      "when": 1779224798206,
+      "tag": "0114_tax_dossiers_gestoria_role",
+      "breakpoints": true
     }
   ]
 }

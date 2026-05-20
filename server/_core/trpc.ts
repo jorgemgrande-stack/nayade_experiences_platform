@@ -208,3 +208,21 @@ export const employeeProcedure = t.procedure.use(
     return next({ ctx: { ...ctx, user: ctx.user } });
   }),
 );
+
+/**
+ * gestoriaProcedure: acceso al Portal de Gestoría.
+ * Solo permite el rol 'gestoria'. Acceso de la gestoría externa, separado
+ * por completo del panel de administración.
+ */
+export const gestoriaProcedure = t.procedure.use(
+  t.middleware(async opts => {
+    const { ctx, next } = opts;
+    if (!ctx.user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+    }
+    if (ctx.user.role !== "gestoria") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Acceso restringido al portal de gestoría" });
+    }
+    return next({ ctx: { ...ctx, user: ctx.user } });
+  }),
+);

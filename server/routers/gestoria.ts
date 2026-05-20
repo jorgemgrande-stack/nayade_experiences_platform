@@ -6,18 +6,25 @@
 // El motor de cálculo (303/390/111/190/200/202) llega en fases posteriores.
 
 import { z } from "zod";
-import { router, permissionProcedure } from "../_core/trpc";
+import { router, permissionProcedure, publicProcedure, gestoriaProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, and, asc } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import { eq, asc, desc } from "drizzle-orm";
 import {
   taxObligations,
   taxObligationLines,
   taxObligationLog,
   taxSettings,
+  taxDossiers,
   finCashAccounts,
+  users,
 } from "../../drizzle/schema";
+import { buildDossierZip } from "../gestoriaDossier";
+import { storagePut } from "../storage";
+import { getUserByInviteToken, setUserPassword } from "../db";
+import { sendEmail } from "../mailer";
 import {
   compute303, compute390, lines303, type Vat303,
   compute111, compute190, lines111, type Labor111,
@@ -392,6 +399,165 @@ export const gestoriaRouter = router({
         }
 
         return { ok: true, corporate: c };
+      }),
+  }),
+
+  // ─── Expedientes para la gestoría ──────────────────────────────────────────
+  dossiers: router({
+    list: gestoriaView
+      .input(z.object({ year: z.number().int().optional() }).optional())
+      .query(async ({ input }) => {
+        const rows = await db.select().from(taxDossiers).orderBy(desc(taxDossiers.createdAt));
+        return input?.year ? rows.filter((r) => r.year === input.year) : rows;
+      }),
+
+    /** Genera el ZIP del expediente del ejercicio y lo almacena. */
+    generate: gestoriaManage
+      .input(z.object({ year: z.number().int() }))
+      .mutation(async ({ input, ctx }) => {
+        const { buffer, fileCount } = await buildDossierZip(input.year);
+        const key = `gestoria/dossiers/Expediente_${input.year}_${Date.now()}.zip`;
+        const stored = await storagePut(key, buffer, "application/zip");
+        const [res] = await db.insert(taxDossiers).values({
+          year: input.year,
+          scope: "global",
+          periodKey: String(input.year),
+          title: `Expediente fiscal ${input.year}`,
+          fileUrl: stored.url,
+          fileKey: stored.key,
+          fileSize: buffer.length,
+          fileCount,
+          generatedBy: ctx.user.id,
+        });
+        return { ok: true, id: (res as { insertId: number }).insertId, url: stored.url };
+      }),
+  }),
+
+  // ─── Gestión de accesos al Portal de Gestoría (admin) ──────────────────────
+  access: router({
+    list: gestoriaView.query(async () => {
+      return db
+        .select({ id: users.id, name: users.name, email: users.email, isActive: users.isActive, inviteAccepted: users.inviteAccepted })
+        .from(users)
+        .where(eq(users.role, "gestoria"));
+    }),
+
+    /** Crea (o reutiliza) un usuario con rol gestoria y envía el enlace de activación. */
+    createPortalAccess: gestoriaManage
+      .input(z.object({ email: z.string().email(), name: z.string().min(2) }))
+      .mutation(async ({ input }) => {
+        const token = randomBytes(32).toString("hex");
+        const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
+        if (existing) {
+          await db.update(users).set({
+            role: "gestoria",
+            inviteToken: token,
+            inviteTokenExpiry: expiry,
+            inviteAccepted: false,
+          } as any).where(eq(users.id, existing.id));
+        } else {
+          await db.insert(users).values({
+            openId: `invite_${token.slice(0, 16)}`,
+            name: input.name,
+            email: input.email,
+            role: "gestoria",
+            inviteToken: token,
+            inviteTokenExpiry: expiry,
+            inviteAccepted: false,
+            isActive: false,
+            lastSignedIn: new Date(),
+          } as any);
+        }
+
+        const origin = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+        const inviteUrl = `${origin}/gestoria/activar?token=${token}`;
+        try {
+          await sendEmail({
+            to: input.email,
+            subject: "Acceso al Portal de Gestoría — Náyade Experiences",
+            html: `
+              <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
+                <h2 style="color:#ea580c">Portal de Gestoría</h2>
+                <p>Hola <strong>${input.name}</strong>,</p>
+                <p>Náyade Experiences le da acceso a su Portal de Gestoría, donde podrá consultar
+                las obligaciones fiscales, descargar los expedientes del ejercicio y marcar los
+                modelos como presentados.</p>
+                <p style="margin:24px 0">
+                  <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
+                    Activar mi cuenta
+                  </a>
+                </p>
+                <p style="color:#666;font-size:13px">El enlace caduca en 7 días.<br>${inviteUrl}</p>
+              </div>`,
+          });
+        } catch (e) {
+          console.warn("[gestoria.createPortalAccess] Email no enviado:", e);
+        }
+        return { ok: true, inviteUrl };
+      }),
+  }),
+
+  // ─── Portal de Gestoría (acceso de la gestoría externa) ────────────────────
+  portal: router({
+    /** Activación de cuenta por token (pública — el usuario aún no tiene sesión). */
+    activate: publicProcedure
+      .input(z.object({
+        token: z.string(),
+        password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+      }))
+      .mutation(async ({ input }) => {
+        const user = await getUserByInviteToken(input.token);
+        if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Enlace inválido o ya utilizado" });
+        if (user.inviteTokenExpiry && new Date() > user.inviteTokenExpiry) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace ha expirado. Solicita uno nuevo." });
+        }
+        if (user.role !== "gestoria") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Este enlace no corresponde al Portal de Gestoría" });
+        }
+        const bcrypt = await import("bcryptjs");
+        const passwordHash = await bcrypt.hash(input.password, 12);
+        await setUserPassword(user.id, passwordHash);
+        await db.update(users).set({ isActive: true } as any).where(eq(users.id, user.id));
+        return { ok: true, name: user.name };
+      }),
+
+    /** Obligaciones del ejercicio visibles para la gestoría. */
+    obligations: gestoriaProcedure
+      .input(z.object({ year: z.number().int() }))
+      .query(async ({ input }) => {
+        await ensureYearObligations(input.year);
+        return db.select().from(taxObligations)
+          .where(eq(taxObligations.year, input.year))
+          .orderBy(asc(taxObligations.dueDate), asc(taxObligations.model));
+      }),
+
+    /** Expedientes disponibles para descarga. */
+    dossiers: gestoriaProcedure.query(async () => {
+      return db.select().from(taxDossiers).orderBy(desc(taxDossiers.createdAt));
+    }),
+
+    /** La gestoría marca un modelo como presentado. */
+    markPresented: gestoriaProcedure
+      .input(z.object({ id: z.number().int(), note: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const [ob] = await db.select().from(taxObligations).where(eq(taxObligations.id, input.id));
+        if (!ob) throw new TRPCError({ code: "NOT_FOUND", message: "Obligación no encontrada" });
+        await db.update(taxObligations).set({
+          status: "presentado",
+          presentedAt: ob.presentedAt ?? new Date(),
+          updatedAt: new Date(),
+        }).where(eq(taxObligations.id, input.id));
+        await db.insert(taxObligationLog).values({
+          obligationId: input.id,
+          fromStatus: ob.status,
+          toStatus: "presentado",
+          userId: ctx.user.id,
+          userName: `${ctx.user.name} (gestoría)`,
+          note: input.note ?? null,
+        });
+        return { ok: true };
       }),
   }),
 });
