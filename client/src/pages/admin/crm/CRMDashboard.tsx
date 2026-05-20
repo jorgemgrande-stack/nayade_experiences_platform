@@ -7018,19 +7018,23 @@ export default function CRMDashboard() {
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1420px] table-fixed">
+              <table className="w-full min-w-[1210px] table-fixed">
                 <colgroup>
+                  {/* Cliente (col 3) sin ancho fijo: es la columna flexible que
+                      absorbe el espacio sobrante. El resto llevan su ancho real
+                      (ajustado a su contenido), así la tabla iguala al contenedor
+                      y la columna Acciones nunca se corta. */}
                   <col style={{width:"40px"}} />
-                  <col style={{width:"145px"}} />
-                  <col style={{width:"210px"}} />
-                  <col style={{width:"185px"}} className="hidden md:table-column" />
-                  <col style={{width:"135px"}} />
-                  <col style={{width:"105px"}} />
-                  <col style={{width:"95px"}} className="hidden xl:table-column" />
-                  <col style={{width:"95px"}} className="hidden lg:table-column" />
-                  <col style={{width:"105px"}} className="hidden lg:table-column" />
-                  <col style={{width:"130px"}} />
-                  <col style={{width:"260px"}} />
+                  <col style={{width:"134px"}} />
+                  <col />
+                  <col style={{width:"158px"}} className="hidden md:table-column" />
+                  <col style={{width:"124px"}} />
+                  <col style={{width:"104px"}} />
+                  <col style={{width:"84px"}} className="hidden xl:table-column" />
+                  <col style={{width:"92px"}} className="hidden lg:table-column" />
+                  <col style={{width:"100px"}} className="hidden lg:table-column" />
+                  <col style={{width:"104px"}} />
+                  <col style={{width:"254px"}} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-foreground/[0.10] bg-foreground/[0.05]">
