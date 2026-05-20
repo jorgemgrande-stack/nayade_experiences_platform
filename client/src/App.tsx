@@ -85,6 +85,9 @@ const HRSettings = lazy(() => import("./pages/admin/hr/HRSettings"));
 const BonusManager = lazy(() => import("./pages/admin/hr/BonusManager"));
 // Fase 7 RRHH — Fiscal
 const HRFiscalLedger = lazy(() => import("./pages/admin/hr/HRFiscalLedger"));
+// Fase 8 RRHH — Vacaciones
+const LeaveManager = lazy(() => import("./pages/admin/hr/LeaveManager"));
+const MyLeaves = lazy(() => import("./pages/employee/MyLeaves"));
 // Portal del Empleado (Fase 3 RRHH)
 const EmployeePortal = lazy(() => import("./pages/employee/EmployeePortal"));
 const MyProfile = lazy(() => import("./pages/employee/MyProfile"));
@@ -291,6 +294,7 @@ function Router() {
       <Route path="/admin/personal/remesas/:id">{() => <Suspense fallback={<AdminLoadingFallback />}><BatchDetail /></Suspense>}</Route>
       <Route path="/admin/personal/bonus">{() => <Suspense fallback={<AdminLoadingFallback />}><BonusManager /></Suspense>}</Route>
       <Route path="/admin/personal/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><HRFiscalLedger /></Suspense>}</Route>
+      <Route path="/admin/personal/vacaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><LeaveManager /></Suspense>}</Route>
       <Route path="/admin/personal/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><HRSettings /></Suspense>}</Route>
 
       {/* Portal del Empleado (Fase 3) */}
@@ -299,6 +303,7 @@ function Router() {
       <Route path="/empleado/perfil">{() => <Suspense fallback={<AdminLoadingFallback />}><MyProfile /></Suspense>}</Route>
       <Route path="/empleado/nominas">{() => <Suspense fallback={<AdminLoadingFallback />}><MyPayslips /></Suspense>}</Route>
       <Route path="/empleado/documentos">{() => <Suspense fallback={<AdminLoadingFallback />}><MyDocuments /></Suspense>}</Route>
+      <Route path="/empleado/vacaciones">{() => <Suspense fallback={<AdminLoadingFallback />}><MyLeaves /></Suspense>}</Route>
       <Route path="/empleado/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivarEmpleado /></Suspense>}</Route>
 
       {/* Accounting */}

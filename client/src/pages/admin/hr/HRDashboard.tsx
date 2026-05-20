@@ -44,6 +44,7 @@ export default function HRDashboard() {
   const { data: bonusSummary } = trpc.hr.bonus.summary.useQuery();
   const { data: quarterSummary } = trpc.hr.fiscal.quarterSummary.useQuery({ year: new Date().getFullYear() });
   const { data: laborExpenses } = trpc.hr.fiscal.laborExpensesSummary.useQuery();
+  const { data: leavesSummary } = trpc.hr.leaves.summary.useQuery();
 
   const total = counters?.total ?? 0;
   const active = counters?.active ?? 0;
@@ -140,7 +141,44 @@ export default function HRDashboard() {
               subLabel="Requieren corrección"
               href="/admin/personal/fichajes?status=incomplete"
             />
-            <PendingKpi label="Solicitudes pendientes" icon={CalendarOff} hint="Disponible en Fase 8" />
+            <KpiCard
+              label="Solicitudes pendientes"
+              value={leavesSummary?.pendingCount ?? 0}
+              icon={CalendarOff}
+              color={leavesSummary && leavesSummary.pendingCount > 0 ? "amber" : "violet"}
+              subLabel={
+                leavesSummary && leavesSummary.pendingCount > 0
+                  ? `${leavesSummary.pendingDays} días por aprobar`
+                  : "Sin solicitudes pendientes"
+              }
+              href="/admin/personal/vacaciones"
+            />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+            <KpiCard
+              label="Vacaciones aprobadas"
+              value={leavesSummary?.vacationsApprovedCount ?? 0}
+              icon={CalendarOff}
+              color="emerald"
+              subLabel={`${leavesSummary?.vacationsApprovedDays ?? 0} días concedidos`}
+              href="/admin/personal/vacaciones"
+            />
+            <KpiCard
+              label="Permisos concedidos"
+              value={leavesSummary?.permitsApprovedCount ?? 0}
+              icon={CalendarOff}
+              color="blue"
+              subLabel="Bajas, permisos, asuntos propios"
+              href="/admin/personal/vacaciones"
+            />
+            <KpiCard
+              label="Días vacaciones pendientes"
+              value={leavesSummary?.pendingDays ?? 0}
+              icon={Clock}
+              color="amber"
+              subLabel="A la espera de decisión"
+              href="/admin/personal/vacaciones"
+            />
           </div>
         </div>
 

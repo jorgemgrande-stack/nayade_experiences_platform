@@ -30,6 +30,8 @@ import {
   hrSsLedger,
   hrSettings,
   hrBonus,
+  hrLeaveRequests,
+  hrLeaveBalance,
   expenses,
   expenseCategories,
   costCenters,
@@ -442,13 +444,23 @@ async function theoreticalHoursForDate(employeeId: number, dateYmd: string): Pro
   // Excepción global o personal anula el día entero
   const [excepts] = await Promise.all([
     db.select().from(hrScheduleExceptions)
-      .where(and(
-        eq(hrScheduleExceptions.date, dateYmd),
-        // Aceptamos global (employeeId NULL) o personal del empleado
-      )),
+      .where(eq(hrScheduleExceptions.date, dateYmd)),
   ]);
   const applicable = excepts.filter(e => e.employeeId == null || e.employeeId === employeeId);
   if (applicable.length > 0) return 0;
+
+  // Fase 8: una solicitud de ausencia APROBADA que cubra esta fecha también
+  // anula el día teórico (vacaciones, baja, permiso). Evita generar N filas
+  // en hr_schedule_exceptions: se consulta directamente hr_leave_requests.
+  const [leaveOnDate] = await db.select({ id: hrLeaveRequests.id }).from(hrLeaveRequests)
+    .where(and(
+      eq(hrLeaveRequests.employeeId, employeeId),
+      eq(hrLeaveRequests.status, "aprobada"),
+      lte(hrLeaveRequests.fromDate, dateYmd),
+      gte(hrLeaveRequests.toDate, dateYmd),
+    ))
+    .limit(1);
+  if (leaveOnDate) return 0;
 
   const weekday = new Date(`${dateYmd}T12:00:00`).getDay();
   const tramos = await db.select().from(hrScheduleTemplates)
@@ -1884,6 +1896,251 @@ const bonusRouter = router({
     }),
 });
 
+// ─── VACACIONES Y PERMISOS (Fase 8) ─────────────────────────────────────────
+
+/** Días naturales inclusive entre dos fechas YYYY-MM-DD. */
+function daysBetweenInclusive(fromYmd: string, toYmd: string): number {
+  const from = new Date(`${fromYmd}T00:00:00`);
+  const to = new Date(`${toYmd}T00:00:00`);
+  const diff = Math.round((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+  return diff + 1;
+}
+
+/**
+ * Calcula el saldo de vacaciones de un empleado para un año:
+ *  accrued  — días asignados (hr_leave_balance, o defaultHolidayDays si no hay fila)
+ *  taken    — días de solicitudes 'vacaciones' APROBADAS del año
+ *  pending  — días de solicitudes 'vacaciones' PENDIENTES del año
+ *  available = accrued - taken - pending
+ */
+async function computeLeaveBalance(employeeId: number, year: number) {
+  const [balanceRow] = await db.select().from(hrLeaveBalance)
+    .where(and(eq(hrLeaveBalance.employeeId, employeeId), eq(hrLeaveBalance.year, year)))
+    .limit(1);
+
+  let accrued: number;
+  if (balanceRow) {
+    accrued = Number(balanceRow.accruedDays);
+  } else {
+    const settings = await getOrCreateHrSettings();
+    accrued = settings.defaultHolidayDays;
+  }
+
+  const requests = await db.select().from(hrLeaveRequests)
+    .where(and(
+      eq(hrLeaveRequests.employeeId, employeeId),
+      eq(hrLeaveRequests.type, "vacaciones"),
+    ));
+  const ofYear = requests.filter(r => r.fromDate.startsWith(`${year}-`));
+  const taken = ofYear.filter(r => r.status === "aprobada").reduce((s, r) => s + Number(r.days), 0);
+  const pending = ofYear.filter(r => r.status === "pendiente").reduce((s, r) => s + Number(r.days), 0);
+
+  return {
+    year,
+    accrued,
+    taken: parseFloat(taken.toFixed(1)),
+    pending: parseFloat(pending.toFixed(1)),
+    available: parseFloat((accrued - taken - pending).toFixed(1)),
+  };
+}
+
+const leavesRouter = router({
+  // ── EMPLEADO ──
+  /** Solicitar vacaciones / permiso desde el Portal. */
+  request: employeeProcedure
+    .input(z.object({
+      type: z.enum(["vacaciones", "asuntos_propios", "baja_medica", "permiso", "otro"]).default("vacaciones"),
+      fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const employee = await resolveCurrentEmployee(ctx.user.id);
+      if (input.toDate < input.fromDate) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "La fecha de fin no puede ser anterior a la de inicio." });
+      }
+      const days = daysBetweenInclusive(input.fromDate, input.toDate);
+
+      // Aviso de saldo insuficiente solo para vacaciones (no bloquea — lo decide el admin)
+      const [result] = await db.insert(hrLeaveRequests).values({
+        employeeId: employee.id,
+        type: input.type,
+        fromDate: input.fromDate,
+        toDate: input.toDate,
+        days: String(days),
+        status: "pendiente",
+        reason: input.reason,
+      } as any);
+      return { ok: true, id: (result as { insertId: number }).insertId, days };
+    }),
+
+  /** Mis solicitudes (del empleado autenticado). */
+  listMine: employeeProcedure.query(async ({ ctx }) => {
+    const employee = await resolveCurrentEmployee(ctx.user.id);
+    return await db.select().from(hrLeaveRequests)
+      .where(eq(hrLeaveRequests.employeeId, employee.id))
+      .orderBy(desc(hrLeaveRequests.fromDate));
+  }),
+
+  /** Mi saldo de vacaciones del año en curso. */
+  myBalance: employeeProcedure
+    .input(z.object({ year: z.number().int().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const employee = await resolveCurrentEmployee(ctx.user.id);
+      const year = input?.year ?? new Date().getFullYear();
+      return await computeLeaveBalance(employee.id, year);
+    }),
+
+  /** Cancelar una solicitud propia que aún esté pendiente. */
+  cancelMine: employeeProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const employee = await resolveCurrentEmployee(ctx.user.id);
+      const [req] = await db.select().from(hrLeaveRequests).where(eq(hrLeaveRequests.id, input.id));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND" });
+      if (req.employeeId !== employee.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Esta solicitud no es tuya." });
+      }
+      if (req.status !== "pendiente") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo puedes cancelar solicitudes pendientes." });
+      }
+      await db.update(hrLeaveRequests).set({ status: "cancelada" } as any).where(eq(hrLeaveRequests.id, input.id));
+      return { ok: true };
+    }),
+
+  // ── ADMIN ──
+  /** Todas las solicitudes con filtros. */
+  listAll: hrViewProc
+    .input(z.object({
+      employeeId: z.number().optional(),
+      status: z.enum(["pendiente", "aprobada", "rechazada", "cancelada"]).optional(),
+      type: z.enum(["vacaciones", "asuntos_propios", "baja_medica", "permiso", "otro"]).optional(),
+      year: z.number().int().optional(),
+    }).optional())
+    .query(async ({ input }) => {
+      const conditions: any[] = [];
+      if (input?.employeeId) conditions.push(eq(hrLeaveRequests.employeeId, input.employeeId));
+      if (input?.status) conditions.push(eq(hrLeaveRequests.status, input.status));
+      if (input?.type) conditions.push(eq(hrLeaveRequests.type, input.type));
+      if (input?.year) conditions.push(sql`${hrLeaveRequests.fromDate} LIKE ${input.year + "-%"}`);
+
+      return await db.select({
+        id: hrLeaveRequests.id,
+        employeeId: hrLeaveRequests.employeeId,
+        employeeName: employees.fullName,
+        type: hrLeaveRequests.type,
+        fromDate: hrLeaveRequests.fromDate,
+        toDate: hrLeaveRequests.toDate,
+        days: hrLeaveRequests.days,
+        status: hrLeaveRequests.status,
+        reason: hrLeaveRequests.reason,
+        decisionReason: hrLeaveRequests.decisionReason,
+        approvedBy: hrLeaveRequests.approvedBy,
+        approvedAt: hrLeaveRequests.approvedAt,
+        createdAt: hrLeaveRequests.createdAt,
+      })
+        .from(hrLeaveRequests)
+        .leftJoin(employees, eq(employees.id, hrLeaveRequests.employeeId))
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(hrLeaveRequests.createdAt));
+    }),
+
+  /** Aprobar una solicitud — registra approvedBy + approvedAt (trazabilidad). */
+  approve: hrViewProc
+    .input(z.object({ id: z.number(), decisionReason: z.string().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const [req] = await db.select().from(hrLeaveRequests).where(eq(hrLeaveRequests.id, input.id));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND" });
+      if (req.status !== "pendiente") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `La solicitud ya está ${req.status}.` });
+      }
+      await db.update(hrLeaveRequests).set({
+        status: "aprobada",
+        approvedBy: ctx.user.id,
+        approvedAt: new Date(),
+        decisionReason: input.decisionReason ?? null,
+      } as any).where(eq(hrLeaveRequests.id, input.id));
+      return { ok: true };
+    }),
+
+  /** Rechazar una solicitud — exige motivo, registra trazabilidad. */
+  reject: hrViewProc
+    .input(z.object({ id: z.number(), decisionReason: z.string().min(1, "Indica el motivo del rechazo") }))
+    .mutation(async ({ input, ctx }) => {
+      const [req] = await db.select().from(hrLeaveRequests).where(eq(hrLeaveRequests.id, input.id));
+      if (!req) throw new TRPCError({ code: "NOT_FOUND" });
+      if (req.status !== "pendiente") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `La solicitud ya está ${req.status}.` });
+      }
+      await db.update(hrLeaveRequests).set({
+        status: "rechazada",
+        approvedBy: ctx.user.id,
+        approvedAt: new Date(),
+        decisionReason: input.decisionReason,
+      } as any).where(eq(hrLeaveRequests.id, input.id));
+      return { ok: true };
+    }),
+
+  /** Saldo de un empleado (admin). */
+  balanceForEmployee: hrViewProc
+    .input(z.object({ employeeId: z.number(), year: z.number().int().optional() }))
+    .query(async ({ input }) => {
+      const year = input.year ?? new Date().getFullYear();
+      return await computeLeaveBalance(input.employeeId, year);
+    }),
+
+  /** Asignar días de vacaciones de un empleado para un año (upsert). */
+  setBalance: hrViewProc
+    .input(z.object({
+      employeeId: z.number(),
+      year: z.number().int(),
+      accruedDays: z.number().min(0).max(99),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [existing] = await db.select().from(hrLeaveBalance)
+        .where(and(eq(hrLeaveBalance.employeeId, input.employeeId), eq(hrLeaveBalance.year, input.year)))
+        .limit(1);
+      if (existing) {
+        await db.update(hrLeaveBalance).set({
+          accruedDays: String(input.accruedDays),
+          notes: input.notes,
+        } as any).where(eq(hrLeaveBalance.id, existing.id));
+      } else {
+        await db.insert(hrLeaveBalance).values({
+          employeeId: input.employeeId,
+          year: input.year,
+          accruedDays: String(input.accruedDays),
+          notes: input.notes,
+        } as any);
+      }
+      return { ok: true };
+    }),
+
+  /** KPIs agregados para HRDashboard. */
+  summary: hrViewProc.query(async () => {
+    const all = await db.select({
+      id: hrLeaveRequests.id,
+      type: hrLeaveRequests.type,
+      days: hrLeaveRequests.days,
+      status: hrLeaveRequests.status,
+    }).from(hrLeaveRequests);
+
+    const pending = all.filter(r => r.status === "pendiente");
+    const approved = all.filter(r => r.status === "aprobada");
+    const vacApproved = approved.filter(r => r.type === "vacaciones");
+    const permApproved = approved.filter(r => r.type !== "vacaciones");
+
+    return {
+      pendingCount: pending.length,
+      pendingDays: parseFloat(pending.reduce((s, r) => s + Number(r.days), 0).toFixed(1)),
+      vacationsApprovedCount: vacApproved.length,
+      vacationsApprovedDays: parseFloat(vacApproved.reduce((s, r) => s + Number(r.days), 0).toFixed(1)),
+      permitsApprovedCount: permApproved.length,
+    };
+  }),
+});
+
 export const hrRouter = router({
   employees: employeesRouter,
   portal: portalRouter,
@@ -1894,4 +2151,5 @@ export const hrRouter = router({
   fiscal: fiscalRouter,
   settings: settingsRouter,
   bonus: bonusRouter,
+  leaves: leavesRouter,
 });

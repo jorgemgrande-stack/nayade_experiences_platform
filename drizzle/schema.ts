@@ -3371,6 +3371,39 @@ export const hrBonus = mysqlTable("hr_bonus", {
 export type HrBonus = typeof hrBonus.$inferSelect;
 export type InsertHrBonus = typeof hrBonus.$inferInsert;
 
+// ─── HR — VACACIONES Y PERMISOS (Fase 8) ────────────────────────────────────
+// hr_leave_requests: solicitudes del empleado, aprobadas/rechazadas por admin.
+export const hrLeaveRequests = mysqlTable("hr_leave_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employee_id").notNull(),
+  type: mysqlEnum("type", ["vacaciones", "asuntos_propios", "baja_medica", "permiso", "otro"]).notNull().default("vacaciones"),
+  fromDate: date("from_date", { mode: "string" }).notNull(),
+  toDate: date("to_date", { mode: "string" }).notNull(),
+  days: decimal("days", { precision: 5, scale: 1 }).notNull().default("0"),
+  status: mysqlEnum("status", ["pendiente", "aprobada", "rechazada", "cancelada"]).notNull().default("pendiente"),
+  reason: text("reason"),
+  decisionReason: text("decision_reason"),
+  approvedBy: int("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrLeaveRequest = typeof hrLeaveRequests.$inferSelect;
+export type InsertHrLeaveRequest = typeof hrLeaveRequests.$inferInsert;
+
+// hr_leave_balance: días de vacaciones asignados por empleado y año.
+// taken / pending NO se almacenan — se calculan en vivo desde requests.
+export const hrLeaveBalance = mysqlTable("hr_leave_balance", {
+  id: int("id").autoincrement().primaryKey(),
+  employeeId: int("employee_id").notNull(),
+  year: int("year").notNull(),
+  accruedDays: decimal("accrued_days", { precision: 5, scale: 1 }).notNull().default("22"),
+  notes: varchar("notes", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type HrLeaveBalance = typeof hrLeaveBalance.$inferSelect;
+
 // hr_settings: singleton (id=1) con configuración global del módulo.
 export const hrSettings = mysqlTable("hr_settings", {
   id: int("id").primaryKey().default(1),

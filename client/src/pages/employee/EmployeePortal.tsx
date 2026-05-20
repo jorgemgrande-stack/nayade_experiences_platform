@@ -6,21 +6,9 @@
  * en fases posteriores (Fase 4, Fase 5, Fase 8).
  */
 import { Link } from "wouter";
-import { User, FileText, Clock, CalendarOff, Banknote, ArrowRight, Play, CheckCircle2 } from "lucide-react";
+import { User, FileText, CalendarOff, Banknote, ArrowRight, Play, CheckCircle2 } from "lucide-react";
 import EmployeeLayout from "./EmployeeLayout";
 import { trpc } from "@/lib/trpc";
-
-function ComingSoonCard({ icon: Icon, title, hint }: { icon: React.ElementType; title: string; hint: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className="w-4 h-4 text-white/30" />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">{title}</span>
-      </div>
-      <p className="text-xs text-white/40">{hint}</p>
-    </div>
-  );
-}
 
 function fmtTime(d: Date | string | null | undefined) {
   if (!d) return "—";
@@ -139,14 +127,24 @@ export default function EmployeePortal() {
           </div>
         </Link>
 
-        {/* Próximamente */}
-        <div className="pt-2">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-white/40 mb-3">Próximamente</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <ComingSoonCard icon={CalendarOff} title="Vacaciones" hint="Disponible en Fase 8. Solicitud y consulta de vacaciones y permisos." />
-            <ComingSoonCard icon={ArrowRight} title="Bonus e incentivos" hint="Disponible en Fase 6. Pagos extra a tu nómina." />
+        {/* Vacaciones (Fase 8) */}
+        <Link
+          href="/empleado/vacaciones"
+          className="group block rounded-xl border border-white/[0.08] bg-white/[0.03] p-4 hover:bg-white/[0.05] hover:border-orange-500/30 transition-all"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center">
+                <CalendarOff className="w-5 h-5 text-orange-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white">Vacaciones y permisos</h3>
+                <p className="text-xs text-white/50">Solicita ausencias y consulta tu saldo</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-white/30 group-hover:text-orange-400 transition-colors" />
           </div>
-        </div>
+        </Link>
 
         {/* Estado */}
         {!isLoading && me && (
