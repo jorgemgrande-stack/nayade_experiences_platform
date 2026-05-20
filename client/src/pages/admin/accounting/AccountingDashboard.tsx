@@ -61,6 +61,12 @@ export default function AccountingDashboard() {
   const { data: cashflow } = trpc.bankMovements.getCashflowForecast.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
   });
+  // Foto económica consolidada (resultado + laboral + fiscal).
+  const execYear = new Date().getFullYear();
+  const { data: exec } = trpc.gestoria.executiveSummary.useQuery(
+    { year: execYear },
+    { staleTime: 5 * 60 * 1000 },
+  );
 
   const handleExport = (format: "csv" | "excel") => {
     toast.success(`Exportando informe en formato ${format.toUpperCase()}... (Función disponible próximamente)`);
@@ -135,6 +141,37 @@ export default function AccountingDashboard() {
             <FileText className="w-3.5 h-3.5 mr-1.5" />
             Informe Completo
           </Button>
+        </div>
+      </div>
+
+      {/* ── Salud de la empresa: foto económica consolidada ──────────────── */}
+      <div className="mb-8 rounded-2xl border border-amber-300/40 bg-amber-50/40 dark:bg-amber-500/[0.04] p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+            <BarChart3 className="w-4 h-4 text-amber-600" /> Salud de la empresa · ejercicio {execYear}
+          </h2>
+          <span className="text-[11px] text-muted-foreground">Resultado, costes laborales y carga fiscal · estimación</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <HealthTile to="/admin/contabilidad/cuenta-resultados" label="Ingresos"
+            value={exec ? fmtEur(exec.income) : "—"} />
+          <HealthTile to="/admin/contabilidad/cuenta-resultados" label="EBITDA"
+            value={exec ? fmtEur(exec.ebitda) : "—"}
+            sub={exec ? `Margen ${exec.ebitdaMargin.toFixed(1)} %` : ""} />
+          <HealthTile to="/admin/contabilidad/cuenta-resultados" label="Resultado neto estimado"
+            value={exec ? fmtEur(exec.netResult) : "—"}
+            sub="EBITDA − Imp. Sociedades"
+            tone={exec && exec.netResult < 0 ? "red" : "emerald"} />
+          <HealthTile to="/admin/personal" label="Coste laboral"
+            value={exec ? fmtEur(exec.laborCost) : "—"}
+            sub={exec ? `${exec.laborPctOfRevenue.toFixed(1)} % de ingresos` : ""} />
+          <HealthTile to="/admin/gestoria" label="Carga fiscal estimada"
+            value={exec ? fmtEur(exec.fiscalTotal) : "—"}
+            sub="IVA + IRPF + IS" />
+          <HealthTile to="/admin/gestoria" label="Tesorería 60 días"
+            value={exec ? fmtEur(exec.projected60) : "—"}
+            sub={exec ? (exec.overdueObligations > 0 ? `${exec.overdueObligations} obligación(es) vencida(s)` : "Saldo proyectado") : ""}
+            tone={exec && exec.projected60 < 0 ? "red" : "emerald"} />
         </div>
       </div>
 
@@ -511,5 +548,22 @@ export default function AccountingDashboard() {
         </div>
       </div>
     </AdminLayout>
+  );
+}
+
+function HealthTile({ to, label, value, sub, tone }: {
+  to: string; label: string; value: string; sub?: string; tone?: "emerald" | "red";
+}) {
+  return (
+    <Link href={to}>
+      <div className="bg-card rounded-xl border border-border/50 p-3 hover:border-amber-300/60 transition-colors cursor-pointer h-full">
+        <div className="text-[11px] text-muted-foreground leading-tight">{label}</div>
+        <div className={cn(
+          "text-lg font-display font-bold mt-1",
+          tone === "red" ? "text-red-500" : tone === "emerald" ? "text-emerald-600" : "text-foreground",
+        )}>{value}</div>
+        {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      </div>
+    </Link>
   );
 }

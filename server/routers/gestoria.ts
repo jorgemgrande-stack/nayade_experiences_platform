@@ -28,6 +28,7 @@ import { storagePut } from "../storage";
 import { getUserByInviteToken, setUserPassword } from "../db";
 import { sendEmail } from "../mailer";
 import { runTaxReminderJob } from "../taxReminderJob";
+import { computeExecutiveSummary } from "../executiveSummary";
 import {
   compute303, compute390, lines303, type Vat303,
   compute111, compute190, lines111, type Labor111,
@@ -165,6 +166,15 @@ async function persistObligationEstimate(
 }
 
 export const gestoriaRouter = router({
+  /**
+   * Resumen ejecutivo: foto económica consolidada del ejercicio (resultado,
+   * coste laboral, carga fiscal, resultado neto y tesorería). Consumido por el
+   * Dashboard de Contabilidad y la Cuenta de Resultados.
+   */
+  executiveSummary: gestoriaView
+    .input(z.object({ year: z.number().int() }))
+    .query(async ({ input }) => computeExecutiveSummary(input.year)),
+
   // ─── Configuración ─────────────────────────────────────────────────────────
   settings: router({
     get: gestoriaView.query(async () => {

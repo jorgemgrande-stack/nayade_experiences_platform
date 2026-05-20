@@ -43,6 +43,9 @@ export default function ProfitLossReport() {
 
   const reportQ = trpc.financial.profitLoss.report.useQuery({ dateFrom, dateTo, conciliatedOnly });
   const cashflowQ = trpc.bankMovements.getCashflowForecast.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  // Cierre fiscal del ejercicio: del EBITDA al resultado neto (estimación anual).
+  const execYear = Number(dateFrom.slice(0, 4)) || new Date().getFullYear();
+  const execQ = trpc.gestoria.executiveSummary.useQuery({ year: execYear }, { staleTime: 5 * 60 * 1000 });
   const categoriesQ = trpc.financial.categories.list.useQuery();
   const costCentersQ = trpc.financial.costCenters.list.useQuery();
 
@@ -255,6 +258,44 @@ export default function ProfitLossReport() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Del EBITDA al resultado neto — cierre fiscal del ejercicio */}
+            {execQ.data && (
+              <Card className="border-2 border-amber-300/50 bg-amber-50/40">
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-foreground">
+                      Del EBITDA al resultado neto · ejercicio {execYear}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Estimación · incluye Impuesto de Sociedades</span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div>
+                      <div className="text-xs text-muted-foreground">EBITDA del ejercicio</div>
+                      <div className="text-xl font-bold text-foreground">{fmt(execQ.data.ebitda)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">− Impuesto de Sociedades</div>
+                      <div className="text-xl font-bold text-amber-700">{fmt(execQ.data.corporateTax)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Carga fiscal total (IVA+IRPF+IS)</div>
+                      <div className="text-xl font-bold text-foreground/70">{fmt(execQ.data.fiscalTotal)}</div>
+                    </div>
+                    <div className={`rounded-lg px-3 py-1.5 ${execQ.data.netResult >= 0 ? "bg-emerald-100/60" : "bg-red-100/60"}`}>
+                      <div className="text-xs text-muted-foreground">= Resultado neto estimado</div>
+                      <div className={`text-xl font-bold ${execQ.data.netResult >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                        {fmt(execQ.data.netResult)}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-2">
+                    El coste laboral ({fmt(execQ.data.laborCost)} · {execQ.data.laborPctOfRevenue.toFixed(1)} % de
+                    ingresos) ya está incluido en los gastos del EBITDA. La liquidación oficial la realiza la gestoría.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* KPI Cards — fila 2: tesorería */}
             {cf && (
