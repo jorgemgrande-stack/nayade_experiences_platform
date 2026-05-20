@@ -3430,3 +3430,86 @@ export const hrSettings = mysqlTable("hr_settings", {
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
 export type HrSettings = typeof hrSettings.$inferSelect;
+
+// ─── GESTORÍA E IMPUESTOS (Fase 1) ───────────────────────────────────────────
+
+// Espina dorsal: una fila por modelo fiscal + periodo.
+export const taxObligations = mysqlTable("tax_obligations", {
+  id: int("id").autoincrement().primaryKey(),
+  model: mysqlEnum("model", ["303", "390", "111", "190", "200", "202"]).notNull(),
+  year: int("year").notNull(),
+  periodType: mysqlEnum("period_type", ["trimestral", "anual", "mensual"]).notNull(),
+  periodKey: varchar("period_key", { length: 16 }).notNull(),
+  periodLabel: varchar("period_label", { length: 96 }).notNull(),
+  dueDate: varchar("due_date", { length: 10 }).notNull(),
+  estimatedAmount: decimal("estimated_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  presentedAmount: decimal("presented_amount", { precision: 12, scale: 2 }),
+  paidAmount: decimal("paid_amount", { precision: 12, scale: 2 }),
+  status: mysqlEnum("status", [
+    "pendiente", "estimado", "revisado", "enviado_gestoria", "presentado", "pagado", "aplazado", "cerrado",
+  ]).notNull().default("pendiente"),
+  deferralId: int("deferral_id"),
+  presentedAt: timestamp("presented_at"),
+  paidAt: timestamp("paid_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type TaxObligation = typeof taxObligations.$inferSelect;
+
+// Desglose trazable del importe estimado de cada obligación.
+export const taxObligationLines = mysqlTable("tax_obligation_lines", {
+  id: int("id").autoincrement().primaryKey(),
+  obligationId: int("obligation_id").notNull(),
+  concept: varchar("concept", { length: 256 }).notNull(),
+  base: decimal("base", { precision: 12, scale: 2 }).notNull().default("0"),
+  rate: decimal("rate", { precision: 5, scale: 2 }),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  sourceType: varchar("source_type", { length: 32 }),
+  sourceRef: varchar("source_ref", { length: 64 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type TaxObligationLine = typeof taxObligationLines.$inferSelect;
+
+// Auditoría de cambios de estado de una obligación.
+export const taxObligationLog = mysqlTable("tax_obligation_log", {
+  id: int("id").autoincrement().primaryKey(),
+  obligationId: int("obligation_id").notNull(),
+  fromStatus: varchar("from_status", { length: 32 }),
+  toStatus: varchar("to_status", { length: 32 }).notNull(),
+  userId: int("user_id"),
+  userName: varchar("user_name", { length: 128 }),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type TaxObligationLog = typeof taxObligationLog.$inferSelect;
+
+// Documentos adjuntos a una obligación (modelo presentado, justificante…).
+export const taxDocuments = mysqlTable("tax_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  obligationId: int("obligation_id").notNull(),
+  docType: mysqlEnum("doc_type", [
+    "modelo_presentado", "justificante_pago", "resolucion", "otro",
+  ]).notNull().default("otro"),
+  title: varchar("title", { length: 256 }).notNull(),
+  fileUrl: text("file_url").notNull(),
+  fileKey: varchar("file_key", { length: 512 }),
+  uploadedBy: int("uploaded_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type TaxDocument = typeof taxDocuments.$inferSelect;
+
+// Configuración singleton del módulo (id=1).
+export const taxSettings = mysqlTable("tax_settings", {
+  id: int("id").primaryKey().default(1),
+  corporateTaxRate: decimal("corporate_tax_rate", { precision: 5, scale: 2 }).notNull().default("25"),
+  fiscalYearEndMonth: int("fiscal_year_end_month").notNull().default(12),
+  companyNif: varchar("company_nif", { length: 32 }),
+  companyName: varchar("company_name", { length: 256 }),
+  companyAddress: text("company_address"),
+  gestoriaEmails: text("gestoria_emails"),
+  iaeEpigraphs: text("iae_epigraphs"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type TaxSettings = typeof taxSettings.$inferSelect;

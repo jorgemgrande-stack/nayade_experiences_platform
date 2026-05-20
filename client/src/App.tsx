@@ -84,6 +84,10 @@ const HRSettings = lazy(() => import("./pages/admin/hr/HRSettings"));
 const BonusManager = lazy(() => import("./pages/admin/hr/BonusManager"));
 // Fase 7 RRHH — Fiscal
 const HRFiscalLedger = lazy(() => import("./pages/admin/hr/HRFiscalLedger"));
+// Gestoría e Impuestos
+const GestoriaDashboard = lazy(() => import("./pages/admin/gestoria/GestoriaDashboard"));
+const GestoriaCalendario = lazy(() => import("./pages/admin/gestoria/GestoriaCalendario"));
+const GestoriaConfiguracion = lazy(() => import("./pages/admin/gestoria/GestoriaConfiguracion"));
 // Fase 8 RRHH — Vacaciones
 const LeaveManager = lazy(() => import("./pages/admin/hr/LeaveManager"));
 const MyLeaves = lazy(() => import("./pages/employee/MyLeaves"));
@@ -324,6 +328,11 @@ function Router() {
       {/* Fiscal REAV */}
       <Route path="/admin/fiscal">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
       <Route path="/admin/fiscal/reav">{() => <Suspense fallback={<AdminLoadingFallback />}><ReavManager /></Suspense>}</Route>
+
+      {/* Gestoría e Impuestos */}
+      <Route path="/admin/gestoria">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaDashboard /></Suspense>}</Route>
+      <Route path="/admin/gestoria/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaCalendario /></Suspense>}</Route>
+      <Route path="/admin/gestoria/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaConfiguracion /></Suspense>}</Route>
 
       {/* Marketing */}
       <Route path="/admin/marketing">{() => <Suspense fallback={<AdminLoadingFallback />}><CuponesManager /></Suspense>}</Route>

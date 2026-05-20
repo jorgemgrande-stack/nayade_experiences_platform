@@ -771,6 +771,13 @@
       "when": 1779224796206,
       "tag": "0111_expenses_fiscal_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "5",
+      "when": 1779224797206,
+      "tag": "0112_tax_core",
+      "breakpoints": true
     }
   ]
 }

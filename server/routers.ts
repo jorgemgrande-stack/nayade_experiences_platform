@@ -169,6 +169,7 @@ import { tpvRouter } from "./routers/tpv";
 import { discountsRouter } from "./routers/discounts";
 import { legoPacksRouter, calculateLegoPackPrice } from "./routers/legoPacks";
 import { expensesModuleRouter } from "./routers/expenses";
+import { gestoriaRouter } from "./routers/gestoria";
 import { ticketingRouter } from "./routers/ticketing";
 import { cancellationsRouter } from "./routers/cancellations";
 import { emailTemplatesRouter } from "./routers/emailTemplatesRouter";
@@ -216,6 +217,7 @@ export const appRouter = router({
   partners: partnersRouter,
   operations: operationsRouter,
   hr: hrRouter,
+  gestoria: gestoriaRouter,
   pdfTemplates: pdfTemplatesRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),

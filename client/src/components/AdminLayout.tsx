@@ -155,6 +155,17 @@ const navItems = [
     ],
   },
   {
+    label: "Gestoría e Impuestos",
+    href: "/admin/gestoria",
+    icon: Receipt,
+    roles: ["admin"],
+    children: [
+      { label: "Dashboard Fiscal", href: "/admin/gestoria" },
+      { label: "Calendario Fiscal", href: "/admin/gestoria/calendario" },
+      { label: "Configuración", href: "/admin/gestoria/configuracion" },
+    ],
+  },
+  {
     label: "TPV",
     href: "/admin/tpv",
     icon: Monitor,
