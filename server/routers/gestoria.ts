@@ -18,7 +18,13 @@ import {
   taxSettings,
   finCashAccounts,
 } from "../../drizzle/schema";
-import { compute303, compute390, lines303, type Vat303 } from "../gestoriaTax";
+import {
+  compute303, compute390, lines303, type Vat303,
+  compute111, compute190, lines111, type Labor111,
+} from "../gestoriaTax";
+
+/** Línea de desglose para persistir en tax_obligation_lines. */
+type EstimateLine = { concept: string; base: string; rate: string | null; amount: string; sourceType: string };
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
@@ -111,6 +117,29 @@ async function ensureYearObligations(year: number): Promise<number> {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Vuelca una estimación a una obligación: reescribe sus líneas de desglose y su
+ * `estimatedAmount`. NO toca `presentedAmount` ni el estado, salvo el salto
+ * automático pendiente → estimado (nunca pisa lo que la gestoría ya marcó).
+ */
+async function persistObligationEstimate(
+  obs: { id: number; model: string; periodKey: string; status: string }[],
+  model: TaxModel,
+  periodKey: string,
+  estimated: number,
+  lines: EstimateLine[],
+): Promise<void> {
+  const ob = obs.find((o) => o.model === model && o.periodKey === periodKey);
+  if (!ob) return;
+  await db.delete(taxObligationLines).where(eq(taxObligationLines.obligationId, ob.id));
+  if (lines.length > 0) {
+    await db.insert(taxObligationLines).values(lines.map((l) => ({ obligationId: ob.id, ...l })));
+  }
+  const patch: Record<string, unknown> = { estimatedAmount: estimated.toFixed(2), updatedAt: new Date() };
+  if (ob.status === "pendiente") patch.status = "estimado";
+  await db.update(taxObligations).set(patch).where(eq(taxObligations.id, ob.id));
 }
 
 export const gestoriaRouter = router({
@@ -261,43 +290,64 @@ export const gestoriaRouter = router({
         await ensureYearObligations(year);
         const obs = await db.select().from(taxObligations).where(eq(taxObligations.year, year));
 
-        const persist = async (
-          model: TaxModel,
-          periodKey: string,
-          estimated: number,
-          lns: { concept: string; base: string; rate: string | null; amount: string; sourceType: string }[],
-        ) => {
-          const ob = obs.find((o) => o.model === model && o.periodKey === periodKey);
-          if (!ob) return;
-          await db.delete(taxObligationLines).where(eq(taxObligationLines.obligationId, ob.id));
-          if (lns.length > 0) {
-            await db.insert(taxObligationLines).values(
-              lns.map((l) => ({ obligationId: ob.id, ...l })),
-            );
-          }
-          const patch: Record<string, unknown> = {
-            estimatedAmount: estimated.toFixed(2),
-            updatedAt: new Date(),
-          };
-          if (ob.status === "pendiente") patch.status = "estimado";
-          await db.update(taxObligations).set(patch).where(eq(taxObligations.id, ob.id));
-        };
-
         const quarters: Vat303[] = [];
         for (let q = 1; q <= 4; q++) {
           const r = await compute303(`${year}-T${q}`);
           quarters.push(r);
-          await persist("303", `${year}-T${q}`, r.result, lines303(r));
+          await persistObligationEstimate(obs, "303", `${year}-T${q}`, r.result, lines303(r));
         }
         const annualResult = Number(quarters.reduce((s, q) => s + q.result, 0).toFixed(2));
-        const annualLines = quarters.map((r, i) => ({
+        const annualLines: EstimateLine[] = quarters.map((r, i) => ({
           concept: `Resultado ${i + 1}.º trimestre`,
           base: r.outputBase.toFixed(2),
-          rate: null as string | null,
+          rate: null,
           amount: r.result.toFixed(2),
           sourceType: "303",
         }));
-        await persist("390", `${year}`, annualResult, annualLines);
+        await persistObligationEstimate(obs, "390", `${year}`, annualResult, annualLines);
+
+        return { ok: true, quarters, annualResult };
+      }),
+  }),
+
+  // ─── Obligaciones laborales (Modelos 111 y 190) ────────────────────────────
+  labor: router({
+    /** Estimación del Modelo 111 de un trimestre. periodKey = 'YYYY-TX'. */
+    preview111: gestoriaView
+      .input(z.object({ periodKey: z.string() }))
+      .query(async ({ input }) => compute111(input.periodKey)),
+
+    /** Estimación del Modelo 190 (resumen anual de retenciones). */
+    preview190: gestoriaView
+      .input(z.object({ year: z.number().int() }))
+      .query(async ({ input }) => compute190(input.year)),
+
+    /**
+     * Recalcula las retenciones del ejercicio y vuelca la estimación a las
+     * obligaciones 111 (×4) y 190.
+     */
+    recalculate: gestoriaManage
+      .input(z.object({ year: z.number().int() }))
+      .mutation(async ({ input }) => {
+        const year = input.year;
+        await ensureYearObligations(year);
+        const obs = await db.select().from(taxObligations).where(eq(taxObligations.year, year));
+
+        const quarters: Labor111[] = [];
+        for (let q = 1; q <= 4; q++) {
+          const r = await compute111(`${year}-T${q}`);
+          quarters.push(r);
+          await persistObligationEstimate(obs, "111", `${year}-T${q}`, r.totalRetention, lines111(r));
+        }
+        const annualResult = Number(quarters.reduce((s, q) => s + q.totalRetention, 0).toFixed(2));
+        const annualLines: EstimateLine[] = quarters.map((r, i) => ({
+          concept: `Retenciones ${i + 1}.º trimestre`,
+          base: r.workerBase.toFixed(2),
+          rate: null,
+          amount: r.totalRetention.toFixed(2),
+          sourceType: "111",
+        }));
+        await persistObligationEstimate(obs, "190", `${year}`, annualResult, annualLines);
 
         return { ok: true, quarters, annualResult };
       }),

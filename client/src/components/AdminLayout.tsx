@@ -162,6 +162,7 @@ const navItems = [
     children: [
       { label: "Dashboard Fiscal", href: "/admin/gestoria" },
       { label: "Tributación IVA", href: "/admin/gestoria/iva" },
+      { label: "Obligaciones Laborales", href: "/admin/gestoria/laboral" },
       { label: "Calendario Fiscal", href: "/admin/gestoria/calendario" },
       { label: "Configuración", href: "/admin/gestoria/configuracion" },
     ],

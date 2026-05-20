@@ -9,8 +9,8 @@
 
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { and, gte, lt, lte, ne, or, isNull } from "drizzle-orm";
-import { invoices, reavExpedients, expenses } from "../drizzle/schema";
+import { and, gte, lt, lte, ne, or, isNull, isNotNull, inArray } from "drizzle-orm";
+import { invoices, reavExpedients, expenses, hrIrpfLedger } from "../drizzle/schema";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
@@ -134,6 +134,100 @@ export async function compute390(year: number): Promise<Vat390> {
     inputAmount: round2(quarters.reduce((s, q) => s + q.inputAmount, 0)),
     result: round2(quarters.reduce((s, q) => s + q.result, 0)),
   };
+}
+
+// ─── OBLIGACIONES LABORALES — Modelos 111 y 190 (Fase 3) ─────────────────────
+
+export type Labor111 = {
+  periodKey: string;
+  workerBase: number;
+  workerRetention: number;
+  workerCount: number;
+  professionalBase: number;
+  professionalRetention: number;
+  professionalCount: number;
+  totalRetention: number;
+};
+
+export type Labor190 = {
+  year: number;
+  quarters: Labor111[];
+  workerRetention: number;
+  professionalRetention: number;
+  totalRetention: number;
+};
+
+/**
+ * Calcula el Modelo 111 de un trimestre. periodKey = 'YYYY-TX'.
+ * Retenciones del trabajo desde hr_irpf_ledger (nóminas y bonus) y
+ * retenciones a profesionales desde los gastos con retención practicada.
+ */
+export async function compute111(periodKey: string): Promise<Labor111> {
+  const m = periodKey.match(/^(\d{4})-T([1-4])$/);
+  if (!m) throw new Error(`periodKey laboral inválido: ${periodKey}`);
+  const year = Number(m[1]);
+  const q = Number(m[2]);
+  const { startStr, endStr } = quarterRange(year, q);
+  const months = [0, 1, 2].map((i) => `${year}-${String((q - 1) * 3 + 1 + i).padStart(2, "0")}`);
+
+  // Retenciones de rendimientos del trabajo (hr_irpf_ledger).
+  const irpfRows = await db
+    .select({ taxableBase: hrIrpfLedger.taxableBase, retainedAmount: hrIrpfLedger.retainedAmount })
+    .from(hrIrpfLedger)
+    .where(inArray(hrIrpfLedger.period, months));
+  const workerBase = round2(irpfRows.reduce((s, r) => s + Number(r.taxableBase ?? 0), 0));
+  const workerRetention = round2(irpfRows.reduce((s, r) => s + Number(r.retainedAmount ?? 0), 0));
+
+  // Retenciones a profesionales / arrendadores (gastos con retención).
+  const expRows = await db
+    .select({ taxBase: expenses.taxBase, retentionAmount: expenses.retentionAmount })
+    .from(expenses)
+    .where(and(
+      isNotNull(expenses.retentionAmount),
+      or(
+        and(gte(expenses.accrualDate, startStr), lte(expenses.accrualDate, endStr)),
+        and(isNull(expenses.accrualDate), gte(expenses.date, startStr), lte(expenses.date, endStr)),
+      ),
+    ));
+  const professionalBase = round2(expRows.reduce((s, r) => s + Number(r.taxBase ?? 0), 0));
+  const professionalRetention = round2(expRows.reduce((s, r) => s + Number(r.retentionAmount ?? 0), 0));
+
+  return {
+    periodKey,
+    workerBase,
+    workerRetention,
+    workerCount: irpfRows.length,
+    professionalBase,
+    professionalRetention,
+    professionalCount: expRows.length,
+    totalRetention: round2(workerRetention + professionalRetention),
+  };
+}
+
+/** Calcula el Modelo 190 (resumen anual de retenciones). */
+export async function compute190(year: number): Promise<Labor190> {
+  const quarters = await Promise.all([1, 2, 3, 4].map((q) => compute111(`${year}-T${q}`)));
+  return {
+    year,
+    quarters,
+    workerRetention: round2(quarters.reduce((s, q) => s + q.workerRetention, 0)),
+    professionalRetention: round2(quarters.reduce((s, q) => s + q.professionalRetention, 0)),
+    totalRetention: round2(quarters.reduce((s, q) => s + q.totalRetention, 0)),
+  };
+}
+
+/** Líneas de desglose (tax_obligation_lines) de un resultado 111. */
+export function lines111(r: Labor111): { concept: string; base: string; rate: string | null; amount: string; sourceType: string }[] {
+  return [
+    {
+      concept: "Retenciones de rendimientos del trabajo",
+      base: String(r.workerBase), rate: null, amount: String(r.workerRetention), sourceType: "hr_irpf",
+    },
+    {
+      concept: "Retenciones a profesionales y arrendadores",
+      base: String(r.professionalBase), rate: null, amount: String(r.professionalRetention), sourceType: "expenses",
+    },
+  ];
 }
 
 /** Líneas de desglose (tax_obligation_lines) de un resultado 303. */
