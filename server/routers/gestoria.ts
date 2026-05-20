@@ -27,6 +27,7 @@ import { buildDossierZip } from "../gestoriaDossier";
 import { storagePut } from "../storage";
 import { getUserByInviteToken, setUserPassword } from "../db";
 import { sendEmail } from "../mailer";
+import { runTaxReminderJob } from "../taxReminderJob";
 import {
   compute303, compute390, lines303, type Vat303,
   compute111, compute190, lines111, type Labor111,
@@ -308,6 +309,11 @@ export const gestoriaRouter = router({
         return { days, due, balance: round2(cashAvailable - due) };
       });
       return { cashAvailable, buckets };
+    }),
+
+    /** Dispara manualmente el envío de avisos de vencimiento (cron diario). */
+    sendReminders: gestoriaManage.mutation(async () => {
+      return runTaxReminderJob();
     }),
   }),
 

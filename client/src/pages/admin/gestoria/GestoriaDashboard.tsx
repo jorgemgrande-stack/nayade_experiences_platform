@@ -31,6 +31,11 @@ export default function GestoriaDashboard() {
     onError: (e) => toast.error("Error: " + e.message),
   });
 
+  const remindersMut = trpc.gestoria.dashboard.sendReminders.useMutation({
+    onSuccess: (r) => toast.success(`Avisos enviados: ${r.sent} (de ${r.checked} obligaciones revisadas)`),
+    onError: (e) => toast.error("Error: " + e.message),
+  });
+
   const s = summaryQ.data;
   const obligations = obligationsQ.data ?? [];
   const yearOptions = [currentYear - 1, currentYear, currentYear + 1];
@@ -119,9 +124,20 @@ export default function GestoriaDashboard() {
 
         {/* Próximos vencimientos */}
         <div className="bg-card border border-border rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-1.5">
-            <CalendarClock className="w-4 h-4" /> Próximos vencimientos
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+              <CalendarClock className="w-4 h-4" /> Próximos vencimientos
+            </h2>
+            <button
+              onClick={() => remindersMut.mutate()}
+              disabled={remindersMut.isPending}
+              className="flex items-center gap-1 text-xs text-primary/80 hover:text-primary disabled:opacity-50"
+              title="Envía ahora los avisos de vencimiento (el cron los envía a diario)"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${remindersMut.isPending ? "animate-spin" : ""}`} />
+              Enviar avisos ahora
+            </button>
+          </div>
           {!s || s.upcoming.length === 0 ? (
             <p className="text-sm text-muted-foreground">No hay vencimientos próximos.</p>
           ) : (

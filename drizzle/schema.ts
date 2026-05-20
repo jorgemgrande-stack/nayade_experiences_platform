@@ -3452,6 +3452,8 @@ export const taxObligations = mysqlTable("tax_obligations", {
   presentedAt: timestamp("presented_at"),
   paidAt: timestamp("paid_at"),
   notes: text("notes"),
+  // Último umbral (días) con aviso de vencimiento enviado — idempotencia del cron.
+  lastReminderDays: int("last_reminder_days"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
