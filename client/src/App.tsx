@@ -92,6 +92,7 @@ const GestoriaIVA = lazy(() => import("./pages/admin/gestoria/GestoriaIVA"));
 const GestoriaLaboral = lazy(() => import("./pages/admin/gestoria/GestoriaLaboral"));
 const GestoriaSociedades = lazy(() => import("./pages/admin/gestoria/GestoriaSociedades"));
 const GestoriaExpedientes = lazy(() => import("./pages/admin/gestoria/GestoriaExpedientes"));
+const GestoriaAplazamientos = lazy(() => import("./pages/admin/gestoria/GestoriaAplazamientos"));
 const GestoriaPortal = lazy(() => import("./pages/gestoria/GestoriaPortal"));
 const ActivarGestoria = lazy(() => import("./pages/gestoria/ActivarGestoria"));
 // Fase 8 RRHH — Vacaciones
@@ -341,6 +342,7 @@ function Router() {
       <Route path="/admin/gestoria/laboral">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaLaboral /></Suspense>}</Route>
       <Route path="/admin/gestoria/sociedades">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaSociedades /></Suspense>}</Route>
       <Route path="/admin/gestoria/expedientes">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaExpedientes /></Suspense>}</Route>
+      <Route path="/admin/gestoria/aplazamientos">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaAplazamientos /></Suspense>}</Route>
 
       {/* Portal de Gestoría (rol gestoria, fuera de /admin) */}
       <Route path="/gestoria">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaPortal /></Suspense>}</Route>

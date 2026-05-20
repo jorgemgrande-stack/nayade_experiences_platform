@@ -3530,3 +3530,33 @@ export const taxDossiers = mysqlTable("tax_dossiers", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type TaxDossier = typeof taxDossiers.$inferSelect;
+
+// Aplazamientos y fraccionamientos de obligaciones ante la AEAT (Fase 6).
+export const taxDeferrals = mysqlTable("tax_deferrals", {
+  id: int("id").autoincrement().primaryKey(),
+  obligationId: int("obligation_id").notNull(),
+  status: mysqlEnum("status", ["solicitado", "concedido", "denegado", "fraccionado"]).notNull().default("solicitado"),
+  requestedAt: varchar("requested_at", { length: 10 }),
+  resolutionAt: varchar("resolution_at", { length: 10 }),
+  principal: decimal("principal", { precision: 12, scale: 2 }).notNull().default("0"),
+  interestRate: decimal("interest_rate", { precision: 5, scale: 2 }),
+  installmentCount: int("installment_count").notNull().default(1),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+export type TaxDeferral = typeof taxDeferrals.$inferSelect;
+
+// Calendario de vencimientos de un aplazamiento.
+export const taxDeferralInstallments = mysqlTable("tax_deferral_installments", {
+  id: int("id").autoincrement().primaryKey(),
+  deferralId: int("deferral_id").notNull(),
+  number: int("number").notNull(),
+  dueDate: varchar("due_date", { length: 10 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  interest: decimal("interest", { precision: 12, scale: 2 }).notNull().default("0"),
+  paidAt: varchar("paid_at", { length: 10 }),
+  status: mysqlEnum("status", ["pendiente", "pagada"]).notNull().default("pendiente"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type TaxDeferralInstallment = typeof taxDeferralInstallments.$inferSelect;

@@ -18,6 +18,8 @@ import {
   taxObligationLog,
   taxSettings,
   taxDossiers,
+  taxDeferrals,
+  taxDeferralInstallments,
   finCashAccounts,
   users,
 } from "../../drizzle/schema";
@@ -126,6 +128,17 @@ async function ensureYearObligations(year: number): Promise<number> {
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
+function addMonthsISO(dateStr: string, n: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setMonth(d.getMonth() + n);
+  return d.toISOString().slice(0, 10);
+}
+function addDaysISO(dateStr: string, n: number): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /**
  * Vuelca una estimación a una obligación: reescribe sus líneas de desglose y su
@@ -272,6 +285,30 @@ export const gestoriaRouter = router({
           upcoming,
         };
       }),
+
+    /** Previsión de tesorería fiscal a 30/60/90 días. */
+    treasury: gestoriaView.query(async () => {
+      const today = todayISO();
+      const obs = await db.select().from(taxObligations);
+      const openObs = obs.filter((o) => !["pagado", "cerrado", "aplazado"].includes(o.status));
+      const insts = await db.select().from(taxDeferralInstallments)
+        .where(eq(taxDeferralInstallments.status, "pendiente"));
+      const accounts = await db.select().from(finCashAccounts).where(eq(finCashAccounts.isActive, true));
+      const cashAvailable = round2(accounts.reduce((s, a) => s + Number(a.currentBalance ?? 0), 0));
+
+      const buckets = [30, 60, 90].map((days) => {
+        const limit = addDaysISO(today, days);
+        const obDue = openObs
+          .filter((o) => o.dueDate >= today && o.dueDate <= limit)
+          .reduce((s, o) => s + Number(o.estimatedAmount ?? 0), 0);
+        const instDue = insts
+          .filter((i) => i.dueDate >= today && i.dueDate <= limit)
+          .reduce((s, i) => s + Number(i.amount ?? 0) + Number(i.interest ?? 0), 0);
+        const due = round2(obDue + instDue);
+        return { days, due, balance: round2(cashAvailable - due) };
+      });
+      return { cashAvailable, buckets };
+    }),
   }),
 
   // ─── Tributación de IVA (Modelos 303 y 390) ────────────────────────────────
@@ -557,6 +594,119 @@ export const gestoriaRouter = router({
           userName: `${ctx.user.name} (gestoría)`,
           note: input.note ?? null,
         });
+        return { ok: true };
+      }),
+  }),
+
+  // ─── Aplazamientos y fraccionamientos ──────────────────────────────────────
+  deferrals: router({
+    /** Aplazamientos del ejercicio con la obligación asociada. */
+    list: gestoriaView
+      .input(z.object({ year: z.number().int().optional() }).optional())
+      .query(async ({ input }) => {
+        const rows = await db
+          .select({ deferral: taxDeferrals, obligation: taxObligations })
+          .from(taxDeferrals)
+          .leftJoin(taxObligations, eq(taxDeferrals.obligationId, taxObligations.id))
+          .orderBy(desc(taxDeferrals.createdAt));
+        return input?.year ? rows.filter((r) => r.obligation?.year === input.year) : rows;
+      }),
+
+    /** Aplazamiento (si existe) de una obligación, con su calendario de cuotas. */
+    get: gestoriaView
+      .input(z.object({ obligationId: z.number().int() }))
+      .query(async ({ input }) => {
+        const [obl] = await db.select().from(taxObligations).where(eq(taxObligations.id, input.obligationId));
+        if (!obl?.deferralId) return null;
+        const [deferral] = await db.select().from(taxDeferrals).where(eq(taxDeferrals.id, obl.deferralId));
+        const installments = await db.select().from(taxDeferralInstallments)
+          .where(eq(taxDeferralInstallments.deferralId, obl.deferralId))
+          .orderBy(asc(taxDeferralInstallments.number));
+        return { deferral, installments };
+      }),
+
+    /**
+     * Registra un aplazamiento de una obligación y genera su calendario de
+     * cuotas (mensuales). Marca la obligación como `aplazado`.
+     */
+    create: gestoriaManage
+      .input(z.object({
+        obligationId: z.number().int(),
+        status: z.enum(["solicitado", "concedido", "denegado", "fraccionado"]).default("solicitado"),
+        requestedAt: z.string().optional(),
+        principal: z.string(),
+        interestRate: z.string().optional(),
+        installmentCount: z.number().int().min(1).max(60).default(1),
+        firstDueDate: z.string(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const [res] = await db.insert(taxDeferrals).values({
+          obligationId: input.obligationId,
+          status: input.status,
+          requestedAt: input.requestedAt ?? null,
+          principal: input.principal,
+          interestRate: input.interestRate ?? null,
+          installmentCount: input.installmentCount,
+          notes: input.notes ?? null,
+        });
+        const deferralId = (res as { insertId: number }).insertId;
+
+        const principal = parseFloat(input.principal) || 0;
+        const rate = input.interestRate ? parseFloat(input.interestRate) || 0 : 0;
+        const count = input.installmentCount;
+        const totalInterest = round2((principal * rate) / 100);
+        const baseAmount = Math.floor((principal / count) * 100) / 100;
+        const baseInterest = Math.floor((totalInterest / count) * 100) / 100;
+        let allocAmt = 0;
+        let allocInt = 0;
+        const installments = [];
+        for (let i = 1; i <= count; i++) {
+          const isLast = i === count;
+          const amount = isLast ? round2(principal - allocAmt) : baseAmount;
+          const interest = isLast ? round2(totalInterest - allocInt) : baseInterest;
+          allocAmt += amount;
+          allocInt += interest;
+          installments.push({
+            deferralId,
+            number: i,
+            dueDate: addMonthsISO(input.firstDueDate, i - 1),
+            amount: String(amount),
+            interest: String(interest),
+          });
+        }
+        await db.insert(taxDeferralInstallments).values(installments);
+
+        await db.update(taxObligations)
+          .set({ deferralId, status: "aplazado", updatedAt: new Date() })
+          .where(eq(taxObligations.id, input.obligationId));
+
+        return { ok: true, deferralId };
+      }),
+
+    /** Actualiza el estado de un aplazamiento (resolución de la AEAT). */
+    updateStatus: gestoriaManage
+      .input(z.object({
+        id: z.number().int(),
+        status: z.enum(["solicitado", "concedido", "denegado", "fraccionado"]),
+        resolutionAt: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.update(taxDeferrals).set({
+          status: input.status,
+          resolutionAt: input.resolutionAt ?? null,
+          updatedAt: new Date(),
+        }).where(eq(taxDeferrals.id, input.id));
+        return { ok: true };
+      }),
+
+    /** Marca una cuota del aplazamiento como pagada. */
+    payInstallment: gestoriaManage
+      .input(z.object({ installmentId: z.number().int() }))
+      .mutation(async ({ input }) => {
+        await db.update(taxDeferralInstallments)
+          .set({ status: "pagada", paidAt: todayISO() })
+          .where(eq(taxDeferralInstallments.id, input.installmentId));
         return { ok: true };
       }),
   }),

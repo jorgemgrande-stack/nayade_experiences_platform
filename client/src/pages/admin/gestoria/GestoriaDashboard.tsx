@@ -19,6 +19,7 @@ export default function GestoriaDashboard() {
   const utils = trpc.useUtils();
 
   const summaryQ = trpc.gestoria.dashboard.summary.useQuery({ year });
+  const treasuryQ = trpc.gestoria.dashboard.treasury.useQuery();
   const obligationsQ = trpc.gestoria.obligations.list.useQuery({ year });
 
   const setStatusMut = trpc.gestoria.obligations.setStatus.useMutation({
@@ -85,6 +86,35 @@ export default function GestoriaDashboard() {
             icon={<Wallet className="w-4 h-4" />}
             tone="emerald"
           />
+        </div>
+
+        {/* Tesorería fiscal */}
+        <div className="bg-card border border-border rounded-lg p-4">
+          <h2 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-1.5">
+            <Wallet className="w-4 h-4" /> Tesorería fiscal — previsión de liquidez
+          </h2>
+          {!treasuryQ.data ? (
+            <p className="text-sm text-muted-foreground">Calculando…</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              {treasuryQ.data.buckets.map((b) => {
+                const negative = b.balance < 0;
+                return (
+                  <div key={b.days} className={`rounded-lg p-3 border ${negative ? "bg-red-500/10 border-red-500/30" : "bg-emerald-500/10 border-emerald-500/25"}`}>
+                    <div className="text-xs text-muted-foreground">A {b.days} días</div>
+                    <div className="text-sm text-foreground/70 mt-1">Vencimientos: <span className="font-medium text-foreground">{eur(b.due)}</span></div>
+                    <div className={`text-sm mt-0.5 ${negative ? "text-red-400" : "text-emerald-400"}`}>
+                      Saldo proyectado: <span className="font-bold">{eur(b.balance)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Saldo proyectado = caja disponible ({treasuryQ.data ? eur(treasuryQ.data.cashAvailable) : "—"}) menos los
+            vencimientos fiscales y las cuotas de aplazamientos del horizonte. En rojo, riesgo de liquidez.
+          </p>
         </div>
 
         {/* Próximos vencimientos */}
