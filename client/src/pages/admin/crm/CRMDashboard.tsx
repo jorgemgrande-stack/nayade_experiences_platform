@@ -7018,11 +7018,11 @@ export default function CRMDashboard() {
               </div>
             )}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1210px] table-fixed">
+              <table className="w-full min-w-[1420px] table-fixed">
                 <colgroup>
                   <col style={{width:"40px"}} />
                   <col style={{width:"145px"}} />
-                  <col />
+                  <col style={{width:"210px"}} />
                   <col style={{width:"185px"}} className="hidden md:table-column" />
                   <col style={{width:"135px"}} />
                   <col style={{width:"105px"}} />
@@ -7083,7 +7083,7 @@ export default function CRMDashboard() {
                         )}
                         <div className="text-xs text-foreground/50 truncate">{res.customerEmail}</div>
                         {res.customerPhone && <div className="text-xs text-foreground/40 mt-0.5 truncate">{res.customerPhone}</div>}
-                        {res.merchantOrder && <div className="text-xs font-mono text-foreground/30 mt-0.5">{res.merchantOrder}</div>}
+                        {res.merchantOrder && <div className="text-xs font-mono text-foreground/30 mt-0.5 truncate">{res.merchantOrder}</div>}
                       </td>
                       {/* Producto */}
                       <td className="px-4 py-3 hidden md:table-cell">
