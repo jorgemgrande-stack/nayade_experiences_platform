@@ -14,6 +14,19 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Lock, Mail, AlertCircle, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 
+/**
+ * Página de inicio según el rol del usuario. Los partners van a su panel,
+ * los empleados al Portal del Empleado, el resto al panel de admin.
+ * Sin esto, un empleado aterrizaba en /admin y recibía "Sin permisos".
+ * Nota: 'monitor' sí tiene acceso al panel de admin (Operaciones), por eso
+ * no se redirige al portal — va a /admin como el resto.
+ */
+function homeForRole(role: string | undefined): string {
+  if (role === "partner_admin" || role === "partner_user") return "/partner/dashboard";
+  if (role === "employee") return "/empleado";
+  return "/admin";
+}
+
 export default function Login() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
@@ -35,8 +48,7 @@ export default function Login() {
       const params = new URLSearchParams(window.location.search);
       const returnTo = params.get("returnTo");
       const role = (meQuery.data as any)?.role as string | undefined;
-      const isPartner = role === "partner_admin" || role === "partner_user";
-      navigate(returnTo ?? (isPartner ? "/partner/dashboard" : "/admin"));
+      navigate(returnTo ?? homeForRole(role));
     }
   }, [meQuery.data, navigate]);
 
@@ -68,8 +80,7 @@ export default function Login() {
       const params = new URLSearchParams(window.location.search);
       const returnTo = params.get("returnTo");
       const role = (me as any)?.role as string | undefined;
-      const isPartner = role === "partner_admin" || role === "partner_user";
-      navigate(returnTo ?? (isPartner ? "/partner/dashboard" : "/admin"));
+      navigate(returnTo ?? homeForRole(role));
     } catch {
       setError("Error de conexión. Comprueba que el servidor está en marcha.");
     } finally {

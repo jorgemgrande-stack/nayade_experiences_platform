@@ -385,6 +385,14 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     }
   );
 
+  // ── Los empleados no acceden al panel de admin: enviarlos a su portal ──
+  // Evita el callejón sin salida de "Sin permisos" cuando un empleado abre /admin.
+  useEffect(() => {
+    if (!loading && isAuthenticated && userRole === "employee") {
+      navigate("/empleado");
+    }
+  }, [loading, isAuthenticated, userRole, navigate]);
+
   // ── Loading state ──
   if (loading) {
     return (
