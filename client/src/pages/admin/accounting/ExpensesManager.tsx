@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Pencil, Trash2, Search, Filter, Upload, FileText, X, Euro,
   TrendingDown, Calendar, ChevronDown, Banknote, LinkIcon,
-  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock, ExternalLink, Eye,
+  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock, ExternalLink, Eye, Calculator,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -162,6 +162,14 @@ export default function ExpensesManager() {
       utils.financial.expenses.list.invalidate();
     },
     onError: (e) => toast.error("Error en sincronización: " + e.message),
+  });
+
+  const backfillMut = trpc.financial.expenses.backfillFiscal.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Fiscalidad recalculada: ${res.updated} gasto(s) actualizado(s)`);
+      utils.financial.expenses.list.invalidate();
+    },
+    onError: (e) => toast.error("Error al recalcular: " + e.message),
   });
 
   const emailLogsQ = trpc.financial.emailIngestion.listLogs.useQuery(
@@ -446,6 +454,23 @@ export default function ExpensesManager() {
                 ? <RefreshCw className="w-4 h-4 animate-spin" />
                 : <Mail className="w-4 h-4" />}
               {syncEmailMut.isPending ? "Sincronizando..." : "Sincronizar por email"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (window.confirm("¿Recalcular la fiscalidad de los gastos antiguos sin desglose? Se estimará el IVA al 21 % y quedarán marcados como pendientes de revisar.")) {
+                  backfillMut.mutate();
+                }
+              }}
+              disabled={backfillMut.isPending}
+              className="gap-2 border-amber-500/40 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+              title="Estima base e IVA de los gastos antiguos sin desglose fiscal"
+            >
+              {backfillMut.isPending
+                ? <RefreshCw className="w-4 h-4 animate-spin" />
+                : <Calculator className="w-4 h-4" />}
+              {backfillMut.isPending ? "Recalculando..." : "Recalcular fiscalidad"}
             </Button>
             <Button
               variant="ghost"
