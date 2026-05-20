@@ -65,6 +65,13 @@ type ExpenseForm = {
   paymentMethod: string;
   status: string;
   notes: string;
+  // ── Datos fiscales (IVA soportado) ──
+  taxRate: string;
+  deductiblePercent: string;
+  invoiceType: string;
+  supplierNif: string;
+  retentionPercent: string;
+  accrualDate: string;
 };
 
 const emptyForm: ExpenseForm = {
@@ -77,6 +84,12 @@ const emptyForm: ExpenseForm = {
   paymentMethod: "transfer",
   status: "pending",
   notes: "",
+  taxRate: "21",
+  deductiblePercent: "100",
+  invoiceType: "ordinaria",
+  supplierNif: "",
+  retentionPercent: "",
+  accrualDate: "",
 };
 
 export default function ExpensesManager() {
@@ -265,6 +278,12 @@ export default function ExpensesManager() {
       paymentMethod: e.paymentMethod,
       status: e.status,
       notes: e.notes ?? "",
+      taxRate: e.taxRate != null ? String(e.taxRate) : "21",
+      deductiblePercent: e.deductiblePercent != null ? String(e.deductiblePercent) : "100",
+      invoiceType: e.invoiceType ?? "ordinaria",
+      supplierNif: e.supplierNif ?? "",
+      retentionPercent: e.retentionPercent != null ? String(e.retentionPercent) : "",
+      accrualDate: e.accrualDate ?? "",
     });
     setPendingFiles([]);
     setExistingFiles((e.files ?? []) as ExistingFile[]);
@@ -287,6 +306,13 @@ export default function ExpensesManager() {
       paymentMethod: form.paymentMethod as "cash" | "card" | "transfer" | "direct_debit" | "tpv_cash",
       status: form.status as "pending" | "justified" | "accounted",
       notes: form.notes,
+      // ── Datos fiscales (IVA soportado) ──
+      taxRate: form.taxRate,
+      deductiblePercent: form.deductiblePercent,
+      invoiceType: form.invoiceType as "ordinaria" | "simplificada" | "intracomunitaria" | "importacion" | "exenta" | "sin_factura",
+      supplierNif: form.supplierNif || undefined,
+      retentionPercent: form.retentionPercent || undefined,
+      accrualDate: form.accrualDate || undefined,
     };
 
     let expenseId: number;
@@ -794,6 +820,102 @@ export default function ExpensesManager() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* ── Datos fiscales (IVA soportado) — Gestoría e Impuestos ── */}
+            <div className="border border-border rounded-lg p-3 space-y-3 bg-muted/20">
+              <div className="text-xs font-semibold text-foreground/70 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" /> Datos fiscales (IVA soportado)
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">Tipo de factura</Label>
+                  <Select value={form.invoiceType} onValueChange={(v) => setForm({ ...form, invoiceType: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ordinaria">Ordinaria</SelectItem>
+                      <SelectItem value="simplificada">Simplificada (ticket)</SelectItem>
+                      <SelectItem value="intracomunitaria">Intracomunitaria</SelectItem>
+                      <SelectItem value="importacion">Importación</SelectItem>
+                      <SelectItem value="exenta">Exenta</SelectItem>
+                      <SelectItem value="sin_factura">Sin factura</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Tipo de IVA</Label>
+                  <Select value={form.taxRate} onValueChange={(v) => setForm({ ...form, taxRate: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="21">21 %</SelectItem>
+                      <SelectItem value="10">10 %</SelectItem>
+                      <SelectItem value="4">4 %</SelectItem>
+                      <SelectItem value="0">0 % / Exento</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">% IVA deducible</Label>
+                  <Input
+                    type="number" step="1" min="0" max="100"
+                    value={form.deductiblePercent}
+                    onChange={(e) => setForm({ ...form, deductiblePercent: e.target.value })}
+                  />
+                </div>
+              </div>
+              {(() => {
+                const total = parseFloat(form.amount) || 0;
+                const rate = parseFloat(form.taxRate) || 0;
+                const base = total / (1 + rate / 100);
+                const cuota = total - base;
+                const ded = parseFloat(form.deductiblePercent) || 0;
+                return (
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div className="bg-background rounded px-2 py-1.5">
+                      <div className="text-foreground/50">Base imponible</div>
+                      <div className="font-semibold">{base.toFixed(2)} €</div>
+                    </div>
+                    <div className="bg-background rounded px-2 py-1.5">
+                      <div className="text-foreground/50">Cuota IVA</div>
+                      <div className="font-semibold">{cuota.toFixed(2)} €</div>
+                    </div>
+                    <div className="bg-background rounded px-2 py-1.5">
+                      <div className="text-foreground/50">IVA deducible</div>
+                      <div className="font-semibold text-emerald-600">{(cuota * ded / 100).toFixed(2)} €</div>
+                    </div>
+                  </div>
+                );
+              })()}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">NIF proveedor</Label>
+                  <Input
+                    value={form.supplierNif}
+                    onChange={(e) => setForm({ ...form, supplierNif: e.target.value })}
+                    placeholder="B12345678"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">% Retención IRPF</Label>
+                  <Input
+                    type="number" step="0.01" min="0"
+                    value={form.retentionPercent}
+                    onChange={(e) => setForm({ ...form, retentionPercent: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Fecha de devengo</Label>
+                  <Input
+                    type="date"
+                    value={form.accrualDate}
+                    onChange={(e) => setForm({ ...form, accrualDate: e.target.value })}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-foreground/40">
+                El importe del gasto se entiende como total con IVA incluido. La base y la cuota se calculan automáticamente.
+              </p>
             </div>
 
             <div>

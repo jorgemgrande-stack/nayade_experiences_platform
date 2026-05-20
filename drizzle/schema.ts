@@ -1893,6 +1893,21 @@ export const expenses = mysqlTable("expenses", {
   emailMessageId: varchar("emailMessageId", { length: 512 }),
   emailFrom: varchar("emailFrom", { length: 256 }),
   missingAttachment: boolean("missingAttachment").default(false),
+  // ── Gestoría e Impuestos (Fase 0) — desglose fiscal del IVA soportado ──
+  // `amount` es el total CON IVA; taxBase = amount / (1 + taxRate/100).
+  taxBase: decimal("taxBase", { precision: 12, scale: 2 }),
+  taxRate: decimal("taxRate", { precision: 5, scale: 2 }).default("21"),
+  taxAmount: decimal("taxAmount", { precision: 12, scale: 2 }),
+  deductiblePercent: decimal("deductiblePercent", { precision: 5, scale: 2 }).default("100"),
+  supplierNif: varchar("supplierNif", { length: 32 }),
+  supplierName: varchar("supplierName", { length: 256 }),
+  retentionPercent: decimal("retentionPercent", { precision: 5, scale: 2 }),
+  retentionAmount: decimal("retentionAmount", { precision: 12, scale: 2 }),
+  invoiceType: mysqlEnum("invoiceType", [
+    "ordinaria", "simplificada", "intracomunitaria", "importacion", "exenta", "sin_factura",
+  ]).default("ordinaria"),
+  accrualDate: varchar("accrualDate", { length: 10 }),
+  fiscalReviewStatus: mysqlEnum("fiscalReviewStatus", ["pendiente", "revisado"]).default("pendiente"),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

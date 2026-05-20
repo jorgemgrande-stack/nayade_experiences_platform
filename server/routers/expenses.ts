@@ -23,6 +23,7 @@ import {
 } from "../../drizzle/schema";
 import { and, desc, eq, gte, lte, sql, inArray, isNull } from "drizzle-orm";
 import { storagePut } from "../storage";
+import { calcGeneralTax } from "../taxUtils";
 import { TRPCError } from "@trpc/server";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
 
@@ -165,7 +166,36 @@ const expenseInputSchema = z.object({
   reservationId: z.number().nullable().optional(),
   productId: z.number().nullable().optional(),
   notes: z.string().optional(),
+  // ── Gestoría e Impuestos (Fase 0) — desglose fiscal del IVA soportado ──
+  taxRate: z.string().optional(),
+  deductiblePercent: z.string().optional(),
+  invoiceType: z.enum([
+    "ordinaria", "simplificada", "intracomunitaria", "importacion", "exenta", "sin_factura",
+  ]).optional(),
+  supplierNif: z.string().optional(),
+  supplierName: z.string().optional(),
+  retentionPercent: z.string().optional(),
+  accrualDate: z.string().optional(),
 });
+
+/**
+ * Deriva el desglose fiscal de un gasto. El `amount` es el total CON IVA:
+ * base = total / (1 + tipo/100). La retención se calcula sobre la base.
+ * Marca el gasto como `revisado` porque el desglose llega del formulario.
+ */
+function computeExpenseFiscal(input: { amount: string; taxRate?: string; retentionPercent?: string }) {
+  const total = parseFloat(input.amount) || 0;
+  const rate = input.taxRate != null ? parseFloat(input.taxRate) || 0 : 21;
+  const { taxBase, taxAmount } = calcGeneralTax(total, rate);
+  const retPct = input.retentionPercent ? parseFloat(input.retentionPercent) || 0 : 0;
+  const retentionAmount = retPct > 0 ? Number((taxBase * retPct / 100).toFixed(2)) : null;
+  return {
+    taxBase: String(taxBase),
+    taxAmount: String(taxAmount),
+    retentionAmount: retentionAmount != null ? String(retentionAmount) : null,
+    fiscalReviewStatus: "revisado" as const,
+  };
+}
 
 const expensesRouter = router({
   list: adminProcedure
@@ -241,6 +271,7 @@ const expensesRouter = router({
         supplierId: input.supplierId ?? null,
         reservationId: input.reservationId ?? null,
         productId: input.productId ?? null,
+        ...computeExpenseFiscal(input),
         createdBy: ctx.user.id,
       });
       const expenseId = (res as { insertId: number }).insertId;
@@ -275,6 +306,7 @@ const expensesRouter = router({
         supplierId: data.supplierId ?? null,
         reservationId: data.reservationId ?? null,
         productId: data.productId ?? null,
+        ...computeExpenseFiscal(data),
       }).where(eq(expenses.id, id));
       if (data.paymentMethod === "cash" || data.paymentMethod === "tpv_cash") {
         try {
@@ -304,6 +336,32 @@ const expensesRouter = router({
       await db.delete(expenseFiles).where(eq(expenseFiles.expenseId, input.id));
       await db.delete(expenses).where(eq(expenses.id, input.id));
       return { ok: true };
+    }),
+
+  /**
+   * Gestoría e Impuestos (Fase 0) — backfill del desglose fiscal.
+   * Para los gastos antiguos sin `taxBase`, estima base/IVA al 21 % y los deja
+   * en `fiscalReviewStatus = "pendiente"` para que se revisen manualmente.
+   */
+  backfillFiscal: adminProcedure
+    .mutation(async () => {
+      const rows = await db
+        .select({ id: expenses.id, amount: expenses.amount })
+        .from(expenses)
+        .where(isNull(expenses.taxBase));
+      let updated = 0;
+      for (const r of rows) {
+        const { taxBase, taxAmount } = calcGeneralTax(parseFloat(r.amount) || 0, 21);
+        await db.update(expenses).set({
+          taxRate: "21",
+          taxBase: String(taxBase),
+          taxAmount: String(taxAmount),
+          deductiblePercent: "100",
+          fiscalReviewStatus: "pendiente",
+        }).where(eq(expenses.id, r.id));
+        updated++;
+      }
+      return { ok: true, updated };
     }),
 
   // Upload file attachment (base64 encoded)

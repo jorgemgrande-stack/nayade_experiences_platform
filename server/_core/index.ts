@@ -943,6 +943,36 @@ async function ensureExpenseEmailIngestionSchema() {
       console.log("[DB] ✅ expenses.missingAttachment añadida");
     }
 
+    // ── Gestoría e Impuestos (Fase 0) — desglose fiscal del IVA soportado ──
+    // Migración 0111. Se re-asegura en cada arranque para que el deploy no la pierda.
+    const [expFiscalCols] = await conn.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'expenses'
+       AND COLUMN_NAME IN ('taxBase','taxRate','taxAmount','deductiblePercent',
+         'supplierNif','supplierName','retentionPercent','retentionAmount',
+         'invoiceType','accrualDate','fiscalReviewStatus')`
+    ) as any[];
+    const foundExpFiscal = new Set((expFiscalCols as any[]).map((c: any) => c.COLUMN_NAME));
+    const expFiscalDdl: Record<string, string> = {
+      taxBase:            "DECIMAL(12,2) NULL",
+      taxRate:            "DECIMAL(5,2) NOT NULL DEFAULT 21.00",
+      taxAmount:          "DECIMAL(12,2) NULL",
+      deductiblePercent:  "DECIMAL(5,2) NOT NULL DEFAULT 100.00",
+      supplierNif:        "VARCHAR(32) NULL",
+      supplierName:       "VARCHAR(256) NULL",
+      retentionPercent:   "DECIMAL(5,2) NULL",
+      retentionAmount:    "DECIMAL(12,2) NULL",
+      invoiceType:        "ENUM('ordinaria','simplificada','intracomunitaria','importacion','exenta','sin_factura') NOT NULL DEFAULT 'ordinaria'",
+      accrualDate:        "VARCHAR(10) NULL",
+      fiscalReviewStatus: "ENUM('pendiente','revisado') NOT NULL DEFAULT 'pendiente'",
+    };
+    for (const [col, ddl] of Object.entries(expFiscalDdl)) {
+      if (!foundExpFiscal.has(col)) {
+        await conn.execute(`ALTER TABLE \`expenses\` ADD COLUMN \`${col}\` ${ddl}`);
+        console.log(`[DB] ✅ expenses.${col} añadida (fiscal)`);
+      }
+    }
+
     // Tabla de logs de ingesta
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS \`expense_email_ingestion_logs\` (
