@@ -133,12 +133,17 @@ const employeesRouter = router({
     }),
 
   counters: hrViewProc.query(async () => {
-    const rows = await db.select({ isActive: employees.isActive }).from(employees);
+    const rows = await db.select({
+      isActive: employees.isActive,
+      userId: employees.userId,
+    }).from(employees);
     const active = rows.filter(r => r.isActive).length;
+    const withPortalAccess = rows.filter(r => r.userId != null).length;
     return {
       total: rows.length,
       active,
       inactive: rows.length - active,
+      withPortalAccess,
     };
   }),
 

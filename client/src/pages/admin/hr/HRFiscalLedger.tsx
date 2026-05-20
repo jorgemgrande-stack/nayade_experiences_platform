@@ -294,8 +294,8 @@ export default function HRFiscalLedger() {
             irpfFiltered.length === 0 ? (
               <EmptyState text="No hay registros de IRPF para este año y filtro." />
             ) : (
-              <div className="rounded-xl border border-foreground/[0.08] overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="rounded-xl border border-foreground/[0.08] overflow-x-auto">
+                <table className="w-full text-sm min-w-[680px]">
                   <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
                     <tr className="text-left text-[10px] uppercase tracking-widest text-foreground/50">
                       <th className="px-3 py-3 w-8">
@@ -344,8 +344,8 @@ export default function HRFiscalLedger() {
             ssFiltered.length === 0 ? (
               <EmptyState text="No hay registros de Seguridad Social para este año y filtro." />
             ) : (
-              <div className="rounded-xl border border-foreground/[0.08] overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="rounded-xl border border-foreground/[0.08] overflow-x-auto">
+                <table className="w-full text-sm min-w-[680px]">
                   <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
                     <tr className="text-left text-[10px] uppercase tracking-widest text-foreground/50">
                       <th className="px-3 py-3 w-8">

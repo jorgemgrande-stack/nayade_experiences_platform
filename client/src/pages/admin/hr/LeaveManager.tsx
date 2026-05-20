@@ -174,8 +174,8 @@ export default function LeaveManager() {
             </div>
           )}
           {!isLoading && filtered.length > 0 && (
-            <div className="rounded-xl border border-foreground/[0.08] overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="rounded-xl border border-foreground/[0.08] overflow-x-auto">
+              <table className="w-full text-sm min-w-[720px]">
                 <thead className="bg-foreground/[0.04] border-b border-foreground/[0.08]">
                   <tr className="text-left text-[10px] uppercase tracking-widest text-foreground/50">
                     <th className="px-4 py-3">Empleado</th>

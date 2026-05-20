@@ -1,10 +1,8 @@
 /**
- * HRDashboard — Dashboard inicial del módulo Personal / RRHH.
+ * HRDashboard — Dashboard del módulo Personal / RRHH.
  *
- * Fase 2: KPIs disponibles hoy (empleados activos / inactivos / total).
- * Espacios reservados para los KPIs que se irán completando en fases
- * posteriores (nóminas, fichajes, vacaciones, etc.) — visibles pero
- * deshabilitados para que el admin tenga visibilidad del roadmap.
+ * Todos los indicadores muestran datos reales (plantilla, tiempos,
+ * vacaciones, coste laboral y control fiscal). Sin placeholders.
  */
 import { Link } from "wouter";
 import {
@@ -18,23 +16,6 @@ import { trpc } from "@/lib/trpc";
 function fmtBonusPending(amount: number | null | undefined): string {
   if (!amount) return "Ninguno pendiente";
   return `${Math.round(amount)} € pendientes`;
-}
-
-function PendingKpi({ label, icon: Icon, hint }: { label: string; icon: React.ElementType; hint: string }) {
-  return (
-    <div className="group relative flex flex-col justify-between p-4 rounded-xl border border-dashed border-foreground/[0.12] bg-foreground/[0.02] h-full">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-foreground/35">{label}</span>
-        <div className="p-1.5 rounded-lg border border-foreground/10 bg-foreground/5">
-          <Icon className="w-3.5 h-3.5 text-foreground/40" />
-        </div>
-      </div>
-      <div>
-        <div className="text-2xl font-black tabular-nums tracking-tight leading-none mb-1 text-foreground/30">—</div>
-        <p className="text-[10px] mt-1 text-foreground/35">{hint}</p>
-      </div>
-    </div>
-  );
 }
 
 export default function HRDashboard() {
@@ -102,7 +83,14 @@ export default function HRDashboard() {
               color="blue"
               subLabel="Plantilla histórica"
             />
-            <PendingKpi label="Con acceso Portal" icon={UserCheck} hint="Disponible en Fase 3" />
+            <KpiCard
+              label="Con acceso al Portal"
+              value={counters?.withPortalAccess ?? 0}
+              icon={UserCheck}
+              color="violet"
+              subLabel={`Sobre ${total} empleados`}
+              href="/admin/personal/empleados"
+            />
           </div>
         </div>
 
