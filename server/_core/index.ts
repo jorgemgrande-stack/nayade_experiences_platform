@@ -352,13 +352,13 @@ async function ensureCriticalSeeds() {
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'role'`
     ) as any[];
     const columnType: string = (enumRows as any[])[0]?.COLUMN_TYPE ?? "";
-    if (!columnType.includes("controler")) {
+    if (!columnType.includes("controler") || !columnType.includes("employee")) {
       await conn.execute(
         `ALTER TABLE \`users\` MODIFY COLUMN \`role\`
-         enum('user','admin','monitor','agente','adminrest','controler')
+         enum('user','admin','monitor','agente','adminrest','controler','partner_admin','partner_user','employee')
          NOT NULL DEFAULT 'user'`
       );
-      console.log("[DB] ENUM role actualizado con 'controler'");
+      console.log("[DB] ENUM role actualizado (controler + employee)");
     }
 
     // ─── Propuestas Comerciales: crear tablas si no existen ─────────────────
@@ -1167,7 +1167,7 @@ async function ensureExpenseEmailIngestionSchema() {
     // Extender enum role en users
     await conn.execute(
       `ALTER TABLE \`users\` MODIFY COLUMN \`role\`
-       enum('user','admin','monitor','agente','adminrest','controler','partner_admin','partner_user')
+       enum('user','admin','monitor','agente','adminrest','controler','partner_admin','partner_user','employee')
        NOT NULL DEFAULT 'user'`
     ).catch(() => {});
     console.log("[DB] ✅ Módulo Partners: tablas y columnas verificadas");
