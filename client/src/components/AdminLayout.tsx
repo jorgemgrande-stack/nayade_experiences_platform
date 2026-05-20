@@ -161,6 +161,7 @@ const navItems = [
     roles: ["admin"],
     children: [
       { label: "Dashboard Fiscal", href: "/admin/gestoria" },
+      { label: "Tributación IVA", href: "/admin/gestoria/iva" },
       { label: "Calendario Fiscal", href: "/admin/gestoria/calendario" },
       { label: "Configuración", href: "/admin/gestoria/configuracion" },
     ],

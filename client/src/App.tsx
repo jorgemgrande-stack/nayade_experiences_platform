@@ -88,6 +88,7 @@ const HRFiscalLedger = lazy(() => import("./pages/admin/hr/HRFiscalLedger"));
 const GestoriaDashboard = lazy(() => import("./pages/admin/gestoria/GestoriaDashboard"));
 const GestoriaCalendario = lazy(() => import("./pages/admin/gestoria/GestoriaCalendario"));
 const GestoriaConfiguracion = lazy(() => import("./pages/admin/gestoria/GestoriaConfiguracion"));
+const GestoriaIVA = lazy(() => import("./pages/admin/gestoria/GestoriaIVA"));
 // Fase 8 RRHH — Vacaciones
 const LeaveManager = lazy(() => import("./pages/admin/hr/LeaveManager"));
 const MyLeaves = lazy(() => import("./pages/employee/MyLeaves"));
@@ -331,6 +332,7 @@ function Router() {
 
       {/* Gestoría e Impuestos */}
       <Route path="/admin/gestoria">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaDashboard /></Suspense>}</Route>
+      <Route path="/admin/gestoria/iva">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaIVA /></Suspense>}</Route>
       <Route path="/admin/gestoria/calendario">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaCalendario /></Suspense>}</Route>
       <Route path="/admin/gestoria/configuracion">{() => <Suspense fallback={<AdminLoadingFallback />}><GestoriaConfiguracion /></Suspense>}</Route>
 
