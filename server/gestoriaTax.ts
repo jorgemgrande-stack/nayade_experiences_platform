@@ -11,6 +11,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { and, gte, lt, lte, ne, or, isNull, isNotNull, inArray } from "drizzle-orm";
 import { invoices, reavExpedients, expenses, hrIrpfLedger } from "../drizzle/schema";
+import { calcGeneralTax } from "./taxUtils";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
@@ -103,7 +104,14 @@ export async function compute303(periodKey: string): Promise<Vat303> {
 
   // ── IVA soportado deducible — gastos del periodo (por devengo) ──
   const expRows = await db
-    .select({ taxBase: expenses.taxBase, taxAmount: expenses.taxAmount, deductiblePercent: expenses.deductiblePercent })
+    .select({
+      amount: expenses.amount,
+      taxBase: expenses.taxBase,
+      taxAmount: expenses.taxAmount,
+      taxRate: expenses.taxRate,
+      deductiblePercent: expenses.deductiblePercent,
+      source: expenses.source,
+    })
     .from(expenses)
     .where(or(
       and(gte(expenses.accrualDate, startStr), lte(expenses.accrualDate, endStr)),
@@ -112,9 +120,21 @@ export async function compute303(periodKey: string): Promise<Vat303> {
   let inputBase = 0;
   let inputAmount = 0;
   for (const e of expRows) {
+    // Nóminas, Seguridad Social y bonus (origen RRHH) no llevan IVA: no van
+    // en el Modelo 303 (se declaran vía 111 / TC).
+    if (e.source && e.source.startsWith("hr_")) continue;
     const ded = Number(e.deductiblePercent ?? 100) / 100;
-    inputBase += Number(e.taxBase ?? 0) * ded;
-    inputAmount += Number(e.taxAmount ?? 0) * ded;
+    let base = Number(e.taxBase ?? NaN);
+    let cuota = Number(e.taxAmount ?? NaN);
+    // Gasto sin desglose fiscal guardado (creado fuera del formulario de
+    // gastos): se deriva la base y la cuota de su importe total y su tipo.
+    if (!Number.isFinite(base) || !Number.isFinite(cuota)) {
+      const d = calcGeneralTax(Number(e.amount ?? 0), Number(e.taxRate ?? 21));
+      base = d.taxBase;
+      cuota = d.taxAmount;
+    }
+    inputBase += base * ded;
+    inputAmount += cuota * ded;
   }
   inputBase = round2(inputBase);
   inputAmount = round2(inputAmount);
