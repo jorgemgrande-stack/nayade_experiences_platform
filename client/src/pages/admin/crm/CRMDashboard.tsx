@@ -1746,7 +1746,10 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
   })();
   const taxAmount = parseFloat(taxRowsD.reduce((s, r) => s + r.amount, 0).toFixed(2));
   const effectiveTaxRateD = taxRowsD.length === 1 ? taxRowsD[0].rate : taxRate;
-  const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
+  // El PVP de cada línea ya incluye el IVA: el total es la suma de líneas
+  // (no se suma el IVA encima). La base imponible se obtiene extrayéndolo.
+  const total = parseFloat(discountedSubtotal.toFixed(2));
+  const baseImponible = parseFloat((total - taxAmount).toFixed(2));
 
   // Búsqueda de clientes existentes
   const { data: clientSuggestionsRaw } = trpc.crm.clients.list.useQuery(
@@ -1816,7 +1819,7 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
       clientCompany: clientCompany || undefined,
       title,
       items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })),
-      subtotal,
+      subtotal: baseImponible,
       discount: promoDiscount,
       taxRate: effectiveTaxRateD,
       total,
@@ -1996,15 +1999,15 @@ function DirectQuoteModal({ onClose }: { onClose: () => void }) {
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal rég. general</span><span>{generalSubtotal.toFixed(2)} €</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotal).toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{(discountedGeneral - taxAmount).toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(discountedSubtotal - discountedGeneral).toFixed(2)} €</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{baseImponible.toFixed(2)} €</span></div>
           )}
           {taxRowsD.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%)</span><span>{row.amount.toFixed(2)} €</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{row.amount.toFixed(2)} €</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
@@ -2236,7 +2239,9 @@ function QuoteBuilderModal({
   })();
   const taxAmount = parseFloat(taxRowsB.reduce((s, r) => s + r.amount, 0).toFixed(2));
   const effectiveTaxRateB = taxRowsB.length === 1 ? taxRowsB[0].rate : taxRate;
-  const total = parseFloat((discountedSubtotal + taxAmount).toFixed(2));
+  // El PVP de cada línea ya incluye el IVA: el total es la suma de líneas.
+  const total = parseFloat(discountedSubtotal.toFixed(2));
+  const baseImponible = parseFloat((total - taxAmount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) =>
@@ -2296,7 +2301,7 @@ function QuoteBuilderModal({
       title,
       description,
       items,
-      subtotal,
+      subtotal: baseImponible,
       discount: promoDiscount,
       taxRate,
       total,
@@ -2477,18 +2482,18 @@ function QuoteBuilderModal({
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal rég. general</span><span>{generalSubtotalBuilder.toFixed(2)} €</span></div>
-              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotalBuilder).toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{(discountedGeneral - taxAmount).toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(discountedSubtotal - discountedGeneral).toFixed(2)} €</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{baseImponible.toFixed(2)} €</span></div>
           )}
           {promoDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-400"><span>Descuento {promoData?.code}</span><span>-{promoDiscount.toFixed(2)} €</span></div>
           )}
           {taxRowsB.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%)</span><span>{row.amount.toFixed(2)} €</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{row.amount.toFixed(2)} €</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
@@ -2831,7 +2836,10 @@ function QuoteEditModal({
   })();
   const taxAmount = parseFloat(taxRowsE.reduce((s, r) => s + r.amount, 0).toFixed(2));
   const effectiveTaxRateE = taxRowsE.length === 1 ? taxRowsE[0].rate : taxRate;
-  const total = parseFloat((subtotal - discount + taxAmount).toFixed(2));
+  // El PVP de cada línea ya incluye el IVA: el total es la suma de líneas
+  // menos el descuento; el IVA no se suma encima.
+  const total = parseFloat((subtotal - discount).toFixed(2));
+  const baseImponible = parseFloat((total - taxAmount).toFixed(2));
 
   const updateItem = (idx: number, field: string, value: string | number) => {
     setItems((prev) => prev.map((item, i) => {
@@ -2953,12 +2961,12 @@ function QuoteEditModal({
         <div className="bg-foreground/[0.05] rounded-xl p-4 space-y-1.5">
           {items.some(i => i.fiscalRegime === "reav") && items.some(i => i.fiscalRegime !== "reav") && (
             <>
-              <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal rég. general</span><span>{generalSubtotalEdit.toFixed(2)} €</span></div>
+              <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible (general)</span><span>{(discountedBase - taxAmount).toFixed(2)} €</span></div>
               <div className="flex justify-between text-sm text-amber-400/70"><span>Subtotal REAV (sin IVA)</span><span>{(subtotal - generalSubtotalEdit).toFixed(2)} €</span></div>
             </>
           )}
           {!items.some(i => i.fiscalRegime === "reav") && (
-            <div className="flex justify-between text-sm text-foreground/65"><span>Subtotal</span><span>{subtotal.toFixed(2)} €</span></div>
+            <div className="flex justify-between text-sm text-foreground/65"><span>Base imponible</span><span>{baseImponible.toFixed(2)} €</span></div>
           )}
           {discount > 0 && (
             <div className="flex justify-between text-sm text-purple-300">
@@ -2967,7 +2975,7 @@ function QuoteEditModal({
             </div>
           )}
           {taxRowsE.map(row => (
-            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%)</span><span>{row.amount.toFixed(2)} €</span></div>
+            <div key={row.rate} className="flex justify-between text-sm text-foreground/65"><span>IVA ({row.rate}%) · incluido en el PVP</span><span>{row.amount.toFixed(2)} €</span></div>
           ))}
           {items.every(i => i.fiscalRegime === "reav") && (
             <div className="text-xs text-amber-300/70 italic">Operación REAV — No procede IVA al cliente</div>
@@ -3058,7 +3066,7 @@ function QuoteEditModal({
         <Button variant="outline" size="sm" onClick={onClose} className="border-foreground/[0.15] text-foreground/65">Cancelar</Button>
         <Button
           size="sm"
-          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal, discount, taxRate: effectiveTaxRateE, total, validUntil, activityDate: activityDate || null })}
+          onClick={() => updateQuote.mutate({ id: quoteId, title, conditions, notes, items: items.map(i => ({ ...i, taxRate: (i as any).taxRate ?? 21 })), subtotal: baseImponible, discount, taxRate: effectiveTaxRateE, total, validUntil, activityDate: activityDate || null })}
           disabled={updateQuote.isPending}
           className="bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800 text-white"
         >
