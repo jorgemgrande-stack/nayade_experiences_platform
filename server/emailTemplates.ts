@@ -257,19 +257,22 @@ function statusBlock(type: "success" | "warning" | "error", title: string, body:
 
 // ─── COMPONENTE 5: Botón CTA naranja degradado ────────────────────────────────
 // Estructura segura para email: tabla con celda coloreada (compatible Outlook)
-function ctaButton(text: string, href: string): string {
-  return `<table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0;">
+// Botón a prueba de clientes: VML (roundrect) para Outlook + <a> con color
+// SÓLIDO para el resto. Sin degradados (Outlook no los soporta) y SIEMPRE con
+// texto blanco explícito, para que la tipografía nunca quede invisible.
+function ctaButton(text: string, href: string, fillColor: string = "#E85D04"): string {
+  return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">
     <tr><td align="center">
       <!--[if mso]>
       <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"
-        href="${href}" style="height:54px;v-text-anchor:middle;width:320px;" arcsize="8%" stroke="f" fillcolor="#E85D04">
+        href="${href}" style="height:52px;v-text-anchor:middle;width:320px;" arcsize="10%" stroke="f" fillcolor="${fillColor}">
         <w:anchorlock/>
-        <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:17px;font-weight:bold;letter-spacing:1px;">${text}</center>
+        <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;letter-spacing:0.5px;">${text}</center>
       </v:roundrect>
       <![endif]-->
       <!--[if !mso]><!-->
       <a href="${href}"
-         style="display:inline-block;background:linear-gradient(135deg,#f97316 0%,#E85D04 50%,#c94d00 100%);color:#ffffff;font-size:17px;font-weight:900;padding:16px 48px;border-radius:8px;text-decoration:none;letter-spacing:1px;font-family:Arial,Helvetica,sans-serif;border:0;mso-hide:all;">
+         style="display:inline-block;background-color:${fillColor};background:${fillColor};color:#ffffff;font-size:16px;font-weight:800;padding:15px 44px;border-radius:8px;text-decoration:none;letter-spacing:0.5px;font-family:Arial,Helvetica,sans-serif;border:0;mso-hide:all;">
         ${text}
       </a>
       <!--<![endif]-->
@@ -355,10 +358,7 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       </table>
     </td></tr>
     ${d.reservationUrl ? `<tr><td style="padding:8px 32px 24px;text-align:center;">
-        <a href="${d.reservationUrl}"
-           style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:16px;font-weight:800;padding:16px 44px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
-          &#128203;&nbsp;&nbsp;Ver tu reserva
-        </a>
+        ${ctaButton("Ver tu reserva", d.reservationUrl)}
         <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
           Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
         </p>
@@ -495,8 +495,8 @@ export function buildRestaurantPaymentLinkHtml(d: RestaurantPaymentLinkData): st
         <input type="hidden" name="Ds_MerchantParameters" value="${d.merchantParams}" />
         <input type="hidden" name="Ds_Signature" value="${d.signature}" />
         <button type="submit"
-          style="display:inline-block;background:linear-gradient(135deg,#f97316 0%,#E85D04 50%,#c94d00 100%);color:#ffffff;border:none;padding:16px 44px;border-radius:8px;font-size:16px;font-weight:900;cursor:pointer;letter-spacing:0.5px;font-family:Arial,sans-serif;">
-          Pagar ${d.depositAmount} &euro; &rarr;
+          style="display:inline-block;background-color:#E85D04;background:#E85D04;color:#ffffff;border:none;padding:16px 44px;border-radius:8px;font-size:16px;font-weight:900;cursor:pointer;letter-spacing:0.5px;font-family:Arial,sans-serif;">
+          Pagar ${d.depositAmount} &euro;
         </button>
       </form>
       <p style="color:#9ca3af;font-size:12px;margin:14px 0 0;font-family:Arial,sans-serif;">
@@ -954,10 +954,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
   const publicUrl = d.reservationUrl ?? d.quoteUrl;
   const reservationButtonBlock = publicUrl
     ? `<tr><td style="padding:0 32px 24px;text-align:center;">
-        <a href="${publicUrl}"
-           style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:16px;font-weight:800;padding:16px 44px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
-          &#128203;&nbsp;&nbsp;Ver tu reserva
-        </a>
+        ${ctaButton("Ver tu reserva", publicUrl)}
         <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
           Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
         </p>
@@ -1247,10 +1244,7 @@ export function buildTransferConfirmationHtml(d: TransferConfirmationEmailData):
   // ofrece descarga de factura cuando está disponible.
   const invoiceButtonBlock = d.reservationUrl
     ? `<tr><td style="padding:0 32px 24px;text-align:center;">
-        <a href="${d.reservationUrl}"
-           style="display:inline-block;background:${BRAND_ORANGE};color:#ffffff;font-size:16px;font-weight:800;padding:16px 44px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;letter-spacing:0.5px;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
-          &#128203;&nbsp;&nbsp;Ver tu reserva
-        </a>
+        ${ctaButton("Ver tu reserva", d.reservationUrl)}
         <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
           Accede a los detalles, descarga tu factura y consulta tu reserva en cualquier momento
         </p>
@@ -1967,9 +1961,7 @@ export function buildInstallmentReminderHtml(d: InstallmentReminderData): string
     </td></tr>
     ${d.paymentUrl ? `
     <tr><td style="padding:8px 32px 4px;text-align:center;">
-      <a href="${d.paymentUrl}" style="display:inline-block;background:#6d28d9;color:#fff;font-size:15px;font-weight:700;padding:14px 36px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;">
-        💳 Pagar cuota ${d.installmentNumber} — ${d.amountFormatted}
-      </a>
+      ${ctaButton(`Pagar cuota ${d.installmentNumber} — ${d.amountFormatted}`, d.paymentUrl, "#6d28d9")}
       <p style="color:#94a3b8;font-size:11px;margin:8px 0 0;font-family:Arial,sans-serif;">O copia este enlace: <a href="${d.paymentUrl}" style="color:#6d28d9;">${d.paymentUrl}</a></p>
     </td></tr>` : ""}
     ${d.ibanInfo ? `
@@ -2391,23 +2383,7 @@ export interface CommercialReminderEmailData {
 
 function buildReminderCtaBlock(paymentLinkUrl: string | null | undefined): string {
   if (!paymentLinkUrl) return "";
-  return `
-  <tr><td style="padding:24px 32px 8px;text-align:center;">
-    <!--[if mso]>
-    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="${paymentLinkUrl}"
-      style="height:48px;v-text-anchor:middle;width:280px;" arcsize="10%"
-      fillcolor="${BRAND_ORANGE}" strokecolor="${BRAND_ORANGE}">
-      <w:anchorlock/>
-      <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:700;">Ver mi propuesta</center>
-    </v:roundrect>
-    <![endif]-->
-    <!--[if !mso]><!-->
-    <a href="${paymentLinkUrl}"
-       style="display:inline-block;background:linear-gradient(135deg,${BRAND_ORANGE},#ea580c);color:#ffffff;font-size:15px;font-weight:700;letter-spacing:0.5px;padding:14px 36px;border-radius:8px;text-decoration:none;font-family:Arial,sans-serif;box-shadow:0 4px 14px rgba(249,115,22,0.35);">
-      Ver mi propuesta &rarr;
-    </a>
-    <!--<![endif]-->
-  </td></tr>`;
+  return `<tr><td style="padding:24px 32px 8px;">${ctaButton("Ver mi propuesta", paymentLinkUrl)}</td></tr>`;
 }
 
 function buildCommercialReminderHtml(
