@@ -21,6 +21,7 @@ import { buildConfirmationHtml } from "./emailTemplates";
 import { sendEmail } from "./mailer";
 import { sendManagedEmail, logDirectEmail } from "./emailManager";
 import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
+import { reservationProductFromQuoteItems } from "./reservationUtils";
 import { getBusinessEmail, getSystemSettingSync } from "./config";
 import { generateDocumentNumber } from "./documentNumbers";
 import { checkAndConfirmInstallmentPlan } from "./routers/crm";
@@ -351,7 +352,11 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const taxAmount = totalTaxAmount(bdRedsys);
             const taxRateRedsys = bdRedsys.length === 1 ? bdRedsys[0].rate : 21;
 
-            const mainProductIdRedsys = (items as { productId?: number }[]).find(i => i.productId)?.productId ?? updatedReservation.productId ?? 0;
+            // Producto principal + actividades extra del presupuesto. Garantiza
+            // que una reserva multi-línea conserve TODAS sus actividades en
+            // Operaciones (calendario y actividades del día).
+            const resProdRedsys = reservationProductFromQuoteItems(
+              items, (items as { productId?: number }[]).find(i => i.productId)?.productId ?? updatedReservation.productId ?? 0);
 
             const [invResRedsys] = await _db.insert(invoices).values({
               invoiceNumber,
@@ -374,7 +379,8 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const invoiceIdRedsys = (invResRedsys as { insertId: number }).insertId;
 
             await _db.update(reservations).set({
-              productId: mainProductIdRedsys,
+              productId: resProdRedsys.productId,
+              extrasJson: resProdRedsys.extrasJson,
               invoiceId: invoiceIdRedsys,
               invoiceNumber,
               updatedAt: Date.now(),

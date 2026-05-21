@@ -65,6 +65,7 @@ import { buildInvoiceHtml, getLegalCompanySettings } from "../invoiceHtml";
 import { syncLeadUrlsToGHL, createGHLContact, getGHLTagsFromSource, triggerGHLWorkflow } from "../ghl";
 import { getSystemSettingSync, getBusinessEmail } from "../config";
 import { groupTaxBreakdown, totalTaxAmount } from "../taxUtils";
+import { reservationProductFromQuoteItems } from "../reservationUtils";
 
 // DB helper — usa la misma pool que el resto del servidor
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
@@ -399,9 +400,11 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
           : now.toISOString().split("T")[0];
       const reservationNumber = await generateReservationNum("crm:installments:manual", String(userId));
       const merchantOrder = reservationNumber.replace(/[^A-Z0-9]/gi, "").substring(0, 12);
+      const resProd = reservationProductFromQuoteItems(quote.items, mainProductId);
       const [resResult] = await db.insert(reservations).values({
-        productId: mainProductId,
+        productId: resProd.productId,
         productName: quote.title ?? "Presupuesto",
+        extrasJson: resProd.extrasJson,
         bookingDate: serviceDate,
         people: lead?.numberOfPersons ?? lead?.numberOfAdults ?? 1,
         amountTotal: totalAmountCents,
@@ -1858,9 +1861,11 @@ export const crmRouter = router({
             : now.toISOString().split("T")[0];
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const reservationNumber = await generateReservationNum("crm:confirmPayment", String(ctx.user.id));
+        const resProd = reservationProductFromQuoteItems(quote.items, mainProductId);
         const [resResult] = await db.insert(reservations).values({
-          productId: mainProductId, // FIX: usar el productId principal del presupuesto
+          productId: resProd.productId,
           productName: quote.title,
+          extrasJson: resProd.extrasJson,
           bookingDate: serviceDate,
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
@@ -2223,9 +2228,11 @@ export const crmRouter = router({
           : lead.preferredDate
             ? new Date(lead.preferredDate).toISOString().split("T")[0]
             : now.toISOString().split("T")[0];
+        const resProd = reservationProductFromQuoteItems(quote.items);
         const [resResult] = await db.insert(reservations).values({
-          productId: 0,
+          productId: resProd.productId,
           productName: quote.title,
+          extrasJson: resProd.extrasJson,
           bookingDate: serviceDate,
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
@@ -2429,9 +2436,11 @@ export const crmRouter = router({
             : now.toISOString().split("T")[0];
         const reservationRef = `RES-${Date.now().toString(36).toUpperCase()}`;
         const reservationNumberTransfer = await generateReservationNum("crm:confirmTransfer", String(ctx.user.id));
+        const resProd = reservationProductFromQuoteItems(quote.items, mainProductIdT);
         const [resResult] = await db.insert(reservations).values({
-          productId: mainProductIdT, // FIX: usar el productId principal del presupuesto
+          productId: resProd.productId,
           productName: quote.title,
+          extrasJson: resProd.extrasJson,
           bookingDate: serviceDateTransfer,
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
@@ -3338,9 +3347,11 @@ export const crmRouter = router({
         // Guardar pre-reserva con estado pending_payment
         const reservationNumberLink = await generateReservationNum("crm:paymentLink", "system");
 
+        const resProd = reservationProductFromQuoteItems(quote.items);
         const [resResult] = await db.insert(reservations).values({
-          productId: 0,
+          productId: resProd.productId,
           productName: quote.title,
+          extrasJson: resProd.extrasJson,
           bookingDate: quote.activityDate
             ? String(quote.activityDate).slice(0, 10)
             : lead.preferredDate
@@ -6092,9 +6103,11 @@ export const crmRouter = router({
             const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
             const reservationRef = `PP-${Date.now().toString(36).toUpperCase()}`;
             const reservationNumberPP = await generateReservationNum("crm:pagoPendiente", String(ctx.user.id));
+            const resProd = reservationProductFromQuoteItems(quote?.items);
             const [resResult] = await db.insert(reservations).values({
-              productId: 0,
+              productId: resProd.productId,
               productName: input.productName,
+              extrasJson: resProd.extrasJson,
               bookingDate: new Date().toISOString().split("T")[0],
               people: 1,
               amountTotal: input.amountCents,
