@@ -90,6 +90,13 @@ export default function GestoriaSociedades() {
                 <span className="text-sm font-semibold text-foreground">Cuota IS estimada</span>
                 <span className="text-xl font-bold text-amber-400">{eur(c.quota)}</span>
               </div>
+              {c.result <= 0 && (
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  El ejercicio estima un resultado negativo ({eur(c.result)}): no se genera cuota de
+                  Impuesto de Sociedades. Las bases imponibles negativas son compensables con
+                  beneficios de ejercicios futuros.
+                </p>
+              )}
             </div>
 
             {/* Modelo 202 */}

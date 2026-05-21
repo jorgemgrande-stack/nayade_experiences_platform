@@ -284,14 +284,26 @@ async function plUpToMonth(year: number, monthInclusive: number): Promise<{ inco
     (s, r) => s + (r.invoiceType === "abono" ? -1 : 1) * Number(r.subtotal ?? 0), 0));
 
   const expRows = await db
-    .select({ taxBase: expenses.taxBase, amount: expenses.amount })
+    .select({
+      taxBase: expenses.taxBase,
+      amount: expenses.amount,
+      taxRate: expenses.taxRate,
+      source: expenses.source,
+    })
     .from(expenses)
     .where(or(
       and(gte(expenses.accrualDate, startStr), lte(expenses.accrualDate, endStr)),
       and(isNull(expenses.accrualDate), gte(expenses.date, startStr), lte(expenses.date, endStr)),
     ));
-  const exp = round2(expRows.reduce(
-    (s, r) => s + (r.taxBase != null ? Number(r.taxBase) : Number(r.amount ?? 0)), 0));
+  // El gasto deducible en la cuenta de resultados es la base NETA (sin IVA):
+  // el IVA soportado se recupera vía Modelo 303, no es un gasto del ejercicio.
+  const exp = round2(expRows.reduce((s, r) => {
+    if (r.taxBase != null) return s + Number(r.taxBase);
+    // Gastos de RRHH (nóminas, SS, bonus): no llevan IVA → neto = importe.
+    if (typeof r.source === "string" && r.source.startsWith("hr_")) return s + Number(r.amount ?? 0);
+    // Resto sin desglose: extraer la base del importe total y el tipo.
+    return s + calcGeneralTax(Number(r.amount ?? 0), Number(r.taxRate ?? 21)).taxBase;
+  }, 0));
 
   return { income, expenses: exp };
 }
