@@ -14,7 +14,7 @@ import { router, permissionProcedure, publicProcedure, employeeProcedure } from 
 import { TRPCError } from "@trpc/server";
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
-import { eq, desc, asc, and, gte, lte, isNull, ne, sql, inArray } from "drizzle-orm";
+import { eq, desc, asc, and, gte, lte, isNull, ne, sql, inArray, like } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import {
   employees,
@@ -1513,6 +1513,62 @@ const batchesRouter = router({
           .where(eq(hrSsLedger.period, batch.period));
       }
       return { ok: true };
+    }),
+
+  /**
+   * Borrar una remesa (ante un error). Revierte lo que generó el cierre:
+   * elimina los gastos contables (Nóminas / IRPF / SS y ajustes de SS),
+   * borra el registro de SS del periodo y DESVINCULA las nóminas (no las
+   * borra: siguen disponibles en la sección Nóminas). No se permite borrar
+   * una remesa ya exportada a la gestoría.
+   */
+  deleteBatch: hrViewProc
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const [batch] = await db.select().from(hrPayrollBatches).where(eq(hrPayrollBatches.id, input.id));
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND", message: "Remesa no encontrada" });
+      if (batch.status === "exported") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "La remesa está exportada a la gestoría y no puede borrarse.",
+        });
+      }
+
+      // Gastos generados por el cierre (registrados en expenseIdsJson).
+      let expenseIds: number[] = [];
+      try {
+        const parsed = JSON.parse(batch.expenseIdsJson ?? "[]");
+        if (Array.isArray(parsed)) expenseIds = parsed.filter((n) => typeof n === "number");
+      } catch { /* json inválido — se cubre con el barrido por concepto */ }
+
+      let removedExpenses = 0;
+      let detachedPayslips = 0;
+
+      // 1. Eliminar los gastos contables generados por esta remesa.
+      if (expenseIds.length > 0) {
+        const r = await db.delete(expenses).where(inArray(expenses.id, expenseIds));
+        removedExpenses += (r as any)?.[0]?.affectedRows ?? 0;
+      }
+      // Barrido de seguridad: gastos de RRHH del periodo (cubre ajustes de SS
+      // y el caso de expenseIdsJson perdido).
+      await db.delete(expenses).where(and(
+        inArray(expenses.source, ["hr_payroll_batch", "hr_ss_adjustment"]),
+        like(expenses.concept, `%${batch.period}%`),
+      ));
+
+      // 2. Borrar el registro de Seguridad Social del periodo.
+      await db.delete(hrSsLedger).where(eq(hrSsLedger.batchId, batch.id));
+
+      // 3. Desvincular las nóminas (se conservan).
+      const pr = await db.update(hrPayslips)
+        .set({ batchId: null } as any)
+        .where(eq(hrPayslips.batchId, batch.id));
+      detachedPayslips = (pr as any)?.[0]?.affectedRows ?? 0;
+
+      // 4. Borrar la remesa.
+      await db.delete(hrPayrollBatches).where(eq(hrPayrollBatches.id, batch.id));
+
+      return { ok: true, removedExpenses, detachedPayslips };
     }),
 });
 

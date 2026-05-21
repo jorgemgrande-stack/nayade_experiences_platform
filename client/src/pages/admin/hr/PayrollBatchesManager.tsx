@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 import { Link } from "wouter";
-import { CalendarClock, Plus, Loader2, ChevronRight, AlertCircle } from "lucide-react";
+import { CalendarClock, Plus, Loader2, ChevronRight, AlertCircle, Trash2 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
@@ -41,11 +41,21 @@ export default function PayrollBatchesManager() {
   const { data: batches, isLoading } = trpc.hr.batches.list.useQuery();
   const [openModal, setOpenModal] = useState(false);
   const [newPeriod, setNewPeriod] = useState(currentPeriod());
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; period: string; status: string } | null>(null);
 
   const openMonth = trpc.hr.batches.openMonth.useMutation({
     onSuccess: (data) => {
       toast.success(data.alreadyExists ? "La remesa ya existía" : "Remesa abierta");
       setOpenModal(false);
+      utils.hr.batches.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteBatch = trpc.hr.batches.deleteBatch.useMutation({
+    onSuccess: (r) => {
+      toast.success(`Remesa borrada · ${r.removedExpenses} gasto(s) eliminado(s), ${r.detachedPayslips} nómina(s) desvinculada(s)`);
+      setDeleteTarget(null);
       utils.hr.batches.list.invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -121,7 +131,17 @@ export default function PayrollBatchesManager() {
                           <span className="text-emerald-300 text-[10px] block">real: {fmtEur(b.totalSsCompanyReal)}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {b.status !== "exported" && (
+                          <Button
+                            size="sm" variant="ghost"
+                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0"
+                            title="Borrar remesa"
+                            onClick={() => setDeleteTarget({ id: b.id, period: b.period, status: b.status })}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
                         <Link href={`/admin/personal/remesas/${b.id}`}>
                           <Button size="sm" variant="ghost" className="text-orange-300 h-7">
                             Ver <ChevronRight className="w-3 h-3 ml-0.5" />
@@ -154,6 +174,44 @@ export default function PayrollBatchesManager() {
               <Button variant="ghost" onClick={() => setOpenModal(false)}>Cancelar</Button>
               <Button onClick={() => openMonth.mutate({ period: newPeriod })} disabled={openMonth.isPending} className="bg-orange-600 hover:bg-orange-700 text-white">
                 {openMonth.isPending ? "Abriendo…" : "Abrir"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal borrar remesa */}
+        <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
+          <DialogContent className="bg-[#0d1526] border-foreground/[0.12] text-white max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-red-400" />
+                Borrar remesa {deleteTarget ? periodLabel(deleteTarget.period) : ""}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2 text-sm">
+              <p className="text-foreground/70">
+                Esta acción borra la remesa y revierte lo que generó su cierre. <strong className="text-red-300">No se puede deshacer.</strong>
+              </p>
+              <div className="rounded-lg bg-red-500/10 border border-red-500/25 p-3 space-y-1.5 text-xs">
+                <p className="text-red-300 font-semibold">Se eliminará:</p>
+                <ul className="text-foreground/70 space-y-0.5 list-disc list-inside">
+                  <li>Los gastos contables generados (Nóminas, IRPF, SS empresa y ajustes).</li>
+                  <li>El registro de Seguridad Social del periodo.</li>
+                </ul>
+                <p className="text-emerald-300 font-semibold pt-1">Se conserva:</p>
+                <ul className="text-foreground/70 space-y-0.5 list-disc list-inside">
+                  <li>Las nóminas del periodo (quedan desvinculadas, disponibles en Nóminas).</li>
+                </ul>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+              <Button
+                onClick={() => deleteTarget && deleteBatch.mutate({ id: deleteTarget.id })}
+                disabled={deleteBatch.isPending}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {deleteBatch.isPending ? "Borrando…" : "Borrar remesa"}
               </Button>
             </DialogFooter>
           </DialogContent>
