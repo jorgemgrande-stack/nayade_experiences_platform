@@ -92,6 +92,19 @@ const emptyForm: ExpenseForm = {
   accrualDate: "",
 };
 
+/**
+ * IVA soportado (cuota) de un gasto. Si el gasto tiene el desglose fiscal
+ * guardado usa su `taxAmount`; si no, lo deriva del importe total y el tipo.
+ * Los gastos de origen RRHH (nóminas, SS, bonus) no llevan IVA → 0.
+ */
+function ivaSoportado(e: any): number {
+  if (typeof e?.source === "string" && e.source.startsWith("hr_")) return 0;
+  if (e?.taxAmount != null && e.taxAmount !== "") return parseFloat(e.taxAmount) || 0;
+  const total = parseFloat(e?.amount ?? "0") || 0;
+  const rate = e?.taxRate != null && e.taxRate !== "" ? parseFloat(e.taxRate) || 0 : 21;
+  return rate > 0 ? total - total / (1 + rate / 100) : 0;
+}
+
 export default function ExpensesManager() {
   
   const [, setLocation] = useLocation();
@@ -265,6 +278,7 @@ export default function ExpensesManager() {
   });
 
   const totalAmount = filtered.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+  const totalIvaSoportado = filtered.reduce((sum, e) => sum + ivaSoportado(e), 0);
 
   function openCreate() {
     setEditingId(null);
@@ -431,6 +445,7 @@ export default function ExpensesManager() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {total} gastos · Total filtrado: <strong>{totalAmount.toFixed(2)} €</strong>
+              {" · "}IVA soportado: <strong className="text-emerald-600">{totalIvaSoportado.toFixed(2)} €</strong>
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -683,6 +698,7 @@ export default function ExpensesManager() {
                   <th className="text-left p-3 font-medium">Categoría</th>
                   <th className="text-left p-3 font-medium">Método</th>
                   <th className="text-right p-3 font-medium">Importe</th>
+                  <th className="text-right p-3 font-medium">IVA soportado</th>
                   <th className="text-center p-3 font-medium">Estado</th>
                   <th className="text-center p-3 font-medium">Adj.</th>
                   <th className="text-center p-3 font-medium sticky right-0 bg-muted/50">Acciones</th>
@@ -690,9 +706,9 @@ export default function ExpensesManager() {
               </thead>
               <tbody>
                 {expensesQ.isLoading ? (
-                  <tr><td colSpan={9} className="text-center p-8 text-muted-foreground">Cargando...</td></tr>
+                  <tr><td colSpan={10} className="text-center p-8 text-muted-foreground">Cargando...</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center p-8 text-muted-foreground">No hay gastos con los filtros actuales</td></tr>
+                  <tr><td colSpan={10} className="text-center p-8 text-muted-foreground">No hay gastos con los filtros actuales</td></tr>
                 ) : (
                   filtered.map((e) => (
                     <tr key={e.id} className="border-t hover:bg-muted/20">
@@ -716,6 +732,21 @@ export default function ExpensesManager() {
                       <td className="p-3 text-xs text-muted-foreground">{getCategoryName(e.categoryId)}</td>
                       <td className="p-3 text-xs">{PAYMENT_METHOD_LABELS[e.paymentMethod]}</td>
                       <td className="p-3 text-right font-medium text-red-600">{parseFloat(e.amount).toFixed(2)} €</td>
+                      <td className="p-3 text-right text-xs whitespace-nowrap">
+                        {(() => {
+                          const iva = ivaSoportado(e);
+                          const rate = (e as any).taxRate != null && (e as any).taxRate !== "" ? parseFloat((e as any).taxRate) : 21;
+                          const isHr = typeof (e as any).source === "string" && (e as any).source.startsWith("hr_");
+                          if (isHr || iva === 0) {
+                            return <span className="text-muted-foreground/50">— sin IVA</span>;
+                          }
+                          return (
+                            <span className="text-emerald-600 font-medium" title={`Tipo ${rate}%`}>
+                              {iva.toFixed(2)} €
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="p-3 text-center">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1 ${STATUS_COLORS[e.status] ?? "bg-gray-100 text-gray-800"}`}>
                           {e.status === "conciliado" && <LinkIcon className="w-2.5 h-2.5" />}
