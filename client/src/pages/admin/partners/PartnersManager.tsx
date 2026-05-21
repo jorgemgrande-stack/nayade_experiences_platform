@@ -12,7 +12,7 @@ import {
   Plus, Search, Building2, Users, Edit2, ToggleLeft, ToggleRight,
   ChevronRight, Mail, Phone, X, Check, AlertCircle, UserPlus, Trash2,
   CreditCard, RefreshCw, KeyRound, Send, Eye, EyeOff,
-  ClipboardList, CalendarDays, TrendingUp, Euro, BellRing, Megaphone, Loader2,
+  ClipboardList, CalendarDays, TrendingUp, Euro, BellRing, Megaphone, Loader2, Upload,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -718,6 +718,16 @@ function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number;
   );
 }
 
+/** Lee un File como base64 (sin el prefijo data:...). */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    reader.readAsDataURL(file);
+  });
+}
+
 // ─── Modal: crear reserva en nombre de un partner (admin) ────────────────────
 function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: {
   partnerId: number; partnerName: string; open: boolean; onClose: () => void;
@@ -732,6 +742,8 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
     customerName: "", customerEmail: "", customerPhone: "",
     bookingDate: "", selectedTime: "", people: "1", amountTotal: "0", notes: "",
   });
+  const [delegationNote, setDelegationNote] = useState("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
 
   const { data: products = [] } = trpc.partners.adminAvailableProducts.useQuery(undefined, { enabled: open });
 
@@ -749,6 +761,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
     setProductId(null); setProductName(""); setBasePrice(0); setPricingType("per_person");
     setSearch("");
     setForm({ customerName: "", customerEmail: "", customerPhone: "", bookingDate: "", selectedTime: "", people: "1", amountTotal: "0", notes: "" });
+    setDelegationNote(""); setProofFile(null);
   }
 
   const people = parseInt(form.people) || 1;
@@ -777,12 +790,23 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
     });
   }
 
-  function submit() {
+  async function submit() {
     if (form.customerName.trim().length < 2) { toast.error("Introduce el nombre del huésped"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customerEmail.trim())) { toast.error("Email del huésped no válido"); return; }
     if (!productId) { toast.error("Selecciona una actividad"); return; }
     if (!form.bookingDate) { toast.error("Selecciona la fecha de la actividad"); return; }
     if (!(parseFloat(form.amountTotal) > 0)) { toast.error("El importe debe ser mayor que 0"); return; }
+
+    let delegationProof: { fileName: string; mimeType: string; dataBase64: string } | undefined;
+    if (proofFile) {
+      const okTypes = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+      if (!okTypes.includes(proofFile.type)) { toast.error("El justificante debe ser PDF, JPG o PNG"); return; }
+      if (proofFile.size > 8 * 1024 * 1024) { toast.error("El justificante no puede superar 8 MB"); return; }
+      try {
+        delegationProof = { fileName: proofFile.name, mimeType: proofFile.type, dataBase64: await fileToBase64(proofFile) };
+      } catch { toast.error("No se pudo leer el justificante"); return; }
+    }
+
     createMut.mutate({
       partnerId,
       customerName: form.customerName.trim(),
@@ -795,6 +819,8 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
       people,
       amountTotal: parseFloat(form.amountTotal) || 0,
       notes: form.notes.trim() || undefined,
+      delegationNote: delegationNote.trim() || undefined,
+      delegationProof,
     });
   }
 
@@ -881,6 +907,40 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
             <Label className="text-xs">Notas internas</Label>
             <Textarea value={form.notes} onChange={(e) => setField("notes", e.target.value)} rows={2}
               placeholder="Preferencias del huésped, condiciones especiales…" className="resize-none" />
+          </div>
+
+          {/* Justificación de la reserva delegada */}
+          <div className="border border-amber-500/25 bg-amber-500/[0.06] rounded-lg p-3 space-y-2">
+            <Label className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+              Justificación de la reserva delegada
+            </Label>
+            <Textarea
+              value={delegationNote}
+              onChange={(e) => setDelegationNote(e.target.value)}
+              rows={2}
+              placeholder="Motivo por el que el administrador registra esta reserva en nombre del partner…"
+              className="resize-none"
+            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors cursor-pointer text-xs">
+                <Upload className="w-3.5 h-3.5" /> Adjuntar justificante (PDF/JPG)
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                  className="hidden"
+                  onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              {proofFile && (
+                <span className="text-xs text-foreground/70 flex items-center gap-1.5">
+                  <span className="truncate max-w-[180px]">{proofFile.name}</span>
+                  <button type="button" onClick={() => setProofFile(null)} className="text-red-400 hover:text-red-300">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">Máx. 8 MB · formatos PDF, JPG o PNG.</p>
           </div>
 
           <div className="text-[11px] text-muted-foreground bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2">

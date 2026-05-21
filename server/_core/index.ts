@@ -1438,6 +1438,16 @@ async function ensureReservationPublicToken() {
       console.log("[DB] ✅ reservations.public_token añadida");
     }
 
+    // Justificante de reserva delegada (migración 0117). Idempotente.
+    for (const [col, ddl] of [
+      ["delegation_proof_url", "TEXT NULL"],
+      ["delegation_proof_key", "VARCHAR(512) NULL"],
+      ["delegation_note", "TEXT NULL"],
+    ] as const) {
+      await conn.execute(`ALTER TABLE \`reservations\` ADD COLUMN IF NOT EXISTS \`${col}\` ${ddl}`)
+        .catch(() => { /* columna ya existe */ });
+    }
+
     // 2. Backfill tokens en reservas existentes
     const [missingRes] = await conn.execute(
       `SELECT COUNT(*) AS cnt FROM \`reservations\` WHERE \`public_token\` IS NULL`

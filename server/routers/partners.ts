@@ -16,6 +16,7 @@ import { sendEmail } from "../mailer";
 import { buildReservationConfirmHtml } from "../emailTemplates";
 import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber, getGHLCredentials } from "../db";
 import { reservations } from "../../drizzle/schema";
+import { storagePut } from "../storage";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
@@ -618,6 +619,13 @@ export const partnersRouter = router({
       notes: z.string().optional(),
       selectedTimeSlotId: z.number().int().optional(),
       selectedTime: z.string().optional(),
+      // Justificante de la reserva delegada (motivo + documento opcional)
+      delegationNote: z.string().optional(),
+      delegationProof: z.object({
+        fileName: z.string(),
+        mimeType: z.string(),
+        dataBase64: z.string(),
+      }).optional(),
     }))
     .mutation(async ({ input }) => {
       const [partner] = await db.select().from(partners).where(eq(partners.id, input.partnerId)).limit(1);
@@ -627,6 +635,27 @@ export const partnersRouter = router({
       const merchantOrder = `PAR${Date.now().toString(36).slice(-8).toUpperCase()}`;
       const reservationNumber = await generateReservationNumber();
       const now = Date.now();
+
+      // Subir el justificante (PDF / imagen) si se adjuntó.
+      let delegationProofUrl: string | null = null;
+      let delegationProofKey: string | null = null;
+      if (input.delegationProof) {
+        const allowed: Record<string, string> = {
+          "application/pdf": "pdf", "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png",
+        };
+        const ext = allowed[input.delegationProof.mimeType];
+        if (!ext) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "El justificante debe ser PDF, JPG o PNG" });
+        }
+        const buffer = Buffer.from(input.delegationProof.dataBase64, "base64");
+        if (buffer.length > 8 * 1024 * 1024) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "El justificante no puede superar 8 MB" });
+        }
+        const key = `partners/delegacion/${reservationNumber}_${Date.now()}.${ext}`;
+        const stored = await storagePut(key, buffer, input.delegationProof.mimeType);
+        delegationProofUrl = stored.url;
+        delegationProofKey = stored.key;
+      }
 
       const [result] = await db.insert(reservations).values({
         productId: input.productId,
@@ -648,6 +677,9 @@ export const partnersRouter = router({
         notes: input.notes ?? `Reserva creada por el administrador para el partner ${partner.name}`,
         selectedTimeSlotId: input.selectedTimeSlotId ?? null,
         selectedTime: input.selectedTime ?? null,
+        delegationNote: input.delegationNote?.trim() || null,
+        delegationProofUrl,
+        delegationProofKey,
         partnerId: partner.id,
         partnerUserId: null,
         createdAt: now,

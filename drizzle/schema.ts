@@ -667,6 +667,10 @@ export const reservations = mysqlTable("reservations", {
   paymentValidatedBy: int("paymentValidatedBy"),
   paymentValidatedAt: bigint("paymentValidatedAt", { mode: "number" }),
   transferProofUrl: text("transferProofUrl"),
+  // Justificante de reserva delegada (creada por el admin para un partner)
+  delegationProofUrl: text("delegation_proof_url"),
+  delegationProofKey: varchar("delegation_proof_key", { length: 512 }),
+  delegationNote: text("delegation_note"),
   // Channel & metadata
   channel: mysqlEnum("channel", [
     "ONLINE_DIRECTO", "ONLINE_ASISTIDO", "VENTA_DELEGADA", "TPV_FISICO",
