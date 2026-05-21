@@ -585,6 +585,135 @@ export const partnersRouter = router({
       return { reservationId, reservationNumber, merchantOrder };
     }),
 
+  // ── ADMIN: Productos disponibles para crear una reserva de partner ────────
+  adminAvailableProducts: adminProcedure
+    .query(async () => {
+      return db
+        .select({
+          id: experiences.id,
+          title: experiences.title,
+          basePrice: experiences.basePrice,
+          pricingType: experiences.pricingType,
+        })
+        .from(experiences)
+        .where(and(eq(experiences.isActive, true), eq(experiences.isPublished, true)))
+        .orderBy(experiences.sortOrder);
+    }),
+
+  // ── ADMIN: Crear una reserva en nombre de un partner ──────────────────────
+  // Misma lógica de facturación y método que cuando la crea el propio partner:
+  // channel "PARTNER", paymentMethod "otro", confirmada y con pago pendiente,
+  // de modo que entra en el ciclo de facturación del partner.
+  adminCreateReservation: adminProcedure
+    .input(z.object({
+      partnerId: z.number().int(),
+      customerName: z.string().min(2),
+      customerEmail: z.string().email(),
+      customerPhone: z.string().optional(),
+      productId: z.number().int(),
+      productName: z.string().min(1),
+      bookingDate: z.string().min(1),
+      people: z.number().int().min(1),
+      amountTotal: z.number().min(0), // en euros
+      notes: z.string().optional(),
+      selectedTimeSlotId: z.number().int().optional(),
+      selectedTime: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [partner] = await db.select().from(partners).where(eq(partners.id, input.partnerId)).limit(1);
+      if (!partner) throw new TRPCError({ code: "NOT_FOUND", message: "Partner no encontrado" });
+
+      const amountCents = Math.round(input.amountTotal * 100);
+      const merchantOrder = `PAR${Date.now().toString(36).slice(-8).toUpperCase()}`;
+      const reservationNumber = await generateReservationNumber();
+      const now = Date.now();
+
+      const [result] = await db.insert(reservations).values({
+        productId: input.productId,
+        productName: input.productName,
+        bookingDate: input.bookingDate,
+        people: input.people,
+        amountTotal: amountCents,
+        amountPaid: 0,
+        status: "pending_payment",
+        statusReservation: "CONFIRMADA",
+        statusPayment: "PENDIENTE",
+        channel: "PARTNER",
+        paymentMethod: "otro",
+        customerName: input.customerName,
+        customerEmail: input.customerEmail,
+        customerPhone: input.customerPhone ?? null,
+        merchantOrder,
+        reservationNumber,
+        notes: input.notes ?? `Reserva creada por el administrador para el partner ${partner.name}`,
+        selectedTimeSlotId: input.selectedTimeSlotId ?? null,
+        selectedTime: input.selectedTime ?? null,
+        partnerId: partner.id,
+        partnerUserId: null,
+        createdAt: now,
+        updatedAt: now,
+      } as any);
+      const reservationId = (result as any).insertId as number;
+
+      // Booking operativo + upsert de cliente (fire-and-forget). Sin transacción
+      // contable: el pago queda pendiente hasta la liquidación del partner.
+      Promise.all([
+        createBookingFromReservation({
+          reservationId,
+          productId: input.productId,
+          productName: input.productName,
+          bookingDate: input.bookingDate,
+          people: input.people,
+          amountCents,
+          customerName: input.customerName,
+          customerEmail: input.customerEmail,
+          customerPhone: input.customerPhone,
+          sourceChannel: "otro",
+        }),
+        upsertClientFromReservation({
+          name: input.customerName,
+          email: input.customerEmail,
+          phone: input.customerPhone ?? null,
+          source: "reserva_delegado",
+          leadId: null,
+        }),
+      ]).catch((e: any) => console.error("[Partners] Error en post-reserva (admin):", e.message));
+
+      // Email de confirmación al cliente (fire-and-forget).
+      if (input.customerEmail) {
+        try {
+          const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
+            .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+          const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+          const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
+          const bookingDateFormatted = (() => {
+            try {
+              return new Date(input.bookingDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+            } catch { return input.bookingDate; }
+          })();
+          const html = buildReservationConfirmHtml({
+            merchantOrder: reservationNumber,
+            productName: input.productName,
+            customerName: input.customerName,
+            date: bookingDateFormatted,
+            people: input.people,
+            amount: `${input.amountTotal.toFixed(2).replace(".", ",")} €`,
+            extras: `Reserva delegada por ${partner.name}`,
+            reservationUrl,
+          });
+          sendEmail({
+            to: input.customerEmail,
+            subject: `✅ Reserva confirmada — ${input.productName} · Náyade Experiences`,
+            html,
+          }).catch((e: any) => console.error("[Partners] Error enviando email cliente:", e?.message));
+        } catch (emailErr: any) {
+          console.error("[Partners] Error preparando email cliente:", emailErr?.message);
+        }
+      }
+
+      return { reservationId, reservationNumber, merchantOrder };
+    }),
+
   // ── PARTNER: Listar mis reservas directas ─────────────────────────────────
   listMyReservations: partnerProcedure
     .query(async ({ ctx }) => {

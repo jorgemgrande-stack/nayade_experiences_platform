@@ -12,8 +12,9 @@ import {
   Plus, Search, Building2, Users, Edit2, ToggleLeft, ToggleRight,
   ChevronRight, Mail, Phone, X, Check, AlertCircle, UserPlus, Trash2,
   CreditCard, RefreshCw, KeyRound, Send, Eye, EyeOff,
-  ClipboardList, CalendarDays, TrendingUp, Euro, BellRing, Megaphone,
+  ClipboardList, CalendarDays, TrendingUp, Euro, BellRing, Megaphone, Loader2,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -555,8 +556,9 @@ function StatusBadgeOp({ label, color }: { label: string; color: string }) {
   );
 }
 
-function PartnerOperationsPanel({ partnerId }: { partnerId: number }) {
+function PartnerOperationsPanel({ partnerId, partnerName }: { partnerId: number; partnerName: string }) {
   const [tab, setTab] = useState<"leads" | "reservas">("leads");
+  const [showResModal, setShowResModal] = useState(false);
 
   const { data: leads = [], isLoading: leadsLoading } = trpc.partners.adminListLeads.useQuery({ partnerId });
   const { data: reservas = [], isLoading: resLoading } = trpc.partners.adminListReservations.useQuery({ partnerId });
@@ -590,7 +592,7 @@ function PartnerOperationsPanel({ partnerId }: { partnerId: number }) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-foreground/[0.08]">
+      <div className="flex items-center gap-1 border-b border-foreground/[0.08]">
         <button
           onClick={() => setTab("leads")}
           className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
@@ -612,6 +614,12 @@ function PartnerOperationsPanel({ partnerId }: { partnerId: number }) {
         >
           <CalendarDays className="w-3.5 h-3.5 inline mr-1.5" />
           Reservas ({totalReservas})
+        </button>
+        <button
+          onClick={() => setShowResModal(true)}
+          className="ml-auto mb-1 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" /> Nueva reserva
         </button>
       </div>
 
@@ -699,7 +707,198 @@ function PartnerOperationsPanel({ partnerId }: { partnerId: number }) {
           </div>
         )
       )}
+
+      <AdminCreateReservationModal
+        partnerId={partnerId}
+        partnerName={partnerName}
+        open={showResModal}
+        onClose={() => setShowResModal(false)}
+      />
     </div>
+  );
+}
+
+// ─── Modal: crear reserva en nombre de un partner (admin) ────────────────────
+function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: {
+  partnerId: number; partnerName: string; open: boolean; onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [productId, setProductId] = useState<number | null>(null);
+  const [productName, setProductName] = useState("");
+  const [basePrice, setBasePrice] = useState(0);
+  const [pricingType, setPricingType] = useState<"per_person" | "per_unit">("per_person");
+  const [search, setSearch] = useState("");
+  const [form, setForm] = useState({
+    customerName: "", customerEmail: "", customerPhone: "",
+    bookingDate: "", selectedTime: "", people: "1", amountTotal: "0", notes: "",
+  });
+
+  const { data: products = [] } = trpc.partners.adminAvailableProducts.useQuery(undefined, { enabled: open });
+
+  const createMut = trpc.partners.adminCreateReservation.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Reserva ${data.reservationNumber ?? ""} creada para ${partnerName}`);
+      utils.partners.adminListReservations.invalidate({ partnerId });
+      reset();
+      onClose();
+    },
+    onError: (e) => toast.error("Error al crear la reserva: " + e.message),
+  });
+
+  function reset() {
+    setProductId(null); setProductName(""); setBasePrice(0); setPricingType("per_person");
+    setSearch("");
+    setForm({ customerName: "", customerEmail: "", customerPhone: "", bookingDate: "", selectedTime: "", people: "1", amountTotal: "0", notes: "" });
+  }
+
+  const people = parseInt(form.people) || 1;
+  const filtered = search
+    ? products.filter((p: any) => p.title.toLowerCase().includes(search.toLowerCase()))
+    : products;
+
+  function selectProduct(p: any) {
+    const base = parseFloat(p.basePrice ?? "0");
+    const type = (p.pricingType ?? "per_person") as "per_person" | "per_unit";
+    setProductId(p.id);
+    setProductName(p.title);
+    setBasePrice(base);
+    setPricingType(type);
+    setForm((f) => ({ ...f, amountTotal: (type === "per_person" ? base * people : base).toFixed(2) }));
+  }
+
+  function setField(k: keyof typeof form, v: string) {
+    setForm((f) => {
+      const next = { ...f, [k]: v };
+      if (k === "people" && productId) {
+        const n = parseInt(v) || 1;
+        next.amountTotal = (pricingType === "per_person" ? basePrice * n : basePrice).toFixed(2);
+      }
+      return next;
+    });
+  }
+
+  function submit() {
+    if (form.customerName.trim().length < 2) { toast.error("Introduce el nombre del huésped"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customerEmail.trim())) { toast.error("Email del huésped no válido"); return; }
+    if (!productId) { toast.error("Selecciona una actividad"); return; }
+    if (!form.bookingDate) { toast.error("Selecciona la fecha de la actividad"); return; }
+    if (!(parseFloat(form.amountTotal) > 0)) { toast.error("El importe debe ser mayor que 0"); return; }
+    createMut.mutate({
+      partnerId,
+      customerName: form.customerName.trim(),
+      customerEmail: form.customerEmail.trim(),
+      customerPhone: form.customerPhone.trim() || undefined,
+      productId,
+      productName,
+      bookingDate: form.bookingDate,
+      selectedTime: form.selectedTime || undefined,
+      people,
+      amountTotal: parseFloat(form.amountTotal) || 0,
+      notes: form.notes.trim() || undefined,
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(); } }}>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-emerald-500" /> Nueva reserva · {partnerName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Huésped */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Nombre del huésped *</Label>
+              <Input value={form.customerName} onChange={(e) => setField("customerName", e.target.value)} placeholder="Nombre completo" />
+            </div>
+            <div>
+              <Label className="text-xs">Email *</Label>
+              <Input value={form.customerEmail} onChange={(e) => setField("customerEmail", e.target.value)} type="email" placeholder="huesped@email.com" />
+            </div>
+            <div>
+              <Label className="text-xs">Teléfono</Label>
+              <Input value={form.customerPhone} onChange={(e) => setField("customerPhone", e.target.value)} placeholder="+34 600 000 000" />
+            </div>
+          </div>
+
+          {/* Actividad */}
+          <div>
+            <Label className="text-xs">Actividad *</Label>
+            <div className="relative mt-1">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar actividad…" className="pl-8" />
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 mt-2 max-h-44 overflow-y-auto">
+              {filtered.map((p: any) => {
+                const sel = productId === p.id;
+                const price = parseFloat(p.basePrice ?? "0");
+                return (
+                  <button
+                    key={p.id} type="button" onClick={() => selectProduct(p)}
+                    className={`text-left px-2.5 py-2 rounded-lg border text-xs transition-colors ${
+                      sel ? "border-emerald-400 bg-emerald-500/15 text-emerald-300"
+                          : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
+                    }`}
+                  >
+                    <div className="font-medium truncate">{p.title}</div>
+                    {price > 0 && (
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        {price.toFixed(2)}€ {p.pricingType === "per_person" ? "/persona" : "/unidad"}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+              {filtered.length === 0 && (
+                <p className="text-xs text-muted-foreground col-span-2 py-2">No hay actividades.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Detalles */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="text-xs">Fecha de la actividad *</Label>
+              <Input type="date" value={form.bookingDate} onChange={(e) => setField("bookingDate", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Hora solicitada</Label>
+              <Input type="time" value={form.selectedTime} onChange={(e) => setField("selectedTime", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Personas</Label>
+              <Input type="number" min="1" max="200" value={form.people} onChange={(e) => setField("people", e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">Importe total (€) *</Label>
+              <Input type="number" step="0.01" min="0" value={form.amountTotal} onChange={(e) => setField("amountTotal", e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label className="text-xs">Notas internas</Label>
+            <Textarea value={form.notes} onChange={(e) => setField("notes", e.target.value)} rows={2}
+              placeholder="Preferencias del huésped, condiciones especiales…" className="resize-none" />
+          </div>
+
+          <div className="text-[11px] text-muted-foreground bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2">
+            La reserva se crea confirmada, con el mismo método y facturación que una reserva del
+            partner: canal <strong>PARTNER</strong>, pago pendiente, y entra en el ciclo de
+            facturación de <strong>{partnerName}</strong>.
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { reset(); onClose(); }}>Cancelar</Button>
+          <Button onClick={submit} disabled={createMut.isPending} className="gap-2">
+            {createMut.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+            Crear reserva
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1145,7 +1344,7 @@ export default function PartnersManager() {
                   <h3 className="text-sm font-semibold text-foreground/70 uppercase tracking-wider mb-4">
                     Operaciones generadas
                   </h3>
-                  <PartnerOperationsPanel partnerId={selectedPartner.id} />
+                  <PartnerOperationsPanel partnerId={selectedPartner.id} partnerName={selectedPartner.name} />
                 </div>
 
                 {/* Notas internas (admin) */}
