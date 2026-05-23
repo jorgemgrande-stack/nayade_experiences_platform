@@ -47,10 +47,11 @@ if (!DB_URL) { console.error("ABORTADO: sin URL MySQL"); process.exit(1); }
   }
 
   // 1. Localizar ventas TPV que crearon reserva
+  // (tpv_sales usa camelCase en las columnas — ver drizzle/schema.ts tpvSales)
   const [sales] = await c.query(
-    `SELECT id, reservation_id, invoice_id, discount_amount, discount_reason, ticket_number
+    `SELECT id, reservationId, invoiceId, discountAmount, discountReason, ticketNumber
        FROM tpv_sales
-      WHERE reservation_id IS NOT NULL`
+      WHERE reservationId IS NOT NULL`
   );
   console.log(`\nVentas TPV con reserva asociada: ${sales.length}`);
 
@@ -58,11 +59,12 @@ if (!DB_URL) { console.error("ABORTADO: sin URL MySQL"); process.exit(1); }
 
   for (const sale of sales) {
     // 1a. Recalcular people = Σ(quantity × participants) sobre items de la venta
+    // (tpv_sale_items usa camelCase: saleId, productId, productName, productType_tsi, unitPrice, eventDate, eventTime)
     const [items] = await c.query(
-      `SELECT product_id, product_name, product_type, quantity, unit_price, participants,
-              event_date, event_time
+      `SELECT productId, productName, productType_tsi AS productType,
+              quantity, unitPrice, participants, eventDate, eventTime
          FROM tpv_sale_items
-        WHERE sale_id = ?
+        WHERE saleId = ?
         ORDER BY id ASC`,
       [sale.id]
     );
@@ -74,27 +76,28 @@ if (!DB_URL) { console.error("ABORTADO: sin URL MySQL"); process.exit(1); }
 
     // 1b. Recomponer extras_json (excluye el item principal = el primero)
     const extrasJson = JSON.stringify(items.slice(1).map(it => ({
-      productId:   it.product_id,
-      productName: it.product_name,
-      productType: it.product_type,
+      productId:   it.productId,
+      productName: it.productName,
+      productType: it.productType,
       quantity:    Number(it.quantity),
-      unitPrice:   Number(it.unit_price),
+      unitPrice:   Number(it.unitPrice),
       participants: Number(it.participants) || 1,
-      eventDate:   it.event_date,
-      eventTime:   it.event_time,
+      eventDate:   it.eventDate,
+      eventTime:   it.eventTime,
     })));
 
     // 2. Leer estado actual de la reserva para comparar antes de UPDATE
+    // (reservations sí usa snake_case en sus columnas — ver drizzle/schema.ts)
     const [resRows] = await c.query(
       `SELECT id, people, extras_json, discount_amount, discount_reason
          FROM reservations WHERE id = ? LIMIT 1`,
-      [sale.reservation_id]
+      [sale.reservationId]
     );
     if (resRows.length === 0) continue;
     const res = resRows[0];
 
-    const newDiscountAmount = sale.discount_amount != null ? String(Number(sale.discount_amount).toFixed(2)) : "0.00";
-    const newDiscountReason = sale.discount_reason ?? null;
+    const newDiscountAmount = sale.discountAmount != null ? String(Number(sale.discountAmount).toFixed(2)) : "0.00";
+    const newDiscountReason = sale.discountReason ?? null;
 
     const peopleDelta   = Number(res.people)            !== totalPeople;
     const extrasDelta   = String(res.extras_json ?? "") !== extrasJson;
@@ -112,7 +115,7 @@ if (!DB_URL) { console.error("ABORTADO: sin URL MySQL"); process.exit(1); }
       if (peopleDelta)   fixedPeople++;
       if (extrasDelta)   fixedExtras++;
       if (discountDelta) fixedResDiscount++;
-      console.log(`  ✓ res #${res.id} [${sale.ticket_number}]`
+      console.log(`  ✓ res #${res.id} [${sale.ticketNumber}]`
         + (peopleDelta   ? ` people ${res.people}→${totalPeople}` : "")
         + (extrasDelta   ? ` extras_json` : "")
         + (discountDelta ? ` discount ${res.discount_amount}→${newDiscountAmount}` : "")
@@ -120,10 +123,11 @@ if (!DB_URL) { console.error("ABORTADO: sin URL MySQL"); process.exit(1); }
     }
 
     // 3. Propagar descuento a invoice si está vinculada
-    if (sale.invoice_id) {
+    // (invoices usa camelCase para updatedAt, snake_case para discount_reason — coherente con el ALTER de 0118)
+    if (sale.invoiceId) {
       const [invRows] = await c.query(
         `SELECT id, discount, discount_reason FROM invoices WHERE id = ? LIMIT 1`,
-        [sale.invoice_id]
+        [sale.invoiceId]
       );
       if (invRows.length > 0) {
         const inv = invRows[0];
