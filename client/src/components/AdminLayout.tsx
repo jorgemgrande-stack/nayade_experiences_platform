@@ -105,7 +105,7 @@ const navItems = [
       { label: "Calendario", href: "/admin/operaciones/calendario" },
       { label: "Actividades del Día", href: "/admin/operaciones/actividades" },
       // La gestión de personal se trasladó a la sección "Personal" (módulo RRHH).
-      { label: "Reseñas", href: "/admin/operaciones/resenas" },
+      // Reseñas se movió al módulo "Marketing".
     ],
   },
   {
@@ -237,6 +237,7 @@ const navItems = [
       { label: "Cupones & Ticketing", href: "/admin/marketing/cupones" },
       { label: "Plataformas de cupones", href: "/admin/marketing/plataformas" },
       { label: "Códigos de descuento", href: "/admin/marketing/descuentos" },
+      { label: "Reseñas", href: "/admin/operaciones/resenas" },
     ],
   },
   {
