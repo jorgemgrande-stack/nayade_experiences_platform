@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Upload, AlertCircle, Loader2, X, ChevronDown } from "lucide-react";
+import { CheckCircle2, Upload, AlertCircle, Loader2, X, ChevronDown, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -282,27 +282,53 @@ function GastoForm({ token }: { token: string }) {
                 </button>
               </div>
             ) : (
-              <label
-                className={cn(
-                  "flex flex-col items-center justify-center gap-2 rounded-lg",
-                  "border-2 border-dashed border-slate-700 cursor-pointer py-6 px-4",
-                )}
-                style={{ backgroundColor: "rgba(15,23,42,0.5)" }}
-              >
-                <Upload className="w-6 h-6 text-slate-500" />
-                <span className="text-slate-400 text-sm text-center">
-                  Toca para seleccionar ticket o factura
-                  <br />
-                  <span className="text-slate-600 text-xs">JPG, PNG, WEBP, PDF · máx. 10 MB</span>
-                </span>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.webp,.pdf"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-2 rounded-lg",
+                    "border-2 border-dashed border-slate-700 cursor-pointer py-6 px-3",
+                  )}
+                  style={{ backgroundColor: "rgba(15,23,42,0.5)" }}
+                >
+                  <Upload className="w-6 h-6 text-slate-500" />
+                  <span className="text-slate-400 text-xs text-center leading-tight">
+                    Adjuntar archivo
+                    <br />
+                    <span className="text-slate-600 text-[10px]">JPG, PNG, WEBP, PDF</span>
+                  </span>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,.pdf"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
+                <label
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-2 rounded-lg",
+                    "border-2 border-dashed border-slate-700 cursor-pointer py-6 px-3",
+                  )}
+                  style={{ backgroundColor: "rgba(15,23,42,0.5)" }}
+                >
+                  <Camera className="w-6 h-6 text-slate-500" />
+                  <span className="text-slate-400 text-xs text-center leading-tight">
+                    Hacer foto
+                    <br />
+                    <span className="text-slate-600 text-[10px]">Abre la cámara</span>
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            )}
+            {!file && (
+              <p className="text-slate-600 text-[10px] text-center">Máx. 10 MB</p>
             )}
             {fileError && (
               <p className="text-red-400 text-xs flex items-center gap-1">
