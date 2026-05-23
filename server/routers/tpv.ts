@@ -803,6 +803,12 @@ export const tpvRouter = router({
       }
 
       // ── 6. Generar reserva automática siempre que haya producto principal ────
+      // Total de personas = Σ(quantity × participants). Esta fórmula es la única
+      // fuente de verdad en TODO el flujo TPV (reserva, calendario, REAV, email, GHL).
+      // - Pase individual:     quantity=N, participants=1 → N personas
+      // - Pack para K personas: quantity=N, participants=K → N×K personas
+      const totalPeople = input.items.reduce((sum, it) => sum + (it.quantity * (it.participants ?? 1)), 0);
+
       let reservationId: number | null = null;
       const mainItem = mainItemForDate;
       if (mainItem) {
@@ -810,8 +816,9 @@ export const tpvRouter = router({
           const reservationNumber = await generateReservationRef(String((ctx as any).user?.id ?? "system"));
           const merchantOrder = reservationNumber; // reutilizamos el mismo número correlativo
           const amountCents = Math.round(total * 100);
-          // Construir resumen de todos los ítems del ticket para extrasJson
-          const extrasForReservation = input.items.map(it => ({
+          // Resumen de actividades ADICIONALES (extras) — NO incluye el item principal.
+          // El principal queda representado por productId/productName a nivel raíz de la reserva.
+          const extrasForReservation = input.items.slice(1).map(it => ({
             productId: it.productId,
             productName: it.productName,
             productType: it.productType,
@@ -828,10 +835,12 @@ export const tpvRouter = router({
             productId: mainItem.productId,
             productName: productSummary,
             bookingDate: mainItem.eventDate ?? new Date().toISOString().slice(0, 10),
-            people: input.items.reduce((sum, it) => sum + (it.participants ?? 1), 0),
+            people: totalPeople,
             extrasJson: JSON.stringify(extrasForReservation),
             amountTotal: amountCents,
             amountPaid: amountCents,
+            discountAmount: String(input.discountAmount.toFixed(2)),
+            discountReason: input.discountReason ?? null,
             status: "paid",
             customerName: input.customerName || "Cliente TPV",
             customerEmail: input.customerEmail || null,
@@ -923,7 +932,10 @@ export const tpvRouter = router({
               .map(i => i.productName)
               .join(" | "),
             serviceDate: mainItem?.eventDate ?? new Date().toISOString().split("T")[0],
-            numberOfPax: mainItem?.participants ?? 1,
+            // Personas REAV = Σ(quantity × participants) de las líneas con fiscalRegime='reav'
+            numberOfPax: input.items
+              .filter((_, idx) => linesFiscal[idx]?.fiscalRegime === "reav")
+              .reduce((sum, it) => sum + (it.quantity * (it.participants ?? 1)), 0),
             saleAmountTotal: String(reavSaleAmount.toFixed(2)),
             providerCostEstimated: String((reavSaleAmount * 0.6).toFixed(2)),
             agencyMarginEstimated: String((reavSaleAmount * 0.4).toFixed(2)),
@@ -971,7 +983,7 @@ export const tpvRouter = router({
       // las órdenes del día de los monitores, igual que las ventas CRM y Redsys.
       try {
         const serviceDate = mainItem?.eventDate ?? new Date().toISOString().split("T")[0];
-        const people = input.items.reduce((sum, it) => sum + (it.participants ?? 1), 0);
+        const people = totalPeople;
         const fiscalRegimeForOp = fiscalSummary === "iva_only" ? "general"
           : fiscalSummary === "reav_only" ? "reav" : "mixed";
         const paymentMethodForOp = primaryPaymentMethod === "cash" ? "efectivo"
@@ -1055,6 +1067,8 @@ export const tpvRouter = router({
             clientPhone:    input.customerPhone || null,
             itemsJson:      invoiceItems,
             subtotal:       String(subtotal.toFixed(2)),
+            discount:       String(input.discountAmount.toFixed(2)),
+            discountReason: input.discountReason ?? null,
             taxRate:        String(effectiveTaxRatePct.toFixed(2)),
             taxAmount:      String(totalTaxAmount.toFixed(2)),
             total:          String(total.toFixed(2)),
@@ -1101,14 +1115,22 @@ export const tpvRouter = router({
             reservationUrl = `${baseUrl}/presupuesto/${resForUrl.publicToken}`;
           }
         }
+        // Desglose para el email — solo si hay UN único producto (caso típico TPV).
+        // Con múltiples productos no tiene sentido un único "qty × unitPrice".
+        const singleItem = input.items.length === 1 ? input.items[0] : null;
         const emailHtml = buildReservationConfirmHtml({
           merchantOrder: ticketNumber,
           productName: mainItem?.productName ?? input.items.map(i => i.productName).join(", "),
           customerName: input.customerName || "Cliente TPV",
           date: new Date().toLocaleDateString("es-ES"),
-          people: mainItem?.participants ?? 1,
-          amount: `${total.toFixed(2)} €`,
+          people: totalPeople,
+          amount: `${total.toFixed(2).replace(".", ",")} €`,
           reservationUrl,
+          quantity:       singleItem?.quantity,
+          unitPrice:      singleItem?.unitPrice,
+          subtotal:       singleItem ? subtotal : undefined,
+          discount:       input.discountAmount > 0 ? input.discountAmount : undefined,
+          discountReason: input.discountReason,
         });
         const subject = `[TPV] Compra confirmada ${ticketNumber} — Náyade Experiences`;
         const saleNotifyEmail = await getBusinessEmail('reservations');
@@ -1181,7 +1203,7 @@ export const tpvRouter = router({
                   ticketNumber,
                   productName: mainItem?.productName ?? input.items.map(i => i.productName).join(", "),
                   bookingDate: input.serviceDate ?? mainItemForDate?.eventDate ?? new Date().toISOString().slice(0, 10),
-                  people: mainItem?.participants ?? 1,
+                  people: totalPeople,
                   amountPaid: Math.round(total * 100),
                   customerName: input.customerName || "Cliente TPV",
                   customerEmail: input.customerEmail,

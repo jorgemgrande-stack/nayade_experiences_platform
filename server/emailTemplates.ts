@@ -317,9 +317,15 @@ export interface ReservationConfirmData {
   customerName: string;
   date: string;
   people: number;
-  amount: string;
+  amount: string;              // total final pagado, ej. "44,00 €"
   extras?: string;
-  reservationUrl?: string;  // URL pública /presupuesto/{publicToken} — botón "Ver tu reserva"
+  reservationUrl?: string;     // URL pública /presupuesto/{publicToken} — botón "Ver tu reserva"
+  // Desglose opcional — si llegan, se renderiza una tabla "Subtotal / Descuento / Total"
+  quantity?: number;           // unidades del producto principal (ej. 5 pases)
+  unitPrice?: number;          // precio unitario en €
+  subtotal?: number;           // subtotal antes de descuento, en €
+  discount?: number;           // importe del descuento, en € (omitir o 0 si no hay)
+  discountReason?: string;     // motivo legible del descuento (ej. "Código WELCOME10 (-10%)")
 }
 
 export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
@@ -339,6 +345,32 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
       ${detailRow(SVG.users,    "Personas",     `${d.people} persona${d.people !== 1 ? "s" : ""}`)}
       ${d.extras && d.extras !== "Ninguno" ? detailRow(SVG.tag, "Extras", d.extras) : ""}
     `)}
+    ${(d.quantity != null && d.unitPrice != null && d.subtotal != null) ? `
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;">
+        <tr><td style="padding:14px 18px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:4px 0;color:#6b7280;font-size:13px;font-family:Arial,sans-serif;">
+                ${d.quantity} &times; ${Number(d.unitPrice).toFixed(2).replace(".", ",")} &euro;
+              </td>
+              <td align="right" style="padding:4px 0;color:#1e293b;font-size:13px;font-family:Arial,sans-serif;">
+                ${Number(d.subtotal).toFixed(2).replace(".", ",")} &euro;
+              </td>
+            </tr>
+            ${(d.discount != null && Number(d.discount) > 0) ? `
+            <tr>
+              <td style="padding:4px 0;color:#16a34a;font-size:13px;font-family:Arial,sans-serif;">
+                Descuento${d.discountReason ? ` &mdash; <span style="color:#9ca3af;font-size:12px;">${d.discountReason}</span>` : ""}
+              </td>
+              <td align="right" style="padding:4px 0;color:#16a34a;font-size:13px;font-weight:700;font-family:Arial,sans-serif;">
+                -${Number(d.discount).toFixed(2).replace(".", ",")} &euro;
+              </td>
+            </tr>` : ""}
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>` : ""}
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" bgcolor="${BRAND_MID_BLUE}" style="background-color:${BRAND_MID_BLUE};background:linear-gradient(135deg,${BRAND_BLUE},${BRAND_MID_BLUE});border-radius:10px;">
         <tr>
