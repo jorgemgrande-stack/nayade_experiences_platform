@@ -22,6 +22,9 @@ export interface InvoiceHtmlParams {
   clientAddress?: string | null;
   itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[];
   subtotal: string;
+  /** Descuento global aplicado sobre el subtotal (origen: TPV o promoción). null/0 = sin descuento. */
+  discount?: string | number | null;
+  discountReason?: string | null;
   /** @deprecated Usar taxBreakdown para multi-tipo. Se conserva como fallback. */
   taxRate: string;
   taxAmount: string;
@@ -190,6 +193,7 @@ export async function buildInvoiceHtml(invoice: InvoiceHtmlParams): Promise<stri
     <tr><td>IVA (${breakdown[0].rate}%)</td><td>${breakdown[0].amount.toFixed(2)} €</td></tr>` : ""}
     ${hasGeneral && breakdown.length === 0 ? `<tr><td>IVA (${invoice.taxRate}%)</td><td>${Number(invoice.taxAmount).toFixed(2)} €</td></tr>` : ""}
     ${hasReav && !hasGeneral ? `<tr><td style="font-size:12px;color:#6b7280;font-style:italic;" colspan="2">Operación sujeta al Régimen Especial de Agencias de Viaje (REAV). No procede repercusión de IVA al cliente.</td></tr>` : ''}
+    ${Number(invoice.discount ?? 0) > 0 ? `<tr><td style="color:#15803d;font-size:13px;">Descuento${invoice.discountReason ? ` <span style="color:#9ca3af;font-size:11px;">— ${invoice.discountReason}</span>` : ""}</td><td style="color:#15803d;font-weight:600;">-${Number(invoice.discount).toFixed(2)} €</td></tr>` : ""}
     <tr class="total-row"><td>TOTAL</td><td>${Number(invoice.total).toFixed(2)} €</td></tr>
   </table></div>
   </div>

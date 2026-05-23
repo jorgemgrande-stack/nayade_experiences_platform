@@ -105,6 +105,8 @@ async function generateInvoicePdf(invoice: {
   clientAddress?: string | null;
   itemsJson: { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: string; taxRate?: number }[];
   subtotal: string;
+  discount?: string | number | null;
+  discountReason?: string | null;
   taxRate: string;
   taxAmount: string;
   total: string;
@@ -5134,6 +5136,8 @@ export const crmRouter = router({
           clientAddress: invoice.clientAddress,
           itemsJson: (invoice.itemsJson as any[]) ?? [],
           subtotal: invoice.subtotal,
+          discount: (invoice as any).discount ?? null,
+          discountReason: (invoice as any).discountReason ?? null,
           taxRate: invoice.taxRate ?? "21",
           taxAmount: invoice.taxAmount ?? "0",
           taxBreakdown: (invoice.taxBreakdown as any) ?? undefined,

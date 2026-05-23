@@ -41,6 +41,8 @@ invoicePreviewRouter.get("/api/invoices/preview", async (req, res) => {
       clientAddress: invoice.clientAddress,
       itemsJson: (invoice.itemsJson as any[]) ?? [],
       subtotal: invoice.subtotal,
+      discount: (invoice as any).discount ?? null,
+      discountReason: (invoice as any).discountReason ?? (invoice as any).discount_reason ?? null,
       taxRate: invoice.taxRate ?? "21",
       taxAmount: invoice.taxAmount ?? "0",
       total: invoice.total,

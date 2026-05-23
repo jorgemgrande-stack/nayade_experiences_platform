@@ -644,7 +644,17 @@ function ClientHistoryModal({ client, onClose, onStartWhatsApp }: { client: Clie
                             </div>
                             <div className="flex items-center gap-2">
                               {r.amountTotal != null && (
-                                <span className="text-white/60 text-xs">{(r.amountTotal / 100).toFixed(2)} €</span>
+                                <span className="text-white/60 text-xs flex items-center gap-1">
+                                  {Number((r as any).discountAmount ?? (r as any).discount_amount ?? 0) > 0 && (
+                                    <span
+                                      className="text-emerald-400 text-[10px]"
+                                      title={(r as any).discountReason ?? (r as any).discount_reason ?? "Descuento aplicado"}
+                                    >
+                                      −{Number((r as any).discountAmount ?? (r as any).discount_amount).toFixed(2)} €
+                                    </span>
+                                  )}
+                                  <span>{(r.amountTotal / 100).toFixed(2)} €</span>
+                                </span>
                               )}
                               <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${st.color}`}>{st.label}</span>
                             </div>

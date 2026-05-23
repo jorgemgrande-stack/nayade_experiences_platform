@@ -4893,6 +4893,19 @@ function ReservationDetailModal({
                 <span className="text-foreground/60">Importe total</span>
                 <span className="text-orange-400 font-bold">{totalEur} €</span>
               </div>
+              {Number((res as any).discountAmount ?? (res as any).discount_amount ?? 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-emerald-400/80">
+                    Descuento
+                    {((res as any).discountReason ?? (res as any).discount_reason) && (
+                      <span className="text-foreground/40 text-xs ml-1">— {(res as any).discountReason ?? (res as any).discount_reason}</span>
+                    )}
+                  </span>
+                  <span className="text-emerald-400 font-semibold">
+                    −{Number((res as any).discountAmount ?? (res as any).discount_amount).toFixed(2)} €
+                  </span>
+                </div>
+              )}
               {res.amountPaid !== res.amountTotal && (
                 <div className="flex justify-between text-sm">
                   <span className="text-foreground/60">Importe cobrado</span>
