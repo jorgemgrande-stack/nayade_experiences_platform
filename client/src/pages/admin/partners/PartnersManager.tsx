@@ -12,7 +12,7 @@ import {
   Plus, Search, Building2, Users, Edit2, ToggleLeft, ToggleRight,
   ChevronRight, Mail, Phone, X, Check, AlertCircle, UserPlus, Trash2,
   CreditCard, RefreshCw, KeyRound, Send, Eye, EyeOff,
-  ClipboardList, CalendarDays, TrendingUp, Euro, BellRing, Megaphone, Loader2, Upload,
+  ClipboardList, CalendarDays, TrendingUp, Euro, BellRing, Megaphone, Loader2, Upload, Camera,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -931,6 +931,16 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
                   onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
                 />
               </label>
+              <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted/50 transition-colors cursor-pointer text-xs">
+                <Camera className="w-3.5 h-3.5" /> Hacer foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
               {proofFile && (
                 <span className="text-xs text-foreground/70 flex items-center gap-1.5">
                   <span className="truncate max-w-[180px]">{proofFile.name}</span>
@@ -940,7 +950,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground">Máx. 8 MB · formatos PDF, JPG o PNG.</p>
+            <p className="text-[11px] text-muted-foreground">Máx. 8 MB · formatos PDF, JPG o PNG. En móvil/tablet "Hacer foto" abre la cámara.</p>
           </div>
 
           <div className="text-[11px] text-muted-foreground bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2">
