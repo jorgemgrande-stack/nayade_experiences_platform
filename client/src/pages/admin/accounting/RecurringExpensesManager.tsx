@@ -20,11 +20,14 @@ const RECURRENCE_LABELS: Record<string, string> = {
 type RecForm = {
   concept: string; amount: string; categoryId: string; costCenterId: string;
   supplierId: string; recurrenceType: string; nextExecutionDate: string;
+  // Heredado por cada gasto que dispare este recurrente.
+  isOperational: boolean;
 };
 const emptyForm: RecForm = {
   concept: "", amount: "", categoryId: "", costCenterId: "",
   supplierId: "", recurrenceType: "monthly",
   nextExecutionDate: new Date().toISOString().slice(0, 10),
+  isOperational: true,
 };
 
 export default function RecurringExpensesManager() {
@@ -69,6 +72,7 @@ export default function RecurringExpensesManager() {
       concept: item.concept, amount: item.amount, categoryId: String(item.categoryId),
       costCenterId: String(item.costCenterId), supplierId: item.supplierId ? String(item.supplierId) : "",
       recurrenceType: item.recurrenceType, nextExecutionDate: item.nextExecutionDate,
+      isOperational: (item as any).isOperational ?? true,
     });
     setDialogOpen(true);
   }
@@ -82,6 +86,7 @@ export default function RecurringExpensesManager() {
       costCenterId: Number(form.costCenterId), supplierId: form.supplierId ? Number(form.supplierId) : null,
       recurrenceType: form.recurrenceType as "monthly" | "weekly" | "yearly",
       nextExecutionDate: form.nextExecutionDate,
+      isOperational: form.isOperational,
     };
     if (editingId) await updateMut.mutateAsync({ id: editingId, ...payload });
     else await createMut.mutateAsync(payload);
@@ -126,7 +131,19 @@ export default function RecurringExpensesManager() {
                   const isOverdue = item.nextExecutionDate < new Date().toISOString().slice(0, 10);
                   return (
                     <tr key={item.id} className="border-t hover:bg-muted/20">
-                      <td className="p-3 font-medium">{item.concept}</td>
+                      <td className="p-3 font-medium">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {(item as any).isOperational === false && (
+                            <span
+                              className="shrink-0 inline-flex items-center text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30"
+                              title="Recurrente solo fiscal — los gastos generados no computarán en P&L operativo."
+                            >
+                              Solo fiscal
+                            </span>
+                          )}
+                          <span className="truncate">{item.concept}</span>
+                        </div>
+                      </td>
                       <td className="p-3 text-muted-foreground">{getCategoryName(item.categoryId)}</td>
                       <td className="p-3">{RECURRENCE_LABELS[item.recurrenceType]}</td>
                       <td className="p-3 text-right font-medium">{parseFloat(item.amount).toFixed(2)} €</td>
@@ -199,6 +216,35 @@ export default function RecurringExpensesManager() {
               </Select>
             </div>
             <div><Label>Próxima ejecución *</Label><Input type="date" value={form.nextExecutionDate} onChange={(e) => setForm({ ...form, nextExecutionDate: e.target.value })} /></div>
+
+            <div className={`border rounded-lg p-3 transition-colors ${
+              form.isOperational ? "border-border bg-muted/20" : "border-amber-500/40 bg-amber-500/[0.06]"
+            }`}>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isOperational}
+                  onChange={(e) => setForm({ ...form, isOperational: e.target.checked })}
+                  className="mt-0.5 w-4 h-4 rounded border-border accent-emerald-500 cursor-pointer"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                    Computa en resultado operativo
+                    {!form.isOperational && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                        Solo fiscal
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-foreground/50 mt-0.5 leading-snug">
+                    Cada gasto generado por este recurrente heredará este valor. Si se desactiva, los gastos
+                    generados no afectarán al resultado operativo, EBITDA ni KPIs del negocio, pero sí seguirán
+                    contando en gestoría, IVA y tesorería.
+                  </p>
+                </div>
+              </label>
+            </div>
+
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
               <Button onClick={handleSave} disabled={createMut.isPending || updateMut.isPending}>{editingId ? "Guardar" : "Crear"}</Button>

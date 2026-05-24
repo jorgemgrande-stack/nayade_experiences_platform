@@ -29,7 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Pencil, Trash2, Search, Filter, Upload, FileText, X, Euro,
   TrendingDown, Calendar, ChevronDown, Banknote, LinkIcon,
-  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock, ExternalLink, Eye, Calculator,
+  Mail, RefreshCw, CheckCircle2, AlertTriangle, Clock, ExternalLink, Eye, Calculator, Download,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -72,6 +72,9 @@ type ExpenseForm = {
   supplierNif: string;
   retentionPercent: string;
   accrualDate: string;
+  // ── Tratamiento operativo ──
+  // true: computa en P&L/EBITDA/KPIs. false: "solo fiscal" (no afecta KPIs).
+  isOperational: boolean;
 };
 
 const emptyForm: ExpenseForm = {
@@ -90,6 +93,7 @@ const emptyForm: ExpenseForm = {
   supplierNif: "",
   retentionPercent: "",
   accrualDate: "",
+  isOperational: true,
 };
 
 /**
@@ -116,6 +120,7 @@ export default function ExpensesManager() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  const [filterTreatment, setFilterTreatment] = useState<"all" | "operational" | "tax_only">("all");
   const [showFilters, setShowFilters] = useState(false);
 
   // Dialog state
@@ -164,6 +169,7 @@ export default function ExpensesManager() {
     categoryId: filterCategory !== "all" ? Number(filterCategory) : undefined,
     costCenterId: filterCostCenter !== "all" ? Number(filterCostCenter) : undefined,
     status: filterStatus !== "all" ? (filterStatus as "pending" | "justified" | "accounted") : undefined,
+    treatment: filterTreatment,
     limit: 200,
   });
 
@@ -306,6 +312,7 @@ export default function ExpensesManager() {
       supplierNif: e.supplierNif ?? "",
       retentionPercent: e.retentionPercent != null ? String(e.retentionPercent) : "",
       accrualDate: e.accrualDate ?? "",
+      isOperational: (e as any).isOperational ?? true,
     });
     setPendingFiles([]);
     setExistingFiles((e.files ?? []) as ExistingFile[]);
@@ -335,6 +342,7 @@ export default function ExpensesManager() {
       supplierNif: form.supplierNif || undefined,
       retentionPercent: form.retentionPercent || undefined,
       accrualDate: form.accrualDate || undefined,
+      isOperational: form.isOperational,
     };
 
     let expenseId: number;
@@ -398,6 +406,61 @@ export default function ExpensesManager() {
   function getSupplierName(id: number | null | undefined) {
     if (!id) return "—";
     return suppliers.find((s) => s.id === id)?.name ?? "—";
+  }
+
+  /**
+   * Exporta los gastos filtrados a CSV (compatible Excel ES con BOM y `;`).
+   * Incluye la columna "Imputación Operativa" para que la gestoría pueda
+   * distinguir gastos operativos vs solo fiscales en su reporting.
+   */
+  function exportToCSV() {
+    if (filtered.length === 0) {
+      toast.error("No hay gastos para exportar con los filtros actuales");
+      return;
+    }
+    const headers = [
+      "Fecha", "Concepto", "Proveedor", "NIF Proveedor", "Categoría", "Centro de coste",
+      "Método pago", "Estado", "Importe total (€)", "Base imponible (€)", "Tipo IVA (%)",
+      "Cuota IVA (€)", "% Deducible", "% Retención IRPF", "Tipo factura",
+      "Fecha devengo", "Imputación Operativa", "Origen", "Notas",
+    ];
+    const escape = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      // CSV ES: si tiene `;`, `"`, salto de línea → encerrar en comillas y doblar comillas.
+      return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows = filtered.map((e: any) => [
+      e.date,
+      e.concept,
+      getSupplierName(e.supplierId),
+      e.supplierNif ?? "",
+      getCategoryName(e.categoryId),
+      getCostCenterName(e.costCenterId),
+      PAYMENT_METHOD_LABELS[e.paymentMethod] ?? e.paymentMethod,
+      STATUS_LABELS[e.status] ?? e.status,
+      parseFloat(e.amount).toFixed(2).replace(".", ","),
+      e.taxBase != null ? parseFloat(e.taxBase).toFixed(2).replace(".", ",") : "",
+      e.taxRate != null ? e.taxRate : "",
+      e.taxAmount != null ? parseFloat(e.taxAmount).toFixed(2).replace(".", ",") : "",
+      e.deductiblePercent != null ? e.deductiblePercent : "",
+      e.retentionPercent != null ? e.retentionPercent : "",
+      e.invoiceType ?? "",
+      e.accrualDate ?? "",
+      e.isOperational === false ? "Solo fiscal" : "Operativo",
+      e.source ?? "manual",
+      e.notes ?? "",
+    ]);
+    const csv = [headers, ...rows].map((r) => r.map(escape).join(";")).join("\r\n");
+    // BOM UTF-8 para que Excel ES detecte el encoding correctamente.
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const ts = new Date().toISOString().slice(0, 10);
+    a.download = `gastos-${ts}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success(`${filtered.length} gasto(s) exportado(s)`);
   }
 
   function openCreateFromMovement(m: NonNullable<typeof bankCandidatesQ.data>["data"][number]) {
@@ -496,6 +559,16 @@ export default function ExpensesManager() {
             >
               <Clock className="w-3.5 h-3.5 mr-1" />
               Historial
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportToCSV}
+              className="gap-2"
+              title="Exportar a CSV los gastos filtrados (incluye columna Imputación Operativa para gestoría)"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Exportar CSV
             </Button>
             <Button onClick={openCreate} className="gap-2">
               <Plus className="w-4 h-4" /> Nuevo gasto
@@ -682,6 +755,17 @@ export default function ExpensesManager() {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label className="text-xs">Imputación</Label>
+                <Select value={filterTreatment} onValueChange={(v) => setFilterTreatment(v as "all" | "operational" | "tax_only")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="operational">Solo operativos</SelectItem>
+                    <SelectItem value="tax_only">Solo fiscales</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
         </div>
@@ -719,6 +803,14 @@ export default function ExpensesManager() {
                           {(e as any).source === "email" && (
                             <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/25">
                               <Mail className="w-2.5 h-2.5" /> Email
+                            </span>
+                          )}
+                          {(e as any).isOperational === false && (
+                            <span
+                              className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500 border border-amber-500/30"
+                              title="Gasto solo fiscal — no computa en P&L operativo, EBITDA ni KPIs del negocio. Sí computa en gestoría, IVA y tesorería."
+                            >
+                              Solo fiscal
                             </span>
                           )}
                           <span className="truncate">{e.concept}</span>
@@ -972,6 +1064,37 @@ export default function ExpensesManager() {
               <p className="text-[11px] text-foreground/40">
                 El importe del gasto se entiende como total con IVA incluido. La base y la cuota se calculan automáticamente.
               </p>
+            </div>
+
+            {/* ── Tratamiento operativo ─────────────────────────────────── */}
+            <div className={`border rounded-lg p-3 transition-colors ${
+              form.isOperational
+                ? "border-border bg-muted/20"
+                : "border-amber-500/40 bg-amber-500/[0.06]"
+            }`}>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isOperational}
+                  onChange={(e) => setForm({ ...form, isOperational: e.target.checked })}
+                  className="mt-0.5 w-4 h-4 rounded border-border accent-emerald-500 cursor-pointer"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                    Computa en resultado operativo
+                    {!form.isOperational && (
+                      <Badge variant="outline" className="border-amber-500/50 text-amber-500 bg-amber-500/10 text-[10px] uppercase tracking-wide px-1.5 py-0">
+                        Solo fiscal
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-foreground/50 mt-0.5 leading-snug">
+                    Si lo desactivas, el gasto seguirá existiendo a efectos fiscales y tributarios (gestoría, IVA,
+                    Impuesto de Sociedades, tesorería y conciliación bancaria), pero no afectará a los dashboards
+                    ni a la rentabilidad operativa del negocio (EBITDA, márgenes, KPIs, P&amp;L operativo).
+                  </p>
+                </div>
+              </label>
             </div>
 
             <div>
