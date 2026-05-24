@@ -176,6 +176,10 @@ const expenseInputSchema = z.object({
   supplierName: z.string().optional(),
   retentionPercent: z.string().optional(),
   accrualDate: z.string().optional(),
+  // Tratamiento operativo: true = computa en P&L/EBITDA/KPIs;
+  // false = "solo fiscal" (gestoría/IVA/IS/tesorería sí, pero NO en KPIs operativos).
+  // Default true para mantener compatibilidad con la UX existente.
+  isOperational: z.boolean().default(true),
 });
 
 /**
@@ -207,6 +211,11 @@ const expensesRouter = router({
       supplierId: z.number().optional(),
       status: z.enum(["pending", "justified", "accounted", "conciliado"]).optional(),
       paymentMethod: z.enum(["cash", "card", "transfer", "direct_debit", "tpv_cash"]).optional(),
+      // Filtro por imputación contable.
+      //   "all"          → ambos tipos (default, comportamiento histórico).
+      //   "operational"  → solo gastos que computan en P&L.
+      //   "tax_only"     → solo gastos "solo fiscales".
+      treatment: z.enum(["all", "operational", "tax_only"]).default("all"),
       limit: z.number().default(100),
       offset: z.number().default(0),
     }))
@@ -219,6 +228,8 @@ const expensesRouter = router({
       if (input.supplierId) conditions.push(eq(expenses.supplierId, input.supplierId));
       if (input.status) conditions.push(eq(expenses.status, input.status));
       if (input.paymentMethod) conditions.push(eq(expenses.paymentMethod, input.paymentMethod));
+      if (input.treatment === "operational") conditions.push(eq(expenses.isOperational, true));
+      else if (input.treatment === "tax_only") conditions.push(eq(expenses.isOperational, false));
 
       const rows = await db
         .select()
@@ -527,6 +538,8 @@ const recurringExpensesRouter = router({
       supplierId: z.number().nullable().optional(),
       recurrenceType: z.enum(["monthly", "weekly", "yearly"]).default("monthly"),
       nextExecutionDate: z.string().min(1),
+      // Heredado por cada gasto que dispare este recurrente. Ver expenses.isOperational.
+      isOperational: z.boolean().default(true),
     }))
     .mutation(async ({ input }) => {
       const [res] = await db.insert(recurringExpenses).values({
@@ -547,6 +560,7 @@ const recurringExpensesRouter = router({
       recurrenceType: z.enum(["monthly", "weekly", "yearly"]).default("monthly"),
       nextExecutionDate: z.string().min(1),
       active: z.boolean().optional(),
+      isOperational: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
       const { id, ...data } = input;
@@ -577,6 +591,7 @@ const recurringExpensesRouter = router({
         supplierId: rec.supplierId,
         paymentMethod: "transfer",
         status: "pending",
+        isOperational: rec.isOperational,
         createdBy: ctx.user.id,
       });
 

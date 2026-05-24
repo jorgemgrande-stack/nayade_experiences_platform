@@ -1916,6 +1916,15 @@ export const expenses = mysqlTable("expenses", {
   ]).default("ordinaria"),
   accrualDate: varchar("accrualDate", { length: 10 }),
   fiscalReviewStatus: mysqlEnum("fiscalReviewStatus", ["pendiente", "revisado"]).default("pendiente"),
+  // ── Tratamiento contable interno ──────────────────────────────────────
+  // isOperational = true  → el gasto computa en P&L operativo, EBITDA,
+  //                         márgenes, executive summary y dashboards de
+  //                         rendimiento del negocio.
+  // isOperational = false → "solo fiscal": sigue computando en gestoría,
+  //                         IVA (Modelo 303), Impuesto Sociedades, cashflow
+  //                         y tesorería, pero NO en KPIs operativos.
+  // Default true para compatibilidad total con datos previos.
+  isOperational: boolean("isOperational").default(true).notNull(),
   createdBy: int("createdBy"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -1946,6 +1955,9 @@ export const recurringExpenses = mysqlTable("recurring_expenses", {
   recurrenceType: mysqlEnum("recurrenceType", ["monthly", "weekly", "yearly"]).notNull().default("monthly"),
   nextExecutionDate: varchar("nextExecutionDate", { length: 20 }).notNull(),
   active: boolean("active").default(true).notNull(),
+  // Tratamiento operativo heredado por los gastos que genera el cron.
+  // Ver comentario en `expenses.isOperational`.
+  isOperational: boolean("isOperational").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
