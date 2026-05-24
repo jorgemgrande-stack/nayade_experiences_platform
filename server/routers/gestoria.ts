@@ -11,7 +11,7 @@ import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { randomBytes } from "crypto";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, and, gte, lte } from "drizzle-orm";
 import {
   taxObligations,
   taxObligationLines,
@@ -22,6 +22,10 @@ import {
   taxDeferralInstallments,
   finCashAccounts,
   users,
+  expenses,
+  expenseCategories,
+  expenseSuppliers,
+  costCenters,
 } from "../../drizzle/schema";
 import { buildDossierZip } from "../gestoriaDossier";
 import { storagePut } from "../storage";
@@ -452,6 +456,113 @@ export const gestoriaRouter = router({
         }
 
         return { ok: true, corporate: c };
+      }),
+  }),
+
+  // ─── Exportación de gastos para gestoría ───────────────────────────────────
+  // Permite descargar un CSV anual del libro de gastos con la columna
+  // "Imputación Operativa" y secciones de totales separados (operativo vs
+  // solo fiscal), de forma que la gestoría pueda procesar ambos tipos y
+  // reconciliar las diferencias con el P&L operativo del cliente.
+  expenses: router({
+    /**
+     * Genera un CSV dual del libro de gastos del ejercicio:
+     *   - Cada fila incluye la columna `Imputación Operativa` (Operativo / Solo fiscal).
+     *   - Al final, tres líneas de totales: operativo, solo fiscal, conjunto.
+     *
+     * Codificación: UTF-8 con BOM, separador `;`, decimales con coma → abre
+     * directamente en Excel ES sin pasos manuales.
+     */
+    exportCsv: gestoriaView
+      .input(z.object({ year: z.number().int().min(2000).max(2100) }))
+      .query(async ({ input }) => {
+        const yStart = `${input.year}-01-01`;
+        const yEnd = `${input.year}-12-31`;
+
+        const [rows, cats, supps, ccs] = await Promise.all([
+          db.select().from(expenses)
+            .where(and(gte(expenses.date, yStart), lte(expenses.date, yEnd)))
+            .orderBy(asc(expenses.date), asc(expenses.id)),
+          db.select().from(expenseCategories),
+          db.select().from(expenseSuppliers),
+          db.select().from(costCenters),
+        ]);
+
+        const catName = (id: number) => cats.find((c) => c.id === id)?.name ?? `Cat. ${id}`;
+        const ccName = (id: number) => ccs.find((c) => c.id === id)?.name ?? `CC ${id}`;
+        const supName = (id: number | null) => (id ? supps.find((s) => s.id === id)?.name ?? "" : "");
+        const eur = (v: string | number | null) =>
+          v == null || v === "" ? "" : Number(v).toFixed(2).replace(".", ",");
+        const escape = (v: unknown) => {
+          const s = v == null ? "" : String(v);
+          return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+
+        const headers = [
+          "Fecha", "Concepto", "Proveedor", "NIF Proveedor", "Categoría",
+          "Centro de coste", "Método pago", "Estado", "Importe total (€)",
+          "Base imponible (€)", "Tipo IVA (%)", "Cuota IVA (€)", "% Deducible",
+          "% Retención IRPF", "Retención (€)", "Tipo factura", "Fecha devengo",
+          "Imputación Operativa", "Origen", "Notas",
+        ];
+
+        const dataRows = rows.map((e) => [
+          e.date,
+          e.concept,
+          supName(e.supplierId),
+          e.supplierNif ?? "",
+          catName(e.categoryId),
+          ccName(e.costCenterId),
+          e.paymentMethod,
+          e.status,
+          eur(e.amount),
+          eur(e.taxBase),
+          e.taxRate ?? "",
+          eur(e.taxAmount),
+          e.deductiblePercent ?? "",
+          e.retentionPercent ?? "",
+          eur(e.retentionAmount),
+          e.invoiceType ?? "",
+          e.accrualDate ?? "",
+          e.isOperational === false ? "Solo fiscal" : "Operativo",
+          e.source ?? "manual",
+          e.notes ?? "",
+        ]);
+
+        // Totales separados al final para que la gestoría reconcilie cifras.
+        const totOp = rows.filter((e) => e.isOperational !== false)
+          .reduce((s, e) => s + parseFloat(e.amount), 0);
+        const totTax = rows.filter((e) => e.isOperational === false)
+          .reduce((s, e) => s + parseFloat(e.amount), 0);
+        const blank = headers.map(() => "");
+        const totalRow = (label: string, value: number) => {
+          const r = [...blank];
+          r[1] = label; // columna "Concepto"
+          r[8] = value.toFixed(2).replace(".", ","); // columna "Importe total"
+          return r;
+        };
+
+        const csv = [
+          headers,
+          ...dataRows,
+          blank,
+          totalRow("TOTAL OPERATIVO", totOp),
+          totalRow("TOTAL SOLO FISCAL", totTax),
+          totalRow("TOTAL CONJUNTO", totOp + totTax),
+        ].map((r) => r.map(escape).join(";")).join("\r\n");
+
+        // BOM UTF-8 para que Excel ES detecte el encoding correctamente.
+        return {
+          fileName: `gestoria-gastos-${input.year}.csv`,
+          mimeType: "text/csv;charset=utf-8;",
+          contentBase64: Buffer.from("﻿" + csv, "utf8").toString("base64"),
+          counts: {
+            total: rows.length,
+            operational: rows.filter((e) => e.isOperational !== false).length,
+            taxOnly: rows.filter((e) => e.isOperational === false).length,
+          },
+          totals: { operational: totOp, taxOnly: totTax, combined: totOp + totTax },
+        };
       }),
   }),
 

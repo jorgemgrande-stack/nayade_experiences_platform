@@ -103,6 +103,13 @@ export async function compute303(periodKey: string): Promise<Vat303> {
   const reavAmount = round2(reavRows.reduce((s, r) => s + Number(r.reavTaxAmount ?? 0), 0));
 
   // ── IVA soportado deducible — gastos del periodo (por devengo) ──
+  //
+  // IMPORTANTE: aquí NO se filtra por `isOperational`. La distinción entre
+  // gasto operativo y gasto "solo fiscal" es interna y solo afecta a los KPIs
+  // de rendimiento del negocio (EBITDA, márgenes, P&L operativo). El IVA
+  // soportado se deduce siempre que exista factura válida y el gasto sea
+  // deducible (campo `deductiblePercent`), con independencia de cómo el
+  // administrador haya clasificado contablemente el gasto.
   const expRows = await db
     .select({
       amount: expenses.amount,

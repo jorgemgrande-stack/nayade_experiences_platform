@@ -67,6 +67,11 @@ export default function AccountingDashboard() {
     { year: execYear },
     { staleTime: 5 * 60 * 1000 },
   );
+  // KPI de distorsión fiscal — gastos solo fiscales (mes y año en curso).
+  const { data: distortion } = trpc.financial.expenses.distortionKpi.useQuery(
+    {},
+    { staleTime: 60_000 },
+  );
 
   const handleExport = (format: "csv" | "excel") => {
     toast.success(`Exportando informe en formato ${format.toUpperCase()}... (Función disponible próximamente)`);
@@ -152,10 +157,10 @@ export default function AccountingDashboard() {
           </h2>
           <span className="text-[11px] text-muted-foreground">Resultado, costes laborales y carga fiscal · estimación</span>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
           <HealthTile to="/admin/contabilidad/cuenta-resultados" label="Ingresos"
             value={exec ? fmtEur(exec.income) : "—"} />
-          <HealthTile to="/admin/contabilidad/cuenta-resultados" label="EBITDA"
+          <HealthTile to="/admin/contabilidad/cuenta-resultados" label="EBITDA operativo"
             value={exec ? fmtEur(exec.ebitda) : "—"}
             sub={exec ? `Margen ${exec.ebitdaMargin.toFixed(1)} %` : ""} />
           <HealthTile to="/admin/contabilidad/cuenta-resultados" label="Resultado neto estimado"
@@ -172,6 +177,12 @@ export default function AccountingDashboard() {
             value={exec ? fmtEur(exec.projected60) : "—"}
             sub={exec ? (exec.overdueObligations > 0 ? `${exec.overdueObligations} obligación(es) vencida(s)` : "Saldo proyectado") : ""}
             tone={exec && exec.projected60 < 0 ? "red" : "emerald"} />
+          <HealthTile to="/admin/contabilidad/gastos" label="Distorsión fiscal"
+            value={distortion ? fmtEur(distortion.year_.amount) : "—"}
+            sub={distortion
+              ? `${distortion.year_.count} gasto(s) solo fiscal · ${distortion.pctOfOperational.toFixed(1)} % s/operativo`
+              : ""}
+            tone={distortion && distortion.year_.count > 0 ? "amber" : undefined} />
         </div>
       </div>
 
@@ -552,7 +563,7 @@ export default function AccountingDashboard() {
 }
 
 function HealthTile({ to, label, value, sub, tone }: {
-  to: string; label: string; value: string; sub?: string; tone?: "emerald" | "red";
+  to: string; label: string; value: string; sub?: string; tone?: "emerald" | "red" | "amber";
 }) {
   return (
     <Link href={to}>
@@ -560,7 +571,10 @@ function HealthTile({ to, label, value, sub, tone }: {
         <div className="text-[11px] text-muted-foreground leading-tight">{label}</div>
         <div className={cn(
           "text-lg font-display font-bold mt-1",
-          tone === "red" ? "text-red-500" : tone === "emerald" ? "text-emerald-600" : "text-foreground",
+          tone === "red" ? "text-red-500"
+            : tone === "emerald" ? "text-emerald-600"
+            : tone === "amber" ? "text-amber-600"
+            : "text-foreground",
         )}>{value}</div>
         {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
       </div>

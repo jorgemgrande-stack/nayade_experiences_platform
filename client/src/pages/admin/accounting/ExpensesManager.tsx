@@ -172,6 +172,7 @@ export default function ExpensesManager() {
     treatment: filterTreatment,
     limit: 200,
   });
+  const distortionQ = trpc.financial.expenses.distortionKpi.useQuery({}, { staleTime: 60_000 });
 
   const utils = trpc.useUtils();
 
@@ -599,6 +600,56 @@ export default function ExpensesManager() {
             </CardContent>
           </Card>
         </div>
+
+        {/* KPI Distorsión fiscal — mes + año en curso */}
+        {distortionQ.data && distortionQ.data.year_.count > 0 && (
+          <Card className="border-amber-300/50 bg-amber-50/40 dark:bg-amber-500/[0.05]">
+            <CardContent className="pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-semibold text-foreground">Distorsión fiscal</span>
+                  <span className="text-[11px] text-muted-foreground hidden md:inline">
+                    Gastos marcados como "Solo fiscal" · {distortionQ.data.year}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-x-6 text-sm">
+                  <div>
+                    <div className="text-[11px] text-muted-foreground">Este mes</div>
+                    <div className="font-semibold text-amber-700">
+                      {distortionQ.data.month_.amount.toFixed(2)} €
+                      <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                        ({distortionQ.data.month_.count})
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-muted-foreground">Este año</div>
+                    <div className="font-semibold text-amber-700">
+                      {distortionQ.data.year_.amount.toFixed(2)} €
+                      <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                        ({distortionQ.data.year_.count})
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-muted-foreground">s/operativo</div>
+                    <div className="font-semibold text-amber-700">
+                      {distortionQ.data.pctOfOperational.toFixed(1)} %
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFilterTreatment(filterTreatment === "tax_only" ? "all" : "tax_only")}
+                  className="text-[11px] text-amber-600 hover:text-amber-700 underline whitespace-nowrap"
+                >
+                  {filterTreatment === "tax_only" ? "Quitar filtro" : "Filtrar →"}
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Detectados por banco */}
         {(bankCandidatesQ.data?.total ?? 0) > 0 && (

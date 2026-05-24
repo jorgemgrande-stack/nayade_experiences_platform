@@ -524,6 +524,70 @@ const expensesRouter = router({
       }
       return { total, groups: Object.entries(byMethod).map(([key, amount]) => ({ key, amount })) };
     }),
+
+  /**
+   * KPI de DISTORSIÓN FISCAL.
+   *
+   * Devuelve el volumen de gastos marcados como "solo fiscales" del mes y del
+   * año en curso, junto con su peso relativo sobre el gasto operativo del
+   * ejercicio. Pensado para alimentar dashboards (admin, contabilidad, P&L,
+   * gastos): permite detectar abuso, controlar gastos híbridos y entender
+   * cuánto "ruido fiscal" existe frente a la operación real del negocio.
+   *
+   * Si no se pasa year/month se usan el año y mes en curso.
+   */
+  distortionKpi: adminProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100).optional(),
+      month: z.number().int().min(1).max(12).optional(),
+    }).default({}))
+    .query(async ({ input }) => {
+      const now = new Date();
+      const year = input.year ?? now.getFullYear();
+      const month = input.month ?? (now.getMonth() + 1);
+
+      const yStart = `${year}-01-01`;
+      const yEnd = `${year}-12-31`;
+      const mStart = `${year}-${String(month).padStart(2, "0")}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const mEnd = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+      const [yearTaxOnly, monthTaxOnly, yearOperational] = await Promise.all([
+        db.select({ amount: expenses.amount }).from(expenses).where(and(
+          eq(expenses.isOperational, false),
+          gte(expenses.date, yStart),
+          lte(expenses.date, yEnd),
+        )),
+        db.select({ amount: expenses.amount }).from(expenses).where(and(
+          eq(expenses.isOperational, false),
+          gte(expenses.date, mStart),
+          lte(expenses.date, mEnd),
+        )),
+        db.select({ amount: expenses.amount }).from(expenses).where(and(
+          eq(expenses.isOperational, true),
+          gte(expenses.date, yStart),
+          lte(expenses.date, yEnd),
+        )),
+      ]);
+
+      const sum = (rows: { amount: string }[]) =>
+        rows.reduce((s, r) => s + parseFloat(r.amount), 0);
+
+      const monthAmount = sum(monthTaxOnly);
+      const yearAmount = sum(yearTaxOnly);
+      const yearOperationalAmount = sum(yearOperational);
+      const pctOfOperational = yearOperationalAmount > 0
+        ? (yearAmount / yearOperationalAmount) * 100
+        : 0;
+
+      return {
+        year, month,
+        month_: { amount: monthAmount, count: monthTaxOnly.length },
+        year_: { amount: yearAmount, count: yearTaxOnly.length },
+        operationalYearAmount: yearOperationalAmount,
+        pctOfOperational,
+      };
+    }),
 });
 
 // ─── Recurring Expenses ───────────────────────────────────────────────────────
@@ -611,16 +675,26 @@ const recurringExpensesRouter = router({
 });
 
 // ─── helpers for profitLoss ───────────────────────────────────────────────────
-async function _profitLossForPeriod(dateFrom: string, dateTo: string, conciliatedOnly: boolean) {
+async function _profitLossForPeriod(
+  dateFrom: string,
+  dateTo: string,
+  conciliatedOnly: boolean,
+  view: "operational" | "fiscal" = "operational",
+) {
   // Filtro base del periodo (compartido por gastos operativos y solo fiscales).
   const baseExpenseConditions = [gte(expenses.date, dateFrom), lte(expenses.date, dateTo)];
   if (conciliatedOnly) baseExpenseConditions.push(eq(expenses.status, "conciliado"));
 
-  // Vista OPERATIVA: solo gastos isOperational = true.
-  // Los gastos "solo fiscales" se excluyen del P&L, EBITDA, márgenes y agregados
-  // por categoría/centro de coste para no distorsionar el rendimiento del negocio.
-  // Sí se contabilizan aparte (`excludedTaxOnly`) para transparencia visual.
-  const expenseConditions = [...baseExpenseConditions, eq(expenses.isOperational, true)];
+  // Dos vistas posibles:
+  //   - "operational": excluye gastos isOperational=false (default — usado por
+  //     KPIs, EBITDA, márgenes, dashboards de explotación).
+  //   - "fiscal": incluye TODOS los gastos (vista contable/fiscal completa,
+  //     coherente con el cálculo del Impuesto de Sociedades).
+  // Los gastos "solo fiscales" se contabilizan aparte (`excludedTaxOnly`) para
+  // que el frontend pueda dar transparencia incluso en la vista operativa.
+  const expenseConditions = view === "operational"
+    ? [...baseExpenseConditions, eq(expenses.isOperational, true)]
+    : [...baseExpenseConditions];
   const taxOnlyConditions = [...baseExpenseConditions, eq(expenses.isOperational, false)];
 
   const [paidReservations, expenseRows, taxOnlyRows] = await Promise.all([
@@ -695,11 +769,19 @@ async function _profitLossForPeriod(dateFrom: string, dateTo: string, conciliate
 
 // ─── Profit & Loss (Cuenta de Resultados) ────────────────────────────────────
 const profitLossRouter = router({
+  /**
+   * Cuenta de Resultados. Soporta dos vistas:
+   *   - "operational" (default): excluye gastos solo fiscales → P&L del negocio.
+   *   - "fiscal": incluye todos los gastos → vista contable/fiscal completa.
+   * La comparativa con el período anterior usa la MISMA vista para que las
+   * cifras sean comparables.
+   */
   report: adminProcedure
     .input(z.object({
       dateFrom: z.string(),
       dateTo: z.string(),
       conciliatedOnly: z.boolean().default(false),
+      view: z.enum(["operational", "fiscal"]).default("operational"),
     }))
     .query(async ({ input }) => {
       // Compute previous period (same duration, immediately before)
@@ -710,12 +792,13 @@ const profitLossRouter = router({
       const prevDateFrom = new Date(fromMs - 86400000 - duration).toISOString().slice(0, 10);
 
       const [current, prev] = await Promise.all([
-        _profitLossForPeriod(input.dateFrom, input.dateTo, input.conciliatedOnly),
-        _profitLossForPeriod(prevDateFrom, prevDateTo, input.conciliatedOnly),
+        _profitLossForPeriod(input.dateFrom, input.dateTo, input.conciliatedOnly, input.view),
+        _profitLossForPeriod(prevDateFrom, prevDateTo, input.conciliatedOnly, input.view),
       ]);
 
       return {
         ...current,
+        view: input.view,
         prevSummary: prev.summary,
         prevPeriod: { dateFrom: prevDateFrom, dateTo: prevDateTo },
       };

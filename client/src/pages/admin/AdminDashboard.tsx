@@ -317,6 +317,12 @@ export default function AdminDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // KPI distorsión fiscal — alerta solo cuando hay gastos solo fiscales en el mes.
+  const { data: distortion } = trpc.financial.expenses.distortionKpi.useQuery(undefined, {
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+  });
+
   // ── Auth guards ──────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -391,7 +397,8 @@ export default function AdminDashboard() {
     (tpvStaleMovements > 0 ? 1 : 0) +
     (tpvUnlinkedOps > 0 ? 1 : 0) +
     (expenseCandidates > 0 ? 1 : 0) +
-    (expenseStale > 0 ? 1 : 0);
+    (expenseStale > 0 ? 1 : 0) +
+    ((distortion?.month_.count ?? 0) > 0 ? 1 : 0);
 
   return (
     <AdminLayout title="Dashboard">
@@ -630,6 +637,23 @@ export default function AdminDashboard() {
                         <p className="text-[10px] text-yellow-400/60">Contabilidad → Gastos</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+                    </div>
+                  </Link>
+                )}
+                {distortion && distortion.month_.count > 0 && (
+                  <Link href="/admin/contabilidad/gastos?treatment=tax_only">
+                    <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-amber-500/15 transition-colors">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-amber-300">
+                          Distorsión fiscal este mes: {distortion.month_.amount.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                          {" "}({distortion.month_.count} gasto{distortion.month_.count > 1 ? "s" : ""} solo fiscal)
+                        </p>
+                        <p className="text-[10px] text-amber-400/60">
+                          Acumulado año: {distortion.year_.amount.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € · {distortion.pctOfOperational.toFixed(1)} % s/operativo
+                        </p>
+                      </div>
+                      <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     </div>
                   </Link>
                 )}

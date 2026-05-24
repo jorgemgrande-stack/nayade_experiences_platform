@@ -40,8 +40,13 @@ export default function ProfitLossReport() {
   const [dateFrom, setDateFrom] = useState(firstOfYear);
   const [dateTo, setDateTo] = useState(today);
   const [conciliatedOnly, setConciliatedOnly] = useState(false);
+  // Vista del P&L:
+  //   - "operational" (default) → excluye gastos solo fiscales → realidad del negocio.
+  //   - "fiscal" → incluye todos los gastos → cifra contable/fiscal (coherente con IS).
+  const [view, setView] = useState<"operational" | "fiscal">("operational");
 
-  const reportQ = trpc.financial.profitLoss.report.useQuery({ dateFrom, dateTo, conciliatedOnly });
+  const reportQ = trpc.financial.profitLoss.report.useQuery({ dateFrom, dateTo, conciliatedOnly, view });
+  const distortionQ = trpc.financial.expenses.distortionKpi.useQuery({}, { staleTime: 60_000 });
   const cashflowQ = trpc.bankMovements.getCashflowForecast.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
   // Cierre fiscal del ejercicio: del EBITDA al resultado neto (estimación anual).
   const execYear = Number(dateFrom.slice(0, 4)) || new Date().getFullYear();
@@ -70,6 +75,7 @@ export default function ProfitLossReport() {
     const lines: string[] = [
       "CUENTA DE RESULTADOS",
       `Período: ${dateFrom} — ${dateTo}`,
+      `Vista: ${view === "operational" ? "Operativa (excluye gastos solo fiscales)" : "Fiscal/contable (incluye todos los gastos)"}`,
       `Modo: ${conciliatedOnly ? "Solo conciliado" : "Todos los datos"}`,
       "",
       "RESUMEN",
@@ -169,6 +175,24 @@ export default function ProfitLossReport() {
               </Button>
             ))}
           </div>
+          {/* Toggle Vista operativa / fiscal */}
+          <div className="flex items-center gap-2 text-sm">
+            <button
+              onClick={() => setView("operational")}
+              className={`px-3 py-1.5 rounded-l-md border text-xs font-medium transition-colors ${view === "operational" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-muted-foreground border-border hover:bg-muted"}`}
+              title="Vista operativa: excluye gastos solo fiscales. Refleja el rendimiento real del negocio."
+            >
+              Vista operativa
+            </button>
+            <button
+              onClick={() => setView("fiscal")}
+              className={`px-3 py-1.5 rounded-r-md border-t border-b border-r text-xs font-medium transition-colors flex items-center gap-1 ${view === "fiscal" ? "bg-amber-600 text-white border-amber-600" : "bg-white text-muted-foreground border-border hover:bg-muted"}`}
+              title="Vista fiscal/contable: incluye TODOS los gastos. Coherente con la base del Impuesto de Sociedades."
+            >
+              Vista fiscal
+            </button>
+          </div>
+
           {/* Toggle conciliado */}
           <div className="ml-auto flex items-center gap-2 text-sm">
             <button
@@ -259,15 +283,68 @@ export default function ProfitLossReport() {
               </Card>
             </div>
 
-            {/* Aviso de transparencia: gastos solo fiscales excluidos del P&L */}
-            {report.summary.excludedTaxOnly && report.summary.excludedTaxOnly.count > 0 && (
+            {/* KPI permanente de distorsión fiscal (mes + año) */}
+            {distortionQ.data && distortionQ.data.year_.count > 0 && (
+              <Card className="border-2 border-amber-300/50 bg-amber-50/40">
+                <CardContent className="pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span className="text-sm font-semibold text-foreground">Distorsión fiscal</span>
+                      <span className="text-[11px] text-muted-foreground">Gastos solo fiscales · {distortionQ.data.year}</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-sm">
+                      <div>
+                        <div className="text-[11px] text-muted-foreground">Este mes</div>
+                        <div className="font-semibold text-amber-700">
+                          {fmt(distortionQ.data.month_.amount)}
+                          <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                            ({distortionQ.data.month_.count} gasto{distortionQ.data.month_.count !== 1 ? "s" : ""})
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted-foreground">Este año</div>
+                        <div className="font-semibold text-amber-700">
+                          {fmt(distortionQ.data.year_.amount)}
+                          <span className="text-[11px] text-muted-foreground font-normal ml-1">
+                            ({distortionQ.data.year_.count} gasto{distortionQ.data.year_.count !== 1 ? "s" : ""})
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted-foreground">Sobre gasto operativo</div>
+                        <div className="font-semibold text-amber-700">
+                          {distortionQ.data.pctOfOperational.toFixed(1)} %
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Aviso de transparencia contextual al periodo filtrado */}
+            {view === "operational" && report.summary.excludedTaxOnly && report.summary.excludedTaxOnly.count > 0 && (
               <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
                 <div className="flex-1 text-foreground/80 leading-snug">
                   Esta cuenta de resultados excluye <strong>{report.summary.excludedTaxOnly.count} gasto(s)</strong> marcados
                   como <span className="font-semibold text-amber-600">Solo fiscal</span> por un importe total
-                  de <strong>{fmt(report.summary.excludedTaxOnly.amount)}</strong> en el periodo. Estos gastos sí computan
+                  de <strong>{fmt(report.summary.excludedTaxOnly.amount)}</strong> en el periodo seleccionado. Estos gastos sí computan
                   en gestoría, IVA, Impuesto de Sociedades y tesorería, pero no afectan al rendimiento operativo del negocio.
+                  Usa <span className="font-semibold">Vista fiscal</span> arriba para incluirlos.
+                </div>
+              </div>
+            )}
+            {view === "fiscal" && (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-500/50 bg-amber-500/10 text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                <div className="flex-1 text-foreground/90 leading-snug">
+                  <strong>Vista fiscal activa.</strong> Esta cuenta de resultados incluye TODOS los gastos
+                  (operativos + solo fiscales). Las cifras de EBITDA y margen mostradas son la base contable
+                  coherente con el cálculo del Impuesto de Sociedades, NO el rendimiento operativo del negocio.
+                  Usa <span className="font-semibold">Vista operativa</span> para volver a la realidad del negocio.
                 </div>
               </div>
             )}

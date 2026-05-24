@@ -12,7 +12,7 @@ import { trpc } from "@/lib/trpc";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Building2, RefreshCw, AlertTriangle } from "lucide-react";
+import { Building2, RefreshCw, AlertTriangle, Download } from "lucide-react";
 import { eur } from "./taxLabels";
 
 export default function GestoriaSociedades() {
@@ -30,6 +30,36 @@ export default function GestoriaSociedades() {
     },
     onError: (e) => toast.error("Error: " + e.message),
   });
+
+  // Exportación dual (operativo / solo fiscal) para gestoría.
+  const exportExpensesQ = trpc.gestoria.expenses.exportCsv.useQuery(
+    { year },
+    { enabled: false }, // se dispara on-demand al pulsar el botón
+  );
+
+  async function handleExportExpenses() {
+    try {
+      const res = await exportExpensesQ.refetch();
+      if (res.error || !res.data) {
+        toast.error("No se pudo generar la exportación: " + (res.error?.message ?? "error desconocido"));
+        return;
+      }
+      const { fileName, mimeType, contentBase64, counts, totals } = res.data;
+      const bytes = Uint8Array.from(atob(contentBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(
+        `Exportados ${counts.total} gastos · Operativos: ${counts.operational} (${totals.operational.toFixed(2)} €) · Solo fiscal: ${counts.taxOnly} (${totals.taxOnly.toFixed(2)} €)`,
+      );
+    } catch (e: any) {
+      toast.error("Error al exportar: " + (e?.message ?? "desconocido"));
+    }
+  }
 
   const c = previewQ.data;
   const yearOptions = [currentYear - 1, currentYear, currentYear + 1];
@@ -73,11 +103,37 @@ export default function GestoriaSociedades() {
           <>
             {/* Cuenta de resultados */}
             <div className="bg-card border border-border rounded-lg p-4">
-              <h2 className="text-sm font-semibold text-foreground mb-2">Cuenta de resultados estimada {year}</h2>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-semibold text-foreground">Cuenta de resultados estimada {year}</h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportExpenses}
+                  disabled={exportExpensesQ.isFetching}
+                  className="gap-2 text-xs"
+                  title="Descarga el libro de gastos del ejercicio con la columna 'Imputación Operativa' y totales separados (operativo / solo fiscal / conjunto)."
+                >
+                  {exportExpensesQ.isFetching
+                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    : <Download className="w-3.5 h-3.5" />}
+                  Exportar gastos {year} (CSV)
+                </Button>
+              </div>
               <Row k="Ingresos devengados" v={eur(c.income)} />
-              <Row k="Gastos deducibles" v={"− " + eur(c.expenses)} />
+              <Row k="Gastos operativos" v={"− " + eur(c.expensesOperational)} />
+              {(c.expenses - c.expensesOperational) !== 0 && (
+                <Row
+                  k="Gastos solo fiscales"
+                  v={"− " + eur(c.expenses - c.expensesOperational)}
+                  muted
+                />
+              )}
+              <div className="border-t border-border/60 mt-1 pt-1">
+                <Row k="Total gasto deducible" v={"− " + eur(c.expenses)} />
+              </div>
               <div className="border-t border-border mt-1 pt-1">
-                <Row k="Resultado contable estimado" v={eur(c.result)} strong />
+                <Row k="Resultado operativo (EBITDA)" v={eur(c.resultOperational)} muted />
+                <Row k="Resultado fiscal (base imponible IS)" v={eur(c.result)} strong />
               </div>
             </div>
 
@@ -133,11 +189,15 @@ export default function GestoriaSociedades() {
   );
 }
 
-function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
+function Row({ k, v, strong, muted }: { k: string; v: string; strong?: boolean; muted?: boolean }) {
   return (
     <div className="flex items-center justify-between text-sm py-1">
-      <span className="text-foreground/70">{k}</span>
-      <span className={strong ? "font-semibold text-foreground" : "text-foreground/80"}>{v}</span>
+      <span className={muted ? "text-foreground/50 text-xs italic" : "text-foreground/70"}>{k}</span>
+      <span className={
+        strong ? "font-semibold text-foreground"
+          : muted ? "text-foreground/60 text-xs italic"
+          : "text-foreground/80"
+      }>{v}</span>
     </div>
   );
 }
