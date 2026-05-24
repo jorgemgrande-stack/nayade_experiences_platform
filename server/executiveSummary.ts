@@ -10,9 +10,10 @@
 
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { eq, like, ne, and } from "drizzle-orm";
+import { eq, like, ne, and, gte, lte, sql } from "drizzle-orm";
 import {
   hrPayslips, taxSettings, taxObligations, taxDeferralInstallments, finCashAccounts,
+  expenses,
 } from "../drizzle/schema";
 import { computeCorporate, compute390, compute190 } from "./gestoriaTax";
 
@@ -23,21 +24,26 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export type ExecutiveSummary = {
   year: number;
-  // Resultado
+  // Resultado OPERATIVO del negocio (excluye gastos isOperational=false).
+  // Es la foto de la realidad empresarial: EBITDA, margen, KPIs de explotación.
   income: number;
   expenses: number;
   ebitda: number;
   ebitdaMargin: number;
-  // Coste laboral (composición del gasto, no resta adicional)
+  // Composición del gasto operativo: nóminas + SS empresa.
   laborCost: number;
   laborPctOfRevenue: number;
-  // Carga fiscal estimada
+  // Carga fiscal estimada — calculada SOBRE el resultado FISCAL completo
+  // (incluye los gastos solo fiscales, que también son deducibles).
   vatResult: number;
   irpfRetained: number;
   corporateTax: number;
   fiscalTotal: number;
-  // Resultado neto = EBITDA − Impuesto de Sociedades
+  // Resultado neto = EBITDA OPERATIVO − Impuesto de Sociedades.
   netResult: number;
+  // Aviso de transparencia: cuántos gastos "solo fiscales" se excluyeron del
+  // resultado operativo (sí entran en el cálculo del IS y de la quota).
+  excludedTaxOnly: { count: number; amount: number };
   // Tesorería (horizonte 60 días)
   cashAvailable: number;
   due60: number;
@@ -55,11 +61,29 @@ export async function computeExecutiveSummary(year: number): Promise<ExecutiveSu
   const [settings] = await db.select().from(taxSettings).where(eq(taxSettings.id, 1));
   const rate = Number(settings?.corporateTaxRate ?? 25);
 
-  // P&L del ejercicio + Impuesto de Sociedades (computeCorporate ya devuelve
-  // ingresos, gastos, resultado=EBITDA y cuota=IS).
+  // P&L del ejercicio + Impuesto de Sociedades.
+  // - EBITDA y márgenes usan los gastos OPERATIVOS (excluyen los solo fiscales).
+  // - El IS (corporateTax) usa la base fiscal completa (incluye solo fiscales).
   const corp = await computeCorporate(year, rate);
-  const ebitda = corp.result;
+  const ebitda = corp.resultOperational;
   const corporateTax = corp.quota;
+
+  // Aviso de transparencia: cuántos gastos "solo fiscales" se han excluido
+  // del cálculo operativo. Se mira el rango anual completo del ejercicio.
+  const yStart = `${year}-01-01`;
+  const yEnd = `${year}-12-31`;
+  const [{ count: excCount, amount: excAmount }] = await db
+    .select({
+      count: sql<number>`COUNT(*)`,
+      amount: sql<string>`COALESCE(SUM(${expenses.amount}), 0)`,
+    })
+    .from(expenses)
+    .where(and(
+      eq(expenses.isOperational, false),
+      gte(expenses.date, yStart),
+      lte(expenses.date, yEnd),
+    ));
+  const excludedTaxOnly = { count: Number(excCount ?? 0), amount: round2(Number(excAmount ?? 0)) };
 
   // Carga fiscal: IVA anual (390), retenciones IRPF (190) e IS.
   const [vat, irpf] = await Promise.all([compute390(year), compute190(year)]);
@@ -93,7 +117,8 @@ export async function computeExecutiveSummary(year: number): Promise<ExecutiveSu
   return {
     year,
     income: corp.income,
-    expenses: corp.expenses,
+    // Vista operativa: gastos que computan en KPIs de negocio.
+    expenses: corp.expensesOperational,
     ebitda,
     ebitdaMargin: corp.income > 0 ? round2((ebitda / corp.income) * 100) : 0,
     laborCost,
@@ -103,6 +128,7 @@ export async function computeExecutiveSummary(year: number): Promise<ExecutiveSu
     corporateTax,
     fiscalTotal: round2(vat.result + irpf.totalRetention + corporateTax),
     netResult: round2(ebitda - corporateTax),
+    excludedTaxOnly,
     cashAvailable,
     due60,
     projected60: round2(cashAvailable - due60),

@@ -255,21 +255,38 @@ export function lines111(r: Labor111): { concept: string; base: string; rate: st
 export type Corporate = {
   year: number;
   income: number;
+  /** Gasto fiscal total (incluye gastos "solo fiscales"). Base de cálculo del IS. */
   expenses: number;
+  /** Resultado fiscal = income - expenses. Base imponible del IS. */
   result: number;
+  /** Gasto OPERATIVO del ejercicio (excluye gastos "solo fiscales"). Para EBITDA/KPIs. */
+  expensesOperational: number;
+  /** Resultado OPERATIVO = income - expensesOperational. Para EBITDA/KPIs/dashboards. */
+  resultOperational: number;
   taxRate: number;
+  /** Cuota del IS calculada sobre `result` (fiscal). */
   quota: number;
   installments: { period: "1P" | "2P" | "3P"; cumulativeBase: number; payment: number }[];
 };
 
 /**
  * Cuenta de resultados acumulada del ejercicio hasta un mes (inclusive).
+ *
+ * Devuelve dos visiones del gasto:
+ *  - `expenses`              → fiscal (incluye gastos `isOperational = false`).
+ *                              Base para el Impuesto de Sociedades.
+ *  - `expensesOperational`   → operativo (excluye gastos solo fiscales).
+ *                              Base para EBITDA, márgenes y KPIs del negocio.
+ *
  * Ingresos = base de facturas emitidas no anuladas (abonos restan).
  * Gastos = base imponible de los gastos (coste neto deducible).
  * Es una estimación: no contempla amortizaciones formales ni ajustes
  * extracontables, que aplica la gestoría.
  */
-async function plUpToMonth(year: number, monthInclusive: number): Promise<{ income: number; expenses: number }> {
+async function plUpToMonth(
+  year: number,
+  monthInclusive: number
+): Promise<{ income: number; expenses: number; expensesOperational: number }> {
   const start = new Date(year, 0, 1);
   const endExcl = new Date(year, monthInclusive, 1);
   const startStr = `${year}-01-01`;
@@ -289,6 +306,7 @@ async function plUpToMonth(year: number, monthInclusive: number): Promise<{ inco
       amount: expenses.amount,
       taxRate: expenses.taxRate,
       source: expenses.source,
+      isOperational: expenses.isOperational,
     })
     .from(expenses)
     .where(or(
@@ -297,15 +315,17 @@ async function plUpToMonth(year: number, monthInclusive: number): Promise<{ inco
     ));
   // El gasto deducible en la cuenta de resultados es la base NETA (sin IVA):
   // el IVA soportado se recupera vía Modelo 303, no es un gasto del ejercicio.
-  const exp = round2(expRows.reduce((s, r) => {
-    if (r.taxBase != null) return s + Number(r.taxBase);
+  const netOf = (r: typeof expRows[number]): number => {
+    if (r.taxBase != null) return Number(r.taxBase);
     // Gastos de RRHH (nóminas, SS, bonus): no llevan IVA → neto = importe.
-    if (typeof r.source === "string" && r.source.startsWith("hr_")) return s + Number(r.amount ?? 0);
+    if (typeof r.source === "string" && r.source.startsWith("hr_")) return Number(r.amount ?? 0);
     // Resto sin desglose: extraer la base del importe total y el tipo.
-    return s + calcGeneralTax(Number(r.amount ?? 0), Number(r.taxRate ?? 21)).taxBase;
-  }, 0));
+    return calcGeneralTax(Number(r.amount ?? 0), Number(r.taxRate ?? 21)).taxBase;
+  };
+  const exp = round2(expRows.reduce((s, r) => s + netOf(r), 0));
+  const expOp = round2(expRows.reduce((s, r) => s + (r.isOperational !== false ? netOf(r) : 0), 0));
 
-  return { income, expenses: exp };
+  return { income, expenses: exp, expensesOperational: expOp };
 }
 
 /**
@@ -315,9 +335,15 @@ async function plUpToMonth(year: number, monthInclusive: number): Promise<{ inco
  */
 export async function computeCorporate(year: number, taxRate: number): Promise<Corporate> {
   const annual = await plUpToMonth(year, 12);
+  // El IS se calcula sobre el RESULTADO FISCAL (incluye gastos solo fiscales).
   const result = round2(annual.income - annual.expenses);
+  // El resultado OPERATIVO excluye gastos solo fiscales (para EBITDA/KPIs).
+  const resultOperational = round2(annual.income - annual.expensesOperational);
   const quota = result > 0 ? round2((result * taxRate) / 100) : 0;
 
+  // Pagos fraccionados (Modelo 202, modalidad base): se calculan sobre el
+  // resultado FISCAL acumulado (no operativo), porque su base es la misma que
+  // la del Impuesto de Sociedades anual.
   const coef = Math.floor((taxRate * 5) / 7) / 100;
   const [pl3, pl9, pl11] = await Promise.all([
     plUpToMonth(year, 3), plUpToMonth(year, 9), plUpToMonth(year, 11),
@@ -334,6 +360,8 @@ export async function computeCorporate(year: number, taxRate: number): Promise<C
     income: annual.income,
     expenses: annual.expenses,
     result,
+    expensesOperational: annual.expensesOperational,
+    resultOperational,
     taxRate,
     quota,
     installments: [

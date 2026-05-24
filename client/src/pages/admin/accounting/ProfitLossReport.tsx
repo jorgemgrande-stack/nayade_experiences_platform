@@ -259,6 +259,19 @@ export default function ProfitLossReport() {
               </Card>
             </div>
 
+            {/* Aviso de transparencia: gastos solo fiscales excluidos del P&L */}
+            {report.summary.excludedTaxOnly && report.summary.excludedTaxOnly.count > 0 && (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5 text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                <div className="flex-1 text-foreground/80 leading-snug">
+                  Esta cuenta de resultados excluye <strong>{report.summary.excludedTaxOnly.count} gasto(s)</strong> marcados
+                  como <span className="font-semibold text-amber-600">Solo fiscal</span> por un importe total
+                  de <strong>{fmt(report.summary.excludedTaxOnly.amount)}</strong> en el periodo. Estos gastos sí computan
+                  en gestoría, IVA, Impuesto de Sociedades y tesorería, pero no afectan al rendimiento operativo del negocio.
+                </div>
+              </div>
+            )}
+
             {/* Del EBITDA al resultado neto — cierre fiscal del ejercicio */}
             {execQ.data && (
               <Card className="border-2 border-amber-300/50 bg-amber-50/40">

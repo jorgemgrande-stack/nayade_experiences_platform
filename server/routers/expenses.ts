@@ -474,18 +474,21 @@ const expensesRouter = router({
       return { matches };
     }),
 
-  // Summary for a date range (used by Profit & Loss)
+  // Summary for a date range (used by Profit & Loss).
+  // Por defecto solo agrega gastos operativos para que los KPIs y dashboards
+  // que consuman este endpoint no incluyan "solo fiscales". Pasa
+  // includeTaxOnly=true para sumar ambos (ej. vistas fiscales/contables).
   summary: adminProcedure
     .input(z.object({
       dateFrom: z.string(),
       dateTo: z.string(),
       groupBy: z.enum(["category", "costCenter", "paymentMethod", "month"]).default("category"),
+      includeTaxOnly: z.boolean().default(false),
     }))
     .query(async ({ input }) => {
-      const rows = await db
-        .select()
-        .from(expenses)
-        .where(and(gte(expenses.date, input.dateFrom), lte(expenses.date, input.dateTo)));
+      const conds = [gte(expenses.date, input.dateFrom), lte(expenses.date, input.dateTo)];
+      if (!input.includeTaxOnly) conds.push(eq(expenses.isOperational, true));
+      const rows = await db.select().from(expenses).where(and(...conds));
 
       const total = rows.reduce((sum: number, r: typeof rows[number]) => sum + parseFloat(r.amount), 0);
 
@@ -609,10 +612,18 @@ const recurringExpensesRouter = router({
 
 // ─── helpers for profitLoss ───────────────────────────────────────────────────
 async function _profitLossForPeriod(dateFrom: string, dateTo: string, conciliatedOnly: boolean) {
-  const expenseConditions = [gte(expenses.date, dateFrom), lte(expenses.date, dateTo)];
-  if (conciliatedOnly) expenseConditions.push(eq(expenses.status, "conciliado"));
+  // Filtro base del periodo (compartido por gastos operativos y solo fiscales).
+  const baseExpenseConditions = [gte(expenses.date, dateFrom), lte(expenses.date, dateTo)];
+  if (conciliatedOnly) baseExpenseConditions.push(eq(expenses.status, "conciliado"));
 
-  const [paidReservations, expenseRows] = await Promise.all([
+  // Vista OPERATIVA: solo gastos isOperational = true.
+  // Los gastos "solo fiscales" se excluyen del P&L, EBITDA, márgenes y agregados
+  // por categoría/centro de coste para no distorsionar el rendimiento del negocio.
+  // Sí se contabilizan aparte (`excludedTaxOnly`) para transparencia visual.
+  const expenseConditions = [...baseExpenseConditions, eq(expenses.isOperational, true)];
+  const taxOnlyConditions = [...baseExpenseConditions, eq(expenses.isOperational, false)];
+
+  const [paidReservations, expenseRows, taxOnlyRows] = await Promise.all([
     db.select().from(reservations).where(
       and(
         eq(reservations.status, "paid"),
@@ -621,12 +632,19 @@ async function _profitLossForPeriod(dateFrom: string, dateTo: string, conciliate
       )
     ),
     db.select().from(expenses).where(and(...expenseConditions)),
+    db.select({ amount: expenses.amount }).from(expenses).where(and(...taxOnlyConditions)),
   ]);
 
   const totalRevenue = paidReservations.reduce((s, r) => s + r.amountTotal / 100, 0);
   const totalExpenses = expenseRows.reduce((s, r) => s + parseFloat(r.amount), 0);
   const grossProfit = totalRevenue - totalExpenses;
   const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+
+  // Aviso de transparencia: cuántos gastos solo fiscales se han excluido del cálculo.
+  const excludedTaxOnly = {
+    count: taxOnlyRows.length,
+    amount: taxOnlyRows.reduce((s, r) => s + parseFloat(r.amount), 0),
+  };
 
   const revenueByChannel: Record<string, number> = {};
   const revenueByProduct: Record<string, number> = {};
@@ -654,7 +672,7 @@ async function _profitLossForPeriod(dateFrom: string, dateTo: string, conciliate
   }
 
   return {
-    summary: { totalRevenue, totalExpenses, grossProfit, grossMargin, reservationCount: paidReservations.length },
+    summary: { totalRevenue, totalExpenses, grossProfit, grossMargin, reservationCount: paidReservations.length, excludedTaxOnly },
     revenueByChannel: Object.entries(revenueByChannel).map(([channel, amount]) => ({
       channel, amount, count: revenueByChannelCount[channel] ?? 0,
       ticketMedio: revenueByChannelCount[channel] > 0 ? amount / revenueByChannelCount[channel] : 0,
