@@ -642,7 +642,19 @@ ghlInboxRouter.post(
       }
 
       const data: any = await ghlRes.json();
-      const msgId = data?.message?.id ?? data?.id ?? `local-${Date.now()}`;
+      // GHL devuelve `{ messageId, conversationId, msg }` en POST
+      // /conversations/messages. extractMessageId también acepta los formatos
+      // antiguos (message.id, id) por compatibilidad. Si NO encontramos un id
+      // real caemos a un sintético — pero entonces avisamos en el log porque
+      // significa que el webhook entrante creará una fila duplicada (su
+      // payload trae el messageId real y no podrá colisionar con el local).
+      const msgId = extractMessageId(data) ?? `local-${Date.now()}`;
+      if (msgId.startsWith("local-")) {
+        log("warn", "GHL /messages no devolvió messageId — el webhook posterior creará un duplicado local", {
+          ghlConvId,
+          ghlResponseKeys: Object.keys(data ?? {}),
+        });
+      }
 
       // Guardar mensaje outbound localmente
       await db.insert(ghlMessages).values({
@@ -790,7 +802,14 @@ ghlInboxRouter.post("/api/ghl/conversations/new", express.json({ limit: "512kb" 
         return res.status(200).json({ ok: false, message: `Error enviando mensaje: ${errText.slice(0, 150)}` });
       }
       const msgData: any = await msgRes.json();
-      const msgId = msgData?.message?.id ?? msgData?.id ?? `local-${Date.now()}`;
+      // GHL devuelve `messageId` (no `message.id`); ver comentario en /reply.
+      const msgId = extractMessageId(msgData) ?? `local-${Date.now()}`;
+      if (msgId.startsWith("local-")) {
+        log("warn", "GHL /messages no devolvió messageId al crear conversación — posible duplicado", {
+          conversationId,
+          ghlResponseKeys: Object.keys(msgData ?? {}),
+        });
+      }
       const preview = (templateId ? `[Plantilla: ${templateId}]` : message!).slice(0, 200);
 
       await db.update(ghlConversations)
