@@ -11,6 +11,7 @@ import { createReavExpedient, attachReavDocument, upsertClientFromReservation, p
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 import { createCashMovementIfNotExists, getDefaultCashAccountId } from "./cashRegisterHelper";
 import { calcularREAVSimple } from "../reav";
+import { getDailyControlCenter } from "./dailyControl";
 import {
   cashRegisters,
   cashSessions,
@@ -125,6 +126,164 @@ function calcLineFiscal(
   }
   const { taxBase, taxAmount } = calcGeneralTax(lineTotal, taxRate);
   return { taxBase, taxAmount, taxRate, reavCost: 0, reavMargin: 0, reavTax: 0 };
+}
+
+// ─── EMAIL DE CIERRE DE CAJA ─────────────────────────────────────────────────
+
+/**
+ * Compone y envía el email de cierre de caja para una sesión TPV ya cerrada.
+ *
+ * Reutilizable desde:
+ *   - El handler `closeSession` (envío automático al cerrar).
+ *   - Scripts de re-envío manual (p.ej. para QA o reenviar a otro destinatario).
+ *
+ * Enriquece el email con el snapshot del Centro de Control Diario
+ * (`getDailyControlCenter`) para incluir resumen ejecutivo del día y desglose
+ * por canal con cobrado/pendiente/personas/ticket medio.
+ *
+ * No lanza si falla la llamada al Control Diario: degrada elegantemente al
+ * formato clásico del email para no bloquear el aviso del cierre.
+ *
+ * @param sessionId  ID de la sesión TPV cerrada.
+ * @param opts.toOverride  Destinatario alternativo (anula `admin_alerts`).
+ *                         Útil para re-envíos de prueba.
+ * @param opts.subjectPrefix Prefijo opcional al subject (p.ej. "[REENVÍO] ").
+ */
+export async function sendCashCloseEmailForSession(
+  sessionId: number,
+  opts: { toOverride?: string; subjectPrefix?: string } = {},
+): Promise<{ to: string; subject: string }> {
+  const closeEmailEnabled = await getFeatureFlag("tpv_email_notifications_enabled", true);
+  if (!closeEmailEnabled && !opts.toOverride) {
+    throw new Error("tpv_email_notifications_enabled=false");
+  }
+
+  const [session] = await db.select().from(cashSessions).where(eq(cashSessions.id, sessionId));
+  if (!session) throw new Error(`Sesión ${sessionId} no encontrada`);
+  if (session.status !== "closed") {
+    throw new Error(`Sesión ${sessionId} no está cerrada (status=${session.status})`);
+  }
+
+  const [register] = await db
+    .select({ name: cashRegisters.name })
+    .from(cashRegisters)
+    .where(eq(cashRegisters.id, session.registerId));
+
+  // Derivar fecha del día desde openedAt (clave para snapshot del Control Diario).
+  const sessionDate = new Date(Number(session.openedAt)).toISOString().slice(0, 10);
+
+  // Reservas del día (excluyendo TPV físico) para el desglose por canal LEGACY,
+  // que se usa como fallback si no llega snapshot del Control Diario.
+  const dayReservations = await db
+    .select({
+      channel: reservations.channel,
+      paymentMethod: reservations.paymentMethod,
+      amountTotal: reservations.amountTotal,
+    })
+    .from(reservations)
+    .where(and(
+      gte(reservations.bookingDate, sessionDate),
+      lte(reservations.bookingDate, sessionDate),
+      eq(reservations.status, "paid"),
+    ));
+
+  const channelMap: Record<string, ChannelSummary> = {};
+  const CHANNEL_LABELS: Record<string, string> = {
+    WEB: "Online / Redsys",
+    CRM: "CRM / Manual",
+    EMAIL: "CRM / Manual",
+    TRANSFERENCIA: "Transferencia",
+    CUPON: "Cupón / Descuento",
+  };
+  for (const r of dayReservations) {
+    const ch = (r.channel ?? "OTRO").toUpperCase();
+    if (ch === "TPV_FISICO") continue;
+    const pm = (r.paymentMethod ?? "otro").toLowerCase();
+    const amt = (r.amountTotal ?? 0) / 100;
+    if (!channelMap[ch]) {
+      channelMap[ch] = {
+        channel: ch,
+        label: CHANNEL_LABELS[ch] ?? ch,
+        totalEfectivo: 0,
+        totalTarjeta: 0,
+        totalBizum: 0,
+        totalOtro: 0,
+        totalVentas: 0,
+        numVentas: 0,
+      };
+    }
+    channelMap[ch].numVentas++;
+    channelMap[ch].totalVentas += amt;
+    if (pm === "efectivo") channelMap[ch].totalEfectivo += amt;
+    else if (pm === "redsys" || pm === "tarjeta") channelMap[ch].totalTarjeta += amt;
+    else if (pm === "bizum") channelMap[ch].totalBizum += amt;
+    else channelMap[ch].totalOtro += amt;
+  }
+
+  // Snapshot operativo del día — alimenta el resumen ejecutivo y el desglose
+  // enriquecido por canal. Degradación elegante si falla (email sin extras).
+  let dailyControl = null as null | {
+    kpis: {
+      facturacionTotal: number; cobradoHoy: number; pendienteCobro: number;
+      nReservasEjecutadas: number; nOperacionesTPV: number;
+      nPersonasAtendidas: number; ticketMedio: number;
+    };
+    channels: Array<{
+      label: string; count: number; people: number; paid: number;
+      pending: number; total: number; ticketMedio: number;
+    }>;
+  };
+  try {
+    const dc = await getDailyControlCenter(sessionDate);
+    dailyControl = {
+      kpis: {
+        facturacionTotal: dc.kpis.facturacionTotal,
+        cobradoHoy: dc.kpis.cobradoHoy,
+        pendienteCobro: dc.kpis.pendienteCobro,
+        nReservasEjecutadas: dc.kpis.nReservasEjecutadas,
+        nOperacionesTPV: dc.kpis.nOperacionesTPV,
+        nPersonasAtendidas: dc.kpis.nPersonasAtendidas,
+        ticketMedio: dc.kpis.ticketMedio,
+      },
+      channels: dc.channels.map((c) => ({
+        label: c.label,
+        count: c.count,
+        people: c.people,
+        paid: c.paid,
+        pending: c.pending,
+        total: c.total,
+        ticketMedio: c.ticketMedio,
+      })),
+    };
+  } catch (e) {
+    console.warn("[TPV] sendCashCloseEmailForSession: no se pudo cargar Control Diario, email sin extras:", e);
+  }
+
+  const html = buildCashCloseHtml({
+    sessionId,
+    cashierName: session.cashierName ?? "Cajero",
+    registerName: register?.name ?? `Caja #${session.registerId}`,
+    openedAt: new Date(Number(session.openedAt)),
+    closedAt: session.closedAt ? new Date(Number(session.closedAt)) : new Date(),
+    openingAmount: parseFloat(String(session.openingAmount)),
+    totalCash: parseFloat(String(session.totalCash ?? "0")),
+    totalCard: parseFloat(String(session.totalCard ?? "0")),
+    totalBizum: parseFloat(String(session.totalBizum ?? "0")),
+    totalMixed: parseFloat(String(session.totalMixed ?? "0")),
+    totalManualIn: parseFloat(String(session.totalManualIn ?? "0")),
+    totalManualOut: parseFloat(String(session.totalManualOut ?? "0")),
+    closingAmount: parseFloat(String(session.closingAmount ?? "0")),
+    countedCash: parseFloat(String(session.countedCash ?? "0")),
+    cashDifference: parseFloat(String(session.cashDifference ?? "0")),
+    channels: Object.values(channelMap),
+    notes: session.notes,
+    dailyControl,
+  });
+
+  const to = opts.toOverride || (await getBusinessEmail("admin_alerts"));
+  const subject = `${opts.subjectPrefix ?? ""}🔴 Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — Náyade Experiences`;
+  await sendEmail({ to, subject, html });
+  return { to, subject };
 }
 
 // ─── ROUTER ──────────────────────────────────────────────────────────────────
@@ -355,89 +514,10 @@ export const tpvRouter = router({
         console.error("[TPV] Error creando cierre contable:", e);
       }
 
-      // Email de cierre con desglose multicanal (no bloquea si falla)
+      // Email de cierre con desglose multicanal y resumen operativo del día
+      // (no bloquea si falla).
       try {
-        const closeEmailEnabled = await getFeatureFlag('tpv_email_notifications_enabled', true);
-        if (!closeEmailEnabled) throw new Error("tpv_email_notifications_enabled=false");
-        const [register] = await db.select({ name: cashRegisters.name }).from(cashRegisters).where(eq(cashRegisters.id, session.registerId));
-
-        // Derivar fecha del día desde openedAt
-        const sessionDate = new Date(Number(session.openedAt)).toISOString().slice(0, 10);
-
-        // Reservas del día (excluyendo TPV físico) para desglose por canal
-        const dayReservations = await db
-          .select({
-            channel: reservations.channel,
-            paymentMethod: reservations.paymentMethod,
-            amountTotal: reservations.amountTotal,
-          })
-          .from(reservations)
-          .where(and(
-            gte(reservations.bookingDate, sessionDate),
-            lte(reservations.bookingDate, sessionDate),
-            eq(reservations.status, "paid"),
-          ));
-
-        // Agrupar por canal (excluir TPV_FISICO que ya está en tpvSalePayments)
-        const channelMap: Record<string, ChannelSummary> = {};
-        const CHANNEL_LABELS: Record<string, string> = {
-          WEB: "Online / Redsys",
-          CRM: "CRM / Manual",
-          EMAIL: "CRM / Manual",
-          TRANSFERENCIA: "Transferencia",
-          CUPON: "Cupón / Descuento",
-        };
-        for (const r of dayReservations) {
-          const ch = (r.channel ?? "OTRO").toUpperCase();
-          if (ch === "TPV_FISICO") continue;
-          const pm = (r.paymentMethod ?? "otro").toLowerCase();
-          const amt = (r.amountTotal ?? 0) / 100;
-          if (!channelMap[ch]) {
-            channelMap[ch] = {
-              channel: ch,
-              label: CHANNEL_LABELS[ch] ?? ch,
-              totalEfectivo: 0,
-              totalTarjeta: 0,
-              totalBizum: 0,
-              totalOtro: 0,
-              totalVentas: 0,
-              numVentas: 0,
-            };
-          }
-          channelMap[ch].numVentas++;
-          channelMap[ch].totalVentas += amt;
-          if (pm === "efectivo") channelMap[ch].totalEfectivo += amt;
-          else if (pm === "redsys" || pm === "tarjeta") channelMap[ch].totalTarjeta += amt;
-          else if (pm === "bizum") channelMap[ch].totalBizum += amt;
-          else channelMap[ch].totalOtro += amt;
-        }
-
-        const html = buildCashCloseHtml({
-          sessionId: input.sessionId,
-          cashierName: session.cashierName ?? "Cajero",
-          registerName: register?.name ?? `Caja #${session.registerId}`,
-          openedAt: new Date(Number(session.openedAt)),
-          closedAt: new Date(),
-          openingAmount: parseFloat(String(session.openingAmount)),
-          totalCash,
-          totalCard,
-          totalBizum,
-          totalMixed,
-          totalManualIn,
-          totalManualOut,
-          closingAmount,
-          countedCash: input.countedCash,
-          cashDifference,
-          channels: Object.values(channelMap),
-          notes: input.notes ?? session.notes,
-        });
-
-        const closeToEmail = await getBusinessEmail('admin_alerts');
-        await sendEmail({
-          to: closeToEmail,
-          subject: `🔴 Cierre de caja — ${register?.name ?? "Caja"} — ${sessionDate} — Náyade Experiences`,
-          html,
-        });
+        await sendCashCloseEmailForSession(input.sessionId);
       } catch (e) {
         console.error("[TPV] Error enviando email cierre caja:", e);
       }

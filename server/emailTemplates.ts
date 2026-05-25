@@ -2085,6 +2085,36 @@ export interface ChannelSummary {
   numVentas: number;
 }
 
+/**
+ * Snapshot operativo del día (`getDailyControlCenter`) inyectado en el email
+ * de cierre de caja. Solo se usan los subcampos necesarios — el resto del
+ * payload del Control Diario (lista completa de operaciones, alertas, etc.)
+ * se ignora a propósito para mantener el email manejable.
+ *
+ * Pasarlo como `null` (o no pasarlo) hace que el email se renderice en su
+ * forma clásica, sin el resumen ejecutivo y con el desglose por canal antiguo.
+ */
+export interface CashCloseDailyControl {
+  kpis: {
+    facturacionTotal: number;
+    cobradoHoy: number;
+    pendienteCobro: number;
+    nReservasEjecutadas: number;
+    nOperacionesTPV: number;
+    nPersonasAtendidas: number;
+    ticketMedio: number;
+  };
+  channels: Array<{
+    label: string;
+    count: number;
+    people: number;
+    paid: number;
+    pending: number;
+    total: number;
+    ticketMedio: number;
+  }>;
+}
+
 export interface CashCloseParams {
   sessionId: number;
   cashierName: string;
@@ -2103,20 +2133,23 @@ export interface CashCloseParams {
   cashDifference: number;
   channels: ChannelSummary[];
   notes?: string | null;
+  /** Resumen operativo del día (KPIs + desglose enriquecido por canal). */
+  dailyControl?: CashCloseDailyControl | null;
 }
 
-export function buildCashCloseHtml(d: CashCloseParams): string {
-  const dateStr = d.closedAt.toLocaleDateString("es-ES", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
-  const openTimeStr = d.openedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-  const closeTimeStr = d.closedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-  const diffAbs = Math.abs(d.cashDifference);
-  const hasDiff = diffAbs > 0.01;
-  const diffColor = d.cashDifference < -0.01 ? "#dc2626" : d.cashDifference > 0.01 ? "#d97706" : "#15803d";
-  const diffLabel = d.cashDifference < -0.01 ? `▼ Faltante` : d.cashDifference > 0.01 ? `▲ Sobrante` : "OK";
-  const totalTPV = d.totalCash + d.totalCard + d.totalBizum + d.totalMixed;
-  const totalAllChannels = d.channels.reduce((s, c) => s + c.totalVentas, 0) + totalTPV;
+/** Tile compacto para el bloque "Resumen ejecutivo del día". */
+function kpiTile(label: string, value: string, valueColor: string, sub?: string): string {
+  return `
+    <td width="33%" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;vertical-align:top;font-family:Arial,sans-serif;">
+      <div style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">${label}</div>
+      <div style="color:${valueColor};font-size:18px;font-weight:800;line-height:1.1;">${value}</div>
+      ${sub ? `<div style="color:#64748b;font-size:11px;margin-top:4px;">${sub}</div>` : ""}
+    </td>`;
+}
 
-  const channelRows = d.channels.length ? d.channels.map(c => `
+/** Filas legacy (canal · efect. · tarj. · bizum · total) usadas como fallback. */
+function channelRowsLegacy(channels: ChannelSummary[]): string {
+  return channels.length ? channels.map(c => `
     <tr style="border-bottom:1px solid #f1f5f9;">
       <td style="color:#374151;font-size:13px;padding:7px 0;font-family:Arial,sans-serif;font-weight:600;">${c.label}</td>
       <td style="color:#64748b;font-size:12px;text-align:center;font-family:Arial,sans-serif;">${c.numVentas}</td>
@@ -2125,19 +2158,21 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
       <td style="color:#7c3aed;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${c.totalBizum > 0 ? c.totalBizum.toFixed(2) + " €" : "—"}</td>
       <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${c.totalVentas.toFixed(2)} €</td>
     </tr>`).join("") : "";
+}
 
-  const body = `
-    ${emailHeader("Cierre de Caja", `Sesión cerrada el ${dateStr}`)}
-    <tr><td style="padding:28px 32px 8px;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:${hasDiff ? (d.cashDifference < -0.01 ? "#fef2f2" : "#fffbeb") : "#f0fdf4"};border-radius:12px;border:1.5px solid ${hasDiff ? (d.cashDifference < -0.01 ? "#fca5a5" : "#fcd34d") : "#86efac"};">
-        <tr><td style="padding:18px 24px;text-align:center;">
-          <div style="font-size:32px;margin-bottom:4px;">${hasDiff ? (d.cashDifference < -0.01 ? "🔴" : "🟡") : "✅"}</div>
-          <p style="color:${diffColor};font-size:16px;font-weight:800;margin:0;font-family:Arial,sans-serif;">Caja cerrada — ${hasDiff ? `Diferencia de ${diffAbs.toFixed(2)} € (${diffLabel})` : "Cuadre perfecto"}</p>
-          <p style="color:#475569;font-size:13px;margin:6px 0 0;font-family:Arial,sans-serif;">${openTimeStr} → ${closeTimeStr} · Sesión #${d.sessionId}</p>
-        </td></tr>
-      </table>
-    </td></tr>
-
+/**
+ * Desglose por canal LEGACY (sin Control Diario).
+ * Muestra el reparto por método de pago (efectivo/tarjeta/bizum) tal como
+ * ha sido históricamente. Solo se usa cuando el cierre se dispara sin
+ * snapshot del Control Diario disponible.
+ */
+function renderLegacyChannelTable(
+  d: CashCloseParams,
+  channelRowsHtml: string,
+  totalTPV: number,
+  totalAllChannels: number,
+): string {
+  return `
     <tr><td style="padding:16px 32px 8px;">
       <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Desglose por canal</p>
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
@@ -2159,7 +2194,7 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
               <td style="color:#7c3aed;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${d.totalBizum > 0 ? d.totalBizum.toFixed(2) + " €" : "—"}</td>
               <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${totalTPV.toFixed(2)} €</td>
             </tr>
-            ${channelRows}
+            ${channelRowsHtml}
             <tr>
               <td colspan="5" style="color:#1e3a6e;font-size:13px;font-weight:800;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">TOTAL GENERAL</td>
               <td style="color:#f97316;font-size:16px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totalAllChannels.toFixed(2)} €</td>
@@ -2167,7 +2202,125 @@ export function buildCashCloseHtml(d: CashCloseParams): string {
           </table>
         </td></tr>
       </table>
+    </td></tr>`;
+}
+
+/**
+ * Desglose por canal ENRIQUECIDO (datos del Control Diario).
+ * Cabecera: Canal · Ops · Personas · Cobrado · Pendiente · Total · Ticket medio.
+ * Fila TOTAL al final con sumatorios.
+ */
+function renderEnrichedChannelTable(channels: CashCloseDailyControl["channels"]): string {
+  const eur = (v: number) => v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " €";
+  const totals = channels.reduce((acc, c) => ({
+    count: acc.count + c.count,
+    people: acc.people + c.people,
+    paid: acc.paid + c.paid,
+    pending: acc.pending + c.pending,
+    total: acc.total + c.total,
+  }), { count: 0, people: 0, paid: 0, pending: 0, total: 0 });
+  const avgTicket = totals.count > 0 ? totals.total / totals.count : 0;
+
+  const rows = channels.map(c => `
+    <tr style="border-bottom:1px solid #f1f5f9;">
+      <td style="color:#374151;font-size:13px;padding:7px 0;font-family:Arial,sans-serif;font-weight:600;">${c.label}</td>
+      <td style="color:#64748b;font-size:12px;text-align:center;font-family:Arial,sans-serif;">${c.count}</td>
+      <td style="color:#64748b;font-size:12px;text-align:center;font-family:Arial,sans-serif;">${c.people}</td>
+      <td style="color:#15803d;font-size:12px;text-align:right;font-family:Arial,sans-serif;font-weight:600;">${eur(c.paid)}</td>
+      <td style="color:${c.pending > 0 ? "#d97706" : "#94a3b8"};font-size:12px;text-align:right;font-family:Arial,sans-serif;${c.pending > 0 ? "font-weight:600;" : ""}">${c.pending > 0 ? eur(c.pending) : "—"}</td>
+      <td style="color:#1e3a6e;font-size:13px;font-weight:700;text-align:right;font-family:Arial,sans-serif;">${eur(c.total)}</td>
+      <td style="color:#64748b;font-size:12px;text-align:right;font-family:Arial,sans-serif;">${eur(c.ticketMedio)}</td>
+    </tr>`).join("");
+
+  return `
+    <tr><td style="padding:16px 32px 8px;">
+      <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Desglose por canal</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <tr><td style="padding:16px 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr style="border-bottom:2px solid #e2e8f0;">
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding-bottom:8px;font-family:Arial,sans-serif;">Canal</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:center;padding-bottom:8px;font-family:Arial,sans-serif;">Ops</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:center;padding-bottom:8px;font-family:Arial,sans-serif;">Pers.</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;padding-bottom:8px;font-family:Arial,sans-serif;">Cobrado</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;padding-bottom:8px;font-family:Arial,sans-serif;">Pendiente</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;padding-bottom:8px;font-family:Arial,sans-serif;">Total</td>
+              <td style="color:#94a3b8;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-align:right;padding-bottom:8px;font-family:Arial,sans-serif;">T. medio</td>
+            </tr>
+            ${rows || `<tr><td colspan="7" style="text-align:center;color:#94a3b8;font-size:12px;padding:14px 0;font-family:Arial,sans-serif;">Sin operaciones por canal en el día.</td></tr>`}
+            <tr>
+              <td style="color:#1e3a6e;font-size:13px;font-weight:800;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">TOTAL GENERAL</td>
+              <td style="color:#1e3a6e;font-size:12px;font-weight:800;text-align:center;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totals.count}</td>
+              <td style="color:#1e3a6e;font-size:12px;font-weight:800;text-align:center;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totals.people}</td>
+              <td style="color:#15803d;font-size:13px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${eur(totals.paid)}</td>
+              <td style="color:${totals.pending > 0 ? "#d97706" : "#94a3b8"};font-size:13px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${totals.pending > 0 ? eur(totals.pending) : "—"}</td>
+              <td style="color:#f97316;font-size:16px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${eur(totals.total)}</td>
+              <td style="color:#1e3a6e;font-size:12px;font-weight:800;text-align:right;padding:10px 0 4px;font-family:Arial,sans-serif;border-top:2px solid #e2e8f0;">${eur(avgTicket)}</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>`;
+}
+
+export function buildCashCloseHtml(d: CashCloseParams): string {
+  const dateStr = d.closedAt.toLocaleDateString("es-ES", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  const openTimeStr = d.openedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const closeTimeStr = d.closedAt.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  const diffAbs = Math.abs(d.cashDifference);
+  const hasDiff = diffAbs > 0.01;
+  const diffColor = d.cashDifference < -0.01 ? "#dc2626" : d.cashDifference > 0.01 ? "#d97706" : "#15803d";
+  const diffLabel = d.cashDifference < -0.01 ? `▼ Faltante` : d.cashDifference > 0.01 ? `▲ Sobrante` : "OK";
+  const totalTPV = d.totalCash + d.totalCard + d.totalBizum + d.totalMixed;
+  const totalAllChannels = d.channels.reduce((s, c) => s + c.totalVentas, 0) + totalTPV;
+  const eur = (v: number) => v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " €";
+
+  // ── Bloque "Resumen ejecutivo del día" — solo si llega el snapshot ──
+  // Mismos KPIs que /admin/contabilidad/control-diario en un grid 3x2.
+  const executiveBlock = d.dailyControl ? `
+    <tr><td style="padding:16px 32px 8px;">
+      <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Resumen ejecutivo del día</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0;">
+        <tr><td style="padding:18px 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:8px;">
+            <tr>
+              ${kpiTile("Facturación total", eur(d.dailyControl.kpis.facturacionTotal), "#1e3a6e")}
+              ${kpiTile("Cobrado hoy", eur(d.dailyControl.kpis.cobradoHoy), "#15803d")}
+              ${kpiTile("Pendiente de cobro", eur(d.dailyControl.kpis.pendienteCobro), d.dailyControl.kpis.pendienteCobro > 0 ? "#d97706" : "#64748b")}
+            </tr>
+            <tr>
+              ${kpiTile("Operaciones totales", `${d.dailyControl.kpis.nReservasEjecutadas + d.dailyControl.kpis.nOperacionesTPV}`, "#1e3a6e", `${d.dailyControl.kpis.nReservasEjecutadas} reservas · ${d.dailyControl.kpis.nOperacionesTPV} TPV`)}
+              ${kpiTile("Personas atendidas", `${d.dailyControl.kpis.nPersonasAtendidas}`, "#1e3a6e")}
+              ${kpiTile("Ticket medio", eur(d.dailyControl.kpis.ticketMedio), "#1e3a6e", "Por operación")}
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td></tr>` : "";
+
+  // ── Desglose por canal ──
+  // Si llega snapshot del Control Diario, usamos la versión enriquecida
+  // (Canal · Ops · Personas · Cobrado · Pendiente · Total · Ticket medio).
+  // Si no, fallback al desglose clásico por método de pago (efect./tarj./bizum).
+  const channelBlock = d.dailyControl && d.dailyControl.channels.length
+    ? renderEnrichedChannelTable(d.dailyControl.channels)
+    : renderLegacyChannelTable(d, channelRowsLegacy(d.channels), totalTPV, totalAllChannels);
+
+  const body = `
+    ${emailHeader("Cierre de Caja", `Sesión cerrada el ${dateStr}`)}
+    <tr><td style="padding:28px 32px 8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:${hasDiff ? (d.cashDifference < -0.01 ? "#fef2f2" : "#fffbeb") : "#f0fdf4"};border-radius:12px;border:1.5px solid ${hasDiff ? (d.cashDifference < -0.01 ? "#fca5a5" : "#fcd34d") : "#86efac"};">
+        <tr><td style="padding:18px 24px;text-align:center;">
+          <div style="font-size:32px;margin-bottom:4px;">${hasDiff ? (d.cashDifference < -0.01 ? "🔴" : "🟡") : "✅"}</div>
+          <p style="color:${diffColor};font-size:16px;font-weight:800;margin:0;font-family:Arial,sans-serif;">Caja cerrada — ${hasDiff ? `Diferencia de ${diffAbs.toFixed(2)} € (${diffLabel})` : "Cuadre perfecto"}</p>
+          <p style="color:#475569;font-size:13px;margin:6px 0 0;font-family:Arial,sans-serif;">${openTimeStr} → ${closeTimeStr} · Sesión #${d.sessionId}</p>
+        </td></tr>
+      </table>
     </td></tr>
+
+    ${executiveBlock}
+
+    ${channelBlock}
 
     <tr><td style="padding:8px 32px 8px;">
       <p style="color:#1e3a6e;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px;font-family:Arial,sans-serif;">Arqueo de caja (efectivo)</p>
