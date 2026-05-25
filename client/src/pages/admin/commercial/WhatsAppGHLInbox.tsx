@@ -130,10 +130,15 @@ export default function WhatsAppGHLInbox() {
     loadTemplates();
   }
 
+  // Guard síncrono contra doble envío (mismo patrón que sendReply, ver allí).
+  const newConvInFlightRef = useRef(false);
+
   async function sendNewConv() {
     if (!newConvPhone.trim()) { toast.error("Introduce un número de teléfono"); return; }
     if (newConvMode === "text" && !newConvMessage.trim()) { toast.error("Escribe un mensaje"); return; }
     if (newConvMode === "template" && !newConvTemplateId) { toast.error("Selecciona una plantilla"); return; }
+    if (newConvInFlightRef.current) return;
+    newConvInFlightRef.current = true;
     setNewConvSending(true);
     try {
       const res = await fetch("/api/ghl/conversations/new", {
@@ -159,6 +164,7 @@ export default function WhatsAppGHLInbox() {
       toast.error(e.message);
     } finally {
       setNewConvSending(false);
+      newConvInFlightRef.current = false;
     }
   }
 
@@ -245,30 +251,45 @@ export default function WhatsAppGHLInbox() {
   // ── Reply ─────────────────────────────────────────────────────────────────
   const [replySending, setReplySending] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  // Guard SÍNCRONO contra doble envío. `replySending` (state) solo bloquea el
+  // botón en el siguiente render, así que clicks o Ctrl+Enter encadenados
+  // dentro del mismo tick pasaban dos veces por el handler y enviaban el
+  // mismo mensaje dos veces a GHL. La ref se actualiza inmediatamente.
+  const replyInFlightRef = useRef(false);
 
   async function sendReply() {
     if (!selectedConvId || !replyText.trim()) return;
+    if (replyInFlightRef.current) return;
+    replyInFlightRef.current = true;
     setReplySending(true);
     setReplyError(null);
+    // Snapshot del texto: limpiamos el textarea de inmediato para que un
+    // segundo click no llegue a re-entrar con el mismo contenido aunque
+    // burlase el guard.
+    const messageToSend = replyText;
+    setReplyText("");
     try {
       const res = await fetch(`/api/ghl/conversations/${encodeURIComponent(selectedConvId)}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: replyText }),
+        body: JSON.stringify({ message: messageToSend }),
       });
       const data = await res.json();
       if (data.ok) {
-        setReplyText("");
         toast.success("Mensaje enviado");
         refetchMsgs();
         refetchConvs();
       } else {
+        // Restauramos el texto si el envío falló, para que el usuario pueda reintentar.
+        setReplyText(messageToSend);
         setReplyError(data.message ?? "Error al enviar");
       }
     } catch (e: any) {
+      setReplyText(messageToSend);
       setReplyError(e.message);
     } finally {
       setReplySending(false);
+      replyInFlightRef.current = false;
     }
   }
 
@@ -780,7 +801,10 @@ export default function WhatsAppGHLInbox() {
                       value={replyText}
                       onChange={e => setReplyText(e.target.value)}
                       onKeyDown={e => {
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) sendReply();
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          sendReply();
+                        }
                       }}
                       placeholder="Escribe un mensaje... (Ctrl+Enter para enviar)"
                       rows={2}
