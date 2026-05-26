@@ -364,7 +364,8 @@ export const partnersRouter = router({
         experienceTitle: z.string(),
         family: z.string(),
         participants: z.number(),
-        details: z.record(z.union([z.string(), z.number()])),
+        // z.record requiere keySchema + valueSchema (Zod v4+).
+        details: z.record(z.string(), z.union([z.string(), z.number()])),
       })).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -385,11 +386,14 @@ export const partnersRouter = router({
         selectedProduct: input.selectedProduct,
         activitiesJson: input.activitiesJson,
       });
+      // dbCreateLead devuelve `number` (fast-path para fuentes externas tipo
+      // GHL/Vapi) o `{ id, success }` para creaciones normales. Normalizamos.
+      const leadId = typeof result === "number" ? result : result.id;
       // Vincular el lead al partner y al usuario que lo creó
       await db.update(leads)
         .set({ partnerId: user.partnerId, partnerUserId: user.id } as any)
-        .where(eq(leads.id, result.id));
-      return { leadId: result.id };
+        .where(eq(leads.id, leadId));
+      return { leadId };
     }),
 
   // ── PARTNER: Listar mis leads ─────────────────────────────────────────────

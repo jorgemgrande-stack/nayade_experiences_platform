@@ -751,6 +751,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
   const [basePrice, setBasePrice] = useState(0);
   const [pricingType, setPricingType] = useState<"per_person" | "per_unit">("per_person");
   const [search, setSearch] = useState("");
+  const [showProductSugg, setShowProductSugg] = useState(false);
   const [form, setForm] = useState({
     customerName: "", customerEmail: "", customerPhone: "",
     bookingDate: "", selectedTime: "", people: "1", amountTotal: "0", notes: "",
@@ -774,7 +775,7 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
 
   function reset() {
     setProductId(null); setProductName(""); setBasePrice(0); setPricingType("per_person");
-    setSearch("");
+    setSearch(""); setShowProductSugg(false);
     setForm({ customerName: "", customerEmail: "", customerPhone: "", bookingDate: "", selectedTime: "", people: "1", amountTotal: "0", notes: "" });
     setDelegationNote(""); setProofFile(null);
   }
@@ -865,38 +866,86 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
             </div>
           </div>
 
-          {/* Actividad */}
-          <div>
+          {/* Actividad — patrón autocomplete idéntico al CRM (input + dropdown) */}
+          <div className="relative">
             <Label className="text-xs">Actividad *</Label>
-            <div className="relative mt-1">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar actividad…" className="pl-8" />
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 mt-2 max-h-44 overflow-y-auto">
-              {filtered.map((p: any) => {
-                const sel = productId === p.id;
-                const price = parseFloat(p.basePrice ?? "0");
-                return (
-                  <button
-                    key={p.id} type="button" onClick={() => selectProduct(p)}
-                    className={`text-left px-2.5 py-2 rounded-lg border text-xs transition-colors ${
-                      sel ? "border-emerald-400 bg-emerald-500/15 text-emerald-300"
-                          : "border-border hover:border-emerald-400/50 hover:bg-emerald-500/5"
-                    }`}
-                  >
-                    <div className="font-medium truncate">{p.title}</div>
-                    {price > 0 && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
-                        {price.toFixed(2)}€ {p.pricingType === "per_person" ? "/persona" : "/unidad"}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-              {filtered.length === 0 && (
-                <p className="text-xs text-muted-foreground col-span-2 py-2">No hay actividades.</p>
-              )}
-            </div>
+            {productName ? (
+              <div className="mt-1 flex items-center justify-between bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-emerald-400 truncate">{productName}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {basePrice > 0 ? `${basePrice.toFixed(2)} €` : "Sin precio base"}
+                    {" · "}
+                    {pricingType === "per_person" ? "por persona" : "por unidad"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProductId(null); setProductName(""); setBasePrice(0);
+                    setPricingType("per_person"); setSearch(""); setShowProductSugg(false);
+                    setForm((f) => ({ ...f, amountTotal: "0" }));
+                  }}
+                  className="text-xs text-foreground/40 hover:text-foreground/80 underline underline-offset-2 shrink-0 ml-2"
+                >
+                  Cambiar
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="relative mt-1">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={search}
+                    onChange={(e) => { setSearch(e.target.value); setShowProductSugg(true); }}
+                    onFocus={() => setShowProductSugg(true)}
+                    onBlur={() => setTimeout(() => setShowProductSugg(false), 150)}
+                    placeholder="Buscar producto o actividad..."
+                    className="pl-8"
+                  />
+                </div>
+                {showProductSugg && filtered.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-xl max-h-80 overflow-y-auto">
+                    {filtered.map((p: any) => {
+                      const price = parseFloat(p.basePrice ?? "0");
+                      const pricing = p.pricingType ?? "per_person";
+                      const priceLabel = price > 0
+                        ? `${price.toFixed(2)} €${pricing === "per_person" ? "/pers" : "/ud"}`
+                        : null;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          // onMouseDown previene que el onBlur del input cierre el dropdown
+                          // antes de que el onClick se dispare.
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            selectProduct(p);
+                            setSearch("");
+                            setShowProductSugg(false);
+                          }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-muted/50 text-sm flex items-center gap-2.5 border-b border-border/50 last:border-0 transition-colors"
+                        >
+                          <span className="text-base leading-none">🏊</span>
+                          <span className="flex-1 truncate">{p.title}</span>
+                          {priceLabel && (
+                            <span className="text-muted-foreground text-xs shrink-0">{priceLabel}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {showProductSugg && search.length > 0 && filtered.length === 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-xl px-3 py-3 text-sm text-muted-foreground">
+                    Sin resultados para "{search}"
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {products.length} actividad{products.length !== 1 ? "es" : ""} disponible{products.length !== 1 ? "s" : ""}
+                </p>
+              </>
+            )}
           </div>
 
           {/* Detalles */}
