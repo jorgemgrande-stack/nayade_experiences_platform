@@ -589,6 +589,12 @@ export const partnersRouter = router({
   // ── ADMIN: Productos disponibles para crear una reserva de partner ────────
   adminAvailableProducts: adminProcedure
     .query(async () => {
+      // Catálogo COMPLETO para el administrador cuando registra una reserva
+      // delegada de un partner desde /admin/partners. A diferencia del endpoint
+      // `getAvailableProducts` (partnerProcedure, que respeta
+      // `allowedReservationProductIds` del partner), aquí el admin tiene
+      // libertad total: ve toda actividad ACTIVA, esté publicada o no en
+      // web. Esto alinea la experiencia con la del CRM Comercial.
       return db
         .select({
           id: experiences.id,
@@ -597,8 +603,8 @@ export const partnersRouter = router({
           pricingType: experiences.pricingType,
         })
         .from(experiences)
-        .where(and(eq(experiences.isActive, true), eq(experiences.isPublished, true)))
-        .orderBy(experiences.sortOrder);
+        .where(eq(experiences.isActive, true))
+        .orderBy(experiences.title);
     }),
 
   // ── ADMIN: Crear una reserva en nombre de un partner ──────────────────────
