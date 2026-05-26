@@ -16,6 +16,7 @@ import {
   leads,
   quotes,
   reservations,
+  reservationOperational,
   invoices,
   crmActivityLog,
   clients,
@@ -39,6 +40,8 @@ import {
   ghlConversations,
   vapiCalls,
   crmLeadSources,
+  partnerBillingBatchItems,
+  transactions,
 } from "../../drizzle/schema";
 import { recordDiscountUse } from "./discounts";
 import { getDefaultCashAccountId, createCashMovementIfNotExists } from "./cashRegisterHelper";
@@ -4699,36 +4702,134 @@ export const crmRouter = router({
       }),
 
     // ─── Eliminar reserva ───────────────────────────────────────────────────
+    //
+    // Hard-delete con CASCADA atómica. Política por tabla:
+    //   · reservation_operational → DELETE (operativa pura, sin valor fiscal)
+    //   · reav_expedients         → UPDATE op_status='anulado' (preserva
+    //                                el expediente para auditoría fiscal aunque
+    //                                la reserva desaparezca de `reservations`)
+    //   · tpvSales                → UPDATE status='cancelled' (preserva el
+    //                                ticket TPV para arqueo y control diario)
+    //   · crm_activity_log        → DELETE (rastro de UI, sin valor legal)
+    //   · reservations            → DELETE (hard-delete, igual que antes)
+    //
+    // Guards: si la reserva tiene cobros contabilizados (transactions con
+    // status='completado') o está en una liquidación de partner (partner_
+    // billing_batch_items), se BLOQUEA el borrado. El flujo correcto en ese
+    // caso es Anular (que preserva todo el rastro). Antes del fix, el
+    // borrado dejaba huérfanas las filas en `reservation_operational` y
+    // `reav_expedients`, ensuciando informes operativos y fiscales.
     delete: staff
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const [res] = await db.select({ id: reservations.id, status: reservations.status }).from(reservations).where(eq(reservations.id, input.id));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         if (res.status === "paid") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "No se puede eliminar una reserva pagada. Cancélala primero desde Editar." });
-        // Cascada: marcar venta TPV vinculada como cancelled antes de borrar
-        // la reserva. Sin esto, el tpvSales quedaba huérfano apuntando a una
-        // reserva inexistente y seguía contando en el Control Diario.
-        await db.update(tpvSales).set({ status: "cancelled" }).where(eq(tpvSales.reservationId, input.id));
-        await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "reservation"), eq(crmActivityLog.entityId, input.id)));
-        await db.delete(reservations).where(eq(reservations.id, input.id));
+
+        const [billingItem] = await db
+          .select({ id: partnerBillingBatchItems.id, batchId: partnerBillingBatchItems.batchId })
+          .from(partnerBillingBatchItems)
+          .where(eq(partnerBillingBatchItems.reservationId, input.id))
+          .limit(1);
+        if (billingItem) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: `No se puede eliminar: forma parte de la liquidación del partner #${billingItem.batchId}. Anúlala desde Editar para preservar el rastro contable.`,
+          });
+        }
+
+        const [completedTx] = await db
+          .select({ id: transactions.id })
+          .from(transactions)
+          .where(and(
+            eq(transactions.reservationId, input.id),
+            eq(transactions.type, "ingreso"),
+            eq(transactions.status, "completado"),
+          ))
+          .limit(1);
+        if (completedTx) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "No se puede eliminar: tiene cobros contabilizados. Anúlala desde Editar para registrar el reembolso.",
+          });
+        }
+
+        await db.transaction(async (tx) => {
+          await tx.delete(reservationOperational)
+            .where(eq(reservationOperational.reservationId, input.id));
+          await tx.update(reavExpedients)
+            .set({ operativeStatus: "anulado", fiscalStatus: "anulado", closedAt: new Date() })
+            .where(eq(reavExpedients.reservationId, input.id));
+          await tx.update(tpvSales).set({ status: "cancelled" })
+            .where(eq(tpvSales.reservationId, input.id));
+          await tx.delete(crmActivityLog).where(and(
+            eq(crmActivityLog.entityType, "reservation"),
+            eq(crmActivityLog.entityId, input.id),
+          ));
+          await tx.delete(reservations).where(eq(reservations.id, input.id));
+        });
         return { ok: true };
       }),
 
+    // Misma cascada que `delete`, en lote. Salta las que no se puedan borrar
+    // (status='paid', liquidación pendiente o cobros contabilizados) y
+    // devuelve el desglose de saltadas con motivo.
     bulkDelete: staff
       .input(z.object({ ids: z.array(z.number()).min(1) }))
       .mutation(async ({ input }) => {
         const rows = await db.select({ id: reservations.id, status: reservations.status }).from(reservations).where(inArray(reservations.id, input.ids));
-        const deletable = rows.filter(r => r.status !== "paid").map(r => r.id);
-        const skipped = input.ids.length - deletable.length;
-        if (deletable.length > 0) {
-          // Cascada: marcar ventas TPV vinculadas como cancelled antes de borrar
-          await db.update(tpvSales).set({ status: "cancelled" }).where(inArray(tpvSales.reservationId, deletable));
-          for (const id of deletable) {
-            await db.delete(crmActivityLog).where(and(eq(crmActivityLog.entityType, "reservation"), eq(crmActivityLog.entityId, id)));
-          }
-          await db.delete(reservations).where(inArray(reservations.id, deletable));
+
+        const skippedReasons: Array<{ id: number; reason: string }> = [];
+        let candidates = rows.filter(r => r.status !== "paid").map(r => r.id);
+        for (const r of rows) {
+          if (r.status === "paid") skippedReasons.push({ id: r.id, reason: "pagada" });
         }
-        return { deleted: deletable.length, skipped };
+
+        // Filtrar las que están en una liquidación o tienen cobros contabilizados.
+        if (candidates.length > 0) {
+          const inBilling = await db
+            .select({ reservationId: partnerBillingBatchItems.reservationId })
+            .from(partnerBillingBatchItems)
+            .where(inArray(partnerBillingBatchItems.reservationId, candidates));
+          const billingSet = new Set(inBilling.map(b => b.reservationId));
+          for (const id of candidates) {
+            if (billingSet.has(id)) skippedReasons.push({ id, reason: "en liquidación de partner" });
+          }
+          candidates = candidates.filter(id => !billingSet.has(id));
+        }
+        if (candidates.length > 0) {
+          const withTx = await db
+            .select({ reservationId: transactions.reservationId })
+            .from(transactions)
+            .where(and(
+              inArray(transactions.reservationId, candidates),
+              eq(transactions.type, "ingreso"),
+              eq(transactions.status, "completado"),
+            ));
+          const txSet = new Set(withTx.map(t => t.reservationId).filter((x): x is number => x != null));
+          for (const id of candidates) {
+            if (txSet.has(id)) skippedReasons.push({ id, reason: "tiene cobros contabilizados" });
+          }
+          candidates = candidates.filter(id => !txSet.has(id));
+        }
+
+        if (candidates.length > 0) {
+          await db.transaction(async (tx) => {
+            await tx.delete(reservationOperational).where(inArray(reservationOperational.reservationId, candidates));
+            await tx.update(reavExpedients)
+              .set({ operativeStatus: "anulado", fiscalStatus: "anulado", closedAt: new Date() })
+              .where(inArray(reavExpedients.reservationId, candidates));
+            await tx.update(tpvSales).set({ status: "cancelled" }).where(inArray(tpvSales.reservationId, candidates));
+            for (const id of candidates) {
+              await tx.delete(crmActivityLog).where(and(
+                eq(crmActivityLog.entityType, "reservation"),
+                eq(crmActivityLog.entityId, id),
+              ));
+            }
+            await tx.delete(reservations).where(inArray(reservations.id, candidates));
+          });
+        }
+        return { deleted: candidates.length, skipped: skippedReasons.length, skippedReasons };
       }),
 
     bulkUpdateStatus: staff
