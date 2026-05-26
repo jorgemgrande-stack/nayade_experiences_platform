@@ -611,42 +611,57 @@ export const partnersRouter = router({
         .orderBy(experiences.title);
     }),
 
-  // ── ADMIN: Crear una reserva en nombre de un partner ──────────────────────
-  // Misma lógica de facturación y método que cuando la crea el propio partner:
-  // channel "PARTNER", paymentMethod "otro", confirmada y con pago pendiente,
-  // de modo que entra en el ciclo de facturación del partner.
+  // ── ADMIN: Crear una reserva delegada (1..N líneas) en nombre de un partner ─
+  //
+  // Modelo: misma estrategia que el carrito web Redsys → cada actividad es una
+  // fila independiente en `reservations` con el MISMO `merchantOrder`. Esto
+  // mantiene intactos: asignación de monitor, REAV, liquidación al partner
+  // (1 reserva → 1 línea de factura del partner_billing_batch_items) y emails
+  // individuales por reserva si se necesitan.
+  //
+  // Datos compartidos por TODAS las líneas:
+  //   · cliente (nombre/email/teléfono)
+  //   · partner + canal "PARTNER" + paymentMethod "otro"
+  //   · merchantOrder
+  //   · delegationNote + delegationProof (un justificante para la operación)
+  //
+  // Datos por línea: producto, fecha, hora, personas, importe.
+  //
+  // Email: se envía UN solo email al cliente listando todas las actividades
+  // (no N emails idénticos) — ver bloque al final del handler.
   adminCreateReservation: adminProcedure
     .input(z.object({
       partnerId: z.number().int(),
       customerName: z.string().min(2),
       customerEmail: z.string().email(),
       customerPhone: z.string().optional(),
-      productId: z.number().int(),
-      productName: z.string().min(1),
-      bookingDate: z.string().min(1),
-      people: z.number().int().min(1),
-      amountTotal: z.number().min(0), // en euros
       notes: z.string().optional(),
-      selectedTimeSlotId: z.number().int().optional(),
-      selectedTime: z.string().optional(),
-      // Justificante de la reserva delegada (motivo + documento opcional)
+      // Justificante (único para toda la operación, no por línea)
       delegationNote: z.string().optional(),
       delegationProof: z.object({
         fileName: z.string(),
         mimeType: z.string(),
         dataBase64: z.string(),
       }).optional(),
+      // 1..N líneas, cada una con su propio producto/fecha/hora/personas/importe
+      lines: z.array(z.object({
+        productId: z.number().int(),
+        productName: z.string().min(1),
+        bookingDate: z.string().min(1),
+        selectedTime: z.string().optional(),
+        selectedTimeSlotId: z.number().int().optional(),
+        people: z.number().int().min(1),
+        amountTotal: z.number().min(0), // en euros
+      })).min(1).max(20),
     }))
     .mutation(async ({ input }) => {
       const [partner] = await db.select().from(partners).where(eq(partners.id, input.partnerId)).limit(1);
       if (!partner) throw new TRPCError({ code: "NOT_FOUND", message: "Partner no encontrado" });
 
-      const amountCents = Math.round(input.amountTotal * 100);
       const merchantOrder = `PAR${Date.now().toString(36).slice(-8).toUpperCase()}`;
-      const reservationNumber = await generateReservationNumber();
       const now = Date.now();
 
-      // Subir el justificante (PDF / imagen) si se adjuntó.
+      // Subir el justificante (PDF / imagen) una sola vez para toda la operación.
       let delegationProofUrl: string | null = null;
       let delegationProofKey: string | null = null;
       if (input.delegationProof) {
@@ -661,57 +676,71 @@ export const partnersRouter = router({
         if (buffer.length > 8 * 1024 * 1024) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "El justificante no puede superar 8 MB" });
         }
-        const key = `partners/delegacion/${reservationNumber}_${Date.now()}.${ext}`;
+        const key = `partners/delegacion/${merchantOrder}_${Date.now()}.${ext}`;
         const stored = await storagePut(key, buffer, input.delegationProof.mimeType);
         delegationProofUrl = stored.url;
         delegationProofKey = stored.key;
       }
 
-      const [result] = await db.insert(reservations).values({
-        productId: input.productId,
-        productName: input.productName,
-        bookingDate: input.bookingDate,
-        people: input.people,
-        amountTotal: amountCents,
-        amountPaid: 0,
-        status: "pending_payment",
-        statusReservation: "CONFIRMADA",
-        statusPayment: "PENDIENTE",
-        channel: "PARTNER",
-        paymentMethod: "otro",
-        customerName: input.customerName,
-        customerEmail: input.customerEmail,
-        customerPhone: input.customerPhone ?? null,
-        merchantOrder,
-        reservationNumber,
-        notes: input.notes ?? `Reserva creada por el administrador para el partner ${partner.name}`,
-        selectedTimeSlotId: input.selectedTimeSlotId ?? null,
-        selectedTime: input.selectedTime ?? null,
-        delegationNote: input.delegationNote?.trim() || null,
-        delegationProofUrl,
-        delegationProofKey,
-        partnerId: partner.id,
-        partnerUserId: null,
-        createdAt: now,
-        updatedAt: now,
-      } as any);
-      const reservationId = (result as any).insertId as number;
+      // Insertar 1 fila por línea. Cada una con su propio reservationNumber pero
+      // compartiendo merchantOrder, cliente, partner y justificante.
+      const created: Array<{
+        reservationId: number;
+        reservationNumber: string;
+        line: typeof input.lines[number];
+        amountCents: number;
+      }> = [];
+      const defaultNote = `Reserva creada por el administrador para el partner ${partner.name}`;
+      for (const line of input.lines) {
+        const amountCents = Math.round(line.amountTotal * 100);
+        const reservationNumber = await generateReservationNumber();
+        const [result] = await db.insert(reservations).values({
+          productId: line.productId,
+          productName: line.productName,
+          bookingDate: line.bookingDate,
+          people: line.people,
+          amountTotal: amountCents,
+          amountPaid: 0,
+          status: "pending_payment",
+          statusReservation: "CONFIRMADA",
+          statusPayment: "PENDIENTE",
+          channel: "PARTNER",
+          paymentMethod: "otro",
+          customerName: input.customerName,
+          customerEmail: input.customerEmail,
+          customerPhone: input.customerPhone ?? null,
+          merchantOrder,
+          reservationNumber,
+          notes: input.notes ?? defaultNote,
+          selectedTimeSlotId: line.selectedTimeSlotId ?? null,
+          selectedTime: line.selectedTime ?? null,
+          delegationNote: input.delegationNote?.trim() || null,
+          delegationProofUrl,
+          delegationProofKey,
+          partnerId: partner.id,
+          partnerUserId: null,
+          createdAt: now,
+          updatedAt: now,
+        } as any);
+        const reservationId = (result as any).insertId as number;
+        created.push({ reservationId, reservationNumber, line, amountCents });
+      }
 
-      // Booking operativo + upsert de cliente (fire-and-forget). Sin transacción
-      // contable: el pago queda pendiente hasta la liquidación del partner.
+      // Booking operativo por línea + upsert del cliente UNA vez (fire-and-forget).
+      // Sin transacción contable: el pago queda pendiente hasta la liquidación.
       Promise.all([
-        createBookingFromReservation({
-          reservationId,
-          productId: input.productId,
-          productName: input.productName,
-          bookingDate: input.bookingDate,
-          people: input.people,
-          amountCents,
+        ...created.map((c) => createBookingFromReservation({
+          reservationId: c.reservationId,
+          productId: c.line.productId,
+          productName: c.line.productName,
+          bookingDate: c.line.bookingDate,
+          people: c.line.people,
+          amountCents: c.amountCents,
           customerName: input.customerName,
           customerEmail: input.customerEmail,
           customerPhone: input.customerPhone,
           sourceChannel: "otro",
-        }),
+        })),
         upsertClientFromReservation({
           name: input.customerName,
           email: input.customerEmail,
@@ -721,39 +750,77 @@ export const partnersRouter = router({
         }),
       ]).catch((e: any) => console.error("[Partners] Error en post-reserva (admin):", e.message));
 
-      // Email de confirmación al cliente (fire-and-forget).
+      // Email de confirmación al cliente: UNO solo agregando todas las líneas.
+      // Para 1 línea conserva el formato clásico; para >1 muestra resumen.
       if (input.customerEmail) {
         try {
+          const first = created[0];
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
-            .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+            .from(reservations).where(eq(reservations.id, first.reservationId)).limit(1);
           const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
           const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
-          const bookingDateFormatted = (() => {
+          const fmtDate = (s: string) => {
             try {
-              return new Date(input.bookingDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-            } catch { return input.bookingDate; }
-          })();
+              return new Date(s).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+            } catch { return s; }
+          };
+          const totalEur = created.reduce((s, c) => s + c.amountCents, 0) / 100;
+          const totalPeople = created.reduce((s, c) => s + c.line.people, 0);
+          const isMulti = created.length > 1;
+
+          // Para multi-línea: concatenamos las actividades en `productName` y
+          // listamos fecha/hora en `extras`. La plantilla actual se mantiene.
+          const productName = isMulti
+            ? `${created.length} actividades reservadas`
+            : created[0].line.productName;
+          const dateLabel = isMulti
+            ? "Varias fechas (ver detalle abajo)"
+            : fmtDate(created[0].line.bookingDate);
+          const detailLines = created
+            .map((c) => {
+              const t = c.line.selectedTime ? ` · ${c.line.selectedTime}` : "";
+              const amt = (c.amountCents / 100).toFixed(2).replace(".", ",");
+              return `• ${c.line.productName} — ${fmtDate(c.line.bookingDate)}${t} · ${c.line.people} pers · ${amt} €`;
+            })
+            .join("<br/>");
+          const extras = isMulti
+            ? `Reserva delegada por ${partner.name}<br/><br/><strong>Detalle:</strong><br/>${detailLines}`
+            : `Reserva delegada por ${partner.name}`;
+
           const html = buildReservationConfirmHtml({
-            merchantOrder: reservationNumber,
-            productName: input.productName,
+            merchantOrder,
+            productName,
             customerName: input.customerName,
-            date: bookingDateFormatted,
-            people: input.people,
-            amount: `${input.amountTotal.toFixed(2).replace(".", ",")} €`,
-            extras: `Reserva delegada por ${partner.name}`,
+            date: dateLabel,
+            people: totalPeople,
+            amount: `${totalEur.toFixed(2).replace(".", ",")} €`,
+            extras,
             reservationUrl,
           });
-          sendEmail({
-            to: input.customerEmail,
-            subject: `✅ Reserva confirmada — ${input.productName} · Náyade Experiences`,
-            html,
-          }).catch((e: any) => console.error("[Partners] Error enviando email cliente:", e?.message));
+          const subject = isMulti
+            ? `✅ Reserva confirmada — ${created.length} actividades · Náyade Experiences`
+            : `✅ Reserva confirmada — ${created[0].line.productName} · Náyade Experiences`;
+          sendEmail({ to: input.customerEmail, subject, html })
+            .catch((e: any) => console.error("[Partners] Error enviando email cliente:", e?.message));
         } catch (emailErr: any) {
           console.error("[Partners] Error preparando email cliente:", emailErr?.message);
         }
       }
 
-      return { reservationId, reservationNumber, merchantOrder };
+      // Devolvemos info de todas las reservas creadas. El frontend usa la
+      // primera reservationNumber para el toast de confirmación (la operación
+      // es 1, aunque genere N reservas).
+      return {
+        merchantOrder,
+        reservations: created.map((c) => ({
+          reservationId: c.reservationId,
+          reservationNumber: c.reservationNumber,
+        })),
+        // Compat retro con el formato anterior (un consumidor que lea
+        // `reservationNumber` plano debería seguir funcionando).
+        reservationId: created[0].reservationId,
+        reservationNumber: created[0].reservationNumber,
+      };
     }),
 
   // ── PARTNER: Listar mis reservas directas ─────────────────────────────────

@@ -742,20 +742,40 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 // ─── Modal: crear reserva en nombre de un partner (admin) ────────────────────
+// Soporta multi-línea: una sola operación puede crear N reservas (cada
+// actividad = una fila en `reservations` con el mismo `merchantOrder`).
+// El cliente, las notas y el justificante son compartidos.
+type ReservationLine = {
+  // id local para la key de React (no se envía al backend)
+  uid: string;
+  productId: number | null;
+  productName: string;
+  basePrice: number;
+  pricingType: "per_person" | "per_unit";
+  bookingDate: string;
+  selectedTime: string;
+  people: string;
+  amountTotal: string;
+  // estado UI del autocomplete por línea
+  search: string;
+  showSugg: boolean;
+};
+
+function emptyLine(): ReservationLine {
+  return {
+    uid: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    productId: null, productName: "", basePrice: 0, pricingType: "per_person",
+    bookingDate: "", selectedTime: "", people: "1", amountTotal: "0",
+    search: "", showSugg: false,
+  };
+}
+
 function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: {
   partnerId: number; partnerName: string; open: boolean; onClose: () => void;
 }) {
   const utils = trpc.useUtils();
-  const [productId, setProductId] = useState<number | null>(null);
-  const [productName, setProductName] = useState("");
-  const [basePrice, setBasePrice] = useState(0);
-  const [pricingType, setPricingType] = useState<"per_person" | "per_unit">("per_person");
-  const [search, setSearch] = useState("");
-  const [showProductSugg, setShowProductSugg] = useState(false);
-  const [form, setForm] = useState({
-    customerName: "", customerEmail: "", customerPhone: "",
-    bookingDate: "", selectedTime: "", people: "1", amountTotal: "0", notes: "",
-  });
+  const [customer, setCustomer] = useState({ customerName: "", customerEmail: "", customerPhone: "", notes: "" });
+  const [lines, setLines] = useState<ReservationLine[]>([emptyLine()]);
   const [delegationNote, setDelegationNote] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -765,7 +785,13 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
 
   const createMut = trpc.partners.adminCreateReservation.useMutation({
     onSuccess: (data) => {
-      toast.success(`Reserva ${data.reservationNumber ?? ""} creada para ${partnerName}`);
+      const n = data.reservations?.length ?? 1;
+      const firstNum = data.reservations?.[0]?.reservationNumber ?? data.reservationNumber ?? "";
+      toast.success(
+        n > 1
+          ? `${n} reservas creadas (${firstNum}…) para ${partnerName}`
+          : `Reserva ${firstNum} creada para ${partnerName}`,
+      );
       utils.partners.adminListReservations.invalidate({ partnerId });
       reset();
       onClose();
@@ -774,44 +800,59 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
   });
 
   function reset() {
-    setProductId(null); setProductName(""); setBasePrice(0); setPricingType("per_person");
-    setSearch(""); setShowProductSugg(false);
-    setForm({ customerName: "", customerEmail: "", customerPhone: "", bookingDate: "", selectedTime: "", people: "1", amountTotal: "0", notes: "" });
+    setCustomer({ customerName: "", customerEmail: "", customerPhone: "", notes: "" });
+    setLines([emptyLine()]);
     setDelegationNote(""); setProofFile(null);
   }
 
-  const people = parseInt(form.people) || 1;
-  const filtered = search
-    ? products.filter((p: any) => p.title.toLowerCase().includes(search.toLowerCase()))
-    : products;
-
-  function selectProduct(p: any) {
+  // ── Helpers por-línea ──────────────────────────────────────────────────────
+  function updateLine(idx: number, partial: Partial<ReservationLine>) {
+    setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, ...partial } : l)));
+  }
+  function recalcAmount(line: ReservationLine, people: number): string {
+    if (line.basePrice <= 0) return line.amountTotal;
+    return (line.pricingType === "per_person" ? line.basePrice * people : line.basePrice).toFixed(2);
+  }
+  function selectProductInLine(idx: number, p: any) {
     const base = parseFloat(p.basePrice ?? "0");
     const type = (p.pricingType ?? "per_person") as "per_person" | "per_unit";
-    setProductId(p.id);
-    setProductName(p.title);
-    setBasePrice(base);
-    setPricingType(type);
-    setForm((f) => ({ ...f, amountTotal: (type === "per_person" ? base * people : base).toFixed(2) }));
+    setLines((ls) => ls.map((l, i) => {
+      if (i !== idx) return l;
+      const people = parseInt(l.people) || 1;
+      const amt = (type === "per_person" ? base * people : base).toFixed(2);
+      return { ...l, productId: p.id, productName: p.title, basePrice: base, pricingType: type, amountTotal: amt, search: "", showSugg: false };
+    }));
+  }
+  function clearProductInLine(idx: number) {
+    updateLine(idx, { productId: null, productName: "", basePrice: 0, pricingType: "per_person", amountTotal: "0", search: "", showSugg: false });
+  }
+  function changePeopleInLine(idx: number, value: string) {
+    setLines((ls) => ls.map((l, i) => {
+      if (i !== idx) return l;
+      const n = parseInt(value) || 1;
+      return { ...l, people: value, amountTotal: l.productId ? recalcAmount(l, n) : l.amountTotal };
+    }));
+  }
+  function addLine() {
+    if (lines.length >= 20) { toast.error("Máximo 20 actividades por reserva"); return; }
+    setLines((ls) => [...ls, emptyLine()]);
+  }
+  function removeLine(idx: number) {
+    setLines((ls) => (ls.length <= 1 ? ls : ls.filter((_, i) => i !== idx)));
   }
 
-  function setField(k: keyof typeof form, v: string) {
-    setForm((f) => {
-      const next = { ...f, [k]: v };
-      if (k === "people" && productId) {
-        const n = parseInt(v) || 1;
-        next.amountTotal = (pricingType === "per_person" ? basePrice * n : basePrice).toFixed(2);
-      }
-      return next;
-    });
-  }
+  const totalEur = lines.reduce((s, l) => s + (parseFloat(l.amountTotal) || 0), 0);
 
   async function submit() {
-    if (form.customerName.trim().length < 2) { toast.error("Introduce el nombre del huésped"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.customerEmail.trim())) { toast.error("Email del huésped no válido"); return; }
-    if (!productId) { toast.error("Selecciona una actividad"); return; }
-    if (!form.bookingDate) { toast.error("Selecciona la fecha de la actividad"); return; }
-    if (!(parseFloat(form.amountTotal) > 0)) { toast.error("El importe debe ser mayor que 0"); return; }
+    if (customer.customerName.trim().length < 2) { toast.error("Introduce el nombre del huésped"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer.customerEmail.trim())) { toast.error("Email del huésped no válido"); return; }
+    if (lines.length < 1) { toast.error("Añade al menos una actividad"); return; }
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (!l.productId) { toast.error(`Selecciona la actividad de la línea ${i + 1}`); return; }
+      if (!l.bookingDate) { toast.error(`Selecciona la fecha de la línea ${i + 1}`); return; }
+      if (!(parseFloat(l.amountTotal) > 0)) { toast.error(`El importe de la línea ${i + 1} debe ser mayor que 0`); return; }
+    }
 
     let delegationProof: { fileName: string; mimeType: string; dataBase64: string } | undefined;
     if (proofFile) {
@@ -825,24 +866,26 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
 
     createMut.mutate({
       partnerId,
-      customerName: form.customerName.trim(),
-      customerEmail: form.customerEmail.trim(),
-      customerPhone: form.customerPhone.trim() || undefined,
-      productId,
-      productName,
-      bookingDate: form.bookingDate,
-      selectedTime: form.selectedTime || undefined,
-      people,
-      amountTotal: parseFloat(form.amountTotal) || 0,
-      notes: form.notes.trim() || undefined,
+      customerName: customer.customerName.trim(),
+      customerEmail: customer.customerEmail.trim(),
+      customerPhone: customer.customerPhone.trim() || undefined,
+      notes: customer.notes.trim() || undefined,
       delegationNote: delegationNote.trim() || undefined,
       delegationProof,
+      lines: lines.map((l) => ({
+        productId: l.productId!,
+        productName: l.productName,
+        bookingDate: l.bookingDate,
+        selectedTime: l.selectedTime || undefined,
+        people: parseInt(l.people) || 1,
+        amountTotal: parseFloat(l.amountTotal) || 0,
+      })),
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(); } }}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarDays className="w-4 h-4 text-emerald-500" /> Nueva reserva · {partnerName}
@@ -850,126 +893,172 @@ function AdminCreateReservationModal({ partnerId, partnerName, open, onClose }: 
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Huésped */}
+          {/* Huésped (compartido por todas las líneas) */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Nombre del huésped *</Label>
-              <Input value={form.customerName} onChange={(e) => setField("customerName", e.target.value)} placeholder="Nombre completo" />
+              <Input value={customer.customerName} onChange={(e) => setCustomer((c) => ({ ...c, customerName: e.target.value }))} placeholder="Nombre completo" />
             </div>
             <div>
               <Label className="text-xs">Email *</Label>
-              <Input value={form.customerEmail} onChange={(e) => setField("customerEmail", e.target.value)} type="email" placeholder="huesped@email.com" />
+              <Input value={customer.customerEmail} onChange={(e) => setCustomer((c) => ({ ...c, customerEmail: e.target.value }))} type="email" placeholder="huesped@email.com" />
             </div>
             <div>
               <Label className="text-xs">Teléfono</Label>
-              <Input value={form.customerPhone} onChange={(e) => setField("customerPhone", e.target.value)} placeholder="+34 600 000 000" />
+              <Input value={customer.customerPhone} onChange={(e) => setCustomer((c) => ({ ...c, customerPhone: e.target.value }))} placeholder="+34 600 000 000" />
             </div>
           </div>
 
-          {/* Actividad — patrón autocomplete idéntico al CRM (input + dropdown) */}
-          <div className="relative">
-            <Label className="text-xs">Actividad *</Label>
-            {productName ? (
-              <div className="mt-1 flex items-center justify-between bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-emerald-400 truncate">{productName}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {basePrice > 0 ? `${basePrice.toFixed(2)} €` : "Sin precio base"}
-                    {" · "}
-                    {pricingType === "per_person" ? "por persona" : "por unidad"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProductId(null); setProductName(""); setBasePrice(0);
-                    setPricingType("per_person"); setSearch(""); setShowProductSugg(false);
-                    setForm((f) => ({ ...f, amountTotal: "0" }));
-                  }}
-                  className="text-xs text-foreground/40 hover:text-foreground/80 underline underline-offset-2 shrink-0 ml-2"
-                >
-                  Cambiar
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="relative mt-1">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                  <Input
-                    value={search}
-                    onChange={(e) => { setSearch(e.target.value); setShowProductSugg(true); }}
-                    onFocus={() => setShowProductSugg(true)}
-                    onBlur={() => setTimeout(() => setShowProductSugg(false), 150)}
-                    placeholder="Buscar producto o actividad..."
-                    className="pl-8"
-                  />
-                </div>
-                {showProductSugg && filtered.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-xl max-h-80 overflow-y-auto">
-                    {filtered.map((p: any) => {
-                      const price = parseFloat(p.basePrice ?? "0");
-                      const pricing = p.pricingType ?? "per_person";
-                      const priceLabel = price > 0
-                        ? `${price.toFixed(2)} €${pricing === "per_person" ? "/pers" : "/ud"}`
-                        : null;
-                      return (
+          {/* Líneas de la reserva (1..N) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold text-foreground/70">
+                Actividades de la reserva ({lines.length})
+              </Label>
+              {lines.length > 1 && (
+                <span className="text-[11px] text-muted-foreground">
+                  Cada actividad genera una reserva propia con la misma operación
+                </span>
+              )}
+            </div>
+
+            {lines.map((line, idx) => {
+              const filtered = line.search
+                ? (products as any[]).filter((p) => p.title.toLowerCase().includes(line.search.toLowerCase()))
+                : (products as any[]);
+              return (
+                <div key={line.uid} className="border border-border/60 bg-muted/20 rounded-lg p-3 space-y-3 relative">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-foreground/60 uppercase tracking-wider">
+                      Línea {idx + 1}
+                    </span>
+                    {lines.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeLine(idx)}
+                        className="text-foreground/40 hover:text-red-400 transition-colors"
+                        title="Eliminar línea"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Actividad — autocomplete */}
+                  <div className="relative">
+                    <Label className="text-xs">Actividad *</Label>
+                    {line.productName ? (
+                      <div className="mt-1 flex items-center justify-between bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-emerald-400 truncate">{line.productName}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {line.basePrice > 0 ? `${line.basePrice.toFixed(2)} €` : "Sin precio base"}
+                            {" · "}
+                            {line.pricingType === "per_person" ? "por persona" : "por unidad"}
+                          </p>
+                        </div>
                         <button
-                          key={p.id}
                           type="button"
-                          // onMouseDown previene que el onBlur del input cierre el dropdown
-                          // antes de que el onClick se dispare.
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => {
-                            selectProduct(p);
-                            setSearch("");
-                            setShowProductSugg(false);
-                          }}
-                          className="w-full text-left px-3 py-2.5 hover:bg-muted/50 text-sm flex items-center gap-2.5 border-b border-border/50 last:border-0 transition-colors"
+                          onClick={() => clearProductInLine(idx)}
+                          className="text-xs text-foreground/40 hover:text-foreground/80 underline underline-offset-2 shrink-0 ml-2"
                         >
-                          <span className="text-base leading-none">🏊</span>
-                          <span className="flex-1 truncate">{p.title}</span>
-                          {priceLabel && (
-                            <span className="text-muted-foreground text-xs shrink-0">{priceLabel}</span>
-                          )}
+                          Cambiar
                         </button>
-                      );
-                    })}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="relative mt-1">
+                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                          <Input
+                            value={line.search}
+                            onChange={(e) => updateLine(idx, { search: e.target.value, showSugg: true })}
+                            onFocus={() => updateLine(idx, { showSugg: true })}
+                            onBlur={() => setTimeout(() => updateLine(idx, { showSugg: false }), 150)}
+                            placeholder="Buscar producto o actividad..."
+                            className="pl-8"
+                          />
+                        </div>
+                        {line.showSugg && filtered.length > 0 && (
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-xl max-h-72 overflow-y-auto">
+                            {filtered.map((p: any) => {
+                              const price = parseFloat(p.basePrice ?? "0");
+                              const pricing = p.pricingType ?? "per_person";
+                              const priceLabel = price > 0
+                                ? `${price.toFixed(2)} €${pricing === "per_person" ? "/pers" : "/ud"}`
+                                : null;
+                              return (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => selectProductInLine(idx, p)}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-muted/50 text-sm flex items-center gap-2.5 border-b border-border/50 last:border-0 transition-colors"
+                                >
+                                  <span className="text-base leading-none">🏊</span>
+                                  <span className="flex-1 truncate">{p.title}</span>
+                                  {priceLabel && (
+                                    <span className="text-muted-foreground text-xs shrink-0">{priceLabel}</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {line.showSugg && line.search.length > 0 && filtered.length === 0 && (
+                          <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-xl px-3 py-3 text-sm text-muted-foreground">
+                            Sin resultados para "{line.search}"
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
-                )}
-                {showProductSugg && search.length > 0 && filtered.length === 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border border-border rounded-lg shadow-xl px-3 py-3 text-sm text-muted-foreground">
-                    Sin resultados para "{search}"
+
+                  {/* Detalles por línea */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Fecha *</Label>
+                      <Input type="date" value={line.bookingDate} onChange={(e) => updateLine(idx, { bookingDate: e.target.value })} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Hora</Label>
+                      <Input type="time" value={line.selectedTime} onChange={(e) => updateLine(idx, { selectedTime: e.target.value })} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Personas</Label>
+                      <Input type="number" min="1" max="200" value={line.people} onChange={(e) => changePeopleInLine(idx, e.target.value)} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Importe (€) *</Label>
+                      <Input type="number" step="0.01" min="0" value={line.amountTotal} onChange={(e) => updateLine(idx, { amountTotal: e.target.value })} />
+                    </div>
                   </div>
-                )}
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  {products.length} actividad{products.length !== 1 ? "es" : ""} disponible{products.length !== 1 ? "s" : ""}
-                </p>
-              </>
-            )}
+                </div>
+              );
+            })}
+
+            {/* Acciones de línea + total */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addLine}
+                disabled={lines.length >= 20}
+                className="gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" /> Añadir línea
+              </Button>
+              <div className="text-sm">
+                <span className="text-muted-foreground">Total operación: </span>
+                <strong className="text-emerald-400">{totalEur.toFixed(2)} €</strong>
+              </div>
+            </div>
           </div>
 
-          {/* Detalles */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Fecha de la actividad *</Label>
-              <Input type="date" value={form.bookingDate} onChange={(e) => setField("bookingDate", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Hora solicitada</Label>
-              <Input type="time" value={form.selectedTime} onChange={(e) => setField("selectedTime", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Personas</Label>
-              <Input type="number" min="1" max="200" value={form.people} onChange={(e) => setField("people", e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs">Importe total (€) *</Label>
-              <Input type="number" step="0.01" min="0" value={form.amountTotal} onChange={(e) => setField("amountTotal", e.target.value)} />
-            </div>
-          </div>
+          {/* Notas internas (compartidas por toda la operación) */}
           <div>
             <Label className="text-xs">Notas internas</Label>
-            <Textarea value={form.notes} onChange={(e) => setField("notes", e.target.value)} rows={2}
+            <Textarea value={customer.notes} onChange={(e) => setCustomer((c) => ({ ...c, notes: e.target.value }))} rows={2}
               placeholder="Preferencias del huésped, condiciones especiales…" className="resize-none" />
           </div>
 
