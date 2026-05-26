@@ -139,29 +139,18 @@ export default function AddToCartModal({ isOpen, onClose, product }: AddToCartMo
 
           <div className="space-y-4">
 
-            {/* Selector de variante */}
+            {/* Selector de modalidad. Cuando hay variantes definidas en admin,
+                ELLAS son las modalidades disponibles — no se inyecta una
+                "Precio estándar" sintética con el basePrice (duplicaba el
+                precio de alguna variante y confundía al cliente).
+                El basePrice solo aplica cuando NO hay variantes, en cuyo
+                caso este bloque no se renderiza. */}
             {variants.length > 0 && (
               <div>
                 <Label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5 mb-1.5">
                   <Tag className="w-3.5 h-3.5 text-orange-500" /> Modalidad
                 </Label>
                 <div className="space-y-1.5">
-                  {/* Opción "precio base" si no hay variante requerida */}
-                  {!variants.some(v => v.isRequired) && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedVariantId(undefined)}
-                      className={cn(
-                        "w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-all",
-                        selectedVariantId === undefined
-                          ? "border-orange-400 bg-orange-50 text-orange-700 font-semibold"
-                          : "border-slate-200 text-slate-600 hover:border-orange-200 hover:bg-orange-50/50"
-                      )}
-                    >
-                      <span>Precio estándar</span>
-                      <span className="font-bold">{basePrice.toFixed(2)} €/p.</span>
-                    </button>
-                  )}
                   {variants.map(v => (
                     <button
                       key={v.id}

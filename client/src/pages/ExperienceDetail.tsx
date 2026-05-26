@@ -379,29 +379,20 @@ export default function ExperienceDetail() {
                   </div>
                 )}
 
-                {/* Lista informativa de variantes */}
+                {/* Lista de modalidades reales (variantes definidas en admin).
+                   Cuando hay variantes, ELLAS son la fuente de verdad de los
+                   precios — no se inyecta una "Estándar" sintética con el
+                   basePrice porque crea ruido y suele duplicar el precio de
+                   alguna variante (ej. "Adulto 7€" = basePrice). El basePrice
+                   se sigue mostrando arriba como "Precio por persona desde X".
+                   Cuando NO hay variantes, este bloque no se renderiza y el
+                   precio único es el basePrice mostrado arriba. */}
                 {variants.length > 0 && (
                   <div className="mb-5">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
                       <Tag className="w-3 h-3 text-orange-500" /> Modalidades disponibles
                     </p>
                     <div className="space-y-1.5">
-                      {/* Opción estándar (precio base) si no hay variante requerida */}
-                      {!variants.some(v => v.isRequired) && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedVariantId(undefined)}
-                          className={cn(
-                            "w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-all",
-                            selectedVariantId === undefined
-                              ? "border-orange-400 bg-orange-50 text-orange-700 font-semibold"
-                              : "border-border text-muted-foreground hover:border-orange-200 hover:bg-orange-50/40"
-                          )}
-                        >
-                          <span>Estándar</span>
-                          <span className="font-bold">{parseFloat(String(exp?.basePrice ?? "0")).toFixed(0)}{priceSuffix}</span>
-                        </button>
-                      )}
                       {variants.map(v => (
                         <button
                           key={v.id}
@@ -419,7 +410,7 @@ export default function ExperienceDetail() {
                         </button>
                       ))}
                     </div>
-                    {variants.some(v => v.isRequired) && selectedVariantId === undefined && (
+                    {selectedVariantId === undefined && (
                       <p className="text-xs text-orange-600 mt-1.5">Selecciona una modalidad para continuar</p>
                     )}
                   </div>
