@@ -3,9 +3,17 @@ import mysql from "mysql2/promise";
 import { reviews, reservations, bookings, type Review } from "../../drizzle/schema";
 import { eq, and, desc, count, avg, or } from "drizzle-orm";
 
+// Pool persistente top-level (1 sola conexión reutilizable). Antes,
+// getDb() hacía `mysql.createConnection()` por cada petición y no la
+// cerraba → leak garantizado: cada GET a una landing pública con
+// reseñas acumulaba una conexión idle hasta el wait_timeout (8h) del
+// servidor. Era la causa principal de los "Too many connections" en
+// Railway. Conservamos la firma async de getDb() para no tocar callers.
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
+const _db = drizzle(_pool);
+
 async function getDb() {
-  const conn = await mysql.createConnection(process.env.DATABASE_URL!);
-  return drizzle(conn);
+  return _db;
 }
 
 // ─── TIPOS ────────────────────────────────────────────────────────────────────

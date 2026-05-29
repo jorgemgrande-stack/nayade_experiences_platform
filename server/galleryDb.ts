@@ -3,9 +3,14 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { galleryItems, type GalleryItem, type NewGalleryItem } from "../drizzle/schema";
 
+// Pool persistente reutilizable. Ver nota en server/db/reviewsDb.ts:
+// el patrón anterior `createConnection()` per-request acumulaba
+// conexiones idle hasta el wait_timeout del servidor MySQL.
+const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
+const _db = drizzle(_pool);
+
 async function getDb() {
-  const conn = await mysql.createConnection(process.env.DATABASE_URL!);
-  return drizzle(conn);
+  return _db;
 }
 
 // ── Public ────────────────────────────────────────────────────────────────────
