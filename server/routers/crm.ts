@@ -4391,6 +4391,19 @@ export const crmRouter = router({
         const { id, ...fields } = input;
         const [current] = await db.select().from(reservations).where(eq(reservations.id, id));
         if (!current) throw new TRPCError({ code: "NOT_FOUND" });
+
+        // GUARD: cancelar una reserva NO puede hacerse por este endpoint —
+        // dejaba huérfanas la operativa, los REAV, las transacciones y
+        // facturas. El flujo correcto es Anular (cancellations.requestCancellation
+        // → approveRequest), que propaga el estado a todas las tablas
+        // dependientes y deja trazabilidad completa.
+        if (fields.status === "cancelled") {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Para anular una reserva usa el botón 'Anular reserva' (módulo Anulaciones). El cambio rápido a 'cancelled' está bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
+          });
+        }
+
         const updateData: Record<string, unknown> = { updatedAt: Date.now() };
         if (fields.status !== undefined) updateData.status = fields.status;
         if (fields.notes !== undefined) updateData.notes = fields.notes;
@@ -4398,6 +4411,20 @@ export const crmRouter = router({
         if (fields.people !== undefined) updateData.people = fields.people;
         if (fields.channel !== undefined) updateData.channel = fields.channel;
         if (fields.channelDetail !== undefined) updateData.channelDetail = fields.channelDetail;
+
+        // Si cambia status (a algo distinto de cancelled), registrar también
+        // en `reservations.changesLog` para trazabilidad in-row.
+        if (fields.status !== undefined && fields.status !== current.status) {
+          const existingLog = Array.isArray(current.changesLog) ? current.changesLog : [];
+          updateData.changesLog = [...existingLog, {
+            ts: Date.now(),
+            actor: ctx.user.name ?? String(ctx.user.id),
+            action: "status_change",
+            from: current.status,
+            to: fields.status,
+          }];
+        }
+
         await db.update(reservations).set(updateData).where(eq(reservations.id, id));
         await db.insert(crmActivityLog).values({
           entityType: "reservation",
@@ -4405,7 +4432,7 @@ export const crmRouter = router({
           action: "reservation_updated",
           actorId: ctx.user.id,
           actorName: ctx.user.name ?? null,
-          details: { fields: Object.keys(fields) },
+          details: { fields: Object.keys(fields), statusFrom: current.status, statusTo: fields.status },
           createdAt: new Date(),
         });
         return { ok: true };
@@ -4421,6 +4448,16 @@ export const crmRouter = router({
       .mutation(async ({ input, ctx }) => {
         const [current] = await db.select().from(reservations).where(eq(reservations.id, input.id));
         if (!current) throw new TRPCError({ code: "NOT_FOUND" });
+
+        // GUARD: marcar como ANULADA por aquí dejaba sin propagar la cascada
+        // a operativa/REAV/transacciones/abonos. La anulación correcta vive
+        // en cancellations.requestCancellation + approveRequest.
+        if (input.statusReservation === "ANULADA") {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Para anular una reserva usa el botón 'Anular reserva' (módulo Anulaciones). El cambio directo a 'ANULADA' está bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
+          });
+        }
         const now = Date.now();
         const logEntry = {
           ts: now,
@@ -4433,10 +4470,10 @@ export const crmRouter = router({
         const updateData: Record<string, unknown> = { updatedAt: now, changesLog: [...existingLog, logEntry] };
         if (input.statusReservation !== undefined) updateData.statusReservation = input.statusReservation;
         if (input.statusPayment !== undefined) updateData.statusPayment = input.statusPayment;
-        // Sincronizar status legacy según los estados nuevos
-        if (input.statusReservation === "ANULADA") {
-          updateData.status = "cancelled";
-        } else if (input.statusPayment === "PAGADO") {
+        // Sincronizar status legacy según los estados nuevos.
+        // Nota: el caso ANULADA se descartó arriba (guard) — la anulación
+        // correcta vive en cancellations.requestCancellation/approveRequest.
+        if (input.statusPayment === "PAGADO") {
           updateData.status = "paid";
           updateData.paidAt = now;
         } else if (input.statusPayment !== undefined) {
@@ -4837,9 +4874,49 @@ export const crmRouter = router({
         ids: z.array(z.number()).min(1),
         status: z.enum(["draft", "pending_payment", "paid", "failed", "cancelled"]),
       }))
-      .mutation(async ({ input }) => {
-        await db.update(reservations).set({ status: input.status }).where(inArray(reservations.id, input.ids));
-        return { updated: input.ids.length };
+      .mutation(async ({ input, ctx }) => {
+        // GUARD: cancelar en lote dejaba reservas en estado "zombie"
+        // (cancelled + PAGADO + CONFIRMADA + op_status confirmado) sin
+        // ningún rastro en logs. Caso real documentado: RES-2026-0157.
+        // Para anular, usa el módulo de Anulaciones (1 reserva a la vez).
+        if (input.status === "cancelled") {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Para anular reservas usa el botón 'Anular reserva' (módulo Anulaciones, 1 a 1). El bulk update a 'cancelled' está bloqueado para preservar trazabilidad y cascada en operativa, REAV y contabilidad.",
+          });
+        }
+
+        // Cargar estados actuales para registrar el cambio en changesLog y log.
+        const rows = await db
+          .select({ id: reservations.id, status: reservations.status, changesLog: reservations.changesLog })
+          .from(reservations)
+          .where(inArray(reservations.id, input.ids));
+        const now = Date.now();
+        const actor = ctx.user.name ?? String(ctx.user.id);
+
+        // Cada reserva con su propio changesLog actualizado.
+        for (const r of rows) {
+          if (r.status === input.status) continue;
+          const existingLog = Array.isArray(r.changesLog) ? r.changesLog : [];
+          const newLog = [...existingLog, {
+            ts: now, actor, action: "bulk_status_change",
+            from: r.status, to: input.status,
+          }];
+          await db.update(reservations)
+            .set({ status: input.status, changesLog: newLog, updatedAt: now })
+            .where(eq(reservations.id, r.id));
+          await db.insert(crmActivityLog).values({
+            entityType: "reservation",
+            entityId: r.id,
+            action: "bulk_status_change",
+            actorId: ctx.user.id,
+            actorName: ctx.user.name ?? null,
+            details: { from: r.status, to: input.status },
+            createdAt: new Date(),
+          });
+        }
+
+        return { updated: rows.filter(r => r.status !== input.status).length };
       }),
 
     // ─── Crear reserva manual (admin) ─────────────────────────────────────────────────────────────────────────────
