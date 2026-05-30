@@ -97,6 +97,11 @@ export default function CardTerminalOperationsManager() {
   // Link manual modal
   const [linkModalId, setLinkModalId] = useState<number | null>(null);
   const [linkModalAmount, setLinkModalAmount] = useState<number | null>(null);
+  // Tipo de la operación que se está vinculando. Se pasa al endpoint para
+  // que DEVOLUCION/ANULACION puedan vincularse a reservas ya enlazadas
+  // (caso real: una devolución del datáfono se vincula a la reserva
+  // original que ya tiene su venta enlazada).
+  const [linkModalOpType, setLinkModalOpType] = useState<"VENTA" | "DEVOLUCION" | "ANULACION" | "OTRO" | null>(null);
   const [linkEntityType, setLinkEntityType] = useState<"reservation" | "quote">("reservation");
   const [linkSearch, setLinkSearch] = useState("");
   const [linkSelectedId, setLinkSelectedId] = useState<number | null>(null);
@@ -105,6 +110,7 @@ export default function CardTerminalOperationsManager() {
   const resetLinkModal = () => {
     setLinkModalId(null);
     setLinkModalAmount(null);
+    setLinkModalOpType(null);
     setLinkSearch("");
     setLinkSelectedId(null);
     setLinkNotes("");
@@ -162,7 +168,11 @@ export default function CardTerminalOperationsManager() {
   );
 
   const unlinkedResQ = trpc.cardTerminalOperations.searchUnlinkedReservations.useQuery(
-    { search: linkSearch, amountEur: linkModalAmount ?? undefined },
+    {
+      search: linkSearch,
+      amountEur: linkModalAmount ?? undefined,
+      operationType: linkModalOpType ?? undefined,
+    },
     { enabled: linkModalId !== null && linkEntityType === "reservation" }
   );
 
@@ -594,7 +604,7 @@ export default function CardTerminalOperationsManager() {
                         <Eye className="w-3.5 h-3.5" />
                       </Button>
                       {op.status !== "conciliado" && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Vincular manualmente" onClick={() => { setLinkModalId(op.id); setLinkModalAmount(parseFloat(op.amount)); }}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" title="Vincular manualmente" onClick={() => { setLinkModalId(op.id); setLinkModalAmount(parseFloat(op.amount)); setLinkModalOpType((op as any).operation_type ?? (op as any).operationType ?? null); }}>
                           <Link className="w-3.5 h-3.5" />
                         </Button>
                       )}
@@ -776,7 +786,7 @@ export default function CardTerminalOperationsManager() {
               )}
               <div className="flex gap-2 pt-2">
                 {detailQ.data.status !== "conciliado" && (
-                  <Button size="sm" variant="outline" onClick={() => { setLinkModalId(detailId); setLinkModalAmount(detailQ.data ? parseFloat(detailQ.data.amount) : null); setDetailId(null); }}>
+                  <Button size="sm" variant="outline" onClick={() => { setLinkModalId(detailId); setLinkModalAmount(detailQ.data ? parseFloat(detailQ.data.amount) : null); setLinkModalOpType(detailQ.data ? ((detailQ.data as any).operation_type ?? (detailQ.data as any).operationType ?? null) : null); setDetailId(null); }}>
                     <Link className="w-3.5 h-3.5 mr-1" /> Vincular
                   </Button>
                 )}
@@ -833,7 +843,9 @@ export default function CardTerminalOperationsManager() {
                 </div>
                 {linkModalAmount !== null && !linkSearch && (
                   <p className="text-xs text-muted-foreground">
-                    Mostrando reservas sin vincular con importe {fmtCurrency(linkModalAmount)}
+                    {linkModalOpType === "DEVOLUCION" || linkModalOpType === "ANULACION"
+                      ? `Mostrando todas las reservas (esta operación es una ${linkModalOpType.toLowerCase()}, puede vincularse a una reserva ya enlazada)`
+                      : `Mostrando reservas sin vincular con importe ${fmtCurrency(linkModalAmount)}`}
                   </p>
                 )}
                 <div className="border rounded-md divide-y max-h-56 overflow-y-auto">

@@ -398,14 +398,31 @@ export const cardTerminalOperationsRouter = router({
     .input(z.object({
       search: z.string().optional(),
       amountEur: z.number().optional(),
+      // Tipo de la operación que se está vinculando. Las DEVOLUCION y
+      // ANULACION POR NATURALEZA se vinculan a reservas que ya tienen una
+      // VENTA previa vinculada (la devolución es DE algo). Si filtramos
+      // como con las ventas, esas reservas quedarían fuera del buscador.
+      // Caso real: cto #2004 (DEVOLUCION 45€) no podía vincularse a
+      // RES-2026-0196 porque la reserva ya tenía 2 VENTAS vinculadas.
+      operationType: z.enum(["VENTA", "DEVOLUCION", "ANULACION", "OTRO"]).optional(),
     }))
     .query(async ({ input }) => {
-      const conditions: ReturnType<typeof eq>[] = [
-        sql`${reservations.id} NOT IN (
-          SELECT linked_entity_id FROM card_terminal_operations
-          WHERE linked_entity_type = 'reservation' AND linked_entity_id IS NOT NULL
-        )` as any,
-      ];
+      const conditions: ReturnType<typeof eq>[] = [];
+
+      // Solo excluimos reservas ya vinculadas cuando es una VENTA (o no se
+      // indica tipo). Para DEVOLUCION/ANULACION/OTRO mostramos todas las
+      // reservas, incluidas las que ya tienen vínculos.
+      const excludeAlreadyLinked = !input.operationType
+        || input.operationType === "VENTA";
+      if (excludeAlreadyLinked) {
+        conditions.push(
+          sql`${reservations.id} NOT IN (
+            SELECT linked_entity_id FROM card_terminal_operations
+            WHERE linked_entity_type = 'reservation' AND linked_entity_id IS NOT NULL
+          )` as any
+        );
+      }
+
       if (input.search?.trim()) {
         const term = `%${input.search.trim()}%`;
         conditions.push(or(
@@ -413,7 +430,11 @@ export const cardTerminalOperationsRouter = router({
           like(reservations.reservationNumber, term),
         ) as any);
       }
-      if (input.amountEur !== undefined) {
+      // Filtro por importe: para VENTA el importe debe COINCIDIR (es el
+      // mismo cobro). Para DEVOLUCION/ANULACION no aplicamos este filtro
+      // porque el importe puede ser parcial (devolución parcial) y aún así
+      // estar vinculada a la reserva original.
+      if (input.amountEur !== undefined && (!input.operationType || input.operationType === "VENTA")) {
         conditions.push(eq(reservations.amountTotal, Math.round(input.amountEur * 100)) as any);
       }
       return db.select({
@@ -423,7 +444,7 @@ export const cardTerminalOperationsRouter = router({
         amountTotal: reservations.amountTotal,
         bookingDate: reservations.bookingDate,
       }).from(reservations)
-        .where(and(...conditions))
+        .where(conditions.length ? and(...conditions) : undefined)
         .orderBy(desc(reservations.id))
         .limit(15);
     }),
