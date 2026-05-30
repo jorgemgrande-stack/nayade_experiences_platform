@@ -542,7 +542,32 @@ export const tpvRouter = router({
       const totalOut = movements.filter(m => m.type === "out").reduce((acc, m) => acc + parseFloat(String(m.amount)), 0);
       const totalIn = movements.filter(m => m.type === "in").reduce((acc, m) => acc + parseFloat(String(m.amount)), 0);
 
-      return { session, sales, movements, totalSales, totalOut, totalIn };
+      // Desglose por método de pago — MISMA lógica que closeSession (línea ~242)
+      // para que el modal de cierre muestre el "Efectivo esperado" correcto
+      // ANTES de cerrar. Sin esto, el frontend mostraba 0,00€ aunque hubiera
+      // cobros en cash y el cajero se confundía (caso real: sesión #18, 40€
+      // cobrados en efectivo aparecían como 0€ esperado).
+      let totalCash = 0, totalCard = 0, totalBizum = 0, totalMixed = 0;
+      const saleIds = sales.map((s) => s.id);
+      if (saleIds.length > 0) {
+        const payments = await db.select().from(tpvSalePayments).where(and(
+          inArray(tpvSalePayments.saleId, saleIds),
+          eq(tpvSalePayments.status, "completed"),
+        ));
+        for (const p of payments) {
+          const amt = parseFloat(String(p.amount));
+          if (p.method === "cash") totalCash += amt;
+          else if (p.method === "card") totalCard += amt;
+          else if (p.method === "bizum") totalBizum += amt;
+          else totalMixed += amt;
+        }
+      }
+
+      return {
+        session, sales, movements,
+        totalSales, totalOut, totalIn,
+        totalCash, totalCard, totalBizum, totalMixed,
+      };
     }),
 
   // ── CASH MOVEMENTS ─────────────────────────────────────────────────────────

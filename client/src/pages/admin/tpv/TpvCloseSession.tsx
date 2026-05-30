@@ -37,20 +37,23 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
     onError: (err) => toast.error(err.message),
   });
 
-  // Efectivo esperado = fondo inicial + ventas en efectivo + entradas manuales - salidas
+  // Efectivo esperado = fondo inicial + ventas cobradas en efectivo +
+  //                     entradas manuales - salidas de caja.
+  //
+  // El desglose por método (totalCash/totalCard/totalBizum/totalMixed)
+  // ahora viene del backend (getSessionSummary). Antes el frontend tenía
+  // un reduce vacío con TODO ("simplificado: usamos totalSales como
+  // referencia") y la fórmula omitía las ventas en efectivo, así que
+  // siempre mostraba 0 € de efectivo esperado aunque hubiera cobros cash.
   const openingAmt = summary ? parseFloat(String(summary.session.openingAmount)) : 0;
-  const totalCashSales = summary
-    ? summary.sales.reduce((acc, s) => {
-        // Sumar solo pagos en efectivo de esta sesión
-        return acc; // simplificado: usamos totalSales como referencia
-      }, 0)
-    : 0;
+  const totalCash = summary?.totalCash ?? 0;
+  const totalCard = summary?.totalCard ?? 0;
+  const totalBizum = summary?.totalBizum ?? 0;
   const totalIn = summary?.totalIn ?? 0;
   const totalOut = summary?.totalOut ?? 0;
   const totalSales = summary?.totalSales ?? 0;
 
-  // Estimación de efectivo esperado (fondo + entradas - salidas)
-  const expectedCash = openingAmt + totalIn - totalOut;
+  const expectedCash = openingAmt + totalCash + totalIn - totalOut;
   const difference = parseFloat(countedCash || "0") - expectedCash;
 
   return (
@@ -70,6 +73,10 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
                 <span>{openingAmt.toFixed(2)}€</span>
               </div>
               <div className="flex justify-between text-gray-400">
+                <span>Ventas en efectivo</span>
+                <span className="text-green-400">+{totalCash.toFixed(2)}€</span>
+              </div>
+              <div className="flex justify-between text-gray-400">
                 <span>Entradas manuales</span>
                 <span className="text-green-400">+{totalIn.toFixed(2)}€</span>
               </div>
@@ -80,6 +87,14 @@ export default function TpvCloseSession({ open, sessionId, onClose, onClosed }: 
               <div className="flex justify-between font-bold text-white border-t border-gray-700 pt-2">
                 <span>Efectivo esperado</span>
                 <span>{expectedCash.toFixed(2)}€</span>
+              </div>
+              <div className="flex justify-between text-gray-500 text-xs pt-1 border-t border-gray-800">
+                <span>Cobros tarjeta</span>
+                <span>{totalCard.toFixed(2)}€</span>
+              </div>
+              <div className="flex justify-between text-gray-500 text-xs">
+                <span>Cobros Bizum</span>
+                <span>{totalBizum.toFixed(2)}€</span>
               </div>
               <div className="flex justify-between text-gray-400">
                 <span>Total ventas (todos métodos)</span>
