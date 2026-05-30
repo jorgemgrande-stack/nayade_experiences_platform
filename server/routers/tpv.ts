@@ -592,7 +592,17 @@ export const tpvRouter = router({
       const id = (result as any).insertId as number;
       const [movement] = await db.select().from(cashMovements).where(eq(cashMovements.id, id));
 
-      // Retiradas de efectivo → doble apunte contable (fire-and-forget)
+      // Propagación a Contabilidad → Caja (fire-and-forget, no bloquea TPV).
+      //
+      // Retirada (out) → apunte 'expense' + gasto conciliado en expenses
+      //                  (la retirada es coste contable real).
+      // Entrada  (in)  → apunte 'income' en fin_cash_movements.
+      //                  NO genera ningún ingreso comercial: una entrada
+      //                  manual ("regularización", "cambio de billete",
+      //                  "aporte de socio") es un ajuste de saldo, no una
+      //                  venta. Antes este branch no existía y las entradas
+      //                  quedaban huérfanas (solo en cash_movements TPV) sin
+      //                  reflejo en /admin/contabilidad/caja.
       if (input.type === "out") {
         (async () => {
           try {
@@ -642,6 +652,31 @@ export const tpvRouter = router({
             }
           } catch (e) {
             console.error("[TPV] Error registrando retirada en contabilidad:", e);
+          }
+        })();
+      } else if (input.type === "in") {
+        (async () => {
+          try {
+            const today = new Date().toISOString().slice(0, 10);
+            const concept = `Entrada de caja TPV — ${input.reason}`;
+            const cashAccountId = await getDefaultCashAccountId();
+            if (cashAccountId) {
+              await db.insert(finCashMovements).values({
+                accountId: cashAccountId,
+                date: today,
+                type: "income",
+                amount: String(input.amount),
+                concept,
+                relatedEntityType: "manual",
+                notes: `Entrada registrada en TPV sesión #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}. Motivo: ${input.reason}`,
+                createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
+              });
+              await db.update(finCashAccounts)
+                .set({ currentBalance: sql`current_balance + ${input.amount}` })
+                .where(eq(finCashAccounts.id, cashAccountId));
+            }
+          } catch (e) {
+            console.error("[TPV] Error registrando entrada en contabilidad:", e);
           }
         })();
       }
