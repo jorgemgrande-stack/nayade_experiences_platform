@@ -4112,25 +4112,37 @@ export const crmRouter = router({
         if (input.to) conditions.push(lte(reservations.createdAt, new Date(input.to).getTime()));
 
         const where = conditions.length ? and(...conditions) : undefined;
+
+        // Subquery agregada de operaciones del datáfono por reserva.
+        // Garantiza 1 fila por reservation_id incluso cuando hay varias cto
+        // vinculadas a la misma reserva (caso real RES-2026-0196: dos
+        // procesos de auto-vinculación enlazaron operaciones distintas a la
+        // misma reserva, causando duplicado visual en el listado del CRM).
+        // Devolvemos MAX(operation_number) para que el link "ver operación"
+        // siga apuntando a un valor concreto y funcional.
+        const ctoAgg = db
+          .select({
+            reservationId: cardTerminalOperations.linkedEntityId,
+            operationNumber: sql<string>`MAX(${cardTerminalOperations.operationNumber})`.as("operationNumber"),
+          })
+          .from(cardTerminalOperations)
+          .where(eq(cardTerminalOperations.linkedEntityType, "reservation"))
+          .groupBy(cardTerminalOperations.linkedEntityId)
+          .as("cto_agg");
+
         const [rows, [{ total }]] = await Promise.all([
           db
             .select({
               ...getTableColumns(reservations),
               invoicePdfUrl: invoices.pdfUrl,
               clientId: clients.id,
-              tpvOperationNumber: cardTerminalOperations.operationNumber,
+              tpvOperationNumber: ctoAgg.operationNumber,
             })
             .from(reservations)
             .leftJoin(invoices, eq(invoices.id, reservations.invoiceId as any))
             .leftJoin(quotes, eq(quotes.id, reservations.quoteId as any))
             .leftJoin(clients, eq(clients.leadId, quotes.leadId))
-            .leftJoin(
-              cardTerminalOperations,
-              and(
-                eq(cardTerminalOperations.linkedEntityId, reservations.id),
-                eq(cardTerminalOperations.linkedEntityType, "reservation")
-              )
-            )
+            .leftJoin(ctoAgg, eq(ctoAgg.reservationId, reservations.id))
             .where(where)
             .orderBy(desc(reservations.createdAt))
             .limit(input.limit)
