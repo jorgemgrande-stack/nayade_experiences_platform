@@ -1895,9 +1895,17 @@ export async function getDashboardOverview() {
       // Hoy en el complejo — Restaurantes (reservas de hoy activas)
       db.select({ count: sql<number>`count(*)`, covers: sql<string>`COALESCE(SUM(guests), 0)` }).from(restaurantBookings)
         .where(sql`date = ${todayISO} AND status NOT IN ('cancelled','payment_failed','no_show')`),
-      // Leads sin atender: activos, sin acción o sin contacto en los últimos 3 días
+      // Leads por atender = pendientes de enviar presupuesto.
+      // Definición de negocio: un lead está "por atender" cuando aún no se le
+      // ha enviado un presupuesto y no se ha descartado.
+      // Antes la query usaba el sistema legacy (`status` + `lastContactAt`),
+      // lo que generaba un falso positivo de 40 leads cuando la realidad es
+      // que solo 4 estaban realmente sin atender — los otros 36 ya tenían
+      // su presupuesto enviado (opportunityStatus='enviada') pero
+      // `lastContactAt` no se actualizaba al enviar el quote, así que el
+      // dashboard los marcaba como abandonados.
       db.select({ count: sql<number>`count(*)` }).from(leads)
-        .where(sql`status NOT IN ('convertido','perdido') AND (lastContactAt IS NULL OR lastContactAt < ${threeDaysAgo})`),
+        .where(sql`opportunityStatus = 'nueva'`),
       // Devengo partners: reservas confirmadas pendientes de cobro
       db.select({ total: sql<string>`COALESCE(SUM(amount_total)/100.0, 0)` }).from(reservations).where(sql`status = 'pending_payment' AND channel = 'PARTNER'`),
       db.select({ count: sql<number>`count(*)` }).from(reservations).where(sql`status = 'pending_payment' AND channel = 'PARTNER'`),

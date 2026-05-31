@@ -537,8 +537,8 @@ export default function AdminDashboard() {
                     <div className="flex items-center gap-2 bg-violet-500/10 border border-violet-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-violet-500/15 transition-colors">
                       <Clock className="w-4 h-4 text-violet-400 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-violet-300">{leadsAging} lead{leadsAging > 1 ? "s" : ""} sin contactar +3 días</p>
-                        <p className="text-[10px] text-violet-400/60">CRM → Leads activos</p>
+                        <p className="text-xs font-semibold text-violet-300">{leadsAging} lead{leadsAging > 1 ? "s" : ""} por atender</p>
+                        <p className="text-[10px] text-violet-400/60">CRM → Leads (sin presupuesto enviado)</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-violet-400 shrink-0" />
                     </div>
@@ -782,7 +782,7 @@ export default function AdminDashboard() {
                 </div>
               </Link>
 
-              {/* Leads sin atender */}
+              {/* Leads por atender = sin presupuesto enviado y no descartados */}
               <Link href="/admin/crm?tab=leads">
                 <div className={cn(
                   "group rounded-xl border p-4 cursor-pointer transition-all hover:brightness-110",
@@ -796,18 +796,18 @@ export default function AdminDashboard() {
                     </div>
                     <ArrowRight className="w-4 h-4 text-foreground/20 group-hover:text-violet-500 transition-colors" />
                   </div>
-                  <p className="text-xs font-semibold text-foreground/70 mb-2">Leads sin atender</p>
+                  <p className="text-xs font-semibold text-foreground/70 mb-2">Leads por atender</p>
                   {isLoading ? (
                     <div className="h-7 bg-muted/50 rounded animate-pulse" />
                   ) : leadsAging === 0 ? (
                     <>
                       <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">0</p>
-                      <p className="text-[10px] text-emerald-600/60 dark:text-emerald-400/60 mt-0.5">Todos atendidos</p>
+                      <p className="text-[10px] text-emerald-600/60 dark:text-emerald-400/60 mt-0.5">Todos con presupuesto</p>
                     </>
                   ) : (
                     <>
                       <p className="text-2xl font-black text-violet-600 dark:text-violet-300">{leadsAging}</p>
-                      <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">+3 días sin contacto</p>
+                      <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">Sin presupuesto enviado</p>
                     </>
                   )}
                 </div>
