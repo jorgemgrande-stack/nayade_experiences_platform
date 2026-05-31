@@ -369,38 +369,41 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     .filter((item) => item.roles.includes(userRole))
     .filter((item) => isFlagVisible((item as { flagKey?: string }).flagKey));
 
-  // ── Badges de notificación en tiempo real (polling cada 60s) ──
-  const { data: leadCounters } = trpc.crm.leads.counters.useQuery(undefined, {
-    enabled: isAuthenticated && ["admin", "agente"].includes(userRole),
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
-  });
-  const { data: quoteCounters } = trpc.crm.quotes.counters.useQuery(undefined, {
+  // ── Feed unificado de notificaciones (polling cada 60s) ─────────────────
+  // El endpoint `notifications.feed` agrega 6 fuentes (leads, quotes,
+  // cancellations, pending_payments, tpv_alerts, upcoming_reservations),
+  // excluyendo los items que este usuario ya ha silenciado.
+  const utils = trpc.useUtils();
+  const { data: feed } = trpc.notifications.feed.useQuery(undefined, {
     enabled: isAuthenticated && ["admin", "agente"].includes(userRole),
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   });
 
-  // Leads nuevos sin gestionar + presupuestos enviados pendientes de respuesta
-  const newLeads = leadCounters?.nueva ?? 0;
-  const pendingQuotes = quoteCounters?.enviado ?? 0;
-  const totalAlerts = newLeads + pendingQuotes;
+  const totalAlerts = feed?.totalAlerts ?? 0;
+  // Para mantener compat con badges del menú lateral (sidebar) que usan
+  // estas dos variables para mostrar el punto rojo en CRM.
+  const newLeads = feed?.sections.find(s => s.kind === "lead")?.total ?? 0;
+  const pendingQuotes = feed?.sections.find(s => s.kind === "quote")?.total ?? 0;
 
-  // ── Datos para el panel de notificaciones (solo cuando está abierto) ──
-  const { data: recentLeads } = trpc.crm.leads.list.useQuery(
-    { opportunityStatus: "nueva", limit: 5, offset: 0 },
-    {
-      enabled: notifOpen && isAuthenticated && ["admin", "agente"].includes(userRole),
-      staleTime: 30_000,
-    }
-  );
-  const { data: recentQuotes } = trpc.crm.quotes.list.useQuery(
-    { status: "enviado", limit: 5, offset: 0 },
-    {
-      enabled: notifOpen && isAuthenticated && ["admin", "agente"].includes(userRole),
-      staleTime: 30_000,
-    }
-  );
+  const dismissItem = trpc.notifications.dismiss.useMutation({
+    onSuccess: () => utils.notifications.feed.invalidate(),
+  });
+  const dismissAllSection = trpc.notifications.dismissAll.useMutation({
+    onSuccess: () => utils.notifications.feed.invalidate(),
+  });
+
+  type FeedKind = "lead" | "quote" | "cancellation" | "pending_payment" | "tpv_alert" | "upcoming_reservation";
+  const severityColor: Record<string, string> = {
+    info:     "text-sky-400",
+    warning:  "text-amber-400",
+    critical: "text-red-400",
+  };
+  const severityBg: Record<string, string> = {
+    info:     "bg-sky-500/10 border-sky-500/30",
+    warning:  "bg-amber-500/10 border-amber-500/30",
+    critical: "bg-red-500/10 border-red-500/30",
+  };
 
   // ── Los empleados no acceden al panel de admin: enviarlos a su portal ──
   // Evita el callejón sin salida de "Sin permisos" cuando un empleado abre /admin.
@@ -659,12 +662,12 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-80 p-0 bg-card border border-border shadow-xl"
+                className="w-96 p-0 bg-card border border-border shadow-xl max-h-[80vh] overflow-y-auto"
                 align="end"
                 sideOffset={8}
               >
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border sticky top-0 bg-card z-10">
                   <span className="text-sm font-semibold text-foreground">Notificaciones</span>
                   {totalAlerts > 0 && (
                     <span className="text-xs bg-red-500 text-white rounded-full px-2 py-0.5 font-bold">
@@ -673,72 +676,78 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                   )}
                 </div>
 
-                {/* Leads nuevos */}
-                {newLeads > 0 && (
-                  <div className="px-4 pt-3 pb-1">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <UserPlus className="w-3.5 h-3.5 text-blue-400" />
-                      <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide">
-                        Leads nuevos ({newLeads})
-                      </span>
+                {/* Secciones del feed */}
+                {(feed?.sections ?? []).filter(s => s.total > 0).map((section) => (
+                  <div key={section.kind} className="border-b border-border last:border-b-0">
+                    <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base leading-none">{section.icon}</span>
+                        <span className={`text-xs font-semibold uppercase tracking-wide ${severityColor[section.severity]}`}>
+                          {section.label} ({section.total})
+                        </span>
+                      </div>
+                      <button
+                        className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => dismissAllSection.mutate({ kind: section.kind as FeedKind })}
+                        disabled={dismissAllSection.isPending}
+                        title="Marcar toda la sección como vista"
+                      >
+                        Marcar todo
+                      </button>
                     </div>
-                    <div className="space-y-1">
-                      {(recentLeads?.rows ?? []).slice(0, 5).map((lead) => (
-                        <button
-                          key={lead.id}
-                          className="w-full text-left px-2 py-1.5 rounded-md hover:bg-accent/10 transition-colors group"
-                          onClick={() => { navigate("/admin/crm"); setNotifOpen(false); }}
+                    <div className="space-y-1 px-2 pb-2">
+                      {section.items.map((item) => (
+                        <div
+                          key={`${item.kind}-${item.entityId}`}
+                          className={`flex items-stretch gap-1 rounded-md border ${severityBg[item.severity]} group`}
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-foreground truncate max-w-[180px]">
-                              {lead.name}
-                            </span>
-                            <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" />
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {lead.email}
-                          </div>
-                        </button>
+                          <button
+                            className="flex-1 text-left px-2 py-1.5 hover:bg-foreground/[0.04] transition-colors min-w-0"
+                            onClick={() => { navigate(item.ctaPath); setNotifOpen(false); }}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium text-foreground truncate">
+                                {item.title}
+                              </span>
+                              {item.amount != null && (
+                                <span className="text-xs font-semibold text-emerald-400 shrink-0">
+                                  {item.amount.toFixed(2)}€
+                                </span>
+                              )}
+                            </div>
+                            {item.subtitle && (
+                              <div className="text-xs text-muted-foreground truncate">
+                                {item.subtitle}
+                              </div>
+                            )}
+                          </button>
+                          <button
+                            className="px-2 text-muted-foreground hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              dismissItem.mutate({ kind: item.kind as FeedKind, entityId: item.entityId });
+                            }}
+                            disabled={dismissItem.isPending}
+                            title="Marcar como visto (no afecta al estado real)"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       ))}
+                      {section.total > section.items.length && (
+                        <button
+                          className="w-full text-[11px] text-muted-foreground hover:text-foreground text-center py-1"
+                          onClick={() => { navigate(section.ctaAllPath); setNotifOpen(false); }}
+                        >
+                          Ver los {section.total - section.items.length} restantes →
+                        </button>
+                      )}
                     </div>
                   </div>
-                )}
-
-                {/* Presupuestos pendientes */}
-                {pendingQuotes > 0 && (
-                  <div className="px-4 pt-3 pb-1">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <FileCheck className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">
-                        Presupuestos pendientes ({pendingQuotes})
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      {(recentQuotes?.rows ?? []).slice(0, 5).map((quote) => (
-                        <button
-                          key={quote.id}
-                          className="w-full text-left px-2 py-1.5 rounded-md hover:bg-accent/10 transition-colors group"
-                          onClick={() => { navigate("/admin/crm"); setNotifOpen(false); }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-foreground truncate max-w-[180px]">
-                              {quote.clientName ?? quote.title}
-                            </span>
-                            <span className="text-xs font-semibold text-emerald-400 shrink-0">
-                              {quote.total ? `${Number(quote.total).toFixed(2)}€` : ""}
-                            </span>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {quote.quoteNumber} · {quote.sentAt ? new Date(quote.sentAt).toLocaleDateString("es-ES") : ""}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                ))}
 
                 {/* Estado vacío */}
-                {totalAlerts === 0 && (
+                {totalAlerts === 0 && (feed?.sections.every(s => s.total === 0) ?? true) && (
                   <div className="px-4 py-8 text-center">
                     <Bell className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">Sin notificaciones pendientes</p>
@@ -746,7 +755,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
                 )}
 
                 {/* Footer */}
-                <div className="px-4 py-2 border-t border-border">
+                <div className="px-4 py-2 border-t border-border sticky bottom-0 bg-card">
                   <Button
                     variant="ghost"
                     size="sm"

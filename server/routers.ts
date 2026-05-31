@@ -181,6 +181,7 @@ import { cashRegisterRouter } from "./routers/cashRegister";
 import { getBusinessEmail } from "./config";
 import { cardTerminalOperationsRouter } from "./routers/cardTerminalOperations";
 import { cardTerminalBatchesRouter } from "./routers/cardTerminalBatches";
+import { notificationsRouter } from "./routers/notifications";
 import { emailIngestionRouter } from "./routers/emailIngestion";
 import { configRouter } from "./routers/configRouter";
 import { onboardingRouter } from "./routers/onboardingRouter";
@@ -207,6 +208,7 @@ export const appRouter = router({
   cashRegister: cashRegisterRouter,
   cardTerminalOperations: cardTerminalOperationsRouter,
   cardTerminalBatches: cardTerminalBatchesRouter,
+  notifications: notificationsRouter,
   dailyControl: dailyControlRouter,
   emailIngestion: emailIngestionRouter,
   config: configRouter,

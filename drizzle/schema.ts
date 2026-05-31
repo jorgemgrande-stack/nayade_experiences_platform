@@ -3581,3 +3581,18 @@ export const taxDeferralInstallments = mysqlTable("tax_deferral_installments", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type TaxDeferralInstallment = typeof taxDeferralInstallments.$inferSelect;
+
+// ─── Notification dismissals (campana del AdminLayout) ──────────────────────
+// Cada fila representa un item del feed que un admin concreto ha silenciado.
+// El feed se construye en server/routers/notifications.ts agregando 6
+// fuentes (leads, quotes, cancellations, pending_payments, tpv_alerts,
+// upcoming_reservations). El dismiss es por-usuario: silenciar no afecta
+// al resto del equipo.
+export const adminNotificationDismissals = mysqlTable("admin_notification_dismissals", {
+  id:           int("id").autoincrement().primaryKey(),
+  userId:       int("user_id").notNull(),
+  kind:         varchar("kind", { length: 40 }).notNull(),
+  entityId:     int("entity_id").notNull(),
+  dismissedAt:  bigint("dismissed_at", { mode: "number" }).notNull(),
+});
+export type AdminNotificationDismissal = typeof adminNotificationDismissals.$inferSelect;
