@@ -1353,7 +1353,7 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
   const [amountTotal, setAmountTotal] = useState("");
   const [amountPaid, setAmountPaid] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "transferencia" | "redsys" | "otro">("efectivo");
-  const [channel, setChannel] = useState<"crm" | "telefono" | "email" | "otro">("crm");
+  const [channel, setChannel] = useState<"VENTA_DELEGADA" | "TELEFONO" | "EMAIL" | "MANUAL">("VENTA_DELEGADA");
   const [notes, setNotes] = useState("");
   const [sendEmailConfirm, setSendEmailConfirm] = useState(true);
 
@@ -1661,10 +1661,10 @@ function NewReservationModal({ onClose }: { onClose: () => void }) {
               <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
                 <SelectTrigger className="bg-foreground/[0.05] border-foreground/[0.12] text-white"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-[#0d1526] border-foreground/[0.12]">
-                  <SelectItem value="crm" className="text-white text-xs">💼 CRM (admin)</SelectItem>
-                  <SelectItem value="telefono" className="text-white text-xs">📞 Teléfono</SelectItem>
-                  <SelectItem value="email" className="text-white text-xs">📧 Email</SelectItem>
-                  <SelectItem value="otro" className="text-white text-xs">❓ Otro</SelectItem>
+                  <SelectItem value="VENTA_DELEGADA" className="text-white text-xs">💼 CRM (admin)</SelectItem>
+                  <SelectItem value="TELEFONO" className="text-white text-xs">📞 Teléfono</SelectItem>
+                  <SelectItem value="EMAIL" className="text-white text-xs">📧 Email</SelectItem>
+                  <SelectItem value="MANUAL" className="text-white text-xs">❓ Otro</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -4811,29 +4811,49 @@ function ReservationDetailModal({
                 <CreditCard className="w-3 h-3" /> Plan de Pagos
               </span>
             )}
-            {res.channel === "tpv" && (
+            {res.channel === "TPV_FISICO" && (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-violet-300 bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 rounded-full">
                 🖥️ TPV Presencial
               </span>
             )}
-            {res.channel === "crm" && (
+            {res.channel === "VENTA_DELEGADA" && (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full">
                 💼 CRM Delegado
               </span>
             )}
-            {(res.channel === "web" || !res.channel) && (
+            {(res.channel === "ONLINE_DIRECTO" || !res.channel) && (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-sky-300 bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 rounded-full">
-                🌐 Online
+                🌐 Online directo
               </span>
             )}
-            {res.channel === "telefono" && (
+            {res.channel === "ONLINE_ASISTIDO" && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-full">
+                🤝 Online asistido
+              </span>
+            )}
+            {res.channel === "TELEFONO" && (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
                 📞 Teléfono
               </span>
             )}
+            {res.channel === "EMAIL" && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-full">
+                ✉️ Email
+              </span>
+            )}
+            {res.channel === "PARTNER" && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-300 bg-orange-500/15 border border-orange-500/30 px-2 py-0.5 rounded-full">
+                🤝 Partner
+              </span>
+            )}
+            {res.channel === "TICKETING" && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-pink-300 bg-pink-500/15 border border-pink-500/30 px-2 py-0.5 rounded-full">
+                🎟️ Ticketing
+              </span>
+            )}
           </div>
           {/* Info de ticket TPV si aplica */}
-          {res.channel === "tpv" && res.notes?.includes("[ORIGEN_TPV]") && (
+          {res.channel === "TPV_FISICO" && res.notes?.includes("[ORIGEN_TPV]") && (
             <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3">
               <div className="text-xs font-semibold text-violet-300 mb-1">🖥️ Venta TPV</div>
               <div className="text-xs text-violet-200/70">
@@ -6573,12 +6593,17 @@ export default function CRMDashboard() {
               </SelectTrigger>
               <SelectContent className="bg-[#0d1520] border-foreground/[0.12]">
                 <SelectItem value="all" className="text-foreground/70 text-xs">📊 Todos los canales</SelectItem>
-                <SelectItem value="tpv" className="text-violet-300 text-xs">🖥️ TPV Presencial</SelectItem>
-                <SelectItem value="web" className="text-sky-300 text-xs">🌐 Online</SelectItem>
-                <SelectItem value="crm" className="text-purple-300 text-xs">💼 CRM Delegado</SelectItem>
-                <SelectItem value="telefono" className="text-amber-300 text-xs">📞 Teléfono</SelectItem>
-                <SelectItem value="coupon" className="text-orange-300 text-xs">🎫 Plataformas (Cupón)</SelectItem>
-                <SelectItem value="otro" className="text-foreground/60 text-xs">❓ Otro</SelectItem>
+                <SelectItem value="TPV_FISICO" className="text-violet-300 text-xs">🖥️ TPV Presencial</SelectItem>
+                <SelectItem value="ONLINE_DIRECTO" className="text-sky-300 text-xs">🌐 Online directo</SelectItem>
+                <SelectItem value="ONLINE_ASISTIDO" className="text-blue-300 text-xs">🤝 Online asistido</SelectItem>
+                <SelectItem value="VENTA_DELEGADA" className="text-purple-300 text-xs">💼 CRM Delegado</SelectItem>
+                <SelectItem value="TELEFONO" className="text-amber-300 text-xs">📞 Teléfono</SelectItem>
+                <SelectItem value="EMAIL" className="text-cyan-300 text-xs">✉️ Email</SelectItem>
+                <SelectItem value="PARTNER" className="text-orange-300 text-xs">🤝 Partner</SelectItem>
+                <SelectItem value="TICKETING" className="text-pink-300 text-xs">🎟️ Ticketing</SelectItem>
+                <SelectItem value="coupon" className="text-orange-300 text-xs">🎫 Cupón (origen)</SelectItem>
+                <SelectItem value="MANUAL" className="text-foreground/60 text-xs">❓ Manual / Otro</SelectItem>
+                <SelectItem value="API" className="text-foreground/60 text-xs">🔌 API</SelectItem>
               </SelectContent>
             </Select>
           )}
@@ -7231,25 +7256,31 @@ export default function CRMDashboard() {
                       {/* Canal */}
                       <td className="px-4 py-3 hidden xl:table-cell">
                         <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
-                          res.channel === "tpv" || res.channel === "TPV_FISICO" ? "text-violet-300 bg-violet-500/15 border-violet-500/30" :
-                          res.channel === "crm" || res.channel === "VENTA_DELEGADA" ? "text-purple-300 bg-purple-500/15 border-purple-500/30" :
-                          res.channel === "web" || res.channel === "ONLINE_DIRECTO" ? "text-sky-300 bg-sky-500/15 border-sky-500/30" :
+                          res.originSource === "coupon_redemption" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
+                          res.channel === "TPV_FISICO" ? "text-violet-300 bg-violet-500/15 border-violet-500/30" :
+                          res.channel === "VENTA_DELEGADA" ? "text-purple-300 bg-purple-500/15 border-purple-500/30" :
+                          res.channel === "ONLINE_DIRECTO" ? "text-sky-300 bg-sky-500/15 border-sky-500/30" :
                           res.channel === "ONLINE_ASISTIDO" ? "text-blue-300 bg-blue-500/15 border-blue-500/30" :
-                          res.channel === "telefono" ? "text-amber-300 bg-amber-500/15 border-amber-500/30" :
+                          res.channel === "TELEFONO" ? "text-amber-300 bg-amber-500/15 border-amber-500/30" :
+                          res.channel === "EMAIL" ? "text-cyan-300 bg-cyan-500/15 border-cyan-500/30" :
                           res.channel === "PARTNER" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
-                          res.channel === "groupon" || res.originSource === "coupon_redemption" ? "text-orange-300 bg-orange-500/15 border-orange-500/30" :
+                          res.channel === "TICKETING" ? "text-pink-300 bg-pink-500/15 border-pink-500/30" :
                           "text-foreground/50 bg-foreground/[0.05] border-foreground/[0.12]"
                         }`}>
-                          {res.channel === "tpv" || res.channel === "TPV_FISICO" ? "🖥️ TPV" :
-                           res.channel === "crm" || res.channel === "VENTA_DELEGADA" ? "💼 Delegada" :
-                           res.channel === "web" || res.channel === "ONLINE_DIRECTO" ? "🌐 Online" :
+                          {res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? "Cupón"}` :
+                           res.channel === "TPV_FISICO" ? "🖥️ TPV" :
+                           res.channel === "VENTA_DELEGADA" ? "💼 Delegada" :
+                           res.channel === "ONLINE_DIRECTO" ? "🌐 Online" :
                            res.channel === "ONLINE_ASISTIDO" ? "🤝 Asistido" :
-                           res.channel === "telefono" ? "📞 Tel." :
+                           res.channel === "TELEFONO" ? "📞 Tel." :
+                           res.channel === "EMAIL" ? "✉️ Email" :
                            res.channel === "PARTNER" ? "🤝 Partner" :
-                           res.channel === "groupon" || res.originSource === "coupon_redemption" ? `🎫 ${res.platformName ?? "Cupón"}` :
+                           res.channel === "TICKETING" ? "🎟️ Ticketing" :
+                           res.channel === "MANUAL" ? "❓ Manual" :
+                           res.channel === "API" ? "🔌 API" :
                            res.channel ?? "—"}
                         </span>
-                        {(res.channel === "tpv" || res.channel === "TPV_FISICO") && (res as any).tpvOperationNumber ? (
+                        {res.channel === "TPV_FISICO" && (res as any).tpvOperationNumber ? (
                           <a
                             href={`/admin/contabilidad/operaciones-tpv?search=${encodeURIComponent((res as any).tpvOperationNumber)}`}
                             className="block text-[9px] text-violet-400/70 hover:text-violet-300 hover:underline mt-0.5 font-mono truncate max-w-[80px]"

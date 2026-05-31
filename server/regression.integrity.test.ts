@@ -495,8 +495,8 @@ describe("Regresión schema reservations — Campos obligatorios por canal", () 
     if (!r.createdAt) errors.push("createdAt es obligatorio");
     if (!r.updatedAt) errors.push("updatedAt es obligatorio");
 
-    // Canal CRM: debe tener paymentMethod
-    if (["crm", "telefono", "email"].includes(channel) && !r.paymentMethod) {
+    // Canal venta delegada (manual): debe tener paymentMethod
+    if (["VENTA_DELEGADA", "TELEFONO", "EMAIL"].includes(channel) && !r.paymentMethod) {
       errors.push(`Canal ${channel}: paymentMethod es obligatorio`);
     }
 
@@ -514,11 +514,11 @@ describe("Regresión schema reservations — Campos obligatorios por canal", () 
       bookingDate: "2026-07-15", people: 4, amountTotal: 18000,
       status: "paid", customerName: "Carlos Martínez",
       customerEmail: "carlos@example.com", merchantOrder: "RES-2026-0010",
-      channel: "crm", paymentMethod: "tarjeta",
+      channel: "VENTA_DELEGADA", paymentMethod: "tarjeta",
       invoiceId: 300001, invoiceNumber: "FAC-2026-0010",
       paidAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
     };
-    const errors = validateReservationFields(r, "crm");
+    const errors = validateReservationFields(r, "VENTA_DELEGADA");
     expect(errors).toHaveLength(0);
   });
 
@@ -528,10 +528,10 @@ describe("Regresión schema reservations — Campos obligatorios por canal", () 
       bookingDate: "2026-07-20", people: 2, amountTotal: 5000,
       status: "paid", customerName: "Pedro López",
       customerEmail: "pedro@example.com", merchantOrder: "RES-2026-0011",
-      channel: "web", paymentMethod: "redsys",
+      channel: "ONLINE_DIRECTO", paymentMethod: "redsys",
       paidAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
     };
-    const errors = validateReservationFields(r, "web");
+    const errors = validateReservationFields(r, "ONLINE_DIRECTO");
     expect(errors).toHaveLength(0);
   });
 
@@ -541,10 +541,10 @@ describe("Regresión schema reservations — Campos obligatorios por canal", () 
       bookingDate: "2026-07-10", people: 2, amountTotal: 9000,
       status: "paid", customerName: "Cliente TPV",
       merchantOrder: "TPV-2026-0042",
-      channel: "tpv", paymentMethod: "efectivo",
+      channel: "TPV_FISICO", paymentMethod: "efectivo",
       paidAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
     };
-    const errors = validateReservationFields(r, "tpv");
+    const errors = validateReservationFields(r, "TPV_FISICO");
     expect(errors).toHaveLength(0);
   });
 
@@ -554,10 +554,10 @@ describe("Regresión schema reservations — Campos obligatorios por canal", () 
       bookingDate: "2026-07-01", people: 1, amountTotal: 1000,
       status: "paid", customerName: "Test User",
       merchantOrder: "RES-TEST-001",
-      channel: "web", paidAt: null, // Falta paidAt
+      channel: "ONLINE_DIRECTO", paidAt: null, // Falta paidAt
       createdAt: Date.now(), updatedAt: Date.now(),
     };
-    const errors = validateReservationFields(r, "web");
+    const errors = validateReservationFields(r, "ONLINE_DIRECTO");
     expect(errors).toContain("Reserva paid: paidAt es obligatorio");
   });
 
@@ -567,11 +567,11 @@ describe("Regresión schema reservations — Campos obligatorios por canal", () 
       bookingDate: "2026-07-01", people: 1, amountTotal: 1000,
       status: "paid", customerName: "Test User",
       merchantOrder: "RES-TEST-002",
-      channel: "crm", paymentMethod: null, // Falta paymentMethod
+      channel: "VENTA_DELEGADA", paymentMethod: null, // Falta paymentMethod
       paidAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now(),
     };
-    const errors = validateReservationFields(r, "crm");
-    expect(errors).toContain("Canal crm: paymentMethod es obligatorio");
+    const errors = validateReservationFields(r, "VENTA_DELEGADA");
+    expect(errors).toContain("Canal VENTA_DELEGADA: paymentMethod es obligatorio");
   });
 });
 

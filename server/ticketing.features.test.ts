@@ -132,7 +132,7 @@ describe("RedeemModal file-to-base64 conversion logic", () => {
 describe("CRM platform badge logic", () => {
   it("shows platform badge when originSource is coupon_redemption", () => {
     const reservation = {
-      channel: "crm" as const,
+      channel: "VENTA_DELEGADA" as const,
       originSource: "coupon_redemption",
       platformName: "Groupon",
     };
@@ -153,7 +153,7 @@ describe("CRM platform badge logic", () => {
 
   it("does not show platform badge for regular web reservations", () => {
     const reservation = {
-      channel: "web" as const,
+      channel: "ONLINE_DIRECTO" as const,
       originSource: null,
       platformName: null,
     };

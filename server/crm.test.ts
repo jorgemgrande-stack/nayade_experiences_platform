@@ -217,18 +217,18 @@ describe("generateInvoice — cálculo de totales desde items TPV", () => {
   });
 
   it("rechaza reservas que ya tienen factura (idempotencia)", () => {
-    const reservation = { id: 1, invoiceId: 42, channel: "tpv" };
+    const reservation = { id: 1, invoiceId: 42, channel: "TPV_FISICO" };
     const alreadyHasInvoice = !!reservation.invoiceId;
     expect(alreadyHasInvoice).toBe(true);
   });
 
   it("solo permite generar factura para reservas TPV sin invoiceId", () => {
-    const tpvNoInvoice = { channel: "tpv", invoiceId: null };
-    const tpvWithInvoice = { channel: "tpv", invoiceId: 5 };
-    const onlineNoInvoice = { channel: "web", invoiceId: null };
+    const tpvNoInvoice = { channel: "TPV_FISICO", invoiceId: null };
+    const tpvWithInvoice = { channel: "TPV_FISICO", invoiceId: 5 };
+    const onlineNoInvoice = { channel: "ONLINE_DIRECTO", invoiceId: null };
 
     const canGenerate = (r: { channel: string; invoiceId: number | null }) =>
-      r.channel === "tpv" && !r.invoiceId;
+      r.channel === "TPV_FISICO" && !r.invoiceId;
 
     expect(canGenerate(tpvNoInvoice)).toBe(true);
     expect(canGenerate(tpvWithInvoice)).toBe(false);

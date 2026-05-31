@@ -133,7 +133,7 @@ function processSource2TPV(
   const tpvReservations = reservations.filter(
     (r) =>
       r.status === "paid" &&
-      r.channel === "tpv" &&
+      r.channel === "TPV_FISICO" &&
       (r.paidAt ?? 0) >= periodFromMs &&
       (r.paidAt ?? 0) <= periodToMs
   );
@@ -336,7 +336,7 @@ describe("Regresión recalculate — SOURCE 2: Reservas TPV", () => {
       {
         id: 500001,
         status: "paid",
-        channel: "tpv",
+        channel: "TPV_FISICO",
         paidAt: new Date("2026-07-10").getTime(),
         bookingDate: "2026-07-10",
         extrasJson: JSON.stringify([
@@ -356,7 +356,7 @@ describe("Regresión recalculate — SOURCE 2: Reservas TPV", () => {
       {
         id: 500002,
         status: "paid",
-        channel: "tpv",
+        channel: "TPV_FISICO",
         paidAt: new Date("2026-06-01").getTime(), // Fuera del periodo
         bookingDate: "2026-06-01",
         extrasJson: JSON.stringify([{ productId: 30003, unitPrice: 45, quantity: 1 }]),
@@ -373,7 +373,7 @@ describe("Regresión recalculate — SOURCE 2: Reservas TPV", () => {
         id: 500003,
         invoiceId: 300001, // Misma factura que SOURCE 1
         status: "paid",
-        channel: "tpv",
+        channel: "TPV_FISICO",
         paidAt: new Date("2026-07-15").getTime(),
         bookingDate: "2026-07-15",
         extrasJson: JSON.stringify([{ productId: 30003, unitPrice: 45, quantity: 1 }]),
@@ -388,7 +388,7 @@ describe("Regresión recalculate — SOURCE 2: Reservas TPV", () => {
       {
         id: 500004,
         status: "paid",
-        channel: "crm", // No es TPV
+        channel: "VENTA_DELEGADA", // No es TPV
         paidAt: new Date("2026-07-10").getTime(),
         bookingDate: "2026-07-10",
         extrasJson: JSON.stringify([{ productId: 30003, unitPrice: 45, quantity: 1 }]),
@@ -416,7 +416,7 @@ describe("Regresión recalculate — SOURCE 3: Reservas CRM/online", () => {
         productId: 30003,
         productName: "Cableski Día Completo",
         status: "paid",
-        channel: "crm",
+        channel: "VENTA_DELEGADA",
         paidAt: new Date("2026-07-15").getTime(),
         bookingDate: "2026-07-15",
         amountTotal: 18000, // 180 euros en centavos
@@ -437,7 +437,7 @@ describe("Regresión recalculate — SOURCE 3: Reservas CRM/online", () => {
         id: 480002,
         productId: 30003,
         status: "paid",
-        channel: "web",
+        channel: "ONLINE_DIRECTO",
         paidAt: new Date("2026-07-20").getTime(),
         bookingDate: "2026-07-20",
         amountTotal: 5000, // 50 euros
@@ -455,7 +455,7 @@ describe("Regresión recalculate — SOURCE 3: Reservas CRM/online", () => {
         id: 480003,
         productId: 30003,
         status: "pending_payment", // No pagada
-        channel: "crm",
+        channel: "VENTA_DELEGADA",
         paidAt: new Date("2026-07-10").getTime(),
         bookingDate: "2026-07-10",
         amountTotal: 18000,
@@ -472,7 +472,7 @@ describe("Regresión recalculate — SOURCE 3: Reservas CRM/online", () => {
         id: 500001,
         productId: 30003,
         status: "paid",
-        channel: "tpv", // No es CRM
+        channel: "TPV_FISICO", // No es CRM
         paidAt: new Date("2026-07-10").getTime(),
         bookingDate: "2026-07-10",
         amountTotal: 9000,
@@ -491,7 +491,7 @@ describe("Regresión recalculate — SOURCE 3: Reservas CRM/online", () => {
         invoiceId: 300001,
         productId: 30003,
         status: "paid",
-        channel: "crm",
+        channel: "VENTA_DELEGADA",
         paidAt: new Date("2026-07-10").getTime(),
         bookingDate: "2026-07-10",
         amountTotal: 18000,
@@ -760,8 +760,8 @@ describe("Regresión anulaciones — Visibilidad en calendario y liquidaciones",
 
   it("reserva cancelada NO debe incluirse en recalculate (status != 'paid')", () => {
     const reservations = [
-      { id: 1, status: "paid", channel: "crm", paidAt: Date.now(), productId: 30003, amountTotal: 18000 },
-      { id: 2, status: "cancelled", channel: "crm", paidAt: Date.now(), productId: 30003, amountTotal: 18000 },
+      { id: 1, status: "paid", channel: "VENTA_DELEGADA", paidAt: Date.now(), productId: 30003, amountTotal: 18000 },
+      { id: 2, status: "cancelled", channel: "VENTA_DELEGADA", paidAt: Date.now(), productId: 30003, amountTotal: 18000 },
     ];
     const eligibleForSettlement = reservations.filter((r) => r.status === "paid");
     expect(eligibleForSettlement).toHaveLength(1);

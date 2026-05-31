@@ -4127,7 +4127,10 @@ export const crmRouter = router({
             // Filtrar por origen cupón (cualquier plataforma)
             conditions.push(eq(reservations.originSource, "coupon_redemption"));
           } else {
-            conditions.push(eq(reservations.channel, input.channel as "web" | "crm" | "telefono" | "email" | "otro" | "tpv" | "groupon"));
+            conditions.push(eq(reservations.channel, input.channel as
+              "ONLINE_DIRECTO" | "ONLINE_ASISTIDO" | "VENTA_DELEGADA" |
+              "TELEFONO" | "EMAIL" |
+              "TPV_FISICO" | "PARTNER" | "TICKETING" | "MANUAL" | "API"));
           }
         }
         if (input.search) {
@@ -4657,8 +4660,12 @@ export const crmRouter = router({
         const [res] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         if (res.invoiceId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Esta reserva ya tiene factura generada" });
-        // ⚠️ GUARD: Reservas Groupon no son facturables desde el CRM
-        if (res.channel === "groupon" || res.originSource === "coupon_redemption") {
+        // ⚠️ GUARD: Reservas Groupon/Smartbox/etc. (canje de cupón) no son
+        // facturables desde el CRM — su liquidación pertenece al flujo de
+        // conciliación del proveedor. Tras la normalización del canal, el
+        // ENUM ya no incluye "groupon"; identificamos estas reservas por
+        // originSource = 'coupon_redemption'.
+        if (res.originSource === "coupon_redemption") {
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "Las reservas procedentes de canje de cupón Groupon no pueden facturarse desde el CRM. Su liquidación económica pertenece al flujo de conciliación del proveedor ticketing.",
@@ -4991,7 +4998,7 @@ export const crmRouter = router({
           paymentMethod: z.enum(["efectivo", "transferencia", "redsys", "otro"]).default("efectivo"),
           // Opcionales
           notes: z.string().optional(),
-          channel: z.enum(["crm", "telefono", "email", "otro"]).default("crm"),
+          channel: z.enum(["VENTA_DELEGADA", "TELEFONO", "EMAIL", "MANUAL"]).default("VENTA_DELEGADA"),
           sendConfirmationEmail: z.boolean().default(true),
         })
       )

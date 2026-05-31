@@ -776,7 +776,7 @@ export const settlementsRouter = router({
         .where(
           and(
             eq(reservations.status, "paid"),
-            eq(reservations.channel, "tpv"),
+            eq(reservations.channel, "TPV_FISICO"),
             gte(reservations.paidAt, periodFromMs),
             lte(reservations.paidAt, periodToMs)
           )
@@ -1186,7 +1186,7 @@ export const settlementsRouter = router({
           .from(reservations)
           .where(and(
             eq(reservations.status, "paid"),
-            eq(reservations.channel, "tpv"),
+            eq(reservations.channel, "TPV_FISICO"),
             gte(reservations.paidAt, periodFromMs),
             lte(reservations.paidAt, periodToMs)
           ));

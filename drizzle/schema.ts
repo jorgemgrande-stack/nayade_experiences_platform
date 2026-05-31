@@ -677,10 +677,9 @@ export const reservations = mysqlTable("reservations", {
   delegationNote: text("delegation_note"),
   // Channel & metadata
   channel: mysqlEnum("channel", [
-    "ONLINE_DIRECTO", "ONLINE_ASISTIDO", "VENTA_DELEGADA", "TPV_FISICO",
-    "PARTNER", "TICKETING", "MANUAL", "API",
-    // legacy values kept for backward compat
-    "web", "crm", "telefono", "email", "otro", "tpv", "groupon"
+    "ONLINE_DIRECTO", "ONLINE_ASISTIDO", "VENTA_DELEGADA",
+    "TELEFONO", "EMAIL",
+    "TPV_FISICO", "PARTNER", "TICKETING", "MANUAL", "API",
   ]).default("ONLINE_DIRECTO"),
   channelDetail: varchar("channel_detail", { length: 128 }), // e.g. "Groupon", "Smartbox"
   originSource: varchar("origin_source", { length: 64 }), // 'coupon_redemption' | null
