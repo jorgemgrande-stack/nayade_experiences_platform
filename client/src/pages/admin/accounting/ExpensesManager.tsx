@@ -3,7 +3,7 @@ import { toast } from "sonner";
  * ExpensesManager — Gestión de Gastos
  * v21.0 — Módulo Financiero Nayade Experiences
  */
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -123,6 +123,11 @@ export default function ExpensesManager() {
   const [filterTreatment, setFilterTreatment] = useState<"all" | "operational" | "tax_only">("all");
   const [showFilters, setShowFilters] = useState(false);
 
+  // Paginación (mismo patrón que CRM: limit/offset con state local de página)
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [filterDateFrom, filterDateTo, filterCategory, filterCostCenter, filterStatus, filterTreatment]);
+
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -170,7 +175,8 @@ export default function ExpensesManager() {
     costCenterId: filterCostCenter !== "all" ? Number(filterCostCenter) : undefined,
     status: filterStatus !== "all" ? (filterStatus as "pending" | "justified" | "accounted") : undefined,
     treatment: filterTreatment,
-    limit: 200,
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
   });
   const distortionQ = trpc.financial.expenses.distortionKpi.useQuery({}, { staleTime: 60_000 });
 
@@ -924,6 +930,36 @@ export default function ExpensesManager() {
               </tbody>
             </table>
           </div>
+          {/* Paginación (limit/offset · mismo patrón que CRM) */}
+          {total > 0 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t">
+              <span className="text-sm text-muted-foreground">
+                {total <= PAGE_SIZE
+                  ? `Mostrando ${total} de ${total} gastos`
+                  : `Página ${page + 1} de ${Math.ceil(total / PAGE_SIZE)} · ${total} gastos`}
+              </span>
+              {total > PAGE_SIZE && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => p - 1)}
+                    disabled={page === 0}
+                  >
+                    ← Anterior
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={(page + 1) * PAGE_SIZE >= total}
+                  >
+                    Siguiente →
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

@@ -5304,6 +5304,8 @@ export default function CRMDashboard() {
   const [leadsPage, setLeadsPage] = useState(0);
   const [quotesPage, setQuotesPage] = useState(0);
   const [resPage, setResPage] = useState(0);
+  const [invoicesPage, setInvoicesPage] = useState(0);
+  const [anulPage, setAnulPage] = useState(0);
 
   // Resetear página al cambiar filtros o búsqueda
   useEffect(() => { setLeadsPage(0); }, [filterStatus, search, leadSourceFilter]);
@@ -5352,15 +5354,18 @@ export default function CRMDashboard() {
   const [paymentMethod, setPaymentMethod] = useState<"transferencia" | "efectivo" | "otro">("transferencia");
   const [creditNoteReason, setCreditNoteReason] = useState("");
 
+  // Reset paginación cuando cambian los filtros de facturas
+  useEffect(() => { setInvoicesPage(0); }, [invoiceStatusFilter, invoiceTypeFilter, invoiceSearch, invoiceDateFrom, invoiceDateTo]);
+
   const invoiceFilter = useMemo(() => ({
     status: invoiceStatusFilter !== "all" ? invoiceStatusFilter as "generada" | "enviada" | "cobrada" | "anulada" | "abonada" : undefined,
     invoiceType: invoiceTypeFilter !== "all" ? invoiceTypeFilter as "factura" | "abono" : undefined,
     search: invoiceSearch || undefined,
     dateFrom: invoiceDateFrom || undefined,
     dateTo: invoiceDateTo || undefined,
-    limit: 50,
-    offset: 0,
-  }), [invoiceStatusFilter, invoiceTypeFilter, invoiceSearch, invoiceDateFrom, invoiceDateTo]);
+    limit: PAGE_SIZE,
+    offset: invoicesPage * PAGE_SIZE,
+  }), [invoiceStatusFilter, invoiceTypeFilter, invoiceSearch, invoiceDateFrom, invoiceDateTo, invoicesPage]);
 
   const { data: invoicesData, isLoading: invoicesLoading, refetch: refetchInvoices } = trpc.crm.invoices.listAll.useQuery(
     invoiceFilter,
@@ -5380,14 +5385,17 @@ export default function CRMDashboard() {
   const [anulReasonFilter, setAnulReasonFilter] = useState("all");
   const [selectedAnulId, setSelectedAnulId] = useState<number | null>(null);
   const [deleteAnulId, setDeleteAnulId] = useState<number | null>(null);
+  // Reset paginación cuando cambian filtros de anulaciones
+  useEffect(() => { setAnulPage(0); }, [anulSearch, anulOpFilter, anulResFilter, anulFinFilter, anulReasonFilter]);
+
   const { data: anulData, isLoading: anulLoading, isError: anulError, refetch: refetchAnul } = trpc.cancellations.listRequests.useQuery({
     search: anulSearch || undefined,
     operationalStatus: anulOpFilter !== "all" ? anulOpFilter : undefined,
     resolutionStatus: anulResFilter !== "all" ? anulResFilter : undefined,
     financialStatus: anulFinFilter !== "all" ? anulFinFilter : undefined,
     reason: anulReasonFilter !== "all" ? anulReasonFilter : undefined,
-    limit: 100,
-    offset: 0,
+    limit: PAGE_SIZE,
+    offset: anulPage * PAGE_SIZE,
   }, { enabled: tab === "anulaciones", retry: 1 });
   const { data: anulCounters } = trpc.cancellations.getCounters.useQuery(undefined, {
     refetchInterval: 60000,
@@ -6779,23 +6787,27 @@ export default function CRMDashboard() {
                 </tbody>
               </table>
             </div>
-            {leadsData && leadsData.total > PAGE_SIZE && (
+            {leadsData && leadsData.total > 0 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                 <span className="text-sm text-foreground/50">
-                  Página {leadsPage + 1} de {Math.ceil(leadsData.total / PAGE_SIZE)} · {leadsData.total} leads
+                  {leadsData.total <= PAGE_SIZE
+                    ? `Mostrando ${leadsData.total} de ${leadsData.total} leads`
+                    : `Página ${leadsPage + 1} de ${Math.ceil(leadsData.total / PAGE_SIZE)} · ${leadsData.total} leads`}
                 </span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setLeadsPage(p => p - 1)}
-                    disabled={leadsPage === 0}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >← Anterior</button>
-                  <button
-                    onClick={() => setLeadsPage(p => p + 1)}
-                    disabled={(leadsPage + 1) * PAGE_SIZE >= leadsData.total}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
-                  >Siguiente →</button>
-                </div>
+                {leadsData.total > PAGE_SIZE && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setLeadsPage(p => p - 1)}
+                      disabled={leadsPage === 0}
+                      className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                    >← Anterior</button>
+                    <button
+                      onClick={() => setLeadsPage(p => p + 1)}
+                      disabled={(leadsPage + 1) * PAGE_SIZE >= leadsData.total}
+                      className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                    >Siguiente →</button>
+                  </div>
+                )}
               </div>
             )}
             </div>
@@ -6998,11 +7010,14 @@ export default function CRMDashboard() {
                 </tbody>
               </table>
             </div>
-            {quotesData && quotesData.total > PAGE_SIZE && (
+            {quotesData && quotesData.total > 0 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                 <span className="text-sm text-foreground/50">
-                  Página {quotesPage + 1} de {Math.ceil(quotesData.total / PAGE_SIZE)} · {quotesData.total} presupuestos
+                  {quotesData.total <= PAGE_SIZE
+                    ? `Mostrando ${quotesData.total} de ${quotesData.total} presupuestos`
+                    : `Página ${quotesPage + 1} de ${Math.ceil(quotesData.total / PAGE_SIZE)} · ${quotesData.total} presupuestos`}
                 </span>
+                {quotesData.total > PAGE_SIZE && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => setQuotesPage(p => p - 1)}
@@ -7015,6 +7030,7 @@ export default function CRMDashboard() {
                     className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
                   >Siguiente →</button>
                 </div>
+                )}
               </div>
             )}
             </div>
@@ -7323,11 +7339,14 @@ export default function CRMDashboard() {
                 </tbody>
               </table>
             </div>
-            {resData && resData.total > PAGE_SIZE && (
+            {resData && resData.total > 0 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
                 <span className="text-sm text-foreground/50">
-                  Página {resPage + 1} de {Math.ceil(resData.total / PAGE_SIZE)} · {resData.total} reservas
+                  {resData.total <= PAGE_SIZE
+                    ? `Mostrando ${resData.total} de ${resData.total} reservas`
+                    : `Página ${resPage + 1} de ${Math.ceil(resData.total / PAGE_SIZE)} · ${resData.total} reservas`}
                 </span>
+                {resData.total > PAGE_SIZE && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => setResPage(p => p - 1)}
@@ -7340,6 +7359,7 @@ export default function CRMDashboard() {
                     className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
                   >Siguiente →</button>
                 </div>
+                )}
               </div>
             )}
             </div>
@@ -7622,6 +7642,29 @@ export default function CRMDashboard() {
                   </tbody>
                 </table>
               </div>
+              {invoicesData && invoicesData.total > 0 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
+                  <span className="text-sm text-foreground/50">
+                    {invoicesData.total <= PAGE_SIZE
+                      ? `Mostrando ${invoicesData.total} de ${invoicesData.total} facturas`
+                      : `Página ${invoicesPage + 1} de ${Math.ceil(invoicesData.total / PAGE_SIZE)} · ${invoicesData.total} facturas`}
+                  </span>
+                  {invoicesData.total > PAGE_SIZE && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setInvoicesPage(p => p - 1)}
+                        disabled={invoicesPage === 0}
+                        className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                      >← Anterior</button>
+                      <button
+                        onClick={() => setInvoicesPage(p => p + 1)}
+                        disabled={(invoicesPage + 1) * PAGE_SIZE >= invoicesData.total}
+                        className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                      >Siguiente →</button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {/* ─── TAB: ANULACIONES ─────────────────────────────────────────────── */}
@@ -7849,9 +7892,27 @@ export default function CRMDashboard() {
                     </tbody>
                   </table>
                 </div>
-                {anulRows.length > 0 && (
-                  <div className="px-4 py-3 border-t border-foreground/[0.08] text-xs text-foreground/40">
-                    {anulRows.length} solicitud{anulRows.length !== 1 ? "es" : ""}
+                {anulData && anulData.total > 0 && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-foreground/[0.10]">
+                    <span className="text-sm text-foreground/50">
+                      {anulData.total <= PAGE_SIZE
+                        ? `Mostrando ${anulData.total} de ${anulData.total} solicitud${anulData.total !== 1 ? "es" : ""}`
+                        : `Página ${anulPage + 1} de ${Math.ceil(anulData.total / PAGE_SIZE)} · ${anulData.total} solicitudes`}
+                    </span>
+                    {anulData.total > PAGE_SIZE && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setAnulPage(p => p - 1)}
+                          disabled={anulPage === 0}
+                          className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                        >← Anterior</button>
+                        <button
+                          onClick={() => setAnulPage(p => p + 1)}
+                          disabled={(anulPage + 1) * PAGE_SIZE >= anulData.total}
+                          className="px-3 py-1.5 text-sm rounded-lg border border-foreground/20 disabled:opacity-30 hover:bg-foreground/10 transition-colors"
+                        >Siguiente →</button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -608,36 +608,44 @@ export const cancellationsRouter = router({
         conditions.push(sql`${cancellationRequests.voucherId} IS NULL`);
       }
 
-      const rows = await db
-        .select({
-          id: cancellationRequests.id,
-          fullName: cancellationRequests.fullName,
-          email: cancellationRequests.email,
-          phone: cancellationRequests.phone,
-          activityDate: cancellationRequests.activityDate,
-          reason: cancellationRequests.reason,
-          reasonDetail: cancellationRequests.reasonDetail,
-          locator: cancellationRequests.locator,
-          linkedReservationId: cancellationRequests.linkedReservationId,
-          reservationNumber: reservations.reservationNumber,
-          operationalStatus: cancellationRequests.operationalStatus,
-          resolutionStatus: cancellationRequests.resolutionStatus,
-          financialStatus: cancellationRequests.financialStatus,
-          compensationType: cancellationRequests.compensationType,
-          resolvedAmount: cancellationRequests.resolvedAmount,
-          cancellationNumber: cancellationRequests.cancellationNumber,
-          voucherId: cancellationRequests.voucherId,
-          assignedUserId: cancellationRequests.assignedUserId,
-          createdAt: cancellationRequests.createdAt,
-          updatedAt: cancellationRequests.updatedAt,
-          closedAt: cancellationRequests.closedAt,
-        })
-        .from(cancellationRequests)
-        .leftJoin(reservations, eq(cancellationRequests.linkedReservationId, reservations.id))
-        .where(conditions.length > 0 ? and(...conditions) : undefined)
-        .orderBy(desc(cancellationRequests.createdAt))
-        .limit(input.limit)
-        .offset(input.offset);
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+      const [rows, [{ total }]] = await Promise.all([
+        db
+          .select({
+            id: cancellationRequests.id,
+            fullName: cancellationRequests.fullName,
+            email: cancellationRequests.email,
+            phone: cancellationRequests.phone,
+            activityDate: cancellationRequests.activityDate,
+            reason: cancellationRequests.reason,
+            reasonDetail: cancellationRequests.reasonDetail,
+            locator: cancellationRequests.locator,
+            linkedReservationId: cancellationRequests.linkedReservationId,
+            reservationNumber: reservations.reservationNumber,
+            operationalStatus: cancellationRequests.operationalStatus,
+            resolutionStatus: cancellationRequests.resolutionStatus,
+            financialStatus: cancellationRequests.financialStatus,
+            compensationType: cancellationRequests.compensationType,
+            resolvedAmount: cancellationRequests.resolvedAmount,
+            cancellationNumber: cancellationRequests.cancellationNumber,
+            voucherId: cancellationRequests.voucherId,
+            assignedUserId: cancellationRequests.assignedUserId,
+            createdAt: cancellationRequests.createdAt,
+            updatedAt: cancellationRequests.updatedAt,
+            closedAt: cancellationRequests.closedAt,
+          })
+          .from(cancellationRequests)
+          .leftJoin(reservations, eq(cancellationRequests.linkedReservationId, reservations.id))
+          .where(whereClause)
+          .orderBy(desc(cancellationRequests.createdAt))
+          .limit(input.limit)
+          .offset(input.offset),
+        db
+          .select({ total: sql<number>`COUNT(*)` })
+          .from(cancellationRequests)
+          .leftJoin(reservations, eq(cancellationRequests.linkedReservationId, reservations.id))
+          .where(whereClause),
+      ]);
 
       // KPIs — agregados en BD con COUNT GROUP BY, sin cargar toda la tabla en memoria
       const [kpiByOpStatus, kpiByResStatus, kpiByFinStatus] = await Promise.all([
@@ -665,7 +673,7 @@ export const cancellationsRouter = router({
         incidencias: opCount("incidencia"),
       };
 
-      return { rows, kpis };
+      return { rows, kpis, total: Number(total) };
     }),
 
   // ── Detalle de una solicitud ──────────────────────────────────────────────
