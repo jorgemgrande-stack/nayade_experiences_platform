@@ -471,25 +471,25 @@ export default function AdminDashboard() {
                   </Link>
                 )}
                 {(alerts?.invoicesOverdue ?? 0) > 0 && (
-                  <Link href="/admin/contabilidad">
+                  <Link href="/admin/crm?tab=invoices">
                     <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-rose-500/15 transition-colors">
                       <FileText className="w-4 h-4 text-rose-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-rose-300">{alerts?.invoicesOverdue} factura{(alerts?.invoicesOverdue ?? 0) > 1 ? "s" : ""} sin cobrar +30d</p>
-                        <p className="text-[10px] text-rose-400/60">Contabilidad → Facturas</p>
+                        <p className="text-[10px] text-rose-400/60">CRM → Facturas</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                     </div>
                   </Link>
                 )}
                 {cancellacionesPendientes > 0 && (
-                  <Link href="/admin/operaciones/anulaciones">
+                  <Link href="/admin/crm?tab=anulaciones">
                     <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-amber-500/15 transition-colors">
                       <XCircle className="w-4 h-4 text-amber-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-amber-300">{cancellacionesPendientes} anulación{cancellacionesPendientes > 1 ? "es" : ""} pendiente{cancellacionesPendientes > 1 ? "s" : ""}</p>
                         <p className="text-[10px] text-amber-400/60">
-                          {anulCountersDash?.incidencias ? `${anulCountersDash.incidencias} incidencia${anulCountersDash.incidencias > 1 ? "s" : ""} · ` : ""}Operaciones → Anulaciones
+                          {anulCountersDash?.incidencias ? `${anulCountersDash.incidencias} incidencia${anulCountersDash.incidencias > 1 ? "s" : ""} · ` : ""}CRM → Anulaciones
                         </p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -545,24 +545,24 @@ export default function AdminDashboard() {
                   </Link>
                 )}
                 {installmentsOverdue > 0 && (
-                  <Link href="/admin/crm">
+                  <Link href="/admin/crm?tab=pagos_pendientes">
                     <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-red-500/15 transition-colors">
                       <CreditCard className="w-4 h-4 text-red-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-red-300">{installmentsOverdue} cuota{installmentsOverdue > 1 ? "s" : ""} de pago vencida{installmentsOverdue > 1 ? "s" : ""}</p>
-                        <p className="text-[10px] text-red-400/60">CRM → Pagos fraccionados</p>
+                        <p className="text-[10px] text-red-400/60">CRM → Pagos pendientes</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-red-400 shrink-0" />
                     </div>
                   </Link>
                 )}
                 {installmentsDueToday > 0 && installmentsOverdue === 0 && (
-                  <Link href="/admin/crm">
+                  <Link href="/admin/crm?tab=pagos_pendientes">
                     <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:bg-amber-500/15 transition-colors">
                       <CreditCard className="w-4 h-4 text-amber-400 shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-semibold text-amber-300">{installmentsDueToday} cuota{installmentsDueToday > 1 ? "s" : ""} fraccionada{installmentsDueToday > 1 ? "s" : ""} vence hoy</p>
-                        <p className="text-[10px] text-amber-400/60">CRM → Pagos fraccionados</p>
+                        <p className="text-[10px] text-amber-400/60">CRM → Pagos pendientes</p>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     </div>
