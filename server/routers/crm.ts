@@ -804,6 +804,44 @@ export const crmRouter = router({
         return { success: true };
       }),
 
+    // ─── Marcar un lead como contactado ─────────────────────────────────────
+    // Setea lastContactAt = NOW(). El dashboard usa este campo para sacar
+    // temporalmente al lead del contador "leads por atender": si el lead
+    // sigue en opportunityStatus='nueva' y han pasado >3 días desde el
+    // último contacto manual, vuelve a aparecer como pendiente (chasing).
+    markContacted: staff
+      .input(z.object({ id: z.number(), note: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const [lead] = await db.select({ id: leads.id, internalNotes: leads.internalNotes })
+          .from(leads).where(eq(leads.id, input.id));
+        if (!lead) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const updateData: Record<string, unknown> = {
+          lastContactAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        // Si el admin escribe una nota, se añade al historial interno.
+        if (input.note?.trim()) {
+          const existing = (lead.internalNotes as { text: string; authorId: number; authorName: string; createdAt: string }[]) ?? [];
+          updateData.internalNotes = [
+            ...existing,
+            {
+              text: `[Contacto] ${input.note.trim()}`,
+              authorId: ctx.user.id,
+              authorName: ctx.user.name ?? "Agente",
+              createdAt: new Date().toISOString(),
+            },
+          ];
+        }
+
+        await db.update(leads).set(updateData).where(eq(leads.id, input.id));
+        await logActivity("lead", input.id, "lead_contacted", ctx.user.id, ctx.user.name, {
+          note: input.note ?? null,
+        });
+        return { success: true, lastContactAt: updateData.lastContactAt };
+      }),
+
     addNote: staff
       .input(z.object({ id: z.number(), text: z.string().min(1) }))
       .mutation(async ({ input, ctx }) => {

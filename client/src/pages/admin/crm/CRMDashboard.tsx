@@ -5448,6 +5448,15 @@ export default function CRMDashboard() {
     onSuccess: (r) => { toast.success(`Estado actualizado en ${r.updated} lead(s)`); setSelectedLeads(new Set()); setBulkLeadsStatus(""); utils.crm.leads.list.invalidate(); utils.crm.leads.counters.invalidate(); },
     onError: (e) => toast.error(e.message),
   });
+  const markLeadContacted = trpc.crm.leads.markContacted.useMutation({
+    onSuccess: () => {
+      toast.success("Lead marcado como contactado");
+      utils.crm.leads.list.invalidate();
+      utils.crm.leads.counters.invalidate();
+      utils.accounting.getOverview.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const bulkDeleteQuotes = trpc.crm.quotes.bulkDelete.useMutation({
     onSuccess: (r) => { toast.success(`${r.deleted} presupuesto(s) eliminados`); setSelectedQuotes(new Set()); utils.crm.quotes.list.invalidate(); utils.crm.quotes.counters.invalidate(); },
     onError: (e) => toast.error(e.message),
@@ -6761,6 +6770,18 @@ export default function CRMDashboard() {
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
+                          {lead.opportunityStatus === "nueva" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-emerald-400 hover:text-emerald-300 h-7 px-2 text-xs"
+                              onClick={() => markLeadContacted.mutate({ id: lead.id })}
+                              disabled={markLeadContacted.isPending}
+                              title="Marcar como contactado (lo saca 3 días del contador de leads sin atender)"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                           <ProposalLeadButton leadId={lead.id} leadName={lead.name} />
                           <Button
                             size="sm"
