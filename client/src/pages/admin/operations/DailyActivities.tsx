@@ -95,7 +95,7 @@ function getLineOp(parentIndex: number, lineId: number, activitiesOpJson: any[],
     monitorId:   lineOv?.monitorId   !== undefined ? lineOv.monitorId   : parentOp.monitorId,
     arrivalTime: lineOv?.arrivalTime !== undefined ? lineOv.arrivalTime : parentOp.arrivalTime,
     opNotes:     lineOv?.opNotes     !== undefined ? lineOv.opNotes     : parentOp.opNotes,
-    consolidated: false,
+    consolidated: lineOv?.consolidated === true,
     isInherited: !lineOv,
   };
 }
@@ -221,7 +221,7 @@ function computeDaySummary(reservations: any[], dateStr: string): Array<{ title:
 // Cada experiencia muestra su monitor/hora (propios o heredados del componente)
 // y permite editar su operativa (override por lineId).
 type PackLine = { lineId: number; title: string; quantity: number; groupLabel: string | null; isOptional: boolean };
-function PackExpansion({ lines, parentIndex, packQty, activitiesOpJson, res, monitors, onEditLine }: {
+function PackExpansion({ lines, parentIndex, packQty, activitiesOpJson, res, monitors, onEditLine, onConsolidateLine }: {
   lines?: PackLine[];
   parentIndex: number;
   /** Unidades compradas del pack (cantidad de la línea de presupuesto). El nº real de
@@ -231,6 +231,7 @@ function PackExpansion({ lines, parentIndex, packQty, activitiesOpJson, res, mon
   res: any;
   monitors: any[];
   onEditLine: (line: PackLine, op: ReturnType<typeof getLineOp>) => void;
+  onConsolidateLine: (line: PackLine, op: ReturnType<typeof getLineOp>) => void;
 }) {
   if (!lines || lines.length === 0) return null;
   return (
@@ -266,10 +267,18 @@ function PackExpansion({ lines, parentIndex, packQty, activitiesOpJson, res, mon
                 <Badge className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/30">Heredado</Badge>
               )}
             </div>
-            <Button size="sm" variant="outline" onClick={() => onEditLine(line, op)}
-              className="border-slate-600 text-slate-400 hover:bg-slate-700 text-[9px] h-6 px-1.5 gap-1 shrink-0">
-              <ClipboardList className="w-2.5 h-2.5" />Editar
-            </Button>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button size="sm" variant="outline" onClick={() => onConsolidateLine(line, op)}
+                className={cn("text-[9px] h-6 px-1.5 gap-1", op.consolidated
+                  ? "border-slate-600 text-slate-400 hover:bg-slate-700"
+                  : "border-emerald-600/50 text-emerald-400 hover:bg-emerald-500/10")}>
+                <CheckCheck className="w-2.5 h-2.5" />{op.consolidated ? "Desmarcar" : "Consolidar"}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onEditLine(line, op)}
+                className="border-slate-600 text-slate-400 hover:bg-slate-700 text-[9px] h-6 px-1.5 gap-1">
+                <ClipboardList className="w-2.5 h-2.5" />Editar
+              </Button>
+            </div>
           </div>
         );
       })}
@@ -297,7 +306,7 @@ export default function DailyActivities() {
   const [editServiceDate, setEditServiceDate] = useState<string>("");
   const [cancelTarget, setCancelTarget] = useState<{ id: number; title: string } | null>(null);
   const [confirmArrivalTarget, setConfirmArrivalTarget] = useState<{ reservationId: number; time: string } | null>(null);
-  const [consolidateTarget, setConsolidateTarget] = useState<{ reservationId: number; activityIndex: number; title: string; currentValue: boolean } | null>(null);
+  const [consolidateTarget, setConsolidateTarget] = useState<{ reservationId: number; activityIndex: number; lineId?: number; lineIds?: number[]; title: string; currentValue: boolean } | null>(null);
   const [opFilter, setOpFilter] = useState<FilterType>("all");
 
   const dateStr = formatDate(currentDate);
@@ -323,6 +332,16 @@ export default function DailyActivities() {
     onSuccess: () => { invalidate(); toast.success("Actividad actualizada"); setEditTarget(null); },
     onError: () => toast.error("Error al guardar actividad"),
   });
+
+  // Mutation silenciosa para consolidar/desmarcar varias experiencias de un pack en lote.
+  const quietOpMut = trpc.operations.activities.updateActivityOp.useMutation();
+  async function consolidateAllLines(reservationId: number, activityIndex: number, lineIds: number[], value: boolean) {
+    for (const lineId of lineIds) {
+      await quietOpMut.mutateAsync({ reservationId, activityIndex, lineId, consolidated: value });
+    }
+    invalidate();
+    toast.success(value ? "Experiencias consolidadas" : "Experiencias desmarcadas");
+  }
 
   const confirmArrivalMutation = trpc.operations.activities.confirmArrival.useMutation({
     onSuccess: () => { invalidate(); toast.success("Llegada confirmada"); },
@@ -595,8 +614,36 @@ export default function DailyActivities() {
               ];
               const totalActivities = shownComponents.length;
               const isMadreToday = !hasCompDates || res.scheduledDate === dateStr;
-              const consolidatedCount = shownComponents
-                .filter(c => getActivityOp(c.index, activitiesOpJson, res).consolidated).length;
+
+              // Consolidación granular: un componente-pack se consolida POR EXPERIENCIA;
+              // un componente no-pack, como un todo.
+              const isPackComp = (index: number) => linesTodayFor(index).length > 0;
+              const packAllConsolidated = (index: number) => {
+                const ls = linesTodayFor(index);
+                return ls.length > 0 && ls.every((l: any) => getLineOp(index, l.lineId, activitiesOpJson, res).consolidated);
+              };
+              const compOp = (index: number) => isPackComp(index)
+                ? { ...getActivityOp(index, activitiesOpJson, res), consolidated: packAllConsolidated(index) }
+                : getActivityOp(index, activitiesOpJson, res);
+              const consolidateComp = (index: number, title: string) => {
+                if (isPackComp(index)) {
+                  setConsolidateTarget({ reservationId: res.id, activityIndex: index, lineIds: linesTodayFor(index).map((l: any) => l.lineId), title, currentValue: packAllConsolidated(index) });
+                } else {
+                  setConsolidateTarget({ reservationId: res.id, activityIndex: index, title, currentValue: getActivityOp(index, activitiesOpJson, res).consolidated });
+                }
+              };
+              const consolidateLine = (parentIndex: number, line: any, op: any) =>
+                setConsolidateTarget({ reservationId: res.id, activityIndex: parentIndex, lineId: line.lineId, title: line.title, currentValue: op.consolidated });
+
+              // Contador por UNIDADES (experiencias para packs, componente para no-packs).
+              const consolidableStates = shownComponents.flatMap((c) => {
+                const ls = linesTodayFor(c.index);
+                return ls.length
+                  ? ls.map((l: any) => getLineOp(c.index, l.lineId, activitiesOpJson, res).consolidated)
+                  : [getActivityOp(c.index, activitiesOpJson, res).consolidated];
+              });
+              const totalUnits = consolidableStates.length;
+              const consolidatedUnits = consolidableStates.filter(Boolean).length;
 
               return (
                 <div key={res.id} className={cn(
@@ -679,13 +726,13 @@ export default function DailyActivities() {
                               </span>
                             )}
                             <span className={cn("flex items-center gap-1 text-xs px-2 py-0.5 rounded border",
-                              consolidatedCount === totalActivities
+                              totalUnits > 0 && consolidatedUnits === totalUnits
                                 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                                : consolidatedCount > 0
+                                : consolidatedUnits > 0
                                   ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
                                   : "text-slate-500 bg-slate-800/60 border-slate-700")}>
                               <CheckCheck className="w-3 h-3" />
-                              {consolidatedCount}/{totalActivities} consolidada{totalActivities !== 1 ? "s" : ""}
+                              {consolidatedUnits}/{totalUnits} consolidada{totalUnits !== 1 ? "s" : ""}
                             </span>
                             {res.merchantOrder && (
                               <span className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
@@ -755,10 +802,10 @@ export default function DailyActivities() {
                             index={c.index}
                             title={c.title}
                             pax={c.pax}
-                            op={getActivityOp(c.index, activitiesOpJson, res)}
+                            op={compOp(c.index)}
                             monitors={monitors}
                             onEdit={() => openEditActivity(res, c.index, c.title)}
-                            onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: c.index, title: c.title, currentValue: getActivityOp(c.index, activitiesOpJson, res).consolidated })}
+                            onConsolidate={() => consolidateComp(c.index, c.title)}
                           />
                           <PackExpansion
                             lines={linesTodayFor(c.index)}
@@ -768,6 +815,7 @@ export default function DailyActivities() {
                             res={res}
                             monitors={monitors}
                             onEditLine={(line, op) => openEditPackLine(res, c.index, line, op)}
+                            onConsolidateLine={(line, op) => consolidateLine(c.index, line, op)}
                           />
                         </div>
                       ))}
@@ -780,10 +828,10 @@ export default function DailyActivities() {
                         index={shownComponents[0].index}
                         title={shownComponents[0].title}
                         pax={shownComponents[0].pax}
-                        op={getActivityOp(shownComponents[0].index, activitiesOpJson, res)}
+                        op={compOp(shownComponents[0].index)}
                         monitors={monitors}
                         onEdit={() => openEditActivity(res, shownComponents[0].index, shownComponents[0].title)}
-                        onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: shownComponents[0].index, title: shownComponents[0].title, currentValue: getActivityOp(shownComponents[0].index, activitiesOpJson, res).consolidated })}
+                        onConsolidate={() => consolidateComp(shownComponents[0].index, shownComponents[0].title)}
                       />
                       <PackExpansion
                         lines={linesTodayFor(shownComponents[0].index)}
@@ -793,6 +841,7 @@ export default function DailyActivities() {
                         res={res}
                         monitors={monitors}
                         onEditLine={(line, op) => openEditPackLine(res, shownComponents[0].index, line, op)}
+                        onConsolidateLine={(line, op) => consolidateLine(shownComponents[0].index, line, op)}
                       />
                     </div>
                   )}
@@ -915,9 +964,13 @@ export default function DailyActivities() {
           </DialogHeader>
           <div className="py-2">
             <p className="text-sm text-slate-400">
-              {consolidateTarget?.currentValue
-                ? <>¿Desmarcar <strong className="text-white">{consolidateTarget.title}</strong> como consolidada?</>
-                : <>¿Marcar <strong className="text-white">{consolidateTarget?.title}</strong> como consolidada?</>}
+              {consolidateTarget?.lineIds
+                ? (consolidateTarget.currentValue
+                    ? <>¿Desmarcar las <strong className="text-white">{consolidateTarget.lineIds.length}</strong> experiencias de <strong className="text-white">{consolidateTarget.title}</strong>?</>
+                    : <>¿Consolidar las <strong className="text-white">{consolidateTarget.lineIds.length}</strong> experiencias de <strong className="text-white">{consolidateTarget.title}</strong>?</>)
+                : consolidateTarget?.currentValue
+                  ? <>¿Desmarcar <strong className="text-white">{consolidateTarget.title}</strong> como consolidada?</>
+                  : <>¿Marcar <strong className="text-white">{consolidateTarget?.title}</strong> como consolidada?</>}
             </p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
@@ -932,11 +985,16 @@ export default function DailyActivities() {
                 : "bg-emerald-600 hover:bg-emerald-700 text-white"}
               onClick={() => {
                 if (!consolidateTarget) return;
-                updateActivityOpMutation.mutate({
-                  reservationId: consolidateTarget.reservationId,
-                  activityIndex: consolidateTarget.activityIndex,
-                  consolidated: !consolidateTarget.currentValue,
-                });
+                if (consolidateTarget.lineIds) {
+                  consolidateAllLines(consolidateTarget.reservationId, consolidateTarget.activityIndex, consolidateTarget.lineIds, !consolidateTarget.currentValue);
+                } else {
+                  updateActivityOpMutation.mutate({
+                    reservationId: consolidateTarget.reservationId,
+                    activityIndex: consolidateTarget.activityIndex,
+                    lineId: consolidateTarget.lineId,
+                    consolidated: !consolidateTarget.currentValue,
+                  });
+                }
                 setConsolidateTarget(null);
               }}>
               {consolidateTarget?.currentValue ? "Desmarcar" : "Consolidar"}
