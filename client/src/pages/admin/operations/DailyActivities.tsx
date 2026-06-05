@@ -69,7 +69,7 @@ type FilterType = "all" | "sin_monitor" | "sin_hora" | "incidencia" | "completa"
 function parseExtras(extrasJson: string | null | undefined): any[] {
   try { return extrasJson ? JSON.parse(extrasJson) : []; } catch { return []; }
 }
-function parseActivitiesOp(json: any): Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean }> {
+function parseActivitiesOp(json: any): Array<{ index: number; lineId?: number; serviceDate?: string | null; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean }> {
   if (!json) return [];
   if (Array.isArray(json)) return json; // MySQL2 puede devolver JSON ya parseado
   try { return JSON.parse(json) || []; } catch { return []; }
@@ -186,6 +186,7 @@ function PackExpansion({ lines, parentIndex, activitiesOpJson, res, monitors, on
       {lines.map((line) => {
         const op = getLineOp(parentIndex, line.lineId, activitiesOpJson, res);
         const monitorName = op.monitorId ? (monitors.find(m => m.id === op.monitorId)?.fullName || `Monitor #${op.monitorId}`) : null;
+        const ownDate = activitiesOpJson.find((a: any) => a.index === parentIndex && a.lineId === line.lineId)?.serviceDate;
         return (
           <div key={line.lineId} className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -194,6 +195,11 @@ function PackExpansion({ lines, parentIndex, activitiesOpJson, res, monitors, on
               {line.quantity > 1 && <span className="text-[10px] text-slate-500">×{line.quantity}</span>}
               {line.isOptional && (
                 <Badge className="text-[9px] bg-amber-500/10 text-amber-400 border-amber-500/30">opcional</Badge>
+              )}
+              {ownDate && (
+                <Badge className="text-[9px] bg-violet-500/10 text-violet-300 border-violet-500/30 flex items-center gap-0.5">
+                  <CalendarDays className="w-2.5 h-2.5" />{ownDate}
+                </Badge>
               )}
               <span className={cn("flex items-center gap-0.5 text-[10px]", monitorName ? "text-emerald-400" : "text-red-400")}>
                 <User className="w-2.5 h-2.5" />{monitorName || "Sin monitor"}
@@ -322,13 +328,17 @@ export default function DailyActivities() {
     setEditServiceDate(eff);
   }
 
-  // Editar la operativa (monitor/hora/notas) de una EXPERIENCIA dentro de un Lego Pack.
+  // Editar la operativa (monitor/hora/notas/fecha) de una EXPERIENCIA dentro de un Lego Pack.
   function openEditPackLine(res: any, parentIndex: number, line: PackLine, op: ReturnType<typeof getLineOp>) {
     setEditTarget({ reservationId: res.id, activityIndex: parentIndex, lineId: line.lineId, title: line.title, current: op });
     setEditMonitorId(op.monitorId ? String(op.monitorId) : "none");
     setEditArrivalTime(op.arrivalTime || "");
     setEditOpNotes(op.opNotes || "");
-    setEditServiceDate(""); // la fecha por experiencia no se gestiona aquí (queda a nivel de componente)
+    // Fecha efectiva de la experiencia: override propio o, si no, la del componente padre.
+    const aoj = parseActivitiesOp(res.activitiesOpJson);
+    const ov = aoj.find((a: any) => a.index === parentIndex && a.lineId === line.lineId);
+    const compDate = (res.componentDates || []).find((c: any) => c.index === parentIndex)?.date || res.scheduledDate || "";
+    setEditServiceDate(ov?.serviceDate || compDate);
   }
 
   async function handleSave() {
@@ -353,7 +363,7 @@ export default function DailyActivities() {
         monitorId,
         arrivalTime: editArrivalTime || undefined,
         opNotes: editOpNotes || undefined,
-        serviceDate: editTarget.lineId != null ? undefined : (editServiceDate || null),
+        serviceDate: editServiceDate || null,
       });
     }
   }
@@ -468,18 +478,35 @@ export default function DailyActivities() {
               const isExpanded = expandedIds.has(res.id);
               const isSoon = res.arrivalTime && isWithin2Hours(res.arrivalTime, dateStr);
 
-              // Parche A: cada componente tiene su fecha efectiva (override admin →
-              // semilla del presupuesto → fecha de la reserva madre). En esta vista de
-              // un solo día mostramos SOLO los componentes cuya fecha efectiva es hoy.
+              // Fechas efectivas por componente (Parche A) y por experiencia de Lego
+              // Pack (Fase C). En esta vista de un solo día se muestran solo los
+              // componentes/experiencias cuya fecha efectiva es hoy.
               // Índices: principal = 0, extra `i` = i+1.
               const compDates: Array<{ index: number; date: string }> = res.componentDates || [];
               const hasCompDates = compDates.length > 0;
               const effDate = (index: number) =>
                 compDates.find(c => c.index === index)?.date ?? res.scheduledDate;
-              const showsToday = (index: number) => !hasCompDates || effDate(index) === dateStr;
+              const packLinesOf = (index: number): any[] => res.packExpansions?.[index] || [];
+              // Fecha efectiva de una experiencia de pack: su override propio o, si no, la del componente.
+              const lineEffDate = (parentIndex: number, lineId: number) => {
+                const ov = activitiesOpJson.find((a: any) => a.index === parentIndex && a.lineId === lineId);
+                return ov?.serviceDate || effDate(parentIndex);
+              };
+              const linesTodayFor = (index: number): any[] => {
+                const lines = packLinesOf(index);
+                if (!hasCompDates) return lines;
+                return lines.filter((l: any) => lineEffDate(index, l.lineId) === dateStr);
+              };
+              // Un componente se muestra hoy si: (pack) tiene alguna experiencia hoy, o
+              // (no-pack) su fecha efectiva es hoy.
+              const componentShowsToday = (index: number) => {
+                if (!hasCompDates) return true;
+                if (packLinesOf(index).length) return linesTodayFor(index).length > 0;
+                return effDate(index) === dateStr;
+              };
 
               const shownComponents = [
-                ...(showsToday(0)
+                ...(componentShowsToday(0)
                   ? [{ index: 0, title: res.activityTitle || "Actividad principal", pax: res.numberOfPersons }]
                   : []),
                 ...extras
@@ -488,7 +515,7 @@ export default function DailyActivities() {
                     title: ex.experienceTitle || ex.name || `Actividad ${i + 2}`,
                     pax: ex.participants || ex.pax || res.numberOfPersons,
                   }))
-                  .filter((c: any) => showsToday(c.index)),
+                  .filter((c: any) => componentShowsToday(c.index)),
               ];
               const totalActivities = shownComponents.length;
               const isMadreToday = !hasCompDates || res.scheduledDate === dateStr;
@@ -658,7 +685,7 @@ export default function DailyActivities() {
                             onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: c.index, title: c.title, currentValue: getActivityOp(c.index, activitiesOpJson, res).consolidated })}
                           />
                           <PackExpansion
-                            lines={res.packExpansions?.[c.index]}
+                            lines={linesTodayFor(c.index)}
                             parentIndex={c.index}
                             activitiesOpJson={activitiesOpJson}
                             res={res}
@@ -682,7 +709,7 @@ export default function DailyActivities() {
                         onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: shownComponents[0].index, title: shownComponents[0].title, currentValue: getActivityOp(shownComponents[0].index, activitiesOpJson, res).consolidated })}
                       />
                       <PackExpansion
-                        lines={res.packExpansions?.[shownComponents[0].index]}
+                        lines={linesTodayFor(shownComponents[0].index)}
                         parentIndex={shownComponents[0].index}
                         activitiesOpJson={activitiesOpJson}
                         res={res}
@@ -721,7 +748,7 @@ export default function DailyActivities() {
                 )}
               </div>
 
-              {editTarget.activityIndex >= 0 && editTarget.lineId == null && (
+              {editTarget.activityIndex >= 0 && (
                 <div>
                   <label className="text-sm text-slate-400 mb-2 flex items-center gap-1">
                     <CalendarDays className="w-3.5 h-3.5 text-violet-400" />Fecha del servicio
