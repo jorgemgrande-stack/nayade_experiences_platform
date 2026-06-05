@@ -216,11 +216,12 @@ function buildRedemptionConfirmationHtml(data: {
   customerName: string;
   email: string;
   phone?: string;
-  coupons: { couponCode: string; provider: string }[];
+  coupons: { couponCode: string; provider: string; securityCode?: string | null }[];
   submissionId: string;
   requestedDate?: string;
+  requestDate?: string;
 }) {
-  return buildCouponRedemptionReceivedHtml({ customerName: data.customerName, coupons: data.coupons, submissionId: data.submissionId, requestedDate: data.requestedDate });
+  return buildCouponRedemptionReceivedHtml({ customerName: data.customerName, coupons: data.coupons, submissionId: data.submissionId, requestedDate: data.requestedDate, requestDate: data.requestDate });
 }
 function buildPostponeEmailHtml(data: {
   customerName: string;
@@ -393,7 +394,7 @@ export const ticketingRouter = router({
     .mutation(async ({ input }) => {
       const submissionId = crypto.randomUUID();
       const results: { couponCode: string; accepted: boolean; reason?: string; redemptionId?: number }[] = [];
-      const validResults: { couponCode: string; provider: string }[] = [];
+      const validResults: { couponCode: string; provider: string; securityCode?: string | null }[] = [];
 
       for (const coupon of input.coupons) {
         const dupCheck = await checkDuplicates(coupon.couponCode, coupon.securityCode, input.email, input.phone, input.requestedDate, coupon.productTicketingId);
@@ -431,7 +432,7 @@ export const ticketingRouter = router({
         });
         const redemptionId = (result as { insertId: number }).insertId;
         results.push({ couponCode: coupon.couponCode, accepted: true, redemptionId });
-        validResults.push({ couponCode: coupon.couponCode, provider: coupon.provider ?? input.provider });
+        validResults.push({ couponCode: coupon.couponCode, provider: coupon.provider ?? input.provider, securityCode: coupon.securityCode ?? null });
 
         // OCR en background
         if (coupon.attachmentUrl) {
@@ -481,7 +482,9 @@ export const ticketingRouter = router({
 
           // Email confirmación cliente
           try {
-            const confirmHtml = buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate });
+            const now = new Date();
+            const requestDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+            const confirmHtml = buildRedemptionConfirmationHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate, requestDate });
             sendManagedEmail({
               templateKey: "coupon_received",
               triggerEvent: "coupon_received",

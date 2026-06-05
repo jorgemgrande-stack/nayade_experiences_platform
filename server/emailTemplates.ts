@@ -1705,14 +1705,17 @@ export function buildTpvTicketHtml(d: {
 
 export function buildCouponRedemptionReceivedHtml(d: {
   customerName: string;
-  coupons: { couponCode: string; provider: string }[];
+  coupons: { couponCode: string; provider: string; securityCode?: string | null }[];
   submissionId: string;
   requestedDate?: string;
+  /** Fecha en que se realizó la solicitud (createdAt), distinta de la fecha solicitada para la actividad. */
+  requestDate?: string;
 }): string {
   const couponRowsHtml = d.coupons.map(c => `
     <tr>
       <td style="padding:8px 4px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${c.provider}</td>
-      <td style="padding:8px 4px;text-align:right;font-family:monospace;color:#f97316;font-size:13px;font-weight:700;">${c.couponCode}</td>
+      <td style="padding:8px 4px;text-align:center;font-family:monospace;color:#f97316;font-size:13px;font-weight:700;">${c.couponCode}</td>
+      <td style="padding:8px 4px;text-align:right;font-family:monospace;color:#1e3a6e;font-size:13px;font-weight:700;">${c.securityCode || "—"}</td>
     </tr>`).join("");
   const body = `
     ${emailHeader("Solicitud de Canje", "Hemos recibido tu solicitud")}
@@ -1722,7 +1725,7 @@ export function buildCouponRedemptionReceivedHtml(d: {
         Hemos registrado tu solicitud de canje correctamente. Nos pondremos en contacto para confirmar la disponibilidad.
       </p>
       ${statusBlock("success", "Solicitud registrada",
-        `Referencia: <strong>${d.submissionId}</strong>${d.requestedDate ? ` · Fecha solicitada: <strong>${d.requestedDate}</strong>` : ""}`)}
+        `Referencia: <strong>${d.submissionId}</strong>${d.requestDate ? ` · Fecha de solicitud: <strong>${d.requestDate}</strong>` : ""}${d.requestedDate ? ` · Fecha solicitada: <strong>${d.requestedDate}</strong>` : ""}`)}
     </td></tr>
     <tr><td style="padding:0 32px 12px;">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:10px;border:1px solid #e8eef7;">
@@ -1731,7 +1734,8 @@ export function buildCouponRedemptionReceivedHtml(d: {
           <table width="100%" cellpadding="0" cellspacing="0">
             <thead><tr>
               <th style="text-align:left;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Proveedor</th>
-              <th style="text-align:right;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Código</th>
+              <th style="text-align:center;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Código</th>
+              <th style="text-align:right;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Cód. seguridad</th>
             </tr></thead>
             <tbody>${couponRowsHtml}</tbody>
           </table>
