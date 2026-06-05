@@ -236,11 +236,12 @@ function buildInternalAlertHtml(data: {
   customerName: string;
   email: string;
   phone?: string;
-  coupons: { couponCode: string; provider: string }[];
+  coupons: { couponCode: string; provider: string; securityCode?: string | null }[];
   submissionId: string;
   requestedDate?: string;
+  requestDate?: string;
 }) {
-  return buildCouponInternalAlertHtml({ customerName: data.customerName, email: data.email, phone: data.phone, coupons: data.coupons, submissionId: data.submissionId, requestedDate: data.requestedDate });
+  return buildCouponInternalAlertHtml({ customerName: data.customerName, email: data.email, phone: data.phone, coupons: data.coupons, submissionId: data.submissionId, requestedDate: data.requestedDate, requestDate: data.requestDate });
 }
 // ─── ROUTER ───────────────────────────────────────────────────────────────────
 export const ticketingRouter = router({
@@ -503,7 +504,9 @@ export const ticketingRouter = router({
             const [cfg] = await db.select().from(couponEmailConfig).limit(1);
             if (!cfg || cfg.autoSendInternalAlert) {
               const alertEmail = cfg?.internalAlertEmail ?? getCopyEmail();
-              const alertHtml = buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate });
+              const nowAlert = new Date();
+              const requestDateAlert = `${nowAlert.getFullYear()}-${String(nowAlert.getMonth() + 1).padStart(2, "0")}-${String(nowAlert.getDate()).padStart(2, "0")}`;
+              const alertHtml = buildInternalAlertHtml({ customerName: input.customerName, email: input.email, phone: input.phone, coupons: validResults, submissionId, requestedDate: input.requestedDate, requestDate: requestDateAlert });
               sendManagedEmail({
                 templateKey: "coupon_internal_alert",
                 triggerEvent: "coupon_internal_alert",

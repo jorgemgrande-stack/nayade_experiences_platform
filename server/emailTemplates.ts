@@ -1787,14 +1787,17 @@ export function buildCouponInternalAlertHtml(d: {
   customerName: string;
   email: string;
   phone?: string;
-  coupons: { couponCode: string; provider: string }[];
+  coupons: { couponCode: string; provider: string; securityCode?: string | null }[];
   submissionId: string;
   requestedDate?: string;
+  /** Fecha en que se realizó la solicitud (createdAt), distinta de la fecha solicitada. */
+  requestDate?: string;
 }): string {
   const couponRowsHtml = d.coupons.map(c => `
     <tr>
       <td style="padding:6px 4px;color:#374151;font-size:13px;font-family:Arial,sans-serif;">${c.provider}</td>
-      <td style="padding:6px 4px;text-align:right;font-family:monospace;color:#f97316;font-size:13px;font-weight:700;">${c.couponCode}</td>
+      <td style="padding:6px 4px;text-align:center;font-family:monospace;color:#f97316;font-size:13px;font-weight:700;">${c.couponCode}</td>
+      <td style="padding:6px 4px;text-align:right;font-family:monospace;color:#1e3a6e;font-size:13px;font-weight:700;">${c.securityCode || "—"}</td>
     </tr>`).join("");
   const body = `
     ${emailHeader("Alerta Interna", "Nuevo envío de cupones")}
@@ -1809,6 +1812,7 @@ export function buildCouponInternalAlertHtml(d: {
           ${detailRow(SVG.person, "Nombre", d.customerName)}
           ${detailRow(SVG.mail, "Email", d.email)}
           ${d.phone ? detailRow(SVG.phone, "Teléfono", d.phone) : ""}
+          ${d.requestDate ? detailRow(SVG.clock, "Fecha de solicitud", d.requestDate) : ""}
           ${d.requestedDate ? detailRow(SVG.clock, "Fecha solicitada", d.requestedDate) : ""}
           ${detailRow(SVG.ref, "Referencia", d.submissionId)}
         </td></tr>
@@ -1821,7 +1825,8 @@ export function buildCouponInternalAlertHtml(d: {
           <table width="100%" cellpadding="0" cellspacing="0">
             <thead><tr>
               <th style="text-align:left;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Proveedor</th>
-              <th style="text-align:right;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Código</th>
+              <th style="text-align:center;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Código</th>
+              <th style="text-align:right;color:#9ca3af;font-size:10px;padding:0 4px 8px;font-family:Arial,sans-serif;">Cód. seguridad</th>
             </tr></thead>
             <tbody>${couponRowsHtml}</tbody>
           </table>
