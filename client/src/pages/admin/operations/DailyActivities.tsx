@@ -152,6 +152,30 @@ function ActivitySubItem({
   );
 }
 
+// ─── Despliegue de experiencias de un Lego Pack (solo lectura) ────────────────
+type PackLine = { lineId: number; title: string; quantity: number; groupLabel: string | null; isOptional: boolean };
+function PackExpansion({ lines }: { lines?: PackLine[] }) {
+  if (!lines || lines.length === 0) return null;
+  return (
+    <div className="ml-6 pl-3 border-l-2 border-cyan-700/40 space-y-1.5 py-1">
+      <p className="text-[9px] text-cyan-500/80 uppercase tracking-wide font-semibold">Experiencias del pack</p>
+      {lines.map((line) => (
+        <div key={line.lineId} className="flex items-center gap-2 flex-wrap">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+          <span className="text-sm text-white/85">{line.title}</span>
+          {line.quantity > 1 && <span className="text-[10px] text-slate-500">×{line.quantity}</span>}
+          {line.groupLabel && (
+            <Badge className="text-[9px] bg-slate-500/10 text-slate-400 border-slate-500/30">{line.groupLabel}</Badge>
+          )}
+          {line.isOptional && (
+            <Badge className="text-[9px] bg-amber-500/10 text-amber-400 border-amber-500/30">opcional</Badge>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function DailyActivities() {
   const [currentDate, setCurrentDate] = useState(() => {
@@ -572,22 +596,24 @@ export default function DailyActivities() {
                         Actividades de hoy — los datos heredados provienen de la operativa general de la reserva
                       </p>
                       {shownComponents.map((c) => (
-                        <ActivitySubItem
-                          key={c.index}
-                          index={c.index}
-                          title={c.title}
-                          pax={c.pax}
-                          op={getActivityOp(c.index, activitiesOpJson, res)}
-                          monitors={monitors}
-                          onEdit={() => openEditActivity(res, c.index, c.title)}
-                          onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: c.index, title: c.title, currentValue: getActivityOp(c.index, activitiesOpJson, res).consolidated })}
-                        />
+                        <div key={c.index} className="space-y-1.5">
+                          <ActivitySubItem
+                            index={c.index}
+                            title={c.title}
+                            pax={c.pax}
+                            op={getActivityOp(c.index, activitiesOpJson, res)}
+                            monitors={monitors}
+                            onEdit={() => openEditActivity(res, c.index, c.title)}
+                            onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: c.index, title: c.title, currentValue: getActivityOp(c.index, activitiesOpJson, res).consolidated })}
+                          />
+                          <PackExpansion lines={res.packExpansions?.[c.index]} />
+                        </div>
                       ))}
                     </div>
                   )}
                   {/* Si solo hay 1 actividad hoy, mostrar siempre */}
                   {totalActivities === 1 && (
-                    <div className="px-5 pb-5 border-t border-slate-800 pt-4">
+                    <div className="px-5 pb-5 border-t border-slate-800 pt-4 space-y-1.5">
                       <ActivitySubItem
                         index={shownComponents[0].index}
                         title={shownComponents[0].title}
@@ -597,6 +623,7 @@ export default function DailyActivities() {
                         onEdit={() => openEditActivity(res, shownComponents[0].index, shownComponents[0].title)}
                         onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: shownComponents[0].index, title: shownComponents[0].title, currentValue: getActivityOp(shownComponents[0].index, activitiesOpJson, res).consolidated })}
                       />
+                      <PackExpansion lines={res.packExpansions?.[shownComponents[0].index]} />
                     </div>
                   )}
                 </div>

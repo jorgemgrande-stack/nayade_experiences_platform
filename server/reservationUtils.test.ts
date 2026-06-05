@@ -9,6 +9,9 @@ import {
   parseReservationExtras,
   reservationComponentDates,
   normalizeServiceDate,
+  collectComponentProductIds,
+  buildPackExpansions,
+  type ExpandedPackLine,
 } from "./reservationUtils";
 
 describe("normalizeServiceDate", () => {
@@ -119,5 +122,51 @@ describe("reservationComponentDates", () => {
     const dates = comps.map((c) => c.date);
     expect(dates).toContain("2026-06-26");
     expect(dates).toContain("2026-06-27");
+  });
+});
+
+const LINE = (lineId: number, title: string, extra: Partial<ExpandedPackLine> = {}): ExpandedPackLine => ({
+  lineId, title, quantity: 1, sourceType: "experience", sourceId: lineId, groupLabel: null, isOptional: false, ...extra,
+});
+
+describe("collectComponentProductIds", () => {
+  it("reúne principal + extras sin duplicar y omitiendo null", () => {
+    const extras = [
+      { name: "A", productId: 30002 } as any,
+      { name: "B", productId: null } as any,
+      { name: "C", productId: 30002 } as any, // duplicado
+    ];
+    expect(collectComponentProductIds(120002, extras).sort((a, b) => a - b)).toEqual([30002, 120002]);
+  });
+  it("sin principal ni extras válidos => vacío", () => {
+    expect(collectComponentProductIds(null, [])).toEqual([]);
+    expect(collectComponentProductIds(undefined, [{ name: "X", productId: null } as any])).toEqual([]);
+  });
+});
+
+describe("buildPackExpansions", () => {
+  const map: Record<number, ExpandedPackLine[]> = {
+    120002: [LINE(1, "Hotel"), LINE(2, "Pack Basic")],
+    30002: [LINE(9, "Blob Jump"), LINE(11, "Banana Ski", { isOptional: true })],
+  };
+
+  it("expande el principal (index 0) y el extra que sean Lego Pack", () => {
+    const extras = [{ name: "Pack Aventura", productId: 30002 } as any];
+    const out = buildPackExpansions(120002, extras, map);
+    expect(Object.keys(out).sort()).toEqual(["0", "1"]);
+    expect(out[0].map(l => l.title)).toEqual(["Hotel", "Pack Basic"]);   // principal
+    expect(out[1].map(l => l.title)).toEqual(["Blob Jump", "Banana Ski"]); // extra 0 -> index 1
+  });
+
+  it("ignora componentes que NO son Lego Pack (experiencia suelta)", () => {
+    const extras = [{ name: "Banana Ski suelta", productId: 99999 } as any];
+    const out = buildPackExpansions(88888, extras, map);
+    expect(out).toEqual({});
+  });
+
+  it("solo el extra es pack: index 1, sin index 0", () => {
+    const extras = [{ name: "Pack Aventura", productId: 30002 } as any];
+    const out = buildPackExpansions(88888, extras, map);
+    expect(Object.keys(out)).toEqual(["1"]);
   });
 });

@@ -4,17 +4,65 @@ import { router, protectedProcedure, adminProcedure, permissionProcedure } from 
 const operationsViewProc = permissionProcedure("operations.view", ["admin", "agente", "monitor"]);
 import mysql from "mysql2/promise";
 import { drizzle } from "drizzle-orm/mysql2";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, inArray } from "drizzle-orm";
 import {
   monitors,
   monitorDocuments,
   monitorPayroll,
   reservationOperational,
+  legoPackLines,
+  experiences,
 } from "../../drizzle/schema";
-import { reservationComponentDates } from "../reservationUtils";
+import {
+  reservationComponentDates,
+  collectComponentProductIds,
+  buildPackExpansions,
+  parseReservationExtras,
+  type ExpandedPackLine,
+} from "../reservationUtils";
 
 const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(pool);
+
+// Carga las líneas (experiencias) de los Lego Packs cuyos ids se pasan, resolviendo
+// el título de la experiencia origen. Devuelve { legoPackId -> ExpandedPackLine[] }.
+// Los productIds que NO son Lego Packs simplemente no aparecen en el mapa.
+async function loadLegoPackLines(packIds: number[]): Promise<Record<number, ExpandedPackLine[]>> {
+  if (packIds.length === 0) return {};
+  const rows = await db
+    .select({
+      legoPackId: legoPackLines.legoPackId,
+      lineId: legoPackLines.id,
+      sourceType: legoPackLines.sourceType,
+      sourceId: legoPackLines.sourceId,
+      quantity: legoPackLines.defaultQuantity,
+      groupLabel: legoPackLines.groupLabel,
+      isOptional: legoPackLines.isOptional,
+      internalName: legoPackLines.internalName,
+      expTitle: experiences.title,
+    })
+    .from(legoPackLines)
+    .leftJoin(
+      experiences,
+      and(eq(legoPackLines.sourceType, "experience"), eq(experiences.id, legoPackLines.sourceId)),
+    )
+    .where(and(inArray(legoPackLines.legoPackId, packIds), eq(legoPackLines.isActive, true)))
+    .orderBy(asc(legoPackLines.legoPackId), asc(legoPackLines.sortOrder));
+
+  const map: Record<number, ExpandedPackLine[]> = {};
+  for (const r of rows as any[]) {
+    (map[r.legoPackId] ??= []).push({
+      lineId: r.lineId,
+      title: r.expTitle ?? r.internalName ?? "Experiencia",
+      quantity: r.quantity ?? 1,
+      sourceType: r.sourceType,
+      sourceId: r.sourceId,
+      groupLabel: r.groupLabel ?? null,
+      isOptional: !!r.isOptional,
+    });
+  }
+  return map;
+}
 
 // ─── MONITORS — solo lectura ──────────────────────────────────────────────────
 // La gestión completa (alta/edición/documentos) se trasladó al módulo
@@ -84,6 +132,7 @@ const calendarRouter = router({
           r.reservation_number AS reservationNumber,
           r.status_reservation AS statusReservation,
           r.extras_json AS extrasJson,
+          r.product_id AS productId,
           DATE_FORMAT(r.booking_date, '%Y-%m-%d') AS scheduledDate,
           r.people AS numberOfPersons,
           r.status,
@@ -156,14 +205,17 @@ const calendarRouter = router({
 
       // Cada reserva se expande en sus componentes datados (principal + extras),
       // con la fecha EFECTIVA de cada uno (override admin → semilla presupuesto → madre).
-      // El frontend usa `componentDates` para colocar cada componente en su día.
-      const activitiesWithDates = (activityRows as any[]).map((row) => ({
+      // Además, si un componente es un Lego Pack, se adjuntan sus experiencias
+      // (`packExpansions`, indexado por la convención 0=principal, i+1=extra i).
+      const actRows = activityRows as any[];
+      const packIds = Array.from(new Set(actRows.flatMap((row) =>
+        collectComponentProductIds(row.productId, parseReservationExtras(row.extrasJson)))));
+      const packLinesByPackId = await loadLegoPackLines(packIds);
+
+      const activitiesWithDates = actRows.map((row) => ({
         ...row,
-        componentDates: reservationComponentDates(
-          row.scheduledDate,
-          row.extrasJson,
-          row.activitiesOpJson,
-        ),
+        componentDates: reservationComponentDates(row.scheduledDate, row.extrasJson, row.activitiesOpJson),
+        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId),
       }));
 
       return {
@@ -362,6 +414,7 @@ const activitiesRouter = router({
           r.reservation_number AS reservationNumber,
           r.status_reservation AS statusReservation,
           r.extras_json AS extrasJson,
+          r.product_id AS productId,
           r.merchant_order AS merchantOrder,
           r.channel,
           r.created_at AS createdAt,
@@ -406,17 +459,18 @@ const activitiesRouter = router({
         ORDER BY r.booking_date ASC
       `, [actDateStr, actDateStr, actDateStr]);
 
-      // Fecha efectiva por componente (override admin → semilla presupuesto → madre).
-      // `viewDate` = el día que se está viendo, para que el frontend muestre solo
-      // los componentes cuya fecha efectiva es hoy.
-      return (rows as any[]).map((row) => ({
+      // Fecha efectiva por componente (override admin → semilla presupuesto → madre)
+      // y, si un componente es un Lego Pack, sus experiencias internas (`packExpansions`).
+      const rowsArr = rows as any[];
+      const packIds = Array.from(new Set(rowsArr.flatMap((row) =>
+        collectComponentProductIds(row.productId, parseReservationExtras(row.extrasJson)))));
+      const packLinesByPackId = await loadLegoPackLines(packIds);
+
+      return rowsArr.map((row) => ({
         ...row,
         viewDate: actDateStr,
-        componentDates: reservationComponentDates(
-          row.scheduledDate,
-          row.extrasJson,
-          row.activitiesOpJson,
-        ),
+        componentDates: reservationComponentDates(row.scheduledDate, row.extrasJson, row.activitiesOpJson),
+        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId),
       }));
     }),
 

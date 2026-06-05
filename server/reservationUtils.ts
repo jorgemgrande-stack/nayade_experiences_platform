@@ -166,3 +166,54 @@ export function reservationComponentDates(
   });
   return out;
 }
+
+// ─── Despliegue de Lego Packs en Operaciones ─────────────────────────────────
+// Un componente de una reserva (principal o extra) puede ser un Lego Pack, que
+// internamente contiene varias experiencias (`lego_pack_lines`). Estas funciones
+// son PURAS: la carga de líneas desde BD se hace fuera (en el router de operaciones).
+
+/** Una línea (experiencia) de un Lego Pack, lista para mostrar en Operaciones. */
+export type ExpandedPackLine = {
+  lineId: number;
+  title: string;
+  quantity: number;
+  sourceType: string;        // "experience" | "pack"
+  sourceId: number;
+  groupLabel: string | null;
+  isOptional: boolean;
+};
+
+/** Lista única de productIds (principal + extras) para precargar Lego Packs en una sola query. */
+export function collectComponentProductIds(
+  mainProductId: number | null | undefined,
+  extras: ReservationExtra[],
+): number[] {
+  const ids = new Set<number>();
+  if (mainProductId != null) ids.add(mainProductId);
+  for (const ex of extras) if (ex?.productId != null) ids.add(ex.productId);
+  return Array.from(ids);
+}
+
+/**
+ * Dado el producto principal y los extras de una reserva, más un mapa
+ * (legoPackId -> líneas), devuelve qué componentes son Lego Packs y sus líneas,
+ * indexado por la convención de Operaciones: 0 = actividad principal, i+1 = extra `i`.
+ * Solo añade entradas para componentes que SÍ son Lego Packs con líneas.
+ */
+export function buildPackExpansions(
+  mainProductId: number | null | undefined,
+  extras: ReservationExtra[],
+  packLinesByPackId: Record<number, ExpandedPackLine[]>,
+): Record<number, ExpandedPackLine[]> {
+  const out: Record<number, ExpandedPackLine[]> = {};
+  if (mainProductId != null && packLinesByPackId[mainProductId]?.length) {
+    out[0] = packLinesByPackId[mainProductId];
+  }
+  extras.forEach((ex, i) => {
+    const pid = ex?.productId;
+    if (pid != null && packLinesByPackId[pid]?.length) {
+      out[i + 1] = packLinesByPackId[pid];
+    }
+  });
+  return out;
+}
