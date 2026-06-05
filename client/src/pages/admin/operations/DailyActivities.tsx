@@ -169,6 +169,7 @@ export default function DailyActivities() {
   const [editMonitorId, setEditMonitorId] = useState<string>("");
   const [editArrivalTime, setEditArrivalTime] = useState<string>("");
   const [editOpNotes, setEditOpNotes] = useState<string>("");
+  const [editServiceDate, setEditServiceDate] = useState<string>("");
   const [cancelTarget, setCancelTarget] = useState<{ id: number; title: string } | null>(null);
   const [confirmArrivalTarget, setConfirmArrivalTarget] = useState<{ reservationId: number; time: string } | null>(null);
   const [consolidateTarget, setConsolidateTarget] = useState<{ reservationId: number; activityIndex: number; title: string; currentValue: boolean } | null>(null);
@@ -242,6 +243,7 @@ export default function DailyActivities() {
     setEditMonitorId(res.monitorId ? String(res.monitorId) : "none");
     setEditArrivalTime(res.arrivalTime || "");
     setEditOpNotes(res.opNotes || "");
+    setEditServiceDate("");
   }
 
   function openEditActivity(res: any, index: number, title: string) {
@@ -251,6 +253,9 @@ export default function DailyActivities() {
     setEditMonitorId(op.monitorId ? String(op.monitorId) : "none");
     setEditArrivalTime(op.arrivalTime || "");
     setEditOpNotes(op.opNotes || "");
+    // Fecha efectiva actual del componente (override admin → semilla → madre)
+    const eff = (res.componentDates || []).find((c: any) => c.index === index)?.date || res.scheduledDate || "";
+    setEditServiceDate(eff);
   }
 
   async function handleSave() {
@@ -266,13 +271,14 @@ export default function DailyActivities() {
         opNotes: editOpNotes || undefined,
       });
     } else {
-      // Guardar override de actividad específica
+      // Guardar override de actividad específica (incluida su fecha de servicio)
       await updateActivityOpMutation.mutateAsync({
         reservationId: editTarget.reservationId,
         activityIndex: editTarget.activityIndex,
         monitorId,
         arrivalTime: editArrivalTime || undefined,
         opNotes: editOpNotes || undefined,
+        serviceDate: editServiceDate || null,
       });
     }
   }
@@ -385,10 +391,34 @@ export default function DailyActivities() {
               const opState = getReservationOpState(res);
               const cfg = OP_CONFIG[opState];
               const isExpanded = expandedIds.has(res.id);
-              const totalActivities = 1 + extras.length;
               const isSoon = res.arrivalTime && isWithin2Hours(res.arrivalTime, dateStr);
-              const consolidatedCount = Array.from({ length: totalActivities }, (_, i) => i)
-                .filter(i => getActivityOp(i, activitiesOpJson, res).consolidated).length;
+
+              // Parche A: cada componente tiene su fecha efectiva (override admin →
+              // semilla del presupuesto → fecha de la reserva madre). En esta vista de
+              // un solo día mostramos SOLO los componentes cuya fecha efectiva es hoy.
+              // Índices: principal = 0, extra `i` = i+1.
+              const compDates: Array<{ index: number; date: string }> = res.componentDates || [];
+              const hasCompDates = compDates.length > 0;
+              const effDate = (index: number) =>
+                compDates.find(c => c.index === index)?.date ?? res.scheduledDate;
+              const showsToday = (index: number) => !hasCompDates || effDate(index) === dateStr;
+
+              const shownComponents = [
+                ...(showsToday(0)
+                  ? [{ index: 0, title: res.activityTitle || "Actividad principal", pax: res.numberOfPersons }]
+                  : []),
+                ...extras
+                  .map((ex: any, i: number) => ({
+                    index: i + 1,
+                    title: ex.experienceTitle || ex.name || `Actividad ${i + 2}`,
+                    pax: ex.participants || ex.pax || res.numberOfPersons,
+                  }))
+                  .filter((c: any) => showsToday(c.index)),
+              ];
+              const totalActivities = shownComponents.length;
+              const isMadreToday = !hasCompDates || res.scheduledDate === dateStr;
+              const consolidatedCount = shownComponents
+                .filter(c => getActivityOp(c.index, activitiesOpJson, res).consolidated).length;
 
               return (
                 <div key={res.id} className={cn(
@@ -413,6 +443,11 @@ export default function DailyActivities() {
                             {res.reservationNumber && (
                               <span className="text-[10px] font-mono text-blue-400/80 bg-blue-500/10 border border-blue-500/20 rounded px-1.5 py-0.5">
                                 {res.reservationNumber}
+                              </span>
+                            )}
+                            {!isMadreToday && (
+                              <span className="text-[10px] text-violet-300 bg-violet-500/10 border border-violet-500/30 rounded px-1.5 py-0.5 flex items-center gap-1">
+                                <CalendarDays className="w-2.5 h-2.5" />Reserva del {res.scheduledDate}
                               </span>
                             )}
                             <span className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border", cfg.bg, cfg.dot.replace("bg-", "border-").replace("400", "500/40"))}>
@@ -530,48 +565,37 @@ export default function DailyActivities() {
                     )}
                   </div>
 
-                  {/* ── NIVEL 2: Actividades de la reserva (desplegable) ── */}
-                  {isExpanded && (
+                  {/* ── NIVEL 2: Actividades de la reserva que ocurren HOY (desplegable) ── */}
+                  {isExpanded && totalActivities > 1 && (
                     <div className="px-5 pb-5 space-y-2 border-t border-slate-800 pt-4">
                       <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold mb-3">
-                        Actividades incluidas — los datos heredados provienen de la operativa general de la reserva
+                        Actividades de hoy — los datos heredados provienen de la operativa general de la reserva
                       </p>
-                      {/* Actividad principal */}
-                      <ActivitySubItem
-                        index={0}
-                        title={res.activityTitle || "Actividad principal"}
-                        pax={res.numberOfPersons}
-                        op={getActivityOp(0, activitiesOpJson, res)}
-                        monitors={monitors}
-                        onEdit={() => openEditActivity(res, 0, res.activityTitle || "Actividad principal")}
-                        onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: 0, title: res.activityTitle || "Actividad principal", currentValue: getActivityOp(0, activitiesOpJson, res).consolidated })}
-                      />
-                      {/* Actividades extras */}
-                      {extras.map((ex: any, i: number) => (
+                      {shownComponents.map((c) => (
                         <ActivitySubItem
-                          key={i}
-                          index={i + 1}
-                          title={ex.experienceTitle || ex.name || `Actividad ${i + 2}`}
-                          pax={ex.participants || ex.pax || res.numberOfPersons}
-                          op={getActivityOp(i + 1, activitiesOpJson, res)}
+                          key={c.index}
+                          index={c.index}
+                          title={c.title}
+                          pax={c.pax}
+                          op={getActivityOp(c.index, activitiesOpJson, res)}
                           monitors={monitors}
-                          onEdit={() => openEditActivity(res, i + 1, ex.experienceTitle || ex.name || `Actividad ${i + 2}`)}
-                          onConsolidate={() => { const t = ex.experienceTitle || ex.name || `Actividad ${i + 2}`; setConsolidateTarget({ reservationId: res.id, activityIndex: i + 1, title: t, currentValue: getActivityOp(i + 1, activitiesOpJson, res).consolidated }); }}
+                          onEdit={() => openEditActivity(res, c.index, c.title)}
+                          onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: c.index, title: c.title, currentValue: getActivityOp(c.index, activitiesOpJson, res).consolidated })}
                         />
                       ))}
                     </div>
                   )}
-                  {/* Si solo hay 1 actividad y no expandible, mostrar siempre */}
+                  {/* Si solo hay 1 actividad hoy, mostrar siempre */}
                   {totalActivities === 1 && (
                     <div className="px-5 pb-5 border-t border-slate-800 pt-4">
                       <ActivitySubItem
-                        index={0}
-                        title={res.activityTitle || "Actividad principal"}
-                        pax={res.numberOfPersons}
-                        op={getActivityOp(0, activitiesOpJson, res)}
+                        index={shownComponents[0].index}
+                        title={shownComponents[0].title}
+                        pax={shownComponents[0].pax}
+                        op={getActivityOp(shownComponents[0].index, activitiesOpJson, res)}
                         monitors={monitors}
-                        onEdit={() => openEditActivity(res, 0, res.activityTitle || "Actividad principal")}
-                        onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: 0, title: res.activityTitle || "Actividad principal", currentValue: getActivityOp(0, activitiesOpJson, res).consolidated })}
+                        onEdit={() => openEditActivity(res, shownComponents[0].index, shownComponents[0].title)}
+                        onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: shownComponents[0].index, title: shownComponents[0].title, currentValue: getActivityOp(shownComponents[0].index, activitiesOpJson, res).consolidated })}
                       />
                     </div>
                   )}
@@ -604,6 +628,19 @@ export default function DailyActivities() {
                   </p>
                 )}
               </div>
+
+              {editTarget.activityIndex >= 0 && (
+                <div>
+                  <label className="text-sm text-slate-400 mb-2 flex items-center gap-1">
+                    <CalendarDays className="w-3.5 h-3.5 text-violet-400" />Fecha del servicio
+                  </label>
+                  <Input type="date" value={editServiceDate} onChange={(e) => setEditServiceDate(e.target.value)}
+                    className="bg-slate-800 border-slate-600 text-white [color-scheme:dark]" />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Por defecto, la fecha de la reserva. Cámbiala para reprogramar solo este servicio a otro día.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="text-sm text-slate-400 mb-2 block">Monitor asignado</label>

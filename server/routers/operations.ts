@@ -11,6 +11,7 @@ import {
   monitorPayroll,
   reservationOperational,
 } from "../../drizzle/schema";
+import { reservationComponentDates } from "../reservationUtils";
 
 const pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(pool);
@@ -101,11 +102,28 @@ const calendarRouter = router({
         LEFT JOIN experiences e ON r.product_id = e.id
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
-        WHERE r.booking_date >= ? AND r.booking_date < DATE_ADD(?, INTERVAL 1 DAY)
-          AND r.status IN ('paid', 'pending_payment')
+        WHERE r.status IN ('paid', 'pending_payment')
           AND r.status_reservation NOT IN ('ANULADA')
+          AND (
+            -- 1) la reserva madre cae en el rango
+            (r.booking_date >= ? AND r.booking_date < DATE_ADD(?, INTERVAL 1 DAY))
+            -- 2) algún extra tiene su propia fecha de servicio (semilla del presupuesto) en el rango
+            OR EXISTS (
+              SELECT 1 FROM JSON_TABLE(
+                COALESCE(NULLIF(r.extras_json, ''), '[]'),
+                '$[*]' COLUMNS (sd CHAR(10) PATH '$.serviceDate')
+              ) jx WHERE jx.sd >= ? AND jx.sd <= ?
+            )
+            -- 3) el admin reprogramó algún componente (override en activities_op_json) al rango
+            OR EXISTS (
+              SELECT 1 FROM JSON_TABLE(
+                COALESCE(ro.activities_op_json, CAST('[]' AS JSON)),
+                '$[*]' COLUMNS (sd CHAR(10) PATH '$.serviceDate')
+              ) jo WHERE jo.sd >= ? AND jo.sd <= ?
+            )
+          )
         ORDER BY r.booking_date ASC
-      `, [fromDate, toDate]);
+      `, [fromDate, toDate, fromDate, toDate, fromDate, toDate]);
 
       // Query restaurant bookings
       // restaurant_bookings uses: date (varchar), time (varchar), guests (int), guestName, guestLastName
@@ -136,8 +154,20 @@ const calendarRouter = router({
         ORDER BY rb.date ASC, rb.time ASC
       `, [fromDate, toDate]);
 
+      // Cada reserva se expande en sus componentes datados (principal + extras),
+      // con la fecha EFECTIVA de cada uno (override admin → semilla presupuesto → madre).
+      // El frontend usa `componentDates` para colocar cada componente en su día.
+      const activitiesWithDates = (activityRows as any[]).map((row) => ({
+        ...row,
+        componentDates: reservationComponentDates(
+          row.scheduledDate,
+          row.extrasJson,
+          row.activitiesOpJson,
+        ),
+      }));
+
       return {
-        activities: activityRows || [],
+        activities: activitiesWithDates,
         restaurants: restaurantRows || [],
       };
     }),
@@ -353,13 +383,41 @@ const activitiesRouter = router({
         LEFT JOIN experiences e ON r.product_id = e.id
         LEFT JOIN reservation_operational ro ON ro.reservation_id = r.id AND ro.reservation_type = 'activity'
         LEFT JOIN monitors m ON m.id = ro.monitor_id
-        WHERE r.booking_date = ?
-          AND r.status IN ('paid', 'pending_payment')
+        WHERE r.status IN ('paid', 'pending_payment')
           AND r.status_reservation NOT IN ('ANULADA')
+          AND (
+            -- 1) la reserva madre es de este día
+            r.booking_date = ?
+            -- 2) algún extra tiene su serviceDate (semilla presupuesto) en este día
+            OR EXISTS (
+              SELECT 1 FROM JSON_TABLE(
+                COALESCE(NULLIF(r.extras_json, ''), '[]'),
+                '$[*]' COLUMNS (sd CHAR(10) PATH '$.serviceDate')
+              ) jx WHERE jx.sd = ?
+            )
+            -- 3) el admin reprogramó un componente (override) a este día
+            OR EXISTS (
+              SELECT 1 FROM JSON_TABLE(
+                COALESCE(ro.activities_op_json, CAST('[]' AS JSON)),
+                '$[*]' COLUMNS (sd CHAR(10) PATH '$.serviceDate')
+              ) jo WHERE jo.sd = ?
+            )
+          )
         ORDER BY r.booking_date ASC
-      `, [actDateStr]);
+      `, [actDateStr, actDateStr, actDateStr]);
 
-      return rows || [];
+      // Fecha efectiva por componente (override admin → semilla presupuesto → madre).
+      // `viewDate` = el día que se está viendo, para que el frontend muestre solo
+      // los componentes cuya fecha efectiva es hoy.
+      return (rows as any[]).map((row) => ({
+        ...row,
+        viewDate: actDateStr,
+        componentDates: reservationComponentDates(
+          row.scheduledDate,
+          row.extrasJson,
+          row.activitiesOpJson,
+        ),
+      }));
     }),
 
   assignMonitor: adminProcedure
@@ -474,6 +532,8 @@ const activitiesRouter = router({
       arrivalTime: z.string().optional(),
       opNotes: z.string().optional(),
       consolidated: z.boolean().optional(),
+      // Fecha operativa propia del componente (YYYY-MM-DD). "" o null = volver a heredar la fecha de la reserva.
+      serviceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const existing = await db.select().from(reservationOperational)
@@ -483,15 +543,17 @@ const activitiesRouter = router({
         ));
 
       const row = existing[0];
-      const current: Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean }> =
+      const current: Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean; serviceDate?: string | null }> =
         (row?.activitiesOpJson as any) || [];
 
       const idx = current.findIndex(a => a.index === input.activityIndex);
-      const updated = { index: input.activityIndex, ...current[idx] };
+      const updated = { ...current[idx], index: input.activityIndex };
       if (input.monitorId !== undefined) updated.monitorId = input.monitorId;
       if (input.arrivalTime !== undefined) updated.arrivalTime = input.arrivalTime;
       if (input.opNotes !== undefined) updated.opNotes = input.opNotes;
       if (input.consolidated !== undefined) updated.consolidated = input.consolidated;
+      // null/"" → limpiar override (hereda de nuevo); fecha válida → fijar override
+      if (input.serviceDate !== undefined) updated.serviceDate = input.serviceDate || null;
 
       const newJson = idx >= 0
         ? current.map((a, i) => i === idx ? updated : a)
