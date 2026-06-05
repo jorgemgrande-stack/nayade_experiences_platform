@@ -167,6 +167,56 @@ function ActivitySubItem({
   );
 }
 
+// ─── Resumen operativo del día (agregado por actividad) ──────────────────────
+// Devuelve los ítems operativos (experiencias) de UNA reserva para el día dado,
+// con su nº real de personas. Para packs: cada experiencia de hoy con packQty ×
+// defaultQuantity. Para no-packs: el propio componente con su pax.
+type DayItem = { title: string; pax: number; optional: boolean };
+function reservationDayItems(res: any, dateStr: string): DayItem[] {
+  const extras = parseExtras(res.extrasJson);
+  const activitiesOpJson = parseActivitiesOp(res.activitiesOpJson);
+  const compDates: Array<{ index: number; date: string }> = res.componentDates || [];
+  const hasCompDates = compDates.length > 0;
+  const effDate = (index: number) => compDates.find(c => c.index === index)?.date ?? res.scheduledDate;
+  const lineEffDate = (parentIndex: number, lineId: number) => {
+    const ov = activitiesOpJson.find((a: any) => a.index === parentIndex && a.lineId === lineId);
+    return ov?.serviceDate || effDate(parentIndex);
+  };
+  const packLinesOf = (index: number): any[] => res.packExpansions?.[index] || [];
+  const out: DayItem[] = [];
+  const consider = (index: number, title: string, fallbackPax: number, packQty: number) => {
+    const lines = packLinesOf(index);
+    if (lines.length) {
+      for (const l of lines) {
+        if (!hasCompDates || lineEffDate(index, l.lineId) === dateStr) {
+          out.push({ title: l.title, pax: (packQty || 1) * (l.quantity || 1), optional: !!l.isOptional });
+        }
+      }
+    } else if (!hasCompDates || effDate(index) === dateStr) {
+      out.push({ title, pax: fallbackPax, optional: false });
+    }
+  };
+  consider(0, res.activityTitle || "Actividad", res.numberOfPersons || 1, 1);
+  extras.forEach((ex: any, i: number) =>
+    consider(i + 1, ex.experienceTitle || ex.name || `Actividad ${i + 2}`,
+      ex.participants || ex.pax || ex.quantity || res.numberOfPersons || 1, ex.quantity ?? 1));
+  return out;
+}
+
+// Agrega por nombre de actividad las personas de TODAS las reservas del día.
+function computeDaySummary(reservations: any[], dateStr: string): Array<{ title: string; pax: number; anyOptional: boolean }> {
+  const agg = new Map<string, { title: string; pax: number; anyOptional: boolean }>();
+  for (const res of reservations) {
+    for (const it of reservationDayItems(res, dateStr)) {
+      const cur = agg.get(it.title) || { title: it.title, pax: 0, anyOptional: false };
+      cur.pax += it.pax;
+      if (it.optional) cur.anyOptional = true;
+      agg.set(it.title, cur);
+    }
+  }
+  return Array.from(agg.values()).sort((a, b) => b.pax - a.pax);
+}
+
 // ─── Despliegue de experiencias de un Lego Pack ──────────────────────────────
 // Cada experiencia muestra su monitor/hora (propios o heredados del componente)
 // y permite editar su operativa (override por lineId).
@@ -381,6 +431,9 @@ export default function DailyActivities() {
     { value: "incidencia",  label: "Con incidencia" },
   ];
 
+  // Resumen operativo del día: personas por actividad agregadas entre todas las reservas filtradas.
+  const daySummary = computeDaySummary(filtered, dateStr);
+
   return (
     <AdminLayout title="Actividades del Día">
       <div className="min-h-screen bg-[#0a0f1a] text-white p-6 -m-6">
@@ -462,6 +515,24 @@ export default function DailyActivities() {
             </button>
           ))}
         </div>
+
+        {/* Resumen operativo del día: personas por actividad (agregado entre reservas) */}
+        {!isLoading && daySummary.length > 0 && (
+          <div className="mb-4 bg-[#111827] border border-cyan-800/40 rounded-xl p-4">
+            <p className="text-[11px] text-cyan-400 uppercase tracking-wide font-semibold mb-2 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" />Resumen operativo del día — personas por actividad
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {daySummary.map((a) => (
+                <div key={a.title} className="flex items-center gap-2 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-1.5">
+                  <span className="text-sm text-white/90">{a.title}</span>
+                  <span className="text-sm font-bold text-cyan-300">{a.pax}</span>
+                  {a.anyOptional && <span className="text-[9px] text-amber-400" title="Incluye líneas opcionales">(incl. opc.)</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Lista de reservas */}
         {isLoading ? (
