@@ -410,7 +410,7 @@ export async function checkAndConfirmInstallmentPlan(quoteId: number, userId: nu
         productId: resProd.productId,
         productName: quote.title ?? "Presupuesto",
         extrasJson: resProd.extrasJson,
-        bookingDate: serviceDate,
+        bookingDate: resProd.mainServiceDate ?? serviceDate,
         people: lead?.numberOfPersons ?? lead?.numberOfAdults ?? 1,
         amountTotal: totalAmountCents,
         amountPaid: paidAmountCents,
@@ -888,6 +888,7 @@ export const crmRouter = router({
               fiscalRegime: z.enum(["reav", "general"]).optional(),
               taxRate: z.number().optional(),
               productId: z.number().optional(),
+              serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la línea
             })
           ),
           subtotal: z.number(),
@@ -1547,6 +1548,7 @@ export const crmRouter = router({
                 fiscalRegime: z.enum(["reav", "general"]).optional(),
                 taxRate: z.number().optional(),
                 productId: z.number().optional(),
+                serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la línea
               })
             )
             .optional(),
@@ -1909,7 +1911,7 @@ export const crmRouter = router({
           productId: resProd.productId,
           productName: quote.title,
           extrasJson: resProd.extrasJson,
-          bookingDate: serviceDate,
+          bookingDate: resProd.mainServiceDate ?? serviceDate,
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
           amountPaid: Math.round((input.paidAmount ?? total) * 100),
@@ -2276,7 +2278,7 @@ export const crmRouter = router({
           productId: resProd.productId,
           productName: quote.title,
           extrasJson: resProd.extrasJson,
-          bookingDate: serviceDate,
+          bookingDate: resProd.mainServiceDate ?? serviceDate,
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
           amountPaid: 0,
@@ -2484,7 +2486,7 @@ export const crmRouter = router({
           productId: resProd.productId,
           productName: quote.title,
           extrasJson: resProd.extrasJson,
-          bookingDate: serviceDateTransfer,
+          bookingDate: resProd.mainServiceDate ?? serviceDateTransfer,
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: Math.round(total * 100),
           amountPaid: Math.round((input.paidAmount ?? total) * 100),
@@ -2869,6 +2871,7 @@ export const crmRouter = router({
               fiscalRegime: z.enum(["reav", "general"]).optional(),
               taxRate: z.number().optional(),
               productId: z.number().optional(),
+              serviceDate: z.string().optional(), // YYYY-MM-DD: fecha de servicio propia de la línea
             })
           ),
           subtotal: z.number(),
@@ -3395,11 +3398,12 @@ export const crmRouter = router({
           productId: resProd.productId,
           productName: quote.title,
           extrasJson: resProd.extrasJson,
-          bookingDate: quote.activityDate
-            ? String(quote.activityDate).slice(0, 10)
-            : lead.preferredDate
-              ? new Date(lead.preferredDate).toISOString().split("T")[0]
-              : new Date().toISOString().split("T")[0],
+          bookingDate: resProd.mainServiceDate
+            ?? (quote.activityDate
+              ? String(quote.activityDate).slice(0, 10)
+              : lead.preferredDate
+                ? new Date(lead.preferredDate).toISOString().split("T")[0]
+                : new Date().toISOString().split("T")[0]),
           people: lead.numberOfPersons ?? lead.numberOfAdults ?? 1,
           amountTotal: amountCents,
           amountPaid: 0,
@@ -6347,7 +6351,7 @@ export const crmRouter = router({
               productId: resProd.productId,
               productName: input.productName,
               extrasJson: resProd.extrasJson,
-              bookingDate: new Date().toISOString().split("T")[0],
+              bookingDate: resProd.mainServiceDate ?? new Date().toISOString().split("T")[0],
               people: 1,
               amountTotal: input.amountCents,
               amountPaid: 0,

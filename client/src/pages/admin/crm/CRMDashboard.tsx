@@ -2777,7 +2777,7 @@ function QuoteEditModal({
   const [taxRate, setTaxRate] = useState(21);
   const [validUntil, setValidUntil] = useState("");
   const [activityDate, setActivityDate] = useState("");
-  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]>([]);
+  const [items, setItems] = useState<{ description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; serviceDate?: string }[]>([]);
   const [discount, setDiscount] = useState(0);
   const [initialized, setInitialized] = useState(false);
 
@@ -2812,7 +2812,7 @@ function QuoteEditModal({
     setTaxRate(q.tax ? parseFloat(String(q.tax)) : 21);
     setValidUntil(q.validUntil ? new Date(q.validUntil).toISOString().split("T")[0] : "");
     setActivityDate((q as any).activityDate ? String((q as any).activityDate).slice(0, 10) : "");
-    const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general" }[]) ?? [];
+    const rawItems = (q.items as { description: string; quantity: number; unitPrice: number; total: number; fiscalRegime?: "reav" | "general"; serviceDate?: string }[]) ?? [];
     setItems(rawItems.length > 0 ? rawItems : [{ description: "", quantity: 1, unitPrice: 0, total: 0, fiscalRegime: "general" }]);
     setDiscount(Number(q.discount ?? 0));
     setInitialized(true);
@@ -2930,7 +2930,8 @@ function QuoteEditModal({
           </div>
           <div className="space-y-2">
             {items.map((item, idx) => (
-              <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+              <div key={idx} className="space-y-1">
+              <div className="grid grid-cols-12 gap-2 items-center">
                 <CatalogConceptSelector
                   value={item.description}
                   onChange={(v) => updateItem(idx, "description", v)}
@@ -2952,6 +2953,13 @@ function QuoteEditModal({
                   onClick={() => setItems((p) => p.filter((_, i) => i !== idx))} disabled={items.length === 1}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </Button>
+              </div>
+              <div className="flex items-center gap-2 pl-1">
+                <span className="text-[11px] text-foreground/45 whitespace-nowrap">Fecha de servicio (opcional):</span>
+                <Input type="date" value={item.serviceDate ?? ""} onChange={(e) => updateItem(idx, "serviceDate", e.target.value)}
+                  className="h-7 w-auto bg-foreground/[0.05] border-foreground/[0.12] text-white text-xs [color-scheme:dark]" />
+                <span className="text-[10px] text-foreground/30">vacío = usa la fecha de actividad del presupuesto</span>
+              </div>
               </div>
             ))}
           </div>
