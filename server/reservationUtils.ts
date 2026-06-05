@@ -99,6 +99,8 @@ export function parseReservationExtras(extrasJson: unknown): ReservationExtra[] 
 export type ActivityOpOverride = {
   /** Índice del componente: 0 = actividad principal, i+1 = extra `i`. */
   index: number;
+  /** Si está presente, el override es de una EXPERIENCIA dentro de un Lego Pack (keyado por (index, lineId)). */
+  lineId?: number;
   serviceDate?: string | null;
   monitorId?: number | null;
   arrivalTime?: string;
@@ -150,8 +152,10 @@ export function reservationComponentDates(
   activitiesOpJson?: unknown,
 ): ReservationComponentDate[] {
   const overrides = parseActivityOpOverrides(activitiesOpJson);
+  // Solo overrides de componente de nivel superior (sin lineId); los de experiencias
+  // de pack (con lineId) no afectan a la fecha del componente.
   const overrideDate = (index: number): string | null =>
-    normalizeServiceDate(overrides.find((o) => o.index === index)?.serviceDate);
+    normalizeServiceDate(overrides.find((o) => o.index === index && o.lineId == null)?.serviceDate);
 
   const out: ReservationComponentDate[] = [
     { index: 0, isMain: true, date: overrideDate(0) ?? reservationDate },

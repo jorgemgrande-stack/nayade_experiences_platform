@@ -75,13 +75,28 @@ function parseActivitiesOp(json: any): Array<{ index: number; monitorId?: number
   try { return JSON.parse(json) || []; } catch { return []; }
 }
 function getActivityOp(index: number, activitiesOpJson: any[], res: any) {
-  const override = activitiesOpJson.find((a: any) => a.index === index);
+  // Solo overrides de componente de nivel superior (sin lineId).
+  const override = activitiesOpJson.find((a: any) => a.index === index && a.lineId == null);
   return {
     monitorId:    override?.monitorId   !== undefined ? override.monitorId   : (res.monitorId   ?? null),
     arrivalTime:  override?.arrivalTime !== undefined ? override.arrivalTime : (res.arrivalTime ?? null),
     opNotes:      override?.opNotes     !== undefined ? override.opNotes     : (res.opNotes     ?? null),
     consolidated: override?.consolidated === true,
     isInherited:  !override,
+  };
+}
+
+// Op efectiva de una EXPERIENCIA dentro de un Lego Pack: override propio
+// (keyado por (parentIndex, lineId)) o, si no, hereda del componente padre.
+function getLineOp(parentIndex: number, lineId: number, activitiesOpJson: any[], res: any) {
+  const lineOv = activitiesOpJson.find((a: any) => a.index === parentIndex && a.lineId === lineId);
+  const parentOp = getActivityOp(parentIndex, activitiesOpJson, res);
+  return {
+    monitorId:   lineOv?.monitorId   !== undefined ? lineOv.monitorId   : parentOp.monitorId,
+    arrivalTime: lineOv?.arrivalTime !== undefined ? lineOv.arrivalTime : parentOp.arrivalTime,
+    opNotes:     lineOv?.opNotes     !== undefined ? lineOv.opNotes     : parentOp.opNotes,
+    consolidated: false,
+    isInherited: !lineOv,
   };
 }
 
@@ -152,26 +167,51 @@ function ActivitySubItem({
   );
 }
 
-// ─── Despliegue de experiencias de un Lego Pack (solo lectura) ────────────────
+// ─── Despliegue de experiencias de un Lego Pack ──────────────────────────────
+// Cada experiencia muestra su monitor/hora (propios o heredados del componente)
+// y permite editar su operativa (override por lineId).
 type PackLine = { lineId: number; title: string; quantity: number; groupLabel: string | null; isOptional: boolean };
-function PackExpansion({ lines }: { lines?: PackLine[] }) {
+function PackExpansion({ lines, parentIndex, activitiesOpJson, res, monitors, onEditLine }: {
+  lines?: PackLine[];
+  parentIndex: number;
+  activitiesOpJson: any[];
+  res: any;
+  monitors: any[];
+  onEditLine: (line: PackLine, op: ReturnType<typeof getLineOp>) => void;
+}) {
   if (!lines || lines.length === 0) return null;
   return (
     <div className="ml-6 pl-3 border-l-2 border-cyan-700/40 space-y-1.5 py-1">
       <p className="text-[9px] text-cyan-500/80 uppercase tracking-wide font-semibold">Experiencias del pack</p>
-      {lines.map((line) => (
-        <div key={line.lineId} className="flex items-center gap-2 flex-wrap">
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-          <span className="text-sm text-white/85">{line.title}</span>
-          {line.quantity > 1 && <span className="text-[10px] text-slate-500">×{line.quantity}</span>}
-          {line.groupLabel && (
-            <Badge className="text-[9px] bg-slate-500/10 text-slate-400 border-slate-500/30">{line.groupLabel}</Badge>
-          )}
-          {line.isOptional && (
-            <Badge className="text-[9px] bg-amber-500/10 text-amber-400 border-amber-500/30">opcional</Badge>
-          )}
-        </div>
-      ))}
+      {lines.map((line) => {
+        const op = getLineOp(parentIndex, line.lineId, activitiesOpJson, res);
+        const monitorName = op.monitorId ? (monitors.find(m => m.id === op.monitorId)?.fullName || `Monitor #${op.monitorId}`) : null;
+        return (
+          <div key={line.lineId} className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+              <span className="text-sm text-white/85 truncate">{line.title}</span>
+              {line.quantity > 1 && <span className="text-[10px] text-slate-500">×{line.quantity}</span>}
+              {line.isOptional && (
+                <Badge className="text-[9px] bg-amber-500/10 text-amber-400 border-amber-500/30">opcional</Badge>
+              )}
+              <span className={cn("flex items-center gap-0.5 text-[10px]", monitorName ? "text-emerald-400" : "text-red-400")}>
+                <User className="w-2.5 h-2.5" />{monitorName || "Sin monitor"}
+              </span>
+              <span className={cn("flex items-center gap-0.5 text-[10px]", op.arrivalTime ? "text-cyan-400" : "text-amber-400")}>
+                <Clock className="w-2.5 h-2.5" />{op.arrivalTime || "Sin hora"}
+              </span>
+              {op.isInherited && (
+                <Badge className="text-[9px] bg-blue-500/10 text-blue-400 border-blue-500/30">Heredado</Badge>
+              )}
+            </div>
+            <Button size="sm" variant="outline" onClick={() => onEditLine(line, op)}
+              className="border-slate-600 text-slate-400 hover:bg-slate-700 text-[9px] h-6 px-1.5 gap-1 shrink-0">
+              <ClipboardList className="w-2.5 h-2.5" />Editar
+            </Button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -189,7 +229,7 @@ export default function DailyActivities() {
   });
 
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [editTarget, setEditTarget] = useState<{ reservationId: number; activityIndex: number; title: string; current: ReturnType<typeof getActivityOp> } | null>(null);
+  const [editTarget, setEditTarget] = useState<{ reservationId: number; activityIndex: number; lineId?: number; title: string; current: ReturnType<typeof getActivityOp> } | null>(null);
   const [editMonitorId, setEditMonitorId] = useState<string>("");
   const [editArrivalTime, setEditArrivalTime] = useState<string>("");
   const [editOpNotes, setEditOpNotes] = useState<string>("");
@@ -282,6 +322,15 @@ export default function DailyActivities() {
     setEditServiceDate(eff);
   }
 
+  // Editar la operativa (monitor/hora/notas) de una EXPERIENCIA dentro de un Lego Pack.
+  function openEditPackLine(res: any, parentIndex: number, line: PackLine, op: ReturnType<typeof getLineOp>) {
+    setEditTarget({ reservationId: res.id, activityIndex: parentIndex, lineId: line.lineId, title: line.title, current: op });
+    setEditMonitorId(op.monitorId ? String(op.monitorId) : "none");
+    setEditArrivalTime(op.arrivalTime || "");
+    setEditOpNotes(op.opNotes || "");
+    setEditServiceDate(""); // la fecha por experiencia no se gestiona aquí (queda a nivel de componente)
+  }
+
   async function handleSave() {
     if (!editTarget) return;
     const monitorId = editMonitorId && editMonitorId !== "none" ? parseInt(editMonitorId) : null;
@@ -295,14 +344,16 @@ export default function DailyActivities() {
         opNotes: editOpNotes || undefined,
       });
     } else {
-      // Guardar override de actividad específica (incluida su fecha de servicio)
+      // Guardar override de actividad específica (o de una experiencia del pack si hay lineId).
+      // Para experiencias del pack NO se toca la fecha (queda a nivel de componente).
       await updateActivityOpMutation.mutateAsync({
         reservationId: editTarget.reservationId,
         activityIndex: editTarget.activityIndex,
+        lineId: editTarget.lineId,
         monitorId,
         arrivalTime: editArrivalTime || undefined,
         opNotes: editOpNotes || undefined,
-        serviceDate: editServiceDate || null,
+        serviceDate: editTarget.lineId != null ? undefined : (editServiceDate || null),
       });
     }
   }
@@ -606,7 +657,14 @@ export default function DailyActivities() {
                             onEdit={() => openEditActivity(res, c.index, c.title)}
                             onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: c.index, title: c.title, currentValue: getActivityOp(c.index, activitiesOpJson, res).consolidated })}
                           />
-                          <PackExpansion lines={res.packExpansions?.[c.index]} />
+                          <PackExpansion
+                            lines={res.packExpansions?.[c.index]}
+                            parentIndex={c.index}
+                            activitiesOpJson={activitiesOpJson}
+                            res={res}
+                            monitors={monitors}
+                            onEditLine={(line, op) => openEditPackLine(res, c.index, line, op)}
+                          />
                         </div>
                       ))}
                     </div>
@@ -623,7 +681,14 @@ export default function DailyActivities() {
                         onEdit={() => openEditActivity(res, shownComponents[0].index, shownComponents[0].title)}
                         onConsolidate={() => setConsolidateTarget({ reservationId: res.id, activityIndex: shownComponents[0].index, title: shownComponents[0].title, currentValue: getActivityOp(shownComponents[0].index, activitiesOpJson, res).consolidated })}
                       />
-                      <PackExpansion lines={res.packExpansions?.[shownComponents[0].index]} />
+                      <PackExpansion
+                        lines={res.packExpansions?.[shownComponents[0].index]}
+                        parentIndex={shownComponents[0].index}
+                        activitiesOpJson={activitiesOpJson}
+                        res={res}
+                        monitors={monitors}
+                        onEditLine={(line, op) => openEditPackLine(res, shownComponents[0].index, line, op)}
+                      />
                     </div>
                   )}
                 </div>
@@ -638,7 +703,7 @@ export default function DailyActivities() {
         <DialogContent className="bg-[#111827] border-slate-700 text-white max-w-md">
           <DialogHeader>
             <DialogTitle className="text-white">
-              {editTarget?.activityIndex === -1 ? "Editar operativa general de reserva" : "Editar actividad"}
+              {editTarget?.activityIndex === -1 ? "Editar operativa general de reserva" : editTarget?.lineId != null ? "Editar experiencia del pack" : "Editar actividad"}
             </DialogTitle>
           </DialogHeader>
           {editTarget && (
@@ -656,7 +721,7 @@ export default function DailyActivities() {
                 )}
               </div>
 
-              {editTarget.activityIndex >= 0 && (
+              {editTarget.activityIndex >= 0 && editTarget.lineId == null && (
                 <div>
                   <label className="text-sm text-slate-400 mb-2 flex items-center gap-1">
                     <CalendarDays className="w-3.5 h-3.5 text-violet-400" />Fecha del servicio

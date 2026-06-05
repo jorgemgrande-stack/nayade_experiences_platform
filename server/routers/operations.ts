@@ -582,6 +582,9 @@ const activitiesRouter = router({
     .input(z.object({
       reservationId: z.number(),
       activityIndex: z.number(),
+      // Si se pasa, el override es para una EXPERIENCIA dentro de un Lego Pack
+      // (keyado por (activityIndex, lineId)). Si no, es el componente de nivel superior.
+      lineId: z.number().optional(),
       monitorId: z.number().nullable().optional(),
       arrivalTime: z.string().optional(),
       opNotes: z.string().optional(),
@@ -597,11 +600,13 @@ const activitiesRouter = router({
         ));
 
       const row = existing[0];
-      const current: Array<{ index: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean; serviceDate?: string | null }> =
+      const current: Array<{ index: number; lineId?: number; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean; serviceDate?: string | null }> =
         (row?.activitiesOpJson as any) || [];
 
-      const idx = current.findIndex(a => a.index === input.activityIndex);
+      // Clave compuesta: (index, lineId). Para componentes de nivel superior lineId es undefined.
+      const idx = current.findIndex(a => a.index === input.activityIndex && (a.lineId ?? null) === (input.lineId ?? null));
       const updated = { ...current[idx], index: input.activityIndex };
+      if (input.lineId !== undefined) updated.lineId = input.lineId;
       if (input.monitorId !== undefined) updated.monitorId = input.monitorId;
       if (input.arrivalTime !== undefined) updated.arrivalTime = input.arrivalTime;
       if (input.opNotes !== undefined) updated.opNotes = input.opNotes;
