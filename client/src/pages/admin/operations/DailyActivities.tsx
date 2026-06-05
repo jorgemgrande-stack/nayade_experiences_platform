@@ -171,9 +171,12 @@ function ActivitySubItem({
 // Cada experiencia muestra su monitor/hora (propios o heredados del componente)
 // y permite editar su operativa (override por lineId).
 type PackLine = { lineId: number; title: string; quantity: number; groupLabel: string | null; isOptional: boolean };
-function PackExpansion({ lines, parentIndex, activitiesOpJson, res, monitors, onEditLine }: {
+function PackExpansion({ lines, parentIndex, packQty, activitiesOpJson, res, monitors, onEditLine }: {
   lines?: PackLine[];
   parentIndex: number;
+  /** Unidades compradas del pack (cantidad de la línea de presupuesto). El nº real de
+   *  personas por experiencia = packQty × defaultQuantity de la línea. */
+  packQty: number;
   activitiesOpJson: any[];
   res: any;
   monitors: any[];
@@ -192,7 +195,9 @@ function PackExpansion({ lines, parentIndex, activitiesOpJson, res, monitors, on
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
               <span className="text-sm text-white/85 truncate">{line.title}</span>
-              {line.quantity > 1 && <span className="text-[10px] text-slate-500">×{line.quantity}</span>}
+              <span className="text-[11px] font-semibold text-cyan-300 shrink-0">
+                {(packQty || 1) * (line.quantity || 1)} pax
+              </span>
               {line.isOptional && (
                 <Badge className="text-[9px] bg-amber-500/10 text-amber-400 border-amber-500/30">opcional</Badge>
               )}
@@ -687,6 +692,7 @@ export default function DailyActivities() {
                           <PackExpansion
                             lines={linesTodayFor(c.index)}
                             parentIndex={c.index}
+                            packQty={c.index === 0 ? 1 : (extras[c.index - 1]?.quantity ?? 1)}
                             activitiesOpJson={activitiesOpJson}
                             res={res}
                             monitors={monitors}
@@ -711,6 +717,7 @@ export default function DailyActivities() {
                       <PackExpansion
                         lines={linesTodayFor(shownComponents[0].index)}
                         parentIndex={shownComponents[0].index}
+                        packQty={shownComponents[0].index === 0 ? 1 : (extras[shownComponents[0].index - 1]?.quantity ?? 1)}
                         activitiesOpJson={activitiesOpJson}
                         res={res}
                         monitors={monitors}
