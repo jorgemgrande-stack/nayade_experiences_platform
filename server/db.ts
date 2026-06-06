@@ -2293,6 +2293,16 @@ export async function postConfirmOperation(params: {
   // 1. Crear booking operativo (idempotente)
   let bookingId: number | null = null;
   try {
+    // La columna bookings.sourceChannel es un enum que solo admite
+    // manual|redsys|transferencia|efectivo|otro. Los métodos de tarjeta del TPV
+    // (tarjeta_fisica/tarjeta_redsys) no están en ese enum y provocaban
+    // "Data truncated for column 'sourceChannel'", abortando la creación del
+    // booking operativo (las ventas TPV con tarjeta no llegaban a Operaciones).
+    // Normalizamos al conjunto permitido antes de insertar.
+    const bookingSourceChannel: "redsys" | "transferencia" | "efectivo" | "otro" =
+      params.sourceChannel === "tarjeta_fisica" || params.sourceChannel === "tarjeta_redsys"
+        ? "otro"
+        : (params.sourceChannel ?? "otro");
     const result = await createBookingFromReservation({
       reservationId: params.reservationId,
       productId: params.productId,
@@ -2304,7 +2314,7 @@ export async function postConfirmOperation(params: {
       customerEmail: params.customerEmail,
       customerPhone: params.customerPhone,
       quoteId: params.quoteId,
-      sourceChannel: params.sourceChannel ?? "otro",
+      sourceChannel: bookingSourceChannel,
     });
     bookingId = result.id;
   } catch (e) {
