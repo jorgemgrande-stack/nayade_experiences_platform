@@ -169,4 +169,24 @@ describe("buildPackExpansions", () => {
     const out = buildPackExpansions(88888, extras, map);
     expect(Object.keys(out)).toEqual(["1"]);
   });
+
+  it("la experiencia manda: un product_id que es experiencia NO se expande aunque colisione con un lego_pack", () => {
+    // 120002 existe en el mapa de packs PERO también es una experiencia real:
+    // colisión de ids (experiences.id vs lego_packs.id). No debe expandirse.
+    const out = buildPackExpansions(120002, [], map, new Set([120002]));
+    expect(out).toEqual({});
+  });
+
+  it("la experiencia manda: aplica también a los extras que sean experiencias", () => {
+    const extras = [{ name: "Canoas suelta", productId: 30002 } as any];
+    const out = buildPackExpansions(120002, extras, map, new Set([30002]));
+    expect(Object.keys(out)).toEqual(["0"]);          // el principal (pack real) sí
+    expect(out[1]).toBeUndefined();                    // el extra-experiencia no
+  });
+
+  it("sin experienceIds, el comportamiento es el de antes (retrocompatible)", () => {
+    const extras = [{ name: "Pack Aventura", productId: 30002 } as any];
+    const out = buildPackExpansions(120002, extras, map);
+    expect(Object.keys(out).sort()).toEqual(["0", "1"]);
+  });
 });

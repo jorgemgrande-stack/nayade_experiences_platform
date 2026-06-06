@@ -203,19 +203,27 @@ export function collectComponentProductIds(
  * (legoPackId -> líneas), devuelve qué componentes son Lego Packs y sus líneas,
  * indexado por la convención de Operaciones: 0 = actividad principal, i+1 = extra `i`.
  * Solo añade entradas para componentes que SÍ son Lego Packs con líneas.
+ *
+ * `experienceIds`: ids de producto que corresponden a una EXPERIENCIA real. Como
+ * `experiences.id` y `lego_packs.id` son secuencias autoincrement independientes, un
+ * mismo número puede existir en ambas tablas; sin discriminador de tipo en la reserva,
+ * un product_id de experiencia podría colisionar con un lego_pack y expandirse por error.
+ * Regla "la experiencia manda": si el id es una experiencia, nunca se trata como pack.
  */
 export function buildPackExpansions(
   mainProductId: number | null | undefined,
   extras: ReservationExtra[],
   packLinesByPackId: Record<number, ExpandedPackLine[]>,
+  experienceIds?: Set<number> | null,
 ): Record<number, ExpandedPackLine[]> {
   const out: Record<number, ExpandedPackLine[]> = {};
-  if (mainProductId != null && packLinesByPackId[mainProductId]?.length) {
+  const isExperience = (id: number) => experienceIds?.has(id) ?? false;
+  if (mainProductId != null && !isExperience(mainProductId) && packLinesByPackId[mainProductId]?.length) {
     out[0] = packLinesByPackId[mainProductId];
   }
   extras.forEach((ex, i) => {
     const pid = ex?.productId;
-    if (pid != null && packLinesByPackId[pid]?.length) {
+    if (pid != null && !isExperience(pid) && packLinesByPackId[pid]?.length) {
       out[i + 1] = packLinesByPackId[pid];
     }
   });

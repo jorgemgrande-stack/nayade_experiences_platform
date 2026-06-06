@@ -64,6 +64,18 @@ async function loadLegoPackLines(packIds: number[]): Promise<Record<number, Expa
   return map;
 }
 
+// De los ids dados, devuelve cuáles corresponden a una EXPERIENCIA real. Sirve para
+// desambiguar el product_id de una reserva: si es una experiencia no debe expandirse
+// como Lego Pack aunque su id colisione con un lego_pack (ver buildPackExpansions).
+async function loadExperienceIds(ids: number[]): Promise<Set<number>> {
+  if (ids.length === 0) return new Set();
+  const rows = await db
+    .select({ id: experiences.id })
+    .from(experiences)
+    .where(inArray(experiences.id, ids));
+  return new Set((rows as any[]).map((r) => r.id));
+}
+
 // ─── MONITORS — solo lectura ──────────────────────────────────────────────────
 // La gestión completa (alta/edición/documentos) se trasladó al módulo
 // Personal/RRHH (router hr.employees, Fase 10). Aquí quedan solo las lecturas
@@ -210,12 +222,15 @@ const calendarRouter = router({
       const actRows = activityRows as any[];
       const packIds = Array.from(new Set(actRows.flatMap((row) =>
         collectComponentProductIds(row.productId, parseReservationExtras(row.extrasJson)))));
-      const packLinesByPackId = await loadLegoPackLines(packIds);
+      const [packLinesByPackId, experienceIds] = await Promise.all([
+        loadLegoPackLines(packIds),
+        loadExperienceIds(packIds),
+      ]);
 
       const activitiesWithDates = actRows.map((row) => ({
         ...row,
         componentDates: reservationComponentDates(row.scheduledDate, row.extrasJson, row.activitiesOpJson),
-        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId),
+        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId, experienceIds),
       }));
 
       return {
@@ -464,13 +479,16 @@ const activitiesRouter = router({
       const rowsArr = rows as any[];
       const packIds = Array.from(new Set(rowsArr.flatMap((row) =>
         collectComponentProductIds(row.productId, parseReservationExtras(row.extrasJson)))));
-      const packLinesByPackId = await loadLegoPackLines(packIds);
+      const [packLinesByPackId, experienceIds] = await Promise.all([
+        loadLegoPackLines(packIds),
+        loadExperienceIds(packIds),
+      ]);
 
       return rowsArr.map((row) => ({
         ...row,
         viewDate: actDateStr,
         componentDates: reservationComponentDates(row.scheduledDate, row.extrasJson, row.activitiesOpJson),
-        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId),
+        packExpansions: buildPackExpansions(row.productId, parseReservationExtras(row.extrasJson), packLinesByPackId, experienceIds),
       }));
     }),
 
