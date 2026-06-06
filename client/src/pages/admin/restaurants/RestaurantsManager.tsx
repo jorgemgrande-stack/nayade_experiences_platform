@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import AdminLayout from "@/components/AdminLayout";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
   Calendar, List, Settings, Users, ChevronLeft, ChevronRight,
@@ -319,7 +320,7 @@ function NewRestaurantModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   const createMutation = trpc.restaurants.adminCreate.useMutation({
     onSuccess: () => {
-      utils.restaurants.adminGetAll.invalidate();
+      utils.restaurants.myRestaurants.invalidate();
       onCreated();
     },
   });
@@ -412,7 +413,7 @@ function DeleteRestaurantModal({
 
   const deleteMutation = trpc.restaurants.adminDeleteRestaurant.useMutation({
     onSuccess: () => {
-      utils.restaurants.adminGetAll.invalidate();
+      utils.restaurants.myRestaurants.invalidate();
       onDeleted();
     },
   });
@@ -509,7 +510,9 @@ export default function RestaurantsManager() {
   const [successLocator, setSuccessLocator] = useState<string | null>(null);
 
   // Data
-  const { data: restaurants, isLoading: loadingRest } = trpc.restaurants.adminGetAll.useQuery();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const { data: restaurants, isLoading: loadingRest } = trpc.restaurants.myRestaurants.useQuery();
   const selectedRestaurant = restaurants?.find(r => r.id === selectedRestaurantId);
   const { data: bookings, isLoading: loadingBookings, refetch: refetchBookings } = trpc.restaurants.adminGetBookings.useQuery(
     { restaurantId: selectedRestaurantId ?? 0, status: statusFilter === "all" ? undefined : statusFilter },
@@ -558,23 +561,25 @@ export default function RestaurantsManager() {
       <div className="p-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-2xl font-heading font-bold text-foreground">Gestión de Restaurantes</h1>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setShowNewRestaurant(true)}
-              className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Nuevo restaurante
-            </Button>
-            {restaurants && restaurants.length > 0 && (
+          {isAdmin && (
+            <div className="flex items-center gap-2">
               <Button
-                variant="outline"
-                onClick={() => setShowDeleteRestaurant(true)}
-                className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full font-display font-semibold flex items-center gap-2"
+                onClick={() => setShowNewRestaurant(true)}
+                className="bg-accent hover:bg-accent/90 text-white rounded-full font-display font-semibold flex items-center gap-2"
               >
-                <Trash2 className="w-4 h-4" /> Eliminar
+                <Plus className="w-4 h-4" /> Nuevo restaurante
               </Button>
-            )}
-          </div>
+              {restaurants && restaurants.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowDeleteRestaurant(true)}
+                  className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full font-display font-semibold flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" /> Eliminar
+                </Button>
+              )}
+            </div>
+          )}
         </div>
         <p className="text-muted-foreground font-display mb-8">Selecciona un restaurante para gestionar sus reservas.</p>
         {!restaurants || restaurants.length === 0 ? (
@@ -582,7 +587,7 @@ export default function RestaurantsManager() {
             <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-amber-800 dark:text-amber-300">No hay restaurantes configurados</p>
-              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">Crea el primero con el botón de arriba.</p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">{isAdmin ? "Crea el primero con el botón de arriba." : "Aún no tienes restaurantes asignados. Contacta con un administrador."}</p>
             </div>
           </div>
         ) : (
@@ -1128,7 +1133,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
 
   const updateMutation = trpc.restaurants.adminUpdateConfig.useMutation({
     onSuccess: () => {
-      utils.restaurants.adminGetAll.invalidate();
+      utils.restaurants.myRestaurants.invalidate();
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     },
