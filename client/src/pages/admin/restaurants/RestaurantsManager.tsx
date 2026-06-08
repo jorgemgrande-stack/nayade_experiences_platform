@@ -9,6 +9,7 @@ import {
   AlertCircle, Edit, Trash2, MessageSquare, Plus, CreditCard, Ban, Images, OctagonX,
 } from "lucide-react";
 import ImageUploader from "@/components/ImageUploader";
+import MenuUploader from "@/components/MenuUploader";
 
 type ViewMode = "list" | "calendar" | "config";
 type StatusFilter = "all" | "pending" | "confirmed" | "cancelled" | "no_show";
@@ -1293,8 +1294,13 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
               </p>
             </div>
             <div className="col-span-2">
-              <label className={labelCls}>URL menú (PDF o enlace)</label>
-              <input value={ficha.menuUrl} onChange={e => setFicha(f => ({ ...f, menuUrl: e.target.value }))} className={inputCls} placeholder="https://..." />
+              <label className={labelCls}>Carta / menú (sube un PDF o imagen, o pega un enlace)</label>
+              <MenuUploader
+                value={ficha.menuUrl}
+                onChange={(url) => setFicha(f => ({ ...f, menuUrl: url }))}
+                inputClassName={inputCls}
+              />
+              <p className="text-xs text-muted-foreground font-display mt-1">Los clientes podrán verlo en la página pública del restaurante.</p>
             </div>
           </div>
           <Button onClick={handleSaveFicha} disabled={updateMutation.isPending}

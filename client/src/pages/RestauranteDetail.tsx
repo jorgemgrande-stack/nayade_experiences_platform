@@ -1,7 +1,7 @@
 import { Link, useParams } from "wouter";
 import PublicLayout from "@/components/PublicLayout";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, Clock, Phone, Mail, MapPin, Loader2, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, Phone, Mail, MapPin, Loader2, Users, BookOpen } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { ReviewSection } from "@/components/ReviewSection";
 
@@ -186,6 +186,15 @@ export default function RestauranteDetail() {
                       Reservar Mesa <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
                   </Link>
+                )}
+
+                {/* Ver carta / menú */}
+                {restaurant.menuUrl && (
+                  <a href={restaurant.menuUrl} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" className="w-full font-display font-semibold rounded-full py-3 text-base border-accent/40 text-accent hover:bg-accent/5 mb-2">
+                      <BookOpen className="w-4 h-4 mr-2" /> Ver carta / menú
+                    </Button>
+                  </a>
                 )}
 
                 {/* Teléfono */}

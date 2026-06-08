@@ -255,4 +255,46 @@ router.post(
   }
 );
 
+// POST /api/upload/restaurant-menu — sube la carta/menú de un restaurante (PDF o imagen) a S3 (admin)
+const restaurantMenuUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Tipo no permitido. Se aceptan PDF o imágenes (JPG, PNG, WebP)."));
+  },
+});
+
+router.post(
+  "/api/upload/restaurant-menu",
+  (req, res, next) => requireAdmin(req, res, next),
+  (req: Request, res: Response) => {
+    restaurantMenuUpload.single("file")(req, res, async (err: unknown) => {
+      if (err) {
+        const message = err instanceof Error ? err.message : "Error al procesar el archivo";
+        res.status(400).json({ error: message });
+        return;
+      }
+      try {
+        if (!req.file) {
+          res.status(400).json({ error: "No se recibió ningún archivo." });
+          return;
+        }
+        const { buffer, mimetype, originalname } = req.file;
+        const ext = originalname.split(".").pop() || "pdf";
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 10);
+        const key = `nayade/restaurants/menus/${timestamp}-${random}.${ext}`;
+        const { url } = await storagePut(key, buffer, mimetype);
+        res.json({ url, key, filename: originalname });
+      } catch (e: unknown) {
+        console.error("[RestaurantMenuUpload] Error:", e);
+        const message = e instanceof Error ? e.message : "Error al subir el menú";
+        res.status(500).json({ error: message });
+      }
+    });
+  }
+);
+
 export default router;
