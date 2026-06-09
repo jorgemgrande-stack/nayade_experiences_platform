@@ -25,6 +25,8 @@ export interface MailParams {
   text?: string;
   from?: string;
   cc?: string | string[];
+  /** Adjuntos por URL pública (p.ej. el PDF de la factura en el CDN). */
+  attachments?: { name: string; url: string }[];
 }
 
 // ─── Helper: parsea el SMTP_FROM en nombre + email ───────────────────────────
@@ -62,6 +64,10 @@ async function sendViaBrevoApi(params: MailParams): Promise<boolean> {
     htmlContent: params.html,
     ...(params.text ? { textContent: params.text } : {}),
     ...(ccList ? { cc: ccList } : {}),
+    // Adjuntos por URL (Brevo descarga el fichero público y lo adjunta)
+    ...(params.attachments?.length
+      ? { attachment: params.attachments.map(a => ({ url: a.url, name: a.name })) }
+      : {}),
     // Desactivar click-tracking de Brevo para que los enlaces lleguen directos sin redirección
     headers: { "X-Mailin-no-track": "1" },
   };
@@ -136,6 +142,9 @@ async function sendViaSMTP(params: MailParams): Promise<boolean> {
       html: params.html,
       ...(params.text ? { text: params.text } : {}),
       ...(params.cc ? { cc: Array.isArray(params.cc) ? params.cc.join(", ") : params.cc } : {}),
+      ...(params.attachments?.length
+        ? { attachments: params.attachments.map(a => ({ filename: a.name, path: a.url })) }
+        : {}),
     });
     console.log(`[Mailer] ✓ SMTP → ${Array.isArray(params.to) ? params.to.join(", ") : params.to}`);
     return true;

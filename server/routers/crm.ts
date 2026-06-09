@@ -5851,12 +5851,18 @@ export const crmRouter = router({
                 ${items.map(i => `<tr><td style="padding:8px;border-bottom:1px solid #e5e7eb;">${i.description}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${i.quantity}</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.unitPrice).toFixed(2)} €</td><td style="padding:8px;text-align:right;border-bottom:1px solid #e5e7eb;">${Number(i.total).toFixed(2)} €</td></tr>`).join("")}
               </table>
               <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)} € | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)} € | <strong>TOTAL: ${Number(invoice.total).toFixed(2)} €</strong></p>
-              ${invoice.pdfUrl ? `<p><a href="${invoice.pdfUrl}" style="color:#f97316;">Descargar PDF de la factura</a></p>` : ""}
+              ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${invoice.pdfUrl}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
               <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · ${COPY_EMAIL} · +34 911 67 51 89 (también WhatsApp)</p>
             </div>`;
 
-          await sharedSendEmail({ to: recipient, subject, html: htmlBody });
-          await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html: htmlBody });
+          // El PDF se adjunta al correo (Brevo lo descarga del CDN), para que el
+          // cliente lo tenga aunque el enlace de descarga falle.
+          const pdfAttachment = invoice.pdfUrl
+            ? [{ name: `${invoice.invoiceNumber}.pdf`, url: invoice.pdfUrl }]
+            : undefined;
+
+          await sharedSendEmail({ to: recipient, subject, html: htmlBody, attachments: pdfAttachment });
+          await sharedSendEmail({ to: COPY_EMAIL, subject: `[COPIA] ${subject}`, html: htmlBody, attachments: pdfAttachment });
 
           await db.update(invoices).set({
             status: invoice.status === "generada" ? "enviada" : invoice.status,
