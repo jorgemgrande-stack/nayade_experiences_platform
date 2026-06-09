@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { groupTaxBreakdown, totalTaxAmount } from "./taxUtils";
 
 // ─── Mock DB ─────────────────────────────────────────────────────────────────
 vi.mock("./db", () => ({
@@ -160,52 +161,44 @@ describe("CRM — Quote items calculation", () => {
 describe("generateInvoice — cálculo de totales desde items TPV", () => {
   const buildItems = (items: { total: number; fiscalRegime?: "reav" | "general" }[]) => items;
 
-  it("calcula subtotal, IVA y total correctamente para items régimen general", () => {
-    const items = buildItems([
+  // El PVP de cada línea YA incluye el IVA: el total se mantiene en el bruto y la
+  // base imponible se EXTRAE (total − IVA). Nunca se suma el IVA encima del bruto.
+  const computeInvoice = (items: { total: number; fiscalRegime?: "reav" | "general" }[]) => {
+    const total = parseFloat(items.reduce((s, i) => s + i.total, 0).toFixed(2));
+    const taxAmount = totalTaxAmount(groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav")));
+    const subtotal = parseFloat((total - taxAmount).toFixed(2));
+    return { subtotal, taxAmount, total };
+  };
+
+  it("extrae el IVA incluido para items régimen general (no lo suma encima)", () => {
+    // 150 € IVA incluido → base 123,97 €, IVA 26,03 €, total 150 €
+    const { subtotal, taxAmount, total } = computeInvoice(buildItems([
       { total: 100, fiscalRegime: "general" },
       { total: 50, fiscalRegime: "general" },
-    ]);
-    const subtotal = items.reduce((s, i) => s + i.total, 0);
-    const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-    const taxRate = 21;
-    const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
-    const total = parseFloat((subtotal + taxAmount).toFixed(2));
-
-    expect(subtotal).toBe(150);
-    expect(taxAmount).toBeCloseTo(31.5, 2);
-    expect(total).toBeCloseTo(181.5, 2);
+    ]));
+    expect(total).toBeCloseTo(150, 2);        // el total NO cambia (bruto)
+    expect(taxAmount).toBeCloseTo(26.03, 2);  // IVA extraído, no 31,5
+    expect(subtotal).toBeCloseTo(123.97, 2);  // base imponible
   });
 
   it("no aplica IVA a items REAV", () => {
-    const items = buildItems([
+    const { subtotal, taxAmount, total } = computeInvoice(buildItems([
       { total: 200, fiscalRegime: "reav" },
-    ]);
-    const subtotal = items.reduce((s, i) => s + i.total, 0);
-    const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-    const taxRate = 21;
-    const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
-    const total = parseFloat((subtotal + taxAmount).toFixed(2));
-
-    expect(subtotal).toBe(200);
-    expect(taxAmount).toBe(0);
+    ]));
     expect(total).toBe(200);
+    expect(taxAmount).toBe(0);
+    expect(subtotal).toBe(200);
   });
 
   it("calcula correctamente con mezcla de items REAV y general", () => {
-    const items = buildItems([
+    // general 100 € (IVA incl.) + reav 80 € → total 180 €, IVA 17,36 €, base 162,64 €
+    const { subtotal, taxAmount, total } = computeInvoice(buildItems([
       { total: 100, fiscalRegime: "general" },
       { total: 80, fiscalRegime: "reav" },
-    ]);
-    const subtotal = items.reduce((s, i) => s + i.total, 0);
-    const generalSubtotal = items.filter(i => i.fiscalRegime !== "reav").reduce((s, i) => s + i.total, 0);
-    const taxRate = 21;
-    const taxAmount = parseFloat((generalSubtotal * (taxRate / 100)).toFixed(2));
-    const total = parseFloat((subtotal + taxAmount).toFixed(2));
-
-    expect(subtotal).toBe(180);
-    expect(generalSubtotal).toBe(100);
-    expect(taxAmount).toBeCloseTo(21, 2);
-    expect(total).toBeCloseTo(201, 2);
+    ]));
+    expect(total).toBeCloseTo(180, 2);
+    expect(taxAmount).toBeCloseTo(17.36, 2);
+    expect(subtotal).toBeCloseTo(162.64, 2);
   });
 
   it("genera número de factura con formato FAC-YYYY-NNNN", () => {

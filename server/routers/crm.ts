@@ -4698,11 +4698,13 @@ export const crmRouter = router({
 
         const now = new Date();
         const invoiceNumber = await generateInvoiceNumber("crm:invoice", String(ctx.user.id));
-        const subtotal = items.reduce((s, i) => s + i.total, 0);
         const bdTpv = groupTaxBreakdown(items.filter(i => i.fiscalRegime !== "reav"));
         const taxAmount = totalTaxAmount(bdTpv);
         const taxRate = bdTpv.length === 1 ? bdTpv[0].rate : 21;
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        // El total de las líneas ya incluye el IVA: la base imponible se EXTRAE
+        // (total − IVA) y el total se mantiene en el bruto. No se suma el IVA encima.
+        const total = parseFloat(items.reduce((s, i) => s + i.total, 0).toFixed(2));
+        const subtotal = parseFloat((total - taxAmount).toFixed(2));
 
         // 3. Generate PDF
         let pdfUrl: string | null = null;
@@ -5030,11 +5032,13 @@ export const crmRouter = router({
           total: input.amountTotal,
           fiscalRegime: "general" as const,
         }];
-        const subtotal = input.amountTotal;
         const bdManual = groupTaxBreakdown(items);
         const taxAmount = totalTaxAmount(bdManual);
         const taxRate = bdManual.length === 1 ? bdManual[0].rate : 21;
-        const total = parseFloat((subtotal + taxAmount).toFixed(2));
+        // El importe introducido ya incluye el IVA: la base imponible se EXTRAE
+        // (total − IVA) y el total se mantiene en el bruto. No se suma el IVA encima.
+        const total = parseFloat(input.amountTotal.toFixed(2));
+        const subtotal = parseFloat((input.amountTotal - taxAmount).toFixed(2));
 
         // 4. Generar PDF de factura
         let pdfUrl: string | null = null;
