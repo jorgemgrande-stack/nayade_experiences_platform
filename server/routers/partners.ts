@@ -9,7 +9,7 @@ import { adminProcedure, partnerProcedure, publicProcedure, router } from "../_c
 import { TRPCError } from "@trpc/server";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
-import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences, transactions } from "../../drizzle/schema";
+import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems, experiences, transactions, siteSettings } from "../../drizzle/schema";
 import { eq, desc, and, gte, lte, notInArray, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
@@ -17,6 +17,7 @@ import { buildReservationConfirmHtml } from "../emailTemplates";
 import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber, getGHLCredentials } from "../db";
 import { reservations } from "../../drizzle/schema";
 import { storagePut } from "../storage";
+import { htmlToPdf } from "../pdfGenerator";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
 
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
@@ -31,6 +32,159 @@ function slugify(name: string): string {
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function fmtDateEs(d: string | null | undefined): string {
+  if (!d) return "—";
+  const parsed = new Date(d);
+  return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString("es-ES");
+}
+
+// Genera el PDF de una liquidación de partner (factura legible y descargable) y lo
+// sube a S3, devolviendo su URL. Modelado sobre la liquidación de proveedores.
+async function generatePartnerBillingPdfAndUpload(data: {
+  batchNumber: string;
+  partnerName: string;
+  partnerFiscalName?: string | null;
+  partnerNif?: string | null;
+  partnerAddress?: string | null;
+  partnerCity?: string | null;
+  partnerPostalCode?: string | null;
+  periodStart: string;
+  periodEnd: string;
+  totalAmount: string;
+  notes?: string | null;
+  issuedAt: Date;
+  items: { reservationNumber: string | null; bookingDate: string | null; customerName: string | null; productName: string | null; amount: string }[];
+  companyData?: { name: string; cif: string; address: string; email: string; phone: string };
+}): Promise<{ url: string; key: string }> {
+  const lineRows = data.items.map((it) => `
+    <tr>
+      <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;font-family:monospace;font-size:12px;color:#6b7280;">${it.reservationNumber ?? "—"}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;text-align:center;">${fmtDateEs(it.bookingDate)}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;">${it.customerName ?? "—"}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;">${it.productName ?? "—"}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;">${parseFloat(it.amount || "0").toFixed(2)} €</td>
+    </tr>`).join("");
+
+  const partnerAddrLine = [
+    data.partnerAddress,
+    [data.partnerPostalCode, data.partnerCity].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a2e; background: #fff; }
+  .doc-header { background: #1a3a6b; padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .logo-block { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  .logo-block img { width: 90px; height: 90px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.85); object-fit: cover; display: block; }
+  .brand-text .brand-name { font-size: 20px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #fff; line-height: 1.1; }
+  .brand-text .brand-sub { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: rgba(255,255,255,0.65); margin-top: 3px; }
+  .company-info { text-align: right; color: rgba(255,255,255,0.80); font-size: 11.5px; line-height: 1.7; }
+  .company-info strong { color: #fff; font-size: 12.5px; display: block; }
+  .doc-type-band { background: #7c3aed; padding: 8px 40px; display: flex; align-items: center; justify-content: space-between; }
+  .doc-type-band .doc-label { color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+  .doc-type-band .doc-ref { color: #fff; font-size: 13px; font-weight: 700; }
+  .body-content { padding: 28px 40px; }
+  .parties { display: flex; gap: 28px; margin-bottom: 24px; }
+  .party { flex: 1; background: #f8fafc; border-radius: 8px; padding: 14px 16px; border: 1px solid #e5e7eb; }
+  .party h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #1a3a6b; margin-bottom: 8px; font-weight: 700; }
+  .party p { font-size: 13px; line-height: 1.7; color: #374151; }
+  .period-badge { display: inline-block; background: #f3f0ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 8px 16px; font-size: 13px; color: #5b21b6; margin-bottom: 20px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+  thead tr { background: #1a3a6b; color: #fff; }
+  thead th { padding: 10px 12px; text-align: left; font-size: 12px; font-weight: 600; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  .totals-wrap { display: flex; justify-content: flex-end; margin-bottom: 24px; }
+  .totals { width: 320px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+  .totals .total-row { background: #7c3aed; color: #fff; }
+  .totals .total-row td { padding: 11px 14px; font-size: 15px; font-weight: 700; }
+  .footer { padding: 16px 40px; border-top: 2px solid #1a3a6b; text-align: center; color: #9ca3af; font-size: 11px; line-height: 1.8; }
+  .notes { background: #fafafa; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #374151; }
+</style>
+</head>
+<body>
+  <div class="doc-header">
+    <div class="logo-block">
+      <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/logo-nayade_20a42bc4.jpg" alt="Náyade" />
+      <div class="brand-text">
+        <div class="brand-name">Náyade</div>
+        <div class="brand-sub">Experiences</div>
+      </div>
+    </div>
+    <div class="company-info">
+      <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
+      ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
+      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 911 67 51 89"}
+    </div>
+  </div>
+  <div class="doc-type-band">
+    <span class="doc-label">Liquidación de Partner</span>
+    <span class="doc-ref">${data.batchNumber} &nbsp;&middot;&nbsp; ${data.issuedAt.toLocaleDateString("es-ES")}</span>
+  </div>
+
+  <div class="body-content">
+  <div class="parties">
+    <div class="party">
+      <h3>Emisor</h3>
+      <p><strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong><br/>
+      ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
+      CIF: ${data.companyData?.cif ?? ""}</p>
+    </div>
+    <div class="party">
+      <h3>Partner</h3>
+      <p><strong>${data.partnerFiscalName || data.partnerName}</strong><br/>
+      ${data.partnerNif ? "NIF: " + data.partnerNif + "<br/>" : ""}
+      ${partnerAddrLine ? partnerAddrLine : ""}</p>
+    </div>
+  </div>
+
+  <div class="period-badge">
+    Período de liquidación: <strong>${data.periodStart}</strong> &mdash; <strong>${data.periodEnd}</strong>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Reserva</th>
+        <th style="text-align:center">Fecha</th>
+        <th>Huésped</th>
+        <th>Actividad</th>
+        <th style="text-align:right">Importe</th>
+      </tr>
+    </thead>
+    <tbody>${lineRows}</tbody>
+  </table>
+
+  <div class="totals-wrap"><table class="totals">
+    <tr class="total-row"><td>TOTAL LIQUIDACIÓN</td><td style="text-align:right">${parseFloat(data.totalAmount || "0").toFixed(2)} €</td></tr>
+  </table></div>
+
+  ${data.notes ? `<div class="notes"><strong>Notas:</strong> ${data.notes}</div>` : ""}
+
+  </div>
+  <div class="footer">
+    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.nayadeexperiences.es</p>
+    <p>Documento de liquidación de las reservas intermediadas por el partner durante el período indicado.</p>
+  </div>
+</body>
+</html>`;
+
+  try {
+    const pdfBuffer = await htmlToPdf(html);
+    const key = `partner-billing/${data.batchNumber}-${Date.now()}.pdf`;
+    const { url } = await storagePut(key, pdfBuffer, "application/pdf");
+    return { url, key };
+  } catch (pdfErr) {
+    console.error("[PDF] Error generando liquidación de partner, guardando HTML como fallback:", pdfErr);
+    const key = `partner-billing/${data.batchNumber}-${Date.now()}.html`;
+    const { url } = await storagePut(key, Buffer.from(html), "text/html");
+    return { url, key };
+  }
 }
 
 // ─── Router ──────────────────────────────────────────────────────────────────
@@ -921,6 +1075,82 @@ export const partnersRouter = router({
         .where(eq(partnerBillingBatchItems.batchId, input.id));
 
       return { ...batch, items };
+    }),
+
+  // ── ADMIN: Generar PDF descargable de una liquidación ──────────────────────
+  generateBatchPdf: adminProcedure
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ input }) => {
+      const [batch] = await db
+        .select({
+          batchNumber: partnerBillingBatches.batchNumber,
+          periodStart: partnerBillingBatches.periodStart,
+          periodEnd: partnerBillingBatches.periodEnd,
+          totalAmount: partnerBillingBatches.totalAmount,
+          notes: partnerBillingBatches.notes,
+          createdAt: partnerBillingBatches.createdAt,
+          partnerName: partners.name,
+          partnerFiscalName: partners.fiscalName,
+          partnerNif: partners.nif,
+          partnerAddress: partners.address,
+          partnerCity: partners.city,
+          partnerPostalCode: partners.postalCode,
+        })
+        .from(partnerBillingBatches)
+        .leftJoin(partners, eq(partnerBillingBatches.partnerId, partners.id))
+        .where(eq(partnerBillingBatches.id, input.id))
+        .limit(1);
+
+      if (!batch) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const items = await db
+        .select({
+          amount: partnerBillingBatchItems.amount,
+          customerName: reservations.customerName,
+          productName: reservations.productName,
+          bookingDate: reservations.bookingDate,
+          reservationNumber: reservations.reservationNumber,
+        })
+        .from(partnerBillingBatchItems)
+        .leftJoin(reservations, eq(partnerBillingBatchItems.reservationId, reservations.id))
+        .where(eq(partnerBillingBatchItems.batchId, input.id));
+
+      // Datos fiscales de la empresa desde siteSettings (mismos que las liquidaciones de proveedor)
+      const settingsRows = await db.select().from(siteSettings)
+        .where(sql`\`key\` IN ('legalCompanyName','legalCompanyCif','legalCompanyAddress','legalCompanyEmail','legalCompanyPhone')`);
+      const s: Record<string, string> = Object.fromEntries(settingsRows.map(r => [r.key, r.value ?? ""]));
+      const companyData = {
+        name: s.legalCompanyName || "Náyade Experiences S.L.",
+        cif: s.legalCompanyCif || "",
+        address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
+        email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
+        phone: s.legalCompanyPhone || "+34 911 67 51 89",
+      };
+
+      const { url, key } = await generatePartnerBillingPdfAndUpload({
+        batchNumber: batch.batchNumber,
+        partnerName: batch.partnerName ?? "—",
+        partnerFiscalName: batch.partnerFiscalName,
+        partnerNif: batch.partnerNif,
+        partnerAddress: batch.partnerAddress,
+        partnerCity: batch.partnerCity,
+        partnerPostalCode: batch.partnerPostalCode,
+        periodStart: batch.periodStart,
+        periodEnd: batch.periodEnd,
+        totalAmount: batch.totalAmount ?? "0",
+        notes: batch.notes,
+        issuedAt: new Date(batch.createdAt),
+        items: items.map(it => ({
+          reservationNumber: it.reservationNumber,
+          bookingDate: it.bookingDate,
+          customerName: it.customerName,
+          productName: it.productName,
+          amount: it.amount ?? "0",
+        })),
+        companyData,
+      });
+
+      return { url, key };
     }),
 
   // ── ADMIN: Reservas sin liquidar de un partner en un período ──────────────

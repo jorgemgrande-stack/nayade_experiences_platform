@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import {
   Plus, FileText, Loader2, Euro, Calendar, ChevronRight,
-  Printer, Trash2, CheckCircle, XCircle, X, Users,
+  Printer, Trash2, CheckCircle, XCircle, X, Users, Download,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -38,6 +38,10 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
   const deleteBatch = trpc.partners.deleteBatch.useMutation({
     onSuccess: () => { utils.partners.listBatches.invalidate(); onClose(); toast.success("Liquidación eliminada"); },
     onError: (e) => toast.error(e.message),
+  });
+  const generatePdf = trpc.partners.generateBatchPdf.useMutation({
+    onSuccess: (data) => { window.open(data.url, "_blank"); toast.success("PDF generado"); },
+    onError: (e) => toast.error(`Error al generar PDF: ${e.message}`),
   });
 
   if (isLoading || !batch) {
@@ -103,7 +107,12 @@ function BatchDetail({ batchId, onClose }: { batchId: number; onClose: () => voi
             </Button>
           </>
         )}
-        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1.5 ml-auto print:hidden"
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 ml-auto print:hidden"
+          onClick={() => generatePdf.mutate({ id: batchId })}
+          disabled={generatePdf.isPending}>
+          {generatePdf.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Descargar PDF
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1.5 print:hidden"
           onClick={handlePrint}>
           <Printer className="w-3.5 h-3.5" /> Imprimir
         </Button>
