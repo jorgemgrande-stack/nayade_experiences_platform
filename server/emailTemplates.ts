@@ -408,6 +408,76 @@ export function buildReservationConfirmHtml(d: ReservationConfirmData): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PLANTILLA 1-PARTNER: Confirmación de reserva DELEGADA por un PARTNER
+// El cliente final paga AL PARTNER (no a Náyade), y no conocemos ese pago. Por eso
+// es una plantilla propia: sin "pago procesado", sin importe/Total, y aclarando que
+// el cobro se gestiona con el partner.
+// ═══════════════════════════════════════════════════════════════════════════════
+export interface PartnerReservationConfirmData {
+  merchantOrder: string;
+  productName: string;
+  customerName: string;
+  date: string;
+  people: number;
+  partnerName: string;
+  reservationUrl?: string;
+  /** Desglose de actividades (multi-línea), SIN importes. HTML ya formateado. */
+  detailHtml?: string;
+}
+
+export function buildPartnerReservationConfirmHtml(d: PartnerReservationConfirmData): string {
+  const body = `
+    ${emailHeader("Reserva Confirmada", "Tu experiencia perfecta empieza aqu&iacute;")}
+    <tr><td style="padding:28px 32px 0;">
+      <p style="color:#1e293b;font-size:17px;margin:0 0 8px;font-family:Arial,sans-serif;">Hola <strong>${d.customerName}</strong>,</p>
+      <p style="color:#6b7280;font-size:15px;margin:0 0 16px;line-height:1.7;font-family:Arial,sans-serif;">
+        Tu reserva ha sido <strong style="color:#166534;">confirmada</strong>.
+        &#161;Te esperamos para vivir una experiencia &uacute;nica en el embalse de Los &Aacute;ngeles de San Rafael!
+      </p>
+      ${statusBlock("success", "Reserva confirmada", `Tu reserva ha sido gestionada a trav&eacute;s de <strong>${d.partnerName}</strong>. El pago se tramita directamente con ellos; para cualquier cuesti&oacute;n sobre el cobro, contacta con <strong>${d.partnerName}</strong>. Recibir&aacute;s toda la informaci&oacute;n necesaria para el d&iacute;a de tu visita.`)}
+    </td></tr>
+    ${detailsCard(`
+      ${detailRow(SVG.star,     "Experiencia",    d.productName)}
+      ${detailRow(SVG.calendar, "Fecha",          d.date)}
+      ${detailRow(SVG.users,    "Personas",       `${d.people} persona${d.people !== 1 ? "s" : ""}`)}
+      ${detailRow(SVG.tag,      "Gestionada por", d.partnerName)}
+    `)}
+    ${d.detailHtml ? `<tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;">
+        <tr><td style="padding:14px 18px;color:#374151;font-size:13px;line-height:1.7;font-family:Arial,sans-serif;">
+          <strong>Detalle de actividades:</strong><br/>${d.detailHtml}
+        </td></tr>
+      </table>
+    </td></tr>` : ""}
+    <tr><td style="padding:0 32px 12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff7ed;border-left:4px solid ${BRAND_ORANGE};border-radius:0 8px 8px 0;">
+        <tr><td style="padding:14px 18px;">
+          <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+            ${SVG.ref}&nbsp;<strong>Referencia de reserva:</strong> <span style="color:${BRAND_ORANGE};font-weight:700;">${d.merchantOrder}</span><br/>
+            <span style="color:#9ca3af;font-size:12px;">Guarda este n&uacute;mero para cualquier consulta.</span>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+    ${d.reservationUrl ? `<tr><td style="padding:8px 32px 24px;text-align:center;">
+        ${ctaButton("Ver tu reserva", d.reservationUrl)}
+        <p style="color:#9ca3af;font-size:11px;margin:10px 0 0;font-family:Arial,sans-serif;">
+          Accede a los detalles de tu reserva en cualquier momento
+        </p>
+      </td></tr>` : ""}
+    ${emotionalBlock("El agua, la naturaleza y la emoci&oacute;n te esperan. &#161;Nos vemos pronto!")}
+    <tr><td style="padding:0 32px 28px;">
+      <p style="color:#9ca3af;font-size:13px;margin:0;line-height:1.6;font-family:Arial,sans-serif;">
+        &iquest;Necesitas modificar tu reserva? Escr&iacute;benos a
+        <a href="mailto:${getContactEmail()}" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">${getContactEmail()}</a>
+        o ll&aacute;manos al <a href="tel:+34911675189" style="color:${BRAND_ORANGE};text-decoration:none;font-weight:600;">+34 911 67 51 89</a>&nbsp;(tambi&eacute;n WhatsApp).
+      </p>
+    </td></tr>
+    ${emailFooter()}`;
+  return emailWrapper("Reserva Confirmada — " + getBrandName(), body);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PLANTILLA 2: Pago fallido de experiencia/pack (Redsys KO)
 // ═══════════════════════════════════════════════════════════════════════════════
 export interface ReservationFailedData {

@@ -13,7 +13,7 @@ import { partners, users, leads, partnerBillingBatches, partnerBillingBatchItems
 import { eq, desc, and, gte, lte, notInArray, inArray, sql } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { sendEmail } from "../mailer";
-import { buildReservationConfirmHtml } from "../emailTemplates";
+import { buildPartnerReservationConfirmHtml } from "../emailTemplates";
 import { createLead as dbCreateLead, getUserByInviteToken, setUserPassword, createBookingFromReservation, upsertClientFromReservation, generateReservationNumber, getGHLCredentials } from "../db";
 import { reservations } from "../../drizzle/schema";
 import { storagePut } from "../storage";
@@ -665,14 +665,13 @@ export const partnersRouter = router({
               return new Date(input.bookingDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
             } catch { return input.bookingDate; }
           })();
-          const html = buildReservationConfirmHtml({
+          const html = buildPartnerReservationConfirmHtml({
             merchantOrder: reservationNumber,
             productName: input.productName,
             customerName: input.customerName,
             date: bookingDateFormatted,
             people: input.people,
-            amount: `${input.amountTotal.toFixed(2).replace(".", ",")} €`,
-            extras: `Reserva delegada por ${partner.name}`,
+            partnerName: partner.name,
             reservationUrl,
           });
           sendEmail({
@@ -918,12 +917,11 @@ export const partnersRouter = router({
               return new Date(s).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
             } catch { return s; }
           };
-          const totalEur = created.reduce((s, c) => s + c.amountCents, 0) / 100;
           const totalPeople = created.reduce((s, c) => s + c.line.people, 0);
           const isMulti = created.length > 1;
 
           // Para multi-línea: concatenamos las actividades en `productName` y
-          // listamos fecha/hora en `extras`. La plantilla actual se mantiene.
+          // listamos el desglose (SIN importes, pago gestionado por el partner) en detailHtml.
           const productName = isMulti
             ? `${created.length} actividades reservadas`
             : created[0].line.productName;
@@ -933,22 +931,18 @@ export const partnersRouter = router({
           const detailLines = created
             .map((c) => {
               const t = c.line.selectedTime ? ` · ${c.line.selectedTime}` : "";
-              const amt = (c.amountCents / 100).toFixed(2).replace(".", ",");
-              return `• ${c.line.productName} — ${fmtDate(c.line.bookingDate)}${t} · ${c.line.people} pers · ${amt} €`;
+              return `• ${c.line.productName} — ${fmtDate(c.line.bookingDate)}${t} · ${c.line.people} pers`;
             })
             .join("<br/>");
-          const extras = isMulti
-            ? `Reserva delegada por ${partner.name}<br/><br/><strong>Detalle:</strong><br/>${detailLines}`
-            : `Reserva delegada por ${partner.name}`;
 
-          const html = buildReservationConfirmHtml({
+          const html = buildPartnerReservationConfirmHtml({
             merchantOrder,
             productName,
             customerName: input.customerName,
             date: dateLabel,
             people: totalPeople,
-            amount: `${totalEur.toFixed(2).replace(".", ",")} €`,
-            extras,
+            partnerName: partner.name,
+            detailHtml: isMulti ? detailLines : undefined,
             reservationUrl,
           });
           const subject = isMulti
