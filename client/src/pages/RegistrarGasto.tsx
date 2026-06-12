@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Upload, AlertCircle, Loader2, X, ChevronDown, Camera } from "lucide-react";
+import { CheckCircle2, Upload, AlertCircle, Loader2, X, Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -226,12 +226,15 @@ function GastoForm({ token }: { token: string }) {
               </div>
             ) : (
               <div className="relative">
+                {/* Select nativo SIN appearance:none + font 16px: en iOS (iPhone)
+                    el `-webkit-appearance:none` y la fuente <16px impedían abrir el
+                    desplegable. Se deja la flecha nativa del sistema. */}
                 <select
                   value={categoryId}
                   onChange={e => setCategoryId(e.target.value)}
                   required
-                  style={{ ...inputStyle, appearance: "none", WebkitAppearance: "none" }}
-                  className="w-full rounded-md border border-slate-700 px-3 py-2.5 pr-9 text-sm
+                  style={{ ...inputStyle, fontSize: "16px", touchAction: "manipulation" }}
+                  className="w-full rounded-md border border-slate-700 px-3 py-2.5
                     outline-none focus:border-[#e8b86d]"
                 >
                   <option value="" disabled style={{ backgroundColor: "#0f172a", color: "#94a3b8" }}>
@@ -247,7 +250,6 @@ function GastoForm({ token }: { token: string }) {
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
             )}
           </div>
