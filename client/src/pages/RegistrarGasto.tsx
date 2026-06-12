@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, Upload, AlertCircle, Loader2, X, Camera } from "lucide-react";
+import { CheckCircle2, Upload, AlertCircle, Loader2, X, Camera, ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -69,6 +69,8 @@ function GastoForm({ token }: { token: string }) {
   const [fileError, setFileError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [catOpen, setCatOpen] = useState(false);
+  const catRef = useRef<HTMLDivElement>(null);
 
   const { data: categories, isLoading: catsLoading, error: catsError } =
     trpc.publicExpenses.categories.useQuery({ token }, { retry: false });
@@ -76,6 +78,20 @@ function GastoForm({ token }: { token: string }) {
   const submitMut = trpc.publicExpenses.submit.useMutation({
     onSuccess: () => setSubmitted(true),
   });
+
+  // Cerrar el desplegable de categoría al tocar/clicar fuera.
+  useEffect(() => {
+    if (!catOpen) return;
+    const onDown = (e: Event) => {
+      if (catRef.current && !catRef.current.contains(e.target as Node)) setCatOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("touchstart", onDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("touchstart", onDown);
+    };
+  }, [catOpen]);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     setFileError("");
@@ -214,7 +230,9 @@ function GastoForm({ token }: { token: string }) {
             </div>
           </div>
 
-          {/* Categoría — select nativo para máxima compatibilidad móvil */}
+          {/* Categoría — desplegable PROPIO (botones), no <select> nativo: en iOS
+              el menú nativo daba problemas (no abría / texto invisible). Con botones
+              HTML el comportamiento es idéntico y fiable en cualquier móvil. */}
           <div className="space-y-1.5">
             <label className="block text-slate-300 text-sm font-medium">
               Categoría <span className="text-red-400">*</span>
@@ -225,30 +243,50 @@ function GastoForm({ token }: { token: string }) {
                 Cargando categorías…
               </div>
             ) : (
-              <div className="relative">
-                {/* Select nativo SIN appearance:none + font 16px: en iOS (iPhone)
-                    el `-webkit-appearance:none` y la fuente <16px impedían abrir el
-                    desplegable. Se deja la flecha nativa del sistema. */}
-                <select
-                  value={categoryId}
-                  onChange={e => setCategoryId(e.target.value)}
-                  required
-                  style={{ ...inputStyle, fontSize: "16px", touchAction: "manipulation" }}
-                  className="w-full rounded-md border border-slate-700 px-3 py-2.5
-                    outline-none focus:border-[#e8b86d]"
+              <div className="relative" ref={catRef}>
+                <button
+                  type="button"
+                  onClick={() => setCatOpen(o => !o)}
+                  style={{ touchAction: "manipulation" }}
+                  className={cn(
+                    "w-full rounded-md border bg-[#0f172a] px-3 py-2.5 text-base text-left",
+                    "flex items-center justify-between gap-2 outline-none transition-colors",
+                    catOpen ? "border-[#e8b86d]" : "border-slate-700",
+                    categoryId ? "text-slate-100" : "text-slate-400",
+                  )}
                 >
-                  {/* Sin colores en línea en las <option>: el menú nativo de iOS se
-                      pinta con fondo claro y el texto casi-blanco quedaba invisible.
-                      Dejamos que el sistema aplique su propio contraste. */}
-                  <option value="" disabled>
-                    Selecciona una categoría
-                  </option>
-                  {(categories ?? []).map(cat => (
-                    <option key={cat.id} value={String(cat.id)}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
+                  <span className="truncate">
+                    {(categories ?? []).find(c => String(c.id) === categoryId)?.name ?? "Selecciona una categoría"}
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 shrink-0 text-slate-400 transition-transform", catOpen && "rotate-180")} />
+                </button>
+                {catOpen && (
+                  <div className="absolute z-20 mt-1 w-full max-h-64 overflow-y-auto rounded-md border border-slate-700 bg-[#0f172a] shadow-xl">
+                    {(categories ?? []).length === 0 ? (
+                      <div className="px-3 py-2.5 text-sm text-slate-400">No hay categorías disponibles</div>
+                    ) : (
+                      (categories ?? []).map(cat => {
+                        const sel = String(cat.id) === categoryId;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => { setCategoryId(String(cat.id)); setCatOpen(false); }}
+                            style={{ touchAction: "manipulation" }}
+                            className={cn(
+                              "w-full text-left px-3 py-2.5 text-base flex items-center justify-between gap-2",
+                              "border-b border-slate-800 last:border-b-0",
+                              sel ? "bg-[#e8b86d]/15 text-[#e8b86d]" : "text-slate-100 active:bg-white/10 hover:bg-white/5",
+                            )}
+                          >
+                            <span className="truncate">{cat.name}</span>
+                            {sel && <Check className="w-4 h-4 shrink-0" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
