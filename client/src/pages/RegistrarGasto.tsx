@@ -237,15 +237,14 @@ function GastoForm({ token }: { token: string }) {
                   className="w-full rounded-md border border-slate-700 px-3 py-2.5
                     outline-none focus:border-[#e8b86d]"
                 >
-                  <option value="" disabled style={{ backgroundColor: "#0f172a", color: "#94a3b8" }}>
+                  {/* Sin colores en línea en las <option>: el menú nativo de iOS se
+                      pinta con fondo claro y el texto casi-blanco quedaba invisible.
+                      Dejamos que el sistema aplique su propio contraste. */}
+                  <option value="" disabled>
                     Selecciona una categoría
                   </option>
                   {(categories ?? []).map(cat => (
-                    <option
-                      key={cat.id}
-                      value={String(cat.id)}
-                      style={{ backgroundColor: "#0f172a", color: "#e2e8f0" }}
-                    >
+                    <option key={cat.id} value={String(cat.id)}>
                       {cat.name}
                     </option>
                   ))}
