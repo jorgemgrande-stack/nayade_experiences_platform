@@ -305,6 +305,7 @@ export const spaRouter = router({
       startTime: z.string().regex(/^\d{2}:\d{2}$/),
       endTime: z.string().regex(/^\d{2}:\d{2}$/),
       capacity: z.number().int().min(1).default(1),
+      slotIntervalMinutes: z.number().int().min(0).default(0),
       isActive: z.boolean().default(true),
     }))
     .mutation(({ input }) => createSpaScheduleTemplate(input)),

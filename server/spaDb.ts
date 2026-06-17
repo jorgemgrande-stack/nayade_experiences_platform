@@ -195,6 +195,7 @@ export async function createSpaScheduleTemplate(data: {
   startTime: string;
   endTime: string;
   capacity?: number;
+  slotIntervalMinutes?: number;
   isActive?: boolean;
 }) {
   const db = await getDb();
@@ -220,6 +221,40 @@ export async function deleteSpaScheduleTemplate(id: number) {
 }
 
 /**
+ * Trocea un rango horario [startTime, endTime] en slots de `intervalMinutes`.
+ * - intervalMinutes <= 0 (o inválido/mayor que el rango): un único slot que cubre
+ *   todo el rango (comportamiento histórico).
+ * - Si el rango no es múltiplo exacto del intervalo, el resto final (< intervalo)
+ *   se descarta (ej. 10:00–18:30 cada 60 → último slot 17:00–18:00).
+ */
+export function splitIntoSlots(
+  startTime: string,
+  endTime: string,
+  intervalMinutes: number,
+): Array<{ startTime: string; endTime: string }> {
+  const toMin = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const toStr = (mins: number) =>
+    `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+
+  const start = toMin(startTime);
+  const end = toMin(endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return [{ startTime, endTime }];
+  }
+  if (!intervalMinutes || intervalMinutes <= 0 || intervalMinutes >= end - start) {
+    return [{ startTime, endTime }];
+  }
+  const out: Array<{ startTime: string; endTime: string }> = [];
+  for (let s = start; s + intervalMinutes <= end; s += intervalMinutes) {
+    out.push({ startTime: toStr(s), endTime: toStr(s + intervalMinutes) });
+  }
+  return out.length ? out : [{ startTime, endTime }];
+}
+
+/**
  * Auto-generates slots for a treatment based on schedule templates for a given date range.
  */
 export async function generateSlotsFromTemplates(treatmentId: number, startDate: string, endDate: string) {
@@ -239,25 +274,29 @@ export async function generateSlotsFromTemplates(treatmentId: number, startDate:
     const dayTemplates = templates.filter(t => t.dayOfWeek === dow);
 
     for (const tmpl of dayTemplates) {
-      // Check if slot already exists
-      const existing = await db.select().from(spaSlots)
-        .where(and(
-          eq(spaSlots.treatmentId, treatmentId),
-          eq(spaSlots.date, dateStr),
-          eq(spaSlots.startTime, tmpl.startTime)
-        ));
-      if (existing.length === 0) {
-        await db.insert(spaSlots).values({
-          treatmentId,
-          resourceId: tmpl.resourceId,
-          date: dateStr,
-          startTime: tmpl.startTime,
-          endTime: tmpl.endTime,
-          capacity: tmpl.capacity,
-          bookedCount: 0,
-          status: "disponible",
-        });
-        created++;
+      // Trocea el rango de la plantilla en slots según su intervalo (0 = uno solo).
+      const pieces = splitIntoSlots(tmpl.startTime, tmpl.endTime, tmpl.slotIntervalMinutes ?? 0);
+      for (const piece of pieces) {
+        // Idempotente: no duplicar un slot ya existente (misma fecha + hora inicio).
+        const existing = await db.select().from(spaSlots)
+          .where(and(
+            eq(spaSlots.treatmentId, treatmentId),
+            eq(spaSlots.date, dateStr),
+            eq(spaSlots.startTime, piece.startTime)
+          ));
+        if (existing.length === 0) {
+          await db.insert(spaSlots).values({
+            treatmentId,
+            resourceId: tmpl.resourceId,
+            date: dateStr,
+            startTime: piece.startTime,
+            endTime: piece.endTime,
+            capacity: tmpl.capacity,
+            bookedCount: 0,
+            status: "disponible",
+          });
+          created++;
+        }
       }
     }
   }

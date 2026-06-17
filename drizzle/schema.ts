@@ -1036,6 +1036,10 @@ export const spaScheduleTemplates = mysqlTable("spa_schedule_templates", {
   startTime: varchar("startTime", { length: 5 }).notNull(),
   endTime: varchar("endTime", { length: 5 }).notNull(),
   capacity: int("capacity").default(1).notNull(),
+  // Minutos de cada slot dentro del rango [startTime, endTime]. 0 = un único slot
+  // que cubre todo el rango (comportamiento histórico). >0 = se trocea en slots
+  // de esa duración (ej. 60 → slots de cada hora).
+  slotIntervalMinutes: int("slotIntervalMinutes").default(0).notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

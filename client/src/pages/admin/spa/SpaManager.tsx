@@ -454,6 +454,7 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
                   startTime: form.startTime,
                   endTime: form.endTime,
                   capacity: parseInt(form.maxBookingsPerSlot) || 1,
+                  slotIntervalMinutes: parseInt(form.slotIntervalMinutes) || 0,
                 })}
                 disabled={createMut.isPending || !form.treatmentId}
               >
@@ -480,7 +481,7 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
                   <div>
                     <div className="font-medium">{treatment?.name ?? `Tratamiento #${t.treatmentId}`}</div>
                     <div className="text-sm text-muted-foreground">
-                      {DOW[t.dayOfWeek]} · {t.startTime} – {t.endTime} · Cada {t.slotIntervalMinutes} min · Máx. {t.maxBookingsPerSlot} reserva{t.maxBookingsPerSlot !== 1 ? "s" : ""}
+                      {DOW[t.dayOfWeek]} · {t.startTime} – {t.endTime} · {t.slotIntervalMinutes > 0 ? `Cada ${t.slotIntervalMinutes} min` : "Slot único"} · Máx. {t.capacity} reserva{t.capacity !== 1 ? "s" : ""}
                     </div>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => deleteMut.mutate({ id: t.id })} className="text-red-500 hover:text-red-700">
