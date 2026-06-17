@@ -608,19 +608,26 @@ function SlotsCalendar({ treatments }: { treatments: any[] }) {
                 <p className="text-muted-foreground text-sm">No hay slots para este día.</p>
               ) : (
                 <div className="space-y-2">
-                  {daySlots.map((slot: any) => (
-                    <div key={slot.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
-                      <div>
-                        <div className="text-sm font-medium">{slot.startTime} – {slot.endTime}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {slot.currentBookings}/{slot.maxBookings} reservas
+                  {daySlots.map((slot: any) => {
+                    // Campos reales de spa_slots: bookedCount / capacity / status.
+                    const booked = slot.bookedCount ?? 0;
+                    const cap = slot.capacity ?? 0;
+                    const blocked = slot.status === "bloqueado";
+                    const full = booked >= cap;
+                    return (
+                      <div key={slot.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                        <div>
+                          <div className="text-sm font-medium">{slot.startTime} – {slot.endTime}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {booked}/{cap} reservas
+                          </div>
                         </div>
+                        <Badge className={blocked ? "bg-slate-500" : full ? "bg-red-500" : "bg-emerald-500"}>
+                          {blocked ? "Bloqueado" : full ? "Lleno" : "Libre"}
+                        </Badge>
                       </div>
-                      <Badge className={slot.isAvailable ? "bg-emerald-500" : "bg-red-500"}>
-                        {slot.isAvailable ? "Libre" : "Lleno"}
-                      </Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
