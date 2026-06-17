@@ -382,7 +382,16 @@ function ScheduleTemplatesTab({ treatments }: { treatments: any[] }) {
   return (
     <div className="space-y-4">
       <div className="flex gap-3 items-center justify-between flex-wrap">
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
+          {/* Tratamiento para el que se generan los slots (antes estaba fijado al primero). */}
+          <select
+            value={selectedTreatment ?? ""}
+            onChange={e => setSelectedTreatment(e.target.value ? parseInt(e.target.value) : null)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground max-w-[240px]"
+            title="Tratamiento para el que generar slots"
+          >
+            {treatments.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
           <Input type="date" value={generateDate} onChange={e => setGenerateDate(e.target.value)} className="w-40" />
           <Input type="number" min={1} max={90} value={generateDays} onChange={e => setGenerateDays(e.target.value)} className="w-20" placeholder="Días" />
           <Button
