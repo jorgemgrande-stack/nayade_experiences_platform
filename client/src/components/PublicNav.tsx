@@ -41,7 +41,6 @@ const FALLBACK_NAV = [
       { label: "El Galeón", href: "/restaurantes/el-galeon" },
       { label: "La Cabaña del Lago", href: "/restaurantes/la-cabana-del-lago" },
       { label: "Nassau Bar & Music", href: "/restaurantes/nassau-bar" },
-      { label: "Arrocería La Cabaña", href: "/restaurantes/arroceria-la-cabana" },
     ],
   },
   { label: "Galería", href: "/galeria" },

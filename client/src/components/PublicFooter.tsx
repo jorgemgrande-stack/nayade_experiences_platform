@@ -25,7 +25,6 @@ const colServicios = [
   { label: "El Galeón", href: "https://www.hotelnayade.es/restaurantes/el-galeon" },
   { label: "La Cabaña del Lago", href: "https://www.hotelnayade.es/restaurantes/la-cabana-del-lago" },
   { label: "Nassau Bar & Music", href: "https://www.hotelnayade.es/restaurantes/nassau-bar" },
-  { label: "Arrocería La Cabaña", href: "/restaurantes/arroceria-la-cabana" },
   { label: "Galería de Fotos", href: "/galeria" },
   { label: "Ubicación", href: "/ubicacion" },
   { label: "Solicitar Presupuesto", href: "/presupuesto" },
