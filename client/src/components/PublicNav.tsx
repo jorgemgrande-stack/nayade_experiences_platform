@@ -51,19 +51,26 @@ const FALLBACK_NAV = [
 interface NavItem {
   label: string;
   href: string;
-  children?: { label: string; href: string }[];
+  target?: string;
+  children?: { label: string; href: string; target?: string }[];
 }
 
+// Detecta URLs externas/absolutas: el router de Wouter solo entiende rutas
+// internas del SPA, así que estas deben abrirse con un <a href> real.
+const isExternalUrl = (href: string) =>
+  /^(https?:)?\/\//i.test(href) || /^(mailto:|tel:)/i.test(href);
+
 // ── Dropdown con zona de tolerancia hover ─────────────────────────────────
-interface DropdownItem { label: string; href: string }
+interface DropdownItem { label: string; href: string; target?: string }
 interface NavDropdownProps {
   label: string;
   href: string;
+  target?: string;
   children: DropdownItem[];
   isActive: boolean;
 }
 
-function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
+function NavDropdown({ label, href, target, children, isActive }: NavDropdownProps) {
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, setLocation] = useLocation();
@@ -87,16 +94,29 @@ function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
 
   return (
     <div className="relative" onPointerEnter={() => { cancelClose(); setOpen(true); }} onPointerLeave={scheduleClose}>
-      <Link href={href}>
-        <button className={cn(
-          "flex items-center gap-1 px-3 py-2 rounded-lg font-display text-sm font-medium transition-all duration-200",
-          "text-foreground hover:text-primary hover:bg-primary/8",
-          isActive && "text-primary font-semibold"
-        )}>
-          {label}
-          <ChevronDown className={cn("w-3.5 h-3.5 opacity-70 transition-transform duration-200", open && "rotate-180")} />
-        </button>
-      </Link>
+      {isExternalUrl(href) ? (
+        <a href={href} target={target ?? "_self"} rel={target === "_blank" ? "noreferrer" : undefined}>
+          <button className={cn(
+            "flex items-center gap-1 px-3 py-2 rounded-lg font-display text-sm font-medium transition-all duration-200",
+            "text-foreground hover:text-primary hover:bg-primary/8",
+            isActive && "text-primary font-semibold"
+          )}>
+            {label}
+            <ChevronDown className={cn("w-3.5 h-3.5 opacity-70 transition-transform duration-200", open && "rotate-180")} />
+          </button>
+        </a>
+      ) : (
+        <Link href={href}>
+          <button className={cn(
+            "flex items-center gap-1 px-3 py-2 rounded-lg font-display text-sm font-medium transition-all duration-200",
+            "text-foreground hover:text-primary hover:bg-primary/8",
+            isActive && "text-primary font-semibold"
+          )}>
+            {label}
+            <ChevronDown className={cn("w-3.5 h-3.5 opacity-70 transition-transform duration-200", open && "rotate-180")} />
+          </button>
+        </Link>
+      )}
       {/* Bridge invisible para evitar el gap entre botón y dropdown */}
       {open && <div className="absolute top-full left-0 w-full h-3 z-40" onPointerEnter={cancelClose} />}
       <div
@@ -109,15 +129,28 @@ function NavDropdown({ label, href, children, isActive }: NavDropdownProps) {
         onPointerLeave={scheduleClose}
       >
         <div className="absolute -top-1.5 left-5 w-3 h-3 bg-white border-l border-t border-border/50 rotate-45" />
-        {children.map((child) => (
-          <button
-            key={child.href}
-            onClick={() => navigate(child.href)}
-            className="w-full text-left px-4 py-2.5 text-sm font-display text-foreground hover:bg-primary/8 hover:text-primary cursor-pointer transition-colors border-b border-border/20 last:border-0 block"
-          >
-            {child.label}
-          </button>
-        ))}
+        {children.map((child) =>
+          isExternalUrl(child.href) ? (
+            <a
+              key={child.href}
+              href={child.href}
+              target={child.target ?? "_self"}
+              rel={child.target === "_blank" ? "noreferrer" : undefined}
+              onClick={() => setOpen(false)}
+              className="w-full text-left px-4 py-2.5 text-sm font-display text-foreground hover:bg-primary/8 hover:text-primary cursor-pointer transition-colors border-b border-border/20 last:border-0 block"
+            >
+              {child.label}
+            </a>
+          ) : (
+            <button
+              key={child.href}
+              onClick={() => navigate(child.href)}
+              className="w-full text-left px-4 py-2.5 text-sm font-display text-foreground hover:bg-primary/8 hover:text-primary cursor-pointer transition-colors border-b border-border/20 last:border-0 block"
+            >
+              {child.label}
+            </button>
+          )
+        )}
       </div>
     </div>
   );
@@ -150,11 +183,12 @@ export default function PublicNav() {
       const children = menuData
         .filter((item: any) => item.parentId === root.id && item.isActive)
         .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
-        .map((child: any) => ({ label: child.label, href: child.url ?? "/" }));
+        .map((child: any) => ({ label: child.label, href: child.url ?? "/", target: child.target }));
 
       return {
         label: root.label,
         href: root.url ?? "/",
+        target: root.target,
         ...(children.length > 0 ? { children } : {}),
       };
     });
@@ -220,9 +254,20 @@ export default function PublicNav() {
                   key={link.href}
                   label={link.label}
                   href={link.href}
+                  target={link.target}
                   children={link.children}
                   isActive={location.startsWith(link.href)}
                 />
+              ) : isExternalUrl(link.href) ? (
+                <a key={link.href} href={link.href} target={link.target ?? "_self"} rel={link.target === "_blank" ? "noreferrer" : undefined}>
+                  <button className={cn(
+                    "flex items-center gap-1 px-3 py-2 rounded-lg font-display text-sm font-medium transition-all duration-200",
+                    "text-foreground hover:text-primary hover:bg-primary/8",
+                    location === link.href && "text-primary font-semibold"
+                  )}>
+                    {link.label}
+                  </button>
+                </a>
               ) : (
                 <Link key={link.href} href={link.href}>
                   <button className={cn(
@@ -288,12 +333,24 @@ export default function PublicNav() {
             <div key={link.href}>
               <div className="flex items-center justify-between">
                 {/* El label siempre navega a la ruta principal del ítem */}
-                <button
-                  className="flex-1 text-left px-4 py-3 rounded-xl hover:bg-muted font-display font-medium text-foreground cursor-pointer"
-                  onClick={() => mobileNavigate(link.href)}
-                >
-                  {link.label}
-                </button>
+                {isExternalUrl(link.href) ? (
+                  <a
+                    href={link.href}
+                    target={link.target ?? "_self"}
+                    rel={link.target === "_blank" ? "noreferrer" : undefined}
+                    onClick={() => { setIsOpen(false); setExpandedMobile(null); }}
+                    className="flex-1 text-left px-4 py-3 rounded-xl hover:bg-muted font-display font-medium text-foreground cursor-pointer block"
+                  >
+                    {link.label}
+                  </a>
+                ) : (
+                  <button
+                    className="flex-1 text-left px-4 py-3 rounded-xl hover:bg-muted font-display font-medium text-foreground cursor-pointer"
+                    onClick={() => mobileNavigate(link.href)}
+                  >
+                    {link.label}
+                  </button>
+                )}
                 {/* Si tiene hijos, el chevron expande/colapsa el submenú */}
                 {link.children && (
                   <button
@@ -309,15 +366,28 @@ export default function PublicNav() {
               </div>
               {link.children && expandedMobile === link.label && (
                 <div className="ml-4 space-y-0.5 pb-2">
-                  {link.children.map((child) => (
-                    <button
-                      key={child.href}
-                      onClick={() => mobileNavigate(child.href)}
-                      className="w-full text-left px-4 py-2.5 text-sm font-display text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg cursor-pointer transition-colors block"
-                    >
-                      {child.label}
-                    </button>
-                  ))}
+                  {link.children.map((child) =>
+                    isExternalUrl(child.href) ? (
+                      <a
+                        key={child.href}
+                        href={child.href}
+                        target={child.target ?? "_self"}
+                        rel={child.target === "_blank" ? "noreferrer" : undefined}
+                        onClick={() => { setIsOpen(false); setExpandedMobile(null); }}
+                        className="w-full text-left px-4 py-2.5 text-sm font-display text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg cursor-pointer transition-colors block"
+                      >
+                        {child.label}
+                      </a>
+                    ) : (
+                      <button
+                        key={child.href}
+                        onClick={() => mobileNavigate(child.href)}
+                        className="w-full text-left px-4 py-2.5 text-sm font-display text-muted-foreground hover:text-primary hover:bg-primary/5 rounded-lg cursor-pointer transition-colors block"
+                      >
+                        {child.label}
+                      </button>
+                    )
+                  )}
                 </div>
               )}
             </div>
