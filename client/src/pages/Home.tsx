@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trackCTAClick, trackLeadFormSubmit } from "@/lib/ga4";
+import { restaurantExternalUrl, RESTAURANTS_INDEX_EXTERNAL_URL } from "@/lib/restaurantLinks";
 
 // ─── Tipos para multi-actividad ───────────────────────────────────────────────
 interface HeroActivityEntry {
@@ -1163,8 +1164,8 @@ export default function Home() {
               const heroImg = rest.heroImage && !rest.heroImage.includes("unsplash") ? rest.heroImage : CDN.barco;
               const isOpen = isRestaurantOpenNow((rest as any).shifts);
               const nextShift = getNextShift((rest as any).shifts);
-              return (
-                <Link key={rest.slug} href={`/restaurantes/${rest.slug}`}>
+              const ext = restaurantExternalUrl(rest.slug);
+              const card = (
                   <div className="group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl shadow-md" style={{ minHeight: 360 }}>
                     <img src={heroImg} alt={rest.name} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                     <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(15,8,2,0.95) 40%, rgba(15,8,2,0.10) 100%)" }} />
@@ -1200,7 +1201,12 @@ export default function Home() {
                       )}
                     </div>
                   </div>
-                </Link>
+              );
+              // Restaurantes del Hotel Náyade enlazan a su web; el resto, ruta interna.
+              return ext ? (
+                <a key={rest.slug} href={ext} className="block">{card}</a>
+              ) : (
+                <Link key={rest.slug} href={`/restaurantes/${rest.slug}`}>{card}</Link>
               );
             })}
             {restaurantsQuery.isLoading && Array.from({ length: 4 }).map((_, i) => (
@@ -1208,11 +1214,11 @@ export default function Home() {
             ))}
           </div>
           <div className="text-center mt-12">
-            <Link href="/restaurantes">
+            <a href={RESTAURANTS_INDEX_EXTERNAL_URL}>
               <Button size="lg" className="bg-orange-500 hover:bg-orange-600 text-white font-display font-semibold rounded-full px-10 shadow-lg">
                 Ver Todos los Restaurantes <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-            </Link>
+            </a>
           </div>
         </div>
       </section>

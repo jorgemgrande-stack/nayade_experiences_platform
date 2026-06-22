@@ -22,9 +22,9 @@ const colLegoPacks = [
 const colServicios = [
   { label: "Hotel Náyade ★★★", href: "/hotel" },
   { label: "SPA & Wellness", href: "/spa" },
-  { label: "El Galeón", href: "/restaurantes/el-galeon" },
-  { label: "La Cabaña del Lago", href: "/restaurantes/la-cabana-del-lago" },
-  { label: "Nassau Bar & Music", href: "/restaurantes/nassau-bar" },
+  { label: "El Galeón", href: "https://www.hotelnayade.es/restaurantes/el-galeon" },
+  { label: "La Cabaña del Lago", href: "https://www.hotelnayade.es/restaurantes/la-cabana-del-lago" },
+  { label: "Nassau Bar & Music", href: "https://www.hotelnayade.es/restaurantes/nassau-bar" },
   { label: "Arrocería La Cabaña", href: "/restaurantes/arroceria-la-cabana" },
   { label: "Galería de Fotos", href: "/galeria" },
   { label: "Ubicación", href: "/ubicacion" },
@@ -122,9 +122,15 @@ export default function PublicFooter() {
             <ul className="space-y-2">
               {colServicios.map((link) => (
                 <li key={link.href}>
-                  <Link href={link.href}>
-                    <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
-                  </Link>
+                  {link.href.startsWith("http") ? (
+                    <a href={link.href}>
+                      <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
+                    </a>
+                  ) : (
+                    <Link href={link.href}>
+                      <span className="text-white/55 hover:text-accent text-sm font-display transition-colors cursor-pointer">{link.label}</span>
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>

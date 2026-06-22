@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Clock, MapPin, Phone, Utensils, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
+import { restaurantExternalUrl } from "@/lib/restaurantLinks";
 
 const CDN_HERO = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/Cableski_4bb813a1.png";
 
@@ -66,6 +67,7 @@ export default function Restaurantes() {
             <div className="space-y-20">
               {restaurantes.map((r, i) => {
                 const heroImg = r.heroImage || FALLBACK_IMAGES[r.slug] || CDN_HERO;
+                const ext = restaurantExternalUrl(r.slug);
                 return (
                   <div key={r.slug} className={`grid lg:grid-cols-2 gap-14 items-center ${i % 2 === 1 ? "lg:grid-flow-dense" : ""}`}>
                     {/* Imagen */}
@@ -92,18 +94,29 @@ export default function Restaurantes() {
                         <p className="text-muted-foreground font-display text-lg leading-relaxed mb-6">{r.shortDesc}</p>
                       )}
                       <div className="flex flex-wrap gap-3">
-                        {r.acceptsOnlineBooking && (
-                          <Link href={`/restaurantes/${r.slug}`}>
+                        {ext ? (
+                          // Restaurante gestionado en la web del Hotel Náyade.
+                          <a href={ext}>
                             <Button className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-7 shadow-md shadow-accent/20">
-                              Reservar Mesa <ArrowRight className="w-4 h-4 ml-2" />
+                              <Utensils className="w-4 h-4 mr-2" /> Ver Restaurante <ArrowRight className="w-4 h-4 ml-2" />
                             </Button>
-                          </Link>
+                          </a>
+                        ) : (
+                          <>
+                            {r.acceptsOnlineBooking && (
+                              <Link href={`/restaurantes/${r.slug}`}>
+                                <Button className="bg-accent hover:bg-accent/90 text-white font-display font-semibold rounded-full px-7 shadow-md shadow-accent/20">
+                                  Reservar Mesa <ArrowRight className="w-4 h-4 ml-2" />
+                                </Button>
+                              </Link>
+                            )}
+                            <Link href={`/restaurantes/${r.slug}`}>
+                              <Button variant="outline" className="font-display font-semibold rounded-full px-7 border-primary/30 text-primary hover:bg-primary/5">
+                                <Utensils className="w-4 h-4 mr-2" /> Ver Carta
+                              </Button>
+                            </Link>
+                          </>
                         )}
-                        <Link href={`/restaurantes/${r.slug}`}>
-                          <Button variant="outline" className="font-display font-semibold rounded-full px-7 border-primary/30 text-primary hover:bg-primary/5">
-                            <Utensils className="w-4 h-4 mr-2" /> Ver Carta
-                          </Button>
-                        </Link>
                       </div>
                     </div>
                   </div>
