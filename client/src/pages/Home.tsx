@@ -1162,8 +1162,10 @@ export default function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {(restaurantsQuery.data ?? []).map((rest) => {
               const heroImg = rest.heroImage && !rest.heroImage.includes("unsplash") ? rest.heroImage : CDN.barco;
-              const isOpen = isRestaurantOpenNow((rest as any).shifts);
-              const nextShift = getNextShift((rest as any).shifts);
+              // Los restaurantes se gestionan en la web del Hotel Náyade: mostramos
+              // siempre "Abierto" en las fichas de la home (sin estado por turnos).
+              const isOpen = true;
+              const nextShift = "";
               const ext = restaurantExternalUrl(rest.slug);
               const card = (
                   <div className="group relative rounded-3xl overflow-hidden cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl shadow-md" style={{ minHeight: 360 }}>
