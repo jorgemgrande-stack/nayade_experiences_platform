@@ -1260,6 +1260,96 @@ export const ticketingRouter = router({
       return { success: true, justificantUrl, reservationId };
     }),
 
+  /**
+   * Admin: regenerar la operación (booking + transacción + operativa) y reenviar el
+   * email de confirmación de una reserva de cupón cuya operación no se creó por el
+   * bug histórico de markAsRedeemed (postConfirmOperation con argumentos erróneos).
+   * Idempotente: postConfirmOperation no duplica booking/transacción/operativa si ya existen.
+   */
+  regenerateReservationOperation: adminProc
+    .input(z.object({ reservationId: z.number() }))
+    .mutation(async ({ input }) => {
+      const [r] = await db.select().from(reservations).where(eq(reservations.id, input.reservationId)).limit(1);
+      if (!r) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+      if (r.originSource !== "coupon_redemption") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se puede regenerar la operación de reservas de cupón" });
+      }
+
+      // Datos del cupón origen (proveedor + código) para el email.
+      let provider = r.platformName ?? "";
+      let couponCode = "";
+      if (r.redemptionId) {
+        const [cr] = await db.select({ provider: couponRedemptions.provider, couponCode: couponRedemptions.couponCode })
+          .from(couponRedemptions).where(eq(couponRedemptions.id, r.redemptionId)).limit(1);
+        if (cr) { provider = cr.provider ?? provider; couponCode = cr.couponCode ?? ""; }
+      }
+
+      const pvpTotal = (r.amountTotal ?? 0) / 100;   // euros (PVP total)
+      const netCents = r.amountPaid ?? 0;            // neto, ya en céntimos
+
+      // 1. Regenerar booking + transacción + operativa (idempotente).
+      let bookingId: number | null = null;
+      let transactionId: number | null = null;
+      try {
+        const res = await postConfirmOperation({
+          reservationId: r.id,
+          productId: r.productId ?? 0,
+          productName: r.productName,
+          serviceDate: r.bookingDate ?? new Date().toISOString().split("T")[0],
+          people: r.people,
+          amountCents: netCents,
+          customerName: r.customerName,
+          customerEmail: r.customerEmail ?? "",
+          customerPhone: r.customerPhone ?? null,
+          totalAmount: pvpTotal,
+          paymentMethod: "otro",
+          saleChannel: "delegado",
+          reservationRef: r.merchantOrder,
+          description: `Cupón ${provider || "externo"} — ${couponCode} — ${r.productName}`,
+          sourceChannel: "otro",
+        });
+        bookingId = res.bookingId;
+        transactionId = res.transactionId;
+      } catch (e) {
+        console.error("[regenerateReservationOperation] postConfirmOperation:", e);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Error regenerando la operación contable/operativa" });
+      }
+
+      // 2. Reenviar email de confirmación al cliente.
+      let emailSent = false;
+      if (r.customerEmail) {
+        const bookingDateFormatted = r.bookingDate
+          ? new Date(r.bookingDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+          : "Por confirmar";
+        const totalAmountStr = pvpTotal.toFixed(2).replace(".", ",");
+        const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+        const publicToken = (r as { publicToken?: string | null }).publicToken;
+        const reservationUrl = publicToken ? `${baseUrl}/presupuesto/${publicToken}` : undefined;
+        const confirmHtml = buildReservationConfirmHtml({
+          merchantOrder: r.merchantOrder,
+          productName: r.productName,
+          customerName: r.customerName,
+          date: bookingDateFormatted,
+          people: r.people,
+          amount: `${totalAmountStr} €`,
+          extras: `Cupón ${provider} — Código: ${couponCode}`,
+          reservationUrl,
+        });
+        try {
+          await sendEmail({
+            to: r.customerEmail,
+            subject: `✅ Reserva confirmada — ${r.productName} | Náyade Experiences`,
+            html: confirmHtml,
+          });
+          emailSent = true;
+        } catch (e) {
+          console.error("[regenerateReservationOperation] email:", e);
+        }
+      }
+
+      return { success: true, bookingId, transactionId, emailSent };
+    }),
+
   /** Admin: eliminar un cupón por ID (borrado físico) */
   deleteRedemption: adminProc
     .input(z.object({ id: z.number() }))

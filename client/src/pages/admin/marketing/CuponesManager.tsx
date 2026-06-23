@@ -513,6 +513,13 @@ export default function CuponesManager() {
     onSuccess: (res) => { toast.success(`Cupón ${res.couponCode} eliminado`); setDeleteCoupon(null); invalidate(); },
     onError: (e) => toast.error(e.message),
   });
+  const regenerateMutation = trpc.ticketing.regenerateReservationOperation.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Operación regenerada${res.emailSent ? " · email reenviado" : ""} (booking #${res.bookingId ?? "—"}, tx #${res.transactionId ?? "—"})`);
+      invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
   const createManualMutation = trpc.ticketing.createManualRedemption.useMutation({
     onSuccess: () => {
       toast.success("Cupón registrado manualmente");
@@ -719,6 +726,14 @@ export default function CuponesManager() {
                               <button onClick={() => { setIncidenceCoupon(c); setIncidenceNotes(""); }}
                                 className="p-1.5 rounded-lg hover:bg-red-500/20 text-red-400/60 hover:text-red-400 transition-colors" aria-label="Marcar incidencia">
                                 <AlertTriangle className="w-4 h-4" />
+                              </button>
+                            )}
+                            {c.statusOperational === "reserva_generada" && c.reservationId && (
+                              <button
+                                onClick={() => regenerateMutation.mutate({ reservationId: c.reservationId! })}
+                                disabled={regenerateMutation.isPending}
+                                className="p-1.5 rounded-lg hover:bg-sky-500/20 text-sky-400/60 hover:text-sky-400 transition-colors disabled:opacity-40" aria-label="Regenerar operación y reenviar email">
+                                <Zap className="w-4 h-4" />
                               </button>
                             )}
                             <button onClick={() => setDeleteCoupon(c)}
