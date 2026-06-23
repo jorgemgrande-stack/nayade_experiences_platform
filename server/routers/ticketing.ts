@@ -1194,13 +1194,19 @@ export const ticketingRouter = router({
           const netTotal = parseFloat(resolvedNetPrice) * input.participants;
           await postConfirmOperation({
             reservationId,
-            experienceId: resolvedExperienceId ?? 0,
-            date: input.reservationDate,
+            productId: resolvedExperienceId ?? 0,
+            productName: resolvedProductName,
+            serviceDate: input.reservationDate ?? new Date().toISOString().split("T")[0],
             people: input.participants,
-            pvpTotal,
-            netTotal,
+            amountCents: Math.round(netTotal * 100),
             customerName: item.customerName,
             customerEmail: item.email,
+            customerPhone: item.phone ?? null,
+            totalAmount: pvpTotal,
+            paymentMethod: "otro",
+            saleChannel: "delegado",
+            reservationRef: merchantOrder,
+            description: `Cupón ${item.provider ?? "externo"} — ${item.couponCode} — ${resolvedProductName}`,
             sourceChannel: "otro",
           });
         } catch (e) {
@@ -1210,6 +1216,32 @@ export const ticketingRouter = router({
         await logActivity("reservation", reservationId, "coupon_converted_to_reservation", ctx.user.id, ctx.user.name, {
           provider: item.provider, couponCode: item.couponCode, productName: resolvedProductName, customerName: item.customerName,
         });
+
+        // Enviar email de confirmación al cliente (mismo correo que convertToReservation).
+        // Antes esta vía (canjear + generar reserva en un paso) no enviaba ningún email.
+        const bookingDateFormatted = input.reservationDate
+          ? new Date(input.reservationDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+          : "Por confirmar";
+        const totalAmount = (parseFloat(resolvedPvpPrice) * input.participants).toFixed(2).replace(".", ",");
+        const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
+          .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
+        const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+        const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
+        const confirmHtml = buildReservationConfirmHtml({
+          merchantOrder,
+          productName: resolvedProductName,
+          customerName: item.customerName,
+          date: bookingDateFormatted,
+          people: input.participants,
+          amount: `${totalAmount} €`,
+          extras: `Cupón ${item.provider ?? ""} — Código: ${item.couponCode}`,
+          reservationUrl,
+        });
+        sendEmail({
+          to: item.email,
+          subject: `✅ Reserva confirmada — ${resolvedProductName} | Náyade Experiences`,
+          html: confirmHtml,
+        }).catch(console.error);
       }
 
       // ── 3. Marcar canjeado + reserva_generada si aplica ───────────────────
