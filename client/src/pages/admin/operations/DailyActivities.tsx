@@ -66,8 +66,13 @@ const OP_CONFIG: Record<OpState, { label: string; dot: string; border: string; b
 type FilterType = "all" | "sin_monitor" | "sin_hora" | "incidencia" | "completa";
 
 // ─── Parsear actividades extras + herencia operativa ──────────────────────────
-function parseExtras(extrasJson: string | null | undefined): any[] {
-  try { return extrasJson ? JSON.parse(extrasJson) : []; } catch { return []; }
+function parseExtras(extrasJson: any): any[] {
+  if (!extrasJson) return [];
+  if (Array.isArray(extrasJson)) return extrasJson; // MySQL2 puede devolver JSON ya parseado
+  try {
+    const parsed = typeof extrasJson === "string" ? JSON.parse(extrasJson) : extrasJson;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
 }
 function parseActivitiesOp(json: any): Array<{ index: number; lineId?: number; serviceDate?: string | null; monitorId?: number | null; arrivalTime?: string; opNotes?: string; consolidated?: boolean }> {
   if (!json) return [];
