@@ -166,6 +166,7 @@ const PartnerReservaNueva = lazy(() => import("./pages/partner/PartnerReservaNue
 
 // Supplier portal (lazy)
 const SupplierDashboard = lazy(() => import("./pages/supplier/SupplierDashboard"));
+const ActivarProveedor = lazy(() => import("./pages/supplier/ActivarProveedor"));
 
 // Suppliers & Settlements
 const SuppliersManager = lazy(() => import("./pages/admin/suppliers/SuppliersManager"));
@@ -246,6 +247,7 @@ function Router() {
       <Route path="/partner">{() => { window.location.replace("/partner/dashboard"); return null; }}</Route>
 
       {/* Portal de Proveedor */}
+      <Route path="/supplier/activar">{() => <Suspense fallback={<AdminLoadingFallback />}><ActivarProveedor /></Suspense>}</Route>
       <Route path="/supplier/dashboard">{() => <Suspense fallback={<AdminLoadingFallback />}><SupplierDashboard /></Suspense>}</Route>
       <Route path="/supplier">{() => { window.location.replace("/supplier/dashboard"); return null; }}</Route>
       {/* ── LEGAL PAGES ── */}

@@ -147,6 +147,7 @@ const PUBLIC_TRPC_ROUTES = new Set([
   //    no tiene sesión: /empleado/activar y /partner/activar) ───────────────
   "hr.portal.activate",
   "partners.activateInvite",
+  "suppliers.activateSupplierInvite",
   "gestoria.portal.activate",
 ]);
 

@@ -291,6 +291,11 @@ export default function SuppliersManager() {
     onError: (e) => toast.error(`Error al actualizar: ${e.message}`),
   });
 
+  const inviteMutation = trpc.suppliers.inviteSupplierUser.useMutation({
+    onSuccess: (r) => toast.success(`Invitación enviada a ${r.email}. El proveedor podrá activar su portal.`),
+    onError: (e) => toast.error(`Error al invitar: ${e.message}`),
+  });
+
   const deleteMutation = trpc.suppliers.delete.useMutation({
     onSuccess: () => {
       utils.suppliers.list.invalidate();
@@ -461,6 +466,20 @@ export default function SuppliersManager() {
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={() => openEdit(selected)}>
                   <Edit className="w-3 h-3 mr-1" />Editar
+                </Button>
+                <Button
+                  variant="outline" size="sm"
+                  className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                  disabled={inviteMutation.isPending}
+                  onClick={() => {
+                    const email = (selected as any).adminEmail?.trim();
+                    if (!email) { toast.error("El proveedor no tiene email. Edítalo y añade uno antes de invitar."); return; }
+                    if (confirm(`¿Enviar invitación al portal de proveedor a ${email}?`))
+                      inviteMutation.mutate({ supplierId: selected.id });
+                  }}
+                  title="Crear/invitar usuario del proveedor para acceder a su portal"
+                >
+                  <Mail className="w-3 h-3 mr-1" />Invitar al portal
                 </Button>
                 <Button variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => setShowDeleteConfirm(selected.id)}>
                   <Trash2 className="w-3 h-3 mr-1" />Eliminar

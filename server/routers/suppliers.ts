@@ -4,7 +4,9 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
+import { randomBytes } from "crypto";
+import { getUserByInviteToken, setUserPassword } from "../db";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -25,6 +27,7 @@ import {
   spaTreatments,
   quotes,
   siteSettings,
+  users,
 } from "../../drizzle/schema";
 import { eq, and, gte, lte, desc, sql, inArray } from "drizzle-orm";
 import { sendEmail } from "../mailer";
@@ -565,6 +568,78 @@ export const suppliersRouter = router({
         .where(eq(packs.supplierId, input.supplierId));
 
       return [...exps, ...pkgs];
+    }),
+
+  // ── ADMIN: invitar usuario de proveedor (crea login con rol "supplier") ───────
+  inviteSupplierUser: adminProc
+    .input(z.object({
+      supplierId: z.number().int(),
+      email: z.string().email().optional(),
+      name: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const [sup] = await db.select({
+        fiscalName: suppliers.fiscalName, commercialName: suppliers.commercialName, adminEmail: suppliers.adminEmail,
+      }).from(suppliers).where(eq(suppliers.id, input.supplierId)).limit(1);
+      if (!sup) throw new TRPCError({ code: "NOT_FOUND", message: "Proveedor no encontrado" });
+      const email = (input.email ?? sup.adminEmail ?? "").trim();
+      if (!email) throw new TRPCError({ code: "BAD_REQUEST", message: "El proveedor no tiene email. Indica uno." });
+      const name = input.name ?? sup.commercialName ?? sup.fiscalName ?? "Proveedor";
+
+      const token = randomBytes(32).toString("hex");
+      const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+      if (existing) {
+        // Reconvertir usuario existente a proveedor (p. ej. si estaba como partner)
+        await db.update(users).set({
+          role: "supplier" as any, inviteToken: token, inviteTokenExpiry: expiry,
+          ...(({ supplierId: input.supplierId, partnerId: null }) as any),
+        } as any).where(eq(users.id, existing.id));
+      } else {
+        await db.insert(users).values({
+          openId: `invite_${token.slice(0, 16)}`,
+          name, email, role: "supplier" as any,
+          inviteToken: token, inviteTokenExpiry: expiry, inviteAccepted: false, isActive: false,
+          lastSignedIn: new Date(),
+        } as any);
+        const [nu] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+        if (nu) await db.update(users).set({ ...(({ supplierId: input.supplierId }) as any) }).where(eq(users.id, nu.id));
+      }
+
+      const origin = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+      const inviteUrl = `${origin}/supplier/activar?token=${token}`;
+      await sendEmail({
+        to: email,
+        subject: "Invitación al portal de proveedores — Nayade Experiences",
+        html: `
+          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
+            <h2 style="color:#ea580c">Portal de Proveedores</h2>
+            <p>Hola <strong>${name}</strong>,</p>
+            <p>Has sido invitado al portal de proveedores de <strong>Nayade Experiences</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
+            <p style="margin:24px 0">
+              <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Activar mi cuenta</a>
+            </p>
+            <p style="color:#666;font-size:13px">Este enlace caduca en 7 días.</p>
+          </div>`,
+      }).catch(() => {});
+      return { ok: true, email };
+    }),
+
+  // ── PÚBLICO: activar cuenta de proveedor por token (fijar contraseña) ──────────
+  activateSupplierInvite: publicProcedure
+    .input(z.object({ token: z.string(), password: z.string().min(6, "Mínimo 6 caracteres") }))
+    .mutation(async ({ input }) => {
+      const user = await getUserByInviteToken(input.token);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Enlace inválido o ya utilizado" });
+      if (user.inviteTokenExpiry && new Date() > user.inviteTokenExpiry) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El enlace ha expirado. Pide uno nuevo al administrador." });
+      }
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(input.password, 12);
+      await setUserPassword(user.id, passwordHash);
+      await db.update(users).set({ isActive: true } as any).where(eq(users.id, user.id));
+      return { ok: true, name: user.name };
     }),
 });
 
