@@ -7,7 +7,7 @@ import {
   getAllRateSeasons, createRateSeason, updateRateSeason, deleteRateSeason,
   getRatesByRoomType, createRoomRate, updateRoomRate, deleteRoomRate,
   getRoomBlocksForRange, getAllBlocksForRange, upsertRoomBlock, deleteRoomBlock,
-  searchAvailability, getRoomCalendar,
+  searchAvailability, getRoomCalendar, resolveNightlyPrice,
 } from "../hotelDb";
 import { getRatingsByEntityType } from "../db/reviewsDb";
 import { createReservation } from "../db";
@@ -321,34 +321,21 @@ export const hotelRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "La fecha de salida debe ser posterior a la de entrada" });
       }
 
-      // 3. Calcular precio: obtener precio real de la temporada para el check-in
-      //    Si no hay tarifa específica, usar basePrice de la tipología
+      // 3. Calcular precio por noche con la MISMA lógica que la visualización
+      //    (resolveNightlyPrice): así lo cobrado coincide exactamente con lo mostrado
+      //    en buscador y calendario, y se respeta la temporada de cada noche.
       const rates = await getRatesByRoomType(input.roomTypeId);
       const seasons = await getAllRateSeasons();
-      const checkInMs = checkInDate.getTime();
-      let pricePerNight = parseFloat(String(room.basePrice ?? 0));
-      for (const rate of rates) {
-        // Si la tarifa tiene fecha específica, comparar directamente
-        if (rate.specificDate && rate.specificDate === input.checkIn) {
-          pricePerNight = parseFloat(String(rate.pricePerNight));
-          break;
-        }
-        // Si la tarifa tiene temporada, buscar las fechas de la temporada
-        if (rate.seasonId) {
-          const season = seasons.find(s => s.id === rate.seasonId);
-          if (season) {
-            const from = new Date(season.startDate).getTime();
-            const to = new Date(season.endDate).getTime();
-            if (checkInMs >= from && checkInMs <= to) {
-              pricePerNight = parseFloat(String(rate.pricePerNight));
-              break;
-            }
-          }
-        }
+      let totalEuros = 0;
+      for (let i = 0; i < nights; i++) {
+        const d = new Date(checkInDate);
+        d.setDate(d.getDate() + i);
+        const dateStr = d.toISOString().split("T")[0];
+        totalEuros += resolveNightlyPrice(rates, seasons, String(room.basePrice ?? 0), dateStr);
       }
+      const pricePerNight = nights > 0 ? totalEuros / nights : parseFloat(String(room.basePrice ?? 0));
 
-      // 4. Total = precio/noche × noches (el precio ya incluye la habitación completa)
-      const totalEuros = pricePerNight * nights;
+      // 4. Total = suma de los precios/noche (el precio ya incluye la habitación completa)
       const amountCents = Math.round(totalEuros * 100);
 
       // 5. Generar merchantOrder único

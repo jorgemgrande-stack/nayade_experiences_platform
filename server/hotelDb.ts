@@ -189,6 +189,47 @@ export async function deleteRoomBlock(id: number) {
  * then day-of-week rates, then season rates (in that priority order).
  * Availability = totalUnits minus any block that sets availableUnits < totalUnits.
  */
+/**
+ * Resuelve el precio/noche de una habitación para una fecha concreta, con prioridad:
+ * fecha específica > día de la semana > temporada cuyo rango [inicio,fin] contiene la
+ * fecha > tarifa de temporada genérica (sin seasonId) > basePrice.
+ * Es la ÚNICA fuente de verdad del precio: la usan el buscador, el calendario y el cobro,
+ * para que el precio mostrado coincida siempre con el cobrado. Antes la visualización
+ * ignoraba el rango de la temporada y mostraba la primera (la más barata).
+ */
+export function resolveNightlyPrice(
+  rates: Array<{ pricePerNight: string; specificDate: string | null; dayOfWeek: number | null; seasonId: number | null }>,
+  seasons: Array<{ id: number; startDate: string | Date; endDate: string | Date }>,
+  basePrice: string,
+  dateStr: string,
+): number {
+  const dow = new Date(dateStr).getDay();
+  const t = new Date(dateStr).getTime();
+
+  const specificRate = rates.find(r => r.specificDate === dateStr);
+  if (specificRate) return parseFloat(specificRate.pricePerNight);
+
+  const dowRate = rates.find(r => r.dayOfWeek === dow && !r.specificDate);
+  if (dowRate) return parseFloat(dowRate.pricePerNight);
+
+  // Temporada cuyo rango de fechas contiene la noche
+  const seasonRate = rates.find(r => {
+    if (r.specificDate || r.dayOfWeek !== null || !r.seasonId) return false;
+    const s = seasons.find(se => se.id === r.seasonId);
+    if (!s) return false;
+    const from = new Date(s.startDate).getTime();
+    const to = new Date(s.endDate).getTime();
+    return t >= from && t <= to;
+  });
+  if (seasonRate) return parseFloat(seasonRate.pricePerNight);
+
+  // Tarifa de temporada genérica sin seasonId (compatibilidad histórica)
+  const genericSeasonRate = rates.find(r => !r.specificDate && r.dayOfWeek === null && !r.seasonId);
+  if (genericSeasonRate) return parseFloat(genericSeasonRate.pricePerNight);
+
+  return parseFloat(basePrice);
+}
+
 export async function searchAvailability(params: {
   checkIn: string;   // YYYY-MM-DD
   checkOut: string;  // YYYY-MM-DD
@@ -201,6 +242,7 @@ export async function searchAvailability(params: {
     .orderBy(roomTypes.sortOrder);
 
   const allRates = await db.select().from(roomRates).where(eq(roomRates.isActive, true));
+  const seasons = await getAllRateSeasons();
   const allBlocks = await db.select().from(roomBlocks)
     .where(and(gte(roomBlocks.date, params.checkIn), lte(roomBlocks.date, params.checkOut)));
 
@@ -212,21 +254,13 @@ export async function searchAvailability(params: {
     // Compute min price per night across the stay
     let totalPrice = 0;
     let pricePerNight = parseFloat(room.basePrice);
+    const roomRatesList = allRates.filter(r => r.roomTypeId === room.id);
 
     for (let i = 0; i < nights; i++) {
       const d = new Date(checkInDate);
       d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().split("T")[0];
-      const dow = d.getDay();
-
-      // Priority: specificDate > dayOfWeek > season > base
-      const specificRate = allRates.find(r => r.roomTypeId === room.id && r.specificDate === dateStr);
-      const dowRate = allRates.find(r => r.roomTypeId === room.id && r.dayOfWeek === dow && !r.specificDate);
-      const seasonRate = allRates.find(r => r.roomTypeId === room.id && !r.specificDate && r.dayOfWeek === null);
-
-      const nightRate = specificRate ?? dowRate ?? seasonRate;
-      const nightPrice = nightRate ? parseFloat(nightRate.pricePerNight) : parseFloat(room.basePrice);
-      totalPrice += nightPrice;
+      totalPrice += resolveNightlyPrice(roomRatesList, seasons, room.basePrice, dateStr);
     }
     pricePerNight = nights > 0 ? totalPrice / nights : parseFloat(room.basePrice);
 
@@ -271,19 +305,13 @@ export async function getRoomCalendar(roomTypeId: number, year: number, month: n
 
   const rates = await db.select().from(roomRates)
     .where(and(eq(roomRates.roomTypeId, roomTypeId), eq(roomRates.isActive, true)));
+  const seasons = await getAllRateSeasons();
   const blocks = await getRoomBlocksForRange(roomTypeId, startDate, endDate);
 
   const days = [];
   for (let day = 1; day <= lastDay; day++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const d = new Date(dateStr);
-    const dow = d.getDay();
-
-    const specificRate = rates.find(r => r.specificDate === dateStr);
-    const dowRate = rates.find(r => r.dayOfWeek === dow && !r.specificDate);
-    const seasonRate = rates.find(r => !r.specificDate && r.dayOfWeek === null);
-    const nightRate = specificRate ?? dowRate ?? seasonRate;
-    const price = nightRate ? parseFloat(nightRate.pricePerNight) : parseFloat(room.basePrice);
+    const price = resolveNightlyPrice(rates, seasons, room.basePrice, dateStr);
 
     const block = blocks.find(b => b.date === dateStr);
     const available = block !== undefined ? block.availableUnits : room.totalUnits;
