@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 const LOGO_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
-const NAYADE_PHONE = "+34 911 67 51 89";
+const NAYADE_PHONE = "+34 639 57 66 27";
 const CATALOG_URL = "https://www.nayadeexperiences.es/experiencias";
 
 // ─── Modal de anuncios ────────────────────────────────────────────────────────

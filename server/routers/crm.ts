@@ -4634,7 +4634,7 @@ export const crmRouter = router({
             total: (res.amountTotal / 100).toFixed(2),
             bookingDate: res.bookingDate,
             contactEmail: await getBusinessEmail('reservations'),
-            contactPhone: "+34 911 67 51 89",
+            contactPhone: "+34 639 57 66 27",
             reservationUrl,
           });
           subject = `✅ Confirmación de reserva — ${res.productName} · Náyade Experiences`;
@@ -5151,7 +5151,7 @@ export const crmRouter = router({
               total: input.amountTotal.toFixed(2),
               bookingDate: input.bookingDate,
               contactEmail: await getBusinessEmail('reservations'),
-              contactPhone: "+34 911 67 51 89",
+              contactPhone: "+34 639 57 66 27",
               reservationUrl,
             });
             await sendEmail({
@@ -5852,7 +5852,7 @@ export const crmRouter = router({
               </table>
               <p><strong>Subtotal:</strong> ${Number(invoice.subtotal).toFixed(2)} € | <strong>IVA (${invoice.taxRate}%):</strong> ${Number(invoice.taxAmount).toFixed(2)} € | <strong>TOTAL: ${Number(invoice.total).toFixed(2)} €</strong></p>
               ${invoice.pdfUrl ? `<p>Encontrarás tu factura <strong>adjunta a este correo</strong> en PDF.${invoice.pdfUrl ? ` También puedes <a href="${invoice.pdfUrl}" style="color:#f97316;">descargarla aquí</a>.` : ""}</p>` : ""}
-              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · ${COPY_EMAIL} · +34 911 67 51 89 (también WhatsApp)</p>
+              <hr/><p style="color:#6b7280;font-size:12px;">Náyade Experiences · ${COPY_EMAIL} · +34 639 57 66 27 (también WhatsApp)</p>
             </div>`;
 
           // El PDF se adjunta al correo (Brevo lo descarga del CDN), para que el

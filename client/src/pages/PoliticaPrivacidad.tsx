@@ -41,7 +41,7 @@ export default function PoliticaPrivacidad() {
                 ["CIF", "B26987875"],
                 ["Domicilio social", "C/ Corazón de María 57, 1º D · 28002 Madrid"],
                 ["Email de contacto", "administracion@nayadeexperiences.es"],
-                ["Teléfono", "+34 911 67 51 89"],
+                ["Teléfono", "+34 639 57 66 27"],
               ]} />
             </LegalSection>
 

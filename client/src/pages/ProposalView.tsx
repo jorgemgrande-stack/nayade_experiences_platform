@@ -327,8 +327,8 @@ export default function ProposalView() {
         <div className="rounded-xl bg-white/[0.03] border border-white/10 px-5 py-4">
           <p className="text-xs font-bold uppercase tracking-widest text-white/30 mb-3">¿Tienes alguna pregunta?</p>
           <div className="flex flex-wrap gap-4 text-sm">
-            <a href="tel:+34911675189" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-              <Phone className="w-4 h-4" /> +34 911 67 51 89
+            <a href="tel:+34639576627" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+              <Phone className="w-4 h-4" /> +34 639 57 66 27
             </a>
             <a href="mailto:contacto@nayadeexperiences.es" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
               <Mail className="w-4 h-4" /> contacto@nayadeexperiences.es

@@ -119,7 +119,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
     <div class="company-info">
       <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
       ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
-      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 911 67 51 89"}
+      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
     </div>
   </div>
   <div class="doc-type-band">
@@ -1118,7 +1118,7 @@ export const partnersRouter = router({
         cif: s.legalCompanyCif || "",
         address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
         email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
-        phone: s.legalCompanyPhone || "+34 911 67 51 89",
+        phone: s.legalCompanyPhone || "+34 639 57 66 27",
       };
 
       const { url, key } = await generatePartnerBillingPdfAndUpload({

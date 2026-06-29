@@ -254,18 +254,18 @@ async function ensureCriticalSeeds() {
       ]
     );
 
-    // Teléfono de contacto — actualizar si tiene valor vacío o el número antiguo
+    // Teléfono de contacto — forzar el número actual si está vacío o es uno de los antiguos
     await conn.execute(
       `UPDATE system_settings
        SET value = ?
-       WHERE \`key\` = 'brand_phone' AND (value IS NULL OR value = '' OR value = ?)`,
-      ["+34 911 67 51 89", "+34 930 34 77 91"]
+       WHERE \`key\` = 'brand_phone' AND (value IS NULL OR value = '' OR value = ? OR value = ?)`,
+      ["+34 639 57 66 27", "+34 930 34 77 91", "+34 911 67 51 89"]
     );
     await conn.execute(
       `UPDATE system_settings
        SET value = ?
-       WHERE \`key\` = 'brand_support_phone' AND (value IS NULL OR value = '' OR value = ?)`,
-      ["+34 911 67 51 89", "+34 930 34 77 91"]
+       WHERE \`key\` = 'brand_support_phone' AND (value IS NULL OR value = '' OR value = ? OR value = ?)`,
+      ["+34 639 57 66 27", "+34 930 34 77 91", "+34 911 67 51 89"]
     );
 
     // Cupones creados manualmente por admin que quedaron con statusOperational="recibido" en lugar de "pendiente"
@@ -281,11 +281,16 @@ async function ensureCriticalSeeds() {
        SET body_html = REPLACE(body_html, 'contacto@tuempresa.com', 'reservas@nayadeexperiences.es')
        WHERE body_html LIKE '%contacto@tuempresa.com%'`
     );
-    // Corrección del teléfono antiguo en HTML de plantillas de email
+    // Corrección de los teléfonos antiguos (930 y 911) en el HTML de plantillas de email → número actual
     await conn.execute(
       `UPDATE email_templates
-       SET body_html = REPLACE(REPLACE(body_html, '+34930347791', '+34911675189'), '+34 930 34 77 91', '+34 911 67 51 89')
-       WHERE body_html LIKE '%930%'`
+       SET body_html = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(body_html,
+            '+34930347791',     '+34639576627'),
+            '+34 930 34 77 91', '+34 639 57 66 27'),
+            '+34911675189',     '+34639576627'),
+            '+34 911 67 51 89', '+34 639 57 66 27'),
+            '34911675189',      '34639576627')
+       WHERE body_html LIKE '%930%' OR body_html LIKE '%911675189%' OR body_html LIKE '%911 67 51 89%'`
     );
 
     // Refactor fiscal: migrar general_21 → general en todas las tablas afectadas.

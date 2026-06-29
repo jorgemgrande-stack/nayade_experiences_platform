@@ -160,7 +160,7 @@ export default function QuoteAcceptance() {
             contacta con nosotros.
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
-            <a href="tel:+34911675189" className="flex items-center justify-center gap-2 hover:text-orange-500">
+            <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
               <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
             </a>
             <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center justify-center gap-2 hover:text-orange-500">
@@ -387,7 +387,7 @@ export default function QuoteAcceptance() {
             no dudes en contactarnos.
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
-            <a href="tel:+34911675189" className="flex items-center justify-center gap-2 hover:text-orange-500">
+            <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
               <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
             </a>
           </div>
@@ -408,7 +408,7 @@ export default function QuoteAcceptance() {
             solicitar uno nuevo.
           </p>
           <div className="mt-6 flex flex-col gap-2 text-sm text-gray-500">
-            <a href="tel:+34911675189" className="flex items-center justify-center gap-2 hover:text-orange-500">
+            <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
               <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
             </a>
           </div>
@@ -682,7 +682,7 @@ export default function QuoteAcceptance() {
         <div className="text-center text-white/40 text-xs pb-8 space-y-1">
           <p>¿Tienes dudas? Contacta con nosotros</p>
           <div className="flex justify-center gap-4">
-            <a href="tel:+34911675189" className="hover:text-orange-400 flex items-center gap-1">
+            <a href="tel:+34639576627" className="hover:text-orange-400 flex items-center gap-1">
               <Phone className="w-3 h-3" /> Teléfono
             </a>
             <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">

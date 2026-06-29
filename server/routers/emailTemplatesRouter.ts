@@ -94,7 +94,7 @@ const SYSTEM_TEMPLATES: SeedTemplate[] = [
     subject: "🎉 ¡Todo listo para tu experiencia! · Náyade Experiences",
     headerTitle: "¡Todo Listo!", headerSubtitle: "Aquí tienes todos los detalles de tu reserva",
     variables: JSON.stringify(["clientName","reservationRef","quoteTitle","items","total","bookingDate"]),
-    buildHtml: () => buildConfirmationHtml({ clientName:"Ana Rodríguez", reservationRef:"FAC-2026-0044", quoteTitle:"SUP Yoga al amanecer", items:[{description:"SUP Yoga al amanecer (1 persona)",quantity:1,unitPrice:45,total:45}], total:"45.00", bookingDate:"10 de septiembre de 2026", contactEmail:"reservas@nayadeexperiences.es", contactPhone:"+34 911 67 51 89" }),
+    buildHtml: () => buildConfirmationHtml({ clientName:"Ana Rodríguez", reservationRef:"FAC-2026-0044", quoteTitle:"SUP Yoga al amanecer", items:[{description:"SUP Yoga al amanecer (1 persona)",quantity:1,unitPrice:45,total:45}], total:"45.00", bookingDate:"10 de septiembre de 2026", contactEmail:"reservas@nayadeexperiences.es", contactPhone:"+34 639 57 66 27" }),
   },
   {
     id: "transfer_confirmation",

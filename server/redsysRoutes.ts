@@ -422,7 +422,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   bookingDate: updatedReservation.bookingDate ?? undefined,
                   selectedTime: (updatedReservation as any).selectedTime ?? undefined,
                   contactEmail: COPY_EMAIL,
-                  contactPhone: "+34 911 67 51 89",
+                  contactPhone: "+34 639 57 66 27",
                   reservationUrl,
                 });
                 await sendManagedEmail({
@@ -1198,7 +1198,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
               bookingDate: primary.bookingDate ?? undefined,
               selectedTime: primary.selectedTime ?? undefined,
               contactEmail: COPY_EMAIL,
-              contactPhone: "+34 911 67 51 89",
+              contactPhone: "+34 639 57 66 27",
               reservationUrl,
             });
             await sendManagedEmail({

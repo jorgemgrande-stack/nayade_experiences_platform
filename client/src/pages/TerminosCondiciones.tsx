@@ -39,7 +39,7 @@ export default function TerminosCondiciones() {
                 ["Denominación social", "Iron Elephant Consulting S.L."],
                 ["CIF", "B26987875"],
                 ["Domicilio", "C/ Corazón de María 57, 1º D · 28002 Madrid"],
-                ["Teléfono", "+34 911 67 51 89"],
+                ["Teléfono", "+34 639 57 66 27"],
                 ["Email", "administracion@nayadeexperiences.es"],
                 ["Sitio web", "www.nayadeexperiences.es"],
               ]} />
@@ -175,7 +175,7 @@ export default function TerminosCondiciones() {
               </p>
               <InfoTable rows={[
                 ["Email", "administracion@nayadeexperiences.es"],
-                ["Teléfono", "+34 911 67 51 89"],
+                ["Teléfono", "+34 639 57 66 27"],
                 ["Horario de atención", "Lun–Dom · 10:00–20:00 (Temporada Abril–Octubre)"],
               ]} />
             </LegalSection>

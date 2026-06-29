@@ -19,7 +19,7 @@ const mockData = {
   total: "68.97",
   bookingDate: "2026-04-15",
   contactEmail: "reservas@nayadeexperiences.es",
-  contactPhone: "+34 911 67 51 89",
+  contactPhone: "+34 639 57 66 27",
 };
 
 describe("buildConfirmationHtml", () => {
@@ -70,14 +70,14 @@ describe("buildConfirmationHtml", () => {
 
   it("incluye el teléfono de contacto correcto", () => {
     const html = buildConfirmationHtml(mockData);
-    expect(html).toContain("+34 911 67 51 89");
+    expect(html).toContain("+34 639 57 66 27");
   });
 
   it("usa los valores por defecto de contacto cuando no se proporcionan", () => {
     const { contactEmail: _e, contactPhone: _p, ...dataWithoutContact } = mockData;
     const html = buildConfirmationHtml(dataWithoutContact);
     expect(html).toContain("reservas@nayadeexperiences.es");
-    expect(html).toContain("+34 911 67 51 89");
+    expect(html).toContain("+34 639 57 66 27");
   });
 
   it("genera HTML válido con estructura de email", () => {

@@ -1,8 +1,8 @@
 import { trackWhatsAppClick } from '@/lib/ga4';
 
 const WA_URL =
-  "https://wa.me/34911675189?text=Hola%20Nayade%20Experiences%2C%20me%20gustar%C3%ADa%20recibir%20informaci%C3%B3n";
-const WA_PHONE = "34911675189";
+  "https://wa.me/34639576627?text=Hola%20Nayade%20Experiences%2C%20me%20gustar%C3%ADa%20recibir%20informaci%C3%B3n";
+const WA_PHONE = "34639576627";
 
 export default function WhatsAppFloatingButton() {
   return (
