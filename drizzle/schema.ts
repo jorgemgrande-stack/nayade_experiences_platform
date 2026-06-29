@@ -21,8 +21,9 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest", "controler", "partner_admin", "partner_user", "employee", "gestoria"]).default("user").notNull(),
+  role: mysqlEnum("role", ["user", "admin", "monitor", "agente", "adminrest", "controler", "partner_admin", "partner_user", "supplier", "employee", "gestoria"]).default("user").notNull(),
   partnerId: int("partnerId"),
+  supplierId: int("supplierId"), // vínculo a suppliers.id para usuarios con rol "supplier" (portal de proveedor)
   phone: varchar("phone", { length: 32 }),
   avatarUrl: text("avatarUrl"),
   isActive: boolean("isActive").default(true).notNull(),

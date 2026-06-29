@@ -164,6 +164,7 @@ import { reviewsRouter } from "./routers/reviews";
 import { restaurantsRouter } from "./routers/restaurants";
 import { crmRouter } from "./routers/crm";
 import { suppliersRouter, settlementsRouter } from "./routers/suppliers";
+import { supplierPortalRouter } from "./routers/supplierPortal";
 import { timeSlotsRouter } from "./routers/timeSlots";
 import { tpvRouter } from "./routers/tpv";
 import { discountsRouter } from "./routers/discounts";
@@ -2113,6 +2114,7 @@ export const appRouter = router({
   emailInbox: emailInboxRouter,
   emailCommunications: emailCommunicationsRouter,
   suppliers: suppliersRouter,
+  supplierPortal: supplierPortalRouter,
   timeSlots: timeSlotsRouter,
   tpv: tpvRouter,
   discounts: discountsRouter,
