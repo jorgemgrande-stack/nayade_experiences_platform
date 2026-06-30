@@ -23,8 +23,8 @@ const today = () => new Intl.DateTimeFormat("sv", { timeZone: "Europe/Madrid" })
 const MOVE_TYPES = [
   { value: "income",          label: "Ingreso",               color: "bg-emerald-100 text-emerald-700" },
   { value: "expense",         label: "Gasto",                 color: "bg-red-100 text-red-700" },
-  { value: "transfer_out",    label: "Transferencia salida",  color: "bg-orange-100 text-orange-700" },
-  { value: "transfer_in",     label: "Transferencia entrada", color: "bg-blue-100 text-blue-700" },
+  { value: "transfer_out",    label: "Traspaso (salida)",     color: "bg-sky-100 text-sky-700" },
+  { value: "transfer_in",     label: "Traspaso (entrada)",    color: "bg-sky-100 text-sky-700" },
   { value: "opening_balance", label: "Saldo inicial",         color: "bg-purple-100 text-purple-700" },
   { value: "adjustment",      label: "Ajuste",                color: "bg-gray-100 text-gray-700" },
 ] as const;
@@ -371,7 +371,7 @@ export default function CashRegisterManager() {
 
         {/* KPI summary */}
         {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-gray-500 mb-1">Saldo total</p>
               <p className={`text-xl font-bold ${summary.totalBalance >= 0 ? "text-gray-900" : "text-red-600"}`}>
@@ -381,17 +381,30 @@ export default function CashRegisterManager() {
             </div>
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-gray-500 mb-1">Ingresos hoy</p>
-              <p className="text-xl font-bold text-emerald-600">{fmtEur(summary.todayIncome)}</p>
+              <p className="text-xl font-bold text-emerald-600">{fmtEur(summary.todayRealIncome ?? summary.todayIncome)}</p>
+              <p className="text-xs text-gray-400">ventas y cobros</p>
             </div>
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-gray-500 mb-1">Gastos hoy</p>
-              <p className="text-xl font-bold text-red-600">{fmtEur(summary.todayExpenses)}</p>
+              <p className="text-xl font-bold text-red-600">{fmtEur(summary.todayRealExpenses ?? summary.todayExpenses)}</p>
+              <p className="text-xs text-gray-400">solo gastos reales</p>
+            </div>
+            <div className="bg-white border rounded-xl p-4">
+              <p className="text-xs text-gray-500 mb-1">Traspasos hoy</p>
+              <p className="text-xl font-bold text-sky-600">{fmtEur(summary.todayTransfersOut ?? 0)}</p>
+              <p className="text-xs text-gray-400">Caja Central: {fmtEur(summary.centralBalance ?? 0)}</p>
             </div>
             <div className="bg-white border rounded-xl p-4">
               <p className="text-xs text-gray-500 mb-1">Neto hoy</p>
-              <p className={`text-xl font-bold ${summary.todayNet >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                {summary.todayNet >= 0 ? "+" : ""}{fmtEur(summary.todayNet)}
-              </p>
+              {(() => {
+                const net = (summary.todayRealIncome ?? summary.todayIncome) - (summary.todayRealExpenses ?? summary.todayExpenses);
+                return (
+                  <p className={`text-xl font-bold ${net >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {net >= 0 ? "+" : ""}{fmtEur(net)}
+                  </p>
+                );
+              })()}
+              <p className="text-xs text-gray-400">ingresos − gastos</p>
             </div>
           </div>
         )}

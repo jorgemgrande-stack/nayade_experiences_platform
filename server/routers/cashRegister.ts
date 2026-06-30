@@ -258,12 +258,19 @@ export const cashRegisterRouter = router({
       .from(finCashMovements)
       .where(eq(finCashMovements.date, today));
 
-    const todayIncome = todayMovements
-      .filter(m => (INCOME_TYPES as readonly string[]).includes(m.type))
+    const sumByType = (types: readonly string[]) => todayMovements
+      .filter(m => types.includes(m.type))
       .reduce((s, m) => s + parseFloat(m.amount), 0);
-    const todayExpenses = todayMovements
-      .filter(m => (EXPENSE_TYPES as readonly string[]).includes(m.type))
-      .reduce((s, m) => s + parseFloat(m.amount), 0);
+
+    const todayIncome = sumByType(INCOME_TYPES);
+    const todayExpenses = sumByType(EXPENSE_TYPES);
+    // Desglose para distinguir gasto real de traspaso interno (Caja Central).
+    const todayRealIncome = sumByType(["income", "opening_balance"]);
+    const todayRealExpenses = sumByType(["expense"]);
+    const todayTransfersOut = sumByType(["transfer_out"]);
+    const todayTransfersIn = sumByType(["transfer_in"]);
+
+    const central = accounts.find(a => a.name === "Caja Central");
 
     return {
       accounts,
@@ -271,6 +278,13 @@ export const cashRegisterRouter = router({
       todayIncome,
       todayExpenses,
       todayNet: todayIncome - todayExpenses,
+      // Desglose nuevo (claridad gasto vs traspaso)
+      todayRealIncome,
+      todayRealExpenses,
+      todayTransfersOut,
+      todayTransfersIn,
+      centralAccountId: central?.id ?? null,
+      centralBalance: central ? parseFloat(central.currentBalance) : 0,
     };
   }),
 
