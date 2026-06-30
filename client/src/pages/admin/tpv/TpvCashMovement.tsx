@@ -32,12 +32,19 @@ const QUICK_REASONS_IN = [
 export default function TpvCashMovement({ open, type, sessionId, onClose }: Props) {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
+  // Solo para salidas: "gasto" (compra/proveedor) o "traspaso" (a Caja Central).
+  const [outKind, setOutKind] = useState<"gasto" | "traspaso">("gasto");
 
   const movMut = trpc.tpv.addCashMovement.useMutation({
     onSuccess: () => {
-      toast.success(type === "in" ? "Entrada registrada" : "Salida registrada");
+      toast.success(
+        type === "in" ? "Entrada registrada"
+          : outKind === "traspaso" ? "Traspaso a Caja Central registrado"
+          : "Salida registrada",
+      );
       setAmount("");
       setReason("");
+      setOutKind("gasto");
       onClose();
     },
     onError: (err) => toast.error(err.message),
@@ -74,6 +81,43 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
               />
             </div>
           </div>
+
+          {type === "out" && (
+            <div className="space-y-1">
+              <Label className="text-gray-300 text-sm">Tipo de salida</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOutKind("gasto")}
+                  className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
+                    outKind === "gasto"
+                      ? "bg-red-600/20 border-red-500 text-red-300"
+                      : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  Gasto
+                  <span className="block text-[10px] font-normal opacity-70">compra / proveedor</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutKind("traspaso")}
+                  className={`text-xs font-semibold px-2 py-2.5 rounded-lg border transition-colors ${
+                    outKind === "traspaso"
+                      ? "bg-sky-600/20 border-sky-500 text-sky-300"
+                      : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  Traspaso a Caja Central
+                  <span className="block text-[10px] font-normal opacity-70">no es gasto, se guarda</span>
+                </button>
+              </div>
+              {outKind === "traspaso" && (
+                <p className="text-[11px] text-sky-300/70 pt-1">
+                  El efectivo sale del cajón pero se conserva en la Caja Central. No cuenta como gasto.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1">
             <Label className="text-gray-300 text-sm">Motivo</Label>
@@ -115,7 +159,8 @@ export default function TpvCashMovement({ open, type, sessionId, onClose }: Prop
                   sessionId,
                   type,
                   amount: parseFloat(amount) || 0,
-                  reason: reason || "Sin motivo",
+                  reason: reason || (type === "out" && outKind === "traspaso" ? "Traspaso a Caja Central" : "Sin motivo"),
+                  outKind,
                 })
               }
               disabled={movMut.isPending || !amount || parseFloat(amount) <= 0}

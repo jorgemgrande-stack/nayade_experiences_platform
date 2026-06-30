@@ -25,6 +25,80 @@ export async function getDefaultCashAccountId(): Promise<number | null> {
   return acc?.id ?? null;
 }
 
+export const CENTRAL_CASH_ACCOUNT_NAME = "Caja Central";
+
+/**
+ * Devuelve el id de la Caja Central (caja fuerte donde se consolida el efectivo
+ * retirado de las cajas por seguridad). La crea si no existe. Idempotente.
+ */
+export async function getOrCreateCentralCashAccountId(): Promise<number> {
+  const [existing] = await db
+    .select({ id: finCashAccounts.id })
+    .from(finCashAccounts)
+    .where(eq(finCashAccounts.name, CENTRAL_CASH_ACCOUNT_NAME))
+    .limit(1);
+  if (existing) return existing.id;
+  const [res] = await db.insert(finCashAccounts).values({
+    name: CENTRAL_CASH_ACCOUNT_NAME,
+    description: "Caja fuerte central donde se consolida el efectivo retirado de las cajas TPV por seguridad. Los traspasos no son gasto.",
+    type: "secondary",
+    currentBalance: "0.00",
+    initialBalance: "0.00",
+    isActive: true,
+  });
+  return (res as { insertId: number }).insertId;
+}
+
+/**
+ * Traspaso interno de efectivo de una caja a la Caja Central.
+ * NO es un gasto: el dinero no se pierde, cambia de caja (transfer_out + transfer_in
+ * espejo). El total de efectivo del negocio se conserva.
+ */
+export async function recordCashTransferToCentral(params: {
+  fromAccountId: number;
+  amount: number;            // EUR positivo
+  concept: string;
+  notes?: string;
+  createdBy?: number;
+}): Promise<{ centralAccountId: number }> {
+  const centralId = await getOrCreateCentralCashAccountId();
+  const date = new Date().toISOString().slice(0, 10);
+
+  // Salida de la caja origen
+  await db.insert(finCashMovements).values({
+    accountId: params.fromAccountId,
+    date,
+    type: "transfer_out",
+    amount: String(params.amount),
+    concept: params.concept,
+    relatedEntityType: "manual",
+    transferToAccountId: centralId,
+    notes: params.notes,
+    createdBy: params.createdBy,
+  });
+  await db.update(finCashAccounts)
+    .set({ currentBalance: sql`current_balance - ${params.amount}` })
+    .where(eq(finCashAccounts.id, params.fromAccountId));
+
+  // Entrada espejo en la Caja Central
+  await db.insert(finCashMovements).values({
+    accountId: centralId,
+    date,
+    type: "transfer_in",
+    amount: String(params.amount),
+    concept: params.concept,
+    relatedEntityType: "manual",
+    transferToAccountId: params.fromAccountId,
+    notes: params.notes,
+    createdBy: params.createdBy,
+  });
+  await db.update(finCashAccounts)
+    .set({ currentBalance: sql`current_balance + ${params.amount}` })
+    .where(eq(finCashAccounts.id, centralId));
+
+  return { centralAccountId: centralId };
+}
+
 export interface CashMovementParams {
   accountId: number;
   date: string;             // YYYY-MM-DD

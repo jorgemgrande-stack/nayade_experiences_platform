@@ -9,7 +9,7 @@ import { getBusinessEmail, getFeatureFlag, getSystemSetting } from "../config";
 import { madridDateKey } from "../utils/timezone";
 import { createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, logActivity, getGHLCredentials } from "../db";
 import { createGHLContact, triggerGHLWorkflow, syncLeadUrlsToGHL } from "../ghl";
-import { createCashMovementIfNotExists, getDefaultCashAccountId } from "./cashRegisterHelper";
+import { createCashMovementIfNotExists, getDefaultCashAccountId, recordCashTransferToCentral } from "./cashRegisterHelper";
 import { calcularREAVSimple } from "../reav";
 import { getDailyControlCenter } from "./dailyControl";
 import {
@@ -578,6 +578,9 @@ export const tpvRouter = router({
         type: z.enum(["out", "in"]),
         amount: z.number().positive(),
         reason: z.string().min(1),
+        // Para salidas: "gasto" (compra/proveedor → gasto real) o "traspaso"
+        // (llevar el efectivo a la Caja Central → movimiento interno, NO gasto).
+        outKind: z.enum(["gasto", "traspaso"]).default("gasto"),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -607,10 +610,28 @@ export const tpvRouter = router({
         (async () => {
           try {
             const today = new Date().toISOString().slice(0, 10);
+            const cashAccountId = await getDefaultCashAccountId();
+
+            if (input.outKind === "traspaso") {
+              // TRASPASO a Caja Central: NO es gasto. El efectivo sale del cajón
+              // del TPV pero se conserva en la Caja Central (transfer_out + transfer_in).
+              // No se crea ninguna fila en `expenses`.
+              if (cashAccountId) {
+                await recordCashTransferToCentral({
+                  fromAccountId: cashAccountId,
+                  amount: input.amount,
+                  concept: `Traspaso a Caja Central — ${input.reason}`,
+                  notes: `Traspaso desde TPV sesión #${input.sessionId} por ${ctx.user.name ?? ctx.user.email}`,
+                  createdBy: ctx.user.id ? Number(ctx.user.id) : undefined,
+                });
+              }
+              return;
+            }
+
+            // GASTO real: apunte 'expense' en caja + gasto conciliado en /gastos.
             const concept = `Retirada de caja TPV — ${input.reason}`;
 
             // 1. Movimiento en /contabilidad/caja
-            const cashAccountId = await getDefaultCashAccountId();
             if (cashAccountId) {
               await db.insert(finCashMovements).values({
                 accountId: cashAccountId,
