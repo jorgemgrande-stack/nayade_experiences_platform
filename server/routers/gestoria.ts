@@ -635,7 +635,7 @@ export const gestoriaRouter = router({
           } as any);
         }
 
-        const origin = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+        const origin = process.env.APP_URL ?? "https://www.skicenter.es";
         const inviteUrl = `${origin}/gestoria/activar?token=${token}`;
         try {
           await sendEmail({

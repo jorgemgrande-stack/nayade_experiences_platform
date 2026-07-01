@@ -1,12 +1,12 @@
 # CLAUDE.md — Guía de Contexto para Claude
 
-Este archivo proporciona a Claude (en VS Code o cualquier entorno de desarrollo) todo el contexto necesario para trabajar de forma efectiva en el proyecto **Nayade Experiences Platform**. Léelo al inicio de cada sesión de trabajo.
+Este archivo proporciona a Claude (en VS Code o cualquier entorno de desarrollo) todo el contexto necesario para trabajar de forma efectiva en el proyecto **Skicenter Platform**. Léelo al inicio de cada sesión de trabajo.
 
 ---
 
 ## Identidad del Proyecto
 
-**Nayade Experiences** es una plataforma de e-commerce y gestión para un complejo de turismo activo y naturaleza situado en Los Ángeles de San Rafael (Segovia), a 45 minutos de Madrid. El complejo ofrece experiencias acuáticas, hotel, SPA, restaurantes y packs de actividades. Esta plataforma gestiona la web pública, las reservas online (con pasarela Redsys), el CMS de contenidos y el panel de administración completo.
+**Skicenter** es una plataforma integral de gestión para escuelas de esquí. Proporciona un sistema completo de reservas online, lecciones y cursos, alquiler de equipos, gestión de profesores, administración de estudiantes, gestión de TPV, CRM, facturación y RRHH. Esta plataforma gestiona la web pública, las reservas online, el panel de administración y todos los módulos operativos necesarios para la gestión de una escuela de esquí profesional.
 
 ---
 
@@ -306,7 +306,7 @@ Todos los servicios externos tienen adaptadores en `server/adapters/` que permit
 ## Variables de Entorno Imprescindibles
 
 ```bash
-DATABASE_URL=mysql://nayade:nayade_pass@localhost:3306/nayade_db
+DATABASE_URL=mysql://skicenter:skicenter_pass@localhost:3306/skicenter_db
 LOCAL_AUTH=true
 JWT_SECRET=clave-secreta-de-al-menos-32-caracteres
 PORT=3000

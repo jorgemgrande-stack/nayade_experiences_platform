@@ -42,7 +42,7 @@ const STEPS: WizardStep[] = [
       { key: "brand_short_name",    label: "Nombre corto",                  type: "text" },
       { key: "brand_phone",         label: "Teléfono principal",            type: "text" },
       { key: "brand_support_phone", label: "Teléfono de reservas / soporte", type: "text" },
-      { key: "brand_domain",        label: "Dominio web",                   type: "text",  placeholder: "nayadeexperiences.es" },
+      { key: "brand_domain",        label: "Dominio web",                   type: "text",  placeholder: "skicenter.es" },
       { key: "brand_website_url",   label: "URL completa de la web",        type: "url",   placeholder: "https://..." },
       { key: "brand_location",      label: "Localización / dirección breve", type: "text" },
     ],

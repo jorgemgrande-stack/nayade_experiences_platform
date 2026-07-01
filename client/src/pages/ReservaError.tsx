@@ -159,8 +159,8 @@ export default function ReservaError() {
             <a href={phoneTel} className="flex items-center gap-2 hover:text-accent transition-colors">
               <Phone className="w-4 h-4" /> {phone}
             </a>
-            <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-2 hover:text-accent transition-colors">
-              <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
+            <a href="mailto:reservas@skicenter.es" className="flex items-center gap-2 hover:text-accent transition-colors">
+              <Mail className="w-4 h-4" /> reservas@skicenter.es
             </a>
           </div>
         </div>

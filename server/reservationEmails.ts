@@ -29,7 +29,7 @@ export interface ReservationEmailData {
 
 function reservationPublicUrl(publicToken?: string | null): string | undefined {
   if (!publicToken) return undefined;
-  const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+  const base = process.env.APP_URL ?? "https://www.skicenter.es";
   return `${base}/presupuesto/${publicToken}`;
 }
 
@@ -103,7 +103,7 @@ export async function sendReservationPaidNotifications(
   const adminEmail = process.env.ADMIN_EMAIL;
   const bccList = [copyEmail, ...(adminEmail ? [adminEmail] : [])];
 
-  const confirmSubject = `✅ Reserva confirmada — ${reservation.productName} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`;
+  const confirmSubject = `✅ Reserva confirmada — ${reservation.productName} — ${getSystemSettingSync("brand_name", "Skicenter")}`;
   const confirmHtml = buildReservationConfirmHtml({
     merchantOrder: reservation.merchantOrder,
     productName: reservation.productName,

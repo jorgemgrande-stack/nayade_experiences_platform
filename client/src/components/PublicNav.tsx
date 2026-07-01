@@ -215,7 +215,7 @@ export default function PublicNav() {
               <Phone className="w-3 h-3" />
               {phone}
             </a>
-            <span>reservas@nayadeexperiences.es</span>
+            <span>reservas@skicenter.es</span>
             <span>Los Ángeles de San Rafael, Segovia · A 45 min de Madrid</span>
           </div>
           <div className="text-xs font-display font-semibold text-accent">

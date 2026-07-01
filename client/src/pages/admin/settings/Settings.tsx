@@ -173,7 +173,7 @@ function GHLSection({ plain = false }: { plain?: boolean }) {
 // ─── Email Preview Section ─────────────────────────────────────────────────────
 function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
   const [templateId, setTemplateId] = useState("budget-user");
-  const [toEmail, setToEmail] = useState("reservas@nayadeexperiences.es");
+  const [toEmail, setToEmail] = useState("reservas@skicenter.es");
   const sendPreview = trpc.admin.sendEmailPreview.useMutation({
     onSuccess: (data) => toast.success(`Email enviado a ${data.to}`),
     onError: (err) => toast.error(`Error: ${err.message}`),
@@ -201,7 +201,7 @@ function EmailPreviewSection({ plain = false }: { plain?: boolean }) {
             type="email"
             value={toEmail}
             onChange={e => setToEmail(e.target.value)}
-            placeholder="reservas@nayadeexperiences.es"
+            placeholder="reservas@skicenter.es"
             className="font-display"
           />
         </div>
@@ -273,10 +273,10 @@ export default function Settings() {
   const [business, setBusiness] = useState({
     businessName: "Náyade Experiences",
     businessPhone: "+34 639 57 66 27",
-    businessEmail: "reservas@nayadeexperiences.es",
+    businessEmail: "reservas@skicenter.es",
     businessAddress: "Los Ángeles de San Rafael, Segovia",
     businessDescription: "El destino de aventuras del lago. Actividades náuticas, hotel y spa en el embalse de Los Ángeles de San Rafael, a 45 min de Madrid.",
-    businessWebsite: "https://nayadeexperiences.es",
+    businessWebsite: "https://skicenter.es",
   });
 
   const [schedule, setSchedule] = useState({
@@ -295,8 +295,8 @@ export default function Settings() {
   });
 
   const [notifications, setNotifications] = useState({
-    notifEmailBooking: "reservas@nayadeexperiences.es",
-    notifEmailRestaurant: "restaurantes@nayadeexperiences.es",
+    notifEmailBooking: "reservas@skicenter.es",
+    notifEmailRestaurant: "restaurantes@skicenter.es",
     notifSmsEnabled: "false",
   });
 
@@ -447,7 +447,7 @@ export default function Settings() {
                     <Input value={business.businessAddress} onChange={e => setBusiness(p => ({ ...p, businessAddress: e.target.value }))} />
                   </Field>
                   <Field label="Web corporativa" col2>
-                    <Input value={business.businessWebsite} onChange={e => setBusiness(p => ({ ...p, businessWebsite: e.target.value }))} placeholder="https://nayadeexperiences.es" />
+                    <Input value={business.businessWebsite} onChange={e => setBusiness(p => ({ ...p, businessWebsite: e.target.value }))} placeholder="https://skicenter.es" />
                   </Field>
                   <Field label="Descripción breve (SEO / emails)" col2>
                     <Textarea value={business.businessDescription} onChange={e => setBusiness(p => ({ ...p, businessDescription: e.target.value }))} rows={3} className="resize-none" />

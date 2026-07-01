@@ -386,7 +386,7 @@ const employeesRouter = router({
         .where(eq(employees.id, employee.id));
 
       // URL de activación
-      const origin = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+      const origin = process.env.APP_URL ?? "https://www.skicenter.es";
       const inviteUrl = `${origin}/empleado/activar?token=${token}`;
 
       let emailSent = false;

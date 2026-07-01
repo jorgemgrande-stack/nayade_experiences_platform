@@ -1272,7 +1272,7 @@ export const tpvRouter = router({
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
           if (resForUrl?.publicToken) {
-            const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+            const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
             reservationUrl = `${baseUrl}/presupuesto/${resForUrl.publicToken}`;
           }
         }
@@ -1346,7 +1346,7 @@ export const tpvRouter = router({
                 const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
                   .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
                 if (resForUrl?.publicToken) {
-                  const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+                  const base = process.env.APP_URL ?? "https://www.skicenter.es";
                   syncLeadUrlsToGHL({
                     ghlContactId,
                     quoteUrl: `${base}/presupuesto/${resForUrl.publicToken}`,

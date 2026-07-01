@@ -1,6 +1,6 @@
 /**
  * Script de envío de todas las plantillas de email de usuario
- * a reservas@nayadeexperiences.es para verificación visual.
+ * a reservas@skicenter.es para verificación visual.
  *
  * Ejecutar con: pnpm tsx send_previews.ts
  */
@@ -30,13 +30,13 @@ import {
   buildPendingPaymentReminderHtml,
 } from "./server/emailTemplates";
 
-const TO = "reservas@nayadeexperiences.es";
+const TO = "reservas@skicenter.es";
 const SMTP_HOST = process.env.SMTP_HOST!;
 const SMTP_PORT = parseInt(process.env.SMTP_PORT ?? "465", 10);
 const SMTP_USER = process.env.SMTP_USER!;
 const SMTP_PASS = process.env.SMTP_PASS!;
-const FROM = process.env.SMTP_FROM ?? `"Náyade Experiences" <${SMTP_USER}>`;
-const PORTAL = "https://nayade-shop-av298fs8.manus.space";
+const FROM = process.env.SMTP_FROM ?? `"Skicenter" <${SMTP_USER}>`;
+const PORTAL = "https://skicenter-shop.manus.space";
 
 if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
   console.error("❌ SMTP no configurado. Verifica SMTP_HOST, SMTP_USER, SMTP_PASS");

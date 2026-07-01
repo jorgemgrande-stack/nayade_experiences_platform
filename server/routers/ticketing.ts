@@ -34,7 +34,7 @@ import { getSystemSettingSync } from "../config";
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 1 });
 const db = drizzle(_pool);
 
-const getCopyEmail = () => getSystemSettingSync("email_reservations", "reservas@nayadeexperiences.es");
+const getCopyEmail = () => getSystemSettingSync("email_reservations", "reservas@skicenter.es");
 
 // ─── PROVEEDORES FIJOS ────────────────────────────────────────────────────────
 export const FIXED_PROVIDERS = [
@@ -874,7 +874,7 @@ export const ticketingRouter = router({
       // Recuperar publicToken de la reserva recién creada para el botón "Ver tu reserva"
       const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
         .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-      const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+      const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
       const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
       const confirmHtml = buildReservationConfirmHtml({
         merchantOrder,
@@ -1225,7 +1225,7 @@ export const ticketingRouter = router({
         const totalAmount = (parseFloat(resolvedPvpPrice) * input.participants).toFixed(2).replace(".", ",");
         const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
           .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-        const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+        const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
         const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
         const confirmHtml = buildReservationConfirmHtml({
           merchantOrder,
@@ -1322,7 +1322,7 @@ export const ticketingRouter = router({
           ? new Date(r.bookingDate).toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
           : "Por confirmar";
         const totalAmountStr = pvpTotal.toFixed(2).replace(".", ",");
-        const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+        const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
         const publicToken = (r as { publicToken?: string | null }).publicToken;
         const reservationUrl = publicToken ? `${baseUrl}/presupuesto/${publicToken}` : undefined;
         const confirmHtml = buildReservationConfirmHtml({

@@ -35,7 +35,7 @@ export default function CondicionesCancelacion() {
               <p className="text-white/80 leading-relaxed">
                 En todo momento el usuario o consumidor puede desistir de los servicios solicitados o contratados,
                 teniendo derecho a la devolución de las cantidades que hubiera abonado, tanto si se trata del precio
-                total como del anticipo previsto, pero deberá indemnizar a Nayade Experiences por los conceptos que
+                total como del anticipo previsto, pero deberá indemnizar a Skicenter por los conceptos que
                 a continuación se indican.
               </p>
             </div>
@@ -48,8 +48,8 @@ export default function CondicionesCancelacion() {
                   <span className="text-accent hover:underline cursor-pointer">Solicitar Anulación</span>
                 </Link>{" "}
                 o mediante correo electrónico a{" "}
-                <a href="mailto:reservas@nayadeexperiences.es" className="text-accent hover:underline">
-                  reservas@nayadeexperiences.es
+                <a href="mailto:reservas@skicenter.es" className="text-accent hover:underline">
+                  reservas@skicenter.es
                 </a>{" "}
                 indicando el localizador de reserva.
               </p>
@@ -94,13 +94,13 @@ export default function CondicionesCancelacion() {
 
             <LegalSection number="4" title="Pago fraccionado y compromisos de pago">
               <p>
-                En los casos donde Nayade Experiences ofrezca el pago fraccionado con compromiso de pago, el cliente
+                En los casos donde Skicenter ofrezca el pago fraccionado con compromiso de pago, el cliente
                 recibirá en el comprobante de compra los hitos de los pagos a realizar. Además, nuestro sistema le
                 enviará un recordatorio de pago próximo a la fecha de vencimiento.
               </p>
               <p>
                 Si el cliente no cumple con su compromiso de pago de los diferentes recibos acordados en un plazo
-                de <strong>48 horas</strong> tras el envío del recordatorio, Nayade Experiences se reserva el
+                de <strong>48 horas</strong> tras el envío del recordatorio, Skicenter se reserva el
                 derecho a la cancelación completa de la reserva, sin que el cliente tenga derecho a reclamación
                 ni a reembolso de cantidad alguna.
               </p>
@@ -111,9 +111,9 @@ export default function CondicionesCancelacion() {
 
             <LegalSection number="5" title="Garantía de precio">
               <p>
-                Debido a la fluctuación de precios en el sector turístico, Nayade Experiences solo puede garantizar
+                Debido a la fluctuación de precios en el sector turístico, Skicenter solo puede garantizar
                 el precio de los alojamientos durante un máximo de <strong>12 horas</strong> desde la solicitud.
-                Si la confirmación se produce pasado este plazo y los precios se han modificado, Nayade Experiences
+                Si la confirmación se produce pasado este plazo y los precios se han modificado, Skicenter
                 se reserva el derecho a cobrar la diferencia o, en su defecto, a cancelar la reserva de inmediato
                 y proceder a la devolución íntegra del importe pagado.
               </p>
@@ -134,7 +134,7 @@ export default function CondicionesCancelacion() {
             <LegalSection number="7" title="Cancelación por causas meteorológicas o de seguridad">
               <p>
                 Las actividades acuáticas y al aire libre están sujetas a condiciones meteorológicas. En caso de
-                que Nayade Experiences cancele una actividad por causas meteorológicas o de seguridad, el cliente
+                que Skicenter cancele una actividad por causas meteorológicas o de seguridad, el cliente
                 tendrá derecho a:
               </p>
               <ul>
@@ -143,7 +143,7 @@ export default function CondicionesCancelacion() {
                 <li>Solicitar el reembolso total del importe abonado.</li>
               </ul>
               <p>
-                En caso de cierre de instalaciones por causas ajenas a Nayade Experiences, se procederá a la
+                En caso de cierre de instalaciones por causas ajenas a Skicenter, se procederá a la
                 emisión de un bono canjeable en la misma temporada o a la devolución del importe, a excepción
                 de las reservas con alojamiento, que tienen su propia política de cancelación.
               </p>
@@ -182,7 +182,7 @@ export default function CondicionesCancelacion() {
 
             <LegalSection number="9" title="Cursillos y actividades grupales">
               <p>
-                En el caso de cursillos y actividades grupales, Nayade Experiences se reserva el derecho a
+                En el caso de cursillos y actividades grupales, Skicenter se reserva el derecho a
                 cancelar en cualquier momento por nivel bajo de participantes. En ese caso, se devolverá el
                 importe de la reserva íntegramente, sin que ello dé lugar a ningún otro tipo de reclamación
                 por parte del cliente.
@@ -205,7 +205,7 @@ export default function CondicionesCancelacion() {
                 de reserva es un documento personal que el cliente deberá conservar durante toda su visita.
               </p>
               <p>
-                Nayade Experiences no se hace responsable de los perjuicios derivados del desconocimiento
+                Skicenter no se hace responsable de los perjuicios derivados del desconocimiento
                 por parte del cliente de las condiciones y restricciones aplicables en el momento de la
                 contratación.
               </p>
@@ -226,8 +226,8 @@ export default function CondicionesCancelacion() {
                 los canales escritos:
               </p>
               <InfoTable rows={[
-                ["Formulario online", "nayadeexperiences.es/solicitar-anulacion"],
-                ["Email", "reservas@nayadeexperiences.es"],
+                ["Formulario online", "skicenter.es/solicitar-anulacion"],
+                ["Email", "reservas@skicenter.es"],
                 ["Horario de atención", "Lun–Dom · 10:00–20:00 (Temporada Abril–Octubre)"],
               ]} />
               <p>

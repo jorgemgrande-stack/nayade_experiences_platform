@@ -206,10 +206,10 @@ export default function RestauranteDetail() {
 
                 {/* Email */}
                 <a
-                  href={`mailto:${restaurant.email || "reservas@nayadeexperiences.es"}`}
+                  href={`mailto:${restaurant.email || "reservas@skicenter.es"}`}
                   className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-accent font-display transition-colors pt-2"
                 >
-                  <Mail className="w-4 h-4" /> {restaurant.email || "reservas@nayadeexperiences.es"}
+                  <Mail className="w-4 h-4" /> {restaurant.email || "reservas@skicenter.es"}
                 </a>
 
                 {/* Grupo máximo */}

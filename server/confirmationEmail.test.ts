@@ -18,7 +18,7 @@ const mockData = {
   taxAmount: "11.97",
   total: "68.97",
   bookingDate: "2026-04-15",
-  contactEmail: "reservas@nayadeexperiences.es",
+  contactEmail: "reservas@skicenter.es",
   contactPhone: "+34 639 57 66 27",
 };
 
@@ -65,7 +65,7 @@ describe("buildConfirmationHtml", () => {
 
   it("incluye el email de contacto correcto", () => {
     const html = buildConfirmationHtml(mockData);
-    expect(html).toContain("reservas@nayadeexperiences.es");
+    expect(html).toContain("reservas@skicenter.es");
   });
 
   it("incluye el teléfono de contacto correcto", () => {
@@ -76,7 +76,7 @@ describe("buildConfirmationHtml", () => {
   it("usa los valores por defecto de contacto cuando no se proporcionan", () => {
     const { contactEmail: _e, contactPhone: _p, ...dataWithoutContact } = mockData;
     const html = buildConfirmationHtml(dataWithoutContact);
-    expect(html).toContain("reservas@nayadeexperiences.es");
+    expect(html).toContain("reservas@skicenter.es");
     expect(html).toContain("+34 639 57 66 27");
   });
 

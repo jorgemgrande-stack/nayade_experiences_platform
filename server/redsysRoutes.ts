@@ -239,7 +239,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
         await sendCapiEvent({
           event_name: 'Purchase',
           event_id: `purchase_${result.merchantOrder}`,
-          event_source_url: process.env.PUBLIC_SITE_URL || 'https://nayadeexperiences.es',
+          event_source_url: process.env.PUBLIC_SITE_URL || 'https://skicenter.es',
           custom_data: {
             content_ids: [String(updatedReservation.productId ?? updatedReservation.id)],
             content_name: resv.productName ?? undefined,
@@ -406,7 +406,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
             const COPY_EMAIL  = await getBusinessEmail('reservations');
             if (clientEmail) {
               try {
-                const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+                const base = process.env.APP_URL ?? "https://www.skicenter.es";
                 // Preferir el token de la reserva (todos los canales), fallback al token del presupuesto.
                 const tokenForUrl = (updatedReservation as any).publicToken ?? quote.paymentLinkToken;
                 const reservationUrl = tokenForUrl ? `${base}/presupuesto/${tokenForUrl}` : undefined;
@@ -429,7 +429,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
                   templateKey: "confirmation",
                   triggerEvent: "redsys_payment_confirmed",
                   recipientEmail: clientEmail,
-                  subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
+                  subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Skicenter")}`,
                   html,
                   relatedEntityType: "quote",
                   relatedEntityId: quote.id,
@@ -450,7 +450,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               syncLeadUrlsToGHL({
                 ghlContactId: (lead as any)?.ghlContactId,
                 quoteUrl: quote.paymentLinkToken
-                  ? `${process.env.APP_URL ?? "https://www.nayadeexperiences.es"}/presupuesto/${quote.paymentLinkToken}`
+                  ? `${process.env.APP_URL ?? "https://www.skicenter.es"}/presupuesto/${quote.paymentLinkToken}`
                   : undefined,
                 invoiceNumber,
                 quoteNumber: quote.quoteNumber,
@@ -627,7 +627,7 @@ redsysRouter.post("/api/redsys/notification", express.urlencoded({ extended: tru
               // workflow WhatsApp pueda usar {{contact.presupuesto_url}}.
               const publicToken = (resv as any).publicToken;
               if (publicToken) {
-                const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+                const base = process.env.APP_URL ?? "https://www.skicenter.es";
                 syncLeadUrlsToGHL({
                   ghlContactId,
                   quoteUrl: `${base}/presupuesto/${publicToken}`,
@@ -1183,7 +1183,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
           const clientEmail = lead?.email ?? primary.customerEmail;
           if (clientEmail) {
             const COPY_EMAIL = await getBusinessEmail("reservations");
-            const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+            const base = process.env.APP_URL ?? "https://www.skicenter.es";
             const tokenForUrl = (primary as any).publicToken ?? quote.paymentLinkToken;
             const reservationUrl = tokenForUrl ? `${base}/presupuesto/${tokenForUrl}` : undefined;
             const html = buildConfirmationHtml({
@@ -1205,7 +1205,7 @@ redsysRouter.post("/api/admin/recover-order/:merchantOrder", async (req, res) =>
               templateKey: "confirmation",
               triggerEvent: "redsys_payment_confirmed_recovery",
               recipientEmail: clientEmail,
-              subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
+              subject: `✅ Reserva confirmada — ${quote.quoteNumber} — ${getSystemSettingSync("brand_name", "Skicenter")}`,
               html,
               relatedEntityType: "quote",
               relatedEntityId: quote.id,

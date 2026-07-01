@@ -67,8 +67,8 @@ export default function PdfTemplatesManager() {
     headerColor: "#0a1628", accentColor: "#f97316",
     companyName: "Náyade Experiences S.L.", companyNif: "B-XXXXXXXX",
     companyAddress: "Embalse de Los Ángeles, Ávila",
-    companyPhone: "+34 639 57 66 27", companyEmail: "reservas@nayadeexperiences.es",
-    footerText: "Náyade Experiences · www.nayadeexperiences.es",
+    companyPhone: "+34 639 57 66 27", companyEmail: "reservas@skicenter.es",
+    footerText: "Náyade Experiences · www.skicenter.es",
     legalText: "", showLogo: true, showWatermark: false, bodyHtml: DEFAULT_BODY,
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);

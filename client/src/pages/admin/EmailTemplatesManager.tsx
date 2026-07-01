@@ -53,7 +53,7 @@ export default function EmailTemplatesManager() {
   const [activeCategory, setActiveCategory] = useState<Category>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
-  const [testEmail, setTestEmail] = useState("reservas@nayadeexperiences.es");
+  const [testEmail, setTestEmail] = useState("reservas@skicenter.es");
   const [mode, setMode] = useState<"view" | "edit" | "create">("view");
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [createForm, setCreateForm] = useState<CreateForm>({
@@ -221,7 +221,7 @@ export default function EmailTemplatesManager() {
                 </div>
                 <div className="space-y-1 col-span-2">
                   <Label>Asunto del email <span className="text-red-500">*</span></Label>
-                  <Input placeholder="ej: Bienvenido a Nayade Experiences!" value={createForm.subject} onChange={e => setCreateForm(f => ({ ...f, subject: e.target.value }))} />
+                  <Input placeholder="ej: Bienvenido a Skicenter!" value={createForm.subject} onChange={e => setCreateForm(f => ({ ...f, subject: e.target.value }))} />
                 </div>
                 <div className="space-y-1">
                   <Label>Categoria</Label>

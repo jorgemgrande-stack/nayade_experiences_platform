@@ -1217,7 +1217,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
                 />
               </div>
               <p className="text-xs text-muted-foreground font-display mt-1">
-                URL completa: <span className="font-mono">nayadeexperiences.es/restaurantes/{ficha.slug || "…"}</span>
+                URL completa: <span className="font-mono">skicenter.es/restaurantes/{ficha.slug || "…"}</span>
                 {slugManual && (
                   <button
                     type="button"
@@ -1251,7 +1251,7 @@ function RestaurantConfig({ restaurant }: { restaurant: any }) {
             </div>
             <div>
               <label className={labelCls}>Email de contacto</label>
-              <input type="email" value={ficha.email} onChange={e => setFicha(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="restaurante@nayadeexperiences.es" />
+              <input type="email" value={ficha.email} onChange={e => setFicha(f => ({ ...f, email: e.target.value }))} className={inputCls} placeholder="restaurante@skicenter.es" />
             </div>
             <div className="col-span-2">
               <label className={labelCls}>Ubicación / Dirección</label>

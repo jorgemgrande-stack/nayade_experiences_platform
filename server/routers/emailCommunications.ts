@@ -381,7 +381,7 @@ export const emailCommunicationsRouter = router({
         <h2 style="color:#0a1628;">Email de prueba — ${def.friendlyName}</h2>
         <p>Plantilla: <code>${input.templateKey}</code></p>
         <p>Categoría: ${def.category}</p>
-        <p>Este es un email de prueba enviado desde el Centro de Comunicaciones de Nayade Experiences.</p>
+        <p>Este es un email de prueba enviado desde el Centro de Comunicaciones de Skicenter.</p>
       </div>`;
       const ok = await sendEmail({ to: input.to, subject, html });
       return { ok, to: input.to };

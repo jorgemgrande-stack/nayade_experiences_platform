@@ -6,7 +6,7 @@ function writeFbcCookie(fbclid: string): void {
   if (document.cookie.includes('_fbc=')) return; // preservar primer toque
   const value = `fb.1.${Date.now()}.${fbclid}`;
   const expires = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toUTCString();
-  document.cookie = `_fbc=${value}; path=/; expires=${expires}; domain=.nayadeexperiences.es; SameSite=Lax`;
+  document.cookie = `_fbc=${value}; path=/; expires=${expires}; domain=.skicenter.es; SameSite=Lax`;
 }
 
 const PIXEL_ID = (import.meta.env.VITE_META_PIXEL_ID as string | undefined) || '1542400900841433';

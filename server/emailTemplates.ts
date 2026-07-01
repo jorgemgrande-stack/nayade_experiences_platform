@@ -20,7 +20,7 @@
 import { getSystemSettingSync } from "./config";
 
 // ─── Dynamic brand helpers (read from config cache at call time) ──────────────
-const getContactEmail = () => getSystemSettingSync("email_reservations", "reservas@nayadeexperiences.es");
+const getContactEmail = () => getSystemSettingSync("email_reservations", "reservas@skicenter.es");
 
 // ─── Constantes de marca ──────────────────────────────────────────────────────
 // URLs kept as fallback literals; actual values read from system_settings cache
@@ -30,7 +30,7 @@ const LOGO_URL_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228
 const HERO_IMG_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_lago_aereo_178815fc.jpg";
 const getBrandLogo  = () => getSystemSettingSync("brand_logo_url",     LOGO_URL_FALLBACK);
 const getBrandHero  = () => getSystemSettingSync("brand_hero_image_url", HERO_IMG_FALLBACK);
-const getBrandName  = () => getSystemSettingSync("brand_name",         "Nayade Experiences");
+const getBrandName  = () => getSystemSettingSync("brand_name",         "Skicenter");
 const getBrandShort = () => getSystemSettingSync("brand_short_name",   "Náyade");
 const BRAND_BLUE     = "#0a1628";
 const BRAND_MID_BLUE = "#1e3a6e";
@@ -164,7 +164,7 @@ function emailFooter(): string {
           <!-- Datos de contacto -->
           <p style="color:#6b5c3e;font-size:13px;margin:0 0 6px;font-family:Arial,sans-serif;line-height:1.8;">
             ${SVG.phone}&nbsp;<a href="tel:${getSystemSettingSync('brand_support_phone', '+34 639 57 66 27').replace(/\s/g,'')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('brand_support_phone', '+34 639 57 66 27')}</a>
-            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:${getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es')}</a>
+            &nbsp;&nbsp;&nbsp;${SVG.mail}&nbsp;<a href="mailto:${getSystemSettingSync('email_reservations', 'reservas@skicenter.es')}" style="color:#8b6914;text-decoration:none;font-weight:600;">${getSystemSettingSync('email_reservations', 'reservas@skicenter.es')}</a>
           </p>
           <p style="color:#8b7355;font-size:12px;margin:0 0 12px;font-family:Arial,sans-serif;">
             ${SVG.map}&nbsp;${getSystemSettingSync('brand_location', '')}
@@ -1085,7 +1085,7 @@ export function buildConfirmationHtml(d: ConfirmationEmailData): string {
     ? `<br/><span style="color:#9ca3af;font-size:12px;">Presupuesto original: <strong>${d.quoteNumber}</strong></span>`
     : "";
   const contactPhone = d.contactPhone ?? getSystemSettingSync('brand_support_phone', '+34 639 57 66 27');
-  const contactEmail = d.contactEmail ?? getSystemSettingSync('email_reservations', 'reservas@nayadeexperiences.es');
+  const contactEmail = d.contactEmail ?? getSystemSettingSync('email_reservations', 'reservas@skicenter.es');
 
   const installmentBlock = d.installmentPlan?.installments?.length
     ? (() => {

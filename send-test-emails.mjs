@@ -1,6 +1,6 @@
 /**
  * send-test-emails.mjs
- * Envía todas las plantillas de email rediseñadas a reservas@nayadeexperiences.es
+ * Envía todas las plantillas de email rediseñadas a reservas@skicenter.es
  * para revisión del cliente.
  *
  * Uso: node send-test-emails.mjs
@@ -11,7 +11,7 @@ import { readFileSync } from "fs";
 import { createRequire } from "module";
 
 // ─── Cargar variables de entorno ──────────────────────────────────────────────
-const envPath = "/home/ubuntu/nayade_experiences_platform/.env";
+const envPath = "/home/ubuntu/skicenter_platform/.env";
 let envVars = {};
 try {
   const content = readFileSync(envPath, "utf-8");

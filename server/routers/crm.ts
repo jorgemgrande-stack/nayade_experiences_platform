@@ -1,9 +1,9 @@
 ﻿/**
- * CRM Router — Nayade Experiences
+ * CRM Router — Skicenter
  * Ciclo completo: Lead → Presupuesto → Pago Redsys → Reserva → Factura PDF
  */
 
-const SITE_URL = (process.env.APP_URL ?? 'https://www.nayadeexperiences.es').trim();
+const SITE_URL = (process.env.APP_URL ?? 'https://www.skicenter.es').trim();
 
 import { router, protectedProcedure, publicProcedure, staffProcedure, adminProcedure } from "../_core/trpc";
 import { createLead, createBookingFromReservation, createReavExpedient, attachReavDocument, upsertClientFromReservation, postConfirmOperation, getGHLCredentials } from "../db";
@@ -1608,7 +1608,7 @@ export const crmRouter = router({
         // Generar token único de aceptación si no existe ya
         const { randomBytes } = await import("crypto");
         const token = quote.paymentLinkToken ?? randomBytes(32).toString("hex");
-        const origin = input.origin ?? "https://www.nayadeexperiences.es";
+        const origin = input.origin ?? "https://www.skicenter.es";
         const acceptUrl = `${origin}/presupuesto/${token}`;
 
         // Update quote
@@ -1694,7 +1694,7 @@ export const crmRouter = router({
         let paymentLinkUrl = quote.paymentLinkUrl;
         if (!paymentLinkUrl || !quote.paymentLinkToken) {
           const token = randomBytes(32).toString("hex");
-          const origin = input.origin ?? "https://www.nayadeexperiences.es";
+          const origin = input.origin ?? "https://www.skicenter.es";
           paymentLinkUrl = `${origin}/presupuesto/${token}`;
           await db.update(quotes).set({
             paymentLinkToken: token,
@@ -2987,7 +2987,7 @@ export const crmRouter = router({
           // Generar token de aceptación SIEMPRE antes de enviar el email
           const { randomBytes } = await import("crypto");
           const token = randomBytes(32).toString("hex");
-          const origin = input.origin ?? "https://www.nayadeexperiences.es";
+          const origin = input.origin ?? "https://www.skicenter.es";
           const acceptUrl = `${origin}/presupuesto/${token}`;
 
           await db.update(quotes).set({
@@ -4596,7 +4596,7 @@ export const crmRouter = router({
         const [res] = await db.select().from(reservations).where(eq(reservations.id, input.id));
         if (!res) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
         const isTransfer = res.paymentMethod === "transferencia";
-        const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+        const base = process.env.APP_URL ?? "https://www.skicenter.es";
         const reservationUrl = (res as any).publicToken ? `${base}/presupuesto/${(res as any).publicToken}` : undefined;
         let html: string;
         let subject: string;
@@ -5141,7 +5141,7 @@ export const crmRouter = router({
             // Recuperar publicToken de la reserva recién creada (lo genera MySQL por DEFAULT)
             const [resRow] = await db.select({ publicToken: reservations.publicToken })
               .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-            const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+            const base = process.env.APP_URL ?? "https://www.skicenter.es";
             const reservationUrl = resRow?.publicToken ? `${base}/presupuesto/${resRow.publicToken}` : undefined;
             const html = buildConfirmationHtml({
               clientName: input.customerName,
@@ -5190,7 +5190,7 @@ export const crmRouter = router({
               // El workflow WhatsApp lee {{contact.presupuesto_url}} para el botón.
               const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
                 .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-              const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+              const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
               const publicReservationUrl = resForUrl?.publicToken
                 ? `${baseUrl}/presupuesto/${resForUrl.publicToken}`
                 : undefined;
@@ -6408,7 +6408,7 @@ export const crmRouter = router({
             productName: input.productName,
             amountFormatted: (input.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
             dueDate: dueDateFormatted,
-            ibanInfo: legal.iban ? `Banco: Nayade Experiences\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
+            ibanInfo: legal.iban ? `Banco: Skicenter\nIBAN: ${legal.iban}\nConcepto: Reserva ${input.productName}` : undefined,
             origin: input.origin ?? "",
           });
           await sendManagedEmail({
@@ -6634,7 +6634,7 @@ export const crmRouter = router({
           productName: pp.productName ?? "Actividad Nayade",
           amountFormatted: (pp.amountCents / 100).toLocaleString("es-ES", { minimumFractionDigits: 2 }) + " €",
           dueDate: dueDateFormatted,
-          ibanInfo: legal.iban ? `Banco: Nayade Experiences\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
+          ibanInfo: legal.iban ? `Banco: Skicenter\nIBAN: ${legal.iban}\nConcepto: Reserva ${pp.productName}` : undefined,
           origin: "",
         });
         await sendManagedEmail({

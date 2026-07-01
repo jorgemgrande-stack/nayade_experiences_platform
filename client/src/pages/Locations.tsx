@@ -86,7 +86,7 @@ export default function Locations() {
           </div>
           <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
             <img
-              src="https://www.nayadeexperiences.es/local-storage/nayade/uploads/1777833809837-j285hn.png"
+              src="https://www.skicenter.es/local-storage/nayade/uploads/1777833809837-j285hn.png"
               alt="Mapa de rutas de acceso a Náyade Experiences — Los Ángeles de San Rafael, Segovia"
               className="w-full h-auto object-contain"
               loading="lazy"
@@ -203,8 +203,8 @@ export default function Locations() {
                 <Mail className="w-5 h-5 text-accent" />
               </div>
               <h3 className="font-heading font-bold text-foreground">Email</h3>
-              <a href="mailto:reservas@nayadeexperiences.es" className="text-accent font-display font-semibold hover:underline text-sm">
-                reservas@nayadeexperiences.es
+              <a href="mailto:reservas@skicenter.es" className="text-accent font-display font-semibold hover:underline text-sm">
+                reservas@skicenter.es
               </a>
             </div>
           </div>

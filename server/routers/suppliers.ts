@@ -134,7 +134,7 @@ async function generateSettlementPdfAndUpload(data: {
     <div class="company-info">
       <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
       ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
-      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
+      ${data.companyData?.email ?? "reservas@skicenter.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
     </div>
   </div>
   <div class="doc-type-band">
@@ -188,7 +188,7 @@ async function generateSettlementPdfAndUpload(data: {
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.nayadeexperiences.es</p>
+    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.skicenter.es</p>
     <p>Documento de liquidación de servicios prestados por el proveedor durante el período indicado.</p>
   </div>
 </body>
@@ -607,16 +607,16 @@ export const suppliersRouter = router({
         if (nu) await db.update(users).set({ ...(({ supplierId: input.supplierId }) as any) }).where(eq(users.id, nu.id));
       }
 
-      const origin = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+      const origin = process.env.APP_URL ?? "https://www.skicenter.es";
       const inviteUrl = `${origin}/supplier/activar?token=${token}`;
       await sendEmail({
         to: email,
-        subject: "Invitación al portal de proveedores — Nayade Experiences",
+        subject: "Invitación al portal de proveedores — Skicenter",
         html: `
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
             <h2 style="color:#ea580c">Portal de Proveedores</h2>
             <p>Hola <strong>${name}</strong>,</p>
-            <p>Has sido invitado al portal de proveedores de <strong>Nayade Experiences</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
+            <p>Has sido invitado al portal de proveedores de <strong>Skicenter</strong>, donde podrás ver las ventas de tus productos por todos los canales y tus liquidaciones.</p>
             <p style="margin:24px 0">
               <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">Activar mi cuenta</a>
             </p>
@@ -1688,7 +1688,7 @@ export const settlementsRouter = router({
         name: s.legalCompanyName || "Náyade Experiences S.L.",
         cif: s.legalCompanyCif || "",
         address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
-        email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
+        email: s.legalCompanyEmail || "reservas@skicenter.es",
         phone: s.legalCompanyPhone || "+34 639 57 66 27",
       };
 

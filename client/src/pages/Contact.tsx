@@ -61,8 +61,8 @@ export default function Contact() {
     {
       icon: Mail,
       title: "Email",
-      lines: ["reservas@nayadeexperiences.es", "Respuesta en menos de 24h"],
-      href: "mailto:reservas@nayadeexperiences.es",
+      lines: ["reservas@skicenter.es", "Respuesta en menos de 24h"],
+      href: "mailto:reservas@skicenter.es",
       color: "from-blue-500/20 to-blue-600/10",
       iconColor: "text-blue-400",
     },

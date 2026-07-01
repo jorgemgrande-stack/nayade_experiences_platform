@@ -186,7 +186,7 @@ function GastoForm({ token }: { token: string }) {
         {/* Header */}
         <div className="text-center space-y-1">
           <p className="text-[#e8b86d] text-xs font-medium tracking-widest uppercase">
-            Nayade Experiences
+            Skicenter
           </p>
           <h1 className="text-white text-2xl font-bold">Registrar gasto</h1>
           <p className="text-slate-400 text-sm">

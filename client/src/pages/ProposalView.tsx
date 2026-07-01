@@ -204,7 +204,7 @@ export default function ProposalView() {
           <p className="text-white/60 text-base leading-relaxed">
             Hemos recibido tu respuesta. Nuestro equipo se pondrá en contacto contigo en breve para dar los próximos pasos.
           </p>
-          <p className="text-white/30 text-sm mt-6">Náyade Experiences · contacto@nayadeexperiences.es</p>
+          <p className="text-white/30 text-sm mt-6">Náyade Experiences · contacto@skicenter.es</p>
         </div>
       </div>
     );
@@ -330,8 +330,8 @@ export default function ProposalView() {
             <a href="tel:+34639576627" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
               <Phone className="w-4 h-4" /> +34 639 57 66 27
             </a>
-            <a href="mailto:contacto@nayadeexperiences.es" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
-              <Mail className="w-4 h-4" /> contacto@nayadeexperiences.es
+            <a href="mailto:contacto@skicenter.es" className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition-colors">
+              <Mail className="w-4 h-4" /> contacto@skicenter.es
             </a>
           </div>
         </div>

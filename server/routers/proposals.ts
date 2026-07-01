@@ -1,5 +1,5 @@
 /**
- * Proposals Router — Nayade Experiences
+ * Proposals Router — Skicenter
  * Módulo Propuestas Comerciales: pre-presupuesto configurable o multi-opción.
  * Flujo: Lead → Propuesta → (cliente acepta) → Presupuesto → Reserva → Factura
  */
@@ -277,7 +277,7 @@ export const proposalsRouter = router({
       // Generate token if not yet set
       const { randomBytes } = await import("crypto");
       const token = proposal.token ?? randomBytes(32).toString("hex");
-      const origin = process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.nayadeexperiences.es";
+      const origin = process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.skicenter.es";
       const publicUrl = `${origin}/propuesta/${token}`;
 
       // Fetch options for multi_option
@@ -380,7 +380,7 @@ export const proposalsRouter = router({
       if (proposal.publicUrl) return { publicUrl: proposal.publicUrl, token: proposal.token! };
       const { randomBytes } = await import("crypto");
       const token = randomBytes(32).toString("hex");
-      const origin = process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.nayadeexperiences.es";
+      const origin = process.env.VITE_OAUTH_PORTAL_URL ?? "https://www.skicenter.es";
       const publicUrl = `${origin}/propuesta/${token}`;
       await db.update(proposals).set({ token, publicUrl }).where(eq(proposals.id, input.id));
       return { publicUrl, token };

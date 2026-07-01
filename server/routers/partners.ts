@@ -119,7 +119,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
     <div class="company-info">
       <strong>${data.companyData?.name ?? "Náyade Experiences S.L."}</strong>
       ${data.companyData?.address ?? "Los Ángeles de San Rafael, Segovia"}<br/>
-      ${data.companyData?.email ?? "reservas@nayadeexperiences.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
+      ${data.companyData?.email ?? "reservas@skicenter.es"} &middot; ${data.companyData?.phone ?? "+34 639 57 66 27"}
     </div>
   </div>
   <div class="doc-type-band">
@@ -168,7 +168,7 @@ async function generatePartnerBillingPdfAndUpload(data: {
 
   </div>
   <div class="footer">
-    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.nayadeexperiences.es</p>
+    <p>${data.companyData?.name ?? "Náyade Experiences S.L."} &middot; www.skicenter.es</p>
     <p>Documento de liquidación de las reservas intermediadas por el partner durante el período indicado.</p>
   </div>
 </body>
@@ -435,7 +435,7 @@ export const partnersRouter = router({
       }
 
       // Enviar email de invitación
-      const origin = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+      const origin = process.env.APP_URL ?? "https://www.skicenter.es";
       const inviteUrl = `${origin}/partner/activar?token=${token}`;
       await sendEmail({
         to: input.email,
@@ -444,7 +444,7 @@ export const partnersRouter = router({
           <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px;">
             <h2 style="color:#ea580c">Bienvenido al portal de colaboradores</h2>
             <p>Hola <strong>${input.name}</strong>,</p>
-            <p>Has sido invitado a acceder al portal de colaboradores de <strong>Nayade Experiences</strong> como miembro de <strong>${partner.name}</strong>.</p>
+            <p>Has sido invitado a acceder al portal de colaboradores de <strong>Skicenter</strong> como miembro de <strong>${partner.name}</strong>.</p>
             <p style="margin:24px 0">
               <a href="${inviteUrl}" style="background:#ea580c;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold">
                 Activar mi cuenta
@@ -658,7 +658,7 @@ export const partnersRouter = router({
         try {
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
-          const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+          const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
           const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
           const bookingDateFormatted = (() => {
             try {
@@ -707,7 +707,7 @@ export const partnersRouter = router({
             const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
               .from(reservations).where(eq(reservations.id, reservationId)).limit(1);
             if (resForUrl?.publicToken) {
-              const base = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+              const base = process.env.APP_URL ?? "https://www.skicenter.es";
               syncLeadUrlsToGHL({
                 ghlContactId,
                 quoteUrl: `${base}/presupuesto/${resForUrl.publicToken}`,
@@ -910,7 +910,7 @@ export const partnersRouter = router({
           const first = created[0];
           const [resForUrl] = await db.select({ publicToken: reservations.publicToken })
             .from(reservations).where(eq(reservations.id, first.reservationId)).limit(1);
-          const baseUrl = process.env.APP_URL ?? "https://www.nayadeexperiences.es";
+          const baseUrl = process.env.APP_URL ?? "https://www.skicenter.es";
           const reservationUrl = resForUrl?.publicToken ? `${baseUrl}/presupuesto/${resForUrl.publicToken}` : undefined;
           const fmtDate = (s: string) => {
             try {
@@ -1117,7 +1117,7 @@ export const partnersRouter = router({
         name: s.legalCompanyName || "Náyade Experiences S.L.",
         cif: s.legalCompanyCif || "",
         address: s.legalCompanyAddress || "Los Ángeles de San Rafael, Segovia",
-        email: s.legalCompanyEmail || "reservas@nayadeexperiences.es",
+        email: s.legalCompanyEmail || "reservas@skicenter.es",
         phone: s.legalCompanyPhone || "+34 639 57 66 27",
       };
 

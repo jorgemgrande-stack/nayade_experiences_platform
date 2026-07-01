@@ -40,15 +40,15 @@ export default function TerminosCondiciones() {
                 ["CIF", "B26987875"],
                 ["Domicilio", "C/ Corazón de María 57, 1º D · 28002 Madrid"],
                 ["Teléfono", "+34 639 57 66 27"],
-                ["Email", "administracion@nayadeexperiences.es"],
-                ["Sitio web", "www.nayadeexperiences.es"],
+                ["Email", "administracion@skicenter.es"],
+                ["Sitio web", "www.skicenter.es"],
               ]} />
             </LegalSection>
 
             <LegalSection number="2" title="Objeto y ámbito de aplicación">
               <p>
-                Las presentes Condiciones Generales regulan el acceso y uso del sitio web <strong>www.nayadeexperiences.es</strong>,
-                así como la contratación de los servicios ofrecidos por Nayade Experiences: actividades acuáticas y de aventura,
+                Las presentes Condiciones Generales regulan el acceso y uso del sitio web <strong>www.skicenter.es</strong>,
+                así como la contratación de los servicios ofrecidos por Skicenter: actividades acuáticas y de aventura,
                 packs de experiencias, alojamiento en Hotel Náyade, servicios de SPA y reservas en restaurantes.
               </p>
               <p>
@@ -69,7 +69,7 @@ export default function TerminosCondiciones() {
                 <li>Recepción de confirmación por correo electrónico con el localizador de reserva.</li>
               </ol>
               <p>
-                El contrato se perfecciona en el momento en que Nayade Experiences confirma la reserva mediante correo
+                El contrato se perfecciona en el momento en que Skicenter confirma la reserva mediante correo
                 electrónico. Hasta ese momento, la reserva tendrá carácter provisional.
               </p>
             </LegalSection>
@@ -77,12 +77,12 @@ export default function TerminosCondiciones() {
             <LegalSection number="4" title="Precios y forma de pago">
               <p>
                 Todos los precios publicados en el sitio web incluyen el IVA vigente y están expresados en euros (€).
-                Nayade Experiences se reserva el derecho a modificar los precios en cualquier momento, si bien los cambios
+                Skicenter se reserva el derecho a modificar los precios en cualquier momento, si bien los cambios
                 no afectarán a las reservas ya confirmadas.
               </p>
               <p>
                 El pago se realiza íntegramente en el momento de la reserva a través de la pasarela de pago segura Redsys.
-                Nayade Experiences no almacena datos de tarjetas bancarias; toda la información de pago es gestionada
+                Skicenter no almacena datos de tarjetas bancarias; toda la información de pago es gestionada
                 directamente por la entidad bancaria.
               </p>
             </LegalSection>
@@ -102,11 +102,11 @@ export default function TerminosCondiciones() {
                 <Link href="/solicitar-anulacion">
                   <span className="text-accent hover:underline cursor-pointer">Solicitar Anulación</span>
                 </Link>{" "}
-                o contactar directamente con reservas@nayadeexperiences.es indicando el localizador de reserva.
+                o contactar directamente con reservas@skicenter.es indicando el localizador de reserva.
               </p>
               <p>
                 En caso de cancelación por causas de fuerza mayor debidamente acreditadas (enfermedad grave, fallecimiento
-                de familiar directo, catástrofe natural), Nayade Experiences estudiará cada caso de forma individualizada
+                de familiar directo, catástrofe natural), Skicenter estudiará cada caso de forma individualizada
                 y podrá ofrecer un bono compensatorio o la devolución total del importe.
               </p>
             </LegalSection>
@@ -114,7 +114,7 @@ export default function TerminosCondiciones() {
             <LegalSection number="6" title="Condiciones meteorológicas">
               <p>
                 Las actividades acuáticas y al aire libre están sujetas a condiciones meteorológicas. En caso de que
-                Nayade Experiences cancele una actividad por causas meteorológicas o de seguridad, el cliente tendrá
+                Skicenter cancele una actividad por causas meteorológicas o de seguridad, el cliente tendrá
                 derecho a:
               </p>
               <ul>
@@ -126,14 +126,14 @@ export default function TerminosCondiciones() {
 
             <LegalSection number="7" title="Responsabilidad y seguridad">
               <p>
-                La participación en actividades acuáticas y de aventura implica riesgos inherentes. Nayade Experiences
+                La participación en actividades acuáticas y de aventura implica riesgos inherentes. Skicenter
                 dispone de los seguros de responsabilidad civil y accidentes exigidos por la normativa vigente, y cuenta
                 con personal cualificado y titulado para la dirección de todas las actividades.
               </p>
               <p>
                 El participante declara estar en condiciones físicas adecuadas para la práctica de la actividad
                 contratada y asume la responsabilidad de comunicar cualquier condición médica relevante antes del inicio
-                de la actividad. Nayade Experiences podrá denegar la participación a cualquier persona que, a juicio del
+                de la actividad. Skicenter podrá denegar la participación a cualquier persona que, a juicio del
                 monitor responsable, no reúna las condiciones de seguridad necesarias.
               </p>
             </LegalSection>
@@ -150,7 +150,7 @@ export default function TerminosCondiciones() {
             <LegalSection number="9" title="Propiedad intelectual">
               <p>
                 Todos los contenidos del sitio web (textos, imágenes, logotipos, diseños, código fuente) son propiedad
-                de Nayade Experiences o de sus proveedores de contenido, y están protegidos por la legislación española
+                de Skicenter o de sus proveedores de contenido, y están protegidos por la legislación española
                 e internacional sobre propiedad intelectual e industrial. Queda prohibida su reproducción, distribución,
                 comunicación pública o transformación sin autorización expresa y por escrito.
               </p>
@@ -174,7 +174,7 @@ export default function TerminosCondiciones() {
                 Para cualquier consulta relacionada con las presentes condiciones, puede contactar con nosotros en:
               </p>
               <InfoTable rows={[
-                ["Email", "administracion@nayadeexperiences.es"],
+                ["Email", "administracion@skicenter.es"],
                 ["Teléfono", "+34 639 57 66 27"],
                 ["Horario de atención", "Lun–Dom · 10:00–20:00 (Temporada Abril–Octubre)"],
               ]} />

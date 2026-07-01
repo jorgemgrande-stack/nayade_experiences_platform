@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const TO_EMAIL = 'reservas@nayadeexperiences.es';
+const TO_EMAIL = 'reservas@skicenter.es';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -19,12 +19,12 @@ function base(title, bodyHtml) {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
         <tr><td style="background:#1a5276;padding:28px 32px;text-align:center;">
-          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Náyade Experiences</h1>
-          <p style="margin:4px 0 0;color:#d4ac0d;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Aventura · Naturaleza · Bienestar</p>
+          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Skicenter</h1>
+          <p style="margin:4px 0 0;color:#d4ac0d;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Esquí · Lecciones · Calidad</p>
         </td></tr>
         <tr><td style="padding:32px;">${bodyHtml}</td></tr>
         <tr><td style="background:#2c3e50;padding:20px 32px;text-align:center;">
-          <p style="margin:0;color:#94a3b8;font-size:11px;">© ${new Date().getFullYear()} Náyade Experiences · Todos los derechos reservados</p>
+          <p style="margin:0;color:#94a3b8;font-size:11px;">© ${new Date().getFullYear()} Skicenter · Todos los derechos reservados</p>
           <p style="margin:4px 0 0;color:#64748b;font-size:10px;">Plantilla de sistema — email de prueba</p>
         </td></tr>
       </table>

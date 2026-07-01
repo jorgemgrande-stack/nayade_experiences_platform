@@ -1,5 +1,5 @@
 ﻿/**
- * GET /kb  — Knowledge Base pública de Nayade Experiences
+ * GET /kb  — Knowledge Base pública de Skicenter
  * Devuelve toda la información del negocio en texto plano estructurado,
  * optimizado para ser usado como contexto en agentes de IA (GHL, etc.).
  * No requiere autenticación. Se actualiza automáticamente desde la BD.

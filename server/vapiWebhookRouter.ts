@@ -252,7 +252,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
     const token = randomBytes(32).toString("hex");
     const origin = (
       process.env.APP_URL ??
-      (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "https://www.nayadeexperiences.es")
+      (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "https://www.skicenter.es")
     ).replace(/\/+$/, "");
     const presupuestoUrl = `${origin}/presupuesto/${token}`;
 
@@ -263,7 +263,7 @@ vapiWebhookRouter.post("/api/vapi/webhook", express.json({ limit: "1mb" }), asyn
       quoteNumber,
       leadId,
       agentId: 0, // sistema — sin usuario autenticado
-      title: `Presupuesto Nayade Experiences — ${name}`,
+      title: `Presupuesto Skicenter — ${name}`,
       status: "borrador",
       items: [],
       subtotal: "0",

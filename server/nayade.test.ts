@@ -21,7 +21,7 @@ function createAdminContext(): TrpcContext {
   const user: AuthenticatedUser = {
     id: 1,
     openId: "admin-user",
-    email: "admin@nayadeexperiences.es",
+    email: "admin@skicenter.es",
     name: "Admin Nayade",
     loginMethod: "manus",
     role: "admin",

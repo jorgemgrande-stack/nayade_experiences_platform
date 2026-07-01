@@ -9,7 +9,7 @@ export async function sendInviteEmail(params: {
   setPasswordUrl: string;
   role: string;
 }) {
-  const inviteSubject = `Bienvenido a ${getSystemSettingSync("brand_name", "Nayade Experiences")} — Activa tu cuenta`;
+  const inviteSubject = `Bienvenido a ${getSystemSettingSync("brand_name", "Skicenter")} — Activa tu cuenta`;
   const sent = await sendEmail({
     to: params.email,
     subject: inviteSubject,
@@ -18,7 +18,7 @@ export async function sendInviteEmail(params: {
       role: params.role,
       setPasswordUrl: params.setPasswordUrl,
     }),
-    text: `Hola ${params.name},\n\nSe ha creado una cuenta para ti en ${getSystemSettingSync("brand_name", "Nayade Experiences")}.\n\nEstablece tu contraseña aquí: ${params.setPasswordUrl}\n\nEste enlace es válido durante 72 horas.\n\n${getSystemSettingSync("brand_name", "Nayade Experiences")}`,
+    text: `Hola ${params.name},\n\nSe ha creado una cuenta para ti en ${getSystemSettingSync("brand_name", "Skicenter")}.\n\nEstablece tu contraseña aquí: ${params.setPasswordUrl}\n\nEste enlace es válido durante 72 horas.\n\n${getSystemSettingSync("brand_name", "Skicenter")}`,
   });
   logDirectEmail({ templateKey: "invite", triggerEvent: "user_invited", recipientEmail: params.email, subject: inviteSubject, sent }).catch(() => {});
   if (sent) {

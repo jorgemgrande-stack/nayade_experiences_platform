@@ -617,7 +617,7 @@ export default function ExperienceDetail() {
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Mail className="w-4 h-4 text-accent shrink-0" />
-                    <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-accent transition-colors">reservas@nayadeexperiences.es</a>
+                    <a href="mailto:reservas@skicenter.es" className="hover:text-accent transition-colors">reservas@skicenter.es</a>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-muted-foreground">
                     <Shield className="w-4 h-4 text-accent shrink-0" />

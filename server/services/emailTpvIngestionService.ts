@@ -21,10 +21,10 @@ import { madridStartOfDayUtc, madridEndOfDayUtc } from "../utils/timezone";
 
 // CONFIG
 
-const IMAP_HOST = process.env.IMAP_TPV_HOST ?? "nayadeexperiences.es.correoseguro.dinaserver.com";
+const IMAP_HOST = process.env.IMAP_TPV_HOST ?? "skicenter.es.correoseguro.dinaserver.com";
 const IMAP_PORT = parseInt(process.env.IMAP_TPV_PORT ?? "993");
 const IMAP_SECURE = (process.env.IMAP_TPV_SECURE ?? "true") === "true";
-const IMAP_USER = process.env.IMAP_TPV_USER ?? "administracion@nayadeexperiences.es";
+const IMAP_USER = process.env.IMAP_TPV_USER ?? "administracion@skicenter.es";
 const IMAP_PASS = process.env.IMAP_TPV_PASS ?? "";
 const IMAP_MAILBOX = process.env.IMAP_TPV_MAILBOX ?? "INBOX";
 const IMAP_ALLOWED_SENDER = process.env.IMAP_TPV_ALLOWED_SENDER ?? "copia@ticket.comerciaglobalpay.com";

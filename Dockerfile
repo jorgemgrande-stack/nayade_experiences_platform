@@ -1,5 +1,5 @@
 # ============================================================
-# Dockerfile — Nayade Experiences Platform
+# Dockerfile — Skicenter Platform
 # Build multi-stage: compila cliente Vite + servidor Node.js
 # ============================================================
 

@@ -308,8 +308,8 @@ export default function SolicitarAnulacion() {
         {/* Footer */}
         <p className="text-center text-gray-600 text-sm mt-6">
           ¿Tienes dudas? Contacta con nosotros en{" "}
-          <a href="mailto:reservas@nayadeexperiences.es" className="text-orange-400 hover:underline">
-            reservas@nayadeexperiences.es
+          <a href="mailto:reservas@skicenter.es" className="text-orange-400 hover:underline">
+            reservas@skicenter.es
           </a>
         </p>
       </div>

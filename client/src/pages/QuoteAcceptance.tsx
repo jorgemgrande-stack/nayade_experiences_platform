@@ -163,8 +163,8 @@ export default function QuoteAcceptance() {
             <a href="tel:+34639576627" className="flex items-center justify-center gap-2 hover:text-orange-500">
               <Phone className="w-4 h-4" /> Llamar a Náyade Experiences
             </a>
-            <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center justify-center gap-2 hover:text-orange-500">
-              <Mail className="w-4 h-4" /> reservas@nayadeexperiences.es
+            <a href="mailto:reservas@skicenter.es" className="flex items-center justify-center gap-2 hover:text-orange-500">
+              <Mail className="w-4 h-4" /> reservas@skicenter.es
             </a>
           </div>
         </div>
@@ -365,8 +365,8 @@ export default function QuoteAcceptance() {
               <a href={phoneTel} className="hover:text-orange-400 flex items-center gap-1">
                 <Phone className="w-3 h-3" /> {phone}
               </a>
-              <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">
-                <Mail className="w-3 h-3" /> reservas@nayadeexperiences.es
+              <a href="mailto:reservas@skicenter.es" className="hover:text-orange-400 flex items-center gap-1">
+                <Mail className="w-3 h-3" /> reservas@skicenter.es
               </a>
             </div>
           </div>
@@ -685,7 +685,7 @@ export default function QuoteAcceptance() {
             <a href="tel:+34639576627" className="hover:text-orange-400 flex items-center gap-1">
               <Phone className="w-3 h-3" /> Teléfono
             </a>
-            <a href="mailto:reservas@nayadeexperiences.es" className="hover:text-orange-400 flex items-center gap-1">
+            <a href="mailto:reservas@skicenter.es" className="hover:text-orange-400 flex items-center gap-1">
               <Mail className="w-3 h-3" /> Email
             </a>
           </div>

@@ -22,8 +22,8 @@ const SYSTEM_PDF_TEMPLATES = [
     companyNif: "B-XXXXXXXX",
     companyAddress: "Embalse de Los Ángeles, Ávila",
     companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@nayadeexperiences.es",
-    footerText: "Gracias por confiar en Náyade Experiences · www.nayadeexperiences.es",
+    companyEmail: "reservas@skicenter.es",
+    footerText: "Gracias por confiar en Náyade Experiences · www.skicenter.es",
     legalText: "Documento emitido conforme a la normativa fiscal española.",
     showLogo: true,
     showWatermark: false,
@@ -96,7 +96,7 @@ const SYSTEM_PDF_TEMPLATES = [
     </table>
   </div>
   <div class="footer">
-    <p>Gracias por confiar en Náyade Experiences · www.nayadeexperiences.es</p>
+    <p>Gracias por confiar en Náyade Experiences · www.skicenter.es</p>
     <p>Documento emitido por <strong>{{issuerName}}</strong> — CIF: {{issuerCif}} — {{issuerAddress}}</p>
   </div>
 </div>
@@ -114,8 +114,8 @@ const SYSTEM_PDF_TEMPLATES = [
     companyNif: "B-XXXXXXXX",
     companyAddress: "Embalse de Los Ángeles, Ávila",
     companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@nayadeexperiences.es",
-    footerText: "Náyade Experiences · www.nayadeexperiences.es",
+    companyEmail: "reservas@skicenter.es",
+    footerText: "Náyade Experiences · www.skicenter.es",
     legalText: "Presupuesto válido según condiciones indicadas. Sujeto a disponibilidad.",
     showLogo: true,
     showWatermark: false,
@@ -137,7 +137,7 @@ const SYSTEM_PDF_TEMPLATES = [
       validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       notes: "Precio especial por grupo. Incluye alquiler de neopreno.",
       conditions: "Reserva sujeta a disponibilidad. Cancelación gratuita hasta 48h antes.",
-      paymentLinkUrl: "https://nayadeexperiences.es/pago/PRE-2026-001",
+      paymentLinkUrl: "https://skicenter.es/pago/PRE-2026-001",
       createdAt: new Date(),
       issuerName: "Náyade Experiences S.L.",
       issuerCif: "B-XXXXXXXX",
@@ -155,7 +155,7 @@ const SYSTEM_PDF_TEMPLATES = [
     companyNif: "B-XXXXXXXX",
     companyAddress: "Embalse de Los Ángeles, Ávila",
     companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@nayadeexperiences.es",
+    companyEmail: "reservas@skicenter.es",
     footerText: "Gracias por su visita · Náyade Experiences",
     legalText: "Conserve este ticket como justificante de compra.",
     showLogo: true,
@@ -226,8 +226,8 @@ const SYSTEM_PDF_TEMPLATES = [
     companyNif: "B-XXXXXXXX",
     companyAddress: "Embalse de Los Ángeles, Ávila",
     companyPhone: "+34 639 57 66 27",
-    companyEmail: "reservas@nayadeexperiences.es",
-    footerText: "Náyade Experiences · www.nayadeexperiences.es",
+    companyEmail: "reservas@skicenter.es",
+    footerText: "Náyade Experiences · www.skicenter.es",
     legalText: "Liquidación emitida conforme al contrato de colaboración vigente.",
     showLogo: true,
     showWatermark: false,
@@ -300,7 +300,7 @@ const SYSTEM_PDF_TEMPLATES = [
     <div class="summary-row total"><span>NETO A PAGAR AL PROVEEDOR</span><span>{{netAmountProvider}} €</span></div>
   </div>
   <div class="footer">
-    <p>Náyade Experiences · www.nayadeexperiences.es</p>
+    <p>Náyade Experiences · www.skicenter.es</p>
     <p>Liquidación emitida conforme al contrato de colaboración vigente.</p>
   </div>
 </div>

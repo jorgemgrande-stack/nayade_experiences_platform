@@ -103,7 +103,7 @@ export default function PartnerReservaNueva() {
       <PartnerLayout bgImage="/images/partner/bg-dashboard_3.png">
         <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
           <p className="text-gray-500">Tu cuenta no tiene permiso para crear reservas directas.</p>
-          <p className="text-gray-400 text-sm mt-1">Contacta con el administrador de Nayade Experiences.</p>
+          <p className="text-gray-400 text-sm mt-1">Contacta con el administrador de Skicenter.</p>
         </div>
       </PartnerLayout>
     );

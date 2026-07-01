@@ -172,7 +172,7 @@ export default function Login() {
                   required
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="admin@nayadeexperiences.es"
+                  placeholder="admin@skicenter.es"
                   className="pl-10 bg-[#1a2f4a] border-[#2a4060] text-white placeholder:text-slate-600 focus:border-[#f5a623] focus:ring-[#f5a623]/20"
                 />
               </div>

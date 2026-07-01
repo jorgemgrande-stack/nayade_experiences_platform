@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { router, protectedProcedure, permissionProcedure } from "../_core/trpc";
 import { organizations, onboardingStatus, systemSettings } from "../../drizzle/schema";
 
-// Default tenant — Nayade Experiences (id=1).
+// Default tenant — Skicenter (id=1).
 // Phase 5D will parameterize this per-request when multi-tenant is enabled.
 const DEFAULT_ORG_ID = 1;
 

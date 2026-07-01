@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 const LOGO_FALLBACK = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade_blue_e9563f49.png";
 const NAYADE_PHONE = "+34 639 57 66 27";
-const CATALOG_URL = "https://www.nayadeexperiences.es/experiencias";
+const CATALOG_URL = "https://www.skicenter.es/experiencias";
 
 // ─── Modal de anuncios ────────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ function AnnouncementsModal({ partnerId }: { partnerId: number }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-amber-500/20">
           <div className="flex items-center gap-2">
             <BellRing className="w-5 h-5 text-amber-400 animate-pulse" />
-            <span className="font-semibold text-white text-sm">Avisos de Nayade Experiences</span>
+            <span className="font-semibold text-white text-sm">Avisos de Skicenter</span>
           </div>
           <button onClick={dismiss} className="text-white/40 hover:text-white/80 transition-colors">
             <X className="w-4 h-4" />
@@ -148,7 +148,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
           <div className="flex items-center justify-between h-14">
             {/* Logo */}
             <Link href="/partner/dashboard" className="flex items-center gap-2.5">
-              <img src={brandLogo} alt="Nayade Experiences" className="h-7 w-auto object-contain" />
+              <img src={brandLogo} alt="Skicenter" className="h-7 w-auto object-contain" />
             </Link>
 
             {/* Partner + usuario */}
@@ -234,7 +234,7 @@ function PartnerLayoutInner({ user, location, navigate, logout, children, bgImag
       {/* Footer */}
       <footer className="border-t border-white/[0.06] py-4 mt-8">
         <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-white/25">
-          <span>Portal de Colaboradores · Nayade Experiences</span>
+          <span>Portal de Colaboradores · Skicenter</span>
           <div className="flex items-center gap-4">
             <a href={`tel:${NAYADE_PHONE}`} className="hover:text-white/50 transition-colors flex items-center gap-1">
               <Phone className="w-3 h-3" /> {NAYADE_PHONE}

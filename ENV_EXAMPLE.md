@@ -1,11 +1,11 @@
-# Variables de Entorno — Nayade Experiences Platform
+# Variables de Entorno — Skicenter Platform
 
 Copia este contenido a un archivo `.env` en la raíz del proyecto y rellena los valores reales.
 **NUNCA subas el archivo `.env` a Git.**
 
 ```env
 # ── Base de Datos ─────────────────────────────────────────────
-DATABASE_URL=mysql://user:password@host:3306/nayade_db
+DATABASE_URL=mysql://user:password@host:3306/skicenter_db
 
 # ── Autenticación ─────────────────────────────────────────────
 JWT_SECRET=your-super-secret-jwt-key-min-32-chars
@@ -21,10 +21,10 @@ OWNER_NAME=Your Name
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=reservas@nayadeexperiences.es
+SMTP_USER=reservas@skicenter.es
 SMTP_PASS=your-smtp-password
-SMTP_FROM=reservas@nayadeexperiences.es
-ADMIN_EMAIL=admin@nayadeexperiences.es
+SMTP_FROM=reservas@skicenter.es
+ADMIN_EMAIL=admin@skicenter.es
 
 # ── Redsys (Pasarela de Pago) ─────────────────────────────────
 # Entorno: sandbox | production
@@ -37,7 +37,7 @@ REDSYS_MERCHANT_TERMINAL=001
 AWS_ACCESS_KEY_ID=your-aws-access-key
 AWS_SECRET_ACCESS_KEY=your-aws-secret-key
 AWS_REGION=eu-west-1
-AWS_S3_BUCKET=nayade-experiences-assets
+AWS_S3_BUCKET=skicenter-media
 # Opcional: endpoint S3 compatible (Cloudflare R2, MinIO, etc.)
 # AWS_ENDPOINT=https://your-endpoint.r2.cloudflarestorage.com
 
@@ -58,7 +58,7 @@ GHL_API_KEY=your-gohighlevel-api-key
 GHL_LOCATION_ID=your-ghl-location-id
 
 # ── Branding ──────────────────────────────────────────────────
-VITE_APP_TITLE=Nayade Experiences
+VITE_APP_TITLE=Skicenter
 VITE_APP_LOGO=https://your-cdn.com/logo.png
 
 # ── Entorno Node ──────────────────────────────────────────────

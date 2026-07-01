@@ -1,5 +1,5 @@
 /**
- * Tests de Rate Limiting — Nayade Experiences
+ * Tests de Rate Limiting — Skicenter
  *
  * Verifica que los rate limiters están correctamente configurados
  * con los límites y ventanas de tiempo esperados.

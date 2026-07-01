@@ -53,7 +53,7 @@ export async function setupVite(app: Express, server: Server) {
 // canonical and Open Graph tags without executing JavaScript.
 // Unknown routes fall back to the home-page meta defined in index.html itself.
 
-const BASE_URL = "https://nayadeexperiences.es";
+const BASE_URL = "https://skicenter.es";
 const CDN = "https://d2xsxph8kpxj0f.cloudfront.net/310519663410228097/AV298FS8t5SaTurBBRqhgQ/nayade/uploads";
 // Default OG image (Blob Jump – visually striking, brand-defining activity)
 const DEFAULT_OG_IMAGE = `${CDN}/1773762402377-dymd02.png`;

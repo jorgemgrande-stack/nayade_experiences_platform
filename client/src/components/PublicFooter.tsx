@@ -22,9 +22,9 @@ const colLegoPacks = [
 const colServicios = [
   { label: "Hotel Náyade ★★★", href: "/hotel" },
   { label: "SPA & Wellness", href: "/spa" },
-  { label: "El Galeón", href: "https://www.hotelnayade.es/restaurantes/el-galeon" },
-  { label: "La Cabaña del Lago", href: "https://www.hotelnayade.es/restaurantes/la-cabana-del-lago" },
-  { label: "Nassau Bar & Music", href: "https://www.hotelnayade.es/restaurantes/nassau-bar" },
+  { label: "El Galeón", href: "https://www.skicenter.es/restaurantes/el-galeon" },
+  { label: "La Cabaña del Lago", href: "https://www.skicenter.es/restaurantes/la-cabana-del-lago" },
+  { label: "Nassau Bar & Music", href: "https://www.skicenter.es/restaurantes/nassau-bar" },
   { label: "Galería de Fotos", href: "/galeria" },
   { label: "Ubicación", href: "/ubicacion" },
   { label: "Solicitar Presupuesto", href: "/presupuesto" },
@@ -63,7 +63,7 @@ export default function PublicFooter() {
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Mail className="w-4 h-4 text-accent flex-shrink-0" />
-                <a href="mailto:reservas@nayadeexperiences.es" className="text-white/65 hover:text-accent transition-colors">reservas@nayadeexperiences.es</a>
+                <a href="mailto:reservas@skicenter.es" className="text-white/65 hover:text-accent transition-colors">reservas@skicenter.es</a>
               </div>
               <div className="flex items-start gap-3 text-sm">
                 <Clock className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />

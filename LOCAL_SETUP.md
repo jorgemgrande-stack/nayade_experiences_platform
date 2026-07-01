@@ -1,4 +1,4 @@
-# Guía de Instalación Local — Nayade Experiences Platform
+# Guía de Instalación Local — Skicenter Platform
 
 Esta guía te permite clonar y levantar el proyecto en VS Code con el mismo comportamiento, datos y configuración que en Manus.
 
@@ -18,8 +18,8 @@ Esta guía te permite clonar y levantar el proyecto en VS Code con el mismo comp
 ## 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/TU_USUARIO/nayade_experiences_platform.git
-cd nayade_experiences_platform
+git clone https://github.com/TU_USUARIO/skicenter_platform.git
+cd skicenter_platform
 ```
 
 ---
@@ -44,7 +44,7 @@ cp ENV_EXAMPLE.md .env
 Variables **obligatorias** para el arranque básico:
 
 ```
-DATABASE_URL=mysql://user:password@localhost:3306/nayade_db
+DATABASE_URL=mysql://user:password@localhost:3306/skicenter_db
 JWT_SECRET=cualquier-string-aleatorio-de-32-chars
 NODE_ENV=development
 ```

@@ -21,7 +21,7 @@ import {
 const _pool = mysql.createPool({ uri: process.env.DATABASE_URL!, connectionLimit: 2 });
 const db = drizzle(_pool);
 
-const BASE_URL = "https://nayadeexperiences.es";
+const BASE_URL = "https://skicenter.es";
 
 const STATIC_URLS: Array<{ path: string; changefreq: string; priority: string }> = [
   { path: "/",               changefreq: "weekly",  priority: "1.0" },

@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const TO_EMAIL = 'reservas@nayadeexperiences.es';
+const TO_EMAIL = 'reservas@skicenter.es';
 
 // ── Nodemailer transporter ────────────────────────────────────────────────────
 const transporter = nodemailer.createTransport({
@@ -22,7 +22,7 @@ const transporter = nodemailer.createTransport({
 
 async function sendMail(to, subject, html) {
   return transporter.sendMail({
-    from: process.env.SMTP_FROM || 'noreply@nayadeexperiences.es',
+    from: process.env.SMTP_FROM || 'noreply@skicenter.es',
     to,
     subject,
     html,
@@ -87,7 +87,7 @@ const TEMPLATES = [
       <p style="color:#374151;margin:0 0 12px;">Hola <strong>Carlos Martínez</strong>,</p>
       <p style="color:#374151;margin:0 0 20px;">Lamentablemente no hemos podido completar el pago de tu reserva para <strong>Kayak en el lago</strong> el <strong>20 de julio de 2026</strong>.</p>
       <div style="text-align:center;margin:24px 0;">
-        <a href="https://nayadeexperiences.es" style="background:#1a5276;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">Intentar de nuevo</a>
+        <a href="https://skicenter.local" style="background:#1a5276;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">Intentar de nuevo</a>
       </div>
     `),
   },
@@ -125,7 +125,7 @@ const TEMPLATES = [
       <p style="color:#374151;margin:0 0 12px;">Hola <strong>Elena Martínez</strong>,</p>
       <p style="color:#374151;margin:0 0 20px;">Para confirmar tu mesa en <strong>Restaurante El Lago</strong> el <strong>25 de agosto de 2026</strong>, realiza el pago de <strong style="color:#d4ac0d;">120,00 €</strong> antes del <strong>23 de agosto</strong>.</p>
       <div style="text-align:center;margin:24px 0;">
-        <a href="https://nayadeexperiences.es/pago/REST-2026-0012" style="background:#d4ac0d;color:#1a1a1a;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block;font-size:16px;">Pagar ahora — 120,00 €</a>
+        <a href="https://skicenter.local/pago/REST-2026-0012" style="background:#d4ac0d;color:#1a1a1a;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block;font-size:16px;">Pagar ahora — 120,00 €</a>
       </div>
     `),
   },
@@ -152,7 +152,7 @@ const TEMPLATES = [
         <tr><td style="padding:8px;background:#f8f9fa;border-top:1px solid #e5e7eb;"><strong>Actividad</strong></td><td style="padding:8px;background:#f8f9fa;border-top:1px solid #e5e7eb;">Team building acuático · 25 personas</td></tr>
       </table>
       <div style="text-align:center;">
-        <a href="https://nayadeexperiences.es/admin/crm?tab=leads" style="background:#1a5276;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">Ver en el CRM</a>
+        <a href="https://skicenter.local/admin/crm?tab=leads" style="background:#1a5276;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">Ver en el CRM</a>
       </div>
     `),
   },
@@ -172,7 +172,7 @@ const TEMPLATES = [
         <tr style="background:#f8f9fa;font-weight:700;"><td style="padding:10px;" colspan="1">TOTAL (IVA incl.)</td><td style="padding:10px;text-align:right;color:#d4ac0d;">1.089,00 €</td></tr>
       </table>
       <div style="text-align:center;margin:24px 0;">
-        <a href="https://nayadeexperiences.es/pago/PRE-2026-0015" style="background:#d4ac0d;color:#1a1a1a;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block;">Aceptar y pagar</a>
+        <a href="https://skicenter.local/pago/PRE-2026-0015" style="background:#d4ac0d;color:#1a1a1a;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block;">Aceptar y pagar</a>
       </div>
     `),
   },
@@ -293,7 +293,7 @@ const TEMPLATES = [
         <tr><td style="padding:8px;background:#fff;border-top:1px solid #e5e7eb;"><strong>Fecha solicitada</strong></td><td style="padding:8px;background:#fff;border-top:1px solid #e5e7eb;">22 de agosto de 2026</td></tr>
       </table>
       <div style="text-align:center;">
-        <a href="https://nayadeexperiences.es/admin/marketing/cupones" style="background:#1a5276;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">Ver en el CRM</a>
+        <a href="https://skicenter.local/admin/marketing/cupones" style="background:#1a5276;color:#fff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">Ver en el CRM</a>
       </div>
     `),
   },
@@ -305,7 +305,7 @@ const TEMPLATES = [
       <h2 style="color:#1a5276;margin:0 0 16px;">Te invitamos a unirte</h2>
       <p style="color:#374151;margin:0 0 20px;">El equipo de <strong>Náyade Experiences</strong> te invita a acceder a la plataforma de gestión.</p>
       <div style="text-align:center;margin:24px 0;">
-        <a href="https://nayadeexperiences.es/invitacion?token=abc123xyz" style="background:#1a5276;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block;">Aceptar invitación</a>
+        <a href="https://skicenter.local/invitacion?token=abc123xyz" style="background:#1a5276;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block;">Aceptar invitación</a>
       </div>
       <p style="color:#6b7280;font-size:12px;text-align:center;">Este enlace caduca en 48 horas.</p>
     `),
@@ -319,7 +319,7 @@ const TEMPLATES = [
       <p style="color:#374151;margin:0 0 12px;">Hola <strong>María García</strong>,</p>
       <p style="color:#374151;margin:0 0 20px;">Hemos recibido una solicitud para restablecer tu contraseña. Haz clic en el botón para continuar:</p>
       <div style="text-align:center;margin:24px 0;">
-        <a href="https://nayadeexperiences.es/reset-password?token=xyz789abc" style="background:#1a5276;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block;">Restablecer contraseña</a>
+        <a href="https://skicenter.local/reset-password?token=xyz789abc" style="background:#1a5276;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;display:inline-block;">Restablecer contraseña</a>
       </div>
       <p style="color:#6b7280;font-size:12px;text-align:center;">Si no solicitaste este cambio, ignora este email. El enlace caduca en 1 hora.</p>
     `),

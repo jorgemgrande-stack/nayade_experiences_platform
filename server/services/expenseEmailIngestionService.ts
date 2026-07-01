@@ -8,7 +8,7 @@
  *   IMAP_EXPENSE_HOST    (default: same as IMAP_TPV_HOST)
  *   IMAP_EXPENSE_PORT    (default: 993)
  *   IMAP_EXPENSE_SECURE  (default: true)
- *   IMAP_EXPENSE_USER    (default: administracion@nayadeexperiences.es)
+ *   IMAP_EXPENSE_USER    (default: administracion@skicenter.es)
  *   IMAP_EXPENSE_PASS    — obligatoria; sin ella el job no arranca
  *   IMAP_EXPENSE_MAILBOX (default: INBOX)
  *
@@ -26,10 +26,10 @@ import { storagePut } from "../storage";
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
-const IMAP_HOST    = process.env.IMAP_EXPENSE_HOST    ?? process.env.IMAP_TPV_HOST    ?? "nayadeexperiences.es.correoseguro.dinaserver.com";
+const IMAP_HOST    = process.env.IMAP_EXPENSE_HOST    ?? process.env.IMAP_TPV_HOST    ?? "skicenter.es.correoseguro.dinaserver.com";
 const IMAP_PORT    = parseInt(process.env.IMAP_EXPENSE_PORT    ?? process.env.IMAP_TPV_PORT    ?? "993");
 const IMAP_SECURE  = (process.env.IMAP_EXPENSE_SECURE  ?? process.env.IMAP_TPV_SECURE  ?? "true") === "true";
-const IMAP_USER    = process.env.IMAP_EXPENSE_USER    ?? process.env.IMAP_TPV_USER    ?? "administracion@nayadeexperiences.es";
+const IMAP_USER    = process.env.IMAP_EXPENSE_USER    ?? process.env.IMAP_TPV_USER    ?? "administracion@skicenter.es";
 const IMAP_PASS    = process.env.IMAP_EXPENSE_PASS    ?? process.env.IMAP_TPV_PASS    ?? "";
 const IMAP_MAILBOX = process.env.IMAP_EXPENSE_MAILBOX ?? "INBOX";
 

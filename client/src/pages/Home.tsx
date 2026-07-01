@@ -819,8 +819,8 @@ export default function Home() {
                     <Phone className="w-3.5 h-3.5" /> {phone}
                   </a>
                   <span className="hidden sm:block text-white/15">·</span>
-                  <a href="mailto:reservas@nayadeexperiences.es" className="flex items-center gap-1.5 hover:text-orange-400 transition-colors">
-                    <Mail className="w-3.5 h-3.5" /> reservas@nayadeexperiences.es
+                  <a href="mailto:reservas@skicenter.es" className="flex items-center gap-1.5 hover:text-orange-400 transition-colors">
+                    <Mail className="w-3.5 h-3.5" /> reservas@skicenter.es
                   </a>
                 </div>
               </div>
@@ -1651,7 +1651,7 @@ export default function Home() {
           </div>
           <div className="mt-10 flex flex-wrap justify-center gap-8 text-white/60 text-sm font-display">
             <span className="flex items-center gap-2"><Phone className="w-4 h-4 text-orange-400" /> {phone}</span>
-            <span className="flex items-center gap-2"><Mail className="w-4 h-4 text-orange-400" /> reservas@nayadeexperiences.es</span>
+            <span className="flex items-center gap-2"><Mail className="w-4 h-4 text-orange-400" /> reservas@skicenter.es</span>
             <span className="flex items-center gap-2"><MapPin className="w-4 h-4 text-orange-400" /> Los Ángeles de San Rafael, Segovia</span>
           </div>
         </div>

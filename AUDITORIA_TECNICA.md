@@ -1,4 +1,4 @@
-# Auditoría Técnica — Nayade Experiences Platform
+# Auditoría Técnica — Skicenter Platform
 **Fecha:** 22 de marzo de 2026  
 **Estado base:** 114 tests · 0 errores TypeScript · servidor activo
 

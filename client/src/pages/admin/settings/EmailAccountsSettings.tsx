@@ -146,10 +146,10 @@ function AccountModal({
               <Input value={form.email} onChange={e => f("email")(e.target.value)} className="h-8 text-xs" placeholder="info@empresa.es" />
             </Field>
             <Field label="Nombre remitente *">
-              <Input value={form.fromName} onChange={e => f("fromName")(e.target.value)} className="h-8 text-xs" placeholder="Nayade Experiences" />
+              <Input value={form.fromName} onChange={e => f("fromName")(e.target.value)} className="h-8 text-xs" placeholder="Skicenter" />
             </Field>
             <Field label="Email remitente *">
-              <Input value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-8 text-xs" placeholder="info@nayadeexperiences.es" />
+              <Input value={form.fromEmail} onChange={e => f("fromEmail")(e.target.value)} className="h-8 text-xs" placeholder="info@skicenter.es" />
             </Field>
           </div>
 

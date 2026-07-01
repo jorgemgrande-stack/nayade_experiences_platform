@@ -46,7 +46,7 @@ const CRONS: CronCard[] = [
       { label: "Ventana horaria", value: "allowedSendStart – allowedSendEnd por regla (Europe/Madrid)" },
       { label: "Condiciones de parada", value: "stopIfPaid, stopIfConverted, automationsPaused" },
       { label: "Registro", value: "email_comm_log (isAutomatic=true, ruleId)" },
-      { label: "CC", value: "GLOBAL_CC_EMAIL vía mergeGlobalCc en mailer.ts (reservas@nayadeexperiences.es)" },
+      { label: "CC", value: "GLOBAL_CC_EMAIL vía mergeGlobalCc en mailer.ts (reservas@skicenter.es)" },
     ],
   },
   // quoteReminderJob y commercialFollowupJob eliminados en Fase 5.
