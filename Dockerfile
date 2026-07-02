@@ -1,7 +1,6 @@
 # ============================================================
 # Dockerfile — Skicenter Platform
 # Build multi-stage: compila cliente Vite + servidor Node.js
-# Force rebuild: 2026-07-02
 # ============================================================
 
 # ─── Etapa 1: Build ───────────────────────────────────────────
