@@ -196,6 +196,7 @@ import { emailInboxRouter } from "./routers/emailInbox";
 import { emailCommunicationsRouter } from "./routers/emailCommunications";
 import { partnersRouter } from "./routers/partners";
 import { publicExpensesRouter } from "./routers/publicExpenses";
+import { fiscalAuditRouter } from "./routers/fiscalAuditRouter";
 import { getAllCounters, updateCounterPrefix, resetCounter, getDocumentNumberLogs } from "./documentNumbers";
 import type { DocumentType } from "./documentNumbers";
 const adminProcedure = permissionProcedure("settings.manage", ["admin"]);
@@ -221,6 +222,7 @@ export const appRouter = router({
   operations: operationsRouter,
   hr: hrRouter,
   gestoria: gestoriaRouter,
+  fiscalAudit: fiscalAuditRouter,
   pdfTemplates: pdfTemplatesRouter,
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
