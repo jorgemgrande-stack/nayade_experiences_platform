@@ -338,6 +338,37 @@ export const legoPacksRouter = router({
       return { ...pack, lines, pricing };
     }),
 
+  // ── Debug endpoint to check line count ────────────────────────────────────
+  getLineCount: publicProcedure
+    .input(z.object({ packId: z.number() }))
+    .query(async ({ input }) => {
+      const allLines = await db
+        .select()
+        .from(legoPackLines)
+        .where(eq(legoPackLines.legoPackId, input.packId));
+
+      const activeLines = await db
+        .select()
+        .from(legoPackLines)
+        .where(and(eq(legoPackLines.legoPackId, input.packId), eq(legoPackLines.isActive, true)));
+
+      const visibleLines = await db
+        .select()
+        .from(legoPackLines)
+        .where(and(
+          eq(legoPackLines.legoPackId, input.packId),
+          eq(legoPackLines.isActive, true),
+          eq(legoPackLines.isClientVisible, true)
+        ));
+
+      return {
+        total: allLines.length,
+        active: activeLines.length,
+        visible: visibleLines.length,
+        lines: visibleLines.map(l => ({ id: l.id, sourceName: l.id, isOptional: l.isOptional, isActive: l.isActive, isClientVisible: l.isClientVisible }))
+      };
+    }),
+
   // ── Create Lego Pack ───────────────────────────────────────────────────────
   create: adminProcedure
     .input(legoPackInput)
