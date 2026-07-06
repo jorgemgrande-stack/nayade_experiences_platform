@@ -126,7 +126,7 @@ export async function calculateLegoPackPrice(
   const packTitle = pack?.title ?? "";
 
   for (const line of lines) {
-    const isActiveInOp = activeLineIds ? activeLineIds.includes(line.id) : true;
+    const isActiveInOp = activeLineIds && activeLineIds.length > 0 ? activeLineIds.includes(line.id) : true;
 
     let basePrice = 0;
     let sourceName = "";

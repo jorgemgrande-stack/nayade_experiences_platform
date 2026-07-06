@@ -50,8 +50,9 @@ export function LegoPackLineSelector({
   gradientClass = "from-sky-600 to-blue-800",
   textColorClass = "text-sky-700",
 }: LegoPackLineSelectorProps) {
-  const [selectedLineIds, setSelectedLineIds] = useState(new Set(initialActiveLineIds ?? []));
+  const [selectedLineIds, setSelectedLineIds] = useState<Set<number>>(new Set(initialActiveLineIds ?? []));
   const [quantities, setQuantities] = useState<Record<number, number>>({});
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // Calcular precio con líneas seleccionadas
   const { data: pricing, isLoading } = trpc.legoPacks.calculateLegoPackPrice.useQuery(
@@ -61,14 +62,25 @@ export function LegoPackLineSelector({
 
   const lines = (pricing?.lines ?? []) as LegoPackLineWithPricing[];
 
-  // Inicializar cantidades
+  // Inicializar selección y cantidades
   useEffect(() => {
-    const initialQty: Record<number, number> = {};
-    lines.forEach((line) => {
-      initialQty[line.lineId] = line.quantity;
-    });
-    setQuantities(initialQty);
-  }, [lines]);
+    if (!isInitialized && lines.length > 0) {
+      const initialQty: Record<number, number> = {};
+      const defaultSelected = new Set<number>();
+
+      lines.forEach((line) => {
+        initialQty[line.lineId] = line.quantity;
+        // Seleccionar automáticamente líneas no-opcionales (obligatorias)
+        if (!line.isOptional) {
+          defaultSelected.add(line.lineId);
+        }
+      });
+
+      setQuantities(initialQty);
+      setSelectedLineIds(defaultSelected);
+      setIsInitialized(true);
+    }
+  }, [lines, isInitialized]);
 
   const toggleLine = (lineId: number, isOptional: boolean) => {
     if (!isOptional) return; // Solo se puede toggle si es opcional
