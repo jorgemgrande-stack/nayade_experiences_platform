@@ -50,37 +50,40 @@ export function LegoPackLineSelector({
   gradientClass = "from-sky-600 to-blue-800",
   textColorClass = "text-sky-700",
 }: LegoPackLineSelectorProps) {
-  const [selectedLineIds, setSelectedLineIds] = useState<Set<number>>(new Set(initialActiveLineIds ?? []));
-  const [quantities, setQuantities] = useState<Record<number, number>>({});
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  // Calcular precio con líneas seleccionadas
-  const { data: pricing, isLoading } = trpc.legoPacks.calculateLegoPackPrice.useQuery(
-    { legoPackId: packId, activeLineIds: Array.from(selectedLineIds) },
+  // Cargar todas las líneas del pack (sin filtro)
+  const { data: allLinesPricing, isLoading: isLoadingAll } = trpc.legoPacks.calculateLegoPackPrice.useQuery(
+    { legoPackId: packId, activeLineIds: undefined },
     { staleTime: 5000 }
   );
 
-  const lines = (pricing?.lines ?? []) as LegoPackLineWithPricing[];
+  const allLines = (allLinesPricing?.lines ?? []) as LegoPackLineWithPricing[];
 
-  // Inicializar selección y cantidades
-  useEffect(() => {
-    if (!isInitialized && lines.length > 0) {
-      const initialQty: Record<number, number> = {};
-      const defaultSelected = new Set<number>();
-
-      lines.forEach((line) => {
-        initialQty[line.lineId] = line.quantity;
-        // Seleccionar automáticamente líneas no-opcionales (obligatorias)
-        if (!line.isOptional) {
-          defaultSelected.add(line.lineId);
-        }
-      });
-
-      setQuantities(initialQty);
-      setSelectedLineIds(defaultSelected);
-      setIsInitialized(true);
+  // Estado local: qué líneas ha seleccionado el usuario (localmente, sin queries)
+  const [selectedLineIds, setSelectedLineIds] = useState<Set<number>>(() => {
+    if (initialActiveLineIds?.length) {
+      return new Set(initialActiveLineIds);
     }
-  }, [lines, isInitialized]);
+    // Si no hay inicial, seleccionar todas las líneas no-opcionales
+    return new Set(allLines.filter(l => !l.isOptional).map(l => l.lineId));
+  });
+
+  // Recalcular precio basado en selección actual
+  const { data: pricing, isLoading: isLoadingPrice } = trpc.legoPacks.calculateLegoPackPrice.useQuery(
+    { legoPackId: packId, activeLineIds: Array.from(selectedLineIds) },
+    { enabled: selectedLineIds.size > 0, staleTime: 2000 }
+  );
+
+  const lines = (pricing?.lines ?? allLines ?? []) as LegoPackLineWithPricing[];
+  const [quantities, setQuantities] = useState<Record<number, number>>({});
+
+  // Inicializar cantidades cuando cambian las líneas
+  useEffect(() => {
+    const initialQty: Record<number, number> = {};
+    lines.forEach((line) => {
+      initialQty[line.lineId] = line.quantity;
+    });
+    setQuantities(initialQty);
+  }, [lines]);
 
   const toggleLine = (lineId: number, isOptional: boolean) => {
     if (!isOptional) return; // Solo se puede toggle si es opcional
@@ -103,14 +106,24 @@ export function LegoPackLineSelector({
       toast.error("Selecciona al menos una actividad");
       return;
     }
-    onConfirm(Array.from(selectedLineIds), pricing?.totalFinal ?? 0);
+    onConfirm(Array.from(selectedLineIds), pricing?.totalFinal ?? allLinesPricing?.totalFinal ?? 0);
   };
 
-  if (isLoading) {
+  // Mostrar loading solo si estamos cargando las líneas iniciales
+  if (isLoadingAll && allLines.length === 0) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Calculando precio...
+        Cargando actividades...
+      </div>
+    );
+  }
+
+  // Si no hay líneas, mostrar mensaje
+  if (allLines.length === 0 && !isLoadingAll) {
+    return (
+      <div className="flex items-center justify-center py-8 text-slate-600">
+        <p>No hay actividades disponibles para este pack.</p>
       </div>
     );
   }
@@ -245,10 +258,17 @@ export function LegoPackLineSelector({
         )}
         <Button
           onClick={handleConfirm}
-          disabled={selectedLineIds.size === 0 || isLoading}
+          disabled={selectedLineIds.size === 0 || isLoadingPrice}
           className="flex-1"
         >
-          Confirmar Selección
+          {isLoadingPrice ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              Recalculando...
+            </>
+          ) : (
+            "Confirmar Selección"
+          )}
         </Button>
       </div>
     </div>
