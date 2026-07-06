@@ -55,7 +55,7 @@ export function LegoPackLineSelector({
   // Si se proporcionan líneas iniciales, usarlas. Si no, cargar del servidor
   const skipQuery = !!initialLines && initialLines.length > 0;
 
-  const { data: allLinesPricing, isLoading: isLoadingAll } = trpc.legoPacks.calculateLegoPackPrice.useQuery(
+  const { data: allLinesPricing, isLoading: isLoadingAll } = trpc.legoPacks.calculatePrice.useQuery(
     { legoPackId: packId, activeLineIds: undefined },
     {
       enabled: !skipQuery,
@@ -77,7 +77,7 @@ export function LegoPackLineSelector({
   });
 
   // Recalcular precio basado en selección actual
-  const { data: pricing, isLoading: isLoadingPrice } = trpc.legoPacks.calculateLegoPackPrice.useQuery(
+  const { data: pricing, isLoading: isLoadingPrice } = trpc.legoPacks.calculatePrice.useQuery(
     { legoPackId: packId, activeLineIds: Array.from(selectedLineIds) },
     { enabled: selectedLineIds.size > 0, staleTime: 2000 }
   );
