@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { LegoPackLineSelector } from "@/components/LegoPackLineSelector";
 import { toast } from "sonner";
 import {
   ShoppingCart, Plus, Minus, Trash2, CreditCard, Banknote, Smartphone,
@@ -148,6 +149,9 @@ export default function TpvScreen() {
   const [showTimeSlotsModal, setShowTimeSlotsModal] = useState(false);
   const [tpvSelectedSlotId, setTpvSelectedSlotId] = useState<number | null>(null);
   const [tpvSelectedTime, setTpvSelectedTime] = useState("");
+  // Modal de selector Lego Packs
+  const [showLegoPackSelector, setShowLegoPackSelector] = useState(false);
+  const [pendingLegoPackId, setPendingLegoPackId] = useState<number | null>(null);
   // Modal de concepto libre (solo admin)
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualConcept, setManualConcept] = useState("");
@@ -219,6 +223,12 @@ export default function TpvScreen() {
 
   // ── Cart helpers ────────────────────────────────────────────────────────────
   const addToCart = useCallback((product: CatalogProduct) => {
+    // Si es un Lego Pack, abrimos el selector de líneas
+    if (product.productType === "legoPack") {
+      setPendingLegoPackId(product.id);
+      setShowLegoPackSelector(true);
+      return;
+    }
     // Si tiene variantes, abrimos ese modal primero
     if (product.variants && product.variants.length > 0) {
       setPendingProduct(product);
@@ -1042,6 +1052,37 @@ export default function TpvScreen() {
             setPendingVariantPrice(undefined);
           }}
         />
+      )}
+
+      {/* Modal de selector de líneas para Lego Packs */}
+      {showLegoPackSelector && pendingLegoPackId && (
+        <Dialog open={showLegoPackSelector} onOpenChange={setShowLegoPackSelector}>
+          <DialogContent className="max-w-2xl max-h-96 overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Personalizar Lego Pack</DialogTitle>
+            </DialogHeader>
+            <LegoPackLineSelector
+              packId={pendingLegoPackId}
+              onConfirm={(activeLineIds, customPrice) => {
+                // Obtener el producto pendiente para añadir al carrito
+                const legoPackProduct = allProducts.find(p => p.id === pendingLegoPackId);
+                if (legoPackProduct) {
+                  _addToCartDirect(legoPackProduct);
+                  // TODO: Si es necesario, guardar el precio personalizado en el carrito
+                }
+                setShowLegoPackSelector(false);
+                setPendingLegoPackId(null);
+              }}
+              onCancel={() => {
+                setShowLegoPackSelector(false);
+                setPendingLegoPackId(null);
+              }}
+              gradientClass="from-emerald-600 to-teal-700"
+              textColorClass="text-emerald-700"
+              isModal={true}
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
