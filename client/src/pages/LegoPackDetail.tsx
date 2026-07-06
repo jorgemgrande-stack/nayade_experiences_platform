@@ -244,6 +244,7 @@ export default function LegoPackDetail() {
                 <LegoPackLineSelector
                   packId={pack.id}
                   initialActiveLineIds={selectedLineIds.length > 0 ? selectedLineIds : undefined}
+                  initialLines={pricing?.lines}
                   onConfirm={(activeIds, customPrice) => {
                     setSelectedLineIds(activeIds);
                     setCustomPackPrice(customPrice);

@@ -34,6 +34,7 @@ export interface LegoPackLineWithPricing {
 export interface LegoPackLineSelectorProps {
   packId: number;
   initialActiveLineIds?: number[];
+  initialLines?: LegoPackLineWithPricing[];
   onConfirm: (activeLineIds: number[], customPrice: number) => void;
   onCancel?: () => void;
   isModal?: boolean;
@@ -44,21 +45,29 @@ export interface LegoPackLineSelectorProps {
 export function LegoPackLineSelector({
   packId,
   initialActiveLineIds,
+  initialLines,
   onConfirm,
   onCancel,
   isModal = false,
   gradientClass = "from-sky-600 to-blue-800",
   textColorClass = "text-sky-700",
 }: LegoPackLineSelectorProps) {
-  // Cargar todas las líneas del pack (sin filtro)
+  // Si se proporcionan líneas iniciales, usarlas. Si no, cargar del servidor
+  const skipQuery = !!initialLines && initialLines.length > 0;
+
   const { data: allLinesPricing, isLoading: isLoadingAll } = trpc.legoPacks.calculateLegoPackPrice.useQuery(
     { legoPackId: packId, activeLineIds: undefined },
-    { staleTime: 5000 }
+    {
+      enabled: !skipQuery,
+      staleTime: 5000
+    }
   );
 
-  const allLines = (allLinesPricing?.lines ?? []) as LegoPackLineWithPricing[];
+  const allLines = skipQuery
+    ? initialLines
+    : (allLinesPricing?.lines ?? []) as LegoPackLineWithPricing[];
 
-  // Estado local: qué líneas ha seleccionado el usuario (localmente, sin queries)
+  // Estado local: qué líneas ha seleccionado el usuario
   const [selectedLineIds, setSelectedLineIds] = useState<Set<number>>(() => {
     if (initialActiveLineIds?.length) {
       return new Set(initialActiveLineIds);
