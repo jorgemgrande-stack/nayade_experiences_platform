@@ -4,6 +4,7 @@ import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { trackEvent } from "@/lib/meta-pixel/client";
 import PublicLayout from "@/components/PublicLayout";
 import { ReviewSection } from "@/components/ReviewSection";
+import { LegoPackLineSelector } from "@/components/LegoPackLineSelector";
 import { trpc } from "@/lib/trpc";
 import { usePublicPhone } from "@/hooks/usePublicPhone";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,8 @@ export default function LegoPackDetail() {
   const { phone, phoneTel } = usePublicPhone();
   const [people, setPeople] = useState(1);
   const [selectedDate, setSelectedDate] = useState("");
+  const [selectedLineIds, setSelectedLineIds] = useState<number[]>([]);
+  const [customPackPrice, setCustomPackPrice] = useState<number | null>(null);
   const { addItem, openCart } = useCart();
   const hasConsent = useMarketingConsent();
 
@@ -89,8 +92,8 @@ export default function LegoPackDetail() {
     totalFinal: number;
   } | undefined;
 
-  // Precio base: total calculado de las líneas
-  const basePrice = pricing?.totalFinal ?? 0;
+  // Precio base: usa customPackPrice si el cliente personalizó el pack
+  const basePrice = customPackPrice ?? pricing?.totalFinal ?? 0;
 
   // Descuento activo a nivel de pack
   const discountedPrice = pack
@@ -232,85 +235,22 @@ export default function LegoPackDetail() {
               </div>
             </div>
 
-            {/* Qué incluye — líneas del Lego Pack */}
+            {/* Qué incluye — Selector interactivo de líneas */}
             {visibleLines.length > 0 && (
               <div className={`${meta.bg} border ${meta.border} rounded-2xl p-5`}>
                 <h3 className="font-black text-slate-900 mb-4 flex items-center gap-2">
-                  <Check className={`w-5 h-5 ${meta.text}`} /> Qué incluye este Lego Pack
+                  <Check className={`w-5 h-5 ${meta.text}`} /> Personaliza tu pack
                 </h3>
-                <div className="space-y-3">
-                  {visibleLines.map((line) => (
-                    <div
-                      key={line.lineId}
-                      className={`flex items-center justify-between bg-white rounded-xl border border-white/80 p-3 shadow-sm ${
-                        !line.isActiveInOperation ? "opacity-60" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${meta.bg} border ${meta.border}`}>
-                          <Package className={`w-4 h-4 ${meta.text}`} />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-slate-800 text-sm">
-                            {line.quantity > 1 && (
-                              <span className={`${meta.text} font-black mr-1`}>{line.quantity}×</span>
-                            )}
-                            {line.internalName || line.sourceName || "Actividad incluida"}
-                          </p>
-                          {line.groupLabel && (
-                            <p className="text-xs text-slate-500">{line.groupLabel}</p>
-                          )}
-                          {!line.isActiveInOperation && (
-                            <p className="text-xs text-orange-600 font-medium">No disponible actualmente</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {line.isOptional && (
-                          <Badge variant="outline" className="text-xs">Opcional</Badge>
-                        )}
-                        {/* Override price for accommodation/hotel lines (visual only) */}
-                        {line.overridePrice != null && line.overridePrice > 0 ? (
-                          <div className="text-right">
-                            <p className={`text-sm font-bold ${meta.text}`}>
-                              desde {line.overridePrice.toFixed(0)} €
-                              {line.overridePriceLabel && (
-                                <span className="text-xs font-normal text-slate-500 ml-1">{line.overridePriceLabel}</span>
-                              )}
-                            </p>
-                            <p className="text-xs text-slate-400 italic">precio estimado</p>
-                          </div>
-                        ) : line.finalPrice > 0 ? (
-                          <div className="text-right">
-                            {line.discountAmount > 0 ? (
-                              <div>
-                                <p className={`text-sm font-bold ${meta.text}`}>
-                                  {line.finalPrice.toFixed(2)} €
-                                </p>
-                                <p className="text-xs text-slate-400 line-through">
-                                  {line.basePrice.toFixed(2)} €
-                                </p>
-                              </div>
-                            ) : (
-                              <p className="text-sm font-bold text-slate-700">
-                                {line.finalPrice.toFixed(2)} €
-                              </p>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {/* Ahorro total */}
-                {pricing && pricing.totalDiscount > 0 && (
-                  <div className="mt-3 p-3 rounded-xl bg-green-50 border border-green-200 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-green-700">Ahorro total</span>
-                    <span className="text-base font-black text-green-700">
-                      -{pricing.totalDiscount.toFixed(2)} €
-                    </span>
-                  </div>
-                )}
+                <LegoPackLineSelector
+                  packId={pack.id}
+                  initialActiveLineIds={selectedLineIds.length > 0 ? selectedLineIds : undefined}
+                  onConfirm={(activeIds, customPrice) => {
+                    setSelectedLineIds(activeIds);
+                    setCustomPackPrice(customPrice);
+                  }}
+                  gradientClass={meta.gradient}
+                  textColorClass={meta.text}
+                />
               </div>
             )}
 
