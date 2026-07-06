@@ -152,18 +152,17 @@ export function LegoPackLineSelector({
         {lines.map((line) => (
           <div
             key={line.lineId}
-            className={`flex items-center gap-3 p-3 rounded-lg border ${
+            className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
               selectedLineIds.has(line.lineId)
                 ? "bg-slate-50 border-slate-300"
-                : "bg-slate-100/50 border-slate-200 opacity-60"
-            } ${!line.isActiveInOperation ? "opacity-50" : ""}`}
+                : "bg-slate-100/50 border-slate-200"
+            }`}
           >
             {/* Checkbox (solo si es opcional) */}
             {line.isOptional ? (
               <Checkbox
                 checked={selectedLineIds.has(line.lineId)}
                 onCheckedChange={() => toggleLine(line.lineId, true)}
-                disabled={!line.isActiveInOperation}
                 className="mt-1"
               />
             ) : (
@@ -178,8 +177,8 @@ export function LegoPackLineSelector({
                 {line.internalName || line.sourceName || "Actividad"}
               </div>
               {line.groupLabel && <p className="text-xs text-slate-500">{line.groupLabel}</p>}
-              {!line.isActiveInOperation && (
-                <p className="text-xs text-orange-600 font-medium">No disponible actualmente</p>
+              {!line.isOptional && (
+                <p className="text-xs text-green-600 font-medium">✓ Incluido</p>
               )}
             </div>
 
