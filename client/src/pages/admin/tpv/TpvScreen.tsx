@@ -1067,8 +1067,7 @@ export default function TpvScreen() {
                 // Obtener el producto pendiente para añadir al carrito
                 const legoPackProduct = allProducts.find(p => p.id === pendingLegoPackId);
                 if (legoPackProduct) {
-                  _addToCartDirect(legoPackProduct);
-                  // TODO: Si es necesario, guardar el precio personalizado en el carrito
+                  _addToCartDirect(legoPackProduct, undefined, undefined, undefined, undefined, undefined, customPrice);
                 }
                 setShowLegoPackSelector(false);
                 setPendingLegoPackId(null);
