@@ -386,6 +386,8 @@ export default function TpvScreen() {
         ].filter(Boolean).join(" · ") || undefined,
         isManual: item.isManual ?? false,
         conceptText: item.isManual ? item.product.title : undefined,
+        legoPackLineIds: item.product.productType === 'legoPack' ? item.legoPackLineIds : undefined,
+        legoPackLinePeople: item.product.productType === 'legoPack' ? item.legoPackLinePeople : undefined,
       })),
       payments: [{ method, amount: cartTotal }],
     });

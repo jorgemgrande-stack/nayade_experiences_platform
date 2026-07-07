@@ -814,6 +814,8 @@ export const tpvRouter = router({
             notes: z.string().optional(),
             isManual: z.boolean().optional().default(false),
             conceptText: z.string().max(500).optional(),
+            legoPackLineIds: z.array(z.number()).optional(), // Para Lego Packs personalizados
+            legoPackLinePeople: z.record(z.number(), z.number()).optional(), // Personas por línea
           })
         ).min(1),
         payments: z.array(
@@ -1376,6 +1378,31 @@ export const tpvRouter = router({
           }
         } catch (ghlErr: any) {
           console.error("[TPV] Error en integración GHL:", ghlErr.message);
+        }
+      }
+
+      // ── 9b. Guardar snapshots de Lego Packs ───────────────────────────────────
+      // Importar saveSnapshot dinámicamente para evitar circular dependency
+      const { calculateLegoPackPrice } = await import("./legoPacks.ts");
+      for (let i = 0; i < input.items.length; i++) {
+        const item = input.items[i];
+        if (item.productType === "legoPack" && item.legoPackLineIds && item.legoPackLineIds.length > 0) {
+          try {
+            const pricing = await calculateLegoPackPrice(item.productId, item.legoPackLineIds);
+            await db.insert(legoPackSnapshots).values({
+              legoPackId: item.productId,
+              legoPackTitle: item.productName,
+              operationType: "tpv_sale",
+              operationId: saleId,
+              linesSnapshot: pricing.lines as any,
+              totalOriginal: String(pricing.totalOriginal.toFixed(2)),
+              totalDiscount: String(pricing.totalDiscount.toFixed(2)),
+              totalFinal: String(pricing.totalFinal.toFixed(2)),
+            });
+          } catch (err) {
+            console.error(`[TPV] Error saving Lego Pack snapshot: ${err}`);
+            // No fallar la venta si el snapshot falla
+          }
         }
       }
 
